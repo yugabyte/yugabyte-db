@@ -171,6 +171,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Universe),
 
+  RollbackEditKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackEditKubernetesUniverse.class,
+      CustomerTask.TaskType.RollbackEditKubernetesUniverse,
+      CustomerTask.TargetType.Universe),
+
   ExternalScript(
       com.yugabyte.yw.commissioner.tasks.ExternalScript.class,
       CustomerTask.TaskType.ExternalScript,
@@ -292,6 +297,11 @@ public enum TaskType {
   AddNodeToUniverse(
       com.yugabyte.yw.commissioner.tasks.AddNodeToUniverse.class,
       CustomerTask.TaskType.Add,
+      CustomerTask.TargetType.Node),
+
+  RollbackAddNodeToUniverse(
+      com.yugabyte.yw.commissioner.tasks.RollbackAddNodeToUniverse.class,
+      CustomerTask.TaskType.RollbackAddNodeToUniverse,
       CustomerTask.TargetType.Node),
 
   RemoveNodeFromUniverse(
@@ -481,6 +491,11 @@ public enum TaskType {
   ResizeNode(
       com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class,
       CustomerTask.TaskType.ResizeNode,
+      CustomerTask.TargetType.Universe),
+
+  RollbackResizeNode(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackResizeNode.class,
+      CustomerTask.TaskType.RollbackResizeNode,
       CustomerTask.TargetType.Universe),
 
   CreateTableSpacesInUniverse(
@@ -699,6 +714,11 @@ public enum TaskType {
   EnableNodeAgentInUniverse(
       com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
       CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
+
+  ManageCrossCloudFederationUniverse(
+      com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse.class,
+      CustomerTask.TaskType.ManageCrossCloudFederation,
       CustomerTask.TargetType.Universe),
 
   DecommissionNode(
@@ -1103,6 +1123,9 @@ public enum TaskType {
   BackupPreflightValidate(
       com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate.class),
 
+  BackupStorageConfigValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.BackupStorageConfigValidate.class),
+
   WaitForLeadersOnPreferredOnly(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly.class),
 
@@ -1194,6 +1217,9 @@ public enum TaskType {
 
   CheckCpuCgroup(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup.class),
 
+  CheckOCIImageEligibility(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOCIImageEligibility.class),
+
   CheckOpentelemetryOperator(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
 
@@ -1224,6 +1250,11 @@ public enum TaskType {
   CreateTableSpaces(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces.class),
 
   ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
+
+  ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
+
+  ConfigureNodeExporterTls(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls.class),
 
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
@@ -1339,6 +1370,12 @@ public enum TaskType {
   DeleteCapacityReservation(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
 
+  EnsureManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer.class),
+
+  DeleteManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer.class),
+
   DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
 
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
@@ -1372,7 +1409,10 @@ public enum TaskType {
 
   CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class),
 
-  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class);
+  RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
+
+  CreateYbStorageDatabase(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1395,6 +1435,7 @@ public enum TaskType {
           .put(EditKubernetesUniverse, 7)
           .put(EditUniverse, 8)
           .put(RollbackEditUniverse, 17)
+          .put(RollbackEditKubernetesUniverse, 18)
           .put(PauseUniverse, 9)
           .put(ReadOnlyClusterCreate, 10)
           .put(ReadOnlyClusterDelete, 11)
@@ -1409,6 +1450,7 @@ public enum TaskType {
           .put(GFlagsUpgrade, 32)
           .put(RebootUniverse, 33)
           .put(ResizeNode, 34)
+          .put(RollbackResizeNode, 66)
           .put(RestartUniverse, 35)
           .put(SoftwareUpgrade, 36)
           .put(SoftwareUpgradeYB, 36)
@@ -1443,6 +1485,7 @@ public enum TaskType {
           .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
+          .put(RollbackAddNodeToUniverse, 79)
           .put(DeleteNodeFromUniverse, 71)
           .put(RebootNodeInUniverse, 72)
           .put(ReleaseInstanceFromUniverse, 73)

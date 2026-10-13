@@ -7,7 +7,7 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use cargo_edit::{registry_url, CertsSource, Dependency, IndexCache, LocalManifest};
+use cargo_edit::{CertsSource, Dependency, IndexCache, LocalManifest, registry_url};
 use eyre::eyre;
 use std::path::{Path, PathBuf};
 use toml_edit::KeyMut;
@@ -119,7 +119,7 @@ impl Upgrade {
                 return Err(eyre!(
                     "Could not parse dependency \
                 entry for {dep_name} due to error: {e}"
-                ))
+                ));
             }
         };
         let reg_url = registry_url(path, parsed_dep.registry())
@@ -149,7 +149,7 @@ impl Upgrade {
                     "Unable to update {dep_name} \
                 , no provided crate version and a latest version \
                 could not be retrieved from the registry."
-                ))
+                ));
             }
         };
 
@@ -161,7 +161,7 @@ impl Upgrade {
                 return Err(eyre!(
                     "Dependency {dep_name}'s source was \
                 parsed as None by cargo-edit."
-                ))
+                ));
             }
         };
         debug!(

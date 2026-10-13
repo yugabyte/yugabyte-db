@@ -53,6 +53,9 @@ Oid			binary_upgrade_next_pg_authid_oid = InvalidOid;
 /* GUC parameter */
 int			Password_encryption = PASSWORD_TYPE_SCRAM_SHA_256;
 
+/* YB: GUC parameter, in minutes. Zero means no expiration policy. */
+int			yb_password_validity = 0;
+
 /* Hook to check passwords in CreateRole() and AlterRole() */
 check_password_hook_type check_password_hook = NULL;
 
@@ -62,6 +65,24 @@ static void AddRoleMems(const char *rolename, Oid roleid,
 static void DelRoleMems(const char *rolename, Oid roleid,
 						List *memberSpecs, List *memberIds,
 						bool admin_opt);
+
+/*
+ * YB: Compute the pg_authid.rolvaliduntil implied by the yb_password_validity
+ * policy for a password that is being stored right now.
+ * Returns false when no policy in effect.
+ */
+static bool
+YbComputePasswordValidUntil(bool has_valid_until_clause,
+							Datum *validUntil_datum)
+{
+	if (has_valid_until_clause || yb_password_validity == 0)
+		return false;
+
+	*validUntil_datum =
+		TimestampTzGetDatum(GetCurrentTimestamp() +
+							yb_password_validity * USECS_PER_MINUTE);
+	return true;
+}
 
 
 /* Check if current user has createrole privileges */
@@ -332,6 +353,11 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 		validUntil_datum = (Datum) 0;
 		validUntil_null = true;
 	}
+
+	/* YB: apply the policy early so later hooks see the expiration we store. */
+	if (password && password[0] != '\0' &&
+		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		validUntil_null = false;
 
 	/*
 	 * Call the password checking hook if there is one defined
@@ -813,6 +839,11 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 										   &validUntil_null);
 	}
 
+	/* YB: apply the policy before the hook so it sees the expiration we store. */
+	if (password && password[0] != '\0' &&
+		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		validUntil_null = false;
+
 	/*
 	 * Call the password checking hook if there is one defined
 	 */
@@ -999,6 +1030,18 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		 * meantime.
 		 */
 		shdepLockAndCheckObject(AuthIdRelationId, roleid);
+
+		/*
+		 * YB: Password validity is not applicable to roles that cannot log in.
+		 * TODO: GH-33903 tracks support for password validity in login profiles
+		 * (ie. a group of users sharing a common login policy).
+		 */
+		if (!roleform->rolcanlogin && stmt->setstmt->name &&
+			strcmp(stmt->setstmt->name, "yb_password_validity") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+					 errmsg("parameter \"%s\" cannot be set for a role that "
+							"cannot log in", stmt->setstmt->name)));
 
 		/*
 		 * To mess with a superuser you gotta be superuser; else you need

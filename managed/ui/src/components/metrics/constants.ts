@@ -71,6 +71,7 @@ export const MetricTypesWithOperations = {
       'network_packets',
       'network_bytes',
       'network_errors',
+      'network_tcp_retransmits',
       'system_load_over_time',
       'node_clock_skew'
     ]
@@ -83,6 +84,8 @@ export const MetricTypesWithOperations = {
       'process_virtual_memory',
       'process_resident_memory',
       'process_proportional_memory',
+      'postgres_worker_pss_max',
+      'postgres_worker_pss_p95',
       'process_io_read',
       'process_io_write',
       'process_open_files'

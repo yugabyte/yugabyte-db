@@ -64,6 +64,14 @@ Therefore, if you don't specify a primary key at table-creation time, YugabyteDB
 
 FOREIGN KEY and REFERENCES specifies that the set of columns can only contain values that are present in the referenced column(s) of the referenced table. It is used to enforce referential integrity of data.
 
+#### Foreign keys on partitioned tables
+
+A foreign key can reference a partitioned table, and a partitioned table can declare a foreign key.
+
+A foreign key can reference a partitioned table only through a primary key or UNIQUE constraint that includes every column of that table's partition key. The foreign key has to list those columns as well.
+
+For an example of how to create and manage partitioned tables in YSQL, see [Table partitioning](/stable/explore/ysql-language-features/advanced-features/partitions/).
+
 ### Unique
 
 This enforces that the set of columns specified in the UNIQUE constraint are unique in the table, that is, no two rows can have the same values for the set of columns specified in the UNIQUE constraint.
@@ -155,7 +163,7 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../ddl_create_tablespace/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 
@@ -213,6 +221,10 @@ Setting `COLOCATION = true` has no effect if the database that the table is part
 ### Storage parameters
 
 Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+
+### INHERITS
+
+A table can inherit columns, check constraints, and not-null constraints from one or more parent tables. Primary keys, unique constraints, indexes, and foreign keys are not inherited. See [Table inheritance](../../ddl-inherit/).
 
 ### PARTITION BY
 

@@ -221,10 +221,11 @@ import-data:
   cdc-partition-key:
 ```
 
-| Global strategy for all tables on how CDC events are partitioned across parallel channels. Supported values:
-<ul><li><code>auto</code> (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).</li>
-<li><code>pk</code>: Partition CDC events by primary key.</li>
-<li><code>table</code>: Partition CDC events by table (all events for a table share one channel).</li></ul> |
+| Global strategy for all tables on how CDC events are partitioned across parallel channels. Strategy is one of the following:
+
+- `auto` (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).
+- `pk`: Partition CDC events by primary key.
+- `table`: Partition CDC events by table (all events for a table share one channel). |
 
 | --cdc-partition-key-overrides |
 
@@ -233,7 +234,13 @@ import-data:
   cdc-partition-key-overrides:
 ```
 
-| Per-table CDC partition-key overrides as `schema.table:pk` or `schema.table:table` pairs, separated by ';'. Example: `public.orders:table;sales.events:pk` Unlisted tables keep the global `--cdc-partition-key`. |
+| Per-table CDC partition-key overrides in the form `schema.table:strategy`, separated by ';'. Strategy is one of the following:
+
+- `pk`: Partition CDC events by primary key. Example: `sales.events:pk`
+- `table`: Partition CDC events by table (all events for a table share one channel). Example: `public.orders:table`
+- `(col1,col2)`: Partition CDC events by the given column values (immutable columns), in the form `(col1,col2)`. Example: `public.payments:(customer_id,region)`
+
+Unlisted tables keep the global `--cdc-partition-key`. For information on how to choose a strategy, see [Improve import CDC streaming performance](../../performance/#improve-import-cdc-streaming-performance). |
 
 | -e, --export-dir |
 
@@ -257,6 +264,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --target-db-host |
 
@@ -492,6 +515,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -610,6 +649,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --source-db-password |
 
@@ -735,6 +790,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | --source-replica-db-host |
 

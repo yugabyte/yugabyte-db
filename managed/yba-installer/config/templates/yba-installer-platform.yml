@@ -8,9 +8,12 @@ services:
 
       play.crypto.secret = ${?PLATFORM_APP_SECRET}
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
+      # BCFKS, not PEM: "PEM" is not a JCE keystore type, so Play parses the file itself and
+      # re-wraps it in a SunJSSE keystore, outside the FIPS-validated provider. BCFKS is opened
+      # by BCFIPS. Written on every install and upgrade whether or not FIPS mode is on.
       play.server.https.keyStore{
-          path = "{{ baseInstall }}/data/yba-installer/certs/server.pem"
-          type = "PEM"
+          path = "{{ baseInstall }}/data/yba-installer/certs/server.bcfks"
+          type = "BCFKS"
           password = "{{ yamlPath "platform.keyStorePassword" }}"
       }
 
@@ -87,12 +90,14 @@ services:
       yb {
         platform.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "platform.port" }}"
         {{if eq (yamlPath "perfAdvisor.enabled") "true" }}
+        # localhost, not host: Perf Advisor binds the loopback interface (server.address in its
+        # own configuration), so this is the only address it answers on. Under TLS the certificate
+        # is the platform's, issued for host rather than localhost, which does not matter here
+        # because yb.pa.ws.ssl.loose.acceptAnyCertificate is already set for this client.
         {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
-        pa.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:
-        {{- yamlPath "perfAdvisor.port" }}"
+        pa.url = "https://localhost:{{ yamlPath "perfAdvisor.port" }}"
         {{ else }}
-        pa.url = "http://{{ index (splitInput (yamlPath "host")) 0 }}:
-        {{- yamlPath "perfAdvisor.port" }}"
+        pa.url = "http://localhost:{{ yamlPath "perfAdvisor.port" }}"
         {{ end }}
         pa.api_token = "{{ yamlPath "perfAdvisor.paSecret" }}"
         {{ end }}
@@ -249,8 +254,14 @@ services:
       Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
       {{end}}
 
+      # install_dir below: BouncyCastle dlopen()s the native libraries it unpacks, so they cannot
+      # go to a noexec /tmp. Both modes - the keystore is BCFKS either way.
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
+        {{- if eq (yamlPath "fips.enabled") "true" }}
+        -Dorg.bouncycastle.fips.approved_only=true \
+        {{- end }}
+        -Dorg.bouncycastle.native.loader.install_dir={{ .DataDir }}/bcnative \
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
         -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \

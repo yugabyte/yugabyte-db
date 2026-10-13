@@ -110,6 +110,9 @@ type OnPremCloudInfo struct {
 	YbHomeDir          string `json:"ybHomeDir,omitempty"`
 	UseClockbound      bool   `json:"useClockbound,omitempty"`
 	EnableMultiTenancy bool   `json:"enableMultiTenancy,omitempty"`
+	// Set when YNP creates the provider. YBA rejects user driven changes to the configuration,
+	// the instance types and the node instances of such providers.
+	YnpManaged bool `json:"ynpManaged,omitempty"`
 }
 
 // Register custom marshaller.

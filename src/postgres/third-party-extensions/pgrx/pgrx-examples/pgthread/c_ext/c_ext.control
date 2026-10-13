@@ -1,0 +1,6 @@
+comment = 'c_ext: helper "extension"'
+default_version = '@CARGO_VERSION@'
+module_pathname = 'c_ext'
+relocatable = false
+superuser = true
+trusted = false

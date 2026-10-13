@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
@@ -87,6 +89,9 @@ import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.SecretList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
@@ -99,6 +104,8 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
@@ -112,6 +119,7 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.YsqlConnMgrLogs;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YcqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YsqlAuditConfig;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.YsqlQueryLogConfig;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -153,6 +161,15 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
       inNamespaceYBUClient;
 
   @Mock io.fabric8.kubernetes.client.dsl.Resource<YBUniverse> ybUniverseResource;
+
+  @Mock
+  MixedOperation<Secret, SecretList, io.fabric8.kubernetes.client.dsl.Resource<Secret>>
+      secretClient;
+
+  @Mock
+  NonNamespaceOperation<Secret, SecretList, io.fabric8.kubernetes.client.dsl.Resource<Secret>>
+      inNamespaceSecretClient;
+
   @Mock RuntimeConfGetter confGetter;
   @Mock RuntimeConfGetter confGetterForOperatorUtils;
   @Mock YBInformerFactory informerFactory;
@@ -780,6 +797,84 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testOverridesUpgradeHonorsRollMaxBatchSize() throws Exception {
+    String universeName = "test-overrides-roll-batch";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize specBatchSize =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize();
+    specBatchSize.setPrimaryBatchSize(2L);
+    specBatchSize.setReadReplicaBatchSize(2L);
+    ybUniverse.getSpec().setRollMaxBatchSize(specBatchSize);
+
+    KubernetesOverrides ko = new KubernetesOverrides();
+    Map<String, String> nodeSelectorMap = new HashMap<>();
+    nodeSelectorMap.put("foo", "bar");
+    ko.setNodeSelector(nodeSelectorMap);
+    ybUniverse.getSpec().setKubernetesOverrides(ko);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> uDTCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .upgradeKubernetesOverrides(uDTCaptor.capture(), any(Customer.class), any(Universe.class));
+    KubernetesOverridesUpgradeParams captured = uDTCaptor.getValue();
+    assertTrue(captured.universeOverrides.contains("bar"));
+    assertNotNull(captured.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getReadReplicaBatchSize());
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testGflagsUpgradeHonorsRollMaxBatchSize() throws Exception {
+    String universeName = "test-gflags-roll-batch";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // checkIfGFlagsChanged diffs per-node gflags, so the universe must have nodes.
+    oldUniverse = ModelFactory.addNodesToUniverse(oldUniverse.getUniverseUUID(), 3);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize specBatchSize =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize();
+    specBatchSize.setPrimaryBatchSize(3L);
+    specBatchSize.setReadReplicaBatchSize(2L);
+    ybUniverse.getSpec().setRollMaxBatchSize(specBatchSize);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags gflags =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags();
+    Map<String, String> tserverGFlags = new HashMap<>();
+    tserverGFlags.put("ysql_enable_packed_row", "true");
+    gflags.setTserverGFlags(tserverGFlags);
+    ybUniverse.getSpec().setGFlags(gflags);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+    ArgumentCaptor<GFlagsUpgradeParams> gflagsCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .upgradeGFlags(gflagsCaptor.capture(), any(Customer.class), any(Universe.class));
+    GFlagsUpgradeParams captured = gflagsCaptor.getValue();
+    assertNotNull(captured.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(3), captured.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), captured.rollMaxBatchSize.getReadReplicaBatchSize());
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
   public void testEditUniverseTriggersToggleYbcWhenUseYbdbInbuiltYbcToggledInCr() throws Exception {
     String universeName = "test-toggle-ybc-universe";
     YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
@@ -1386,10 +1481,15 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Create existing universe with different masterDeviceInfo
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
-    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setDeviceInfo(deviceInfo);
+
     // Modify masterDeviceInfo to be different
-    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.volumeSize = 50;
+    TestUtils.updateDeviceInfo(
+        taskParams.getPrimaryCluster().userIntent, ServerType.MASTER, mdi -> mdi.volumeSize = 50);
+
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
     existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
 
@@ -1725,8 +1825,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Create existing universe
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
-    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    TestUtils.existingProviderInitializer(taskParams.getPrimaryCluster().userIntent)
+        .setDeviceInfo(deviceInfo);
+
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
     existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
 
@@ -1862,13 +1965,18 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // primary cluster with finalized placementInfo and a userIntent with base deviceInfo.
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 1;
-    userIntent.masterDeviceInfo = new DeviceInfo();
-    userIntent.masterDeviceInfo.volumeSize = 50;
-    userIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
 
     // Create-path: existingUniverse is null.
@@ -1930,14 +2038,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // without a perAZ entry will end up using (no override is added for them).
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 1;
-    userIntent.deviceInfo.storageClass = "base-tserver-sc";
-    userIntent.masterDeviceInfo = new DeviceInfo();
-    userIntent.masterDeviceInfo.volumeSize = 50;
-    userIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(userIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(userIntent, az1, az2);
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
@@ -1973,9 +2086,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
     // Base tserver deviceInfo on userIntent must remain untouched - that's what AZs without
     // a perAZ entry rely on.
-    assertEquals(100, resultIntent.deviceInfo.volumeSize.intValue());
-    assertEquals(1, resultIntent.deviceInfo.numVolumes.intValue());
-    assertEquals("base-tserver-sc", resultIntent.deviceInfo.storageClass);
+    DeviceInfo di = resultIntent.getBaseDeviceInfo(defaultProvider.getUuid());
+    assertEquals(100, di.volumeSize.intValue());
+    assertEquals(1, di.numVolumes.intValue());
+    assertEquals("base-tserver-sc", di.storageClass);
   }
 
   /*--- Tests for edit-flow applyKubernetesOperatorVolumeOverrides logic ---*/
@@ -2035,11 +2149,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // Existing universe has both AZs and previously stored tserver perAZ overrides.
     UserIntent existingUserIntent = new UserIntent();
     existingUserIntent.universeName = universeName;
-    existingUserIntent.provider = defaultProvider.getUuid().toString();
-    existingUserIntent.deviceInfo = new DeviceInfo();
-    existingUserIntent.deviceInfo.volumeSize = 100;
-    existingUserIntent.deviceInfo.numVolumes = 1;
-    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    TestUtils.initUserIntent(existingUserIntent, defaultProvider, null, deviceInfo, null);
+
     seedTserverAZOverride(existingUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(existingUserIntent, az2.getUuid(), 100, "az2-old-sc");
     Universe existingUniverse =
@@ -2072,11 +2188,14 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // (mirrors what the operator passes in on edit).
     UserIntent newUserIntent = new UserIntent();
     newUserIntent.universeName = universeName;
-    newUserIntent.provider = defaultProvider.getUuid().toString();
-    newUserIntent.deviceInfo = new DeviceInfo();
-    newUserIntent.deviceInfo.volumeSize = 100;
-    newUserIntent.deviceInfo.numVolumes = 1;
-    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.volumeSize = 100;
+    newDeviceInfo.numVolumes = 1;
+    newDeviceInfo.storageClass = "base-tserver-sc";
+
+    TestUtils.initUserIntent(newUserIntent, defaultProvider, null, newDeviceInfo, null);
+
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(newUserIntent, az2.getUuid(), 100, "az2-old-sc");
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
@@ -2125,14 +2244,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // a master override for az1 simulate the post-create / post-prior-edit state.
     UserIntent existingUserIntent = new UserIntent();
     existingUserIntent.universeName = universeName;
-    existingUserIntent.provider = defaultProvider.getUuid().toString();
-    existingUserIntent.deviceInfo = new DeviceInfo();
-    existingUserIntent.deviceInfo.volumeSize = 100;
-    existingUserIntent.deviceInfo.numVolumes = 1;
-    existingUserIntent.deviceInfo.storageClass = "base-tserver-sc";
-    existingUserIntent.masterDeviceInfo = new DeviceInfo();
-    existingUserIntent.masterDeviceInfo.volumeSize = 50;
-    existingUserIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.volumeSize = 100;
+    deviceInfo.numVolumes = 1;
+    deviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 50;
+    masterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(existingUserIntent, defaultProvider, null, deviceInfo, null)
+        .setMasterDeviceInfo(masterDeviceInfo);
+
     seedTserverAZOverride(existingUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
     // Stash an existing master override for az1 so we can verify it is preserved (skipAZs).
     AZOverrides az1Existing =
@@ -2173,14 +2297,19 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     // placement now contains both az1 (retained) and az2 (newly added).
     UserIntent newUserIntent = new UserIntent();
     newUserIntent.universeName = universeName;
-    newUserIntent.provider = defaultProvider.getUuid().toString();
-    newUserIntent.deviceInfo = new DeviceInfo();
-    newUserIntent.deviceInfo.volumeSize = 100;
-    newUserIntent.deviceInfo.numVolumes = 1;
-    newUserIntent.deviceInfo.storageClass = "base-tserver-sc";
-    newUserIntent.masterDeviceInfo = new DeviceInfo();
-    newUserIntent.masterDeviceInfo.volumeSize = 50;
-    newUserIntent.masterDeviceInfo.numVolumes = 1;
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.volumeSize = 100;
+    newDeviceInfo.numVolumes = 1;
+    newDeviceInfo.storageClass = "base-tserver-sc";
+
+    DeviceInfo newMasterDeviceInfo = new DeviceInfo();
+    newMasterDeviceInfo.volumeSize = 50;
+    newMasterDeviceInfo.numVolumes = 1;
+
+    TestUtils.initUserIntent(newUserIntent, defaultProvider, null, newDeviceInfo, null)
+        .setMasterDeviceInfo(newMasterDeviceInfo);
+
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 200, "az1-tserver-existing");
     AZOverrides az1Carried =
         newUserIntent.getUserIntentOverrides().getAzOverrides().get(az1.getUuid());
@@ -3102,5 +3231,254 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     String createdName = captor.getValue().getPrimaryCluster().userIntent.universeName;
     assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), createdName);
     assertFalse("user-chosen-name".equals(createdName));
+  }
+
+  // ---------- YSQL/YCQL auth and password secret handling ----------
+
+  @SuppressWarnings("unchecked")
+  private void mockSecretLookup(String secretName, Secret secret) {
+    Mockito.when(client.secrets()).thenReturn(secretClient);
+    Mockito.when(secretClient.inNamespace(namespace)).thenReturn(inNamespaceSecretClient);
+    io.fabric8.kubernetes.client.dsl.Resource<Secret> secretResource =
+        Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+    Mockito.when(inNamespaceSecretClient.withName(secretName)).thenReturn(secretResource);
+    Mockito.when(secretResource.get()).thenReturn(secret);
+  }
+
+  // A null password builds a secret that exists but holds no password.
+  private Secret secretWithPassword(String secretName, String key, String password) {
+    Secret secret = new Secret();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName(secretName);
+    metadata.setNamespace(namespace);
+    secret.setMetadata(metadata);
+    if (password != null) {
+      secret.setStringData(Collections.singletonMap(key, password));
+    }
+    return secret;
+  }
+
+  private void setYsqlAuthSpec(YBUniverse ybUniverse, boolean authEnabled, String secretName) {
+    ybUniverse.getSpec().setEnableYSQLAuth(authEnabled);
+    if (secretName != null) {
+      YsqlPassword ysqlPassword = new YsqlPassword();
+      ysqlPassword.setSecretName(secretName);
+      ybUniverse.getSpec().setYsqlPassword(ysqlPassword);
+    }
+  }
+
+  private void setYcqlAuthSpec(YBUniverse ybUniverse, boolean authEnabled, String secretName) {
+    ybUniverse.getSpec().setEnableYCQL(true);
+    ybUniverse.getSpec().setEnableYCQLAuth(authEnabled);
+    if (secretName != null) {
+      YcqlPassword ycqlPassword = new YcqlPassword();
+      ycqlPassword.setSecretName(secretName);
+      ybUniverse.getSpec().setYcqlPassword(ycqlPassword);
+    }
+  }
+
+  // Creates a universe with both APIs' auth already enabled, as it would be after a create with
+  // passwords or after being imported into the operator from YBA.
+  private Universe createUniverseWithAuthEnabled(YBUniverse ybUniverse) throws Exception {
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          UserIntent userIntent = details.getPrimaryCluster().userIntent;
+          userIntent.enableYSQLAuth = true;
+          userIntent.ysqlPassword = "stored-ysql-pass";
+          userIntent.enableYCQLAuth = true;
+          userIntent.ycqlPassword = "stored-ycql-pass";
+          u.setUniverseDetails(details);
+        });
+  }
+
+  @Test
+  public void testCreateUserIntentSetsAuthAndPasswordsFromSpec() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-from-spec", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, "ysql-secret");
+    setYcqlAuthSpec(ybUniverse, true, "ycql-secret");
+    mockSecretLookup("ysql-secret", secretWithPassword("ysql-secret", "ysqlPassword", "ysqlPass"));
+    mockSecretLookup("ycql-secret", secretWithPassword("ycql-secret", "ycqlPassword", "ycqlPass"));
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider);
+
+    assertTrue(userIntent.enableYSQLAuth);
+    assertEquals("ysqlPass", userIntent.ysqlPassword);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertEquals("ycqlPass", userIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testCreateUserIntentNoAuthWhenSpecHasNeither() {
+    // ModelFactory's spec sets neither auth flag nor a password secret.
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-unset", defaultProvider);
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider);
+
+    assertFalse(userIntent.enableYSQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertFalse(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYsqlAuthEnabledWithoutPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ysql-auth-nopass", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("ysqlPassword must be set when enableYSQLAuth is true"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYcqlAuthEnabledWithoutPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ycql-auth-nopass", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, true, null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("ycqlPassword must be set when enableYCQLAuth is true"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYsqlPasswordSetWithoutAuth() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ysql-pass-noauth", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, false, "ysql-secret");
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("enableYSQLAuth must be true when ysqlPassword is set"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenYcqlPasswordSetWithoutAuth() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-ycql-pass-noauth", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, false, "ycql-secret");
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("enableYCQLAuth must be true when ycqlPassword is set"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenSecretHoldsNoPassword() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-empty-secret", defaultProvider);
+    setYsqlAuthSpec(ybUniverse, true, "ysql-secret");
+    mockSecretLookup("ysql-secret", secretWithPassword("ysql-secret", "ysqlPassword", null));
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("could not find ysqlPassword in secret ysql-secret"));
+  }
+
+  @Test
+  public void testCreateUserIntentFailsWhenSecretMissing() {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-missing-secret", defaultProvider);
+    setYcqlAuthSpec(ybUniverse, true, "ycql-secret");
+    mockSecretLookup("ycql-secret", null);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                ybUniverseReconciler.createUserIntent(
+                    ybUniverse, defaultCustomer.getUuid(), true /* isCreate */, defaultProvider));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("could not find ycqlPassword in secret ycql-secret"));
+  }
+
+  // Asserts that an edit reconcile left the universe's own auth settings untouched. The operator
+  // cannot toggle auth or rotate a password yet, so an edit must never write either back.
+  private void assertUniverseAuthUnchanged(UUID universeUuid) {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
+    assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
+    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
+    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
+  }
+
+  @Test
+  public void testEditUserIntentKeepsAuthWhenPasswordRemovedFromSpec() throws Exception {
+    YBUniverse ybUniverse =
+        ModelFactory.createYbUniverse("test-auth-edit-removed", defaultProvider);
+    Universe universe = createUniverseWithAuthEnabled(ybUniverse);
+    // Auth stays on in the spec, but the password secret has been dropped from it entirely.
+    setYsqlAuthSpec(ybUniverse, true, null /* secretName */);
+    setYcqlAuthSpec(ybUniverse, true, null /* secretName */);
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), false /* isCreate */, defaultProvider);
+
+    // Auth follows the spec flags, and no password is resolved - removing it is a no-op.
+    assertTrue(userIntent.enableYSQLAuth);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertNull(userIntent.ycqlPassword);
+    assertUniverseAuthUnchanged(universe.getUniverseUUID());
+  }
+
+  @Test
+  public void testEditUserIntentIgnoresUnreadablePasswordSecrets() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-auth-edit-secret", defaultProvider);
+    Universe universe = createUniverseWithAuthEnabled(ybUniverse);
+    // The spec still points at secrets that no longer resolve - one deleted outright, one left
+    // without the password key. The edit path looks them up to keep the dependency rows current
+    // but never reads a password out of them, so neither may fail the reconcile.
+    setYsqlAuthSpec(ybUniverse, true, "gone-secret");
+    setYcqlAuthSpec(ybUniverse, true, "empty-secret");
+    mockSecretLookup("gone-secret", null);
+    mockSecretLookup("empty-secret", secretWithPassword("empty-secret", "ycqlPassword", null));
+
+    UserIntent userIntent =
+        ybUniverseReconciler.createUserIntent(
+            ybUniverse, defaultCustomer.getUuid(), false /* isCreate */, defaultProvider);
+
+    assertTrue(userIntent.enableYSQLAuth);
+    assertTrue(userIntent.enableYCQLAuth);
+    assertNull(userIntent.ysqlPassword);
+    assertNull(userIntent.ycqlPassword);
+    assertUniverseAuthUnchanged(universe.getUniverseUUID());
   }
 }

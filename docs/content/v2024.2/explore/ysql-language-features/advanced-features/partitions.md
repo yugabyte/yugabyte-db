@@ -172,31 +172,17 @@ Note the following:
 
 - The primary key for a partitioned table should always contain the partition key.
 - If you choose to define row triggers, you do so on individual partitions instead of the partitioned table.
-- Creating a foreign key reference on a partitioned table is not supported.
+- A foreign key that references a partitioned table is not supported. A partitioned table can declare a foreign key. See [Foreign keys on partitioned tables](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-keys-on-partitioned-tables).
 - A partition table inherits tablespaces from its parent.
 - You cannot mix temporary and permanent relations in the same partition hierarchy.
 - If you have a default partition in the partitioning hierarchy, you can add new partitions only if there is no data in the default partition that matches the partition constraint of the new partition.
 
-## Partition pruning and constraint exclusion
+## Partition pruning
 
-Partition pruning and constraint exclusion are optimization techniques that allow the query planner to exclude unnecessary partitions from the execution. For example, consider the following query:
+The planner skips partitions whose bounds cannot match the query. For example:
 
 ```sql
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
-If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
-
-Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the WHERE clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as CURRENT_TIMESTAMP cannot be optimized, because the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for SELECT queries. Updates can only benefit from constraint exclusion.
-
-Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
-
-```sql
-SET enable_partition_pruning = off;
-SET constraint_exclusion = off;
-SELECT count(*) FROM order_changes WHERE change_date >= DATE '2019-01-01';
-```
-
-To re-enable partition pruning, set the `enable_partition_pruning` setting to `on`.
-
-For constraint exclusion, the recommended (and default) setting is neither `off` nor `on`, but rather an intermediate value `partition`, which means that it's applied only to queries that are executed on partitioned tables.
+Because `order_changes` is partitioned by `change_date`, this query reads the partition bounds and leaves out the months before January 2020.

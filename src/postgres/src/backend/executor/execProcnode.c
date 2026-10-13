@@ -1086,7 +1086,7 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_YbSkippableEntities:
 		case T_YbUpdateAffectedEntities:
 		case T_YbMergeScanInfo:
-		case T_YbMergeScanSaopColInfo:
+		case T_YbMergeScanStreamColInfo:
 		case T_YbSortInfo:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

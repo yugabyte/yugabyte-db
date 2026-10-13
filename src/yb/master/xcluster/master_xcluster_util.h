@@ -55,6 +55,8 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
     const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
     bool automatic_ddl_mode);
 
+bool IsXClusterWalAnchorStreamEnabled();
+
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
 
 bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info);

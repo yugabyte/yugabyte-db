@@ -102,6 +102,8 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 bool is_partial);
 
 /* YB declarations */
+static bool yb_join_splits_batched_rels(Relids batched_together,
+										Relids outerrelids);
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
 											 Path *inner_path,
 											 List *rinfos);
@@ -786,6 +788,8 @@ try_nestloop_path(PlannerInfo *root,
 	 * The latter two steps are expensive enough to make this two-phase
 	 * methodology worthwhile.
 	 */
+	yb_init_bnl_workspace(&workspace, root, joinrel,
+						  outer_path, inner_path, pathkeys, jointype, extra);
 	initial_cost_nestloop(root, &workspace, jointype,
 						  outer_path, inner_path, extra);
 
@@ -904,6 +908,8 @@ try_partial_nestloop_path(PlannerInfo *root,
 	 * Before creating a path, get a quick lower bound on what it is likely to
 	 * cost.  Bail out right away if it looks terrible.
 	 */
+	yb_init_bnl_workspace(&workspace, root, joinrel,
+						  outer_path, inner_path, pathkeys, jointype, extra);
 	initial_cost_nestloop(root, &workspace, jointype,
 						  outer_path, inner_path, extra);
 	if (!add_partial_path_precheck(joinrel, workspace.total_cost, pathkeys))
@@ -2526,6 +2532,25 @@ select_mergejoin_clauses(PlannerInfo *root,
 }
 
 /*
+ * yb_join_splits_batched_rels
+ *	  Would a join over outerrelids batch only part of a set of outer relations
+ *	  that have to be batched together?
+ *
+ * One batch index addresses every batched value in a batched expression, so a
+ * join that supplies some members of such a set and leaves the rest to another
+ * join pairs slot i of one batch with slot i of another.  That yields the
+ * diagonal of the two batches rather than their cross product, and the rows
+ * the diagonal misses are lost.  Supplying none of the set is fine; a join
+ * further up takes it whole.
+ */
+static bool
+yb_join_splits_batched_rels(Relids batched_together, Relids outerrelids)
+{
+	return (bms_overlap(batched_together, outerrelids) &&
+			!bms_is_subset(batched_together, outerrelids));
+}
+
+/*
  * A batched clause can be non_evaluable if it requires input relations
  * A and B on its outer side but And B are not joined together in the context
  * of this clause.
@@ -2537,6 +2562,11 @@ select_mergejoin_clauses(PlannerInfo *root,
  * and S = {1,3} then we cannot join O to I as I will not receieve a cross
  * product of relations 1 and 3. On the other hand, if O had relations {1,3,4},
  * the join would be acceptable.
+ *
+ * It is only handed this join's restriction clauses and I's ppi_clauses, and
+ * ppi_clauses is NIL once I is a joinrel, so a clause evaluated inside I
+ * escapes it.  yb_batched_clause_final_check feeds the same test from
+ * yb_ppi_batched_groups, which carries S across those joins.
  */
 static bool
 yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
@@ -2557,14 +2587,11 @@ yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
 		if (!batched_rinfo)
 			continue;
 
-		Relids		right_relids = batched_rinfo->right_relids;
+		Relids		right_relids = bms_intersect(batched_rinfo->right_relids,
+												 req_batched_rels);
 
-		right_relids = bms_intersect(right_relids, req_batched_rels);
-		if (bms_overlap(right_relids, outer_relids) &&
-			!bms_is_subset(right_relids, outer_relids))
-		{
+		if (yb_join_splits_batched_rels(right_relids, outer_relids))
 			return true;
-		}
 	}
 	return false;
 }
@@ -2583,6 +2610,8 @@ yb_batched_clause_final_check(Path *outer_path,
 {
 	if (YB_PATH_NEEDS_BATCHED_RELS(inner_path))
 	{
+		ListCell   *lc;
+
 		/*
 		 * Check to make sure this is a valid BNL.
 		 */
@@ -2595,6 +2624,18 @@ yb_batched_clause_final_check(Path *outer_path,
 											  ->ppi_clauses)))
 		{
 			return false;
+		}
+
+		/*
+		 * The same rule fed from the inner path's groups, for a clause the
+		 * lists above can no longer reach.  Only the inner path's groups
+		 * matter: an outer path's group names relations supplied from above
+		 * this join, which this join cannot split.
+		 */
+		foreach(lc, YB_PATH_BATCHED_GROUPS(inner_path))
+		{
+			if (yb_join_splits_batched_rels((Relids) lfirst(lc), outerrelids))
+				return false;
 		}
 	}
 

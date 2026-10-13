@@ -45,6 +45,7 @@
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/fs/fs.pb.h"
@@ -523,13 +524,13 @@ TEST_F(StorageTierTest, InvalidTierRejected) {
 
 // IsValidStorageTier / ValidStorageTiers reflect the static set.
 TEST_F(StorageTierTest, ValidStorageTierSet) {
-  ASSERT_TRUE(FsManager::IsValidStorageTier("ssd"));
-  ASSERT_TRUE(FsManager::IsValidStorageTier("hdd"));
-  ASSERT_FALSE(FsManager::IsValidStorageTier("gold"));
-  ASSERT_FALSE(FsManager::IsValidStorageTier(""));
+  ASSERT_TRUE(IsValidStorageTier("ssd"));
+  ASSERT_TRUE(IsValidStorageTier("hdd"));
+  ASSERT_FALSE(IsValidStorageTier("gold"));
+  ASSERT_FALSE(IsValidStorageTier(""));
 
   // The default tier must always be a valid tier.
-  ASSERT_TRUE(FsManager::IsValidStorageTier(FsManager::kDefaultStorageTier));
+  ASSERT_TRUE(IsValidStorageTier(kDefaultStorageTier));
 }
 
 // ParseDataDirSpec edge cases exercised via FLAGS_fs_data_dirs.

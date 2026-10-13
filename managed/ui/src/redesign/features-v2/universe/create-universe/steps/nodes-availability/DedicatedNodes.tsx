@@ -120,7 +120,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
                       components={{
                         a: (
                           <Link
-                            href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/dedicated-master/"
+                            href="https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/dedicated-master/"
                             target="_blank"
                             rel="noopener noreferrer"
                           />

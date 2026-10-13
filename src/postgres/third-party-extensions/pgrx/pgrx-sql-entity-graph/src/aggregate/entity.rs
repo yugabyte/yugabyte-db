@@ -18,30 +18,28 @@
 */
 use crate::aggregate::options::{FinalizeModify, ParallelOption};
 use crate::fmt;
-use crate::metadata::SqlMapping;
+use crate::metadata::{SqlArrayMapping, SqlMapping};
 use crate::pgrx_sql::PgrxSql;
-use crate::to_sql::entity::ToSqlConfigEntity;
 use crate::to_sql::ToSql;
-use crate::type_keyed;
+use crate::to_sql::entity::ToSqlConfigEntity;
 use crate::{SqlGraphEntity, SqlGraphIdentifier, UsedTypeEntity};
-use core::any::TypeId;
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
+use petgraph::graph::NodeIndex;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct AggregateTypeEntity {
-    pub used_ty: UsedTypeEntity,
-    pub name: Option<&'static str>,
+pub struct AggregateTypeEntity<'a> {
+    pub used_ty: UsedTypeEntity<'a>,
+    pub name: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PgAggregateEntity {
-    pub full_path: &'static str,
-    pub module_path: &'static str,
-    pub file: &'static str,
+pub struct PgAggregateEntity<'a> {
+    pub full_path: &'a str,
+    pub module_path: &'a str,
+    pub file: &'a str,
     pub line: u32,
-    pub ty_id: TypeId,
 
-    pub name: &'static str,
+    pub name: &'a str,
 
     /// If the aggregate is an ordered set aggregate.
     ///
@@ -51,27 +49,27 @@ pub struct PgAggregateEntity {
     /// The `arg_data_type` list.
     ///
     /// Corresponds to `Args` in `pgrx::aggregate::Aggregate`.
-    pub args: Vec<AggregateTypeEntity>,
+    pub args: Vec<AggregateTypeEntity<'a>>,
 
     /// The direct argument list, appearing before `ORDER BY` in ordered set aggregates.
     ///
     /// Corresponds to `OrderBy` in `pgrx::aggregate::Aggregate`.
-    pub direct_args: Option<Vec<AggregateTypeEntity>>,
+    pub direct_args: Option<Vec<AggregateTypeEntity<'a>>>,
 
     /// The `STYPE` and `name` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// The implementor of an `pgrx::aggregate::Aggregate`.
-    pub stype: AggregateTypeEntity,
+    pub stype: AggregateTypeEntity<'a>,
 
     /// The `SFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `state` in `pgrx::aggregate::Aggregate`.
-    pub sfunc: &'static str,
+    pub sfunc: &'a str,
 
     /// The `FINALFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `finalize` in `pgrx::aggregate::Aggregate`.
-    pub finalfunc: Option<&'static str>,
+    pub finalfunc: Option<&'a str>,
 
     /// The `FINALFUNC_MODIFY` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
@@ -81,46 +79,46 @@ pub struct PgAggregateEntity {
     /// The `COMBINEFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `combine` in `pgrx::aggregate::Aggregate`.
-    pub combinefunc: Option<&'static str>,
+    pub combinefunc: Option<&'a str>,
 
     /// The `SERIALFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `serial` in `pgrx::aggregate::Aggregate`.
-    pub serialfunc: Option<&'static str>,
+    pub serialfunc: Option<&'a str>,
 
     /// The `DESERIALFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `deserial` in `pgrx::aggregate::Aggregate`.
-    pub deserialfunc: Option<&'static str>,
+    pub deserialfunc: Option<&'a str>,
 
     /// The `INITCOND` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `INITIAL_CONDITION` in `pgrx::aggregate::Aggregate`.
-    pub initcond: Option<&'static str>,
+    pub initcond: Option<&'a str>,
 
     /// The `MSFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `moving_state` in `pgrx::aggregate::Aggregate`.
-    pub msfunc: Option<&'static str>,
+    pub msfunc: Option<&'a str>,
 
     /// The `MINVFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `moving_state_inverse` in `pgrx::aggregate::Aggregate`.
-    pub minvfunc: Option<&'static str>,
+    pub minvfunc: Option<&'a str>,
 
     /// The `MSTYPE` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `MovingState` in `pgrx::aggregate::Aggregate`.
-    pub mstype: Option<UsedTypeEntity>,
+    pub mstype: Option<UsedTypeEntity<'a>>,
 
     // The `MSSPACE` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     //
     // TODO: Currently unused.
-    // pub msspace: &'static str,
+    // pub msspace: &'a str,
     /// The `MFINALFUNC` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `moving_state_finalize` in `pgrx::aggregate::Aggregate`.
-    pub mfinalfunc: Option<&'static str>,
+    pub mfinalfunc: Option<&'a str>,
 
     /// The `MFINALFUNC_MODIFY` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
@@ -130,12 +128,12 @@ pub struct PgAggregateEntity {
     /// The `MINITCOND` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `MOVING_INITIAL_CONDITION` in `pgrx::aggregate::Aggregate`.
-    pub minitcond: Option<&'static str>,
+    pub minitcond: Option<&'a str>,
 
     /// The `SORTOP` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
     /// Corresponds to `SORT_OPERATOR` in `pgrx::aggregate::Aggregate`.
-    pub sortop: Option<&'static str>,
+    pub sortop: Option<&'a str>,
 
     /// The `PARALLEL` parameter for [`CREATE AGGREGATE`](https://www.postgresql.org/docs/current/sql-createaggregate.html)
     ///
@@ -146,23 +144,23 @@ pub struct PgAggregateEntity {
     ///
     /// Corresponds to `hypothetical` in `pgrx::aggregate::Aggregate`.
     pub hypothetical: bool,
-    pub to_sql_config: ToSqlConfigEntity,
+    pub to_sql_config: ToSqlConfigEntity<'a>,
 }
 
-impl From<PgAggregateEntity> for SqlGraphEntity {
-    fn from(val: PgAggregateEntity) -> Self {
+impl<'a> From<PgAggregateEntity<'a>> for SqlGraphEntity<'a> {
+    fn from(val: PgAggregateEntity<'a>) -> Self {
         SqlGraphEntity::Aggregate(val)
     }
 }
 
-impl SqlGraphIdentifier for PgAggregateEntity {
+impl SqlGraphIdentifier for PgAggregateEntity<'_> {
     fn dot_identifier(&self) -> String {
         format!("aggregate {}", self.full_path)
     }
     fn rust_identifier(&self) -> String {
         self.full_path.to_string()
     }
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         Some(self.file)
     }
     fn line(&self) -> Option<u32> {
@@ -170,7 +168,57 @@ impl SqlGraphIdentifier for PgAggregateEntity {
     }
 }
 
-impl ToSql for PgAggregateEntity {
+fn aggregate_sql_type(mapping: &SqlMapping, composite_type: Option<&str>) -> eyre::Result<String> {
+    match mapping {
+        SqlMapping::As(sql) => Ok(sql.clone()),
+        SqlMapping::Composite => composite_type
+            .map(ToString::to_string)
+            .ok_or_else(|| eyre!("Composite mapping requires composite_type")),
+        SqlMapping::Array(SqlArrayMapping::As(sql)) => Ok(fmt::with_array_brackets(sql.clone(), 1)),
+        SqlMapping::Array(SqlArrayMapping::Composite) => composite_type
+            .map(ToString::to_string)
+            .map(|sql| fmt::with_array_brackets(sql, 1))
+            .ok_or_else(|| eyre!("Composite mapping requires composite_type")),
+        SqlMapping::Skip => {
+            Err(eyre!("Cannot use skipped SQL translatable type as aggregate const type"))
+        }
+    }
+}
+
+/// Render the positional argument-type signature for an aggregate as it
+/// would appear inside `ALTER EXTENSION … ADD AGGREGATE name(…)`. For
+/// ordered-set aggregates the rendering is `(direct ORDER BY args)`;
+/// otherwise it is `(args)`. Matches the shape produced by
+/// `PgAggregateEntity::to_sql`.
+pub(crate) fn render_aggregate_argtypes(
+    context: &PgrxSql,
+    owner: NodeIndex,
+    a: &PgAggregateEntity,
+) -> eyre::Result<String> {
+    let render_slot = |arg: &AggregateTypeEntity| -> eyre::Result<String> {
+        let slot = arg.name.unwrap_or("aggregate argument");
+        let prefix = context.schema_prefix_for_used_type(&owner, slot, &arg.used_ty)?;
+        let sql = match arg.used_ty.metadata.argument_sql {
+            Ok(ref mapping) => aggregate_sql_type(mapping, arg.used_ty.composite_type)?,
+            Err(err) => return Err(err.into()),
+        };
+        let variadic = if arg.used_ty.variadic { "VARIADIC " } else { "" };
+        Ok(format!("{variadic}{prefix}{sql}"))
+    };
+
+    let args = a.args.iter().map(render_slot).collect::<eyre::Result<Vec<_>>>()?.join(", ");
+    let direct = a.direct_args.as_deref().unwrap_or(&[]);
+
+    if a.ordered_set {
+        let direct_rendered =
+            direct.iter().map(render_slot).collect::<eyre::Result<Vec<_>>>()?.join(", ");
+        Ok(format!("({direct_rendered} ORDER BY {args})"))
+    } else {
+        Ok(format!("({args})"))
+    }
+}
+
+impl ToSql for PgAggregateEntity<'_> {
     fn to_sql(&self, context: &PgrxSql) -> eyre::Result<String> {
         let self_index = context.aggregates[self];
         let mut optional_attributes = Vec::new();
@@ -263,34 +311,24 @@ impl ToSql for PgAggregateEntity {
 
         let map_ty = |used_ty: &UsedTypeEntity| -> eyre::Result<String> {
             match used_ty.metadata.argument_sql {
-                Ok(SqlMapping::As(ref argument_sql)) => Ok(argument_sql.to_string()),
-                Ok(SqlMapping::Composite { array_brackets }) => used_ty
-                    .composite_type
-                    .map(|v| fmt::with_array_brackets(v.into(), array_brackets))
-                    .ok_or_else(|| {
-                        eyre!("Macro expansion time suggested a composite_type!() in return")
-                    }),
-                Ok(SqlMapping::Skip) => {
-                    Err(eyre!("Cannot use skipped SQL translatable type as aggregate const type"))
-                }
+                Ok(ref mapping) => aggregate_sql_type(mapping, used_ty.composite_type),
                 Err(err) => Err(err).wrap_err("While mapping argument"),
             }
         };
 
-        let stype_sql = map_ty(&self.stype.used_ty).wrap_err("Mapping state type")?;
-        let stype_schema = context
-            .types
-            .iter()
-            .map(type_keyed)
-            .chain(context.enums.iter().map(type_keyed))
-            .find(|(ty, _)| ty.id_matches(&self.stype.used_ty.ty_id))
-            .map(|(_, ty_index)| context.schema_prefix_for(ty_index))
-            .unwrap_or_default();
+        let sql_type_for_slot = |slot: &str,
+                                 used_ty: &UsedTypeEntity|
+         -> eyre::Result<(String, String)> {
+            let sql = map_ty(used_ty).wrap_err_with(|| format!("Mapping {slot}"))?;
+            let schema_prefix = context.schema_prefix_for_used_type(&self_index, slot, used_ty)?;
+            Ok((schema_prefix, sql))
+        };
+        let (stype_schema, stype_sql) = sql_type_for_slot("STYPE", &self.stype.used_ty)?;
 
         if let Some(value) = &self.mstype {
-            let mstype_sql = map_ty(value).wrap_err("Mapping moving state type")?;
+            let (mstype_schema, mstype_sql) = sql_type_for_slot("MSTYPE", value)?;
             optional_attributes.push((
-                format!("\tMSTYPE = {mstype_sql}"),
+                format!("\tMSTYPE = {mstype_schema}{mstype_sql}"),
                 format!("/* {}::MovingState = {} */", self.full_path, value.full_path),
             ));
         }
@@ -310,46 +348,30 @@ impl ToSql for PgAggregateEntity {
         let args = {
             let mut args = Vec::new();
             for (idx, arg) in self.args.iter().enumerate() {
-                let graph_index = context
-                    .graph
-                    .neighbors_undirected(self_index)
-                    .find(|neighbor| context.graph[*neighbor].type_matches(&arg.used_ty))
-                    .ok_or_else(|| {
-                        eyre!("Could not find arg type in graph. Got: {:?}", arg.used_ty)
-                    })?;
                 let needs_comma = idx < (self.args.len() - 1);
-                let buf = format!("\
+                let schema_prefix = context.schema_prefix_for_used_type(
+                    &self_index,
+                    arg.name.unwrap_or("aggregate argument"),
+                    &arg.used_ty,
+                )?;
+                let buf = format!(
+                    "\
                        \t{name}{variadic}{schema_prefix}{sql_type}{maybe_comma}/* {full_path} */\
                    ",
-                       schema_prefix = context.schema_prefix_for(&graph_index),
-                       // First try to match on [`TypeId`] since it's most reliable.
-                       sql_type = match arg.used_ty.metadata.argument_sql {
-                            Ok(SqlMapping::As(ref argument_sql)) => {
-                                argument_sql.to_string()
-                            }
-                            Ok(SqlMapping::Composite {
-                                array_brackets,
-                            }) => {
-                                arg.used_ty
-                                    .composite_type
-                                    .map(|v| {
-                                        fmt::with_array_brackets(v.into(), array_brackets)
-                                    })
-                                    .ok_or_else(|| {
-                                        eyre!(
-                                        "Macro expansion time suggested a composite_type!() in return"
-                                    )
-                                    })?
-                            }
-                            Ok(SqlMapping::Skip) => return Err(eyre!("Got a skipped SQL translatable type in aggregate args, this is not permitted")),
-                            Err(err) => return Err(err).wrap_err("While mapping argument")
-                        },
-                       variadic = if arg.used_ty.variadic { "VARIADIC " } else { "" },
-                       maybe_comma = if needs_comma { ", " } else { " " },
-                       full_path = arg.used_ty.full_path,
-                       name = if let Some(name) = arg.name {
-                           format!(r#""{name}" "#)
-                       } else { "".to_string() },
+                    schema_prefix = schema_prefix,
+                    // The SQL spelling comes from the embedded schema metadata.
+                    sql_type = match arg.used_ty.metadata.argument_sql {
+                        Ok(ref mapping) => aggregate_sql_type(mapping, arg.used_ty.composite_type)?,
+                        Err(err) => return Err(err).wrap_err("While mapping argument"),
+                    },
+                    variadic = if arg.used_ty.variadic { "VARIADIC " } else { "" },
+                    maybe_comma = if needs_comma { ", " } else { " " },
+                    full_path = arg.used_ty.full_path,
+                    name = if let Some(name) = arg.name {
+                        format!(r#""{name}" "#)
+                    } else {
+                        "".to_string()
+                    },
                 );
                 args.push(buf);
             }
@@ -358,18 +380,18 @@ impl ToSql for PgAggregateEntity {
         let direct_args = if let Some(direct_args) = &self.direct_args {
             let mut args = Vec::new();
             for (idx, arg) in direct_args.iter().enumerate() {
-                let graph_index = context
-                    .graph
-                    .neighbors_undirected(self_index)
-                    .find(|neighbor| context.graph[*neighbor].type_matches(&arg.used_ty))
-                    .ok_or_else(|| eyre!("Could not find arg type in graph. Got: {:?}", arg))?;
+                let schema_prefix = context.schema_prefix_for_used_type(
+                    &self_index,
+                    arg.name.unwrap_or("aggregate direct argument"),
+                    &arg.used_ty,
+                )?;
                 let needs_comma = idx < (direct_args.len() - 1);
                 let buf = format!(
                     "\
                     \t{maybe_name}{schema_prefix}{sql_type}{maybe_comma}/* {full_path} */\
                    ",
-                    schema_prefix = context.schema_prefix_for(&graph_index),
-                    // First try to match on [`TypeId`] since it's most reliable.
+                    schema_prefix = schema_prefix,
+                    // The SQL spelling comes from the embedded schema metadata.
                     sql_type = map_ty(&arg.used_ty).wrap_err("Mapping direct arg type")?,
                     maybe_name = if let Some(name) = arg.name {
                         "\"".to_string() + name + "\" "

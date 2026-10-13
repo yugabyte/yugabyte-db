@@ -18,6 +18,10 @@ YugabyteDB Anywhere is a self-managed database-as-a-service offering from Yugaby
 
 Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB in your preferred environments (spanning on-prem, in the public cloud, and in Kubernetes) and topologies (single- and multi-region). [Learn more](./yba-overview/)
 
+{{< tip title="New and improved YugabyteDB Anywhere experience" >}}
+v2026.1.2.0 introduces a new and improved user experience with many usability enhancements. [Try it now](./yba-overview/#new-experience)
+{{< /tip >}}
+
 ## Install YugabyteDB Anywhere
 
 {{< sections/3-boxes >}}
@@ -54,18 +58,19 @@ Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB 
   >}}
 
   {{< sections/3-box-card
+    title="Scale and edit universes"
+    description="Scale horizontally and vertically, edit flags, tags, and Kubernetes overrides."
+    buttonText="Manage"
+    buttonUrl="scale-deployments/"
+  >}}
+
+  {{< sections/3-box-card
     title="Manage universes"
-    description="Modify universes and their nodes, upgrade YugabyteDB software."
+    description="Upgrade the database, patch the OS, and troubleshoot nodes."
     buttonText="Manage"
     buttonUrl="manage-deployments/"
   >}}
 
-  {{< sections/3-box-card
-    title="Back up universes"
-    description="Configure storage, back up and restore universe data."
-    buttonText="Back up"
-    buttonUrl="back-up-restore-universes/"
-  >}}
 {{< /sections/3-boxes >}}
 
 ## Additional resources

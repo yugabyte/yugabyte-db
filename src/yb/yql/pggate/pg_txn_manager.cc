@@ -256,14 +256,13 @@ PgTxnManager::PgTxnManager(
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
-bool PgTxnManager::ShouldEnableTableLocking() const {
-  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
-                    << " enable_object_locking_infra: " << enable_object_locking_infra;
-  return enable_table_locking_ && enable_object_locking_infra;
-}
-
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
-  return using_table_locks_;
+  // Computed rather than latched: enable_table_locking_ is fixed for the session and
+  // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
+  // cannot change under an open transaction.
+  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
+                    << " object locking infra: " << YBCIsObjectLockingInfraEnabled();
+  return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
 }
 
 PgTxnManager::~PgTxnManager() = default;
@@ -275,7 +274,7 @@ void PgTxnManager::Shutdown() {
   WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort plain transaction during shutdown");
 }
 
-Status PgTxnManager::BeginTransaction(int64_t start_time) {
+Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_time) {
   VLOG_TXN_STATE(2);
   if (YBCIsInitDbModeEnvVarSet()) {
     return Status::OK();
@@ -287,9 +286,8 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
   }
 
   pg_txn_start_us_ = start_time;
-  // Table Locking auto flag can only go from off -> on. Not the other way around.
-  using_table_locks_ = using_table_locks_ || ShouldEnableTableLocking();
-  VLOG_WITH_FUNC(1) << "using_table_locks_: " << using_table_locks_;
+  origination_time_ = origination_time;
+  client_->SetOriginationHt(GetOriginationHt());
   // NOTE: Do not reset in_txn_blk_ when restarting txns internally
   // (i.e., via PgTxnManager::RecreateTransaction).
   in_txn_blk_ = false;
@@ -387,7 +385,7 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
 Status PgTxnManager::CalculateIsolation(
     bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
     IsLocalObjectLockOp is_local_object_lock_op) {
-  if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
+  if (YBCIsDdlTransactionBlockEnabled() ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     priority_ = NewPriority(txn_priority_requirement);
     return Status::OK();
@@ -451,9 +449,9 @@ Status PgTxnManager::CalculateIsolation(
       (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
        docdb_isolation == IsolationLevel::READ_COMMITTED);
   skip_picking_isolation_level |= is_local_object_lock_op;
-  if (!skip_picking_isolation_level || (yb_ddl_transaction_block_enabled && IsDdlMode())) {
+  if (!skip_picking_isolation_level || (YBCIsDdlTransactionBlockEnabled() && IsDdlMode())) {
     if (IsDdlMode()) {
-      DCHECK(yb_ddl_transaction_block_enabled)
+      DCHECK(YBCIsDdlTransactionBlockEnabled())
           << "Unexpected DDL state found in plain transaction";
     }
 
@@ -650,8 +648,9 @@ Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_s
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
-  if (!((yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
-          (!yb_ddl_transaction_block_enabled && IsDdlMode()))) {
+  const auto ddl_txn_block_enabled = YBCIsDdlTransactionBlockEnabled();
+  if (!((ddl_txn_block_enabled && IsDdlModeWithSeparateTransaction()) ||
+          (!ddl_txn_block_enabled && IsDdlMode()))) {
     RSTATUS_DCHECK(
         !commit_info, IllegalState,
         "Commit separate ddl txn called when not in a separate DDL transaction");
@@ -936,7 +935,9 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_active_sub_transaction_id(active_sub_transaction_id_);
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
-  options.set_is_using_table_locks(using_table_locks_);
+  options.set_connected_database_oid(connected_database_oid_);
+  options.set_origination_ht(GetOriginationHt());
+  options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 

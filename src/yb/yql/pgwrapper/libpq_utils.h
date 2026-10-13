@@ -423,6 +423,8 @@ class PGConn {
         }));
   }
 
+  [[nodiscard]] int BackendPID() const;
+
  private:
   using ControllerReceiver = LWFunction<void(CopyController&)>;
 
@@ -513,5 +515,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),
     const std::string& row_sep = DefaultRowSeparator());
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs);
 
 } // namespace yb::pgwrapper

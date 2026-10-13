@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -65,9 +66,10 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
               placementModificationTaskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
       for (Cluster newCluster : placementTaskParams.clusters) {
         Cluster currCluster = universe.getCluster(newCluster.uuid);
+        UUID providerUUID = Util.getSingleProviderUUID(currCluster);
         // Cannot run this task if there was a volume change since Statefulset could be deleted
-        if (currCluster.userIntent.deviceInfo.volumeSize
-            != newCluster.userIntent.deviceInfo.volumeSize) {
+        if (currCluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize
+            != newCluster.userIntent.getBaseDeviceInfo(providerUUID).volumeSize) {
           return false;
         }
       }

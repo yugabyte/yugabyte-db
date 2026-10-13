@@ -51,11 +51,7 @@ const RegionSelectValue = ({ region }: { region: Region }) => {
   return (
     <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
       {flag ? (
-        <Box
-          component="span"
-          sx={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}
-          aria-hidden
-        >
+        <Box component="span" sx={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }} aria-hidden>
           {flag}
         </Box>
       ) : null}
@@ -147,7 +143,6 @@ export const RRRegionCard: FC<Props> = ({
     return !baselineZoneUuids.has(zone.zoneUuid);
   };
 
-  
   const allRegionRows = useWatch({ control, name: 'regions' }) ?? [];
   const selectedRegionUuidsKey = allRegionRows.map((row) => row?.regionUuid ?? '').join(',');
   const regionUuidsSelectedElsewhere = useMemo(() => {
@@ -170,7 +165,10 @@ export const RRRegionCard: FC<Props> = ({
   const watchedZones = watch(`regions.${regionIndex}.zones`) ?? [];
 
   const onRegionUuidChange = (uuid: string | null) => {
-    setValue(`regions.${regionIndex}.regionUuid`, uuid, { shouldValidate: true, shouldDirty: true });
+    setValue(`regions.${regionIndex}.regionUuid`, uuid, {
+      shouldValidate: true,
+      shouldDirty: true
+    });
     const region = regionsList.find((r) => r.uuid === uuid);
     const firstAzUuid = region?.zones?.[0]?.uuid ?? null;
     setValue(
@@ -257,7 +255,7 @@ export const RRRegionCard: FC<Props> = ({
                   }}
                   menuProps={menuProps as any}
                   dataTestId={`rr-region-select-${regionIndex}`}
-                  sx={{ width: '100%' }}
+                  sx={{ width: '312px' }}
                 >
                   {regionsList.map((r) => (
                     <MenuItem
@@ -561,7 +559,10 @@ export const RRRegionCard: FC<Props> = ({
                     <RemoveAzIcon />
                   </IconButton>
                 ) : (
-                  <Box sx={{ marginTop: '24px', width: 32, height: 32, flexShrink: 0 }} aria-hidden />
+                  <Box
+                    sx={{ marginTop: '24px', width: 32, height: 32, flexShrink: 0 }}
+                    aria-hidden
+                  />
                 )}
               </Box>
               {azDirtyVsBaseline ? (

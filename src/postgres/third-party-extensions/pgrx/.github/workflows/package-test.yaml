@@ -90,7 +90,7 @@ jobs:
           pg_config --version
 
       - name: Install cargo pgrx
-        run: cargo +nightly install --path cargo-pgrx --debug
+        run: cargo +nightly install --path cargo-pgrx --debug --locked
 
       - name: cargo pgrx init
         run: cargo +nightly pgrx init "--pg$PG_VER=$(which pg_config)"
@@ -99,6 +99,14 @@ jobs:
         run: |
           ./update-versions.sh 0.0.999-rc.999 && \
               cargo +nightly package \
-                  --workspace -Zpackage-workspace \
                   --allow-dirty \
+                  -p pgrx-pg-config \
+                  -p pgrx-bindgen \
+                  -p pgrx-sql-entity-graph \
+                  -p pgrx-macros \
+                  -p pgrx-pg-sys \
+                  -p pgrx \
+                  -p pgrx-bench \
+                  -p pgrx-tests \
+                  -p cargo-pgrx \
                   --features "pg$PG_VER"

@@ -262,7 +262,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
-- [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
+- [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
 - Currently, database upgrades do not support vector indexes. To perform an upgrade, first drop the indexes and then re-add them after the upgrade is finalized.
 
 ## Learn more

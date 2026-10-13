@@ -58,7 +58,8 @@ public class OCIUtilTest {
     assertEquals("test-access-key", s3Data.awsAccessKeyId);
     assertEquals("test-secret-key", s3Data.awsSecretAccessKey);
     assertEquals(
-        "test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com", s3Data.awsHostBase);
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        s3Data.awsHostBase);
     // OCI_REGION maps to S3 signing region.
     assertEquals("us-sanjose-1", s3Data.fallbackRegion);
     assertFalse(s3Data.globalBucketAccess);
@@ -78,7 +79,7 @@ public class OCIUtilTest {
     assertEquals(1, s3Data.regionLocations.size());
     assertEquals("us-ashburn-1", s3Data.regionLocations.get(0).fallbackRegion);
     assertEquals(
-        "test-namespace.compat.objectstorage.us-ashburn-1.oraclecloud.com",
+        "https://test-namespace.compat.objectstorage.us-ashburn-1.oraclecloud.com",
         s3Data.regionLocations.get(0).awsHostBase);
   }
 
@@ -94,7 +95,7 @@ public class OCIUtilTest {
 
     Map<String, String> creds = ociUtil.createCredsMapYbc(data, "us-ashburn-1");
     assertEquals(
-        "test-namespace.compat.objectstorage.us-ashburn-1.oraclecloud.com",
+        "https://test-namespace.compat.objectstorage.us-ashburn-1.oraclecloud.com",
         creds.get(OCIUtil.YBC_AWS_ENDPOINT_FIELDNAME));
     assertEquals("us-ashburn-1", creds.get(OCIUtil.YBC_AWS_DEFAULT_REGION_FIELDNAME));
   }
@@ -189,13 +190,59 @@ public class OCIUtilTest {
     assertEquals("test-access-key", creds.get(OCIUtil.YBC_AWS_ACCESS_KEY_ID_FIELDNAME));
     assertEquals("test-secret-key", creds.get(OCIUtil.YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME));
     assertEquals(
-        "test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
         creds.get(OCIUtil.YBC_AWS_ENDPOINT_FIELDNAME));
     assertEquals("us-sanjose-1", creds.get(OCIUtil.YBC_AWS_DEFAULT_REGION_FIELDNAME));
     assertEquals("true", creds.get(OCIUtil.YBC_PATH_STYLE_ACCESS_FIELDNAME));
     assertEquals(5, creds.size());
     assertNull(creds.get("USE_CHUNKED_ENCODING"));
     assertFalse(creds.containsKey(OCIUtil.YBC_USE_OCI_IAM_FIELDNAME));
+  }
+
+  @Test
+  public void testNormalizeOciS3HostBase() {
+    String host = "test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com";
+    assertEquals("https://" + host, OCIUtil.normalizeOciS3HostBase(host));
+    assertEquals("https://" + host, OCIUtil.normalizeOciS3HostBase("https://" + host));
+    assertEquals("http://" + host, OCIUtil.normalizeOciS3HostBase("http://" + host));
+    assertEquals("", OCIUtil.normalizeOciS3HostBase(""));
+    assertNull(OCIUtil.normalizeOciS3HostBase(null));
+  }
+
+  @Test
+  public void testToS3CompatibleDataDoesNotDoubleHttpsPrefix() {
+    CustomerConfigStorageOCIData data = s3CompatData();
+    data.ociS3HostBase = "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com";
+    CustomerConfigStorageS3Data s3Data = OCIUtil.toS3CompatibleData(data);
+    assertEquals(
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        s3Data.awsHostBase);
+  }
+
+  @Test
+  public void testCreateCredsMapYbcDoesNotDoubleHttpsPrefix() {
+    s3CompatData.ociS3HostBase =
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com";
+    Map<String, String> creds = ociUtil.createCredsMapYbc(s3CompatData);
+    assertEquals(
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        creds.get(OCIUtil.YBC_AWS_ENDPOINT_FIELDNAME));
+  }
+
+  @Test
+  public void testShouldUseHttpsProxyAfterHostNormalization() {
+    AWSUtil awsUtil = new AWSUtil();
+    CustomerConfigStorageS3Data schemeLess = OCIUtil.toS3CompatibleData(s3CompatData());
+    assertTrue(awsUtil.shouldUseHttpsProxy(schemeLess));
+
+    CustomerConfigStorageOCIData httpData = s3CompatData();
+    httpData.ociS3HostBase =
+        "http://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com";
+    CustomerConfigStorageS3Data httpConverted = OCIUtil.toS3CompatibleData(httpData);
+    assertEquals(
+        "http://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        httpConverted.awsHostBase);
+    assertFalse(awsUtil.shouldUseHttpsProxy(httpConverted));
   }
 
   @Test
@@ -396,6 +443,9 @@ public class OCIUtilTest {
     assertEquals("true", spec.getCredsMap().get(OCIUtil.YBC_PATH_STYLE_ACCESS_FIELDNAME));
     assertEquals(
         "test-access-key", spec.getCredsMap().get(OCIUtil.YBC_AWS_ACCESS_KEY_ID_FIELDNAME));
+    assertEquals(
+        "https://test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+        spec.getCredsMap().get(OCIUtil.YBC_AWS_ENDPOINT_FIELDNAME));
   }
 
   @Test

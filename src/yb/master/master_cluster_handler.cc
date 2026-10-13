@@ -23,6 +23,7 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -76,7 +77,7 @@ Status MasterClusterHandler::SetClusterConfig(
   // We should only set the config, if the caller provided us with a valid update to the
   // existing config.
   if (l->pb.version() != config.version()) {
-    Status s = STATUS_SUBSTITUTE(
+    Status s = STATUS_FORMAT(
         IllegalState,
         "Config version does not match, got $0, but most recent one is $1. Should call Get again",
         config.version(), l->pb.version());

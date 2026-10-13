@@ -60,6 +60,7 @@
 #include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/disk_space_checker.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -557,8 +558,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
-  // Verifies that this peer has the op_id in its local log.
-  Status VerifyAsyncWriteReceived(const OpId& op_id);
+  // Verifies that this peer has the op_id in its local log. Without allow_log_lookup, a write from
+  // two or more terms ago is rejected.
+  Status VerifyAsyncWriteReceived(
+      const OpId& op_id, AllowLogLookup allow_log_lookup = AllowLogLookup::kTrue);
 
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
@@ -715,6 +718,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       GUARDED_BY(async_write_queries_mutex_);
 
   rpc::ThreadPoolPtr service_thread_pool_holder_;
+
+  // Tracks the free space on the data directory. The WAL directory, which can be on a different
+  // disk, is tracked by the Log.
+  DiskSpaceChecker data_disk_space_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

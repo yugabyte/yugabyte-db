@@ -25,6 +25,7 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/random_util.h"
@@ -374,7 +375,8 @@ class BenchmarkTool {
       };
     }
 
-    vector_index_ = index_pre_factory_(hnsw_options())->Create(FactoryMode::kCreate);
+    vector_index_ = index_pre_factory_(hnsw_options())->Create(
+        FactoryMode::kCreate, StoreVectorPayload::kFalse);
 
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
@@ -579,7 +581,7 @@ class BenchmarkTool {
       auto elapsed_time = MonoTime::Now() - start_time;
       LOG(INFO) << "Validation finished in " << elapsed_time;
       for (size_t j = 0; j < result.size(); ++j) {
-        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << StringPrintf("%.10f", result[j]);
+        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << FixedPoint(result[j], 10);
       }
     }
     return Status::OK();
@@ -619,12 +621,12 @@ class BenchmarkTool {
     size_t remaining_points = max_num_vectors_to_insert() - num_inserted;
     auto keys_per_sec = num_inserted / elapsed_time_sec;
     LOG(INFO) << "n: " << num_inserted << ", "
-              << "elapsed time: " << StringPrintf("%.1f", elapsed_time_sec) << " sec, "
+              << "elapsed time: " << FixedPoint(elapsed_time_sec, 1) << " sec, "
               << "O(n*log(n)) constant: " << n_log_n_constant << ", "
               << "remaining points: " << remaining_points << ", "
               << "keys per second: " << static_cast<size_t>(keys_per_sec) << ", "
               << "time remaining: "
-              << StringPrintf("%.1f", keys_per_sec > 0 ? remaining_points / keys_per_sec : 0)
+              << FixedPoint(keys_per_sec > 0 ? remaining_points / keys_per_sec : 0, 1)
               << " sec";
     prev_elapsed_usec_ = elapsed_usec;
   }
@@ -659,7 +661,7 @@ class BenchmarkTool {
 
   Status InsertOneVector(VectorId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
-    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v));
+    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v), Slice());
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
       ReportIndexingProgress(load_start_time, new_num_inserted);

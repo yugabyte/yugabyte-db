@@ -1729,6 +1729,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 
+	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
+
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
 	 * where the statement contains an optimizable statement for which a
@@ -1833,7 +1835,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * For BACKFILL INDEX commands, generate a normalized query string so
 		 * that all backfill calls for the same index are aggregated.
 		 */
-		if (IsA(parsetree, YbBackfillIndexStmt))
+		if (yb_is_backfill)
 		{
 			char	   *norm_query;
 			int			norm_query_len;
@@ -2147,10 +2149,10 @@ pgss_store(const char *query, uint64 queryId,
 			{
 				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
 					yb_stats->tbl_reads.count + yb_stats->index_reads.count;
+				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+					yb_stats->tbl_reads.ops_count + yb_stats->index_reads.ops_count;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
 					yb_stats->write_flushes.count;
-				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
-					yb_stats->tbl_read_ops + yb_stats->index_read_ops;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
 					yb_stats->tbl_writes + yb_stats->index_writes;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=

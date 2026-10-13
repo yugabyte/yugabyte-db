@@ -450,6 +450,10 @@ struct TransactionMetadata {
   // Indicates whether the transaction is using table locks.
   bool using_table_locks = false;
 
+  // When set, the transaction is treated as committed and txn status checks are skipped.
+  // Used for historical catalog reads that need to resolve a committed txn's own intents.
+  bool is_read_only_historical_committed_txn = false;
+
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 

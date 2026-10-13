@@ -48,6 +48,14 @@ std::string UnnestedName(
 std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightweight lightweight);
 bool IsMessage(const google::protobuf::FieldDescriptor* field);
 bool IsSimple(const google::protobuf::FieldDescriptor* field);
+
+// True if the field is tagged with [(yb.rpc.trace).enabled = true].
+bool FieldTraceEnabled(const google::protobuf::FieldDescriptor* field);
+// True if the field is tagged with [(yb.rpc.trace).bytes_as_string = true].
+bool FieldTraceBytesAsString(const google::protobuf::FieldDescriptor* field);
+// True if the message, or any message it transitively contains, has a trace-tagged field --
+// i.e. its generated TracingAttributes() would ever return anything. Cycle-safe.
+bool MessageHasTracingAttributes(const google::protobuf::Descriptor* message);
 bool NeedArena(const google::protobuf::Descriptor* message);
 bool IsPointerField(const google::protobuf::FieldDescriptor* field);
 bool StoredAsSlice(const google::protobuf::FieldDescriptor* field);

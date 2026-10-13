@@ -1,0 +1,23 @@
+title: VMImageClusterSpec
+description: Information about the VM image for particular provider in particular cluster.
+required:
+  - cluster_uuid
+  - provider_uuid
+  - image_bundle_uuid
+type: object
+properties:
+  cluster_uuid:
+    description: cluster uuid
+    type: string
+    format: uuid
+    example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+  provider_uuid:
+    description: provider uuid
+    type: string
+    format: uuid
+    example: 36ebde21-ab14-47dc-8fab-3edc243c6f68
+  image_bundle_uuid:
+    description: image bundle uuid
+    type: string
+    format: uuid
+    example: 914aa5a8-febc-44ba-9b60-ea3e22127218

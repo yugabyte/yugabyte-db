@@ -169,6 +169,32 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertEquals(correctClusterKey, getClusterKey);
   }
 
+  private Result getHAConfigWithFipsHeader(String clusterKey, String fipsEnabled) {
+    return Helpers.route(
+        app,
+        fakeRequest()
+            .method("GET")
+            .uri(GET_CONFIG_ENDPOINT)
+            .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey)
+            .header(HAAuthenticator.HA_FIPS_ENABLED_HEADER, fipsEnabled));
+  }
+
+  @Test
+  public void testRejectRequestFromFipsInstance() {
+    String clusterKey = createHAConfig().get("cluster_key").asText();
+    Result result = getHAConfigWithFipsHeader(clusterKey, "true");
+    assertBadRequest(
+        result,
+        HAAuthenticator.FIPS_MODE_MISMATCH_ERROR
+            + ": this instance is not FIPS-enabled, the requesting instance is FIPS-enabled");
+  }
+
+  @Test
+  public void testAcceptRequestFromSameFipsMode() {
+    String clusterKey = createHAConfig().get("cluster_key").asText();
+    assertOk(getHAConfigWithFipsHeader(clusterKey, "false"));
+  }
+
   @Test
   public void testSyncInstancesNoLocalInstances() {
     JsonNode haConfigJson = createHAConfig();

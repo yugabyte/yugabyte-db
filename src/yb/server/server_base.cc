@@ -33,6 +33,7 @@
 #include "yb/server/server_base.h"
 
 #include <algorithm>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -71,8 +72,10 @@
 #include "yb/util/atomic.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/concurrent_value.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -142,7 +145,6 @@ using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::vector;
-using strings::Substitute;
 
 namespace yb::server {
 
@@ -166,6 +168,11 @@ struct CommonMemTrackers {
 };
 
 std::unique_ptr<CommonMemTrackers> common_mem_trackers;
+
+// Several servers (tserver, CQL, Redis) can share a process, and tracing is process-wide: it is set
+// up by the first of them to initialize and torn down by the last one to shut down.
+std::mutex dist_trace_mutex;
+int dist_trace_servers = 0;
 
 } // anonymous namespace
 
@@ -350,7 +357,7 @@ Status RpcServerBase::Init() {
 }
 
 string RpcServerBase::ToString() const {
-  return strings::Substitute("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
+  return Format("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
 }
 
 void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -555,6 +562,15 @@ Status RpcAndWebServerBase::Init() {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
 
+  // Set up distributed tracing before the RPC server below, so it is ready for the first call.
+  if (dist_trace::IsDistTraceEnabled()) {
+    std::lock_guard lock(dist_trace_mutex);
+    if (dist_trace_servers++ == 0) {
+      dist_trace::InitDistTrace(name_, fs_manager_->uuid());
+    }
+    dist_trace_initialized_ = true;
+  }
+
   RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
@@ -639,12 +655,12 @@ string RpcAndWebServerBase::GetEasterEggMessage() const {
 }
 
 string RpcAndWebServerBase::FooterHtml() const {
-  return Substitute("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
-                    " $0</pre><pre>$1\nserver uuid $2 local time $3</pre>",
-                    GetEasterEggMessage(),
-                    VersionInfo::GetShortVersionString(),
-                    instance_pb_->permanent_uuid(),
-                    Timestamp(GetCurrentTimeMicros()).ToHumanReadableTime());
+  return Format("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
+                " $0</pre><pre>$1\nserver uuid $2 local time $3</pre>",
+                GetEasterEggMessage(),
+                VersionInfo::GetShortVersionString(),
+                instance_pb_->permanent_uuid(),
+                Timestamp(GetCurrentTimeMicros()).ToHumanReadableTime());
 }
 
 void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const string icon,
@@ -766,6 +782,16 @@ Status RpcAndWebServerBase::Start() {
 void RpcAndWebServerBase::Shutdown() {
   RpcServerBase::Shutdown();
   web_server_->Stop();
+
+  // Tear tracing down after the messenger above, so that no inbound call can still be looking up
+  // the tracer.
+  if (dist_trace_initialized_) {
+    dist_trace_initialized_ = false;
+    std::lock_guard lock(dist_trace_mutex);
+    if (--dist_trace_servers == 0) {
+      dist_trace::ShutdownDistTrace();
+    }
+  }
 }
 
 std::string TEST_RpcAddress(size_t index, Private priv) {

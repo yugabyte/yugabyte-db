@@ -243,7 +243,6 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Error storing skip_verify_cert value - %s", err.Error())
 	}
-	// Do not persist in config.yml — the name can go out of sync on cert rotation.
 	certificateName, err := cmd.Flags().GetString("certificate_name")
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to read certificate name - %s", err.Error())
@@ -471,7 +470,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 	util.ConsoleLogger().Infof(ctx, "Completed Node Agent Configuration")
 	util.ConsoleLogger().Infof(ctx, "Checking for existing Node Agent with IP %s", nodeIp)
-	err = server.ValidateNodeAgentIfExists(ctx, apiToken)
+	err = server.ValidateNodeAgentIfExists(ctx, apiToken, certificateName)
 	if err == nil {
 		util.ConsoleLogger().Infof(ctx, "Node Agent is already registered with IP %s", nodeIp)
 	} else if err == util.ErrNotExist {

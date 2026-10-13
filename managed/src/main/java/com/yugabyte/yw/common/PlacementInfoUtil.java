@@ -80,8 +80,8 @@ import org.slf4j.LoggerFactory;
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
 
-  // List of replication factors supported currently for primary cluster.
-  private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
+  private static final ImmutableList<Integer> BASE_PRIMARY_SUPPORTED_RFS =
+      ImmutableList.of(1, 3, 5, 7);
 
   /**
    * Method to check whether the affinitized leaders info changed between the old and new
@@ -685,7 +685,7 @@ public class PlacementInfoUtil {
    * @param nodeDetailsSet
    */
   public static void applyK8sStsIndexIncrement(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       cluster
           .placementInfo
           .azStream()
@@ -780,7 +780,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType) {
     if (!Objects.equals(
             node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
-        && !(cluster.userIntent.providerType == CloudType.kubernetes)) {
+        && !(provider.getCloudCode() == CloudType.kubernetes)) {
       return true;
     }
     if (!cluster.userIntent.dedicatedNodes
@@ -790,11 +790,11 @@ public class PlacementInfoUtil {
     }
     if (clusterOpType == UniverseConfigureTaskParams.ClusterOperationType.EDIT) {
       Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
-      DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
-      DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
+      DeviceInfo newDeviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
+      DeviceInfo currentDeviceInfo = currentCluster.userIntent.evaluateDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo)
           && newDeviceInfo != null
-          && !(cluster.userIntent.providerType == CloudType.kubernetes
+          && !(provider.getCloudCode() == CloudType.kubernetes
               && currentDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
         return true;
@@ -992,11 +992,13 @@ public class PlacementInfoUtil {
                     zonesList.add(placementAZ);
                   });
         } else {
+          // This code path should be accessible for single provider only.
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
           throw new IllegalStateException(
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType()); // TODO
+                  + userIntent.getBaseInstanceType(providerUUID));
         }
       }
       changed = false;
@@ -1016,7 +1018,17 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartition(
-      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType) {
+    validatePartition(p, geoPartitioned, clusterType, null);
+  }
+
+  private static void validatePartition(
+      UniverseDefinitionTaskParams.PartitionInfo p,
+      boolean geoPartitioned,
+      ClusterType clusterType,
+      @Nullable Integer currentReplicationFactor) {
     if (geoPartitioned) {
       if (StringUtils.isEmpty(p.getName())) {
         throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
@@ -1038,6 +1050,12 @@ public class PlacementInfoUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
     }
+
+    verifyNumNodesAndRF(
+        clusterType,
+        getNodeCountInPlacement(p.getPlacement()),
+        p.getReplicationFactor(),
+        currentReplicationFactor);
 
     int numberOfReplicas =
         p.getPlacement()
@@ -1071,6 +1089,19 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartitions(Cluster cluster) {
+    validatePartitions(cluster, null);
+  }
+
+  /**
+   * @param currentCluster the cluster being edited, or null on create.
+   */
+  public static void validatePartitions(Cluster cluster, @Nullable Cluster currentCluster) {
+    Map<UUID, Integer> currentPartitionRFs = new HashMap<>();
+    if (currentCluster != null && currentCluster.getPartitions() != null) {
+      currentCluster
+          .getPartitions()
+          .forEach(p -> currentPartitionRFs.put(p.getUuid(), p.getReplicationFactor()));
+    }
     if (!cluster.isGeoPartitioned()
         && cluster.getPartitions() != null
         && cluster.getPartitions().size() > 1) {
@@ -1085,7 +1116,11 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    PlacementInfoUtil.validatePartition(
+                        p,
+                        cluster.isGeoPartitioned(),
+                        cluster.clusterType,
+                        currentPartitionRFs.get(p.getUuid()));
                     if (cluster.isGeoPartitioned()) {
                       if (!names.add(p.getName())) {
                         throw new PlatformServiceException(
@@ -1125,10 +1160,7 @@ public class PlacementInfoUtil {
       Cluster cluster,
       ClusterOperationType clusterOpType,
       Universe universe) {
-    Cluster oldCluster;
-
-    validatePartitions(cluster);
-    Util.fillIntentFromProviderSpecifications(cluster.userIntent);
+    Cluster oldCluster = null;
     if (clusterOpType == ClusterOperationType.EDIT) {
       if (universe == null) {
         throw new IllegalArgumentException(
@@ -1138,7 +1170,10 @@ public class PlacementInfoUtil {
           cluster.clusterType.equals(PRIMARY)
               ? universe.getUniverseDetails().getPrimaryCluster()
               : universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    }
 
+    validatePartitions(cluster, oldCluster);
+    if (clusterOpType == ClusterOperationType.EDIT) {
       if (!oldCluster.uuid.equals(cluster.uuid)) {
         throw new IllegalArgumentException(
             "Mismatched uuid between existing cluster "
@@ -1607,8 +1642,8 @@ public class PlacementInfoUtil {
       boolean imageBundleChanged = false;
       boolean instanceTypeChanged = false;
       for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
-        DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
-        DeviceInfo newDevice = newCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+        DeviceInfo oldDevice = oldCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
+        DeviceInfo newDevice = newCluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
         deviceChanged = deviceChanged || !Objects.equals(oldDevice, newDevice);
         Provider provider =
             Provider.getOrBadRequest(newCluster.getProviderUUIDForNode(nodeDetails));
@@ -1656,25 +1691,57 @@ public class PlacementInfoUtil {
         }
       }
     }
+    if (CollectionUtils.isEmpty(newCluster.getPartitions())) {
+      verifyNumNodesAndRF(
+          oldCluster.clusterType,
+          userIntent.numNodes,
+          userIntent.replicationFactor,
+          existingIntent.replicationFactor);
+    }
+  }
 
-    verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
+  // RF 9 stays valid for a cluster that is already at RF 9, so turning the flag off does not
+  // block edits of existing RF 9 universes.
+  private static List<Integer> supportedPrimaryReplicationFactors(
+      @Nullable Integer currentReplicationFactor) {
+    RuntimeConfGetter confGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    if (confGetter.getGlobalConf(GlobalConfKeys.enablePrimaryRf9)
+        || Objects.equals(currentReplicationFactor, 9)) {
+      return ImmutableList.<Integer>builder().addAll(BASE_PRIMARY_SUPPORTED_RFS).add(9).build();
+    }
+    return BASE_PRIMARY_SUPPORTED_RFS;
   }
 
   // Helper API to verify number of nodes and replication factor requirements.
   public static void verifyNumNodesAndRF(
       ClusterType clusterType, int numNodes, int replicationFactor) {
+    verifyNumNodesAndRF(clusterType, numNodes, replicationFactor, null);
+  }
+
+  /**
+   * @param currentReplicationFactor replication factor of the cluster (or partition) being edited,
+   *     or null on create.
+   */
+  public static void verifyNumNodesAndRF(
+      ClusterType clusterType,
+      int numNodes,
+      int replicationFactor,
+      @Nullable Integer currentReplicationFactor) {
     if (replicationFactor < 1) {
       throw new UnsupportedOperationException(
           "Replication factor " + replicationFactor + " is not allowed, should be more than 1");
     }
-    // We only support a replication factor of 1,3,5,7 for primary cluster.
-    if (clusterType == PRIMARY && !supportedRFs.contains(replicationFactor)) {
-      String errMsg =
-          String.format(
-              "Replication factor %d not allowed, must be one of %s.",
-              replicationFactor, Joiner.on(',').join(supportedRFs));
-      LOG.error(errMsg);
-      throw new UnsupportedOperationException(errMsg);
+    if (clusterType == PRIMARY) {
+      List<Integer> supportedRFs = supportedPrimaryReplicationFactors(currentReplicationFactor);
+      if (!supportedRFs.contains(replicationFactor)) {
+        String errMsg =
+            String.format(
+                "Replication factor %d not allowed, must be one of %s.",
+                replicationFactor, Joiner.on(',').join(supportedRFs));
+        LOG.error(errMsg);
+        throw new UnsupportedOperationException(errMsg);
+      }
     }
 
     // If not a fresh create, must have at least as many nodes as the replication factor.
@@ -2129,7 +2196,7 @@ public class PlacementInfoUtil {
           getDefaultRegion(cluster),
           true /* throwIfIncorrect */);
     }
-    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+    if (Util.isKubernetesBased(cluster)) {
       return;
     }
     for (NodeDetails node : nodes) {
@@ -3037,7 +3104,9 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
-      String instanceType = userIntent.getBaseInstanceType();
+      // This code path should be accessible for a single provider only
+      String instanceType =
+          userIntent.getBaseInstanceType(userIntent.maybeGetSingleProviderUUID().get());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(

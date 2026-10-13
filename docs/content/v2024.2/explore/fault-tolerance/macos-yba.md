@@ -73,5 +73,3 @@ Alternatively, you can navigate to the [YB Workload Simulator application UI](ht
 With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
-
-{{% explore-cleanup-local %}}

@@ -37,7 +37,7 @@ Status PgSelectIndex::PrepareSubquery(
 
   read_req_ = std::move(read_req);
   if (read_req_) {
-    ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_);
+    RETURN_NOT_OK(ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_));
   }
   read_req_->dup_table_id(index_id.GetYbTableId()); // TODO(LW_PERFORM)
 

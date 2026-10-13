@@ -1,5 +1,5 @@
 comment = 'bytea:  Created by pgrx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/bytea'
+module_pathname = 'bytea'
 relocatable = false
 superuser = false

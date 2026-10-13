@@ -53,6 +53,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // the user should either submit both keys and their secret or leave them as null.
     checkMissingKeys(provider);
 
+    validateCrossCloudFederationTargets(provider);
+
     // validate access
     if (provider.getRegions() != null && !provider.getRegions().isEmpty()) {
       for (Region region : provider.getRegions()) {

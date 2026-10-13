@@ -23,6 +23,7 @@
 #include "yb/ash/ash_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/origination_info.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -91,6 +92,15 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
+
+  // Creates a transaction object for a transaction that already exists at the status tablet,
+  // described by `metadata`. The created object is usable right away, i.e. it does not register
+  // itself at the status tablet and does not send heartbeats, so its lifetime is not tied to the
+  // lifetime of the transaction it describes. It also must not be committed or aborted.
+  // Used to read data written by an already committed transaction, see
+  // TransactionMetadata::is_read_only_historical_committed_txn.
+  static YBTransactionPtr Fabricate(
+      TransactionManager* manager, const TransactionMetadata& metadata);
 
   // Creates "child" transaction.
   // Child transaction shares same metadata as parent transaction, so all writes are done
@@ -193,6 +203,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks);
 
+  // Stamp carried by the transaction's commit.  Set once, when the transaction is created.
+  OriginationInfo GetOriginationInfo() const;
+  void SetOriginationInfo(const OriginationInfo& origination_info);
+
   Status RollbackToSubTransaction(
       SubTransactionId id, CoarseTimePoint deadline,
       bool* is_heartbeat_aborted_or_expired = nullptr);
@@ -229,10 +243,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
-  // Returns the op_id the server should verify before serving a read on this tablet, so the read
-  // sees all of this transaction's pending async writes. Returns OpId::Invalid() if there are no
-  // pending writes, or IllegalState if pending writes span 2+ terms (unsupported).
-  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const;
+  // Last pending async write of each term, for the server to verify before serving a read.
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
 

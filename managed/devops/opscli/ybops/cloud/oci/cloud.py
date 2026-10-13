@@ -17,10 +17,11 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.oci.command import (
-    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand
+    OciNetworkCommand, OciInstanceCommand, OciAccessCommand, OciQueryCommand,
+    OciDnsCommand
 )
 from ybops.cloud.oci.utils import (
-    OciCloudAdmin, OciMetadata, get_oci_config,
+    OciCloudAdmin, OciMetadata, get_oci_config, is_local_nvme_shape,
     OCI_INSTANCE_RUNNING, OCI_INSTANCE_STOPPED, OCI_INSTANCE_STOPPING,
     OCI_INSTANCE_STARTING, OCI_INSTANCE_PROVISIONING, OCI_INSTANCE_TERMINATED,
     OCI_INSTANCE_TERMINATING, OCI_VOLUME_TYPE_STANDARD,
@@ -49,6 +50,7 @@ class OciCloud(AbstractCloud):
         self.add_subcommand(OciNetworkCommand())
         self.add_subcommand(OciAccessCommand())
         self.add_subcommand(OciQueryCommand())
+        self.add_subcommand(OciDnsCommand())
 
     def validate_credentials(self):
         super(OciCloud, self).validate_credentials()
@@ -131,9 +133,12 @@ class OciCloud(AbstractCloud):
                         "memSizeGb": info["memSizeGb"],
                         "description": info["description"],
                         "isShared": info["isShared"],
+                        "localDisks": info.get("localDisks", 0),
+                        "localDisksInGbs": info.get("localDisksInGbs", 0),
                         "prices": {}
                     }
-                result[name]["prices"][region] = [{"os": "Linux", "price": 0.0}]
+                # Prices come from bundled oci_pricing/pricelist.json via OCIInitializer.
+                result[name]["prices"][region] = 0.0
         return result
 
     def create_instance(self, args, server_type, ssh_keys):
@@ -217,8 +222,10 @@ class OciCloud(AbstractCloud):
         )
 
     def get_device_names(self, args):
-        return ["sd{}".format(chr(ord('b') + i))
-                for i in range(args.num_volumes)]
+        count = int(getattr(args, "num_volumes", 0) or 0)
+        if is_local_nvme_shape(getattr(args, "instance_type", None)):
+            return ["nvme{}n1".format(i) for i in range(count)]
+        return ["sd{}".format(chr(ord('b') + i)) for i in range(count)]
 
     def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance_id = host_info['id']
@@ -305,6 +312,17 @@ class OciCloud(AbstractCloud):
             'node-uuid': node_uuid
         }
 
+        self.get_admin().set_region(args.region)
+        deleted = self.get_admin().delete_detached_boot_volumes(
+            args.zone, filter_tags, volume_ids=args.volume_id)
+        logging.info("Deleted {} detached boot volumes for node {}".format(
+            len(deleted), node_uuid))
+
+        # The node's data volumes carry the same tags. Detached ones are swept only once the
+        # instance is gone, after a destroy or a failed create; while it exists, as during a VM
+        # image upgrade, they must never be deleted.
+        if self.get_host_info(args):
+            return
         volumes = self.get_admin().list_volumes_by_tags(filter_tags)
         deleted_count = 0
 
@@ -324,6 +342,9 @@ class OciCloud(AbstractCloud):
 
         logging.info("Deleted {} volumes for node {}".format(deleted_count, node_uuid))
 
+    def replace_boot_volume(self, host_info, image_id, force=False):
+        self.get_admin().replace_boot_volume(host_info['id'], image_id, force=force)
+
     def modify_tags(self, args):
         host_info = self.get_host_info(args)
         if not host_info:
@@ -335,6 +356,18 @@ class OciCloud(AbstractCloud):
             tags_to_remove = args.remove_tags.split(",")
 
         self.get_admin().modify_tags(host_info['id'], tags_to_add, tags_to_remove)
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().get_dns_zone(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().upsert_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
 
     def get_console_output(self, args):
         host_info = self.get_host_info(args)

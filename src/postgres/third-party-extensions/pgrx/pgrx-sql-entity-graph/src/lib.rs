@@ -15,6 +15,13 @@ Rust to SQL mapping support.
 > to the `pgrx` framework and very subject to change between versions. While you may use this, please do it with caution.
 
 */
+#[macro_export]
+macro_rules! pgrx_resolved_type {
+    ($ty:ty) => {
+        concat!(module_path!(), "::", stringify!($ty))
+    };
+}
+
 pub use aggregate::entity::{AggregateTypeEntity, PgAggregateEntity};
 pub use aggregate::{
     AggregateType, AggregateTypeList, FinalizeModify, ParallelOption, PgAggregate,
@@ -23,28 +30,27 @@ pub use control_file::ControlFile;
 pub use enrich::CodeEnrichment;
 pub use extension_sql::entity::{ExtensionSqlEntity, SqlDeclaredEntity};
 pub use extension_sql::{ExtensionSql, ExtensionSqlFile, SqlDeclared};
-pub use extern_args::{parse_extern_attributes, ExternArgs};
-pub use mapping::RustSqlMapping;
+pub use extern_args::{ExternArgs, parse_extern_attributes};
 pub use pg_extern::entity::{
     PgCastEntity, PgExternArgumentEntity, PgExternEntity, PgExternReturnEntity,
     PgExternReturnEntityIteratedItem, PgOperatorEntity,
 };
 pub use pg_extern::{NameMacro, PgCast, PgExtern, PgExternArgument, PgOperator};
+pub use pg_trigger::PgTrigger;
 pub use pg_trigger::attribute::PgTriggerAttribute;
 pub use pg_trigger::entity::PgTriggerEntity;
-pub use pg_trigger::PgTrigger;
 pub use pgrx_sql::PgrxSql;
 pub use positioning_ref::PositioningRef;
-pub use postgres_enum::entity::PostgresEnumEntity;
 pub use postgres_enum::PostgresEnum;
-pub use postgres_hash::entity::PostgresHashEntity;
+pub use postgres_enum::entity::PostgresEnumEntity;
 pub use postgres_hash::PostgresHash;
-pub use postgres_ord::entity::PostgresOrdEntity;
+pub use postgres_hash::entity::PostgresHashEntity;
 pub use postgres_ord::PostgresOrd;
-pub use postgres_type::entity::PostgresTypeEntity;
+pub use postgres_ord::entity::PostgresOrdEntity;
 pub use postgres_type::PostgresTypeDerive;
-pub use schema::entity::SchemaEntity;
+pub use postgres_type::entity::PostgresTypeEntity;
 pub use schema::Schema;
+pub use schema::entity::SchemaEntity;
 pub use to_sql::entity::ToSqlConfigEntity;
 pub use to_sql::{ToSql, ToSqlConfig};
 pub use used_type::{UsedType, UsedTypeEntity};
@@ -59,7 +65,6 @@ pub(crate) mod finfo;
 #[macro_use]
 pub(crate) mod fmt;
 pub mod lifetimes;
-pub(crate) mod mapping;
 pub mod metadata;
 pub(crate) mod pg_extern;
 pub(crate) mod pg_trigger;
@@ -71,6 +76,7 @@ pub(crate) mod postgres_hash;
 pub(crate) mod postgres_ord;
 pub(crate) mod postgres_type;
 pub(crate) mod schema;
+pub mod section;
 pub(crate) mod to_sql;
 pub(crate) mod used_type;
 
@@ -89,7 +95,7 @@ pub trait SqlGraphIdentifier {
     /// or some combination of [`std::file`] and [`std::line`].
     fn rust_identifier(&self) -> String;
 
-    fn file(&self) -> Option<&'static str>;
+    fn file(&self) -> Option<&str>;
 
     fn line(&self) -> Option<u32>;
 }
@@ -98,21 +104,22 @@ pub use postgres_type::Alignment;
 
 /// An entity corresponding to some SQL required by the extension.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SqlGraphEntity {
+#[allow(clippy::large_enum_variant)]
+pub enum SqlGraphEntity<'a> {
     ExtensionRoot(ControlFile),
-    Schema(SchemaEntity),
-    CustomSql(ExtensionSqlEntity),
-    Function(PgExternEntity),
-    Type(PostgresTypeEntity),
+    Schema(SchemaEntity<'a>),
+    CustomSql(ExtensionSqlEntity<'a>),
+    Function(PgExternEntity<'a>),
+    Type(PostgresTypeEntity<'a>),
     BuiltinType(String),
-    Enum(PostgresEnumEntity),
-    Ord(PostgresOrdEntity),
-    Hash(PostgresHashEntity),
-    Aggregate(PgAggregateEntity),
-    Trigger(PgTriggerEntity),
+    Enum(PostgresEnumEntity<'a>),
+    Ord(PostgresOrdEntity<'a>),
+    Hash(PostgresHashEntity<'a>),
+    Aggregate(PgAggregateEntity<'a>),
+    Trigger(PgTriggerEntity<'a>),
 }
 
-impl SqlGraphEntity {
+impl SqlGraphEntity<'_> {
     pub fn sql_anchor_comment(&self) -> String {
         let maybe_file_and_line = if let (Some(file), Some(line)) = (self.file(), self.line()) {
             format!("-- {file}:{line}\n")
@@ -128,22 +135,29 @@ impl SqlGraphEntity {
         )
     }
 
-    pub fn id_or_name_matches(&self, ty_id: &::core::any::TypeId, name: &str) -> bool {
+    pub fn type_ident_matches(&self, type_ident: &str) -> bool {
         match self {
-            SqlGraphEntity::Enum(entity) => entity.id_matches(ty_id),
-            SqlGraphEntity::Type(entity) => entity.id_matches(ty_id),
-            SqlGraphEntity::BuiltinType(string) => string == name,
+            SqlGraphEntity::CustomSql(entity) => {
+                entity.creates.iter().any(|declared| declared.matches_type_ident(type_ident))
+            }
+            SqlGraphEntity::Enum(entity) => entity.matches_type_ident(type_ident),
+            SqlGraphEntity::Type(entity) => entity.matches_type_ident(type_ident),
+            SqlGraphEntity::BuiltinType(string) => string == type_ident,
             _ => false,
         }
     }
 
     pub fn type_matches(&self, arg: &dyn TypeIdentifiable) -> bool {
-        self.id_or_name_matches(arg.ty_id(), arg.ty_name())
+        self.type_ident_matches(arg.type_ident())
     }
 }
 
 pub trait TypeMatch {
-    fn id_matches(&self, arg: &core::any::TypeId) -> bool;
+    fn type_ident(&self) -> &str;
+
+    fn matches_type_ident(&self, arg: &str) -> bool {
+        self.type_ident() == arg
+    }
 }
 
 pub fn type_keyed<'a, 'b, A: TypeMatch, B>((a, b): (&'a A, &'b B)) -> (&'a dyn TypeMatch, &'b B) {
@@ -151,18 +165,18 @@ pub fn type_keyed<'a, 'b, A: TypeMatch, B>((a, b): (&'a A, &'b B)) -> (&'a dyn T
 }
 
 pub trait TypeIdentifiable {
-    fn ty_id(&self) -> &core::any::TypeId;
+    fn type_ident(&self) -> &str;
     fn ty_name(&self) -> &str;
 }
 
-impl SqlGraphIdentifier for SqlGraphEntity {
+impl SqlGraphIdentifier for SqlGraphEntity<'_> {
     fn dot_identifier(&self) -> String {
         match self {
             SqlGraphEntity::Schema(item) => item.dot_identifier(),
             SqlGraphEntity::CustomSql(item) => item.dot_identifier(),
             SqlGraphEntity::Function(item) => item.dot_identifier(),
             SqlGraphEntity::Type(item) => item.dot_identifier(),
-            SqlGraphEntity::BuiltinType(item) => format!("preexisting type {item}"),
+            SqlGraphEntity::BuiltinType(item) => format!("builtin type {item}"),
             SqlGraphEntity::Enum(item) => item.dot_identifier(),
             SqlGraphEntity::Ord(item) => item.dot_identifier(),
             SqlGraphEntity::Hash(item) => item.dot_identifier(),
@@ -188,7 +202,7 @@ impl SqlGraphIdentifier for SqlGraphEntity {
         }
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         match self {
             SqlGraphEntity::Schema(item) => item.file(),
             SqlGraphEntity::CustomSql(item) => item.file(),
@@ -221,7 +235,7 @@ impl SqlGraphIdentifier for SqlGraphEntity {
     }
 }
 
-impl ToSql for SqlGraphEntity {
+impl ToSql for SqlGraphEntity<'_> {
     fn to_sql(&self, context: &PgrxSql) -> eyre::Result<String> {
         match self {
             SqlGraphEntity::Schema(SchemaEntity { name: "public" | "pg_catalog", .. }) => {
@@ -237,21 +251,33 @@ impl ToSql for SqlGraphEntity {
                     .neighbors_undirected(*context.externs.get(item).unwrap())
                     .any(|neighbor| {
                         let SqlGraphEntity::Type(PostgresTypeEntity {
-                            in_fn,
-                            in_fn_module_path,
-                            out_fn,
-                            out_fn_module_path,
+                            module_path,
+                            in_fn_path,
+                            out_fn_path,
+                            receive_fn_path,
+                            send_fn_path,
                             ..
                         }) = &context.graph[neighbor]
                         else {
                             return false;
                         };
 
-                        let is_in_fn = item.full_path.starts_with(in_fn_module_path)
-                            && item.full_path.ends_with(in_fn);
-                        let is_out_fn = item.full_path.starts_with(out_fn_module_path)
-                            && item.full_path.ends_with(out_fn);
-                        is_in_fn || is_out_fn
+                        let resolve = |path: &str| {
+                            if path.contains("::") {
+                                path.to_string()
+                            } else {
+                                format!("{module_path}::{path}")
+                            }
+                        };
+                        let is_in_fn = item.full_path == resolve(in_fn_path);
+                        let is_out_fn = item.full_path == resolve(out_fn_path);
+                        let is_receive_fn = receive_fn_path
+                            .as_ref()
+                            .is_some_and(|path| item.full_path == resolve(path));
+                        let is_send_fn = send_fn_path
+                            .as_ref()
+                            .is_some_and(|path| item.full_path == resolve(path));
+                        is_in_fn || is_out_fn || is_receive_fn || is_send_fn
                     })
                 {
                     Ok(String::default())
@@ -305,7 +331,7 @@ pub fn ident_is_acceptable_to_postgres(ident: &syn::Ident) -> Result<(), syn::Er
             format!(
                 "Identifier `{ident}` was {len} characters long, PostgreSQL will truncate identifiers with less than \
                 {POSTGRES_IDENTIFIER_MAX_LEN} characters, opt for an identifier which Postgres won't truncate"
-            )
+            ),
         ));
     }
 

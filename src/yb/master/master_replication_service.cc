@@ -71,6 +71,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (IsAlterXClusterReplicationDone)
       (RepairOutboundXClusterReplicationGroupAddTable)
       (RepairOutboundXClusterReplicationGroupRemoveTable)
+      (DeleteXClusterWalAnchorStreams)
       (GetXClusterOutboundReplicationGroups)
       (GetXClusterOutboundReplicationGroupInfo)
       (GetUniverseReplications)

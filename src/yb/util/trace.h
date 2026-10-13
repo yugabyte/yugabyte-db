@@ -42,10 +42,10 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
@@ -63,7 +63,7 @@ DECLARE_int32(tracing_level);
 #define TRACE_TO_WITH_TIME(trace, time, format, substitutions...) \
   do { \
     if ((trace)) { \
-      (trace)->SubstituteAndTrace( \
+      (trace)->FormatAndTrace( \
           __FILE__, __LINE__, (time), (format), ##substitutions); \
     } \
   } while (0)
@@ -82,14 +82,14 @@ DECLARE_int32(tracing_level);
 
 // Issue a trace message, if tracing is enabled in the current thread.
 // and the current tracing level flag is >= the specified level.
-// See Trace::SubstituteAndTrace for arguments.
+// See Trace::FormatAndTrace for arguments.
 // Example:
 //  VTRACE(1, "Acquired timestamp $0", timestamp);
 #define VTRACE(level, format, substitutions...) \
   VTRACE_TO(level, Trace::CurrentTrace(), format, ##substitutions)
 
 // Issue a trace message, if tracing is enabled in the current thread.
-// See Trace::SubstituteAndTrace for arguments.
+// See Trace::FormatAndTrace for arguments.
 // Example:
 //  TRACE("Acquired timestamp $0", timestamp);
 #define TRACE(format, substitutions...) \
@@ -134,35 +134,27 @@ class Trace : public RefCountedThreadSafe<Trace> {
  public:
   Trace();
 
-  // Logs a message into the trace buffer.
+  // Logs a message into the trace buffer. format and args follow Format(); without args, format
+  // is logged verbatim.
   //
-  // See strings::Substitute for details.
+  // The message is formatted directly into the trace arena. Integer, C string and std::string
+  // arguments are used in place; other arguments are first converted with ToString().
   //
   // N.B.: the file path passed here is not copied, so should be a static
   // constant (eg __FILE__).
-  void SubstituteAndTrace(const char* file_path, int line_number,
-                          CoarseTimePoint now, GStringPiece format,
-                          const strings::internal::SubstituteArg& arg0,
-                          const strings::internal::SubstituteArg& arg1 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg2 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg3 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg4 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg5 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg6 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg7 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg8 =
-                            strings::internal::SubstituteArg::NoArg,
-                          const strings::internal::SubstituteArg& arg9 =
-                            strings::internal::SubstituteArg::NoArg);
+  template <class... Args>
+  requires (sizeof...(Args) > 0)
+  void FormatAndTrace(const char* file_path, int line_number, CoarseTimePoint now,
+                      const char* format, const Args&... args) {
+    internal::FormatTuple<Args...> tuple(args...);
+    size_t msg_len = internal::DoFormat(format, tuple, static_cast<size_t>(0));
+    TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
+    if (entry == nullptr) return;
+    internal::DoFormat(format, tuple, EntryMessage(entry));
+    AddEntry(entry);
+  }
 
-  void SubstituteAndTrace(
+  void FormatAndTrace(
       const char* file_path, int line_number, CoarseTimePoint now, GStringPiece format);
 
   // Dump the trace buffer to the given output stream.
@@ -267,6 +259,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);
+
+  // Returns the buffer that holds the entry's message.
+  static char* EntryMessage(TraceEntry* entry);
 
   size_t NumEntries() const;
   size_t NumChildren() const;

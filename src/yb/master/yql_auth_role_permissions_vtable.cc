@@ -19,11 +19,10 @@
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/permissions_manager.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 using std::string;
@@ -58,8 +57,8 @@ Result<VTableDataPtr> YQLAuthRolePermissionsVTable::RetrieveData(
         string permission_name  = PermissionName(permission);
         if (permission_name.empty()) {
           return STATUS(InvalidArgument,
-                        strings::Substitute("Unknown Permission $0",
-                                            PermissionType_Name(permission)));
+                        Format("Unknown Permission $0",
+                               PermissionType_Name(permission)));
         } else {
           (*list_value->add_elems()).set_string_value(permission_name);
         }

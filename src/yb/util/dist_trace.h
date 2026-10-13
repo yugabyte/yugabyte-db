@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "opentelemetry/common/attribute_value.h"
+#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/span.h"
 #include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/span_startoptions.h"
 
@@ -30,11 +32,32 @@ namespace yb::dist_trace {
 namespace nostd = opentelemetry::nostd;
 namespace trace = opentelemetry::trace;
 
-void InitDistTrace(int64_t process_pid, opentelemetry::nostd::string_view node_uuid);
-void CleanupDistTrace();
+// OTel service.name for the ysql (postgres backend) process, passed to InitDistTrace at startup.
+inline constexpr char kYsqlServiceName[] = "ysql";
+
+void InitDistTrace(
+    opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
+void ShutdownDistTrace();
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
-bool IsDistTraceEnabled();
+
+namespace internal {
+// Set from otel_collector_traces_endpoint by a flag callback during gflag initialization.
+extern bool g_dist_trace_enabled;
+}  // namespace internal
+
+inline bool IsDistTraceEnabled() { return internal::g_dist_trace_enabled; }
+
+// Sets otel_collector_traces_endpoint and refreshes g_dist_trace_enabled, for in-process tests.
+void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
+
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
+
+// The active span as a W3C traceparent string, empty if there is no active span.
+std::string GetActiveTraceparent();
+
+// The active span's context, or nullopt if there is no active span.
+std::optional<trace::SpanContext> GetActiveSpanContext();
+
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 
 // Returns true if distributed tracing is enabled and there is an active span in the OTEL context.
@@ -48,11 +71,61 @@ nostd::shared_ptr<trace::Span> StartSpan(
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
 nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
-// Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
-// attributes here; the OutboundCall constructor consumes them when starting a span.
+// Client span for an outbound RPC, draining the pending attrs onto it; nullptr when tracing is
+// off or no context is active. Not made current -- use ScopedAdoptSpan where that is needed.
+nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name);
+
+// Server span as a remote child of parent_context; needs no local active context.
+nostd::shared_ptr<trace::Span> StartServerSpan(
+    std::string_view op_name, const trace::SpanContext& parent_context);
+
+// Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
-const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
-    GetPendingRpcAttrPairs();
-void ClearPendingRpcAttrs();
+
+// Masks any active trace context by attaching an empty one for the returned token's lifetime.
+inline nostd::unique_ptr<opentelemetry::context::Token> DetachTraceContext() {
+  if (!IsDistTraceEnabled()) {
+    return nullptr;
+  }
+  return opentelemetry::context::RuntimeContext::Attach(opentelemetry::context::Context{});
+}
+
+// Holds the span context captured where it is constructed, so work that runs on another thread can
+// re-parent itself under it. Copying carries the captured context; it does not re-capture.
+class TraceParent {
+ public:
+  TraceParent() : parent_(GetActiveSpanContext()) {}
+
+  const std::optional<trace::SpanContext>& context() const { return parent_; }
+
+ private:
+  std::optional<trace::SpanContext> parent_;
+};
+
+// Makes a span (or a captured parent context) current on this thread for the enclosing block,
+// like ScopedAdoptTrace / ADOPT_WAIT_STATE. Stack-only; the span itself may cross threads.
+class ScopedAdoptSpan {
+ public:
+  explicit ScopedAdoptSpan(const nostd::shared_ptr<trace::Span>& span) {
+    if (span) {
+      scope_.emplace(span);
+    }
+  }
+
+  // Adopts a context captured elsewhere without starting a span; no-op when there is none.
+  explicit ScopedAdoptSpan(const std::optional<trace::SpanContext>& parent_context);
+
+  explicit ScopedAdoptSpan(const TraceParent& parent) : ScopedAdoptSpan(parent.context()) {}
+
+  ScopedAdoptSpan(const ScopedAdoptSpan&) = delete;
+  ScopedAdoptSpan& operator=(const ScopedAdoptSpan&) = delete;
+  ScopedAdoptSpan(ScopedAdoptSpan&&) = delete;
+  ScopedAdoptSpan& operator=(ScopedAdoptSpan&&) = delete;
+  static void* operator new(size_t) = delete;
+  static void* operator new[](size_t) = delete;
+
+ private:
+  std::optional<trace::Scope> scope_;
+};
 
 }  // namespace yb::dist_trace

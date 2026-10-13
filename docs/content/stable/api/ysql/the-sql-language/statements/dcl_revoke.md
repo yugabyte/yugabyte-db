@@ -59,5 +59,5 @@ yugabyte=# REVOKE SysAdmins FROM John;
 
 ## See also
 
-- [`CREATE ROLE`](../dcl_create_role)
-- [`GRANT`](../dcl_grant)
+- [CREATE ROLE](../dcl_create_role)
+- [GRANT](../dcl_grant)

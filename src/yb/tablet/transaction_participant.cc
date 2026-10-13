@@ -537,6 +537,11 @@ class TransactionParticipant::Impl
 
   template <class PB>
   Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
+    // If this is a historical read, we don't need to check the transaction status.
+    if (pb.is_read_only_historical_committed_txn()) {
+      return TransactionMetadata::FromPB(pb);
+    }
+
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);
@@ -2802,7 +2807,7 @@ class TransactionParticipant::Impl
       } else {
         num_active_rr_rc += inactive ? 0 : 1;
       }
-      LOG(INFO) << "transaction: " << metadata.ToString() << ". inactive:" << inactive;
+      VLOG(1) << "transaction: " << metadata.ToString() << ". inactive:" << inactive;
     }
     CHECK(num_active_rr_rc == 0 || num_active_si == 0)
         << "both Serialiable and RR/RC have active fast mode transactions."
@@ -2835,7 +2840,7 @@ class TransactionParticipant::Impl
   }
 
   Result<bool> TEST_IsTransactionInactive(const TransactionMetadata& metadata) {
-    LOG(INFO) << "Checking transaction: " << metadata;
+    VLOG(1) << "Checking transaction: " << metadata;
     auto it = transactions_.find(metadata.transaction_id);
     if (it != transactions_.end()) {
       auto& txn = **it;

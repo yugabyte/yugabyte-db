@@ -42,6 +42,10 @@ const RELOCATION_ROWS: RelocationRow[] = [
     nowDetailKey: 'nowHardwareDetail'
   },
   {
+    thenKey: 'readReplica',
+    nowPathKey: 'nowPlacement'
+  },
+  {
     thenKey: 'logs',
     nowPathKey: 'nowLogs'
   },

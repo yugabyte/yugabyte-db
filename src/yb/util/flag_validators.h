@@ -34,14 +34,15 @@
 //     // Independent of other flags, not delayed.
 //     DEFINE_validator(my_flag, FLAG_COND_VALIDATOR(!_value.empty(), "Must not be empty"));
 //
-//     // Dependent on the value of other_flag, delayed.
+//     // Dependent on the value of other_flag, delayed. Use FINAL_FLAG_VALUE so a
+//     // ValidateFlagValue batch sees sibling values from the same request instead of FLAGS_*.
 //     DEFINE_validator(my_flag,
-//         FLAG_DELAYED_COND_VALIDATOR(_value.starts_with(FLAGS_other_flag),
-//                                     Format("Must start with other_flag: $0", FLAGS_other_flag)));
+//         FLAG_DELAYED_COND_VALIDATOR(_value.starts_with(FINAL_FLAG_VALUE(other_flag)),
+//             Format("Must start with other_flag: $0", FINAL_FLAG_VALUE(other_flag))));
 //     // Inverse direction.
 //     DEFINE_validator(other_flag,
-//         FLAG_DELAYED_COND_VALIDATOR(FLAGS_my_flag.starts_with(_value),
-//                                     Format("Must be a prefix of my_flag: $0", FLAGS_my_flag)));
+//         FLAG_DELAYED_COND_VALIDATOR(FINAL_FLAG_VALUE(my_flag).starts_with(_value),
+//             Format("Must be a prefix of my_flag: $0", FINAL_FLAG_VALUE(my_flag))));
 //
 // For simple comparisons with other flags, FLAG_<cmp>_FLAG_VALIDATOR can be used:
 //
@@ -56,7 +57,8 @@
 // FLAG_COND_VALIDATOR(cond, message)
 // FLAG_DELAYED_COND_VALIDATOR(cond, message)
 // - Check that `cond` is true, and fails validation with `message` if not. The value of
-//   the flag is available in `_value`.
+//   the flag is available in `_value`. Delayed validators that read another flag should use
+//   FINAL_FLAG_VALUE(other) so a ValidateFlagValue batch sees sibling values from the same request.
 //
 // FLAG_OK_VALIDATOR(expr)
 // FLAG_DELAYED_OK_VALIDATOR(expr)
@@ -101,6 +103,12 @@
 //
 namespace yb::flags_internal {
 
+// Value name will have once the update being validated is applied: the value proposed for it in the
+// same ValidateFlagValue batch, or the current FLAGS_name.
+#define FINAL_FLAG_VALUE(name) \
+    (::yb::flags_internal::GetFinalFlagValue( \
+        BOOST_PP_CAT(FLAGS_, name), BOOST_PP_STRINGIZE(name)))
+
 #define FLAG_COND_VALIDATOR_HELPER(_cond, _message, _delayed) \
     [](const char* _flag_name, auto _value) -> bool { \
       if constexpr (_delayed) { DELAY_FLAG_VALIDATION_ON_STARTUP(_flag_name); } \
@@ -131,8 +139,8 @@ namespace yb::flags_internal {
 
 #define FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, cmp, cmp_desc) \
     FLAG_DELAYED_COND_VALIDATOR( \
-      cmp(_value, BOOST_PP_CAT(FLAGS_, other_flag)), \
-      "Must be " cmp_desc " " #other_flag ": " << BOOST_PP_CAT(FLAGS_, other_flag))
+      cmp(_value, FINAL_FLAG_VALUE(other_flag)), \
+      "Must be " cmp_desc " " #other_flag ": " << FINAL_FLAG_VALUE(other_flag))
 
 #define FLAG_EQ_FLAG_VALIDATOR(other_flag) \
     FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::equal_to{}, "equal to")
@@ -181,22 +189,22 @@ bool compare_greater_equal(std::floating_point auto x, std::floating_point auto 
 
 #define FLAG_REQUIRES_FLAG_VALIDATOR(required_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
-      !_value || BOOST_PP_CAT(FLAGS_, required_flag), \
+      !_value || FINAL_FLAG_VALUE(required_flag), \
       "Requires " #required_flag " to be true")
 
 #define FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(required_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
-      !_value || BOOST_PP_CAT(FLAGS_, required_flag), \
+      !_value || FINAL_FLAG_VALUE(required_flag), \
       "Requires " #required_flag " to be non-zero")
 
 #define FLAG_REQUIRED_BY_FLAG_VALIDATOR(required_by_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
-      _value || !BOOST_PP_CAT(FLAGS_, required_by_flag), \
+      _value || !FINAL_FLAG_VALUE(required_by_flag), \
       "Required by " #required_by_flag " to be true")
 
 #define FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(required_by_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
-      _value || !BOOST_PP_CAT(FLAGS_, required_by_flag), \
+      _value || !FINAL_FLAG_VALUE(required_by_flag), \
       "Required to be non-zero when " #required_by_flag " is true")
 
 #define FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, cmp, cmp_desc) \

@@ -50,5 +50,5 @@ yugabyte=# DROP_REPLICATION_SLOT test_replication_slot;
 
 ## See also
 
-- [`CREATE_REPLICATION_SLOT`](../streaming_create_repl_slot)
-- [`START_REPLICATION`](../streaming_start_replication)
+- [CREATE_REPLICATION_SLOT](../streaming_create_repl_slot)
+- [START_REPLICATION](../streaming_start_replication)

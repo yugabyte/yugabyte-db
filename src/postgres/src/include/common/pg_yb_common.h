@@ -90,24 +90,6 @@ extern bool YBSuppressUnsafeAlterNotice();
 extern bool YBIsNonTxnCopyEnabled();
 
 /**
- * Returns a null-terminated string representing the name of the
- * cloud this process is running on.
- */
-extern const char *YBGetCurrentCloud();
-
-/**
- * Returns a null-terminated string representing the region this
- * process is running on.
- */
-extern const char *YBGetCurrentRegion();
-
-/**
- * Returns a null-terminated string representing the zone this
- * process is running on.
- */
-extern const char *YBGetCurrentZone();
-
-/**
  * Returns a null-terminated string representing the uuid of the
  * placement this process is running on.
  */

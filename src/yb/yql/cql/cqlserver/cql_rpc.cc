@@ -13,6 +13,7 @@
 //
 //
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 
 #include "yb/gutil/casts.h"
@@ -110,7 +111,7 @@ Status CQLConnectionContext::HandleCall(
   Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
     LOG(WARNING) << connection->ToString() << ": received bad data: " << s.ToString();
-    return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToUserMessage());
+    return STATUS_FORMAT(NetworkError, "Bad data: $0", s.ToUserMessage());
   }
 
   if (FLAGS_throttle_cql_calls_on_soft_memory_limit) {

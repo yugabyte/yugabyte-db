@@ -34,30 +34,32 @@ For universes deployed using YugabyteDB Anywhere, you can't exclusively [enable 
 
 ## Enable database endpoints and authorization
 
-To enable the YSQL and YCQL endpoints and database authentication when [deploying a universe](../../create-deployments/create-universe-multi-zone/), on the **Create Universe > Primary Cluster** page, under **Security Configurations > Authentication Settings**, enable the endpoints and authorization for the APIs you want to use, as shown in the following illustration.
-
-![Enable YSQL and YCQL endpoints](/images/yp/security/enable-endpoints.png)
-
-Enter a password for the default database admin user (`yugabyte` for YSQL, and `cassandra` for YCQL).
+You can enable the YSQL and YCQL endpoints and database authentication when [deploying a universe](../../create-deployments/create-universes-wizard/). You can also enable and disable the endpoints and authorization, as well as rotate your database admin user password, after deployment.
 
 {{< warning title="Important" >}}
-Save your password in a secure location. Your password is not stored in YugabyteDB Anywhere, and if you lose it, you won't be able to access the database.
+When entering a password for the default database admin user (`yugabyte` for YSQL, and `cassandra` for YCQL), be sure to save your password in a secure location. Your password is not stored in YugabyteDB Anywhere, and if you lose it, you won't be able to access the database.
 {{< /warning >}}
 
 ### Modify endpoint configuration
 
-You can also enable and disable the endpoints and authorization, as well as rotate your admin user password, after deployment.
-
 To disable YSQL or YCQL authorization or rotate the password, you will need your `yugabyte` or `cassandra` database user password.
 
-To modify the endpoint configuration on a running universe, do the following:
+To modify the endpoint configuration on a running universe, navigate to the universe and do the following:
 
-1. Navigate to your universe, click **Actions**, and choose **More** and **Edit YSQL Configuration** or **Edit YCQL Configuration**.
-1. Enable or disable the API endpoint.
-1. Enable or disable the API authorization.
-1. To rotate the database admin password, select the **Rotate password** option and provide the current and new password.
-1. For YCQL, you can also modify the YCQL API and admin UI endpoint ports by selecting the **Override YCQL Default Ports** option.
-1. Click **Apply Changes** when you are done.
+- {{<tags/ui/new>}} Click **Settings > Database** and under **Interface** click **Edit>Edit YSQL Settings** or **Edit>Edit YCQL Settings**.
+- {{<tags/ui/classic>}} Click **Actions > More** and **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+
+You can change the following settings:
+
+- Enable or disable the API endpoint.
+- Enable or disable the API authorization.
+
+    - If you are enabling for the first time, provide a password for the `yugabyte` or `cassandra` user.
+    - To rotate the database admin password, select the **Rotate password** option and provide the current and new password.
+
+- For YCQL, you can also modify the YCQL API and admin UI endpoint ports by selecting the **Override YCQL Default Ports** option.
+
+Click **Apply Changes** when you are done.
 
 ## Default roles and users
 

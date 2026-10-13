@@ -14,9 +14,9 @@ use core::str::FromStr;
 use pg_sys::AsPgCStr;
 
 use super::call_numeric_func;
-use super::convert::{from_primitive_helper, FromPrimitiveFunc};
+use super::convert::{FromPrimitiveFunc, from_primitive_helper};
 use super::error::Error;
-use crate::{pg_sys, AnyNumeric, IntoDatum, Numeric};
+use crate::{AnyNumeric, IntoDatum, Numeric, pg_sys};
 
 impl<const P: u32, const S: u32> From<Numeric<P, S>> for AnyNumeric {
     #[inline]

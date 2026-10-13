@@ -181,6 +181,15 @@ public class YbcUpgrade {
     return ybcUpgradeUniverseSetOnK8s.contains(universeUUID);
   }
 
+  /**
+   * Master-only nodes never run YBC, so they are excluded from upgrades and version checks. Not the
+   * same as {@code !isTserver}: a stopped node also has isTserver false but comes back running YBC
+   * (PLAT-20970), so it must stay in scope and block the version stamp.
+   */
+  public static boolean isMasterOnlyNode(NodeDetails node) {
+    return node.isMaster && !node.isTserver;
+  }
+
   void scheduleRunner() {
     log.info("Running YBC Upgrade schedule");
     try {
@@ -326,6 +335,9 @@ public class YbcUpgrade {
     }
 
     for (NodeDetails node : universe.getNodes()) {
+      if (isMasterOnlyNode(node)) {
+        continue;
+      }
       try {
         upgradeYbcOnNode(universe, node, ybcVersion);
       } catch (Exception e) {
@@ -518,6 +530,11 @@ public class YbcUpgrade {
       String certFile = universe.getCertificateNodetoNode();
       boolean success = true;
       for (NodeDetails node : universe.getNodes()) {
+        // Polling a master fails the upgrade, so the version is never stamped (PLAT-22025).
+        if (isMasterOnlyNode(node)) {
+          log.debug("Skipping master-only node: {}", node.nodeName);
+          continue;
+        }
         String nodeIp = node.cloudInfo.private_ip;
         YbcClient client = null;
         try {
@@ -609,6 +626,7 @@ public class YbcUpgrade {
   public List<String> getUniverseNodeYbcVersions(Universe universe, boolean onlyLive) {
     List<String> ybcVersions =
         universe.getNodes().stream()
+            .filter(node -> !isMasterOnlyNode(node))
             .map(
                 node -> {
                   YbcClient client = null;

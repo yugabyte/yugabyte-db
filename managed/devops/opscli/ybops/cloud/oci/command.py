@@ -9,7 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 from ybops.cloud.common.command import (
-    InstanceCommand, QueryCommand, AccessCommand, NetworkCommand
+    InstanceCommand, QueryCommand, AccessCommand, NetworkCommand, DnsCommand
 )
 from ybops.cloud.common.method import (
     ConfigureInstancesMethod, ListInstancesMethod,
@@ -26,7 +26,8 @@ from ybops.cloud.oci.method import (
     OciNetworkQueryMethod, OciNetworkCleanupMethod, OciCreateRootVolumesMethod,
     OciDeleteRootVolumesMethod, OciReplaceRootVolumeMethod, OciChangeInstanceTypeMethod,
     OciPauseInstancesMethod, OciResumeInstancesMethod, OciUpdateDiskMethod, OciTagsMethod,
-    OciHardRebootInstancesMethod
+    OciHardRebootInstancesMethod, OciCreateDnsEntryMethod, OciEditDnsEntryMethod,
+    OciDeleteDnsEntryMethod, OciListDnsEntryMethod
 )
 
 
@@ -93,3 +94,15 @@ class OciNetworkCommand(NetworkCommand):
         self.add_method(OciNetworkBootstrapMethod(self))
         self.add_method(OciNetworkQueryMethod(self))
         self.add_method(OciNetworkCleanupMethod(self))
+
+
+class OciDnsCommand(DnsCommand):
+
+    def __init__(self):
+        super(OciDnsCommand, self).__init__()
+
+    def add_methods(self):
+        self.add_method(OciCreateDnsEntryMethod(self))
+        self.add_method(OciEditDnsEntryMethod(self))
+        self.add_method(OciDeleteDnsEntryMethod(self))
+        self.add_method(OciListDnsEntryMethod(self))

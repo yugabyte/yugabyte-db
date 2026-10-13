@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.DeployContext;
+import com.yugabyte.yw.models.NodeAgent.DeployType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -329,7 +330,7 @@ public class NodeAgentPoller {
       }
       switch (nodeAgent.getState()) {
         case READY:
-          if (!needsUpgrade(nodeAgent)) {
+          if (maybeGetDeployType(nodeAgent) == null) {
             return;
           }
           // Fall-thru to complete in single cycle.
@@ -351,7 +352,8 @@ public class NodeAgentPoller {
                       try {
                         Util.doWithCorrelationId(
                             id -> {
-                              if (!needsUpgrade(nodeAgent)) {
+                              DeployType deployType = maybeGetDeployType(nodeAgent);
+                              if (deployType == null) {
                                 log.trace("Node agent {} does not need an upgrade", nodeAgent);
                                 return null;
                               }
@@ -360,7 +362,7 @@ public class NodeAgentPoller {
                                   nodeAgent,
                                   DeployContext.builder()
                                       .certificateUuid(nodeAgent.getCertificateUuid())
-                                      .certsOnly(versionMatched(nodeAgent))
+                                      .deployType(deployType)
                                       .build());
                               return null;
                             });
@@ -383,7 +385,7 @@ public class NodeAgentPoller {
 
     // This handles upgrade for the given node agent with exclusive access to prevent double
     // upgrade.
-    private void upgradeNodeAgentLocked(NodeAgent nodeAgent, DeployContext deployConext) {
+    private void upgradeNodeAgentLocked(NodeAgent nodeAgent, DeployContext deployContext) {
       if (HighAvailabilityConfig.isFollower()) {
         // Task may have already been submitted. This check ensures that submitted tasks are not
         // run.
@@ -395,10 +397,11 @@ public class NodeAgentPoller {
       if (nodeAgent.getState() == State.READY) {
         nodeAgent.saveState(State.UPGRADE);
       }
-      log.debug("Deploying node agent with context {} for node agent {}", deployConext, nodeAgent);
+      log.debug("Deploying node agent with context {} for node agent {}", deployContext, nodeAgent);
       if (nodeAgent.getState() == State.UPGRADE) {
         log.info("Uploading upgrade files for node agent {}", nodeAgent);
-        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, deployConext);
+        InstallerFiles installerFiles =
+            nodeAgentManager.getInstallerFiles(nodeAgent, deployContext);
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
         log.info("Uploaded upgrade files for node agent {}", nodeAgent);
@@ -416,7 +419,8 @@ public class NodeAgentPoller {
         // So, this client has to trust both old and new certs.
         // The new key should also work on node agent.
         // Update the state atomically with the cert update.
-        nodeAgentManager.replaceCerts(nodeAgent);
+        nodeAgentManager.replaceCerts(
+            nodeAgent, installerFiles.getNewCertPath(), deployContext.getCertificateUuid());
         log.info("Rolled over to new certs for node agent {}", nodeAgent);
       }
       if (nodeAgent.getState() == State.UPGRADED) {
@@ -430,8 +434,7 @@ public class NodeAgentPoller {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
           nodeAgentManager.postUpgrade(nodeAgent);
-          nodeAgent.finalizeUpgrade(
-              nodeAgentHome, serverInfo.getVersion(), deployConext.getCertificateUuid());
+          nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
           log.info("Node agent {} has been upgraded successfully", nodeAgent);
         }
       }
@@ -480,6 +483,16 @@ public class NodeAgentPoller {
             nodeAgent.getUuid().toString(),
             String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
         .set(value);
+  }
+
+  // Labels: customer_uuid, node_agent_uuid, node_address.
+  private static void removeMetrics(UUID nodeAgentUuid) {
+    String uuid = nodeAgentUuid.toString();
+    Function<List<String>, Boolean> matches =
+        labels -> labels.size() > 1 && uuid.equals(labels.get(1));
+    NODE_AGENT_VERSION_MISMATCH_GAUGE.removeIf(matches);
+    NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
+    NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
   }
 
   @VisibleForTesting
@@ -602,6 +615,7 @@ public class NodeAgentPoller {
         if (!nodeUuids.contains(entry.getKey())) {
           entry.getValue().cancelUpgrade();
           swamperHelper.removeNodeAgentTargetJson(entry.getKey());
+          removeMetrics(entry.getKey());
           iter.remove();
         }
       }
@@ -621,16 +635,7 @@ public class NodeAgentPoller {
     return versionMatched;
   }
 
-  private boolean needsUpgrade(NodeAgent nodeAgent) {
-    boolean upgradeNeeded = false;
-    if (!versionMatched(nodeAgent)) {
-      upgradeNeeded = true;
-    }
-    // This handles the rare case where YBA has never been upgraded close to a year.
-    // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
-    // it is very rare because this happens if YBA has not been upgraded for almost a year and
-    // every API call first checks if node agent needs an upgrade and waits if an upgrade is
-    // currently running.
+  private boolean certExpiring(NodeAgent nodeAgent) {
     long expiresAt = nodeAgent.getServerCertExpirySecs();
     if (expiresAt > 0) {
       publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiresAt);
@@ -639,10 +644,37 @@ public class NodeAgentPoller {
         log.debug(
             "Node agent server cert is expiring soon on {}",
             Instant.ofEpochSecond(expiresAt).atZone(ZoneId.systemDefault()));
-        upgradeNeeded = true;
+        return true;
       }
     }
-    return upgradeNeeded;
+    return false;
+  }
+
+  // Finds the deploy type for the given node agent for auto upgrade.
+  // Returns null if the node agent does not need an upgrade.
+  private DeployType maybeGetDeployType(NodeAgent nodeAgent) {
+    DeployType deployType = null;
+    if (nodeAgent.isUpgrading() || !versionMatched(nodeAgent)) {
+      deployType = DeployType.BINARY_ONLY;
+    }
+    if (certExpiring(nodeAgent)) {
+      if (nodeAgent.getCertificateUuid() == null) {
+        // This handles the rare case where YBA has never been upgraded close to a year.
+        // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
+        // it is very rare because this happens if YBA has not been upgraded for almost a year and
+        // every API call first checks if node agent needs an upgrade and waits if an upgrade is
+        // currently running.
+
+        // Update to full deploy if binary upgrade is already needed. Else, update to certs only.
+        deployType = deployType == null ? DeployType.CERTS_ONLY : DeployType.FULL;
+      } else {
+        log.warn(
+            "Node agent {} has a server cert expiring soon, but it is not managed by node agent."
+                + " Please run the node agent cert update task",
+            nodeAgent);
+      }
+    }
+    return deployType;
   }
 
   /**
@@ -654,7 +686,7 @@ public class NodeAgentPoller {
    */
   public boolean upgradeNodeAgent(UUID nodeAgentUuid) {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
-    if (!needsUpgrade(nodeAgent)) {
+    if (maybeGetDeployType(nodeAgent) == null) {
       log.trace("Node agent {} does not need an upgrade", nodeAgent);
       return false;
     }
@@ -668,7 +700,13 @@ public class NodeAgentPoller {
         nodeAgentUuid,
         true /* waitForInFlightUpgrade */,
         n -> {
-          return DeployContext.builder().certificateUuid(n.getCertificateUuid()).build();
+          DeployType deployType = maybeGetDeployType(nodeAgent);
+          return deployType == null
+              ? null
+              : DeployContext.builder()
+                  .certificateUuid(n.getCertificateUuid())
+                  .deployType(deployType)
+                  .build();
         });
   }
 
@@ -687,6 +725,7 @@ public class NodeAgentPoller {
       boolean waitForInFlightUpgrade,
       Function<NodeAgent, DeployContext> deployContextFn) {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(nodeAgentUuid);
+    checkState(nodeAgent.isActive(), "Invalid state for node agent " + nodeAgent);
     Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
     PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime);
     if (!pollerTask.isUpgrading.compareAndSet(false, true)) {
@@ -699,17 +738,22 @@ public class NodeAgentPoller {
     } else {
       try {
         nodeAgent.refresh();
+        DeployContext deployContext = deployContextFn.apply(nodeAgent);
+        if (deployContext == null) {
+          log.info("Node agent {} does not need an upgrade", nodeAgent);
+          return false;
+        }
         log.info("Starting explicit upgrade on node agent {}", nodeAgent);
-        pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContextFn.apply(nodeAgent));
+        pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContext);
       } catch (RuntimeException e) {
-        log.error("Explicit upgrade failed for node agent {}", nodeAgent);
+        log.error("Explicit upgrade failed for node agent {}", nodeAgent, e);
         throw e;
       } finally {
         pollerTask.notifyAfterUpgrade();
       }
     }
     nodeAgent.refresh();
-    if (needsUpgrade(nodeAgent)) {
+    if (maybeGetDeployType(nodeAgent) != null) {
       throw new RuntimeException(
           String.format("Node agent %s still needs upgrade after an upgrade", nodeAgent));
     }

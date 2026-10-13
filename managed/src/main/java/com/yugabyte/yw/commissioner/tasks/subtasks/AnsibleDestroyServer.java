@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -17,6 +18,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.nodeagent.DestroyServerInput;
+import java.util.List;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +37,9 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
+
+  private static final int DESTROY_REMOTE_COMMAND_TIMEOUT_SECS = 300;
+
   @Inject
   protected AnsibleDestroyServer(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -76,6 +83,78 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         };
 
     saveUniverseDetails(updater);
+  }
+
+  // DestroyServer cannot stop node-agent itself. Stop it over SSH before purge on non-manual
+  // onprem while the node is still reachable.
+  private void maybeUninstallNodeAgent(Universe universe, NodeDetails nodeDetails) {
+    if (nodeDetails.cloudInfo == null || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip)) {
+      return;
+    }
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
+    if (!provider.isNonManualOnprem()) {
+      return;
+    }
+    Optional<NodeAgent> nodeAgentOpt = NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip);
+    if (nodeAgentOpt.isEmpty()) {
+      return;
+    }
+    // Use SSH connection to stop node agent service, as the node agent cannot stop itself.
+    ShellProcessContext shellContext =
+        ShellProcessContext.builder()
+            .useSshConnectionOnly(true)
+            .timeoutSecs(DESTROY_REMOTE_COMMAND_TIMEOUT_SECS)
+            .logCmdOutput(true)
+            .build();
+    String sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, nodeDetails);
+    if (StringUtils.isNotEmpty(nodeDetails.sshUserOverride)) {
+      sshUser = nodeDetails.sshUserOverride;
+    }
+    if (StringUtils.isNotEmpty(sshUser)) {
+      shellContext = shellContext.toBuilder().sshUser(sshUser).build();
+    }
+    // For onprem non-manual, it is always root-systemd.
+    StringBuilder cmdBuilder = new StringBuilder();
+    cmdBuilder.append("sudo systemctl disable --now yb-node-agent.service && ");
+    cmdBuilder.append("sudo rm -rf /etc/systemd/system/yb-node-agent.service && ");
+    cmdBuilder.append("sudo systemctl daemon-reload && ");
+    cmdBuilder.append("sudo rm -rf ").append("'").append(nodeAgentOpt.get().getHome()).append("'");
+    String stopCmd = cmdBuilder.toString();
+    List<String> command = ImmutableList.of("/bin/bash", "-c", stopCmd);
+    log.info(
+        "Stopping node agent service on node {} (IP {}) via SSH as user {}: {}",
+        taskParams().nodeName,
+        nodeDetails.cloudInfo.private_ip,
+        shellContext.getSshUser(),
+        stopCmd);
+    try {
+      ShellResponse response =
+          nodeUniverseManager.runCommand(nodeDetails, universe, command, shellContext);
+      if (response.isSuccess()) {
+        log.info(
+            "Successfully stopped node agent service on node {} (IP {}) via SSH as user {}",
+            taskParams().nodeName,
+            nodeDetails.cloudInfo.private_ip,
+            shellContext.getSshUser());
+      } else {
+        log.warn(
+            "Failed to stop node agent service on node {} (IP {}) via SSH as user {}: {}",
+            taskParams().nodeName,
+            nodeDetails.cloudInfo.private_ip,
+            shellContext.getSshUser(),
+            response.message);
+      }
+    } catch (Exception e) {
+      // Best effort to stop node agent service, log the error and ignore error.
+      log.warn(
+          "Failed to stop node agent service on node {} (IP {}) via SSH as user {}: {}",
+          taskParams().nodeName,
+          nodeDetails.cloudInfo.private_ip,
+          shellContext.getSshUser(),
+          e.getMessage());
+    }
   }
 
   @Override
@@ -179,6 +258,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
     if (!cleanupFailed) {
       try {
+        maybeUninstallNodeAgent(universe, nodeDetails);
         deleteNodeAgent(nodeDetails);
       } catch (Exception e) {
         if (!taskParams().isForceDelete) {

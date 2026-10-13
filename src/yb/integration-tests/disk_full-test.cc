@@ -18,11 +18,26 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/util/size_literals.h"
+
 DECLARE_uint64(reject_writes_min_disk_space_mb);
 DECLARE_uint32(reject_writes_min_disk_space_pct);
 DECLARE_uint32(reject_writes_min_disk_space_check_interval_sec);
 
 namespace yb {
+
+namespace {
+
+// Sets reject_writes_min_disk_space_mb above the actual free space to simulate disk full.
+void SimulateDiskFull() {
+  const auto free_space_mb =
+      ASSERT_RESULT(Env::Default()->GetFreeSpaceBytes(GetTestDataDirectory())) / 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) =
+      std::max<uint64_t>(free_space_mb * 2, 1);
+  SleepFor(2s);
+}
+
+}  // namespace
 
 class YCqlDiskFullTest : public client::KeyValueTableTest<MiniCluster> {
  public:
@@ -51,9 +66,7 @@ TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   }
   ++i;
 
-  // Set a large limit to simulate disk full.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = 10 * 1024 * 1024;  // 10TB
-  SleepFor(2s);
+  ASSERT_NO_FATALS(SimulateDiskFull());
 
   ASSERT_NOK_STR_CONTAINS(WriteRow(session, i, i), "has insufficient disk space");
 
@@ -122,9 +135,7 @@ TEST_F(YSqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   }
   ++i;
 
-  // Set a large limit to simulate disk full.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = 10 * 1024 * 1024;  // 10TB
-  SleepFor(2s);
+  ASSERT_NO_FATALS(SimulateDiskFull());
 
   ASSERT_NOK_STR_CONTAINS(
       conn.ExecuteFormat(insert_query, table_name1, i), "has insufficient disk space");

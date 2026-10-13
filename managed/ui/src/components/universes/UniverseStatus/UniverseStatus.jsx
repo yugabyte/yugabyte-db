@@ -28,6 +28,7 @@ import {
   getIsDbUpgradePrecheckTask,
   getLatestUniverseTask
 } from '../../../redesign/features/tasks/TaskUtils';
+import { retryTask } from '@app/v2/api/task/task';
 import { colors } from '@app/redesign/theme/variables';
 
 //icons
@@ -58,8 +59,7 @@ export default class UniverseStatus extends Component {
   }
 
   retryTaskClicked = (currentTaskUUID, universeUUID) => {
-    api
-      .retryTask(currentTaskUUID)
+    retryTask(currentTaskUUID, {})
       .then(() => {
         browserHistory.push(`/universes/${universeUUID}/tasks`);
       })

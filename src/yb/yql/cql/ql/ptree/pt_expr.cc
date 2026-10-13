@@ -15,6 +15,7 @@
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 #include "yb/bfql/tserver_opcodes.h"
@@ -1788,27 +1789,27 @@ void PTBindVar::PrintSemanticAnalysisResult(SemContext *sem_context) {
 }
 
 std::string PTBindVar::bcall_arg_bindvar_name(const std::string& bcall_name, size_t arg_position) {
-  return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);
+  return Format("arg$0(system.$1)", arg_position, bcall_name);
 }
 
 // The name Cassandra uses for binding the collection element keys.
 std::string PTBindVar::coll_map_key_bindvar_name(const std::string& col_name) {
-  return strings::Substitute("key($0)", col_name);
+  return Format("key($0)", col_name);
 }
 
 // The name Cassandra uses for binding the list element indexes.
 std::string PTBindVar::coll_list_index_bindvar_name(const std::string& col_name) {
-  return strings::Substitute("idx($0)", col_name);
+  return Format("idx($0)", col_name);
 }
 
 // The name Cassandra uses for binding the collection element values.
 std::string PTBindVar::coll_value_bindvar_name(const std::string& col_name) {
-  return strings::Substitute("value($0)", col_name);
+  return Format("value($0)", col_name);
 }
 
 // The name for binding the JSON attributes.
 std::string PTBindVar::json_bindvar_name(const std::string& col_name) {
-  return strings::Substitute("json_attr($0)", col_name);
+  return Format("json_attr($0)", col_name);
 }
 
 }  // namespace ql

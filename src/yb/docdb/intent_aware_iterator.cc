@@ -43,6 +43,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -236,6 +237,13 @@ IntentAwareIterator::IntentAwareIterator(
   iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   intent_iter_.SetAvoidUselessNextInsteadOfSeek(avoid_useless_next_instead_of_seek);
   VTRACE(2, "Created iterator");
+}
+
+IntentAwareIterator::~IntentAwareIterator() {
+  // Fires before iter_ / intent_iter_ are destroyed, i.e. at the start of RocksDB iterator
+  // teardown. A caller that owns a ScopedRWOperation blocking RocksDB shutdown must still hold it
+  // here; see issue #33496.
+  TEST_SYNC_POINT("IntentAwareIterator::~IntentAwareIterator");
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
@@ -597,12 +605,14 @@ void IntentAwareIterator::Prev() {
       } else {
         SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
       }
+    }
 
-      // No need to move regular iterartor, but bounds should be re-checked for the current
-      // regular entry.
-      if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
-        regular_entry_.Reset();
-      }
+    // The regular side is not moved, but the bounds may have been narrowed since it was
+    // positioned, e.g. GetHelperBase sets the lower bound to the row being read. Re-check it even
+    // if intent_iter_ is invalid, as it is then the only candidate. The regular branch needs no
+    // such case: regular_entry_ always matches iter_'s current entry.
+    if (regular_entry_.Valid() && !SatisfyBounds(regular_entry_.key)) {
+      regular_entry_.Reset();
     }
   }
 

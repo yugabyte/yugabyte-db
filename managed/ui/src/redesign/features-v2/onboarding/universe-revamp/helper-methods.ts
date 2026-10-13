@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react';
 import { RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  isNewUniverseExperienceForAllUsers,
+  isV2CreateEditUniverseEnabled
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import { isRbacEnabled, isSuperAdminUser } from '@app/redesign/features/rbac/common/RbacUtils';
 import { UserPermission } from '@app/redesign/features/rbac/common/rbac_constants';
 import {
   ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT,
   isOnboardingNewExperienceEnabled,
-  setOnboardingNewExperienceEnabled
+  isOnboardingNewExperienceHydrated,
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
 } from './tour-progress';
 
 export { ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT };
-export { isOnboardingNewExperienceEnabled, setOnboardingNewExperienceEnabled };
+export {
+  isOnboardingNewExperienceEnabled,
+  isOnboardingNewExperienceHydrated,
+  setOnboardingNewExperienceEnabled,
+  syncOnboardingNewExperienceEnabled
+};
 
 export const ONBOARDING_FULLSCREEN_OVERLAY_EVENT = 'yb-onboarding-fullscreen-overlay-change';
 export const EDIT_PLACEMENT_OVERLAY_ID = 'edit-placement';
@@ -50,9 +60,13 @@ export const subscribeOnboardingNewExperienceChange = (
 
 /** React helper for SuperAdmin opt-in toggle state. */
 export const useOnboardingNewExperienceEnabled = (): boolean => {
-  const [enabled, setEnabled] = useState(isOnboardingNewExperienceEnabled);
+  // Tracks the unhydrated state too, so hydrating to false still re-renders subscribers
+  // that distinguish "unknown" from "off".
+  const [enabled, setEnabled] = useState<boolean | null>(() =>
+    isOnboardingNewExperienceHydrated() ? isOnboardingNewExperienceEnabled() : null
+  );
   useEffect(() => subscribeOnboardingNewExperienceChange(setEnabled), []);
-  return enabled;
+  return enabled === true;
 };
 
 export const useOnboardingFullscreenOverlayOpen = (): boolean => {
@@ -76,14 +90,30 @@ export const isCurrentUserSuperAdmin = (currentUserRole?: string): boolean => {
 };
 
 /**
- * True when V2 runtime is on, or SuperAdmin has opted in via profile.
- * Pass `onboardingOptInEnabled` from `useOnboardingNewExperienceEnabled()` so UI
- * updates when the banner toggle changes.
+ * True when enable_new_universe_experience is on and either
+ * enable_new_universe_experience_for_all_users is on or the user is SuperAdmin.
+ *
+ * SuperAdmin uses the in-memory mirror (hydrated from runtime config, updated by
+ * the banner toggle) so the UI flips immediately without waiting for refetch.
+ *
+ * Returns undefined while neither source has loaded: callers must not route on an
+ * unhydrated flag, or a click during page load lands on the v1 UI with nothing to
+ * redirect it.
  */
 export const isUniverseRevampExperienceEnabled = (
   runtimeConfigs?: RunTimeConfig,
-  currentUserRole?: string,
-  onboardingOptInEnabled: boolean = isOnboardingNewExperienceEnabled()
-): boolean =>
-  isV2CreateEditUniverseEnabled(runtimeConfigs as RunTimeConfig) ||
-  (isCurrentUserSuperAdmin(currentUserRole) && onboardingOptInEnabled);
+  currentUserRole?: string
+): boolean | undefined => {
+  const isSuperAdmin = isCurrentUserSuperAdmin(currentUserRole);
+  if (isSuperAdmin && isOnboardingNewExperienceHydrated()) {
+    return isOnboardingNewExperienceEnabled();
+  }
+  if (!runtimeConfigs?.configEntries) {
+    return undefined;
+  }
+  // What the banner's mirror sync derives the SuperAdmin value from.
+  const isFeatureEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs);
+  return isSuperAdmin
+    ? isFeatureEnabled
+    : isFeatureEnabled && isNewUniverseExperienceForAllUsers(runtimeConfigs);
+};

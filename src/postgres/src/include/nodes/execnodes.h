@@ -2326,6 +2326,7 @@ typedef struct YbBatchedNestLoopState
 
 	bool		is_first_batch_done;
 	int			batch_size;
+	int			first_batch_size;	/* LIMIT-trimmed first batch, 0 = full */
 
 	bool		bnl_needs_sorting;
 	bool		bnl_is_sorted;
@@ -2352,6 +2353,8 @@ typedef struct YbBatchedNestLoopState
 	FmgrInfo   *innerHashFunctions;
 	int			numLookupAttrs;
 	AttrNumber *innerAttrs;
+	ExprState **innerKeyExprs;	/* per key: inner expression, or NULL when the
+								 * key is the inner column innerAttrs[i] */
 	ExprState  *ht_lookup_fn;
 
 	/* Function pointers to local join methods */

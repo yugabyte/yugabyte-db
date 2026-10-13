@@ -38,7 +38,7 @@ Status PgSelect::Prepare(
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
       arena_ptr(), &arena(), *target_, locality_info, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
-  ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_);
+  RETURN_NOT_OK(ApplySkipIntentsOptimizationInfo(skip_intents_info, *read_req_));
   auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   if (!index_info) {

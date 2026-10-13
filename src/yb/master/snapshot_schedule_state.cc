@@ -176,6 +176,14 @@ void SnapshotScheduleState::SnapshotFinished(
   creating_snapshot_data_.snapshot_id = TxnSnapshotId::Nil();
 }
 
+void SnapshotScheduleState::ClearCreatingSnapshot(const std::string& reason) {
+  LOG_WITH_PREFIX(WARNING)
+      << "Clearing creating snapshot marker " << creating_snapshot_data_.snapshot_id
+      << " set " << AsString(CoarseMonoClock::now() - creating_snapshot_data_.start_time)
+      << " ago: " << reason;
+  creating_snapshot_data_.snapshot_id = TxnSnapshotId::Nil();
+}
+
 std::string SnapshotScheduleState::LogPrefix() const {
   return Format("$0: ", id_);
 }

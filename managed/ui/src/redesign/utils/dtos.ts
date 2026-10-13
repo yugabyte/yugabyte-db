@@ -256,6 +256,9 @@ export interface NodeAgent {
   universeUuid: string;
   version: string;
   versionMatched: boolean;
+  certificateUuid?: string;
+  universeName?: string;
+  providerName?: string;
 
   lastError?: {
     code: NodeAgentErrorCode;

@@ -40,6 +40,9 @@ class Uuid {
   static constexpr size_t kUuidLsbSize = kUuidSize - kUuidMsbSize;
   static constexpr size_t kTimeUUIDMacOffset = 10;
   static constexpr size_t kTimeUUIDTotalMacBytes = 6;
+  static constexpr size_t kVersionByte = 6;
+  static constexpr size_t kVersionMask = 0xF0;
+  static constexpr size_t kVersionShift = 4;
 
   // The timestamp is a 60-bit value.  For UUID version 1, this is
   // represented by Coordinated Universal Time (UTC) as a count of 100-
@@ -113,11 +116,11 @@ class Uuid {
   // This is done because it is not secure to generate UUIDs directly from the MAC address.
   Status HashMACAddress();
 
-  // Builds the smallest TimeUUID that willl compare as larger than any TimeUUID with the given
+  // Builds the smallest TimeUUID that will compare as larger than any TimeUUID with the given
   // timestamp.
   Status MaxFromUnixTimestamp(int64_t timestamp_ms);
 
-  // Builds the largest TimeUUID that willl compare as smaller than any TimeUUID with the given
+  // Builds the largest TimeUUID that will compare as smaller than any TimeUUID with the given
   // timestamp.
   Status MinFromUnixTimestamp(int64_t timestamp_ms);
 
@@ -153,6 +156,10 @@ class Uuid {
 
   auto version() const {
     return boost_uuid_.version();
+  }
+
+  auto version_raw() const {
+    return (boost_uuid_.data[kVersionByte] & kVersionMask) >> kVersionShift;
   }
 
   friend bool operator==(const Uuid& lhs, const Uuid& rhs) noexcept {

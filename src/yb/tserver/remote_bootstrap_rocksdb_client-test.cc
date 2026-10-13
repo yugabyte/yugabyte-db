@@ -37,6 +37,12 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestBeginEndSession) {
   TabletStatusListener listener(meta_);
   ASSERT_OK(client_->FetchAll(&listener));
   ASSERT_OK(client_->Finish());
+
+  // The transfer-only file lists must not be left in the persisted superblock.
+  tablet::RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta_->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().rocksdb_files_size(), 0);
+  ASSERT_EQ(on_disk.kv_store().snapshot_files_size(), 0);
 }
 
 // Basic RocksDB files download unit test.

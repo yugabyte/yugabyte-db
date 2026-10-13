@@ -10,7 +10,12 @@ import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
-import { useIsUniverseReady, withUniverseResource } from '../EditUniverseUtils';
+import {
+  useIsUniverseEditActionDisabled,
+  withUniverseResource
+} from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import {
   AdvancedPlacementPopover,
   useAdvancedPlacementPopover
@@ -52,7 +57,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   readReplicaAlreadyPresent = false
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const showAddReadReplica = !readReplicaAlreadyPresent;
   const hasMenuItems =
     !!onEditMasterAllocationClick || showAddReadReplica || showAddGeoPartition;
@@ -82,7 +87,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   );
 
   // if it is k8's and read replica is already present, then we remove the actions menu as there are no actions to show
-  if(!showAddReadReplica && !onEditMasterAllocationClick) {
+  if (!showAddReadReplica && !onEditMasterAllocationClick) {
     return null;
   }
   return (
@@ -105,29 +110,87 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
             <>
               <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
                 {useDedicatedNodes ? (
-                  <MenuItem
-                    data-test-id="edit-placement-clear-affinities"
-                    onClick={onEditMasterAllocationClick}
-                    disabled={!isUniverseReady}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexDirection: 'row',
-                        gap: '4px'
-                      }}
+                  <K8OperatorEditBlockedTooltip>
+                    <MenuItem
+                      data-test-id="edit-placement-clear-affinities"
+                      onClick={onEditMasterAllocationClick}
+                      disabled={isEditActionDisabled}
                     >
-                      <EditIcon />
-                      {t('editMasterServerNodeAllocation')}
-                    </Box>
-                  </MenuItem>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexDirection: 'row',
+                          gap: '4px'
+                        }}
+                      >
+                        <EditIcon />
+                        {t('editMasterServerNodeAllocation')}
+                      </Box>
+                    </MenuItem>
+                  </K8OperatorEditBlockedTooltip>
                 ) : (
+                  <K8OperatorEditBlockedTooltip>
+                    <MenuItem
+                      data-test-id="edit-placement-clear-affinities"
+                      sx={{ height: 'auto' }}
+                      onClick={onEditMasterAllocationClick}
+                      disabled={isEditActionDisabled}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          flexDirection: 'row',
+                          gap: '4px'
+                        }}
+                      >
+                        <div>
+                          <AddIcon />
+                        </div>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {t('masterServerNodeAllocation')}
+                          <Typography
+                            variant="subtitle1"
+                            color="textSecondary"
+                            sx={{ whiteSpace: 'initial' }}
+                          >
+                            <Trans
+                              t={t}
+                              i18nKey="masterServerNodeAllocationHelpText"
+                              components={{
+                                a: (
+                                  <Link
+                                    href={DEDICATED_NODES_LINK}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                )
+                              }}
+                              style={{ lineHeight: '16px' }}
+                            />
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </MenuItem>
+                  </K8OperatorEditBlockedTooltip>
+                )}
+              </RbacValidator>
+            </>
+          ) : null}
+          {showAddReadReplica ? (
+            <>
+              {onEditMasterAllocationClick ? <Divider /> : null}
+              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.ADD_V2_READ_REPLICA, universeUuid)} isControl>
+                <K8OperatorEditBlockedTooltip>
                   <MenuItem
-                    data-test-id="edit-placement-clear-affinities"
+                    data-test-id="add-read-replica"
                     sx={{ height: 'auto' }}
-                    onClick={onEditMasterAllocationClick}
-                    disabled={!isUniverseReady}
+                    onClick={() => {
+                      window.location.href = getAddReadReplicaRoute(universeUuid);
+                    }}
+                    disabled={isEditActionDisabled}
                   >
                     <Box
                       sx={{
@@ -141,7 +204,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
                         <AddIcon />
                       </div>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {t('masterServerNodeAllocation')}
+                        {t('addReadReplica')}
                         <Typography
                           variant="subtitle1"
                           color="textSecondary"
@@ -149,11 +212,11 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
                         >
                           <Trans
                             t={t}
-                            i18nKey="masterServerNodeAllocationHelpText"
+                            i18nKey="addReadReplicaHelpText"
                             components={{
                               a: (
                                 <Link
-                                  href={DEDICATED_NODES_LINK}
+                                  href={ADD_READ_REPLICA_LINK}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
@@ -166,59 +229,7 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
                       </Box>
                     </Box>
                   </MenuItem>
-                )}
-              </RbacValidator>
-            </>
-          ) : null}
-          {showAddReadReplica ? (
-            <>
-              {onEditMasterAllocationClick ? <Divider /> : null}
-              <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.ADD_V2_READ_REPLICA, universeUuid)} isControl>
-                <MenuItem
-                  data-test-id="add-read-replica"
-                  sx={{ height: 'auto' }}
-                  onClick={() => {
-                    window.location.href = getAddReadReplicaRoute(universeUuid);
-                  }}
-                  disabled={!isUniverseReady}
-                >
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      flexDirection: 'row',
-                      gap: '4px'
-                    }}
-                  >
-                    <div>
-                      <AddIcon />
-                    </div>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {t('addReadReplica')}
-                      <Typography
-                        variant="subtitle1"
-                        color="textSecondary"
-                        sx={{ whiteSpace: 'initial' }}
-                      >
-                        <Trans
-                          t={t}
-                          i18nKey="addReadReplicaHelpText"
-                          components={{
-                            a: (
-                              <Link
-                                href={ADD_READ_REPLICA_LINK}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            )
-                          }}
-                          style={{ lineHeight: '16px' }}
-                        />
-                      </Typography>
-                    </Box>
-                  </Box>
-                </MenuItem>
+                </K8OperatorEditBlockedTooltip>
               </RbacValidator>
             </>
           ) : null}
@@ -226,42 +237,44 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
             <>
               {(onEditMasterAllocationClick !== undefined || showAddReadReplica) && <Divider />}
               <RbacValidator accessRequiredOn={withUniverseResource(ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER, universeUuid)} isControl>
-                <MenuItem
-                  data-test-id="add-geo-partition"
-                  sx={{ height: 'auto' }}
-                  onClick={() => {
-                    window.location.href = getAddGeoPartitionRoute(universeUuid);
-                  }}
-                  disabled={!isUniverseReady}
-                >
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      flexDirection: 'row',
-                      gap: '4px'
+                <K8OperatorEditBlockedTooltip>
+                  <MenuItem
+                    data-test-id="add-geo-partition"
+                    sx={{ height: 'auto' }}
+                    onClick={() => {
+                      window.location.href = getAddGeoPartitionRoute(universeUuid);
                     }}
+                    disabled={isEditActionDisabled}
                   >
-                    <div>
-                      <AddIcon />
-                    </div>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {t('addGeoPartition')}
-                      <Typography
-                        variant="subtitle1"
-                        color="textSecondary"
-                        sx={{ whiteSpace: 'initial' }}
-                      >
-                        <Trans
-                          t={t}
-                          i18nKey={'geoPartitionHelpText'}
-                          components={{ a: <Link /> }}
-                          style={{ lineHeight: '16px' }}
-                        />
-                      </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        flexDirection: 'row',
+                        gap: '4px'
+                      }}
+                    >
+                      <div>
+                        <AddIcon />
+                      </div>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {t('addGeoPartition')}
+                        <Typography
+                          variant="subtitle1"
+                          color="textSecondary"
+                          sx={{ whiteSpace: 'initial' }}
+                        >
+                          <Trans
+                            t={t}
+                            i18nKey={'geoPartitionHelpText'}
+                            components={{ a: <Link /> }}
+                            style={{ lineHeight: '16px' }}
+                          />
+                        </Typography>
+                      </Box>
                     </Box>
-                  </Box>
-                </MenuItem>
+                  </MenuItem>
+                </K8OperatorEditBlockedTooltip>
               </RbacValidator>
             </>
           )}

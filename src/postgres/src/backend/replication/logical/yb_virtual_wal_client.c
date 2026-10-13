@@ -114,6 +114,8 @@ static void YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables);
 
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
+static void YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht);
+static void YbResetVirtualWalCatalogSnapshot(void);
 
 static void PreProcessBeforeFetchingNextBatch();
 
@@ -187,12 +189,13 @@ YBCInitVirtualWal(List *yb_publication_names)
 	else
 	{
 		/*
-		 * In the pull model, InitVirtualWal sets yb_read_time for catalog
-		 * reads. Since we're sharing the caller's transaction, we must reset
-		 * it to avoid polluting subsequent operations in the same transaction.
-		 * In the push model, AbortCurrentTransaction handles this cleanup.
+		 * In the pull model, InitVirtualWal pins catalog reads (yb_read_time or
+		 * historical read context). Since we're sharing the caller's
+		 * transaction, we must reset it to avoid polluting subsequent
+		 * operations in the same transaction. In the push model,
+		 * AbortCurrentTransaction handles this cleanup.
 		 */
-		YBCResetYbReadTimeAndInvalidateRelcache();
+		YbResetVirtualWalCatalogSnapshot();
 	}
 	MemoryContextSwitchTo(caller_context);
 
@@ -234,8 +237,8 @@ YBCDestroyVirtualWal()
 	needs_publication_table_list_refresh = false;
 	explicit_alter_publication_detected = false;
 
-	/* YB: Reset yb_read_time set by InitVirtualWal. */
-	YBCResetYbReadTimeAndInvalidateRelcache();
+	/* Reset catalog snapshot set by InitVirtualWal. */
+	YbResetVirtualWalCatalogSnapshot();
 }
 
 static List *
@@ -297,7 +300,7 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 
 		elog(DEBUG1, "Encountered an error while trying to fetch tables by "
 			 "setting yb_read_time. Will retry by resetting it.");
-		YBCResetYbReadTimeAndInvalidateRelcache();
+		YbResetVirtualWalCatalogSnapshot();
 		if (skip_setting_yb_read_time)
 			*skip_setting_yb_read_time = true;
 
@@ -336,6 +339,38 @@ YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables)
 }
 
 static void
+YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht)
+{
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	{
+		elog(DEBUG2,
+			 "Setting historical read context for catalog snapshot to "
+			 "read_time_ht: %" PRIu64,
+			 read_time_ht);
+		YBCSetHistoricalReadContextAndInvalidateCaches(read_time_ht,
+														 PG_UINT64_MAX,
+														 "" /* docdb_txn_id */ );
+		CatalogCacheFlushCatalog(PublicationRelationId);
+	}
+	else
+	{
+		elog(DEBUG2,
+			 "Setting yb_read_time for catalog snapshot to read_time_ht: %" PRIu64,
+			 read_time_ht);
+		YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
+	}
+}
+
+static void
+YbResetVirtualWalCatalogSnapshot(void)
+{
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+		YBCResetHistoricalReadContextAndInvalidateRelcache();
+	else
+		YBCResetYbReadTimeAndInvalidateRelcache();
+}
+
+static void
 InitVirtualWal(List *publication_names,
 			   const YbcReplicationSlotHashRange *slot_hash_range)
 {
@@ -348,24 +383,24 @@ InitVirtualWal(List *publication_names,
 	if (MyReplicationSlot->data.yb_detect_publication_changes_implicitly)
 	{
 		elog(DEBUG2,
-			 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			 "Setting catalog snapshot to initial_record_commit_time for %" PRIu64,
 			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 	}
 	else
 	{
 		elog(DEBUG2,
-			 "Setting yb_read_time to last_pub_refresh_time for "
+			 "Setting catalog snapshot to last_pub_refresh_time for "
 			 "InitVirtualWal: %" PRIu64,
 			 MyReplicationSlot->data.yb_last_pub_refresh_time);
-		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_last_pub_refresh_time);
 	}
 
 	/*
 	 * Flush the pg_publication syscaches (PUBLICATIONNAME / PUBLICATIONOID) so
 	 * that the by-name publication lookup in YBCGetTablesWithRetryIfNeeded
-	 * below is served from storage at the yb_read_time just set above, rather
-	 * than from a catcache entry that may have been warmed earlier at a
+	 * below is served from storage at the catalog snapshot just set above,
+	 * rather than from a catcache entry that may have been warmed earlier at a
 	 * different (latest) read time.
 	 */
 	CatalogCacheFlushCatalog(PublicationRelationId);
@@ -414,9 +449,9 @@ InitVirtualWal(List *publication_names,
 		!skip_setting_yb_read_time)
 	{
 		elog(DEBUG2,
-			 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			 "Setting catalog snapshot to initial_record_commit_time for %" PRIu64,
 			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 	}
 
 	pfree(table_oids);
@@ -428,6 +463,7 @@ static const YbcPgTypeEntity *
 GetDynamicTypeEntity(int attr_num, Oid relid)
 {
 	bool		is_in_txn = IsTransactionOrTransactionBlock();
+	MemoryContext caller_context = CurrentMemoryContext;
 
 	if (!is_in_txn)
 		StartTransactionCommand();
@@ -442,7 +478,10 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
 
 	if (!is_in_txn)
+	{
 		AbortCurrentTransaction();
+		MemoryContextSwitchTo(caller_context);
+	}
 
 	return type_entity;
 }
@@ -490,14 +529,24 @@ YBCReadRecord(List *publication_names)
 
 		if (needs_publication_table_list_refresh)
 		{
-			StartTransactionCommand();
+			/*
+			 * We might already be inside a transaction, so don't start a new
+			 * one. This can happen with transactional DDL enabled when a
+			 * transaction can have publication refresh in the middle of the
+			 * transaction.
+			 */
+			bool		is_in_txn = IsTransactionOrTransactionBlock();
 
-			Assert(yb_read_time <= publication_refresh_time);
+			if (!is_in_txn)
+				StartTransactionCommand();
+
+			if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+				Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
-				 "Setting yb_read_time to new pub_refresh_time: %" PRIu64,
+				 "Setting catalog snapshot to new pub_refresh_time: %" PRIu64,
 				 publication_refresh_time);
-			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
+			YbSetVirtualWalCatalogSnapshot(publication_refresh_time);
 
 			if (explicit_alter_publication_detected)
 			{
@@ -523,7 +572,10 @@ YBCReadRecord(List *publication_names)
 
 			pfree(table_oids);
 			list_free(tables);
-			AbortCurrentTransaction();
+
+			if (!is_in_txn)
+				AbortCurrentTransaction();
+			MemoryContextSwitchTo(cached_records_context);
 
 			needs_publication_table_list_refresh = false;
 			explicit_alter_publication_detected = false;

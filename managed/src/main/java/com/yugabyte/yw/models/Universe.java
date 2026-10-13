@@ -101,6 +101,9 @@ public class Universe extends Model {
   public static final String NEW_INSTALL_GFLAGS = "new_install_gflags";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Set when the universe's node_exporters are configured to serve HTTPS. Prometheus, the OTel
+  // collector and the exporter configuration all read this one value, so they cannot disagree.
+  public static final String NODE_EXPORTER_HTTPS = "nodeExporterHttps";
   // Whether all the Kubernetes resources are labeled with universe
   // name, zone name, etc.
   public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
@@ -1245,6 +1248,24 @@ public class Universe extends Model {
   }
 
   /**
+   * Find the current master leader node, failing loudly when it is missing. Prefer this over {@link
+   * #getMasterLeaderNode()} on paths that cannot make progress without a master leader, so that a
+   * missing leader surfaces as an actionable error instead of a NullPointerException.
+   *
+   * @return NodeDetails of the master leader, never null
+   * @throws RuntimeException if the universe has no reachable master leader
+   */
+  @JsonIgnore
+  public NodeDetails getMasterLeaderNodeOrThrow() {
+    NodeDetails masterLeaderNode = getMasterLeaderNode();
+    if (masterLeaderNode == null) {
+      throw new IllegalStateException(
+          "Could not find the master leader node in universe " + getUniverseUUID());
+    }
+    return masterLeaderNode;
+  }
+
+  /**
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
@@ -1442,6 +1463,43 @@ public class Universe extends Model {
     return isNodeUIHttpsEnabled
         && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
+  }
+
+  // Exporter TLS is on for every node or none, and needs the user-level unit, the only layout whose
+  // exporter can read the node-to-node certificate, on every node still running. Unrecorded nodes
+  // count as not USER. Universes without a node_exporter that node-agent manages never get here.
+  public static boolean shouldEnableNodeExporterHttps(
+      Universe universe, boolean isNodeExporterTlsEnabled) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!isNodeExporterTlsEnabled
+        || !details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
+      return false;
+    }
+    List<NodeDetails> nodes =
+        details.nodeDetailsSet.stream()
+            .filter(Universe::isNodeExporterManaged)
+            .collect(Collectors.toList());
+    return !nodes.isEmpty()
+        && nodes.stream()
+            .allMatch(n -> n.nodeExporterSystemdLevel == NodeDetails.NodeExporterSystemdLevel.USER);
+  }
+
+  // A node counts until its servers are gone: one being removed still runs its exporter, so a
+  // full move turns TLS on only after the old nodes have left.
+  public static boolean isNodeExporterManaged(NodeDetails node) {
+    switch (node.state) {
+      case Removed:
+      case Decommissioned:
+      case Terminated:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  @JsonIgnore
+  public boolean isNodeExporterHttps() {
+    return "true".equals(getConfig().get(NODE_EXPORTER_HTTPS));
   }
 
   public Optional<TaskInfo> maybeGetLastTaskInfo() {

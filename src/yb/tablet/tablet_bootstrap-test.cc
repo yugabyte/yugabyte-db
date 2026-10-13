@@ -52,6 +52,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
@@ -259,26 +261,54 @@ class BootstrapTest : public LogTestBase {
     return Status::OK();
   }
 
-  Status BootstrapTestTablet(
-      TabletPtr* tablet,
-      ConsensusBootstrapInfo* boot_info) {
-    RaftGroupMetadataPtr meta = VERIFY_RESULT_PREPEND(LoadOrCreateTestRaftGroupMetadata(),
-                                                      "Unable to load test tablet metadata");
+  Status CreateTestConsensusMetadata(const RaftGroupMetadataPtr& meta, int64_t term) {
     consensus::RaftConfigPB config;
     config.set_committed_op_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
     peer->set_member_type(consensus::PeerMemberType::VOTER);
 
-    std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+    RETURN_NOT_OK_PREPEND(
         ConsensusMetadata::Create(
-            meta->fs_manager(), meta->raft_group_id(), meta->fs_manager()->uuid(), config,
-            kMinimumTerm),
+            meta->fs_manager(), meta->raft_group_id(), meta->fs_manager()->uuid(), config, term),
         "Unable to create consensus metadata");
+    return Status::OK();
+  }
 
+  Status BootstrapTestTablet(
+      TabletPtr* tablet,
+      ConsensusBootstrapInfo* boot_info) {
+    RaftGroupMetadataPtr meta = VERIFY_RESULT_PREPEND(LoadOrCreateTestRaftGroupMetadata(),
+                                                      "Unable to load test tablet metadata");
+    RETURN_NOT_OK(CreateTestConsensusMetadata(meta, kMinimumTerm));
     RETURN_NOT_OK_PREPEND(RunBootstrapOnTestTablet(meta, tablet, boot_info),
                           "Unable to bootstrap test tablet");
     return Status::OK();
+  }
+
+  // Bootstraps a tablet whose consensus metadata is at cmeta_term while the log ends in
+  // log_term, and returns how many times bootstrap flushed the consensus metadata.
+  Result<int> CountConsensusMetadataFlushesDuringBootstrap(int64_t cmeta_term, int64_t log_term) {
+    BuildLog();
+    const auto op_id = MakeOpId(log_term, current_index_);
+    AppendReplicateBatch(op_id, op_id);
+    auto meta = VERIFY_RESULT(LoadOrCreateTestRaftGroupMetadata());
+    RETURN_NOT_OK(CreateTestConsensusMetadata(meta, cmeta_term));
+
+    std::atomic<int> flushes{0};
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack("ConsensusMetadata::Flush", [&flushes](void*) { ++flushes; });
+    sync_point->EnableProcessing();
+    auto se = ScopeExit([sync_point] {
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+
+    TabletPtr tablet;
+    ConsensusBootstrapInfo boot_info;
+    RETURN_NOT_OK(RunBootstrapOnTestTablet(meta, &tablet, &boot_info));
+    SCHECK_EQ(boot_info.last_id.term, log_term, IllegalState, "Unexpected last op term");
+    return flushes.load();
   }
 
   void IterateTabletRows(const Tablet* tablet,
@@ -310,6 +340,20 @@ TEST_F(BootstrapTest, TestBootstrap) {
 
   vector<string> results;
   IterateTabletRows(tablet.get(), &results);
+}
+
+// A restart that does not change the consensus metadata must not rewrite it.
+TEST_F(BootstrapTest, UnchangedConsensusMetadataNotFlushed) {
+  ASSERT_EQ(ASSERT_RESULT(CountConsensusMetadataFlushesDuringBootstrap(2, 2)), 0);
+}
+
+// A term found in the log and not yet in the consensus metadata is persisted with one flush.
+TEST_F(BootstrapTest, NewTermFlushesConsensusMetadataOnce) {
+  ASSERT_EQ(ASSERT_RESULT(CountConsensusMetadataFlushesDuringBootstrap(1, 2)), 1);
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  ASSERT_OK(ConsensusMetadata::Load(
+      fs_manager_.get(), log::kTestTablet, fs_manager_->uuid(), &cmeta));
+  ASSERT_EQ(cmeta->current_term(), 2);
 }
 
 // Tests attempting a local bootstrap of a tablet that was in the middle of a remote bootstrap

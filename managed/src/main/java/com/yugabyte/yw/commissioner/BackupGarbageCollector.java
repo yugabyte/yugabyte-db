@@ -383,6 +383,7 @@ public class BackupGarbageCollector {
       BackupCategory category = backup.getCategory();
       CustomerConfigStorageData configData =
           (CustomerConfigStorageData) customerConfig.getDataObject();
+      backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
       if (configData.immutableStorage) {
         log.info(
             "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
@@ -407,9 +408,9 @@ public class BackupGarbageCollector {
             long sleepTimeInMilliSeconds = 5000;
             while (numRetries < BACKUP_DELETION_MAX_RETRIES_COUNT && !deletedSuccessfully) {
               if (cloudUtil.deleteKeyIfExists(
-                      customerConfig.getDataObject(),
+                      configData,
                       backupLocationsMap.get(YbcBackupUtil.DEFAULT_REGION_STRING).get(0))
-                  && cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocationsMap)) {
+                  && cloudUtil.deleteStorage(configData, backupLocationsMap)) {
                 deletedSuccessfully = true;
               }
               if (!deletedSuccessfully) {

@@ -58,6 +58,12 @@ import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api'
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationTargets,
+  federationFormValuesFromProvider,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 import {
   OnPremAvailabilityZone,
@@ -100,9 +106,18 @@ export interface OnPremProviderEditFormFieldValues {
   nodeExporterPort?: number | null;
   nodeExporterUser?: string;
   ybHomeDir?: string;
+
+  // See CrossCloudFederatedIamFields: one opt-in per storage cloud, never a "direction".
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -479,6 +494,10 @@ export const OnPremProviderEditForm = ({
                   )}
                 />
               </FormField>
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+              />
               <FormField>
                 <FieldLabel>Install Node Exporter</FieldLabel>
                 <YBToggleField
@@ -620,7 +639,8 @@ const constructDefaultFormValues = (
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? ''
+  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? '',
+  ...federationFormValuesFromProvider(providerConfig.details.cloudInfo.onprem)
 });
 
 const constructProviderPayload = async (
@@ -660,7 +680,16 @@ const constructProviderPayload = async (
     sshUser,
     ...unexposedProviderDetailFields
   } = providerConfig.details;
-  const { ybHomeDir, ...unexposedProviderCloudInfoFields } = cloudInfo.onprem;
+  // Federation fields are pulled out of the passthrough because the form owns them now. The
+  // deprecated flat federatedIamAudience is dropped here and re-emitted as a gcp target by
+  // buildFederationTargets, which migrates a pre-existing provider on its first edit.
+  const {
+    ybHomeDir,
+    enableFederatedIam,
+    crossCloudFederationTargets,
+    federatedIamAudience,
+    ...unexposedProviderCloudInfoFields
+  } = cloudInfo.onprem as any;
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
@@ -671,7 +700,11 @@ const constructProviderPayload = async (
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
           ...unexposedProviderCloudInfoFields,
-          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir }),
+          ...(formValues.enableFederatedIam && {
+            enableFederatedIam: true,
+            crossCloudFederationTargets: buildFederationTargets(formValues)
+          })
         }
       },
       installNodeExporter: formValues.installNodeExporter,

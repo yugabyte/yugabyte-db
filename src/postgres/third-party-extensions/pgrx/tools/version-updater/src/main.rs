@@ -15,6 +15,7 @@
 #![allow(clippy::perf)] // not a priority here
 use cargo_toml::Manifest;
 use clap::{Args, Parser, Subcommand};
+use glob::glob;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashSet, FxHashSet as HashSet};
 use std::fs;
@@ -154,13 +155,11 @@ fn update_files(args: &UpdateFilesArgs) {
     let updatable_package_names = workspace
         .members
         .iter()
-        .map(|s| {
-            let package_path = workspace_manifest_parent.join(format!("{s}/Cargo.toml"));
+        .flat_map(|member| workspace_member_manifest_paths(workspace_manifest_parent, member))
+        .map(|package_path| {
             Ok(Manifest::from_path(package_path)?
                 .package
-                .ok_or_else(|| {
-                    cargo_toml::Error::Other("expected package field in workspace member")
-                })?
+                .ok_or(cargo_toml::Error::Other("expected package field in workspace member"))?
                 .name)
         })
         .collect::<Result<FxHashSet<String>, cargo_toml::Error>>()
@@ -268,6 +267,15 @@ fn update_files(args: &UpdateFilesArgs) {
             {
                 *package_version = value(args.update_version.clone());
             }
+
+            // Also bump [workspace.package].version if present (e.g. the root Cargo.toml)
+            if let Some(workspace_package_version) = doc
+                .get_mut("workspace")
+                .and_then(|w| w.get_mut("package"))
+                .and_then(|p| p.get_mut("version"))
+            {
+                *workspace_package_version = value(args.update_version.clone());
+            }
         }
 
         let update_package_version = |item: &mut Item| {
@@ -370,6 +378,45 @@ fn update_files(args: &UpdateFilesArgs) {
             fs::write(filepath, doc.to_string()).expect("Unable to write file");
         }
     }
+}
+
+fn workspace_member_manifest_paths(workspace_root: &Path, member: &str) -> Vec<PathBuf> {
+    let member_path = workspace_root.join(member);
+    let has_glob = member.contains(['*', '?', '[', ']']);
+
+    if !has_glob {
+        return vec![member_path.join("Cargo.toml")];
+    }
+
+    let pattern = member_path.to_string_lossy().into_owned();
+    glob(&pattern)
+        .unwrap_or_else(|err| panic!("invalid workspace member glob `{member}`: {err}"))
+        .filter_map(|entry| match entry {
+            Ok(path) => workspace_member_manifest_path(&path),
+            Err(err) => {
+                eprintln!(
+                    "{} failed to expand workspace member glob `{member}`: {err}",
+                    "warning:".yellow()
+                );
+                None
+            }
+        })
+        .collect()
+}
+
+fn workspace_member_manifest_path(path: &Path) -> Option<PathBuf> {
+    if path.is_file() && path.file_name().is_some_and(|name| name == "Cargo.toml") {
+        return Some(path.to_path_buf());
+    }
+
+    if path.is_dir() {
+        let manifest = path.join("Cargo.toml");
+        if manifest.is_file() {
+            return Some(manifest);
+        }
+    }
+
+    None
 }
 
 // Always return full path
