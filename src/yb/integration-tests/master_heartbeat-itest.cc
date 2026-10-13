@@ -78,6 +78,7 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
+DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -613,6 +614,49 @@ TEST_F(MasterHeartbeatITestOneTServer, FullReportContinutation) {
     // The continuation should succeed and the full report should be complete.
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
+}
+
+class MasterHeartbeatITestSixTablets : public MasterHeartbeatITest {
+ protected:
+  int num_tablets() override { return 6; }
+};
+
+// A tserver abandons a full report whenever its heartbeat RPC times out, even if the master went on
+// to process that RPC, and starts a new full report. The master must accept the continuations of
+// the new report. Here the master is slow enough that the first full report chunk times out on the
+// tserver but is still processed by the master.
+TEST_F(MasterHeartbeatITestSixTablets, FullReportCompletesAfterHeartbeatTimeout) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  // Each full report chunk carries 2 tablets, so the master processes it in 2 batches and sleeps
+  // between them. Every tserver hosts a replica of each of the 6 tablets, so a full report has
+  // several chunks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 2;
+  const auto heartbeat_rpc_timeout = MonoDelta::FromSeconds(2 * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) =
+      narrow_cast<int32_t>(heartbeat_rpc_timeout.ToMilliseconds());
+
+  auto ts = catalog_mgr.GetAllLiveNotBlacklistedTServers()[0];
+  ASSERT_TRUE(ts->has_tablet_report());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) =
+      (heartbeat_rpc_timeout + 1s).ToMilliseconds();
+  // Same effect as a master leader change: the next heartbeat gets needs_full_tablet_report.
+  ts->set_has_tablet_report(false);
+  // Wait until the master has stored the id of a full report whose first chunk timed out on the
+  // tserver, and the tserver has started a newer report.
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->receiving_full_report_seq_no().has_value(); },
+      30s * kTimeMultiplier, "Master stores the full report id"));
+  const auto stored_report = *ts->receiving_full_report_seq_no();
+  ASSERT_OK(WaitFor(
+      [&ts, stored_report] { return ts->latest_report_seqno() > stored_report; },
+      30s * kTimeMultiplier, "TServer starts a new report"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 0;
+
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->has_tablet_report(); }, 30s * kTimeMultiplier,
+      "Master receives a complete full report"));
 }
 
 TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
