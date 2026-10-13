@@ -87,7 +87,6 @@
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
@@ -97,6 +96,7 @@
 #include "commands/trigger.h"
 #include "commands/variable.h"
 #include "commands/yb_cmds.h"
+#include "commands/yb_tablegroup.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
@@ -6109,20 +6109,14 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 	Oid			tablegroup_oid = PG_GETARG_OID(0);
 	int64_t		size = 0;
 	int32_t		num_missing_tablets = 0;
-	HeapTuple	tuple;
-	char		grpname[NAMEDATALEN];
+	char	   *grpname;
 
-	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(tablegroup_oid));
-	if (!HeapTupleIsValid(tuple))
+	/* Releases the syscache pin before the disk-size RPC below. */
+	grpname = get_tablegroup_name(tablegroup_oid);
+	if (grpname == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with OID %u does not exist", tablegroup_oid)));
-
-	/* Copy the name and release before the RPC so we do not hold the cache pin. */
-	strlcpy(grpname,
-			NameStr(((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->grpname),
-			sizeof(grpname));
-	ReleaseSysCache(tuple);
 
 	HandleYBStatus(YBCPgGetTablegroupDiskSize(tablegroup_oid,
 											  MyDatabaseId,
