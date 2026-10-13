@@ -310,19 +310,14 @@ func TestReadTokenFile(t *testing.T) {
 	_, err := ReadTokenFile(path)
 	mustError(t, err)
 
-	mustNoError(t, os.WriteFile(path, []byte(validJWT), 0600))
-	got, err := ReadTokenFile(path)
-	mustNoError(t, err)
-	if got != validJWT {
-		t.Errorf("read %q, want %q", got, validJWT)
-	}
-
 	// Surrounding whitespace (a hand-edited file) is not part of the token.
-	mustNoError(t, os.WriteFile(path, []byte("\n"+validJWT+"\n"), 0600))
-	got, err = ReadTokenFile(path)
-	mustNoError(t, err)
-	if got != validJWT {
-		t.Errorf("read %q, want %q", got, validJWT)
+	for _, content := range []string{validJWT, "\n" + validJWT + "\n"} {
+		mustNoError(t, os.WriteFile(path, []byte(content), 0600))
+		got, err := ReadTokenFile(path)
+		mustNoError(t, err)
+		if got != validJWT {
+			t.Errorf("read %q, want %q", got, validJWT)
+		}
 	}
 
 	mustNoError(t, os.WriteFile(path, []byte(strings.Repeat("a", maxTokenBytes+1)), 0600))
