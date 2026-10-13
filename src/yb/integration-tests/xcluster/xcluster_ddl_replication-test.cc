@@ -73,6 +73,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(enable_load_balancing);
@@ -175,6 +176,41 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
     LOG(INFO) << "CreateReplicationFromCheckpoint done";
     return Status::OK();
+  }
+
+  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
+  // the master waits for the pause to finish using the RPC's client deadline.
+  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+    req.set_replication_group_id(kReplicationGroupId.ToString());
+    req.set_is_enabled(is_enabled);
+    master::MasterReplicationProxy proxy(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  // Leaves the target tserver with no pollers and no remote clients while the source is dead.
+  void KillSourceAndRestartTargetTServer() {
+    // Fail each remote client creation attempt quickly instead of the default 30s.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 2000 * kTimeMultiplier;
+
+    producer_cluster()->StopSync();
+
+    StringWaiterLogSink client_create_failed_log("Could not create source client");
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart());
+      ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->WaitStarted());
+    }
+    ASSERT_OK(client_create_failed_log.WaitFor(kTimeout));
   }
 
   // Precondition: a bootstrap is not actually needed.
@@ -7641,25 +7677,6 @@ class XClusterDDLReplicationStuckCreateTablePauseTest : public XClusterDDLReplic
         60 * kTimeMultiplier;
   }
 
-  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
-  // the master waits for the pause to finish using the RPC's client deadline.
-  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
-    master::SetUniverseReplicationEnabledRequestPB req;
-    master::SetUniverseReplicationEnabledResponsePB resp;
-    req.set_replication_group_id(kReplicationGroupId.ToString());
-    req.set_is_enabled(is_enabled);
-    master::MasterReplicationProxy proxy(
-        &consumer_client()->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-    rpc::RpcController rpc;
-    rpc.set_timeout(timeout);
-    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    return Status::OK();
-  }
-
   // Leaves a replicated CREATE TABLE parked in AddTableToXClusterTargetTask's safe time wait, with
   // the ddl_queue poller pinned inside the DDL.
   void WedgeReplicatedCreateTable() {
@@ -7781,6 +7798,29 @@ TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, LongRunningDdlIsNotStuck
   ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
       Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kStuckTableName))));
   ASSERT_FALSE(stuck_log.IsEventOccurred());
+}
+
+// Restarting the target tserver while the source is down leaves it with no source client. Pausing
+// must still succeed (failover depends on it), so disabled streams get pollers without one.
+TEST_F(XClusterDDLReplicationTest, PauseSucceedsWithPauseOnlyPollers) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(KillSourceAndRestartTargetTServer());
+
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  // Bring the source back, resume, and check replication picks back up.
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    ASSERT_OK(producer_cluster()->StartSync());
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 30000;
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
 }
 
 // A replicated DROP TABLE blocks on the target while the target master removes the table from

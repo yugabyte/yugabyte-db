@@ -147,6 +147,7 @@ XClusterPoller::XClusterPoller(
       is_stream_paused_(is_stream_paused),
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
+  DCHECK(source_client_ || is_stream_paused_);
   if (wait_state_) {
     auto status = InitializeWaitState(ts_uuid);
     if (!status.ok()) {
@@ -375,6 +376,12 @@ void XClusterPoller::DoPoll() {
       LOG_WITH_PREFIX(WARNING) << "Failed to pause poller: " << status.ToString();
       SchedulePoll();
     }
+    return;
+  }
+
+  if (!source_client_) {
+    // Pause-only poller whose stream was resumed. The consumer recreates it with a source client.
+    MarkFailed("the stream was resumed and this pause-only poller has no source client");
     return;
   }
 
