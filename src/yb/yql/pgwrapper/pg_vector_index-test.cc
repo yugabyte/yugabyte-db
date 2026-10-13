@@ -187,6 +187,28 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
   return result;
 }
 
+// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
+// waits for every replica to apply all the ops its leader has committed.
+Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
+  std::unordered_map<TabletId, int64_t> leader_committed_idx;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
+    leader_committed_idx.emplace(
+        peer->tablet_id(), VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
+  }
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    auto it = leader_committed_idx.find(peer->tablet_id());
+    SCHECK(it != leader_committed_idx.end(), IllegalState,
+           Format("No leader for tablet $0", peer->tablet_id()));
+    RETURN_NOT_OK(Wait(
+        [idx = it->second, &peer]() -> Result<bool> {
+          return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
+        },
+        deadline, Format("$0apply op index $1", peer->LogPrefix(), it->second)));
+  }
+  return Status::OK();
+}
+
 ////////////////////////////////////////////////////////
 // PgVectorIndexTestBase
 ////////////////////////////////////////////////////////
@@ -2523,7 +2545,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, IndexRestoredAwayRetainedBySnapshotSched
   ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
   ASSERT_OK(wait_hidden(restored_away_index_id));
   // Followers apply the restore, which replaces the index storage dirs, after it returns.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
 
   // The restore replaced the storages, so count the chunks it left. A directory the master already
   // removed from the tablets counts as unchanged.
