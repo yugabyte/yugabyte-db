@@ -36,6 +36,7 @@ TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "04_2024");
+DEPRECATE_FLAG(bool, ysql_yb_disable_ddl_transaction_block_for_read_committed, "09_2026");
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
@@ -176,12 +177,6 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTra
     "block instead of their separate transactions. Ensure DDL atomicity is "
     "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
-    "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
-    "instead of the as part of the enclosing transaction block even if "
-    "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
-    "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
-
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
@@ -241,17 +236,20 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
     "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
     "support.] Use this flag to toggle support for concurrent DDLs.");
 DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
             FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms),
@@ -280,6 +278,7 @@ DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
         (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),

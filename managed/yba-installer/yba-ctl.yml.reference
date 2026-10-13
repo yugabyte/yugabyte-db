@@ -192,7 +192,9 @@ postgres:
 
 
    # Specify the connection parameters to an existing postgres db.
-   # A database named 'yugaware' must already be created on this host.
+   # A database named 'yugaware' must already be created on this host. With perfAdvisor.enabled,
+   # Perf Advisor's database 'ts' is created there by yba-ctl if the user may create databases;
+   # otherwise create it beforehand too.
    useExisting:
       enabled: false # enable to use an existing postgres install
       username: ""

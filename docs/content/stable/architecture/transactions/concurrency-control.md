@@ -1365,9 +1365,21 @@ Finally, advisory locks can be blocking or non-blocking:
 
 ## Table-level locks
 
-{{<tags/feature/ea idea="1114">}} Table-level locks for YSQL (available in {{<release "2025.1.1.0">}} and later) provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
+{{<tags/feature/ea idea="1114">}} Table-level locks for YSQL provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
 
-Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true. Do not enable table-level locks on a cluster that uses CDC; table-level locks depend on Transactional DDL, which currently doesn't support CDC.
+### Enable table-level locks
+
+Table-level locks are disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_object_locking_for_table_locks` to true.
+
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../../../architecture/transactions/transactional-ddl/#enable-transactional-ddl).
+
+{{< warning title="Warning" >}}
+
+Do not enable Transactional DDL on a cluster that uses CDC. Transactional DDL currently doesn't support CDC in both [logical replication](../../../architecture/docdb-replication/cdc-logical-replication/) (PostgreSQL) and the [gRPC protocol](../../../architecture/docdb-replication/change-data-capture/). Because table-level locks depend on Transactional DDL, you also must not enable table-level locks if you are using CDC.
+
+{{< /warning >}}
+
+### Using table-level locks
 
 Table-level locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same modes and API. Refer to [Table-level locks](https://www.postgresql.org/docs/15/explicit-locking.html#LOCKING-TABLES) in the PostgreSQL documentation.
 

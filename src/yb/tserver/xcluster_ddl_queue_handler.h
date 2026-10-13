@@ -103,6 +103,13 @@ class XClusterDDLQueueHandler {
 
   void Shutdown();
 
+  // Whether a replicated DDL batch is currently executing on pg_conn_.
+  bool HasDdlInFlight() const;
+
+  // Terminates the Postgres backend running the in-flight replicated DDL, if any. Blocks on a
+  // Postgres round trip.
+  void KillPgConnection();
+
   // This function is called before the poller calls GetChanges. This will detect if we are in the
   // middle of a executing a DDL batch and complete it.
   Status ProcessPendingBatchIfExists();
@@ -202,6 +209,12 @@ class XClusterDDLQueueHandler {
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
   std::unique_ptr<client::PgAutoAnalyzeServiceClient> auto_analyze_client_;
+
+  // Backend pid of pg_conn_, read by other threads to terminate a stuck DDL. 0 if none.
+  std::atomic<uint32_t> pg_backend_pid_{0};
+  // Whether ExecuteCommittedDDLs is running a DDL batch on pg_conn_.
+  std::atomic<bool> ddl_in_flight_{false};
+
   NamespaceName namespace_name_;
   NamespaceId source_namespace_id_;
   NamespaceId target_namespace_id_;

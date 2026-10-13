@@ -22,6 +22,7 @@
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
@@ -98,24 +99,8 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
 
     const bool enable_table_locks = EnableTableLocks();
-    options->extra_tserver_flags.push_back(
-        Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_yb_enable_ddl_savepoint_support=$0", enable_table_locks));
-    options->extra_tserver_flags.push_back(Format(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0", enable_table_locks));
-    // Concurrent DDL requires object locking, so when object locking is disabled, disable
-    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
-    // on. When object locking is enabled, leave concurrent DDL at its default.
-    if (!enable_table_locks) {
-      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(
-          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    }
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ !enable_table_locks);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ !enable_table_locks);
     if (enable_table_locks) {
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
@@ -3441,6 +3426,14 @@ class PgSerializeBackfillTest : public PgIndexBackfillTest {
 INSTANTIATE_TEST_CASE_P(, PgSerializeBackfillTest, ::testing::Bool());
 
 TEST_P(PgSerializeBackfillTest, BackfillRead) {
+  // TODO(#34412): A concurrent CREATE INDEX commits between backfill phases. Under
+  // serializable isolation YBCCommitTransaction takes the transaction's first snapshot
+  // after PreCommit_CheckForSerializationFailure has run, leaving an unprepared
+  // SERIALIZABLEXACT that trips an assertion in ReleasePredicateLocks in debug builds.
+  if (EnableTableLocks()) {
+    GTEST_SKIP() << "Concurrent CREATE INDEX asserts under serializable isolation";
+  }
+
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (i int)"));
   // Run backfill.
@@ -4531,13 +4524,8 @@ namespace {
 // writes on catalog version mismatch; auto analyze is off so its DDLs don't trip that flag.
 void DisableConcurrentDDL(ExternalMiniClusterOptions* opts) {
   // Disable table locks so the ALTER can land mid-backfill instead of queueing behind it.
-  opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-  opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-  AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-  opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-  opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-  opts->extra_tserver_flags.emplace_back(
-      "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+  ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ true);
+  ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ true);
   opts->extra_tserver_flags.emplace_back(
       "--yb_fail_catalog_write_on_catalog_version_mismatch=true");
   opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");

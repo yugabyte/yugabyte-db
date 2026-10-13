@@ -67,7 +67,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
-  private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -107,8 +106,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
     }
-    builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
-      Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
   }
 
   @Override
@@ -208,12 +205,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {
     enableVersionMatchingAndRestartCluster(true);
-  }
-
-  protected void modifyExtendedQueryProtocolAndRestartCluster(
-      boolean optimized_extended_query_protocol) throws Exception {
-    ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {
@@ -692,7 +683,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
                                            throws Exception {
     HashSet<Integer> pids = new HashSet<>();
     ResultSet rs;
-    for (int i = 0; i < 10; i++) {
+    // Right after startup few idle backends may exist, so for the non-sticky
+    // case keep sampling (bounded) until a second backend shows up.
+    for (int i = 0; i < 10 || (!expectedSticky && pids.size() < 2 && i < 200); i++) {
       rs = stmt.executeQuery("SELECT pg_backend_pid()");
       assertTrue(rs.next());
       pids.add(rs.getInt(1));

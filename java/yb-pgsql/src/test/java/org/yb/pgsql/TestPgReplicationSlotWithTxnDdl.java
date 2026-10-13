@@ -54,7 +54,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     PgReplicationSlotTestUtil.addCommonTServerFlags(flagMap);
     flagMap.put("TEST_ysql_yb_enable_replication_slot_transactional_ddl", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
     flagMap.put("vmodule", "cdcsdk_virtual_wal=4");
     return flagMap;
@@ -65,7 +65,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     Map<String, String> flagMap = super.getMasterFlags();
     PgReplicationSlotTestUtil.addCommonMasterFlags(flagMap);
     flagMap.put("TEST_ysql_yb_enable_replication_slot_transactional_ddl", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_yb_enable_ddl_savepoint_support", "true");
     return flagMap;
   }
@@ -819,12 +819,6 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
   // Decoding must still emit the insert with columns a, b, c (schema at write time).
   @Test
   public void insertThenConcurrentDropColumnBeforeCommit() throws Exception {
-    Map<String, String> tserverFlags = getTServerFlags();
-    addConcurrentDdlFlags(tserverFlags);
-    Map<String, String> masterFlags = getMasterFlags();
-    addConcurrentDdlFlags(masterFlags);
-    restartClusterWithFlags(masterFlags, tserverFlags);
-
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t2 (a int primary key, b text, c int)");
       stmt.execute("CREATE PUBLICATION pub FOR TABLE t2");
@@ -872,15 +866,5 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
 
     stream.close();
     conn.close();
-  }
-
-  private static void addConcurrentDdlFlags(Map<String, String> flags) {
-    flags.put(
-        "allowed_preview_flags_csv",
-        "enable_object_locking_for_table_locks,ysql_enable_concurrent_ddl");
-    flags.put("enable_object_locking_for_table_locks", "true");
-    flags.put("ysql_enable_object_locking_infra", "true");
-    flags.put("ysql_enable_concurrent_ddl", "true");
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
   }
 }

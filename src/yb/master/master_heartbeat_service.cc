@@ -32,6 +32,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
+#include "yb/master/master_tablet_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -315,6 +316,9 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
 void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB& resp) {
+  // Travels with the catalog version because it is consumed at the same moment: a backend about
+  // to bump the version needs to know what its last bump is still costing the leader.
+  resp.set_ysql_catalog_prefetch_load(GetYsqlCatalogPrefetchLoad());
   // When YSQL is disabled fall back to a single shared catalog version so that we still send
   // something back to legacy tservers.
   if (!FLAGS_enable_ysql) {

@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -1101,6 +1102,52 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(overrides.get("bar"), "foo");
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallOverridesCannotDisableFipsOnFipsUniverse() throws IOException {
+    // Overrides saved before the API rejected them are still in the database, so the generated
+    // values must put the FIPS gflag back regardless of where the override came from.
+    Map<String, String> azConfig = new HashMap<>();
+    azConfig.put("OVERRIDES", "gflags:\n  master:\n    openssl_require_fips: false");
+    defaultAZ.updateConfig(azConfig);
+    defaultAZ.save();
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap("gflags:\n  tserver:\n    openssl_require_fips: \"false\"");
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+    Map<String, Object> gflags = (Map<String, Object>) overrides.get("gflags");
+    assertEquals("true", ((Map<String, Object>) gflags.get("master")).get("openssl_require_fips"));
+    assertEquals("true", ((Map<String, Object>) gflags.get("tserver")).get("openssl_require_fips"));
   }
 
   @Test

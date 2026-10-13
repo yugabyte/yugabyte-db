@@ -63,7 +63,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -77,6 +76,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -95,7 +95,6 @@
 using std::map;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;
 

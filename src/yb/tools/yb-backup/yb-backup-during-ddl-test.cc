@@ -1026,5 +1026,42 @@ TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
   ASSERT_EQ(row_count, 100);
 }
 
+class YBBackupOfColocatedCloneTest : public YBBackupDuringDdl {
+ public:
+  void SetUp() override {
+    YBBackupDuringDdl::SetUp();
+    CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
+  }
+};
+
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/33278.
+// Cloning a colocated database bumps the schema version of the clone's colocation parent table.
+// Backup/restore must bump the restored parent table at least as far, otherwise the tserver finds
+// a snapshot schema version newer than the live one when merging schema packings on restore.
+TEST_F(YBBackupOfColocatedCloneTest, BackupRestoreOfClone) {
+  const std::string kCloneDbName = "clone_db";
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT g, 'v' || g FROM generate_series(1, 10) g"));
+
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(kBackupSourceDbName, client::WaitSnapshot(true)));
+  auto clone_time = Timestamp(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2",
+      kCloneDbName, kBackupSourceDbName, clone_time.ToInt64()));
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kCloneDbName), "create"},
+      cluster_.get()));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
+       "restore"},
+      cluster_.get()));
+
+  auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  ASSERT_EQ(ASSERT_RESULT(restored_conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 10);
+}
+
 }  // namespace tools
 }  // namespace yb

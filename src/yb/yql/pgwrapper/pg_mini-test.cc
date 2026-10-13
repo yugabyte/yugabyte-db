@@ -69,6 +69,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
@@ -120,8 +121,6 @@ DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -239,12 +238,6 @@ class PgMiniTest : public PgMiniTestBase {
 
 class PgMiniTestSingleNode : public PgMiniTest {
  protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    PgMiniTest::SetUp();
-  }
-
   size_t NumTabletServers() override {
     return 1;
   }
@@ -3065,7 +3058,7 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
 
         auto read_start = next_write_start.load();
         auto read_end = read_start + 4;
-        auto fetch_query = strings::Substitute(
+        auto fetch_query = Format(
             "SELECT * FROM $0 WHERE a BETWEEN $1 AND $2 ORDER BY a ASC",
             kTableName, read_start, read_end);
 

@@ -62,6 +62,8 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
+YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
@@ -118,7 +120,8 @@ YbIndexCorruptionErrors
 YbIndexErrorInfo
 YbIndexInconsistencyLogStore
 YbIndexPathInfo
-YbIndexProcessorState
+YbIndiciesHTABEntry
+YbIndiciesHTABEntryData
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation

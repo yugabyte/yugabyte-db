@@ -17,8 +17,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/table_properties_constants.h"
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
@@ -34,7 +33,7 @@ class TestQLInsertTable : public QLTestBase {
   }
 
   std::string InsertStmtWithTTL(std::string ttl_seconds) {
-    return strings::Substitute(
+    return Format(
         "INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) USING TTL $0;",
         ttl_seconds);
   }

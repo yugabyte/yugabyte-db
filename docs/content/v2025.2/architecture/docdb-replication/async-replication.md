@@ -311,7 +311,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode. For pg_partman, refer to [pg_partman and xCluster](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
-- [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) indexes are replicated by xCluster DDL replication in v2025.2.7.0 and later. In earlier versions of the v2025.2 series, pgvector indexes are not supported.
+- [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) indexes are not supported.
 
 #### Transactional Semi-Automatic and Manual mode
 

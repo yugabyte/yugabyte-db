@@ -5169,6 +5169,15 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 								  planinfo->estimated_num_index_result_pages,
 								  planinfo->estimated_docdb_result_width,
 								  es);
+
+	/*
+	 * Like total_cost, the estimates above assume all tuples are fetched;
+	 * the first fetch limit is the row bound the LIMIT places on the scan's
+	 * first read request, and startup_cost covers only that trimmed fetch.
+	 */
+	if (planinfo->first_fetch_limit > 0)
+		ExplainPropertyFloat("First Fetch Limit", NULL,
+							 planinfo->first_fetch_limit, 0, es);
 }
 
 static void

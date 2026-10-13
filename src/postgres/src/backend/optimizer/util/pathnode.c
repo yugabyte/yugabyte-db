@@ -5692,6 +5692,10 @@ yb_create_distinct_index_path(PlannerInfo *root,
 										  NULL);
 	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
 
+	/*
+	 * TODO(#18943): model distinct index scan cost. startup_cost has to reflect
+	 * the extra work to fill the first batch.
+	 */
 	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
 	run_cost *= selectivity;
 	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;

@@ -55,6 +55,22 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	}
 }
 
+// DB is the postgres Perf Advisor connects to, rendered into overrides.properties. Read when the
+// template renders, so it follows the config in effect for install, upgrade and reconfigure alike.
+func (perf PerfAdvisor) DB() common.PerfAdvisorDBConfig {
+	return common.PerfAdvisorDatabase()
+}
+
+// ensureDatabase makes sure Perf Advisor's database exists. The postgres yba-ctl installs gets it
+// in Postgres.Initialize; a postgres.useExisting server only has to come with yugaware, so the
+// database is created there here, with the configured user as its owner.
+func (perf PerfAdvisor) ensureDatabase() error {
+	if !viper.GetBool("postgres.useExisting.enabled") {
+		return nil
+	}
+	return common.EnsureExistingPostgresDatabase(common.PerfAdvisorDBName)
+}
+
 // NewPerfAdvisor creates and returns a new PerfAdvisor struct for the given version.
 func NewPerfAdvisor(version string) PerfAdvisor {
 	return PerfAdvisor{
@@ -327,6 +343,9 @@ func (perf PerfAdvisor) Install() error {
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)
 	}
+	if err := perf.ensureDatabase(); err != nil {
+		return err
+	}
 
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
@@ -389,6 +408,10 @@ func (perf PerfAdvisor) Upgrade() error {
 	if err := template.GenerateTemplate(perf); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
+	// Perf Advisor may have been off when the install ran.
+	if err := perf.ensureDatabase(); err != nil {
+		return err
+	}
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
 	}
@@ -426,6 +449,10 @@ func (perf PerfAdvisor) Reconfigure() error {
 	}
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)
+	}
+	// Reconfigure is how Perf Advisor gets switched on after the install.
+	if err := perf.ensureDatabase(); err != nil {
+		return err
 	}
 
 	// Reload systemd daemon to pick up the regenerated service file

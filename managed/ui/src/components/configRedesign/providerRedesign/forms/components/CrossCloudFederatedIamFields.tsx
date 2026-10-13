@@ -1,8 +1,9 @@
 /*
  * Copyright 2026 YugaByte, Inc. and Contributors
  */
-import { Control, useWatch } from 'react-hook-form';
+import { Control, useFormState, useWatch } from 'react-hook-form';
 import { boolean, string } from 'yup';
+import { FormHelperText } from '@material-ui/core';
 import { useQuery } from 'react-query';
 
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -148,6 +149,7 @@ export const CrossCloudFederatedIamFields = ({
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)
   );
+  const { errors } = useFormState({ control, name: 'enableFederatedIam' });
   const enableFederatedIam = useWatch({ control, name: 'enableFederatedIam' });
   const federationGcsEnabled = useWatch({ control, name: 'federationGcsEnabled' });
   const federationS3Enabled = useWatch({ control, name: 'federationS3Enabled' });
@@ -169,6 +171,11 @@ export const CrossCloudFederatedIamFields = ({
         </FieldLabel>
         <YBToggleField name="enableFederatedIam" control={control} disabled={isFormDisabled} />
       </FormField>
+      {!!errors?.enableFederatedIam?.message && (
+        <FormHelperText error={true}>
+          {errors.enableFederatedIam.message as string}
+        </FormHelperText>
+      )}
       {enableFederatedIam && (
         <>
           {providerCloud !== 'gcp' && (

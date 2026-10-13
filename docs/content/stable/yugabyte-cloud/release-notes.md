@@ -21,6 +21,18 @@ rightNav:
 
 ### 2026
 
+#### October 7, 2026
+
+##### New feature
+
+- {{<tags/feature/ea>}}Support for autoscaling. Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connection load rise and fall, keeping the cluster sized to match gradual, sustained changes in demand. To try this feature, contact {{% support-cloud %}}.
+- {{<tags/feature/ga idea="1368">}}Support for built-in [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/) is now GA for YugabyteDB v2026.1 and later.
+
+##### Database
+
+- Extended track updated to v2025.2.7.0.
+- Rapid track updated to v2026.1.2.0.
+
 #### August 25, 2026
 
 ##### New feature

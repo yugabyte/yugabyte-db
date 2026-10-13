@@ -642,6 +642,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow https on Master/TServer UI for a universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeExporterTlsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_exporter.tls.enabled",
+          ScopeType.UNIVERSE,
+          "Enable TLS on Node Exporter",
+          "Serve node_exporter over HTTPS on universes with node-to-node encryption once every"
+              + " node runs the user-level node_exporter unit. Read whenever YBA decides the"
+              + " exporter's scheme for the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Long> helmTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.helm.timeout_secs",

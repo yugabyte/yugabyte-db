@@ -14,6 +14,8 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -21,6 +23,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -56,7 +59,6 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
@@ -133,7 +135,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     std::vector<yb::tserver::TabletServerOptions> extra_tserver_options;
     for (int i = 1; i <= 3; ++i) {
       extra_tserver_options.push_back(EXPECT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", strings::Substitute("region$0", i), "zone")));
+          "cloud0", Format("region$0", i), "zone")));
     }
     return extra_tserver_options;
   }
@@ -152,7 +154,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("region$0", i));
+      cloud_info->set_placement_region(Format("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(1);
     }
@@ -252,10 +254,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     }
 
@@ -283,19 +285,19 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
+            Format("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
             0 /* rows */, 1 /* columns */));
       }
       ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion),
+            Format("SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion),
             0 /* rows */, 1 /* columns */));
     }
   }
@@ -435,7 +437,7 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("region$0", i));
+      cloud_info->set_placement_region(Format("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(0);
     }
@@ -582,7 +584,7 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
 class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     GeoTransactionsPromotionTest::SetUp();
   }
 
@@ -622,10 +624,10 @@ class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest 
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0", kTable2Name))));
     }
 
@@ -643,20 +645,20 @@ class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest 
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(Format(
             "SELECT value FROM $0", kTable2Name))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
+            Format("SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i),
             0 /* rows */, 1 /* columns */));
       }
       if (transaction_type == TestTransactionType::kCommit) {
         ASSERT_RESULT(conn.FetchMatrix(
-            strings::Substitute("SELECT value FROM $0", kTable2Name),
+            Format("SELECT value FROM $0", kTable2Name),
             0 /* rows */, 1 /* columns */));
       }
     }

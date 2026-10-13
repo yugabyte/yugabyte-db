@@ -317,7 +317,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.6" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.7" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -618,7 +618,7 @@ cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
   Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
-  Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+  Process("rm -f ../openapi.yaml", openapiDir) !
 }
 
 lazy val cleanClients = taskKey[Int]("Clean generated clients")
@@ -750,7 +750,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.1",
+    version := "1.0.2",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -767,7 +767,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.6",
+    version := "1.8.7",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1117,6 +1117,12 @@ dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.137.Final"
 // Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949.
 dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.1"
 
+// cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
+// The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
+// Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
+excludeDependencies += "org.glassfish" % "javax.el"
+libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
+
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
@@ -1322,6 +1328,11 @@ Test / testGrouping := partitionTests(
   sharedPgJvmOpts(target.value)
 )
 
+// Where local provider test forks keep the logs of failed tests (the YBA log of the fork and the
+// DB/YB-Controller logs of the failed test's universe), so that CI can archive them.
+def localTestLogDirJvmOpts(base: File): Seq[String] =
+  Seq(s"-Dyb.local.test.logDir=${(base / "local-test-logs").getAbsolutePath}")
+
 // Add local tests only grouping to avoid multiple local tests falling into one bucket.
 TestLocalProviderSuite / parallelExecution := true
 TestLocalProviderSuite / testGrouping := partitionLocalTests(
@@ -1330,7 +1341,7 @@ TestLocalProviderSuite / testGrouping := partitionLocalTests(
   testLocalShardSize.value,
   testLocalIpRangeStart.value,
   testLocalIpRangeSize.value,
-  sharedPgJvmOpts(target.value)
+  sharedPgJvmOpts(target.value) ++ localTestLogDirJvmOpts(target.value)
 )
 
 // Start one embedded postgres for the whole test run (shared by every fork) and stop it after.

@@ -17,6 +17,7 @@
 #include <iostream>
 #include <string>
 #include <boost/algorithm/string/trim.hpp>
+#include "yb/util/format.h"
 #include "yb/util/string_case.h"
 
 #include "absl/debugging/symbolize.h"
@@ -109,9 +110,9 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
   int64_t signed_total_ram;
   CHECK_OK(Env::Default()->GetTotalRAMBytes(&signed_total_ram));
   size_t total_ram = signed_total_ram;
-  LOG(INFO) << StringPrintf(
-      "Total available RAM is %.6f GiB",
-      (static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0)));
+  LOG(INFO) << Format(
+      "Total available RAM is $0 GiB",
+      FixedPoint(static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0), 6));
 
   auto values = GetLegacyMemoryValues(is_master);
 

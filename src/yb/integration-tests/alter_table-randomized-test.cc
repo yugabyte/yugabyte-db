@@ -48,11 +48,11 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -77,7 +77,6 @@ using std::map;
 using std::pair;
 using std::vector;
 using std::string;
-using strings::SubstituteAndAppend;
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
 static const int kMaxColumns = 30;
@@ -135,7 +134,7 @@ std::string RowToString(const Row& row) {
     if (e.second == kNullValue) {
       ret += "null";
     } else {
-      SubstituteAndAppend(&ret, "int32:$0", e.second);
+      ret += Format("int32:$0", e.second);
     }
   }
   ret += " }";
@@ -458,7 +457,7 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
       t.DeleteRandomRow(rng.Next());
     } else if (r < 970) {
       if (t.num_columns() < kMaxColumns) {
-        t.AddAColumn(strings::Substitute("c$0", i));
+        t.AddAColumn(Format("c$0", i));
       }
     } else if (r < 995) {
       t.DropRandomColumn(rng.Next());

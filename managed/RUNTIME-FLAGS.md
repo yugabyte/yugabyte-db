@@ -176,6 +176,7 @@
 | "Enable Query Logging" | "yb.universe.query_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable YSQL query logging on universes." | "Boolean" |
 | "Enable Metrics Export" | "yb.universe.metrics_export_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable metrics export on universes." | "Boolean" |
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
+| "Enable primary replication factor 9" | "yb.universe.enable_primary_rf_9" | "GLOBAL" | "When enabled, allows creating universes and increasing primary cluster replication factor to 9." | "Boolean" |
 | "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
 | "XCluster Metrics Scheduler Interval" | "yb.xcluster.xcluster_metrics_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Metrics Scheduler runs" | "Duration" |
 | "XCluster Master Address Sync Interval" | "yb.xcluster.xcluster_master_address_sync_interval" | "GLOBAL" | "Interval at which the XCluster Master Address Sync Scheduler runs to keep source master addresses up to date on target universe replication groups" | "Duration" |
@@ -231,6 +232,7 @@
 | "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
+| "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
