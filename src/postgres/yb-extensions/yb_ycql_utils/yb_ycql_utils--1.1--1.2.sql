@@ -25,7 +25,7 @@ CREATE FUNCTION ycql_stat_statements(
     OUT yb_latency_histogram jsonb
 )
 RETURNS SETOF record
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ycql_stat_statements_1_2'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
 CREATE VIEW ycql_stat_statements AS

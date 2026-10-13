@@ -24,7 +24,7 @@ CREATE FUNCTION ycql_stat_statements(
     OUT keyspace            text
 )
 RETURNS SETOF record
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ycql_stat_statements'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
 CREATE VIEW ycql_stat_statements AS

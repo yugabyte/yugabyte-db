@@ -6,6 +6,8 @@ select * from ycql_stat_statements;
 drop extension yb_ycql_utils;
 create extension yb_ycql_utils version '1.1';
 select extversion from pg_extension where extname = 'yb_ycql_utils';
+select prosrc = 'ycql_stat_statements' as uses_v1_1_symbol
+from pg_proc where proname = 'ycql_stat_statements';
 select exists (
     select 1 from pg_attribute
     where attrelid = 'ycql_stat_statements'::regclass
@@ -15,6 +17,8 @@ select exists (
 
 alter extension yb_ycql_utils update to '1.2';
 select extversion from pg_extension where extname = 'yb_ycql_utils';
+select prosrc = 'ycql_stat_statements_1_2' as uses_v1_2_symbol
+from pg_proc where proname = 'ycql_stat_statements';
 select exists (
     select 1 from pg_attribute
     where attrelid = 'ycql_stat_statements'::regclass
@@ -24,6 +28,8 @@ select exists (
 
 alter extension yb_ycql_utils update to '1.1';
 select extversion from pg_extension where extname = 'yb_ycql_utils';
+select prosrc = 'ycql_stat_statements' as uses_v1_1_symbol
+from pg_proc where proname = 'ycql_stat_statements';
 select exists (
     select 1 from pg_attribute
     where attrelid = 'ycql_stat_statements'::regclass

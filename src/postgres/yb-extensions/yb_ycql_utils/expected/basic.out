@@ -18,6 +18,13 @@ select extversion from pg_extension where extname = 'yb_ycql_utils';
  1.1
 (1 row)
 
+select prosrc = 'ycql_stat_statements' as uses_v1_1_symbol
+from pg_proc where proname = 'ycql_stat_statements';
+ uses_v1_1_symbol 
+------------------
+ t
+(1 row)
+
 select exists (
     select 1 from pg_attribute
     where attrelid = 'ycql_stat_statements'::regclass
@@ -36,6 +43,13 @@ select extversion from pg_extension where extname = 'yb_ycql_utils';
  1.2
 (1 row)
 
+select prosrc = 'ycql_stat_statements_1_2' as uses_v1_2_symbol
+from pg_proc where proname = 'ycql_stat_statements';
+ uses_v1_2_symbol 
+------------------
+ t
+(1 row)
+
 select exists (
     select 1 from pg_attribute
     where attrelid = 'ycql_stat_statements'::regclass
@@ -52,6 +66,13 @@ select extversion from pg_extension where extname = 'yb_ycql_utils';
  extversion 
 ------------
  1.1
+(1 row)
+
+select prosrc = 'ycql_stat_statements' as uses_v1_1_symbol
+from pg_proc where proname = 'ycql_stat_statements';
+ uses_v1_1_symbol 
+------------------
+ t
 (1 row)
 
 select exists (
