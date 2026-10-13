@@ -63,8 +63,10 @@ permutation s3_add_pkey_test1 s3_check_relhasindex  s1_begin_rr s2_begin_rr s1_c
 # Verify fix for GH issue #30095 where table rewrites on different tables deadlocked.
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test1_add_col_rewrite s2_alter_table_test2_add_col_rewrite s1_commit s2_commit s3_check_pgattr_test1 s3_check_pgattr_test2
 
-# GRANT permissions on a table conflicts with an ALTER TABLE rewrite in PG15 as well as YB, as no object locks are acquired on the table during GRANT.
+# GRANT takes an AccessShareLock on the table, so it waits for a concurrent ALTER TABLE rewrite to
+# commit and then succeeds, in PG as well as YB.
 permutation s1_begin_rr  s2_begin_rr s1_alter_table_test1_add_col_rewrite s2_grant_ins_test1 s1_commit s2_commit s3_check_relacl s3_check_pgattr_test1
 
-# GRANTs on same table conflict with each other in PG15 as well as YB, as no object locks are acquired on the table during GRANT.
+# GRANTs on same table conflict with each other in PG as well as YB: their AccessShareLocks do not
+# conflict, so both proceed and collide on the pg_class row.
 permutation s1_begin_rr s2_begin_rr s1_grant_test1 s2_grant_upd_test1 s1_commit s2_commit s3_check_relacl

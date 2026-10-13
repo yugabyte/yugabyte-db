@@ -23117,6 +23117,16 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		/* Invalidate relcache entries for the parent -- must be before close */
 		CacheInvalidateRelcache(rel);
 
+		/*
+		 * YB: the partition's DocDB schema version was also bumped (see
+		 * YBCPrepareAlterTableCmd), so invalidate it too.  Other backends
+		 * otherwise keep a stale table cache entry for it and fail with a
+		 * schema version mismatch.  In PG15, DetachAddConstraintIfNeeded()
+		 * did this as a side effect of adding a constraint to the partition.
+		 */
+		if (IsYugaByteEnabled())
+			CacheInvalidateRelcache(partRel);
+
 		table_close(partRel, NoLock);
 		table_close(rel, NoLock);
 		tab->rel = NULL;
