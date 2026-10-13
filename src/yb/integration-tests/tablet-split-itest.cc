@@ -3537,14 +3537,14 @@ void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
   ASSERT_OK(write_status);
 
   ASSERT_OK(CheckRowsCount(kNumRows));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
 }
 
-TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestart) {
+TEST_F(TabletSplitSingleServerITest, YB_DEBUG_ONLY_TEST(RetryableWriteAfterSplitChildRestart)) {
   TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ true);
 }
 
-TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestartWithoutFlush) {
+TEST_F(TabletSplitSingleServerITest,
+       YB_DEBUG_ONLY_TEST(RetryableWriteAfterSplitChildRestartWithoutFlush)) {
   TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ false);
 }
 

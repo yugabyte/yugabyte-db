@@ -2396,7 +2396,7 @@ void TSTabletManager::OpenTablet(
   if (FLAGS_TEST_wait_for_split_parent_running_on_open && cmeta->has_split_parent_tablet_id()) {
     s = WaitFor(
         [this, &cmeta] { return GetTabletRetryableRequests(cmeta->split_parent_tablet_id()).ok(); },
-        30s, "split parent running");
+        30s * kTimeMultiplier, "split parent running");
     if (!s.ok()) {
       tablet_peer->SetFailed(s);
       return;

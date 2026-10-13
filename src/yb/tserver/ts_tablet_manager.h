@@ -580,8 +580,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // method. A TransitionInProgressDeleter must be passed as 'deleter' into
   // this method in order to remove that transition-in-progress entry when
   // opening the tablet is complete (in either a success or a failure case).
-  // 'copy_retryable_requests_from_parent' is set only when opening a split child as part of
-  // applying the split, before the child has replicated any writes of its own.
+  // 'copy_retryable_requests_from_parent' must be kTrue only from ApplyTabletSplit, which opens
+  // the split child before it has replicated any writes of its own.
   void OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                   const scoped_refptr<TransitionInProgressDeleter>& deleter,
                   CopyRetryableRequestsFromParent copy_retryable_requests_from_parent);
