@@ -542,9 +542,9 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
   }
 
   // Progress is only made through tserver responses, so with no tserver to ask the job would never
-  // finish.  No leased tserver means no backends.
+  // finish.  A tserver without a live lease is treated as resolved, as in HandleResponse.
   if (ts_uuids.empty()) {
-    LOG_WITH_PREFIX(INFO) << "no tservers with a live lease: completing";
+    LOG_WITH_PREFIX(INFO) << "no tservers with a live lease, so assuming backends are resolved";
     master_->ysql_backends_manager()->TerminateJob(
         shared_from_this(), MonitoredTaskState::kComplete);
     return Status::OK();
