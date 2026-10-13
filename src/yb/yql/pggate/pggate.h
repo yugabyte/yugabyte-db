@@ -679,7 +679,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);

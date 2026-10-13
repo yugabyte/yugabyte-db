@@ -221,6 +221,14 @@ public class YNPProvisioning extends NodeTaskBase {
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)
         .processErrors("Installation failed");
+    // YNP lays out only the USER layout, taking over a root-level unit if one is there.
+    saveUniverseDetails(
+        u -> {
+          NodeDetails n = u.getNode(taskParams().nodeName);
+          if (n != null) {
+            n.nodeExporterSystemdLevel = NodeDetails.NodeExporterSystemdLevel.USER;
+          }
+        });
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(

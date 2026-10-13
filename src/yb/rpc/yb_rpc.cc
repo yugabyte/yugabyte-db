@@ -389,7 +389,23 @@ string YBInboundCall::ToString() const {
 
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
-  header_.ToPB(resp->mutable_header());
+  // header_.remote_method references request data, which Clear() may free concurrently.
+  ParsedRequestHeader header;
+  std::string remote_method;
+  bool cleared;
+  {
+    std::lock_guard lock(mutex_);
+    header = header_;
+    cleared = cleared_;
+    if (!cleared) {
+      remote_method = header_.remote_method.ToBuffer();
+    }
+  }
+  header.remote_method = Slice(remote_method);
+  header.ToPB(resp->mutable_header());
+  if (cleared) {
+    resp->mutable_header()->clear_remote_method();
+  }
   auto my_trace = trace();
   if (req.include_traces() && my_trace) {
     resp->set_trace_buffer(my_trace->DumpToString(true));

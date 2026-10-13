@@ -70,6 +70,7 @@ message SubmitTaskRequest {
         RotateSshKeyInput rotateSshKeyInput = 16;
         ConfigureCloudFederationInput configureCloudFederationInput = 17;
         HealthCheckInput healthCheckInput = 18;
+        ConfigureNodeExporterInput configureNodeExporterInput = 19;
     }
 }
 
@@ -101,6 +102,7 @@ message DescribeTaskResponse {
         RotateSshKeyOutput rotateSshKeyOutput = 16;
         ConfigureCloudFederationOutput configureCloudFederationOutput = 17;
         HealthCheckOutput healthCheckOutput = 18;
+        ConfigureNodeExporterOutput configureNodeExporterOutput = 19;
     }
 }
 

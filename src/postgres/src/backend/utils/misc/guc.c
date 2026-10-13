@@ -908,6 +908,7 @@ bool		yb_enable_pg_subscription = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
+static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
 static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
@@ -7852,6 +7853,23 @@ static struct config_string ConfigureNamesString[] =
 		check_yb_dist_tracecontext,
 		assign_yb_dist_tracecontext,
 		NULL
+	},
+
+	{
+		{"yb_origination_time_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Origination time to stamp on this session's "
+						 "writes and commits instead of the time each "
+						 "transaction originated. Takes a Unix timestamp in "
+						 "microseconds; 0 means unset."),
+			gettext_noop("Set by the tablet server on internal connections "
+						 "that do work on behalf of an earlier statement, "
+						 "such as index backfill."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_origination_time_override_string,
+		"0",
+		yb_check_origination_time_override,
+		yb_assign_origination_time_override, NULL
 	},
 
 	/* End-of-list marker */

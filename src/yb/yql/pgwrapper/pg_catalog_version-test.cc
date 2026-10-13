@@ -2048,16 +2048,27 @@ TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
 
   // Execute a DDL block that generates > 4096 messages, but < 8192.
   // Each CREATE TABLE generates ~24 messages. 200 * 24 = 4800 messages.
+  // Use a tablegroup: creating 600 tablet replicas overloads tservers in sanitizer builds.
+  // Heartbeat propagation timing varies; query until conn_other_node does a delta refresh.
+  auto wait_for_delta_refresh = [&](int64_t expected) {
+    return WaitFor([&]() -> Result<bool> {
+      result = VERIFY_RESULT(conn_other_node.FetchAllAsString(query));
+      return GetInt64MetricsHelper("CatCacheDeltaRefresh", 1) >= expected ||
+             GetInt64MetricsHelper("CatCacheRefresh", 1) > 0;
+    }, 60s * kTimeMultiplier, "Catalog cache refresh on other node");
+  };
+  // CREATE TABLEGROUP bumps the catalog version, so let it be applied separately first.
+  ASSERT_OK(conn_same_node.Execute("CREATE TABLEGROUP tg"));
+  ASSERT_OK(wait_for_delta_refresh(1));
   ASSERT_OK(conn_same_node.Execute(
       "DO $$ "
       "BEGIN "
       "  FOR i IN 1..200 LOOP "
-      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT)'; "
+      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT) TABLEGROUP tg'; "
       "  END LOOP; "
       "END $$;"));
 
-  WaitForCatalogVersionToPropagate();
-  result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_OK(wait_for_delta_refresh(2));
   ASSERT_EQ(result, "1");
 
   auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_same_node, kYugabyteDatabase));
@@ -2075,9 +2086,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
   ASSERT_LT(msg_length_result, 8192 * kSharedInvalidationMessageSize);
 
   // Since the number of messages is > 4096 but < 8192, we should see an incremental refresh
-  // on conn_other_node (ts_idx = 1), NOT a full refresh.
+  // on conn_other_node (ts_idx = 1), NOT a full refresh. One more delta refresh is from
+  // CREATE TABLEGROUP.
   VerifyCatCacheRefreshMetricsHelper(
-      0 /* num_full_refreshes */, 1 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
+      0 /* num_full_refreshes */, 2 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
 
   // But on the same node (ts_idx = 0), we will see a full refresh because the local shared
   // memory buffer overflowed (it has a hardcoded limit of 4096 messages).

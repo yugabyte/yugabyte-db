@@ -2485,8 +2485,13 @@ TEST_F(RemoteBootstrapITest, TestPreVoterPromotionWaitsForCatchupAndSurvivesWalG
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--enable_consensus_exponential_backoff=false");
   ts_flags.push_back("--evict_failed_followers=false");
-  ts_flags.push_back("--TEST_inject_delay_leader_change_role_append_secs=5");
-  vector<string> master_flags = { "--enable_load_balancing=false" };
+  ts_flags.push_back(Format(
+      "--TEST_inject_delay_leader_change_role_append_secs=$0", 5 * kTimeMultiplier));
+  // Keep WALs until all replicas are warmed up; a follower that is slow to start would otherwise
+  // be GCed past and the tablet would lose its majority once the lagging voter is shut down.
+  ts_flags.push_back("--log_min_seconds_to_retain=900");
+  vector<string> master_flags = {
+      "--enable_load_balancing=false", "--enable_automatic_tablet_splitting=false" };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, num_tablet_servers));
 
   TestYcqlWorkload workload(cluster_.get());
@@ -2529,6 +2534,18 @@ TEST_F(RemoteBootstrapITest, TestPreVoterPromotionWaitsForCatchupAndSurvivesWalG
   cluster_->tablet_server(lagging_voter_idx)->Shutdown();
   ASSERT_OK(cluster_->WaitForTSToCrash(lagging_voter_idx, timeout));
   workload.WaitInserted(3000);
+
+  const auto leader_op_id = ASSERT_RESULT(itest::GetLastOpIdForReplica(
+      tablet_id, leader_ts, consensus::OpIdType::RECEIVED_OPID, timeout));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto op_id = VERIFY_RESULT(itest::GetLastOpIdForReplica(
+            tablet_id, followers[1], consensus::OpIdType::RECEIVED_OPID, timeout));
+        return op_id.index >= leader_op_id.index;
+      },
+      timeout, "Waiting for healthy voter to catch up"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(leader_idx), "log_min_seconds_to_retain", "0"));
 
   for (int i = 0; i < 3; ++i) {
     ASSERT_OK(cluster_->LogGCOnSingleTServer(leader_idx, {tablet_id}, true /* rollover */));
@@ -2603,6 +2620,12 @@ TEST_F(RemoteBootstrapITest, TestPreVoterPromotionWaitsForCatchupAndSurvivesWalG
 
   ASSERT_OK(promote_log_waiter.WaitFor(timeout));
 
+  // The leader has decided to promote and now sleeps before appending CHANGE_ROLE. Keep the new
+  // peer from acking it, so the config stays pending until the WAL GC below is done.
+  auto* new_peer = cluster_->tablet_server(new_peer_idx);
+  ASSERT_OK(cluster_->SetFlag(
+      new_peer, "TEST_follower_reject_update_consensus_requests", "true"));
+
   auto num_voters = [](const consensus::ConsensusStatePB& cstate) {
     size_t count = 0;
     for (const auto& peer : cstate.config().peers()) {
@@ -2632,6 +2655,8 @@ TEST_F(RemoteBootstrapITest, TestPreVoterPromotionWaitsForCatchupAndSurvivesWalG
       timeout,
       "Waiting for pending config window to trigger WAL GC"));
 
+  ASSERT_OK(cluster_->SetFlag(
+      new_peer, "TEST_follower_reject_update_consensus_requests", "false"));
   ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(4, leader_ts, tablet_id, timeout));
 
   workload.StopAndJoin();

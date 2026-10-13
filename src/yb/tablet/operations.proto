@@ -81,6 +81,9 @@ message TransactionStatePB {
   // Replication origin id associated with the transaction. Used by CDCSDK and
   // xCluster to prevent loops in bidirectional replication.
   optional uint32 xrepl_origin_id = 16;
+
+  // Set on the COMMITTED request of a transaction issued on behalf of a YSQL backend.
+  optional OriginationInfoPB origination_info = 17;
 }
 
 message TruncatePB {

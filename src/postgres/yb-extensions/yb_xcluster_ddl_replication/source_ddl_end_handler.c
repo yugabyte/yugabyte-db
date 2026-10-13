@@ -28,6 +28,7 @@
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion_d.h"
+#include "catalog/pg_default_acl_d.h"
 #include "catalog/pg_extension_d.h"
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
@@ -1173,6 +1174,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case CollationRelationId:
 			case ConstraintRelationId:
 			case ConversionRelationId:
+			case DefaultAclRelationId:
 			case ExtensionRelationId:
 			case ForeignDataWrapperRelationId:
 			case ForeignServerRelationId:
