@@ -20,6 +20,10 @@ Writes still go to the leader. A follower read is stale even when the closest re
 
 For where this pattern fits a multi-region application, see [Follower reads for global applications](../../develop/build-global-apps/follower-reads/). For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
 
+## How far behind a follower may be
+
+When the follower's safe time is further behind now than [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60000, 60 seconds), the read is forwarded to the leader. This applies to YSQL follower reads and to YCQL reads at consistency `ONE`. Raise the flag when the follower and the leader are far apart.
+
 ## YSQL
 
 ### Enable follower reads
@@ -58,7 +62,7 @@ The `consistent_prefix_failed_reads` metric counts reads that a node redirected 
 
 ### When a follower can serve the read
 
-When the follower's safe time is at least `current_time - staleness`, the follower can serve the read without waiting.
+When the follower's safe time is at least `current_time - staleness` and within [--max_stale_read_bound_time_ms](#how-far-behind-a-follower-may-be) of now, the follower can serve the read without waiting. If `yb_follower_read_staleness_ms` is greater than that bound, a follower whose safe time reaches the read time still sends the read to the leader.
 
 When the follower is behind that time, the read is redirected to another replica. Latency then depends on where that replica is.
 
@@ -66,8 +70,6 @@ When the follower is behind that time, the read is redirected to another replica
 
 ## YCQL
 
-YCQL follower reads require consistency level `ONE`. The default is `QUORUM`. `ONE` changes only reads. YCQL writes stay strongly consistent. In [ycqlsh](../../api/ycqlsh/), set it with `CONSISTENCY ONE`. See [CONSISTENCY](../../api/ycqlsh/#consistency).
-
-When the follower's safe time is further behind now than [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) (default 60000, 60 seconds), the read is forwarded to the leader. Raise the flag when the follower and the leader are far apart.
+YCQL follower reads require consistency level `ONE`. The default is `QUORUM`. `ONE` changes only reads. YCQL writes stay strongly consistent. In [ycqlsh](../../api/ycqlsh/), set it with `CONSISTENCY ONE`. See [CONSISTENCY](../../api/ycqlsh/#consistency). These reads use the same [staleness bound](#how-far-behind-a-follower-may-be).
 
 For a walkthrough, see [Follower reads](../../explore/going-beyond-sql/follower-reads-ysql/) in Explore.
