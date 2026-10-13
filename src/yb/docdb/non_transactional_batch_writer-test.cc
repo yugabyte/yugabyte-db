@@ -124,7 +124,8 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id);
+        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id,
+        XClusterTargetApplied::kFalse);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);

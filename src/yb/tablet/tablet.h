@@ -460,7 +460,8 @@ class Tablet : public AbstractTablet,
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
       const docdb::StorageSet& apply_to_storages,
-      bool skip_opid_update = false);
+      bool skip_opid_update = false,
+      docdb::XClusterTargetApplied xcluster_target_applied = docdb::XClusterTargetApplied::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -469,7 +470,8 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      const docdb::StorageSet& apply_to_storages);
+      const docdb::StorageSet& apply_to_storages,
+      docdb::XClusterTargetApplied xcluster_target_applied);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
