@@ -212,6 +212,15 @@ Test options:
   --test-args
     Extra arguments to pass to the test. Used with --cxx-test.
 
+  --cxx-benchmark, --cb <cxx_benchmark_program_name>
+    Build and run the given C++ microbenchmark (added with ADD_YB_BENCHMARK). Only that program and
+    what it links are built. In an LTO build (--full-lto or --thin-lto) this builds and runs the
+    statically linked, whole-program-optimized <name>-lto variant, which is linked the way release
+    server binaries are; with --skip-final-lto-link the dynamically linked program is used instead.
+  --benchmark-args
+    Extra arguments to pass to the benchmark, e.g. '--benchmark_filter=AbslMutex'. Used with
+    --cxx-benchmark.
+
   --sanitizer-extra-options, --extra-sanitizer-options
     Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
   --sanitizers-enable-coredump
@@ -347,6 +356,9 @@ set_default_yb_build_args() {
   no_tcmalloc=false
   must_use_tcmalloc=false
   cxx_test_name=""
+  cxx_benchmark_name=""
+  cxx_benchmark_program_name=""
+  benchmark_args=()
   test_existence_check=true
   object_files_to_delete=()
   should_run_ctest=false
@@ -576,6 +588,19 @@ parse_yb_build_cmd_line() {
       --test-args)
         ensure_option_has_arg "$@"
         export YB_EXTRA_GTEST_FLAGS+=" $2"
+        shift
+      ;;
+      --cxx-benchmark|--cb)
+        ensure_option_has_arg "$@"
+        cxx_benchmark_name=$2
+        build_java=false
+        shift
+      ;;
+      --benchmark-args)
+        ensure_option_has_arg "$@"
+        # Split on whitespace, like --test-args.
+        read -r -a extra_benchmark_args <<< "$2"
+        benchmark_args+=( "${extra_benchmark_args[@]}" )
         shift
       ;;
       --java-test|--jt)

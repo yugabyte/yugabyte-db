@@ -197,14 +197,22 @@ Run one test per execution; do not use a `--gtest_filter` that matches more than
 ### C++ Microbenchmarks
 
 Microbenchmarks use google/benchmark and are added with `ADD_YB_BENCHMARK` (see
-`src/yb/util/mutex-benchmark.cc` for an example). The test runner does not run them, and
-`--cxx-test` does not find them. Build with `--target` (`benchmarks` builds all of them) and run the
-binary directly:
+`src/yb/util/mutex-benchmark.cc` for an example). The test runner does not run them. Build and run
+one with `--cxx-benchmark`, which builds only that program and what it links; `--benchmark-args`
+passes flags through. `--target benchmarks` builds all of them.
 
 ```bash
-./yb_build.sh release --target mutex-benchmark
-build/latest/benchmarks-util/mutex-benchmark --benchmark_filter=AbslMutex
+./yb_build.sh release --cxx-benchmark mutex-benchmark \
+    --benchmark-args '--benchmark_filter=AbslMutex'
 ```
+
+Use a release build; debug and sanitizer builds only check that benchmarks compile. For numbers
+closest to a release server binary, use an LTO build: `./yb_build.sh release --full-lto
+--cxx-benchmark <name>` builds and runs `<name>-lto`, the benchmark statically linked as one LTO
+unit the way `yb-server` is, so inlining across YB libraries is included. That link is slow and
+needs a lot of memory, so `<name>-lto` is built only when `--cxx-benchmark` asks for it, never by a
+plain build or `--target benchmarks`. LTO builds need an LTO third-party archive, which
+`build-support/thirdparty_archives.yml` currently lists for AlmaLinux 8 only.
 
 ### Java Tests
 
