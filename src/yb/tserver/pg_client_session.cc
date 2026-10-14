@@ -519,25 +519,29 @@ class VectorIndexQuery {
   }
 
  private:
+  static boost::dynamic_bitset<> AllPartitions(size_t num_partitions) {
+    boost::dynamic_bitset<> result(num_partitions);
+    result.set();
+    return result;
+  }
+
   // Returns one bit per partition, set for the partitions that have to be searched.
   static boost::dynamic_bitset<> SelectPartitions(
       const LWPgVectorReadOptionsPB& options, const client::YBTable& table,
       const client::TablePartitionList& partitions) {
-    boost::dynamic_bitset<> all(partitions.size());
-    all.set();
     if (options.partition_key_prefixes().empty() ||
         !FLAGS_vector_index_enable_pk_routing ||
         partitions.size() <= 1) {
-      return all;
+      return AllPartitions(partitions.size());
     }
     boost::dynamic_bitset<> selected(partitions.size());
     for (const auto& prefix : options.partition_key_prefixes()) {
-      auto status = client::SelectPartitionsForPartitionKeyPrefix(partitions, prefix, &selected);
+      auto status = client::SelectPartitionsForPartitionKeyPrefix(partitions, prefix, selected);
       if (!status.ok()) {
         // Searching all partitions is always correct, so don't fail the query.
         LOG_WITH_FUNC(DFATAL) << "Failed to route vector index query of " << table.id() << ": "
                               << status;
-        return all;
+        return AllPartitions(partitions.size());
       }
     }
     VLOG_WITH_FUNC(2) << "Selected partitions: " << selected;

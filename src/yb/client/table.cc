@@ -18,7 +18,9 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -358,39 +360,23 @@ PartitionKeyPtr FindPartitionStart(
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
 }
 
-namespace {
-
-// Returns the smallest key that is greater than every key starting with prefix, or an empty string
-// (no bound) when there is none.
-std::string PrefixEnd(Slice prefix) {
-  std::string end = prefix.ToBuffer();
-  while (!end.empty() && static_cast<uint8_t>(end.back()) == 0xff) {
-    end.pop_back();
-  }
-  if (!end.empty()) {
-    end.back() = static_cast<char>(static_cast<uint8_t>(end.back()) + 1);
-  }
-  return end;
-}
-
-} // namespace
-
 Status SelectPartitionsForPartitionKeyPrefix(
-    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>* selected) {
-  DCHECK_EQ(selected->size(), partitions.size());
+    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>& selected) {
+  DCHECK_EQ(selected.size(), partitions.size());
   SCHECK(!prefix.empty(), InvalidArgument, "Empty partition key prefix");
-  // The keys starting with the prefix form the range [prefix, PrefixEnd(prefix)). Partitions are
-  // sorted, so the overlapping ones are consecutive, starting with the one holding the prefix.
-  const auto range_start = prefix.ToBuffer();
-  const auto range_end = PrefixEnd(prefix);
-  for (auto idx = FindPartitionStartIndex(partitions, range_start); idx < partitions.size();
-       ++idx) {
-    const auto& partition_end = idx + 1 < partitions.size() ? partitions[idx + 1] : PartitionKey();
+  // Hash partition keys are exactly two bytes, and in a DocKey encoding the byte after a column
+  // value is never kMaxByte, so [prefix, prefix + kMaxByte) holds every partition key that starts
+  // with the prefix. Partitions are sorted, so the ones overlapping that range are consecutive,
+  // starting with the one holding the prefix.
+  const dockv::KeyBytes prefix_end(prefix, dockv::KeyEntryTypeAsChar::kMaxByte);
+  for (auto idx = FindPartitionStartIndex(partitions, prefix.AsStringView());
+       idx < partitions.size(); ++idx) {
+    const auto partition_end = idx + 1 < partitions.size() ? Slice(partitions[idx + 1]) : Slice();
     if (!dockv::PartitionSchema::HasOverlap(
-            partitions[idx], partition_end, range_start, range_end)) {
+            partitions[idx], partition_end, prefix, prefix_end.AsSlice())) {
       break;
     }
-    selected->set(idx);
+    selected.set(idx);
   }
   return Status::OK();
 }

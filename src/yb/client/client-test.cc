@@ -729,7 +729,7 @@ std::vector<size_t> SelectedPartitions(
     const std::vector<std::string>& partitions, const std::vector<std::string>& prefixes) {
   boost::dynamic_bitset<> mask(partitions.size());
   for (const auto& prefix : prefixes) {
-    CHECK_OK(SelectPartitionsForPartitionKeyPrefix(partitions, prefix, &mask));
+    CHECK_OK(SelectPartitionsForPartitionKeyPrefix(partitions, prefix, mask));
   }
   std::vector<size_t> result;
   for (size_t i = 0; i != mask.size(); ++i) {
@@ -744,17 +744,19 @@ std::string HashPartitionKey(uint16_t hash) {
   return PartitionSchema::EncodeMultiColumnHashValue(hash);
 }
 
-std::string RangeKey(std::initializer_list<int32_t> values) {
+std::string RangeKey(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
   dockv::KeyEntryValues components;
   for (auto value : values) {
-    components.push_back(dockv::KeyEntryValue::Int32(value));
+    components.push_back(dockv::KeyEntryValue::Int32(value, sort_order));
   }
   return dockv::DocKey(std::move(components)).Encode().ToStringBuffer();
 }
 
 // Encoded leading range components without the closing group end.
-std::string RangeKeyPrefix(std::initializer_list<int32_t> values) {
-  auto key = RangeKey(values);
+std::string RangeKeyPrefix(
+    std::initializer_list<int32_t> values, SortOrder sort_order = SortOrder::kAscending) {
+  auto key = RangeKey(values, sort_order);
   key.pop_back();
   return key;
 }
@@ -778,7 +780,7 @@ TEST_F_EX(ClientTest, SelectPartitionsForHashPartitionKeys, ClientTestNoCluster)
       (Partitions{0, 3}));
 
   boost::dynamic_bitset<> mask(partitions.size());
-  ASSERT_NOK(SelectPartitionsForPartitionKeyPrefix(partitions, "", &mask));
+  ASSERT_NOK(SelectPartitionsForPartitionKeyPrefix(partitions, "", mask));
 }
 
 TEST_F_EX(ClientTest, SelectPartitionsForRangePartitionKeyPrefixes, ClientTestNoCluster) {
@@ -803,12 +805,14 @@ TEST_F_EX(ClientTest, SelectPartitionsForRangePartitionKeyPrefixes, ClientTestNo
       SelectedPartitions(partitions, {RangeKeyPrefix({5}), RangeKeyPrefix({40})}),
       (Partitions{0, 3}));
 
-  // Prefixes ending in 0xff bytes, where the end of the prefix range has to carry. A prefix of only
-  // 0xff bytes has no end.
-  const std::vector<std::string> raw_partitions = {"", "a\xff", "a\xff\x01", "b", "\xff\xff\x01"};
-  ASSERT_EQ(SelectedPartitions(raw_partitions, {"a\xff"}), (Partitions{1, 2}));
-  ASSERT_EQ(SelectedPartitions(raw_partitions, {"a"}), (Partitions{0, 1, 2}));
-  ASSERT_EQ(SelectedPartitions(raw_partitions, {"\xff\xff"}), (Partitions{3, 4}));
+  // A descending key: 0 encodes as 7f ff ff ff, so the prefix ends in 0xff bytes. Keys starting
+  // with 0 sort between 10 and -5 and are split by the split point (0, 5).
+  constexpr auto kDesc = SortOrder::kDescending;
+  const std::vector<std::string> desc_partitions = {
+      "", RangeKey({10}, kDesc), RangeKey({0, 5}, kDesc), RangeKey({-5}, kDesc)};
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({0}, kDesc)}), (Partitions{1, 2}));
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({20}, kDesc)}), Partitions{0});
+  ASSERT_EQ(SelectedPartitions(desc_partitions, {RangeKeyPrefix({-9}, kDesc)}), Partitions{3});
 }
 
 TEST_F(ClientTest, TestKeyRangeFiltering) {
