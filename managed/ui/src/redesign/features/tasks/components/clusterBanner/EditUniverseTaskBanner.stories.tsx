@@ -143,7 +143,7 @@ export const FailedReadReplicaEdit: Story = {
   }
 };
 
-/** User aborted the edit mid-flight — treated the same as a failure. */
+/** User stopped the edit mid-flight — aborted title and description. */
 export const Aborted: Story = {
   args: {
     task: createEditUniverseTaskMock({ status: TaskState.ABORTED })

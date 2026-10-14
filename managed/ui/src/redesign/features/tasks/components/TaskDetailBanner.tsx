@@ -261,13 +261,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
       }
 
       if (getIsDbUpgradeTask(bannerTask)) {
+        if (isBannerDismissedForTask(bannerTask.id)) {
+          return null;
+        }
         return (
           <div className={classes.bannerContainer}>
             <DbUpgradeTaskBanner
               task={bannerTask}
               universeUuid={universeUUID}
-              isUpgradeCompletedBannerDismissed={isBannerDismissedForTask(bannerTask.id)}
-              onDismissUpgradeCompletedBanner={() => hideBanner(bannerTask.id)}
+              onDismissDbUpgradeTaskBanner={() => hideBanner(bannerTask.id)}
             />
           </div>
         );

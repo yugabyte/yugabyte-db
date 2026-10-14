@@ -519,59 +519,63 @@
             "retry": "Retry"
           },
           "precheckInProgress": {
-            "title": "Upgrade pre-check in progress.",
+            "title": "Database upgrade pre-check in progress.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "precheckIssuesFound": {
-            "title": "Upgrade pre-check found issues.",
-            "description": "Universe does not meet DB upgrade requirements.",
+            "title": "Database upgrade pre-check found issues.",
+            "description": "Universe does not meet database upgrade requirements.",
             "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
           },
           "precheckPassed": {
             "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
             "descriptionPg15": "Universe is ready for PG15 upgrade.",
-            "description": "Universe is ready for DB upgrade."
+            "description": "Universe is ready for database upgrade."
           },
           "upgradingSoftware": {
-            "title": "Upgrading software.",
+            "title": "Upgrading database.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "softwareUpgradeFailed": {
-            "title": "Software upgrade failed."
+            "title": "Database upgrade failed."
           },
           "upgradePausedForMonitoring": {
-            "title": "Upgrade paused for monitoring.",
+            "title": "Database upgrade paused for monitoring.",
             "description": "Review universe health, then resume or roll back."
           },
           "finalizeOrRollBack": {
-            "title": "Finalize or Roll Back Upgrade.",
+            "title": "Finalize or roll back database upgrade.",
             "description": "Assess universe performance and finalize or roll back.",
             "rollBack": "Roll Back",
             "finalizeUpgradeNow": "Finalize Upgrade Now"
           },
           "upgradeAborted": {
-            "title": "Upgrade aborted.",
+            "title": "Database upgrade aborted.",
+            "description": "The upgrade was stopped by a user."
+          },
+          "upgradeCanceled": {
+            "title": "Database upgrade canceled.",
             "description": "Upgrade was canceled because universe does not meet upgrade requirements."
           },
           "rollingBack": {
-            "title": "Rolling back upgrade.",
+            "title": "Rolling back database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "rollbackFailed": {
-            "title": "Failed to roll back."
+            "title": "Database upgrade failed to roll back."
           },
           "finalizing": {
-            "title": "Finalizing upgrade.",
+            "title": "Finalizing database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "finalizeFailed": {
-            "title": "Failed to finalize upgrade."
+            "title": "Failed to finalize database upgrade."
           },
           "upgradeCompleted": {
-            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "title": "Database upgrade completed. Universe is now on {{targetDbVersion}}.",
             "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
           }
         }
@@ -3111,6 +3115,10 @@
         },
         "failed": {
           "title": "Failed to update universe."
+        },
+        "aborted": {
+          "title": "Universe update aborted.",
+          "description": "The update was stopped by a user."
         },
         "actions": {
           "viewDetails": "View Details",

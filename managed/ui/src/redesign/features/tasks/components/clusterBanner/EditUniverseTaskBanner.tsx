@@ -145,13 +145,15 @@ export const EditUniverseTaskBanner = ({
       );
       break;
     case TaskState.FAILURE:
-    case TaskState.ABORTED:
+    case TaskState.ABORTED: {
+      const isTaskAborted = task.status === TaskState.ABORTED;
       bannerComponent = (
         <YBOperationBanner
           variant={OperationBannerVariant.Error}
           dense
           minHeight={46}
-          title={t('failed.title')}
+          title={t(isTaskAborted ? 'aborted.title' : 'failed.title')}
+          {...(isTaskAborted ? { message: t('aborted.description') } : {})}
           content={
             <OperationBannerProgressContent
               progressPercent={task.percentComplete ?? 0}
@@ -218,6 +220,7 @@ export const EditUniverseTaskBanner = ({
         />
       );
       break;
+    }
     case TaskState.SUCCESS:
     case TaskState.UNKNOWN:
       bannerComponent = null;
