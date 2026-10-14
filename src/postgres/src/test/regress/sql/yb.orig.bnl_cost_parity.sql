@@ -202,6 +202,11 @@ base(qid, descr, tmpl) as (
     (232, 'x >= 1500',
         'select s.x from ce.s s join @R@ r on s.x = r.pk where s.x >= 1500 order by s.x desc'),
     --   >= on inner
+    -- TODO(#34905): 240 and 242 (and their ce.rC twins 1240 and 1242) cost HJ
+    -- below MJ although MJ does less work: mergejoinscansel() clamps by the
+    -- join key bounds for ascending orders only, so the descending merge's
+    -- early stop at the lower bound is not costed. Exposed by #33145, whose
+    -- higher prev cost pushed the inflated MJ cost above HJ.
     (240, '1500 <= pk <= 5120',
         'select r.pk from ce.s s join @R@ r on s.x = r.pk where r.pk >= 1500 and r.pk <= 5120 order by r.pk desc'),
     (241, 'a >= 4800',
