@@ -1372,7 +1372,8 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
     IsTxnUsingTableLocks is_txn_using_table_locks,
-    const PgClientSessionMetrics& metrics) {
+    const PgClientSessionMetrics& metrics,
+    const OriginationInfo& origination_info) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
@@ -1425,6 +1426,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       }
       if (req->options().xrepl_origin_id()) {
         write_op->SetXreplOriginId(req->options().xrepl_origin_id());
+      }
+      if (origination_info.IsSet()) {
+        write_op->SetOriginationInfo(origination_info);
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
@@ -1700,7 +1704,8 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req)));
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+        req.options().origination_ht()));
     RETURN_NOT_OK(helper.Exec(
         &client_, metadata, req.options().active_sub_transaction_id(),
         context->GetClientDeadline()));
@@ -1739,7 +1744,8 @@ class PgClientSession::Impl {
         VERIFY_RESULT(GetDdlTransactionMetadata(
             req.use_transaction(), req.use_regular_transaction_block(),
             context->GetClientDeadline(),
-            IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req))),
+            IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+            req.options().origination_ht())),
         req.colocated(), context->GetClientDeadline(), yb_clone_info);
   }
 
@@ -1761,7 +1767,8 @@ class PgClientSession::Impl {
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
-        GetDeferReadPoint(req)));
+        GetDeferReadPoint(req),
+        req.options().origination_ht()));
     // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
     // table/index deletion to complete. The table will be deleted in the background only after the
     // transaction has been determined to be a success.
@@ -1802,7 +1809,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req)));
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+        req.options().origination_ht()));
     if (txn) {
       alterer->part_of_transaction(txn);
     }
@@ -1995,8 +2003,8 @@ class PgClientSession::Impl {
     // (StartTransactionCommand at indexcmds.c:2334). Pass it to the master so it can detect when
     // this backend is killed (-> txn aborted) and stop launching new backfill chunks.
     auto meta = GetDdlTransactionMetadata(
-        true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(false));
+        /*use_transaction=*/true, req.use_regular_transaction_block(), context->GetClientDeadline(),
+        IsTxnUsingTableLocks(false), DeferReadPoint::kFalse, req.origination_ht());
     std::optional<TransactionMetadata> txn_metadata;
     if (!meta.ok()) {
       LOG(WARNING) << "BackfillIndex: failed to get DDL transaction metadata: " << meta.status();
@@ -2020,7 +2028,8 @@ class PgClientSession::Impl {
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
-        GetDeferReadPoint(req)));
+        GetDeferReadPoint(req),
+        req.options().origination_ht()));
     const auto s = client_.CreateTablegroup(
         req.database_name(), GetPgsqlNamespaceId(id.database_oid), id.GetYbTablegroupId(),
         tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata,
@@ -2046,7 +2055,8 @@ class PgClientSession::Impl {
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
-        GetDeferReadPoint(req)));
+        GetDeferReadPoint(req),
+        req.options().origination_ht()));
     const auto status =
         client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata,
         req.options().active_sub_transaction_id());
@@ -2239,6 +2249,7 @@ class PgClientSession::Impl {
 
     auto arena = ObtainArena(context, *resp);
     auto psql_write = client::YBPgsqlWriteOp::NewInsert(table, arena, &context->sidecars());
+    StampSequenceOp(*psql_write, req);
 
     auto write_request = psql_write->mutable_request();
     RETURN_NOT_OK(SetCatalogVersion(req, write_request));
@@ -2288,6 +2299,7 @@ class PgClientSession::Impl {
 
     auto arena = ObtainArena(context, *resp);
     auto psql_write = client::YBPgsqlWriteOp::NewUpdate(table, arena, &context->sidecars());
+    StampSequenceOp(*psql_write, req);
 
     auto write_request = psql_write->mutable_request();
     RETURN_NOT_OK(SetCatalogVersion(req, write_request));
@@ -2409,6 +2421,7 @@ class PgClientSession::Impl {
 
     auto arena = ObtainArena(context, *resp);
     auto psql_write = client::YBPgsqlWriteOp::NewFetchSequence(table, arena, &context->sidecars());
+    StampSequenceOp(*psql_write, req);
 
     auto* write_request = psql_write->mutable_request();
     RETURN_NOT_OK(SetCatalogVersion(req, write_request));
@@ -2550,6 +2563,7 @@ class PgClientSession::Impl {
 
     auto arena = ObtainArena(context, *resp);
     auto psql_delete(client::YBPgsqlWriteOp::NewDelete(table, arena, &context->sidecars()));
+    StampSequenceOp(*psql_delete, req);
     auto delete_request = psql_delete->mutable_request();
 
     delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
@@ -2585,6 +2599,7 @@ class PgClientSession::Impl {
 
     auto arena = ObtainArena(context, *resp);
     auto psql_delete = client::YBPgsqlWriteOp::NewDelete(table, arena, &context->sidecars());
+    StampSequenceOp(*psql_delete, req);
     auto delete_request = psql_delete->mutable_request();
 
     delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
@@ -3482,6 +3497,16 @@ class PgClientSession::Impl {
     if (transaction && options.xrepl_origin_id()) {
       transaction->SetOriginId(options.xrepl_origin_id());
     }
+    // With DDL rollback off, a drop postponed until after a DDL's commit leaves an unfinished DDL
+    // transaction that the next DDL adopts, carrying the earlier stamp.  An older stamp only errs
+    // on the blocking side.
+    if (transaction && options.origination_ht() && YsqlDdlRollbackEnabled()) {
+      const auto origination_info = transaction->GetOriginationInfo();
+      DCHECK(!origination_info.IsSet() ||
+             origination_info.origination_ht == HybridTime(options.origination_ht()))
+          << "Transaction " << transaction->id() << " stamped with " << origination_info.ToString()
+          << " but Perform carries origination_ht " << HybridTime(options.origination_ht());
+    }
 
     // A catalog read time picked here rather than by the storage layer is not echoed back via
     // used_read_time, so report it explicitly to keep all further catalog reads of the session on
@@ -3553,7 +3578,8 @@ class PgClientSession::Impl {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
         IsTxnUsingTableLocks(options.is_using_table_locks()),
-        context_.metrics));
+        context_.metrics,
+        MakeOriginationInfo(options.origination_ht())));
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
@@ -3771,8 +3797,8 @@ class PgClientSession::Impl {
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
           IsTxnUsingTableLocks(options.is_using_table_locks()),
-          DeferReadPoint(options.read_time_options().defer_read_point()), arena, options.priority(),
-          options.pg_txn_start_us()));
+          DeferReadPoint(options.read_time_options().defer_read_point()),
+          options.origination_ht(), arena, options.priority(), options.pg_txn_start_us()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       EnsureSession(kind, deadline, arena);
@@ -4051,6 +4077,7 @@ class PgClientSession::Impl {
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(
         options.pg_txn_start_us(), IsTxnUsingTableLocks(options.is_using_table_locks())));
+    StampTransaction(*txn, options.origination_ht());
     auto* read_point = session->read_point();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          isolation == IsolationLevel::READ_COMMITTED) &&
@@ -4105,7 +4132,7 @@ class PgClientSession::Impl {
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
       IsTxnUsingTableLocks is_txn_using_table_locks,
-      DeferReadPoint defer_read_point = DeferReadPoint::kFalse,
+      DeferReadPoint defer_read_point = DeferReadPoint::kFalse, uint64_t origination_ht = 0,
       const ThreadSafeArenaPtr& arena = nullptr, uint64_t priority = kHighPriTxnUpperBound,
       uint64_t pg_txn_start_us = 0) {
     if (!use_transaction) {
@@ -4140,6 +4167,7 @@ class PgClientSession::Impl {
           pg_txn_start_us ? pg_txn_start_us
                           : static_cast<int64_t>(clock()->Now().GetPhysicalValueMicros()),
           is_txn_using_table_locks));
+      StampTransaction(*txn, origination_ht);
       RETURN_NOT_OK(txn->Init(isolation));
       txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
@@ -4442,6 +4470,11 @@ class PgClientSession::Impl {
         context->RespondSuccess();
       };
       VLOG_WITH_PREFIX_AND_FUNC(2) << FinishTxnLogPrefix(req, &*txn_value) << "committing";
+      // Only template1 and initdb backends, whose database is never recorded, commit unstamped.
+      LOG_IF_WITH_PREFIX(
+          DFATAL, database_oid_.load(std::memory_order_relaxed) != kInvalidOid &&
+                  !txn_value->GetOriginationInfo().IsSet())
+          << "Committing transaction " << txn_value->id() << " without origination stamp";
       txn_value->Commit(commit_callback);
       return std::nullopt;
     } else {
@@ -4683,6 +4716,34 @@ class PgClientSession::Impl {
 
   std::shared_ptr<PgClientSession> SharedSessionFromThis() const {
     return shared_this_.lock();
+  }
+
+  // Get stamp for this session's work: the connected database and the given origination time.
+  // Unset for template1 backends, whose database is never recorded, and when pggate sent no
+  // origination time (initdb).
+  OriginationInfo MakeOriginationInfo(uint64_t origination_ht) const {
+    const auto database_oid = database_oid_.load(std::memory_order_acquire);
+    if (!origination_ht || database_oid == kInvalidOid) {
+      return {};
+    }
+    return {.database_oid = database_oid, .origination_ht = HybridTime(origination_ht)};
+  }
+
+  void StampTransaction(client::YBTransaction& txn, uint64_t origination_ht) const {
+    if (auto origination_info = MakeOriginationInfo(origination_ht); origination_info.IsSet()) {
+      txn.SetOriginationInfo(origination_info);
+    }
+  }
+
+  template <class Req>
+  static void StampSequenceOp(client::YBPgsqlWriteOp& op, const Req& req) {
+    // Sequence operations carry their own database, so they can be stamped even before the session
+    // records the connected database.
+    if (req.origination_ht()) {
+      op.SetOriginationInfo(
+          {.database_oid = narrow_cast<PgOid>(req.db_oid()),
+           .origination_ht = HybridTime(req.origination_ht())});
+    }
   }
 
   // Records the backend's database from the request if not yet recorded.  Returns the recorded

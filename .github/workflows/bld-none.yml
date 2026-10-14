@@ -2,7 +2,7 @@ name: "bld-none"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review ]
+    types: [opened, synchronize, reopened]
     # Need to catch the case of PRs that have only non-build, non-docs files
     paths:
       - '.agents/**'
@@ -28,10 +28,10 @@ on:
       - 'sample/**'
       - 'src/lint/**'
 
-# Can be skipped if PR is draft or the commit message contains [skip ci] or [ci skip]
 jobs:
   bld-none:
-    if: github.event.pull_request.draft == false
+    # Runs on jenkins, but very light-weight, so no approval required.
+    # environment: jenkins
     runs-on: ybdbghr
     steps:
       - name: Build Trigger

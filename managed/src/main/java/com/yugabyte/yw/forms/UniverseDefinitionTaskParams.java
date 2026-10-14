@@ -815,11 +815,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .filter(n -> hasEphemeralStorage(cloudType, n.cloudInfo.instance_type, deviceInfo))
               .findFirst()
               .isPresent();
-      if (cloudType == CloudType.aws && hasEphemeralStorage) {
-        // Ephemeral storage AWS instances should not have storage type
+      if ((cloudType == CloudType.aws || cloudType == CloudType.oci) && hasEphemeralStorage) {
+        // Local-disk AWS / OCI shapes should not have a remote storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
+              BAD_REQUEST,
+              cloudType.name() + " instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
@@ -946,6 +947,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
         return true;
       }
+    } else if (providerType == CloudType.oci) {
+      return instanceType != null
+          && (instanceType.contains("DenseIO") || instanceType.contains("HPC"));
     }
     return false;
   }

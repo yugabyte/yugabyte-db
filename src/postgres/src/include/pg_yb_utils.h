@@ -1402,6 +1402,13 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
 
+extern uint64_t yb_origination_time;
+extern void YbRefreshOriginationTime(void);
+extern bool yb_check_origination_time_override(char **newval, void **extra,
+											   GucSource source);
+extern void yb_assign_origination_time_override(const char *newval,
+												void *extra);
+
 /* GUC assign hook for max_replication_slots */
 extern void yb_assign_max_replication_slots(int newval, void *extra);
 

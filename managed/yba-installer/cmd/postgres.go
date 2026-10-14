@@ -685,7 +685,7 @@ func (pg Postgres) createTSDatabase() {
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
 		"-p", viper.GetString("postgres.install.port"),
-		"ts",
+		common.PerfAdvisorDBName,
 	}
 	var out *shell.Output
 	if common.HasSudoAccess() {

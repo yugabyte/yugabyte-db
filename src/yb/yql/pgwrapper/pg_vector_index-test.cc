@@ -80,6 +80,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_exact);
@@ -156,6 +157,10 @@ const std::string kVectorIndexName = "vi";
 // Default HNSW build parameters used by CreateIndex/MakeIndex. Tests that build large indexes and
 // care about build time (not recall) can pass cheaper parameters instead.
 const std::string kDefaultIndexBuildOptions = "ef_construction = 256, m = 32, m0 = 128";
+
+// Cheapest parameters the reloption bounds allow (m >= 5, ef_construction >= 50), for tests that
+// care about the number of indexes rather than recall.
+const std::string kCheapIndexBuildOptions = "ef_construction = 50, m = 5, m0 = 8";
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
@@ -356,12 +361,19 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   }
 
   // Waits until all `expected_num_indexes` vector indexes of the cluster report their backfill as
-  // finished.
+  // finished. Fails right away if a backfill failed.
   Status WaitForVectorIndexBackfills(size_t expected_num_indexes, const std::string& description) {
-    return WaitFor([this, expected_num_indexes] {
+    return WaitFor([this, expected_num_indexes]() -> Result<bool> {
       auto indexes = ListVectorIndexes(cluster_.get());
-      return indexes.size() == expected_num_indexes &&
-             std::ranges::all_of(indexes, [](const auto& index) { return index->BackfillDone(); });
+      if (indexes.size() != expected_num_indexes) {
+        return false;
+      }
+      for (const auto& index : indexes) {
+        if (!VERIFY_RESULT(index->BackfillDone())) {
+          return false;
+        }
+      }
+      return true;
     }, 60s * kTimeMultiplier, description);
   }
 
@@ -5511,6 +5523,25 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
   ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
 }
 
+// When the backfill fails with something other than TryAgain/ShutdownInProgress, CREATE INDEX
+// should fail with that error instead of hanging.
+TEST_P(PgVectorIndexTest, CreateIndexFailsOnFailedBackfill) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // So the test fails instead of hanging if the error isn't reported.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(60s * kTimeMultiplier)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(conn), "Injected vector index backfill failure");
+
+  // The failed CREATE INDEX got rolled back, so this should work now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+  ASSERT_OK(CreateIndex(conn));
+}
+
 // VectorLSM::Insert counts its tasks on the mutable chunk before allocating them in the insert
 // registry. When the allocation failed because the registry was already shut down, the count
 // stayed elevated, so a chunk that a flush had meanwhile handed to the save path never saved and
@@ -5579,9 +5610,9 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
 
   // Let the other replicas finish their backfills, so the removal below overtakes the parked insert
   // only.
-  ASSERT_OK(WaitFor([this, &parked_dir] {
+  ASSERT_OK(WaitFor([this, &parked_dir]() -> Result<bool> {
     for (const auto& index : ListVectorIndexes(cluster_.get())) {
-      if (index->path() != parked_dir && !index->BackfillDone()) {
+      if (index->path() != parked_dir && !VERIFY_RESULT(index->BackfillDone())) {
         return false;
       }
     }
@@ -5602,6 +5633,163 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
   ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
                     "Index removal hung waiting for the chunk of the failed insert"));
   threads.JoinAll();
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexStorageSetCapacityTest
+////////////////////////////////////////////////////////
+
+// GH#33923: docdb::StorageSet used to be a std::bitset<64> where bit 0 is the regular DB and bit
+// 1 + i is vector index i, so a tablet could address only 63 vector indexes: the writers and the
+// bootstrap threw std::out_of_range for the 64th one and aborted the tserver.
+// Colocated tables share one tablet, so one index per table is enough to get there; a
+// non-colocated table has to carry all the indexes itself, one per vector column.
+class PgVectorIndexStorageSetCapacityTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexColocationOnlyParam> {
+ protected:
+  // One more than the 63 vector indexes the old StorageSet could address.
+  static constexpr size_t kNumIndexes = 64;
+  static constexpr int64_t kNumRows = 2;
+
+  static std::string TableName(size_t idx) {
+    return Format("test_$0", idx);
+  }
+
+  static std::string ColumnName(size_t idx) {
+    return Format("embedding_$0", idx);
+  }
+
+  std::string TableForIndex(size_t idx) {
+    return TableName(IsColocated() ? idx : 0);
+  }
+
+  std::string ColumnForIndex(size_t idx) {
+    return ColumnName(IsColocated() ? 0 : idx);
+  }
+
+  Status CreateVectorIndex(PGConn& conn, size_t idx) {
+    return conn.ExecuteFormat(
+        "CREATE INDEX vi_$0 ON $1 USING ybhnsw ($2 $3) WITH ($4)",
+        idx, TableForIndex(idx), ColumnForIndex(idx), VectorOpsName(), kCheapIndexBuildOptions);
+  }
+
+  Result<PGConn> MakeTabletWithIndexes() {
+    dimensions_ = 3;
+    auto conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+    if (IsColocated()) {
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", DbName()));
+      conn = VERIFY_RESULT(Connect());
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+    if (IsColocated()) {
+      for (size_t i = 0; i != kNumIndexes; ++i) {
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "CREATE TABLE $0 (id bigserial PRIMARY KEY, $1 vector($2)) WITH (COLOCATED = 1)",
+            TableForIndex(i), ColumnForIndex(i), dimensions_));
+      }
+    } else {
+      std::string columns;
+      for (size_t i = 0; i != kNumIndexes; ++i) {
+        columns += Format(", $0 vector($1)", ColumnForIndex(i), dimensions_);
+      }
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0 (id bigserial PRIMARY KEY$1) SPLIT INTO 1 TABLETS",
+          TableName(0), columns));
+    }
+
+    for (size_t i = 0; i != kNumIndexes; ++i) {
+      RETURN_NOT_OK(CreateVectorIndex(conn, i));
+    }
+    return conn;
+  }
+
+  // An explicit transaction, so that the write is applied through the intents path and is replayed
+  // from the WAL with a computed StorageSet. Every vector column is populated, because the apply
+  // skips null columns before it reaches the index in the last slot.
+  Status InsertRowsInTransaction(PGConn& conn) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (int64_t id = 1; id <= kNumRows; ++id) {
+      if (IsColocated()) {
+        for (size_t i = 0; i != kNumIndexes; ++i) {
+          RETURN_NOT_OK(conn.ExecuteFormat(
+              "INSERT INTO $0 VALUES ($1, '$2')", TableForIndex(i), id, AsString(Vector(id))));
+        }
+      } else {
+        std::string values;
+        for (size_t i = 0; i != kNumIndexes; ++i) {
+          values += Format(", '$0'", AsString(Vector(id)));
+        }
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0 VALUES ($1$2)", TableName(0), id, values));
+      }
+    }
+    return conn.CommitTransaction();
+  }
+
+  Result<size_t> NumVectorIndexesOnTablet() {
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected exactly one tablet with vector indexes");
+    auto tablet = VERIFY_RESULT(peers.front()->shared_tablet());
+    auto list = tablet->vector_indexes().List();
+    return list ? list->size() : 0;
+  }
+
+  void VerifyAllIndexesReturnAllRows() {
+    std::string expected;
+    for (int64_t id = 1; id <= kNumRows; ++id) {
+      if (!expected.empty()) {
+        expected += "; ";
+      }
+      expected += std::to_string(id);
+    }
+
+    auto conn = ASSERT_RESULT(Connect());
+    for (size_t i = 0; i != kNumIndexes; ++i) {
+      // TEST_fail_on_seq_scan_with_vector_indexes is on, so the read has to go through the index.
+      auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT id FROM $0 ORDER BY $1 $2 '$3' LIMIT $4",
+          TableForIndex(i), ColumnForIndex(i), VectorOp(), AsString(Vector(1)), kNumRows)));
+      ASSERT_EQ(rows, expected) << "Vector index " << i;
+    }
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexStorageSetCapacityTest);
+
+// The live apply of a transactional write to a tablet with 64 vector indexes, followed by a restart
+// that replays the WAL.
+TEST_P(PgVectorIndexStorageSetCapacityTest, ApplyWith64VectorIndexes) {
+  auto conn = ASSERT_RESULT(MakeTabletWithIndexes());
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_OK(InsertRowsInTransaction(conn));
+
+  // No flush here and none on shutdown, so the WAL holds the only copy of the writes.
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
+}
+
+// The bootstrap half on its own. TEST_skip_process_apply skips the live apply, so the APPLYING
+// record is applied only by the WAL replay, which uses a StorageSet computed by
+// ComputeApplyToStorages rather than StorageSet::All(). Replay runs on every tablet open, so a
+// crash here means the tablet never comes back.
+TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) {
+  auto conn = ASSERT_RESULT(MakeTabletWithIndexes());
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  ASSERT_OK(InsertRowsInTransaction(conn));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = false;
+  ASSERT_OK(RestartCluster());
+
+  ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
+  ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
 }
 
 }  // namespace yb::pgwrapper

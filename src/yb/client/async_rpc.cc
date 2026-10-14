@@ -673,6 +673,9 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
   if (op->XreplOriginId()) {
     req->set_xrepl_origin_id(op->XreplOriginId());
   }
+  if (op->origination_info().IsSet()) {
+    op->origination_info().ToPB(req->mutable_origination_info());
+  }
 }
 
 void HandleExtraFields(YBRedisReadOp* op, tserver::LWReadRequestPB* req) {}

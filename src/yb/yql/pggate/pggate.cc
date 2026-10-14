@@ -1440,6 +1440,7 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  req.set_origination_ht(pg_txn_manager_->GetOriginationHt());
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
@@ -2162,9 +2163,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction(int64_t start_time) {
+Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time) {
   fk_reference_cache_.Clear();
-  return pg_txn_manager_->BeginTransaction(start_time);
+  return pg_txn_manager_->BeginTransaction(start_time, origination_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {

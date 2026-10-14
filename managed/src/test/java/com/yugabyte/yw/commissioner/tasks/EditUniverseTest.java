@@ -1090,7 +1090,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                       "old.elb"));
               details.setManagedLoadBalancerState(state);
             });
-    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-2"), any(), any(), any()))
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-2"), any(), any(), any(), any()))
         .thenReturn("new.elb");
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
@@ -1140,6 +1140,47 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     // Later subtasks that write the universe details must keep the state.
     assertEquals("new.elb", lbs.get(0).getAddress());
     assertEquals(ImmutableList.of(newZone.getUuid()), lbs.get(0).getAzUuids());
+  }
+
+  @Test
+  public void testEditChangingPortsReconcilesManagedLoadBalancerWithNewPorts() {
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+                  new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+              lbConfig.setEnablePrivate(true);
+              u.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .setManagedLoadBalancer(lbConfig);
+            });
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.communicationPorts.ysqlServerRpcPort = 5434;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    assertTrue(
+        subTasks.toString(),
+        subTasks.indexOf(TaskType.UpdateUniverseCommunicationPorts)
+            < subTasks.lastIndexOf(TaskType.EnsureManagedLoadBalancer));
+    // Before the VMs with the stored ports, and again after the edit stores the new ones.
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), any(), any(), eq(List.of(5433, 9042)), any());
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
   }
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {

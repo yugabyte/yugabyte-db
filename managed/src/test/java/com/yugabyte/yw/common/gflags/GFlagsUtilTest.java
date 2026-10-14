@@ -29,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1056,5 +1057,41 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // Nothing is checked on a non-FIPS YBA.
     GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
         "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
+  }
+
+  private static Cluster lbCluster(Common.CloudType cloud, boolean enableLB, boolean managedLb) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloud;
+    userIntent.enableLB = enableLB;
+    if (managedLb) {
+      ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+      config.setEnablePrivate(true);
+      userIntent.setManagedLoadBalancer(config);
+    }
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithUserCreatedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, true, false)));
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithManagedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, true)));
+  }
+
+  @Test
+  public void testGcpProxiesKeepPrivateIpWithoutLoadBalancer() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, false)));
+  }
+
+  @Test
+  public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
   }
 }

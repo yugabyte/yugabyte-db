@@ -1045,6 +1045,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 						   YbSwitchPgGateMemoryContext, YbCreatePgGateMemoryContext,
 						   YbDeletePgGateMemoryContext));
 
+	YbRefreshOriginationTime();
+
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
 	 * to the YugaByte cluster right away from every backend process. We only
@@ -7429,6 +7431,67 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Origination time, in Unix microseconds, stamped on the DocDB writes and
+ * commits this backend issues, so that StopPersisting/StartPersisting can
+ * block work by when it originated.  It must precede every write of the
+ * transaction (so writes cannot predate the stamp) and precede the shared
+ * catalog version check that the transaction's catalog cache rests on.
+ * Hence it is refreshed only at backend start, in the PostgresMain preamble
+ * for messages received outside a transaction (before
+ * YBCheckSharedCatalogCacheVersion), and before exit cleanup; parallel
+ * workers take their leader's value.  It is handed to pggate once per
+ * transaction, at transaction start.
+ */
+uint64_t	yb_origination_time = 0;
+
+/* Value of yb_origination_time_override; 0 means unset. */
+static uint64_t yb_origination_time_override = 0;
+
+void
+YbRefreshOriginationTime(void)
+{
+	if (yb_origination_time_override != 0)
+		yb_origination_time = yb_origination_time_override;
+	else
+		yb_origination_time = GetCurrentTimestamp() +
+			((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+			 SECS_PER_DAY * USECS_PER_SEC);
+}
+
+bool
+yb_check_origination_time_override(char **newval, void **extra,
+								   GucSource source)
+{
+	unsigned long long value;
+	char	   *endptr;
+	uint64_t   *myextra;
+
+	errno = 0;
+	value = strtoull(*newval, &endptr, 10);
+	if (endptr == *newval || *endptr != '\0' || errno == ERANGE ||
+		**newval == '-')
+	{
+		GUC_check_errdetail("Accepted value is a Unix timestamp in "
+							"microseconds, e.g., 1694673026673528, or 0 "
+							"for none.");
+		return false;
+	}
+
+	myextra = (uint64_t *) malloc(sizeof(uint64_t));
+	if (!myextra)
+		return false;
+	*myextra = value;
+	*extra = myextra;
+	return true;
+}
+
+void
+yb_assign_origination_time_override(const char *newval, void *extra)
+{
+	yb_origination_time_override = *((uint64_t *) extra);
 }
 
 void

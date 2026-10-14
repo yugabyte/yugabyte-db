@@ -110,6 +110,9 @@ message WriteRequestPB {
 
   // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
   optional bool xcluster_target_applied = 28;
+
+  // Set for writes issued on behalf of a YSQL backend.
+  optional OriginationInfoPB origination_info = 29;
 }
 
 message WriteResponsePB {
