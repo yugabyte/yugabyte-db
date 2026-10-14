@@ -2965,31 +2965,6 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
 
   const auto clone_table_id = ASSERT_RESULT(find_table_id(kCloneDb, "test"));
-  const auto clone_index_id = ASSERT_RESULT(find_table_id(kCloneDb, kVectorIndexName));
-
-  // TODO(#34767): Remove once the clone stamps the vector index with a hybrid time. Without one,
-  // the clone's vector index takes no writes at all. The index copies the hybrid time when it is
-  // created, so patch the tablet metadata and restart to recreate the index from it. A graceful
-  // restart keeps the vector index flushed OpId from the source Raft group.
-  {
-    const auto index_hybrid_time = cluster_->mini_master(0)->Now();
-    bool patched = false;
-    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), clone_table_id)) {
-      auto tablet = ASSERT_RESULT(peer->shared_tablet());
-      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(clone_index_id));
-      if (!table_info->hybrid_time.is_valid()) {
-        table_info->hybrid_time = index_hybrid_time;
-        ASSERT_OK(tablet->metadata()->Flush());
-        patched = true;
-      }
-    }
-    if (patched) {
-      for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-        ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(
-            tserver::WaitTabletsBootstrapped::kTrue));
-      }
-    }
-  }
 
   // Rows written to the clone, in a transaction and through the single-shard fast path, stay in
   // the vector index mutable chunk.
