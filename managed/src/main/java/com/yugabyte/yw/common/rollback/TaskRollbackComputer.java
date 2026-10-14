@@ -43,10 +43,9 @@ public interface TaskRollbackComputer {
   }
 
   /**
-   * Whether the failed task left universe {@code universeUUID} in a state this rollback can undo.
-   * Listing {@code canRollback} and submit eligibility both apply it, so neither offers a rollback
-   * that {@link #compute} would reject. Listing calls it once for each failed task that still owns
-   * its universe, so keep it cheap. Default true.
+   * Whether the failed task may be rolled back on universe {@code universeUUID}. Submit eligibility
+   * ({@code Commissioner#canTaskRollbackDetailed}) applies it, so the API refuses what listing
+   * hides. Listing does not call it and loads no universe. Default true.
    */
   default boolean canRollback(TaskInfo failedTask, UUID universeUUID) {
     return true;

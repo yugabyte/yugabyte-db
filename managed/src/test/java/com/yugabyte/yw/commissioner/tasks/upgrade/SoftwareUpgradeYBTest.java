@@ -1154,7 +1154,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testRollbackRejectedWhenAbortedBeforeUpgradeStarts() throws InterruptedException {
+  public void testRollbackOfferedWhenAbortedBeforeUpgradeStarts() throws InterruptedException {
     TaskInfo taskInfo = abortUpgradeAroundUpgradingState(false);
 
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -1166,7 +1166,17 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertFalse(details.isSoftwareRollbackAllowed);
     CustomerTask customerTask = createCustomerTask(taskInfo);
     assertTrue(customerTaskManager.isTaskRetryable(customerTask, taskInfo));
-    assertRollbackRejected(customerTask);
+    // The task owns the universe, so rollback is offered; the rollback's precheck refuses it
+    // because this upgrade never set isSoftwareRollbackAllowed.
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), taskInfo.getUuid()));
+    assertThat(ex.getMessage(), containsString("previous upgrade was finalized"));
   }
 
   @Test

@@ -4,8 +4,6 @@ package com.yugabyte.yw.common.rollback;
 
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -36,67 +34,17 @@ public class SoftwareUpgradeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Only an upgrade that got past its {@code Upgrading} step has anything to roll back. The failed
-   * task must still own the universe with {@code isSoftwareRollbackAllowed}, and the universe must
-   * be in one of these states:
-   *
-   * <ul>
-   *   <li>{@code UpgradeFailed}: the failure handler sets it only for an in-progress upgrade.
-   *   <li>{@code PreFinalize} or {@code Ready}, set by this task's own end-of-upgrade state update.
-   *       Subtasks still run after that update, and the failure handler leaves these states as they
-   *       are. The same state left by an earlier upgrade does not count: rolling back would
-   *       downgrade that upgrade.
-   * </ul>
-   *
-   * <p>The check is on the universe state, not on what this task did. {@code UpgradeFailed} means
-   * some attempt in the retry chain got past {@code Upgrading}, so a retry that froze and then
-   * stopped before its own {@code Upgrading} step is allowed. A task that stopped in prechecks
-   * never froze the universe, so it does not own it and is refused. A first attempt that froze but
-   * stopped before {@code Upgrading} upgraded no node and left the state unchanged, so it is
-   * refused and stays retryable.
+   * The failed task must still own the universe, as listing requires. Ownership starts at the
+   * freeze, so a task that failed before it (in prechecks, or aborted before the freeze) is
+   * refused: the universe still describes an earlier upgrade, and a rollback would downgrade that
+   * one. After the freeze, the rollback's own precheck ({@link RollbackUpgradeParams#verifyParams})
+   * decides.
    */
   @Override
   public boolean canRollback(TaskInfo failedTask, UUID universeUUID) {
     return Universe.maybeGet(universeUUID)
-        .map(Universe::getUniverseDetails)
-        .map(details -> canRollback(failedTask, details))
+        .map(u -> u.getUniverseDetails().isOwnedByTask(failedTask.getUuid()))
         .orElse(false);
-  }
-
-  private static boolean canRollback(TaskInfo failedTask, UniverseDefinitionTaskParams details) {
-    if (!details.isOwnedByTask(failedTask.getUuid()) || !details.isSoftwareRollbackAllowed) {
-      return false;
-    }
-    switch (details.softwareUpgradeState) {
-      case UpgradeFailed:
-        return true;
-      case PreFinalize:
-      case Ready:
-        return setRollbackAllowedState(failedTask, details.softwareUpgradeState);
-      default:
-        return false;
-    }
-  }
-
-  /**
-   * Whether a subtask of {@code task} set {@code state} with rollback allowed, and succeeded. Runs
-   * only for {@code PreFinalize} / {@code Ready}. It queries the subtasks itself because the
-   * listing's subtask rows are a partial fetch without task type or params.
-   */
-  private static boolean setRollbackAllowedState(TaskInfo task, SoftwareUpgradeState state) {
-    return TaskInfo.find
-        .query()
-        .where()
-        .eq("parent_uuid", task.getUuid())
-        .eq("task_type", TaskType.UpdateUniverseState)
-        .eq("task_state", TaskInfo.State.Success)
-        .findList()
-        .stream()
-        .map(TaskInfo::getTaskParams)
-        .anyMatch(
-            params ->
-                state.name().equals(params.path("state").asText())
-                    && params.path("isSoftwareRollbackAllowed").asBoolean(false));
   }
 
   @Override
