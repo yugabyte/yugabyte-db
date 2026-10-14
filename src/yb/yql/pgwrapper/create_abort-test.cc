@@ -42,12 +42,23 @@ class CreateAbortTest : public pgwrapper::PgMiniTestBase {
     return GetTableIDFromTableName(name).ok();
   }
 
-  // Returns true iff the table/index exists in the catalog manager.
+  // Returns true iff the table/index exists in the catalog manager and is not being deleted.
   bool TableExistsInCatalog(master::CatalogManager& cm,
     const std::string& name, const std::string& namespace_name = "yugabyte") {
-    auto table_info = cm.GetTableInfoFromNamespaceNameAndTableName(
-        YQL_DATABASE_PGSQL, namespace_name, name);
-    return table_info != nullptr;
+    for (const auto& table : cm.GetTables(master::GetTablesMode::kAll)) {
+      auto l = table->LockForRead();
+      if (!l->started_deleting() && l->namespace_name() == namespace_name && l->name() == name) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Waits until the table/index is gone from the catalog manager or is being deleted.
+  Status WaitForTableNotInCatalog(master::CatalogManager& cm,
+    const std::string& name, const std::string& namespace_name = "yugabyte") {
+    return WaitFor([&]() { return !TableExistsInCatalog(cm, name, namespace_name); },
+                   30s * kTimeMultiplier, Format("Wait for $0 to leave the catalog", name));
   }
 
   // Returns true iff the table/index is not queryable via PG and
@@ -135,7 +146,7 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
   s = cconn.Execute("CREATE INDEX test_create_abort_t3_idx1 ON test_create_abort_t3 (k2)");
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-  ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t3_idx1"));
+  ASSERT_OK(WaitForTableNotInCatalog(cm, "test_create_abort_t3_idx1"));
   ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t3_idx1"));
   ASSERT_FALSE(TableExistsInClientList("test_create_abort_t3_idx1"));
 
@@ -164,7 +175,7 @@ TEST_F(CreateAbortTest, TestAbortColocatedIndexCreation) {
     auto s = cconn.Execute("CREATE INDEX test_create_abort_t1_idx ON test_create_abort_t1 (k2)");
     ASSERT_NOK(s);
     ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-    ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t1_idx", "colo_db"));
+    ASSERT_OK(WaitForTableNotInCatalog(cm, "test_create_abort_t1_idx", "colo_db"));
     ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t1_idx"));
     ASSERT_FALSE(TableExistsInClientList("test_create_abort_t1_idx"));
 

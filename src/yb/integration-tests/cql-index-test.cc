@@ -205,10 +205,28 @@ TEST_F(CqlIndexTest, DropTableWithIndexesIsAtomic) {
     }
   }
 
+  // The failed drop leaves the in-memory table unchanged, so a backfill still updating it would
+  // write it back to the sys catalog over the persisted deletion.
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  for (const auto* index_name : {"idx1", "idx2"}) {
+    ASSERT_EQ(ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, client::YBTableName(YQL_DATABASE_CQL, kNamespace, index_name),
+        IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)),
+        IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  }
+  ASSERT_OK(WaitFor([this, &dropped_table_ids]() -> Result<bool> {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto table = catalog_manager.GetTableInfo(dropped_table_ids.front());
+    SCHECK(table, NotFound, "Table t not found");
+    return !table->IsBackfilling() &&
+           table->LockForRead()->pb.state() == master::SysTablesEntryPB::RUNNING;
+  }, 60s * kTimeMultiplier, "The table is done altering"));
+
   // The master persists the deletion and then fails before it applies it in memory.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = true;
-  ASSERT_NOK(session.ExecuteQuery("DROP TABLE t"));
+  auto drop_status = session.ExecuteQuery("DROP TABLE t");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = false;
+  ASSERT_NOK(drop_status);
 
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart(
       /* wait_until_catalog_manager_is_leader = */ true));
@@ -239,8 +257,9 @@ TEST_F(CqlIndexTest, CreateIndexFailureAfterPersistKeepsIndex) {
       "CREATE TABLE t (key INT PRIMARY KEY, value INT) WITH transactions = { 'enabled' : true }"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
-  ASSERT_NOK(session.ExecuteQuery(Format("CREATE INDEX $0 ON t (value)", kIndexName)));
+  auto create_status = session.ExecuteQuery(Format("CREATE INDEX $0 ON t (value)", kIndexName));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 0;
+  ASSERT_NOK(create_status);
 
   auto check_index_listed = [this]() -> Status {
     auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();

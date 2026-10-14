@@ -2200,8 +2200,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                     CreateTableResponsePB* resp);
 
   // Write a new table, its tablets and, for an index, the indexed table that references it to the
-  // sys catalog in a single operation. Commits the indexed table's in-memory state once that write
-  // succeeded. The caller aborts the creation of the table if this returns an error.
+  // sys catalog in a single operation. The caller commits the in-memory state of the table, its
+  // tablets and the indexed table if this succeeds, and aborts the creation of the table if this
+  // returns an error.
   Status PersistNewTable(
       const CreateTableRequestPB& req, const TableInfoPtr& table, const TabletInfos& tablets,
       TableInfoWithWriteLock& indexed_table, IndexInfoPB* index_info, bool index_backfill_enabled,
@@ -2222,10 +2223,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DeleteIndexInfoFromTable(
       const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableOperation* op);
 
-  // Write the changes collected in op to the sys catalog in a single operation, then abort the
-  // tasks of the deleted tables. The caller commits the in-memory state.
+  // Write the changes collected in op to the sys catalog in a single operation, release the tables
+  // it leaves unchanged, commit the in-memory state of the deleted tables and the altered indexed
+  // table, then abort the tasks of the deleted tables that are not only being hidden.
   Status PersistDeleteTableOperation(
-      const LeaderEpoch& epoch, const DeleteTableOperation& op, DeleteTableResponsePB* resp);
+      const LeaderEpoch& epoch, DeleteTableOperation& op, DeleteTableResponsePB* resp);
 
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
@@ -2373,9 +2375,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       std::map<TableId, DeletingTableData>* data_map);
 
   // Delete the specified table in memory and persist the deletion. The TableInfo, DeletedTableInfo
-  // and lock of the deleted table are appended to op->tables. The caller will be responsible for
-  // committing the change, committing and altering op->altered_indexed_table, and deleting the
-  // actual table and tablets.
+  // and lock of the deleted table are appended to op->tables. The call for the requested table
+  // persists the changes collected in op and commits them in memory. The caller will be responsible
+  // for altering op->altered_indexed_table and deleting the actual table and tablets.
   Status DeleteTableInMemory(
       const TableIdentifierPB& table_identifier,
       bool is_index_table,

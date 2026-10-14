@@ -3821,7 +3821,7 @@ struct CatalogManager::DeleteTableOperation {
   // All the tables involved, by id. The entry of a deleted table is moved to tables.
   std::map<TableId, DeletingTableData> data_map;
 
-  // The deleted tables, in the order they are committed and deleted.
+  // The deleted tables, in the order they are deleted.
   std::vector<DeletingTableData> tables;
 
   std::vector<DdlLogEntry> ddl_log_entries;
@@ -3831,7 +3831,7 @@ struct CatalogManager::DeleteTableOperation {
 };
 
 Status CatalogManager::PersistDeleteTableOperation(
-    const LeaderEpoch& epoch, const DeleteTableOperation& op, DeleteTableResponsePB* resp) {
+    const LeaderEpoch& epoch, DeleteTableOperation& op, DeleteTableResponsePB* resp) {
   auto ddl_log_entries = op.ddl_log_entries |
       std::views::transform([](const DdlLogEntry& entry) { return &entry; });
   auto deleted_tables = op.tables | std::views::transform([](const DeletingTableData& table) {
@@ -3851,6 +3851,32 @@ Status CatalogManager::PersistDeleteTableOperation(
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_crash_after_table_marked_deleting)) {
     return STATUS(InternalError, "Simulated crash after the table was marked deleting");
+  }
+
+  // Release the tables this delete leaves unchanged.
+  for (auto& data : op.data_map | std::views::values) {
+    if (&data.table_info_with_write_lock != op.altered_indexed_table) {
+      data.table_info_with_write_lock.lock.Unlock();
+    }
+  }
+
+  // Commit the in-memory state of all the changed tables in descending table id order.
+  TRACE("Committing in-memory state");
+  std::vector<TableInfoWithWriteLock*> changed_tables;
+  changed_tables.reserve(op.tables.size() + 1);
+  for (auto& table : op.tables) {
+    changed_tables.push_back(&table.table_info_with_write_lock);
+  }
+  if (op.altered_indexed_table) {
+    changed_tables.push_back(op.altered_indexed_table);
+  }
+  std::ranges::sort(
+      changed_tables, std::ranges::greater{},
+      [](const auto* table) -> const TableId& { return table->info->id(); });
+  TEST_SYNC_POINT("PersistDeleteTableOperation::BeforeCommit");
+  for (auto* table : changed_tables) {
+    table->Commit();
+    TEST_SYNC_POINT_CALLBACK("PersistDeleteTableOperation::TableCommitted", table->info.get());
   }
 
   for (const auto& table : op.tables) {
@@ -4588,12 +4614,6 @@ Status CatalogManager::PersistNewTable(
   VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
   TRACE("Wrote table and tablets to system table");
 
-  if (IsIndex(req)) {
-    // Update the in-memory state of the indexed table.
-    TRACE("Committing in-memory state of the indexed table");
-    indexed_table.lock.Commit();
-  }
-
   return Status::OK();
 }
 
@@ -4971,6 +4991,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         req, schema, partition_schema, namespace_id, namespace_name, partitions, colocated,
         IsSystemObject::kFalse, &index_info, joining_colocation_group ? nullptr : &tablets, resp,
         &table, &indexed_table));
+    if (IsIndex(req)) {
+      TEST_SYNC_POINT_CALLBACK("CreateTable::IndexedTableLocked", indexed_table.info.get());
+    }
 
     // Section is executed when a table is either the parent table or a user table in a colocation
     // group.
@@ -5130,8 +5153,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return AbortTableCreation(table.get(), created_tablets, s, resp, &indexed_table);
   }
 
-  // Commit the in-memory state.
+  // Commit the in-memory state of the table and the indexed table in descending table id order.
+  TRACE("Committing in-memory state");
+  const bool commit_indexed_table_first = IsIndex(req) && indexed_table->id() > table->id();
+  if (commit_indexed_table_first) {
+    indexed_table.lock.Commit();
+  }
   table->mutable_metadata()->CommitMutation();
+  if (IsIndex(req) && !commit_indexed_table_first) {
+    indexed_table.lock.Commit();
+  }
 
   for (const auto& tablet : tablets) {
     // Add the table id to the in-memory vector of table ids on TabletInfo.
@@ -7507,12 +7538,6 @@ Status CatalogManager::DeleteTableInternal(
                                     &op, resp, rpc, ns_info));
   auto& tables = op.tables;
 
-  // Update the in-memory state. The indexed table a dropped index is removed from is committed
-  // before the index.
-  TRACE("Committing in-memory state");
-  if (op.altered_indexed_table) {
-    op.altered_indexed_table->Commit();
-  }
   std::unordered_set<TableId> sys_table_ids;
   std::unordered_set<TableId> deleted_table_ids;
   std::unordered_set<TableId> non_retained_cdcsdk_deleted_table_ids;
@@ -7525,15 +7550,6 @@ Status CatalogManager::DeleteTableInternal(
       non_retained_cdcsdk_deleted_table_ids.insert(
           deleting_table.table_info_with_write_lock->id());
     }
-    deleting_table.table_info_with_write_lock.Commit();
-    TEST_SYNC_POINT_CALLBACK(
-        "DeleteTableInternal::TableCommitted",
-        deleting_table.table_info_with_write_lock.info.get());
-  }
-  // Release the tables this delete leaves unchanged. Their entries stay in data_map, since
-  // altered_indexed_table points into it.
-  for (auto& data : op.data_map | std::views::values) {
-    data.table_info_with_write_lock.lock.Unlock();
   }
 
   // The deletion is persisted, so a failure from here on is returned without undoing it. The
@@ -7761,9 +7777,9 @@ Status CatalogManager::DeleteTableInMemory(
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
-  // The call for the requested table takes the write locks of all the tables involved and writes
-  // the changes they produce to the sys catalog. The calls for the indexes deleted along with it
-  // find their tables already locked in op->data_map and add to op.
+  // The call for the requested table takes the write locks of all the tables involved, writes the
+  // changes they produce to the sys catalog and commits them in memory. The calls for the indexes
+  // deleted along with it find their tables already locked in op->data_map and add to op.
   const bool is_requested_table = op->data_map.empty();
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(
@@ -7892,8 +7908,8 @@ Status CatalogManager::DeleteTableInMemory(
   }
 
   // For regular (indexed) table, insert table info and lock in the front of the list. Else for
-  // index table, append them to the end. We do so so that we will commit and delete the indexed
-  // table first before its indexes.
+  // index table, append them to the end. We do so so that we will delete the indexed table first
+  // before its indexes.
   op->tables.insert(is_index_table ? op->tables.end() : op->tables.begin(), std::move(data));
 
   if (is_requested_table) {
