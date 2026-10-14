@@ -35,7 +35,7 @@ ERROR: INHERITS not supported yet
 
 {{< note title="Data migration" >}}
 
-YugabyteDB supports [table inheritance](../../../api/ysql/the-sql-language/ddl-inherit/) in the versions above. yb-voyager cannot migrate data for tables that use `INHERITS` on the source. The assessment report shows this caveat for those tables, and [export data](../../reference/data-migration/export-data/) exits with an error when any table in the migration uses inheritance.
+For versions of YugabyteDB that do not support inheritance, yb-voyager cannot migrate data for tables that use `INHERITS` on the source. The assessment report shows this caveat for those tables, and [export data](../../reference/data-migration/export-data/) exits with an error when any table in the migration uses inheritance.
 
 {{< /note >}}
 
