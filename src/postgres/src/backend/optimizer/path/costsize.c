@@ -102,6 +102,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
@@ -8571,8 +8572,9 @@ yb_saop_const_bounds(ScalarArrayOpExpr *saop, Const **min_const,
  *      selectivity (sparse IN-lists ~ 1, clustered IN-lists ~ 0).
  *
  *      Returns false (outputs unchanged) when the clause is not a SAOP,
- *      the rhs is not a non-null Const array, or no btree comparator is
- *      available for the element type.
+ *      the rhs is not a non-null Const array, the executor cannot bind the
+ *      array to the index column, or no btree comparator is available for
+ *      the element type and the SAOP operator.
  */
 static bool
 yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
@@ -8588,6 +8590,8 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 	int			numElems;
 	Oid			elemtype;
 	TypeCacheEntry *typeCache;
+	Oid			lefttype;
+	Oid			righttype;
 	Oid			leOp;
 	Oid			geOp;
 	Expr	   *geExpr;
@@ -8607,12 +8611,26 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 		return true;
 	}
 
+	/*
+	 * The executor binds the IN-list to the index only for the type pairs
+	 * YbIsScanCompatible accepts, e.g. not (name, text); otherwise no
+	 * bounding range is walked.
+	 */
+	op_input_types(saop->opno, &lefttype, &righttype);
+	if (!YbIsScanCompatible(lefttype, righttype,
+							false /* is_value_scalar */ , (Datum) 0))
+		return false;
+
+	/*
+	 * Look up btree '<=', '>=' for the SAOP operator's input types in the
+	 * element type's opfamily, to bound lhs.
+	 */
 	lhs = (Node *) linitial(saop->args);
 	elemtype = minConst->consttype;
 	typeCache = lookup_type_cache(elemtype, TYPECACHE_BTREE_OPFAMILY);
-	leOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	leOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTLessEqualStrategyNumber);
-	geOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	geOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTGreaterEqualStrategyNumber);
 	if (!OidIsValid(leOp) || !OidIsValid(geOp))
 		return false;
