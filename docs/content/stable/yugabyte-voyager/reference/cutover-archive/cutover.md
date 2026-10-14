@@ -24,7 +24,7 @@ The following page describes the following cutover commands:
 
 Initiate [cutover](../../../migrate/live-migrate/#cutover-to-the-target) to the target YugabyteDB database.
 
-Before cutting over a PostgreSQL source, the command checks the source for schema drift. Host, port, user, database, schemas, and SSL settings come from the migration. Provide the source password with `--source-db-password`, or skip the check with `--skip-pre-checks schema_drift`.
+Before cutting over a PostgreSQL source, the command checks the source for schema drift. Host, port, user, database, schemas, and SSL settings come from the migration. Provide the source password using `--source-db-password`, or skip the check using `--skip-pre-checks schema_drift`.
 
 ### Syntax
 
@@ -78,7 +78,7 @@ source:
   db-password:
 ```
 
-| Source database password, used by the schema drift pre-check. Host, port, user, database, schemas, and SSL settings come from the migration, so only the password is needed. You can also set the password with the `SOURCE_DB_PASSWORD` environment variable. If you don't provide a password, yb-voyager prompts you at runtime. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| Source database password, used by the schema drift pre-check. Host, port, user, database, schemas, and SSL settings come from the migration, so only the password is needed. You can also set the password using the `SOURCE_DB_PASSWORD` environment variable. If you don't provide a password, yb-voyager prompts you at runtime. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --skip-pre-checks |
 
 ```yaml{.nocopy}

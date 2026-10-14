@@ -23,7 +23,7 @@ The following sections provide guidance on how to adjust your schema, handle uns
 
 **GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
 
-**Description**: If you have table inheritance in the source database, it will error out in the target on YugabyteDB versions that do not support `INHERITS`:
+**Description**: If you have table inheritance in the source database, it will error out in the target for versions of YugabyteDB that do not support `INHERITS`:
 
 ```output
 ERROR: INHERITS not supported yet
@@ -549,7 +549,7 @@ CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding intege
 
 ### Data types
 
-#### Unsupported datatypes by YugabyteDB
+#### Datatypes not supported by YugabyteDB {#unsupported-datatypes-by-yugabytedb}
 
 **GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
@@ -1398,7 +1398,7 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 ---
 
-### Unsupported datatypes by Voyager during live migration
+### Datatypes not supported by Voyager during live migration {#unsupported-datatypes-by-voyager-during-live-migration}
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
