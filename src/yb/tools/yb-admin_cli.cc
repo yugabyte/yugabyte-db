@@ -3690,8 +3690,7 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  // Without a usage message set, gflags would print "Warning: SetUsageMessage() never called".
-  if (s.IsInvalidArgument() && yb::IsUsageMessageSet()) {
+  if (s.IsInvalidArgument()) {
     yb::tools::ClusterAdminCli::PrintOverview(yb::BaseName(argv[0]), std::cout);
   }
 

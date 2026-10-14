@@ -35,7 +35,6 @@
 #include <fstream>
 #include <map>
 #include <regex>
-#include <sstream>
 #include <thread>
 #include <tuple>
 #include <unordered_set>
@@ -79,6 +78,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
@@ -336,20 +336,6 @@ TEST_F(AdminCliTest, MalformedInitMasterAddrs) {
   }
 }
 
-namespace {
-
-std::vector<std::string> SplitLines(const std::string& text) {
-  std::vector<std::string> lines;
-  std::istringstream stream(text);
-  std::string line;
-  while (std::getline(stream, line)) {
-    lines.push_back(line);
-  }
-  return lines;
-}
-
-}  // namespace
-
 TEST_F(AdminCliTest, HelpFlagsPrintOverview) {
   const auto exe_path = GetAdminToolPath();
   std::string output;
@@ -441,7 +427,7 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
       std::find(names.begin(), names.end(), "unsafe_release_object_locks_global") == names.end());
 
   // Long entries are truncated; help <operation> shows the full syntax.
-  for (const auto& line : SplitLines(output)) {
+  for (const auto& line : StringSplit(output, '\n')) {
     ASSERT_LE(line.size(), 100) << line;
   }
   ASSERT_TRUE(std::regex_search(
@@ -449,7 +435,7 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
       << "expected a truncated entry";
   ASSERT_OK(Subprocess::Call(
       ToStringVector(exe_path, "help", "alter_universe_replication"), &output, &error));
-  const auto usage_line = SplitLines(output).front();
+  const auto usage_line = StringSplit(output, '\n').front();
   ASSERT_STR_CONTAINS(usage_line, "Usage: yb-admin alter_universe_replication");
   ASSERT_GT(usage_line.size(), 100);
 }
