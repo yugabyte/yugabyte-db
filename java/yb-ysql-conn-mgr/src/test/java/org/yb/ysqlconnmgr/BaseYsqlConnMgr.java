@@ -249,6 +249,14 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
   }
 
+  // /connections is served by the YSQL webserver, which the postmaster on that node starts after
+  // the node's connection manager is already listening. waitForDatabaseToStart only verifies
+  // TSERVER_IDX, and nodes come up serially, so a test reading stats off any other node can beat
+  // that node's webserver to the port.
+  protected void waitForConnectionStats(int tserverIndex) throws Exception {
+    TestUtils.waitFor(() -> getConnectionStats(tserverIndex) != null, 30000);
+  }
+
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
     return getPool(db_name, user_name, TSERVER_IDX);
   }
