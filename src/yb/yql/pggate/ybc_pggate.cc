@@ -3527,6 +3527,10 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
   return PgFlushDebugContext::YbcEndOfTopLevelStmt();
 }
 
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers() {
+  return PgFlushDebugContext::YbcParallelWorkers();
+}
+
 // ---------------------------------------------------------------------------
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------

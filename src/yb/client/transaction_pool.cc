@@ -176,7 +176,6 @@ class SingleLocalityPool {
 
   void ScheduleCleanup() REQUIRES(mutex_) {
     ASH_ENABLE_CONCURRENT_UPDATES();
-    SET_WAIT_STATUS(OnCpu_Passive);
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
         std::bind(&SingleLocalityPool::Cleanup, this, ash::WaitStateInfo::CurrentWaitState(), _1),
         FLAGS_transaction_pool_cleanup_interval_ms * 1ms);

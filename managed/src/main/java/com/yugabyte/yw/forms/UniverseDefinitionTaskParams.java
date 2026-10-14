@@ -820,7 +820,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
               BAD_REQUEST,
-              cloudType.name() + " instance with ephemeral storage can't have storageType set");
+              cloudType.name().toUpperCase()
+                  + " instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {

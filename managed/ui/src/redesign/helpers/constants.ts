@@ -89,6 +89,7 @@ export const RuntimeConfigKey = {
   ENABLE_AUTO_NODE_AGENT_INSTALLATION: 'yb.node_agent.enabler.run_installer',
   LOKI_TELEMETRY_ALLOW: 'yb.telemetry.allow_loki',
   OTLP_TELEMETRY_ALLOW: 'yb.telemetry.allow_otlp',
+  S3_TELEMETRY_ALLOW: 'yb.telemetry.allow_s3',
   ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption',
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
@@ -101,7 +102,6 @@ export const RuntimeConfigKey = {
   ENABLE_AZ_OVERRIDES_K8S: 'yb.ui.feature_flags.enable_az_overrides_k8s',
   ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules',
-  /** When true, expert-mode primary RF picker/defaults include RF 9. */
   ENABLE_PRIMARY_RF_9: 'yb.universe.enable_primary_rf_9'
 } as const;
 

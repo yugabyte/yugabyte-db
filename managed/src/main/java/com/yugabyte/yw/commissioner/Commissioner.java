@@ -333,10 +333,17 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
+  /**
+   * @param updatingTasks per target, the task UUIDs that own the target for retry/rollback:
+   *     updatingTaskUUID plus placementModificationTaskUuid.
+   * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
+   *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
+   */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
+      Map<UUID, Set<String>> placementLockTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null) {
       return Optional.empty();
@@ -437,9 +444,16 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
-              Set<String> taskUuidsToAllowRollback =
-                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
-              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+              // An edit's auto-rollback clears placementModificationTaskUuid but keeps
+              // updatingTaskUUID so the task stays retryable. Checkpoint-based rollbacks must hold
+              // the placement lock, as canRollbackTaskOnUniverse requires on submit.
+              Map<UUID, Set<String>> owners =
+                  rollbackRequiresStateTransitionDetails(tf.getTaskType())
+                      ? placementLockTasks
+                      : updatingTasks;
+              return owners
+                  .getOrDefault(task.getTargetUUID(), Collections.emptySet())
+                  .contains(tf.getUuid().toString());
             });
     responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
@@ -639,6 +653,7 @@ public class Commissioner {
     }
     TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
+    Map<UUID, Set<String>> placementLockByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
             String.class,
@@ -654,14 +669,22 @@ public class Commissioner {
             task.getTargetUUID(),
             UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD)
         .ifPresent(
-            id ->
-                updatingTaskByTargetMap
-                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
-                    .add(id));
+            id -> {
+              updatingTaskByTargetMap
+                  .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                  .add(id);
+              placementLockByTargetMap
+                  .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                  .add(id);
+            });
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
-        task, taskInfo.getSubTasks(), updatingTaskByTargetMap, lastTaskByTargetMap);
+        task,
+        taskInfo.getSubTasks(),
+        updatingTaskByTargetMap,
+        placementLockByTargetMap,
+        lastTaskByTargetMap);
   }
 
   // Returns a map of target to updating task UUID.

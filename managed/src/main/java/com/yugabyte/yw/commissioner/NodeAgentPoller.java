@@ -92,6 +92,19 @@ public class NodeAgentPoller {
               KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(PrometheusRegistry.defaultRegistry);
 
+  private static final String NODE_AGENT_ROOT_NODE_EXPORTER_NAME =
+      "ybp_nodeagent_root_node_exporter";
+  private static final Gauge NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE =
+      Gauge.builder()
+          .name(NODE_AGENT_ROOT_NODE_EXPORTER_NAME)
+          .help("Does the node run node_exporter from the root-level systemd unit")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName(),
+              KnownAlertLabels.NODE_NAME.labelName())
+          .register(PrometheusRegistry.defaultRegistry);
+
   private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
       Gauge.builder()
@@ -278,8 +291,9 @@ public class NodeAgentPoller {
         swamperHelper.writeNodeAgentTargetJson(nodeAgent);
         isTargetFileWritten = true;
       }
+      PingResponse response;
       try {
-        nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+        response = nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
         publishMetric(nodeAgent, NODE_AGENT_CONNECTION_GAUGE, 1);
       } catch (RuntimeException e) {
         if (lastFailedCount < MAX_FAILED_CONN_COUNT) {
@@ -322,6 +336,14 @@ public class NodeAgentPoller {
         return;
       }
       nodeAgent.heartbeat();
+      // Named after the node, so the alerts can list node names like other node alerts.
+      NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE
+          .labelValues(
+              nodeAgent.getCustomerUuid().toString(),
+              nodeAgent.getUuid().toString(),
+              String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
+              nodeAgent.getName())
+          .set(response.getServerInfo().getRootNodeExporterUnit() ? 1 : 0);
       boolean wasDead = !isNodeAgentAlive();
       lastFailedCount = 0;
       if (wasDead) {
@@ -493,6 +515,7 @@ public class NodeAgentPoller {
     NODE_AGENT_VERSION_MISMATCH_GAUGE.removeIf(matches);
     NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
     NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
+    NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE.removeIf(matches);
   }
 
   @VisibleForTesting

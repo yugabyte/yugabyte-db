@@ -74,7 +74,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             "Success",
             100.0,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -105,7 +105,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             "Running",
             10.0,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -135,7 +135,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             50.0,
             responseJson);
     responseJson.set("details", softwareUpgradeProgressDetails(azUuid, clusterUuid));
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());

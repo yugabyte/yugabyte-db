@@ -135,6 +135,24 @@ typedef enum YbGeolocationDistance
 
 extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 
+/**
+ * Returns a null-terminated string representing the name of the
+ * cloud this process is running on.
+ */
+extern const char *YBGetCurrentCloud();
+
+/**
+ * Returns a null-terminated string representing the region this
+ * process is running on.
+ */
+extern const char *YBGetCurrentRegion();
+
+/**
+ * Returns a null-terminated string representing the zone this
+ * process is running on.
+ */
+extern const char *YBGetCurrentZone();
+
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -1074,6 +1092,7 @@ extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
+extern bool YBCurrentStmtCannotIncrementCatalogVersion();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();

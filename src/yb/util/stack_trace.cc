@@ -13,6 +13,7 @@
 
 #include "yb/util/stack_trace.h"
 
+#include <dlfcn.h>
 #include <execinfo.h>
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
@@ -69,6 +70,12 @@ DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsTsan(),
     "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
 TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
 TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);
+
+DEFINE_RUNTIME_bool(stack_trace_symbolize, true,
+    "Resolve stack trace addresses to symbols when logging them. Symbolization reads the "
+    "binaries' symbol tables and is expensive; when false, frames are logged as hex address "
+    "plus module+offset, resolvable offline with llvm-symbolizer.");
+TAG_FLAG(stack_trace_symbolize, advanced);
 
 // A hack to grab a function from glog.
 // For source see e.g. https://github.com/yugabyte/glog/blob/v0.4.0-yb-5/src/stacktrace.h#L57
@@ -402,6 +409,9 @@ std::string StackTrace::ToHexString(int flags) const {
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
 std::string StackTrace::Symbolize(
     const StackTraceLineFormat stack_trace_line_format, StackTraceGroup* group) const {
+  if (!FLAGS_stack_trace_symbolize) {
+    return ToLogFormatModuleOffsetString();
+  }
   std::string buf;
   auto* global_backtrace_state = libbacktrace::GetGlobalBacktraceState();
 
@@ -423,6 +433,22 @@ string StackTrace::ToLogFormatHexString() const {
   for (int i = 0; i < num_frames_; i++) {
     void* pc = frames_[i];
     buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
+  }
+  return buf;
+}
+
+string StackTrace::ToLogFormatModuleOffsetString() const {
+  string buf;
+  for (int i = 0; i < num_frames_; i++) {
+    void* pc = frames_[i];
+    Dl_info info;
+    if (dladdr(pc, &info) != 0 && info.dli_fname != nullptr) {
+      buf += Format(
+          "    @ $0 ($1+0x$2)\n", FormatStackTraceAddress(pc), info.dli_fname,
+          HexString(reinterpret_cast<uintptr_t>(pc) - reinterpret_cast<uintptr_t>(info.dli_fbase)));
+    } else {
+      buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
+    }
   }
   return buf;
 }
