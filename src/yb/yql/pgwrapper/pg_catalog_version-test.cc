@@ -3025,10 +3025,28 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
     });
   }
   CoarseTimePoint start = CoarseMonoClock::Now();
-  while (start + RegularBuildVsSanitizers(60s, 20s) > CoarseMonoClock::Now()) {
+  // The race is timing dependent and may not occur within the minimal duration on TSAN, so keep
+  // running DDLs until a delta refresh is seen, up to a limit. ASAN is not extended: longer runs
+  // exceed the test timeout (#32059).
+  const auto deadline = start + ReleaseVsDebugVsAsanVsTsan(60s, 60s, 20s, 90s);
+  auto next_check = start + RegularBuildVsSanitizers(60s, 20s);
+  for (;;) {
     ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
     ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
+    const auto now = CoarseMonoClock::Now();
+    if (now >= deadline) {
+      break;
+    }
+    if (now < next_check) {
+      continue;
+    }
+    // Throttled: each metrics fetch is costly under sanitizers and slows the DDL rate.
+    if (GetInt64MetricsHelper("CatCacheDeltaRefresh") > 0) {
+      break;
+    }
+    next_check = now + 5s;
   }
+  LOG(INFO) << "DDL loop ran for " << MonoDelta(CoarseMonoClock::Now() - start);
   thread_holder.Stop();
   // We expect to see 0 full refreshes, should see some incremental refreshes.
   VerifyCatCacheRefreshMetricsHelper(
