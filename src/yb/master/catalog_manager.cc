@@ -1435,7 +1435,7 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
           state->epoch.leader_term),
       "Failed restoring snapshot in sys catalog");
   LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-  cluster_config_.reset();
+  std::atomic_store(&cluster_config_, std::shared_ptr<ClusterConfigInfo>());
   RETURN_NOT_OK(PrepareDefaultClusterConfig(state->epoch.leader_term));
 
   LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
@@ -1623,7 +1623,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  cluster_config_.reset();
+  std::atomic_store(&cluster_config_, std::shared_ptr<ClusterConfigInfo>());
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1775,7 +1775,7 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   }
 
   // Create in memory object.
-  cluster_config_ = std::make_shared<ClusterConfigInfo>();
+  std::atomic_store(&cluster_config_, std::make_shared<ClusterConfigInfo>());
 
   // Prepare write.
   auto l = cluster_config_->LockForWrite();
@@ -1807,7 +1807,7 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
 
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config.get()));
   l.Commit();
   return Status::OK();
 }
@@ -11232,7 +11232,7 @@ Status CatalogManager::InvalidateTserverOidCaches() {
                         << oid_cache_invalidations_count;
   l.mutable_data()->pb.set_oid_cache_invalidations_count(oid_cache_invalidations_count);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_.get()));
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()));
   l.Commit();
   return Status::OK();
 }
@@ -14185,7 +14185,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
-  return cluster_config_;
+  return std::atomic_load(&cluster_config_);
 }
 
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {

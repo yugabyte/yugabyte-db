@@ -108,6 +108,8 @@ import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.util.PeerInfo;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -2249,6 +2251,40 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testRollbackEditUniverseWithSecondaryIps() throws InterruptedException {
+    Universe universe = defaultUniverse;
+    int nodesBefore = universe.getUniverseDetails().nodeDetailsSet.size();
+    TaskInfo failedEdit = abortExpandWithSecondaryIps(universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    mockDualNicMembership(universe, Collections.emptySet());
+
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    TaskInfo membership = getSubTask(rollbackInfo, TaskType.ConfirmEditRollbackMembership);
+    assertEquals(membership.getErrorMessage(), Success, membership.getTaskState());
+    assertEquals(Success, rollbackInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackEditUniverseRejectsUnknownSecondaryIp() throws InterruptedException {
+    Universe universe = defaultUniverse;
+    TaskInfo failedEdit = abortExpandWithSecondaryIps(universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    String unknownIp = "203.0.113.99";
+    mockDualNicMembership(universe, Set.of(unknownIp));
+
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    assertEquals(Failure, rollbackInfo.getTaskState());
+    TaskInfo membership = getSubTask(rollbackInfo, TaskType.ConfirmEditRollbackMembership);
+    assertEquals(Failure, membership.getTaskState());
+    // Only the unknown server is flagged; secondary IPs of Live-before and ADD nodes are allowed.
+    assertThat(
+        membership.getErrorMessage(), containsString("unexpected servers [\"" + unknownIp + "\"]"));
+  }
+
+  @Test
   public void testRollbackEditUniverseAfterModifyBlackListAbort() throws InterruptedException {
     // U3: abort at first ModifyBlackList (new-node blacklist) - still pre-checkpoint.
     // Rollback clears orphaned server_blacklist for Live survivors and ADD nodes.
@@ -2400,6 +2436,108 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackEditUniverseRetryClearsBlacklistOfAlreadyDestroyedNodes()
+      throws InterruptedException {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+
+    Universe universe = defaultUniverse;
+    Set<String> beforeNames =
+        universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo failedEdit = submitTask(taskParams);
+    assertEquals(Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Set<String> addedNames =
+        universe.getNodes().stream()
+            .map(NodeDetails::getNodeName)
+            .filter(name -> name != null && !beforeNames.contains(name))
+            .collect(Collectors.toSet());
+    Set<String> addIps =
+        universe.getNodes().stream()
+            .filter(n -> addedNames.contains(n.getNodeName()))
+            .map(n -> n.cloudInfo == null ? null : n.cloudInfo.private_ip)
+            .filter(ip -> ip != null && !ip.isBlank())
+            .collect(Collectors.toSet());
+    assertFalse(addedNames.isEmpty());
+    assertFalse(addIps.isEmpty());
+
+    stubNodeManagerOkWithInstancesPresent();
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    // Abort after the ADD nodes are destroyed and before ModifyBlackList clears their IPs.
+    setAbortPosition(5);
+    UUID rollbackUuid;
+    try {
+      rollbackUuid = commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams);
+      CustomerTask.create(
+          defaultCustomer,
+          universe.getUniverseUUID(),
+          rollbackUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackEditUniverse,
+          universe.getName());
+      TaskInfo aborted = waitForTask(rollbackUuid);
+      String sequence =
+          aborted.getSubTasks().stream()
+              .map(t -> t.getTaskType() + ":" + t.getTaskState())
+              .collect(Collectors.joining(", "));
+      assertEquals(sequence, Aborted, aborted.getTaskState());
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.AnsibleDestroyServer
+                          && t.getTaskState() == Success));
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .noneMatch(
+                  t -> t.getTaskType() == TaskType.ModifyBlackList && t.getTaskState() == Success));
+    } finally {
+      clearAbortOrPausePositions();
+    }
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(
+        "ADD nodes should be gone from the universe details after destroy",
+        universe.getNodes().stream().noneMatch(n -> addedNames.contains(n.getNodeName())));
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), rollbackUuid);
+    TaskInfo retryInfo = waitForTask(retryTask.getTaskUUID());
+    assertEquals(Success, retryInfo.getTaskState());
+    // The retry cannot find the destroyed nodes in the universe details any more.
+    assertTrue(privateIpsFromModifyBlackListRemoveNodes(retryInfo).containsAll(addIps));
+    Set<String> confirmedDestroyedIps =
+        retryInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ConfirmEditRollbackMembership)
+            .flatMap(
+                t ->
+                    com.google.common.collect.Streams.stream(
+                        t.getTaskParams().path("destroyedNodeIps").elements()))
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+    assertTrue(confirmedDestroyedIps.containsAll(addIps));
   }
 
   @Test
@@ -3006,5 +3144,102 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
     rollbackParams.expectedUniverseVersion = -1;
     return waitForTask(commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams));
+  }
+
+  private TaskInfo getSubTask(TaskInfo taskInfo, TaskType subTaskType) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == subTaskType)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("no " + subTaskType + " subtask"));
+  }
+
+  /**
+   * Gives every node a secondary IP, then aborts an expand at WaitForServer (before
+   * MarkRollbackUnsafe), when the ADD servers are already running.
+   */
+  private TaskInfo abortExpandWithSecondaryIps(Universe universe) {
+    int nodesBefore = universe.getUniverseDetails().nodeDetailsSet.size();
+    universe = setSecondaryIps(universe);
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    // setSecondaryIps bumped the universe version.
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setAbortPosition(UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.WaitForServer));
+    TaskInfo failedEdit;
+    try {
+      failedEdit = submitTask(taskParams);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+    assertEquals(Aborted, failedEdit.getTaskState());
+    // Dual-NIC provisioning assigns ADD nodes a secondary IP too.
+    universe = setSecondaryIps(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(universe.getUniverseDetails().nodeDetailsSet.size() > nodesBefore);
+    stubNodeManagerOkWithInstancesPresent();
+    return failedEdit;
+  }
+
+  private Universe setSecondaryIps(Universe universe) {
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getNodes().stream()
+                .filter(n -> n.cloudInfo != null && n.cloudInfo.secondary_private_ip == null)
+                .forEach(n -> n.cloudInfo.secondary_private_ip = "198.51.100." + n.nodeIdx));
+  }
+
+  /**
+   * Mocks master membership as a cluster in secondary-IP mode reports it: servers bind {@code
+   * <secondary>,<private>}, so master peers list both IPs and live tservers report the secondary.
+   * Live-before servers come from the before snapshot, since survivor IPs in current details can
+   * differ from it (see testRollbackEditUniverseAfterWaitForServerAbort).
+   */
+  private void mockDualNicMembership(Universe universe, Set<String> extraTserverIps) {
+    UniverseDefinitionTaskParams before =
+        universe.getStateTransitionDetails().getBeforeUniverseDetails();
+    Set<String> beforeNames =
+        before.nodeDetailsSet.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    List<PeerInfo> masters = new ArrayList<>();
+    List<TabletServerInfo> tservers = new ArrayList<>();
+    for (NodeDetails node : before.nodeDetailsSet) {
+      if (node.state != NodeState.Live) {
+        continue;
+      }
+      if (node.isMaster) {
+        PeerInfo peer = new PeerInfo();
+        peer.setLastKnownPrivateIps(
+            List.of(
+                HostAndPort.fromParts(node.cloudInfo.secondary_private_ip, node.masterRpcPort),
+                HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort)));
+        masters.add(peer);
+      }
+      if (node.isTserver) {
+        tservers.add(liveTserver(node.cloudInfo.secondary_private_ip, node.tserverRpcPort));
+      }
+    }
+    for (NodeDetails node : universe.getNodes()) {
+      if (!beforeNames.contains(node.getNodeName())) {
+        tservers.add(liveTserver(node.cloudInfo.secondary_private_ip, node.tserverRpcPort));
+      }
+    }
+    extraTserverIps.forEach(ip -> tservers.add(liveTserver(ip, 9100)));
+    try {
+      ListMasterRaftPeersResponse peersResponse = mock(ListMasterRaftPeersResponse.class);
+      lenient().when(peersResponse.getPeersList()).thenReturn(masters);
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(peersResponse);
+      ListLiveTabletServersResponse tserversResponse = mock(ListLiveTabletServersResponse.class);
+      lenient().when(tserversResponse.getTabletServers()).thenReturn(tservers);
+      lenient().when(mockClient.listLiveTabletServers()).thenReturn(tserversResponse);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
+
+  private static TabletServerInfo liveTserver(String ip, int rpcPort) {
+    TabletServerInfo info = new TabletServerInfo();
+    info.setPrivateRpcAddress(HostAndPort.fromParts(ip, rpcPort));
+    return info;
   }
 }

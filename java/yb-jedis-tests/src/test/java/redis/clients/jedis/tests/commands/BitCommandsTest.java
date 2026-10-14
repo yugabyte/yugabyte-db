@@ -17,6 +17,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class BitCommandsTest extends JedisCommandTestBase {
   @Test
   @Ignore public void setAndgetbit() {

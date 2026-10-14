@@ -102,6 +102,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -926,6 +927,20 @@ public class Util {
       return nodeInUniverse.cloudInfo.secondary_private_ip;
     }
     return nodeInUniverse.cloudInfo.private_ip;
+  }
+
+  /**
+   * Returns the node's private and secondary IPs, skipping unset ones. The master may report a
+   * dual-NIC server by its secondary IP: secondary-IP mode binds it first, and legacy dual-net
+   * tservers broadcast it.
+   */
+  public static Set<String> getNodeIps(NodeDetails node) {
+    if (node == null || node.cloudInfo == null) {
+      return Set.of();
+    }
+    return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
+        .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
+        .collect(Collectors.toSet());
   }
 
   // Generate a deterministic node UUID from the universe UUID and the node name.

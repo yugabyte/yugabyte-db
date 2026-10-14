@@ -220,6 +220,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::atomic<uint32> idle_polls_ = 0;
 
   bool processed_change_metadata_op_in_last_poll_ = false;
+  bool TEST_has_polled_ = false;
 
   // Replication errors that are tracked and reported to the master.
   std::mutex replication_error_mutex_;

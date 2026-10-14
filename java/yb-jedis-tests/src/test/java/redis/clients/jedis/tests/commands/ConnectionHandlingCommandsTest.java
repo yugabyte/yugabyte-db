@@ -2,6 +2,7 @@ package redis.clients.jedis.tests.commands;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.Before;
 
@@ -15,6 +16,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ConnectionHandlingCommandsTest extends JedisCommandTestBase {
   protected HostAndPort hnp;
 

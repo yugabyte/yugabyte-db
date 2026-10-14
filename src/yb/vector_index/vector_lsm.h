@@ -167,8 +167,12 @@ class VectorLSM {
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
   Result<size_t> TotalEntries() const;
+
+  // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
+  // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
+  // first to cover every vector inserted before the call.
+  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
 
   Status Flush(bool wait);
   // Waits for insert tasks already allocated when the wait started (including those that raced

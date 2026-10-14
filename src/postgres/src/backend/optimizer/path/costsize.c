@@ -167,6 +167,7 @@ double		yb_seq_block_cost = DEFAULT_SEQ_PAGE_COST;
 double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
+double		yb_prev_cost_factor = YB_DEFAULT_PREV_COST_FACTOR;
 int			yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int			yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 
@@ -3383,10 +3384,11 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 		 * Inner probe cost of an empty batch: one round trip and a seek per
 		 * probed key, no transfer.  For an index inner we re-derive the seek
 		 * and round-trip terms exactly as yb_cost_index computes them (those
-		 * locals are not persisted on the path; estimated_num_nexts_prevs
-		 * over-counts empty probes, so it is not usable here).  For any other
-		 * inner path we keep the probe's run cost.  Never charge an empty
-		 * batch more than a productive one of the same key count.
+		 * locals are not persisted on the path; estimated_num_nexts and
+		 * estimated_num_prevs over-count empty probes, so they are not usable
+		 * here).  For any other inner path we keep the probe's run cost.
+		 * Never charge an empty batch more than a productive one of the same
+		 * key count.
 		 */
 		empty_probe_full = rescan_run_cost;
 		empty_probe_first = rescan_run_cost * first_keys / batch_keys;
@@ -7736,10 +7738,12 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
-	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_prevs = 0;
 	path->yb_plan_info.estimated_num_table_result_pages = num_result_pages;
 	path->yb_plan_info.estimated_num_index_result_pages = 0;
-	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;
+	path->yb_plan_info.estimated_num_bmscan_nexts = 0;
+	path->yb_plan_info.estimated_num_bmscan_prevs = 0;
 	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = 0;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
@@ -8425,7 +8429,7 @@ yb_add_base_table_fetch_cost(Cardinality tuples,
 							 Oid tablespace_id,
 							 double first_batch_frac,
 							 Cardinality *num_seeks,
-							 Cardinality *num_nexts_prevs,
+							 Cardinality *num_nexts,
 							 Cost *startup_cost,
 							 Cost *run_cost)
 {
@@ -8434,7 +8438,7 @@ yb_add_base_table_fetch_cost(Cardinality tuples,
 
 	/* Base table lookup cost */
 	*num_seeks += tuples;
-	*num_nexts_prevs += tuples;
+	*num_nexts += tuples;
 
 	/* Add cost of first seek to startup cost */
 	*startup_cost += per_seek_cost;
@@ -8724,6 +8728,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/* TODO: Plug here the actual number of SST files for this index */
 	int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_next_cost;
+	Cost		per_prev_cost;
 	QualCost	qual_cost;
 	List	   *base_table_pushed_down_filters = NIL;
 	List	   *base_table_colrefs = NIL;
@@ -8919,18 +8924,37 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		index_conditions_selectivity = 1.0;
 
 	/*
-	 * Estimate number of seeks and only the number of nexts caused by hybrid
-	 * scan.
+	 * Iterator movements are split three ways so that each counter means the
+	 * same thing at every line of this function.
+	 *
+	 * num_dir_steps	steps that follow the scan direction: nexts for a
+	 *					forward scan, prevs for a backward one.  The count is
+	 *					the same either way, so it is estimated without
+	 *					reference to the direction and folded into num_nexts or
+	 *					num_prevs below.
+	 * num_nexts		steps that are always forward whatever the scan
+	 *					direction.  The base table fetch is the main one: it
+	 *					looks tuples up by ybctid, and PgDmlRead::SetForwardScan
+	 *					hands the direction to the secondary index request only,
+	 *					so the table read never receives one.
+	 * num_prevs		steps a backward scan pays on top of its direction
+	 *					steps, and the folded direction steps themselves.
 	 */
 	Cardinality	num_seeks = 0;
-	Cardinality	num_nexts_prevs = 0;
+	Cardinality	num_dir_steps = 0;
+	Cardinality	num_nexts = 0;
+	Cardinality	num_prevs = 0;
 
 	if (yb_exist_conditions_on_all_hash_keys_)
 	{
+		/*
+		 * The estimator walks the index in scan order and is direction
+		 * agnostic, so its "nexts" are direction steps.
+		 */
 		yb_estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
 											  index_conditions_selectivity,
 											  index_conditions_on_each_column,
-											  &num_seeks, &num_nexts_prevs);
+											  &num_seeks, &num_dir_steps);
 	}
 	else
 	{
@@ -8942,42 +8966,49 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * find the next keys.
 		 */
 		num_seeks = 1;
-		num_nexts_prevs = index->tuples;
+		num_dir_steps = index->tuples;
 	}
 
-	if (path->indexscandir == BackwardScanDirection && !YbUseFastBackwardScan())
+	if (path->indexscandir == BackwardScanDirection)
 	{
-		/*
-		 * In case of backward index scan without the fast backward scan
-		 * optimization, we need to do additional seeks and nexts.
-		 *
-		 * The seek and next estimates to look up the index for the index
-		 * conditions are the same, but for each row that matches, we must
-		 * first seek to the first key-value pair in DocDB and then do nexts
-		 * to build the tuple.
-		 *
-		 * However, for each tuple we must first seek to the first key-value
-		 * pair for the tuple and then do nexts to build the tuple. At the
-		 * end, we must seek back to the first key-value pair for the tuple
-		 * and do prev to find the last key-value pair of the previous
-		 * tuple. This is why we must add 2 seeks and 1 prev for each tuple.
-		 *
-		 * There is additional logic in this implementation that has not
-		 * been modeled here for the sake of simplicity.
-		 */
-		num_seeks += (index_conditions_selectivity * index->tuples * 2);
-		num_nexts_prevs += (index_conditions_selectivity * index->tuples);
+		num_prevs += num_dir_steps;
+
+		if (!YbUseFastBackwardScan())
+		{
+			/*
+			 * Without the fast backward scan optimization, each tuple is
+			 * still read in forward order. For each matching tuple, DocDB
+			 * - seeks to the first key-value pair of the tuple,
+			 * - reads the tuple, and nexts past its last key-value pair,
+			 * - seeks back to the first key-value pair of the tuple,
+			 * - prevs to the last key-value pair of the previous tuple.
+			 *
+			 * The prev is the scan direction step, already counted in
+			 * num_dir_steps, so add 2 seeks and 1 next per matching tuple.
+			 * This assumes one key-value pair per tuple, as in a compacted
+			 * table with packed rows; each additional key-value pair would
+			 * cost another next, which is not modeled, as for forward scans.
+			 */
+			num_seeks += (index_conditions_selectivity * index->tuples * 2);
+			num_nexts += (index_conditions_selectivity * index->tuples);
+		}
 	}
+	else
+		num_nexts += num_dir_steps;
 
 	pfree(index_conditions_on_each_column);
 
 	/*
-	 * Estimate the seek and next costs for the index.
+	 * per_merge_cost is the cost of merging DocDB key-value pairs to form a
+	 * PG tuple.
 	 */
-	per_merge_cost = (num_key_value_pairs_per_tuple *
-					  yb_docdb_merge_cpu_cycles *
-					  cpu_operator_cost);
+	per_merge_cost = num_key_value_pairs_per_tuple *
+					 yb_docdb_merge_cpu_cycles *
+					 cpu_operator_cost;
 
+	/*
+	 * Estimate the seek, next and prev costs for the index.
+	 */
 	index_per_seek_cost = 0;
 	if (index->tuples > 0)
 	{
@@ -8998,6 +9029,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	per_next_cost = ((yb_docdb_next_cpu_cycles * cpu_operator_cost) +
 					 per_merge_cost);
 
+	/*
+	 * yb_prev_cost_factor scales the iterator step alone.  per_merge_cost is
+	 * the cost of assembling a PG tuple out of key-value pairs once the
+	 * iterator has been positioned, which is the same work in either
+	 * direction, so it is added unscaled.
+	 */
+	per_prev_cost = ((yb_docdb_next_cpu_cycles * yb_prev_cost_factor *
+					  cpu_operator_cost) +
+					 per_merge_cost);
+
 	/* Adjust costing for parallelism, if used. */
 	Cardinality	adjusted_index_tuples = index->tuples;
 	double		num_executors = yb_num_executors(&path->path);
@@ -9007,7 +9048,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		parallel_divisor = get_parallel_divisor(&path->path);
 		adjusted_index_tuples = index->tuples / parallel_divisor;
 		num_seeks = ceil(num_seeks / parallel_divisor);
-		num_nexts_prevs = ceil(num_nexts_prevs / parallel_divisor);
+		num_nexts = ceil(num_nexts / parallel_divisor);
+		num_prevs = ceil(num_prevs / parallel_divisor);
 		path->path.rows = clamp_row_est(path->path.rows / parallel_divisor);
 	}
 
@@ -9375,7 +9417,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 										  index_per_seek_cost,
 										  index_first_batch_frac,
 										  &startup_cost, &run_cost);
-	yb_charge_startup_cost_by_first_batch(num_nexts_prevs * per_next_cost,
+	yb_charge_startup_cost_by_first_batch(num_nexts * per_next_cost,
+										  index_first_batch_frac,
+										  &startup_cost, &run_cost);
+	yb_charge_startup_cost_by_first_batch(num_prevs * per_prev_cost,
 										  index_first_batch_frac,
 										  &startup_cost, &run_cost);
 
@@ -9394,7 +9439,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * pggate regardless of colocation whether PK or not.
 	 */
 	Cardinality	bmscan_num_seeks = num_seeks;
-	Cardinality	bmscan_num_nexts_prevs = num_nexts_prevs;
+	Cardinality	bmscan_num_nexts = num_nexts;
+	Cardinality	bmscan_num_prevs = num_prevs;
 	Cost		bmscan_total_cost = startup_cost + run_cost;
 
 	/*
@@ -9428,7 +9474,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				 YB_DEFAULT_DOCDB_BLOCK_SIZE);
 		index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
 		index_random_pages_fetched =
-			ceil(num_seeks / (num_seeks + num_nexts_prevs)) * index_pages_fetched;
+			ceil(num_seeks / (num_seeks + num_nexts + num_prevs)) *
+			index_pages_fetched;
 		index_sequential_pages_fetched =
 			index_pages_fetched - index_random_pages_fetched;
 
@@ -9529,7 +9576,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 									 baserel_per_seek_cost, per_next_cost,
 									 baserel_tablespace_id,
 									 table_first_batch_frac,
-									 &num_seeks, &num_nexts_prevs,
+									 &num_seeks, &num_nexts,
 									 &startup_cost, &run_cost);
 
 		/*
@@ -9548,11 +9595,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->yb_plan_info.estimated_ybctid_width = ybctid_width;
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
-	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts_prevs;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_prevs = num_prevs;
 	path->yb_plan_info.estimated_num_table_result_pages = num_baserel_result_pages;
 	path->yb_plan_info.estimated_num_index_result_pages = index_result_num_pages;
 	path->yb_plan_info.estimated_num_bmscan_seeks = bmscan_num_seeks;
-	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = bmscan_num_nexts_prevs;
+	path->yb_plan_info.estimated_num_bmscan_nexts = bmscan_num_nexts;
+	path->yb_plan_info.estimated_num_bmscan_prevs = bmscan_num_prevs;
 	path->yb_plan_info.estimated_num_bmscan_result_pages = ybctid_num_pages;
 	path->yb_plan_info.first_fetch_limit = first_fetch_limit;
 
@@ -9881,7 +9930,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   baserel, baserel_oid);
 
 	Cardinality	num_seeks = 0;
-	Cardinality	num_nexts_prevs = 0;
+	Cardinality	num_nexts = 0;
 	Cardinality	result_pages =
 		yb_base_table_result_pages(path,
 								   tuples_fetched,
@@ -9919,7 +9968,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								 baserel_tablespace_id,
 								 first_batch_frac,
 								 &num_seeks,
-								 &num_nexts_prevs,
+								 &num_nexts,
 								 &startup_cost,
 								 &run_cost);
 
@@ -9929,10 +9978,12 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
-	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts_prevs;
+	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_prevs = 0;
 	path->yb_plan_info.estimated_num_table_result_pages = result_pages;
 	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
-	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;
+	path->yb_plan_info.estimated_num_bmscan_nexts = 0;
+	path->yb_plan_info.estimated_num_bmscan_prevs = 0;
 	path->yb_plan_info.first_fetch_limit = 0;
 	/*
 	 * Initialize to -1 to indicate the values are not set.

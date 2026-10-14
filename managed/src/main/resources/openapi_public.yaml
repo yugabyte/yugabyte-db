@@ -2522,7 +2522,13 @@ paths:
       summary: Get a YugabyteDB Universe
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2024.2.0.0 that could change.</b></p>Get details of a single YugabyteDB
-        Universe.'
+        Universe.
+
+        Early access: when the runtime flag yb.api.conditional_get.enabled is set,
+        this endpoint supports conditional requests. Send a previously returned ETag
+        in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields
+        derived from related resources (for example DR configs or pricing) may be
+        stale in that case.'
       tags:
       - Universe
       responses:
@@ -2544,6 +2550,9 @@ paths:
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+      x-yba-api-conditional-get:
+        provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+        resourcePathSegment: universes
       x-yba-api-since: 2024.2.0.0
       x-yba-api-visibility: preview
     put:

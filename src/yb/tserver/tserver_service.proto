@@ -43,6 +43,7 @@ import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -671,10 +672,29 @@ message GetLocalPgTxnSnapshotResponsePB {
 }
 
 message VerifyVectorIndexesRequestPB {
+  // Tablet to check, every tablet of the server when unset.
+  optional bytes tablet_id = 1;
+  // Vector indexes to check, every active vector index of the tablet when empty.
+  // Requires tablet_id.
+  repeated bytes index_table_ids = 2;
+  // Inconsistencies to report per index, server default when 0.
+  optional uint32 max_inconsistencies = 3;
+}
+
+// Outcome of checking one vector index of one tablet replica, see CheckVectorIndex.
+message VectorIndexReplicaCheckPB {
+  optional bytes tablet_id = 1;
+  optional bytes index_table_id = 2;
+  optional PeerRole role = 3;
+  // Why the replica was not checked, e.g. the index backfill is still in progress. Unset when
+  // the check ran and produced the result.
+  optional AppStatusPB status = 4;
+  optional tablet.VectorIndexCheckResultPB result = 5;
 }
 
 message VerifyVectorIndexesResponsePB {
   optional TabletServerErrorPB error = 1;
+  repeated VectorIndexReplicaCheckPB checks = 2;
 }
 
 message DumpTabletDataRequestPB {

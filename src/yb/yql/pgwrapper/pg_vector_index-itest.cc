@@ -210,7 +210,7 @@ TEST_F_EX(PgVectorIndexITest, Backfill, PgVectorIndexBackfillITest) {
   ASSERT_LT(writer.max_time_without_inserts, 1s * kBackfillSleepSec);
   SCOPED_TRACE(Format("Total rows: $0", writer.counter.load()));
 
-  // VerifyVectorIndexes does not take intents into account, so could produce false failure.
+  // The check covers only the applied rows, so let every write reach it.
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -221,6 +221,11 @@ TEST_F_EX(PgVectorIndexITest, Backfill, PgVectorIndexBackfillITest) {
     auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
     ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+    ASSERT_GT(resp.checks_size(), 0);
+    for (const auto& check : resp.checks()) {
+      ASSERT_FALSE(check.has_status()) << check.ShortDebugString();
+      ASSERT_EQ(check.result().inconsistencies_size(), 0) << check.ShortDebugString();
+    }
   }
   writer.Verify(conn);
 }
