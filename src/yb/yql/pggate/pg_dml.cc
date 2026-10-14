@@ -51,15 +51,16 @@ class IndexYbctidProvider : public YbctidProvider {
   PgSelectIndex& index_;
 };
 
-// Limits the number of key prefixes an IN list on the key columns expands to. A larger query is
-// not routed.
-constexpr size_t kMaxVectorKeyPrefixes = 1024;
+// Limits the number of partition key prefixes an IN list on the key columns expands to. A larger
+// query is not routed.
+constexpr size_t kMaxVectorPartitionKeyPrefixes = 1024;
 
-// Encodes the ybctid prefixes of the rows whose key columns have the given values: up to the end
-// of the hash group for a hash partitioned table, or the longest run of leading range columns
-// with values for a range partitioned table. Returns nothing when the values don't bound the
-// partitions the rows are in.
-Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
+// Encodes the partition key prefixes of the rows whose key columns have the given values: the
+// partition key (the encoded hash code) for a hash partitioned table, or the leading range
+// components without the closing group end for a range partitioned table, using the longest run
+// of leading range columns with values. Returns nothing when the values don't bound the partitions
+// the rows are in.
+Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
     ThreadSafeArena& arena, const PgTableDesc& table,
     std::span<const YbcPgVectorKeyColumn> columns) {
   const auto num_hash_key_columns = table.num_hash_key_columns();
@@ -81,8 +82,8 @@ Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
         column.internal_type(), InternalTypeOf(it->type_entity), InvalidArgument,
         "Key value type does not match column type");
     num_prefixes *= it->nvalues;
-    if (num_prefixes > kMaxVectorKeyPrefixes) {
-      return std::vector<dockv::KeyBytes>();
+    if (num_prefixes > kMaxVectorPartitionKeyPrefixes) {
+      return std::vector<std::string>();
     }
     auto& key_column = key_columns.emplace_back(KeyColumnValues{
         .sorting_type = column.desc().sorting_type(), .values = {}});
@@ -95,41 +96,37 @@ Result<std::vector<dockv::KeyBytes>> BuildVectorKeyPrefixes(
     }
   }
   if (key_columns.empty() || key_columns.size() < num_hash_key_columns) {
-    return std::vector<dockv::KeyBytes>();
+    return std::vector<std::string>();
   }
 
-  std::vector<dockv::KeyBytes> result;
+  std::vector<std::string> result;
   result.reserve(num_prefixes);
   // Each prefix takes the value at positions[i] from key column i, enumerating all combinations.
   std::vector<size_t> positions(key_columns.size(), 0);
-  std::vector<const LWQLValuePB*> hashed_values;
+  std::vector<const LWQLValuePB*> values(key_columns.size());
   for (;;) {
-    dockv::KeyEntryValues components;
-    hashed_values.clear();
     for (size_t i = 0; i != key_columns.size(); ++i) {
-      const auto* value = key_columns[i].values[positions[i]];
-      components.push_back(
-          dockv::KeyEntryValue::FromQLValuePB(*value, key_columns[i].sorting_type));
-      if (num_hash_key_columns) {
-        hashed_values.push_back(value);
-      }
+      values[i] = key_columns[i].values[positions[i]];
     }
-    // Dropping the group end that closes the encoded key leaves a byte prefix of every key with
-    // these components: for a hash partitioned table the key has only the hash group, so the
-    // dropped byte closes its empty range group; for a range partitioned table it closes the
-    // group of the leading range components.
-    auto key = num_hash_key_columns
-        ? dockv::DocKey(
-              VERIFY_RESULT(table.partition_schema().PgsqlHashColumnCompoundValue(hashed_values)),
-              std::move(components)).Encode()
-        : dockv::DocKey(std::move(components)).Encode();
-    const auto encoded = key.AsSlice();
-    RSTATUS_DCHECK(
-        !encoded.empty() &&
-            encoded[encoded.size() - 1] == dockv::KeyEntryTypeAsChar::kGroupEnd,
-        IllegalState, Format("Unexpected key encoding: $0", encoded.ToDebugHexString()));
-    key.RemoveLastByte();
-    result.push_back(std::move(key));
+    if (num_hash_key_columns) {
+      result.push_back(dockv::PartitionSchema::EncodeMultiColumnHashValue(
+          VERIFY_RESULT(table.partition_schema().PgsqlHashColumnCompoundValue(values))));
+    } else {
+      dockv::KeyEntryValues components;
+      for (size_t i = 0; i != key_columns.size(); ++i) {
+        components.push_back(
+            dockv::KeyEntryValue::FromQLValuePB(*values[i], key_columns[i].sorting_type));
+      }
+      // Dropping the group end that closes the range group leaves a byte prefix of every key
+      // whose leading range columns have these values.
+      auto key = dockv::DocKey(std::move(components)).Encode();
+      const auto encoded = key.AsSlice();
+      RSTATUS_DCHECK(
+          !encoded.empty() &&
+              encoded[encoded.size() - 1] == dockv::KeyEntryTypeAsChar::kGroupEnd,
+          IllegalState, Format("Unexpected key encoding: $0", encoded.ToDebugHexString()));
+      result.push_back(encoded.WithoutSuffix(1).ToBuffer());
+    }
 
     size_t i = 0;
     for (; i != positions.size(); ++i) {
@@ -376,9 +373,9 @@ Status PgDml::ANNBindKeyFilter(std::span<const YbcPgVectorKeyColumn> columns) {
   if (!secondary_index || !target_ || target_->IsColocated()) {
     return Status::OK();
   }
-  const auto key_prefixes = VERIFY_RESULT(BuildVectorKeyPrefixes(arena(), *target_, columns));
-  for (const auto& key_prefix : key_prefixes) {
-    secondary_index->ANNAddKeyPrefix(key_prefix.AsSlice());
+  const auto prefixes = VERIFY_RESULT(BuildVectorPartitionKeyPrefixes(arena(), *target_, columns));
+  for (const auto& prefix : prefixes) {
+    secondary_index->ANNAddPartitionKeyPrefix(prefix);
   }
   return Status::OK();
 }

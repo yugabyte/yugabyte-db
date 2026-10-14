@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <span>
 #include <vector>
+
+#include <boost/dynamic_bitset/dynamic_bitset.hpp>
 
 #include "yb/util/flags.h"
 
@@ -177,12 +178,10 @@ PartitionKeyPtr FindPartitionStart(
     const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,
     size_t group_by = 1);
 
-// Returns, for each partition, whether it could contain a key that starts with one of
-// key_prefixes. Each prefix is an encoded DocKey prefix: for a hash partitioned table it has to
-// include the hash code, for a range partitioned table it is a byte prefix of the matching keys.
-Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
-    const TablePartitionList& partitions, bool is_hash_partitioned,
-    std::span<const Slice> key_prefixes);
+// Sets the bits of *selected (one per partition) for the partitions whose key ranges overlap the
+// range of partition keys starting with prefix.
+Status SelectPartitionsForPartitionKeyPrefix(
+    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>* selected);
 
 } // namespace client
 } // namespace yb

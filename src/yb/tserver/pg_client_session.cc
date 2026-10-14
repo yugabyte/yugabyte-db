@@ -128,9 +128,9 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
                     "Use tablespace-local locality will be used instead of region-local locality.");
 
-// Postgres sends PgVectorReadOptionsPB.key_prefixes only to its local tserver, and the per-tablet
-// copies drop them, so the field never reaches a process of another version. The AutoFlag still
-// keeps the routing off until the whole universe is upgraded.
+// Postgres sends PgVectorReadOptionsPB.partition_key_prefixes only to its local tserver, and the
+// per-tablet copies drop them, so the field never reaches a process of another version. The
+// AutoFlag still keeps the routing off until the whole universe is upgraded.
 DEFINE_RUNTIME_AUTO_bool(vector_index_enable_pk_routing, kLocalVolatile, false, true,
     "When a vector index query filters on the primary key (all hash columns, or a leading prefix "
     "of the range columns), only search the tablets that can hold the matching rows.");
@@ -388,7 +388,7 @@ class VectorIndexQuery {
     size_t partition_idx = 0;
     for (const auto& key : partitions->keys) {
       auto& partition_state = partitions_[partition_idx];
-      if (!selected_partitions.empty() && !selected_partitions[partition_idx]) {
+      if (!selected_partitions[partition_idx]) {
         // The partition can't hold rows matching the query. Marking it as fully fetched keeps
         // CouldFetchMore() from waiting for it.
         partition_state.whether_all_vectors_was_fetched = true;
@@ -403,8 +403,8 @@ class VectorIndexQuery {
             ->mutable_vector_idx_options();
         vector_idx_options.set_num_top_vectors_to_remove(
             partition_state.number_of_vectors_fetched_from_tablet);
-        // Tablets don't use the key prefixes, they only select the partitions above.
-        vector_idx_options.mutable_key_prefixes()->clear();
+        // Tablets don't use the prefixes, they only select the partitions above.
+        vector_idx_options.mutable_partition_key_prefixes()->clear();
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(
             table, arena, *sidecars_, new_read_req);
         ops.push_back(PgClientSessionOperation {
@@ -519,26 +519,29 @@ class VectorIndexQuery {
   }
 
  private:
-  // Returns an empty vector when every partition has to be searched.
-  static std::vector<bool> SelectPartitions(
+  // Returns one bit per partition, set for the partitions that have to be searched.
+  static boost::dynamic_bitset<> SelectPartitions(
       const LWPgVectorReadOptionsPB& options, const client::YBTable& table,
       const client::TablePartitionList& partitions) {
-    if (options.key_prefixes().empty() ||
+    boost::dynamic_bitset<> all(partitions.size());
+    all.set();
+    if (options.partition_key_prefixes().empty() ||
         !FLAGS_vector_index_enable_pk_routing ||
         partitions.size() <= 1) {
-      return {};
+      return all;
     }
-    std::vector<Slice> key_prefixes(options.key_prefixes().begin(), options.key_prefixes().end());
-    auto result = client::FindPartitionsForKeyPrefixes(
-        partitions, table.partition_schema().IsHashPartitioning(), key_prefixes);
-    if (!result.ok()) {
-      // Searching all partitions is always correct, so don't fail the query.
-      LOG_WITH_FUNC(DFATAL) << "Failed to route vector index query of " << table.id() << ": "
-                            << result.status();
-      return {};
+    boost::dynamic_bitset<> selected(partitions.size());
+    for (const auto& prefix : options.partition_key_prefixes()) {
+      auto status = client::SelectPartitionsForPartitionKeyPrefix(partitions, prefix, &selected);
+      if (!status.ok()) {
+        // Searching all partitions is always correct, so don't fail the query.
+        LOG_WITH_FUNC(DFATAL) << "Failed to route vector index query of " << table.id() << ": "
+                              << status;
+        return all;
+      }
     }
-    VLOG_WITH_FUNC(2) << "Selected partitions: " << AsString(*result);
-    return std::move(*result);
+    VLOG_WITH_FUNC(2) << "Selected partitions: " << selected;
+    return selected;
   }
 
   size_t CalculateNumVectorSentToPg() const {

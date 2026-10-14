@@ -18,7 +18,6 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/casts.h"
@@ -376,37 +375,24 @@ std::string PrefixEnd(Slice prefix) {
 
 } // namespace
 
-Result<std::vector<bool>> FindPartitionsForKeyPrefixes(
-    const TablePartitionList& partitions, bool is_hash_partitioned,
-    std::span<const Slice> key_prefixes) {
-  std::vector<bool> result(partitions.size(), false);
-  for (const auto& prefix : key_prefixes) {
-    if (is_hash_partitioned) {
-      dockv::DocKeyDecoder decoder(prefix);
-      uint16_t hash = 0;
-      SCHECK(VERIFY_RESULT(decoder.DecodeHashCode(&hash)), InvalidArgument,
-             Format("Key prefix without hash code: $0", prefix.ToDebugHexString()));
-      result[FindPartitionStartIndex(
-          partitions, dockv::PartitionSchema::EncodeMultiColumnHashValue(hash))] = true;
-      continue;
+Status SelectPartitionsForPartitionKeyPrefix(
+    const TablePartitionList& partitions, Slice prefix, boost::dynamic_bitset<>* selected) {
+  DCHECK_EQ(selected->size(), partitions.size());
+  SCHECK(!prefix.empty(), InvalidArgument, "Empty partition key prefix");
+  // The keys starting with the prefix form the range [prefix, PrefixEnd(prefix)). Partitions are
+  // sorted, so the overlapping ones are consecutive, starting with the one holding the prefix.
+  const auto range_start = prefix.ToBuffer();
+  const auto range_end = PrefixEnd(prefix);
+  for (auto idx = FindPartitionStartIndex(partitions, range_start); idx < partitions.size();
+       ++idx) {
+    const auto& partition_end = idx + 1 < partitions.size() ? partitions[idx + 1] : PartitionKey();
+    if (!dockv::PartitionSchema::HasOverlap(
+            partitions[idx], partition_end, range_start, range_end)) {
+      break;
     }
-    SCHECK(!prefix.empty(), InvalidArgument, "Empty key prefix");
-    // The keys starting with the prefix form the range [prefix, PrefixEnd(prefix)). Partitions are
-    // sorted, so the overlapping ones are consecutive, starting with the one holding the prefix.
-    const auto range_start = prefix.ToBuffer();
-    const auto range_end = PrefixEnd(prefix);
-    for (auto idx = FindPartitionStartIndex(partitions, range_start); idx < partitions.size();
-         ++idx) {
-      const auto& partition_end =
-          idx + 1 < partitions.size() ? partitions[idx + 1] : PartitionKey();
-      if (!dockv::PartitionSchema::HasOverlap(
-              partitions[idx], partition_end, range_start, range_end)) {
-        break;
-      }
-      result[idx] = true;
-    }
+    selected->set(idx);
   }
-  return result;
+  return Status::OK();
 }
 
 std::string VersionedTablePartitionList::ToString() const {
