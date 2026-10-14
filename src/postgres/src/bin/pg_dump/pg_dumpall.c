@@ -1524,6 +1524,13 @@ dropDBs(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 
 		/*
+		 * YB: Skip yb_system, the internal LISTEN/NOTIFY database.  The restore
+		 * target manages its own copy.  This must agree with dumpDatabases().
+		 */
+		if (strcmp(dbname, "yb_system") == 0)
+			continue;
+
+		/*
 		 * Skip "postgres" and "template1"; dumpDatabases() will deal with
 		 * them specially.  Also, be sure to skip "template0", even if for
 		 * some reason it's not marked !datallowconn.
@@ -1680,6 +1687,10 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 
 		/* Skip template0, even if it's not marked !datallowconn. */
 		if (strcmp(dbname, "template0") == 0)
+			continue;
+
+		/* YB: Skip yb_system.  This must agree with dropDBs(). */
+		if (strcmp(dbname, "yb_system") == 0)
 			continue;
 
 		/* Skip any explicitly excluded database */
