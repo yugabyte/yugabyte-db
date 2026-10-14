@@ -365,7 +365,7 @@ TEST_F(TabletSplitITest, ParentConsensusMetadataPreservedAcrossSplit) {
 
   const auto after = ASSERT_RESULT(read_parent_cmeta());
 
-  // Make sure that the parent cmeta is still consistent across all tservers.
+  // Check that no tserver's parent cmeta lost its term or vote.
   for (const auto& [ts_uuid, before_snapshot] : before) {
     auto it = after.find(ts_uuid);
     ASSERT_NE(it, after.end()) << "Parent cmeta disappeared on TS " << ts_uuid;
