@@ -24,6 +24,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(ycql_use_local_transaction_tables);
@@ -98,7 +99,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     placement_info->set_num_replicas(1);
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-    pb->mutable_cloud_info()->set_placement_region(strings::Substitute("region$0", region));
+    pb->mutable_cloud_info()->set_placement_region(Format("region$0", region));
     pb->mutable_cloud_info()->set_placement_zone("zone");
     pb->set_min_num_replicas(1);
   }
@@ -106,7 +107,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
   void CreateTransactionTable(int region) {
     auto current_version = GetCurrentVersion();
 
-    std::string name = strings::Substitute("transactions_region$0", region);
+    std::string name = Format("transactions_region$0", region);
     ReplicationInfoPB replication_info;
     MakePlacementInfo(replication_info.mutable_live_replicas(), region);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -120,11 +121,11 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
 
     for (int i = 1; i <= num_tablet_servers(); ++i) {
       YBTableName table_name{YQL_DATABASE_CQL, kNamespace,
-                             strings::Substitute("$0$1", kTablePrefix, i)};
+                             Format("$0$1", kTablePrefix, i)};
       PlacementInfoPB placement_info;
       MakePlacementInfo(&placement_info, i);
 
-      ASSERT_OK(session.ExecuteQuery(strings::Substitute(
+      ASSERT_OK(session.ExecuteQuery(Format(
           "CREATE TABLE $0(value int, PRIMARY KEY (value)) WITH transactions = { 'enabled': true }",
           table_name.table_name())));
       ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, std::move(placement_info)));
@@ -141,7 +142,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     ASSERT_OK(WaitFor(
         [this, version] { return GetCurrentVersion() == version; },
         kStatusTabletCacheRefreshTimeout,
-        strings::Substitute(error, version)));
+        Format(error, version)));
   }
 
   uint64_t WaitForStatusTabletsVersionForCreate(uint64_t current_version) {
@@ -170,7 +171,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     } else {
       table_name = YBTableName(
           YQL_DATABASE_CQL, master::kSystemNamespaceName,
-          strings::Substitute("transactions_region$0", region));
+          Format("transactions_region$0", region));
     }
     std::vector<TabletId> tablet_uuids;
     RETURN_NOT_OK(client_->GetTablets(
@@ -188,7 +189,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     ASSERT_FALSE(expected_status_tablets.empty());
 
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-    auto status = session.ExecuteQuery(strings::Substitute(R"#(
+    auto status = session.ExecuteQuery(Format(R"#(
        BEGIN TRANSACTION
        INSERT INTO $0$1 (value) VALUES ($2);
        END TRANSACTION;
@@ -276,7 +277,7 @@ TEST_F(CqlGeoTransactionsTest, AddTransactionTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_manager_preferred_tablet) = new_tablets[0];
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  ASSERT_OK(session.ExecuteQuery(strings::Substitute(R"#(
+  ASSERT_OK(session.ExecuteQuery(Format(R"#(
      BEGIN TRANSACTION
      INSERT INTO $0$1 (value) VALUES ($2);
      END TRANSACTION;

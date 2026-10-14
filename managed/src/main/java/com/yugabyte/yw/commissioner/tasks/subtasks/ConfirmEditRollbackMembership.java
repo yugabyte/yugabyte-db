@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -38,7 +39,7 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     public UniverseDefinitionTaskParams beforeUniverseDetails;
 
-    /** Private IPs of ADD nodes destroyed during rollback (captured before delete from YBA). */
+    /** Private and secondary IPs of destroyed ADD nodes (captured before delete from YBA). */
     public Set<String> destroyedNodeIps = new HashSet<>();
   }
 
@@ -57,11 +58,8 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
     }
     Set<String> allowedIps = new HashSet<>();
     for (NodeDetails node : before.nodeDetailsSet) {
-      if (node.state != NodeDetails.NodeState.Live) {
-        continue;
-      }
-      if (node.cloudInfo != null && StringUtils.isNotBlank(node.cloudInfo.private_ip)) {
-        allowedIps.add(node.cloudInfo.private_ip);
+      if (node.state == NodeDetails.NodeState.Live) {
+        allowedIps.addAll(Util.getNodeIps(node));
       }
     }
     // Master may still briefly report ADD IPs after destroy; allow those captured at enqueue time.

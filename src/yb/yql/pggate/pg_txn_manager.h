@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "yb/common/clock.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -77,7 +78,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // path calls YBCIsLegacyModeForCatalogOps which dereferences the global pgapi pointer.
   void Shutdown();
 
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
 
   Status CalculateIsolation(
       bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
@@ -199,6 +200,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
+  void SetConnectedDatabaseOid(PgOid oid) { connected_database_oid_ = oid; }
+  PgOid connected_database_oid() const { return connected_database_oid_; }
+
+  // HybridTime value of origination_time_; 0, meaning unstamped, when there is none.
+  uint64_t GetOriginationHt() const {
+    return origination_time_ ? HybridTime::FromMicros(origination_time_).ToUint64() : 0;
+  }
+
  private:
   class SerialNo {
    public:
@@ -306,6 +315,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
+  PgOid connected_database_oid_ = kPgInvalidOid;
+  // Unix microseconds; see yb_origination_time in pg_yb_utils.c.
+  uint64_t origination_time_ = 0;
   bool crosstxn_snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 

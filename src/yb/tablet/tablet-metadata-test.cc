@@ -46,6 +46,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet-test-util.h"
@@ -339,6 +340,42 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_FALSE(env_->DirExists(tier_dir));
 }
 
+// A tablet keeps no RocksDB WAL file, and an idle one reopens without replacing its MANIFEST or
+// CURRENT, also after applying a history cutoff.
+TEST_F(TestRaftGroupMetadata, IdleReopenKeepsRocksDbFiles) {
+  QLWriteRequestPB req;
+  BuildPartialRow(0, 0, "foo", &req);
+  ASSERT_OK(writer_->Write(&req));
+  ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  HistoryCutoffOperation cutoff(harness_->tablet());
+  cutoff.AllocateRequest()->set_primary_cutoff_ht(clock()->Now().ToUint64());
+  ASSERT_OK(cutoff.Apply(/* leader_term= */ 1));
+
+  const auto dir = harness_->tablet()->metadata()->rocksdb_dir();
+  const auto metadata_files = [&dir]() -> Result<std::set<std::string>> {
+    std::vector<std::string> children;
+    RETURN_NOT_OK(Env::Default()->GetChildren(dir, &children));
+    std::set<std::string> result;
+    for (const auto& name : children) {
+      if (name.starts_with("MANIFEST-") || name == "CURRENT" || name.ends_with(".log")) {
+        result.insert(name);
+      }
+    }
+    return result;
+  };
+  const auto files_before_reopen = ASSERT_RESULT(metadata_files());
+  ASSERT_FALSE(files_before_reopen.empty());
+  for (const auto& name : files_before_reopen) {
+    ASSERT_FALSE(name.ends_with(".log")) << name;
+  }
+
+  harness_->tablet()->StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  harness_->tablet()->CompleteShutdown();
+  writer_.reset();
+  ASSERT_NO_FATALS(TabletReOpen());
+  ASSERT_EQ(ASSERT_RESULT(metadata_files()), files_before_reopen);
+}
+
 // Nothing reads the RocksDB OPTIONS file, so tablets are opened without writing it.
 TEST_F(TestRaftGroupMetadata, NoRocksDbOptionsFiles) {
   auto metadata = harness_->tablet()->metadata();
@@ -515,6 +552,46 @@ TEST_F(TestRaftGroupMetadata, TierPathsRoundTripAndSynthesis) {
   ASSERT_OK(reloaded2->ReadSuperBlockFromDisk(&after_migration));
   ASSERT_EQ(after_migration.kv_store().tier_paths_size(), 1);
   ASSERT_EQ(after_migration.kv_store().tier_paths(0).path(), reloaded2->rocksdb_dir());
+}
+
+// Tiered storage: verify target_storage_tier/target_tier_path_id (the sticky placement intent
+// set by AlterTabletTier) survive a superblock round-trip, and that ClearTargetTierPathId leaves
+// target_storage_tier alone while resetting only the path_id -- this is exactly what remote
+// bootstrap relies on (see RemoteBootstrapClient::Start) to keep a tablet's tier policy but drop
+// the source node's now-meaningless cached disk choice.
+TEST_F(TestRaftGroupMetadata, TargetTierRoundTripAndClear) {
+  auto* meta = harness_->tablet()->metadata();
+  auto* fs = meta->fs_manager();
+  const auto raft_group_id = meta->raft_group_id();
+
+  // No preference persisted at creation (single-tier test harness never sets it).
+  ASSERT_TRUE(meta->target_storage_tier().empty());
+  ASSERT_EQ(meta->target_tier_path_id(), 0u);
+
+  // Simulate what AlterTabletTier does: persist a sticky (tier, path_id) pair.
+  ASSERT_OK(meta->SetTargetTier("hdd", 1));
+  ASSERT_EQ(meta->target_storage_tier(), "hdd");
+  ASSERT_EQ(meta->target_tier_path_id(), 1u);
+
+  RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(meta->ReadSuperBlockFromDisk(&on_disk));
+  ASSERT_EQ(on_disk.kv_store().target_storage_tier(), "hdd");
+  ASSERT_EQ(on_disk.kv_store().target_tier_path_id(), 1u);
+
+  // A fresh Load() (as on tserver restart) must see the same persisted intent.
+  auto reloaded = ASSERT_RESULT(RaftGroupMetadata::Load(fs, raft_group_id));
+  ASSERT_EQ(reloaded->target_storage_tier(), "hdd");
+  ASSERT_EQ(reloaded->target_tier_path_id(), 1u);
+
+  // ClearTargetTierPathId (used by remote bootstrap) must reset only the path_id.
+  ASSERT_OK(reloaded->ClearTargetTierPathId());
+  ASSERT_EQ(reloaded->target_storage_tier(), "hdd");
+  ASSERT_EQ(reloaded->target_tier_path_id(), 0u);
+
+  RaftGroupReplicaSuperBlockPB after_clear;
+  ASSERT_OK(reloaded->ReadSuperBlockFromDisk(&after_clear));
+  ASSERT_EQ(after_clear.kv_store().target_storage_tier(), "hdd");
+  ASSERT_EQ(after_clear.kv_store().target_tier_path_id(), 0u);
 }
 
 // Tiered storage: a tablet created on a multi-drive tserver must record one tier_paths entry per

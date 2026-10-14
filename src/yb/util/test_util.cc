@@ -52,6 +52,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/spinlock_profiling.h"
@@ -74,7 +75,6 @@ DECLARE_string(vmodule);
 DEFINE_test_flag(bool, use_yb_controller, false, "Use YBController in tests.");
 
 using std::string;
-using strings::Substitute;
 using gflags::FlagSaver;
 
 namespace yb {
@@ -232,7 +232,7 @@ string GetTestDataDirectory() {
   // - timestamp and pid: disambiguates with prior runs of the same test
   //
   // e.g. "env-test.TestEnv.TestReadFully.1409169025392361-23600"
-  dir += Substitute("/$0.$1.$2.$3-$4",
+  dir += Format("/$0.$1.$2.$3-$4",
     StringReplace(google::ProgramInvocationShortName(), "/", "_", true),
     StringReplace(test_info->test_case_name(), "/", "_", true),
     StringReplace(test_info->name(), "/", "_", true),
@@ -244,17 +244,17 @@ string GetTestDataDirectory() {
   if (s.ok()) {
     string metadata;
 
-    StrAppend(&metadata, Substitute("PID=$0\n", getpid()));
+    StrAppend(&metadata, Format("PID=$0\n", getpid()));
 
-    StrAppend(&metadata, Substitute("PPID=$0\n", getppid()));
+    StrAppend(&metadata, Format("PPID=$0\n", getppid()));
 
     char* jenkins_build_id = getenv("BUILD_ID");
     if (jenkins_build_id) {
-      StrAppend(&metadata, Substitute("BUILD_ID=$0\n", jenkins_build_id));
+      StrAppend(&metadata, Format("BUILD_ID=$0\n", jenkins_build_id));
     }
 
     CHECK_OK(WriteStringToFile(Env::Default(), metadata,
-                               Substitute("$0/test_metadata", dir)));
+                               Format("$0/test_metadata", dir)));
   }
   return dir;
 }

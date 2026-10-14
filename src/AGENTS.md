@@ -69,18 +69,19 @@ This repo **squash-merges** every PR, so the per-commit history of a branch is p
 
 ## Agent signature on automated output
 
-Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end, so humans skimming the PR or `git log` can tell agent-authored output from a teammate's:
+Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end, so humans skimming the PR can tell agent-authored output from a teammate's:
 
 - A reply to a PR review comment (`gh api -X POST .../comments/<id>/replies`).
 - A standalone PR conversation comment (`gh pr comment ...`).
-- A commit message you authored (commit body, **not** subject — subject stays clean).
+
+Commit messages and PR descriptions are not signed this way: Claude Code's `attribution` setting adds a `Co-Authored-By:` trailer and a PR footer, and git reads a trailer only from a message's last paragraph.
 
 ```
 ---
 _automated · <agent>_
 ```
 
-Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature on the commit subject line and in direct chat with the user.
+Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature in direct chat with the user.
 
 ## Reviewing commits
 
@@ -197,14 +198,22 @@ Run one test per execution; do not use a `--gtest_filter` that matches more than
 ### C++ Microbenchmarks
 
 Microbenchmarks use google/benchmark and are added with `ADD_YB_BENCHMARK` (see
-`src/yb/util/mutex-benchmark.cc` for an example). The test runner does not run them, and
-`--cxx-test` does not find them. Build with `--target` (`benchmarks` builds all of them) and run the
-binary directly:
+`src/yb/util/mutex-benchmark.cc` for an example). The test runner does not run them. Build and run
+one with `--cxx-benchmark`, which builds only that program and what it links; `--benchmark-args`
+passes flags through. `--target benchmarks` builds all of them.
 
 ```bash
-./yb_build.sh release --target mutex-benchmark
-build/latest/benchmarks-util/mutex-benchmark --benchmark_filter=AbslMutex
+./yb_build.sh release --cxx-benchmark mutex-benchmark \
+    --benchmark-args '--benchmark_filter=AbslMutex'
 ```
+
+Use a release build; debug and sanitizer builds only check that benchmarks compile. For numbers
+closest to a release server binary, use an LTO build: `./yb_build.sh release --full-lto
+--cxx-benchmark <name>` builds and runs `<name>-lto`, the benchmark statically linked as one LTO
+unit the way `yb-server` is, so inlining across YB libraries is included. That link is slow and
+needs a lot of memory, so `<name>-lto` is built only when `--cxx-benchmark` asks for it, never by a
+plain build or `--target benchmarks`. LTO builds need an LTO third-party archive, which
+`build-support/thirdparty_archives.yml` currently lists for AlmaLinux 8 only.
 
 ### Java Tests
 

@@ -1092,6 +1092,8 @@ typedef struct {
   int effective_pggate_isolation_level;
   bool read_from_followers_enabled;
   int32_t follower_read_staleness_ms;
+  // Unix microseconds; see yb_origination_time in pg_yb_utils.c.
+  uint64_t origination_time;
 } YbcPgInitTransactionData;
 
 typedef struct {

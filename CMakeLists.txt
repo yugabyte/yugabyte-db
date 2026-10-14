@@ -956,6 +956,9 @@ yb_add_lto_target(yb-master-dynamic yb-server "yb-master;yb-tserver")
 # minute to link, so these LTO-enabled tests should only be enabled when debugging. An example of an
 # issue that requires debugging a test with LTO is #22191.
 # yb_add_lto_target(date_time-test date_time-test-lto "")
+#
+# Benchmarks get this automatically: ADD_YB_BENCHMARK adds <name>-lto with EXCLUDE_FROM_ALL, built
+# only on request (yb_build.sh --cxx-benchmark).
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

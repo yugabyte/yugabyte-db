@@ -66,7 +66,6 @@
 
 using std::string;
 
-using strings::Substitute;
 
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -405,8 +404,8 @@ bool TabletInfo::colocated() const {
 }
 
 string TabletInfo::ToString() const {
-  return Substitute("$0 (table $1)", tablet_id_,
-                    (table_ != nullptr ? table_->ToString() : "MISSING"));
+  return Format("$0 (table $1)", tablet_id_,
+                (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
 
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
@@ -488,12 +487,12 @@ bool TableInfo::IsPreparing() const {
 }
 
 string TableInfo::ToString() const {
-  return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
+  return Format("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
 
 string TableInfo::ToStringWithState() const {
   auto l = LockForRead();
-  return Substitute("$0 [id=$1, state=$2]",
+  return Format("$0 [id=$1, state=$2]",
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
@@ -1440,7 +1439,7 @@ bool NamespaceInfo::colocated() const {
 }
 
 string NamespaceInfo::ToString() const {
-  return Substitute("$0 [id=$1]", name(), namespace_id_);
+  return Format("$0 [id=$1]", name(), namespace_id_);
 }
 
 // ================================================================================================
@@ -1677,7 +1676,7 @@ bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
@@ -1792,7 +1791,7 @@ void PersistentUniverseReplicationBootstrapInfo::set_into_tables_data(
 // ================================================================================================
 std::string UniverseReplicationBootstrapInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationBootstrapInfo::SetReplicationBootstrapErrorStatus(const Status& status) {

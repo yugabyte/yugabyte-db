@@ -454,6 +454,13 @@ struct PlannerInfo
 	 * NULL when the query has no federated foreign tables.
 	 */
 	const char **yb_tserver_uuids;
+
+	/*
+	 * YB: LIMIT count + OFFSET when both fold to constants, else -1.
+	 * Unlike limit_tuples it is not cleared for grouping or DISTINCT;
+	 * yb_first_fetch_limit applies the executor's own pass-through rules.
+	 */
+	Cardinality yb_limit_tuples;
 };
 
 
@@ -1315,17 +1322,29 @@ typedef struct YbPathInfo
 	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
+/*
+ * Info propagated for YugabyteDB, for scans: what costing assumed about the
+ * scan's DocDB work, carried to the plan node for EXPLAIN (DEBUG) to help
+ * diagnose cost estimates.
+ *
+ * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
+ * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
+ * is not an estimate but derived from the query and plan shape.
+ */
 typedef struct YbPlanInfo
 {
-	double		estimated_num_nexts_prevs;
+	double		estimated_num_nexts;
+	double		estimated_num_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
 	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
-	double		estimated_num_bmscan_nexts_prevs;
+	double		estimated_num_bmscan_nexts;
+	double		estimated_num_bmscan_prevs;
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
+	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
 } YbPlanInfo;
 
 /*

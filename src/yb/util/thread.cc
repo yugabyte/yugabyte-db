@@ -56,7 +56,6 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
@@ -123,7 +122,6 @@ using std::shared_ptr;
 using std::stringstream;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
@@ -576,7 +574,7 @@ void ThreadMgr::RenderThreadCategoryRows(
   }
 
   auto format_nanoseconds = [](int64_t ns) {
-    return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
+    return FixedPoint(static_cast<double>(ns) / 1e9, 3);
   };
   for (const auto& thread_group : thread_groups) {
     auto& row_set = table_printer.AddRowSet();
@@ -900,7 +898,7 @@ void Thread::Abandon() {
 }
 
 std::string Thread::ToString() const {
-  return Substitute("Thread $0 (name: \"$1\", category: \"$2\")", tid_, name_, category_);
+  return Format("Thread $0 (name: \"$1\", category: \"$2\")", tid_, name_, category_);
 }
 
 Status Thread::TryStartThread(Thread* t) {
@@ -925,7 +923,7 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
   if (name.length() < kMaxProcfsThreadNameSize) {
     padded_name += string(kMaxProcfsThreadNameSize - name.length(), kPaddingChar);
   }
-  const string log_prefix = Substitute("$0 ($1) ", padded_name, category);
+  const string log_prefix = Format("$0 ($1) ", padded_name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
 
   // Temporary reference for the duration of this function.
@@ -991,7 +989,7 @@ void* Thread::SuperviseThread(void* arg) {
     YB_LOG_EVERY_N(INFO, 100) << "Could not determine thread ID: " << error_msg;
   }
   TEST_FormatAndSetThreadLogPrefix(t->TEST_log_prefix_);
-  string name = strings::Substitute("$0-$1", t->name(), system_tid);
+  string name = Format("$0-$1", t->name(), system_tid);
 
   // Take an additional reference to the thread manager, which we'll need below.
   ANNOTATE_IGNORE_SYNC_BEGIN();

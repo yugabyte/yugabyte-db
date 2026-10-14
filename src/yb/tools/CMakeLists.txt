@@ -202,6 +202,7 @@ target_link_libraries(yb-admin-test-base integration-tests ql-dml-test-base)
 set(YB_TEST_LINK_LIBS
   admin-test-base
   ysck
+  yb_common_test_util
   yb-admin_lib
   yb_client
   yb_tools_util

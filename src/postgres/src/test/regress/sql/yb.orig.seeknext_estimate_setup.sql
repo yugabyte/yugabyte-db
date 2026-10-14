@@ -38,7 +38,8 @@ create type index_plan_rows as (
     "Plan Rows" float8,
     "Total Cost" float8,
     "Estimated Seeks" float8,
-    "Estimated Nexts And Prevs" float8,
+    "Estimated Nexts" float8,
+    "Estimated Prevs" float8,
     "Metric rocksdb_number_db_seek" float8,
     "Metric rocksdb_number_db_next" float8,
     "Metric rocksdb_number_db_prev" float8
@@ -147,8 +148,10 @@ select
     "Filter",
     case when error_seeks > 0.05 and abs(diff_seeks) > 1 then
         'failed' else 'passed' end "Seek Estimates",
-    case when error_nexts_prevs > 0.05 and diff_nexts_prevs > 1 then
-        'failed' else 'passed' end "Next/Prev Estimates"
+    case when (error_nexts > 0.05 and abs(diff_nexts) > 1) then
+        'failed' else 'passed' end "Next Estimates",
+    case when (error_prevs > 0.05 and abs(diff_prevs) > 1) then
+        'failed' else 'passed' end "Prev Estimates"
 from (
     select
         qid,
@@ -161,15 +164,20 @@ from (
         "Storage Filter",
         "Filter",
         "Estimated Seeks",
-        "Estimated Nexts And Prevs",
+        "Estimated Nexts",
+        "Estimated Prevs",
         actual_seeks "Actual Seeks",
-        actual_nexts + actual_prevs "Actual Nexts and Prevs",
+        actual_nexts "Actual Nexts",
+        actual_prevs "Actual Prevs",
         abs("Estimated Seeks" - actual_seeks)
             / greatest(1, actual_seeks) error_seeks,
-        abs("Estimated Nexts And Prevs" - (actual_nexts + actual_prevs))
-            / greatest(1, actual_nexts + actual_prevs) error_nexts_prevs,
+        abs("Estimated Nexts" - actual_nexts)
+            / greatest(1, actual_nexts) error_nexts,
+        abs("Estimated Prevs" - actual_prevs)
+            / greatest(1, actual_prevs) error_prevs,
         "Estimated Seeks" - actual_seeks diff_seeks,
-        "Estimated Nexts And Prevs" - (actual_nexts + actual_prevs) diff_nexts_prevs
+        "Estimated Nexts" - actual_nexts diff_nexts,
+        "Estimated Prevs" - actual_prevs diff_prevs
     from (
         select
             qid,
@@ -185,7 +193,8 @@ from (
             "Plan Rows",
             "Total Cost",
             "Estimated Seeks",
-            "Estimated Nexts And Prevs",
+            "Estimated Nexts",
+            "Estimated Prevs",
             coalesce("Metric rocksdb_number_db_seek", 0) actual_seeks,
             coalesce("Metric rocksdb_number_db_next", 0) actual_nexts,
             coalesce("Metric rocksdb_number_db_prev", 0) actual_prevs

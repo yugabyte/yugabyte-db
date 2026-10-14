@@ -118,13 +118,21 @@ VM.Standard.E3.Flex:
       - volumeSizeGB: 50
         volumeType: SSD
 
-# Dense I/O Shapes - For high storage and I/O workloads
+# Dense I/O / HPC - one volumeDetails entry per local NVMe drive
 VM.DenseIO.E4.Flex:
   numCores: 8
   memSizeGB: 128
   instanceTypeDetails:
     volumeDetailsList:
-      - volumeSizeGB: 6400
+      - volumeSizeGB: 6800
+        volumeType: NVME
+
+VM.DenseIO.E5.Flex:
+  numCores: 8
+  memSizeGB: 96
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6800
         volumeType: NVME
 
 VM.DenseIO2.8:
@@ -140,7 +148,9 @@ VM.DenseIO2.16:
   memSizeGB: 240
   instanceTypeDetails:
     volumeDetailsList:
-      - volumeSizeGB: 12800
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
         volumeType: NVME
 
 VM.DenseIO2.24:
@@ -148,7 +158,13 @@ VM.DenseIO2.24:
   memSizeGB: 320
   instanceTypeDetails:
     volumeDetailsList:
-      - volumeSizeGB: 25600
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
         volumeType: NVME
 
 # GPU Shapes
@@ -208,5 +224,79 @@ BM.DenseIO.E4.128:
   memSizeGB: 2048
   instanceTypeDetails:
     volumeDetailsList:
-      - volumeSizeGB: 54400
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+
+BM.DenseIO.E5.128:
+  numCores: 128
+  memSizeGB: 1536
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+      - volumeSizeGB: 6800
+        volumeType: NVME
+
+BM.DenseIO2.52:
+  numCores: 52
+  memSizeGB: 768
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+      - volumeSizeGB: 6400
+        volumeType: NVME
+
+BM.HPC2.36:
+  numCores: 36
+  memSizeGB: 384
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6400
         volumeType: NVME

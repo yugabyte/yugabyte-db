@@ -41,6 +41,7 @@
 
 #include "yb/util/aggregate_stats.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"
@@ -69,7 +70,6 @@ namespace yb {
 void RegisterMetricPrototype(const MetricPrototype* prototype);
 
 using std::string;
-using strings::Substitute;
 
 //
 // MetricUnit
@@ -223,7 +223,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
     }
 
     WARN_NOT_OK(e.second->WriteAsJson(writer, opts),
-        Substitute("Failed to write entity $0 as JSON", e.second->id()));
+        Format("Failed to write entity $0 as JSON", e.second->id()));
   }
   writer->EndArray();
 
@@ -255,7 +255,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       }
 
       WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
-                  Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+                  Format("Failed to write entity $0 as Prometheus", e.second->id()));
     }
   }
 
@@ -612,11 +612,11 @@ HistogramPrototype::HistogramPrototype(const MetricPrototype::CtorArgs& args,
     num_sig_digits_(num_sig_digits) {
   // Better to crash at definition time that at instantiation time.
   CHECK(HdrHistogram::IsValidHighestTrackableValue(max_trackable_value))
-      << Substitute("Invalid max trackable value on histogram $0: $1",
-                    args.name_, max_trackable_value);
+      << Format("Invalid max trackable value on histogram $0: $1",
+                args.name_, max_trackable_value);
   CHECK(HdrHistogram::IsValidNumSignificantDigits(num_sig_digits))
-      << Substitute("Invalid number of significant digits on histogram $0: $1",
-                    args.name_, num_sig_digits);
+      << Format("Invalid number of significant digits on histogram $0: $1",
+                args.name_, num_sig_digits);
 }
 
 scoped_refptr<Histogram> HistogramPrototype::Instantiate(

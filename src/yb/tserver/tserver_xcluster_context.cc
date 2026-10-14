@@ -23,6 +23,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 
 DECLARE_bool(enforce_xcluster_guarded_lease);
 
@@ -36,21 +37,41 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
     NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
-  if (FLAGS_enforce_xcluster_guarded_lease) {
-    if (!xcluster_guarded_lease_expiration_ ||
-        MonoTime::Now() >= xcluster_guarded_lease_expiration_) {
-      return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
-    }
-  } else {
-    if (!have_received_a_heartbeat_) {
-      return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
-    }
+  if (!HasXClusterGuardedInfoUnlocked()) {
+    return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
   }
   if (auto* xcluster_info_per_namespace = FindOrNull(xcluster_info_per_namespace_, namespace_id)) {
     return xcluster_info_per_namespace->role();
   } else {
     return XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE;
   }
+}
+
+Result<uint32_t> TserverXClusterContext::GetOidCacheInvalidationsCount() const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The OID cache invalidation count is unavailable because this TServer does not hold a "
+      "current xCluster-guarded information lease; retry later");
+  return oid_cache_invalidations_count_;
+}
+
+void TserverXClusterContext::UpdateOidCacheInvalidationsCount(
+    uint32_t oid_cache_invalidations_count) {
+  std::lock_guard lock(mutex_);
+  if (oid_cache_invalidations_count > oid_cache_invalidations_count_) {
+    LOG(INFO) << "Received higher oid_cache_invalidations_count value ("
+              << oid_cache_invalidations_count << " > " << oid_cache_invalidations_count_ << ")";
+    oid_cache_invalidations_count_ = oid_cache_invalidations_count;
+  }
+}
+
+bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
+  if (FLAGS_enforce_xcluster_guarded_lease) {
+    return xcluster_guarded_lease_expiration_ &&
+           MonoTime::Now() < xcluster_guarded_lease_expiration_;
+  }
+  return have_received_a_heartbeat_;
 }
 
 bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {

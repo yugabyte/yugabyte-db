@@ -37,7 +37,7 @@ block_indexing = true
 | YugabyteDB PGX Smart Driver<br/>[Recommended] | [v5](https://pkg.go.dev/github.com/yugabyte/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/yb-pgx/) |
 | PGX Driver | [v5](https://pkg.go.dev/github.com/jackc/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/pgx/) |
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/stable/develop/drivers-orms/go/pq/) |
-| YugabyteDB Go Driver for YCQL | [v1.6.0-yb-1](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
+| YugabyteDB Go Driver for YCQL | [v2.1.2-yb-1](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
 | **ORMs** | | | |
 | GORM       | [1.9.16](https://github.com/go-gorm/gorm) | Full | [CRUD](/stable/develop/drivers-orms/go/gorm/) |
 | PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/stable/develop/drivers-orms/go/pg/) |

@@ -177,6 +177,10 @@ typedef struct VacAttrStats
 	Datum	   *exprvals;		/* access info for index fetch function */
 	bool	   *exprnulls;
 	int			rowstride;
+
+	/* YB fields */
+
+	int			yb_width_cap;	/* see commands/yb_analyze.h */
 } VacAttrStats;
 
 /* flag bits for VacuumParams->options */

@@ -3300,15 +3300,15 @@ Status VersionSet::Import(const std::string& source_dir,
     return status;
   }
   std::vector<FileMetaData> files;
-  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
   for (;;) {
     status = manifest_reader.Next();
     if (!status.ok()) {
       break;
     }
     auto& current = *manifest_reader;
-    if (!current.GetDeletedFiles().empty()) {
-      return STATUS(Corruption, "Deleted files should be empty");
+    // Deletes before adds, as in VersionBuilder, so a file moved between levels is kept.
+    for (const auto& [level, number] : current.GetDeletedFiles()) {
+      std::erase_if(files, [number](const auto& file) { return file.fd.GetNumber() == number; });
     }
     for (const auto& file : current.GetNewFiles()) {
       auto filemeta = file.second;
@@ -3322,7 +3322,6 @@ Status VersionSet::Import(const std::string& source_dir,
                              seqno);
       }
       files.push_back(filemeta);
-      segments.emplace_back(filemeta.smallest.seqno, filemeta.largest.seqno);
     }
   }
   if (!status.IsEndOfFile()) {
@@ -3333,6 +3332,10 @@ Status VersionSet::Import(const std::string& source_dir,
     return STATUS_FORMAT(NotFound, "Imported DB is empty: $0", source_dir);
   }
 
+  std::vector<std::pair<SequenceNumber, SequenceNumber>> segments;
+  for (const auto& file : files) {
+    segments.emplace_back(file.smallest.seqno, file.largest.seqno);
+  }
   std::vector<LiveFileMetaData> live_files;
   GetLiveFilesMetaData(&live_files);
   for (const auto& file : live_files) {

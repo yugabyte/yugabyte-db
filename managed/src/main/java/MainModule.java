@@ -192,6 +192,11 @@ public class MainModule extends AbstractModule {
         }
       }
     }
+    // Netty prefers its bundled BoringSSL over JSSE (BCJSSE) whenever it can load it. This
+    // includes the copy shaded into grpc-netty-shaded, used by the node agent and YBC clients.
+    // Must be set before Netty's OpenSsl class initializes.
+    System.setProperty("io.netty.handler.ssl.noOpenSsl", "true");
+    System.setProperty("io.grpc.netty.shaded.io.netty.handler.ssl.noOpenSsl", "true");
     log.info("Adding BC-FIPS providers");
     Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
     Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");

@@ -291,7 +291,7 @@ Status QLValue::Deserialize(
     return Status::OK();
   }
   if (len > FLAGS_yql_max_value_size) {
-    return STATUS_SUBSTITUTE(NotSupported,
+    return STATUS_FORMAT(NotSupported,
         "Value size ($0) is longer than max value size supported ($1)",
         len, FLAGS_yql_max_value_size);
   }
