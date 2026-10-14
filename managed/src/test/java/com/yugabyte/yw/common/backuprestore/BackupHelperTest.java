@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspace
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -67,6 +68,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1463,7 +1465,8 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /** What YBA is offered for a gcp bucket when the universe is on this saved provider. */
-  private CrossCloudFederationTarget gcpTargetOfferedToYba(Provider provider) {
+  private CrossCloudFederationTarget gcpTargetOfferedToYba(
+      Provider provider, boolean ociSourceEnabled) {
     provider.save();
     Universe.saveDetails(
         testUniverse.getUniverseUUID(),
@@ -1473,6 +1476,8 @@ public class BackupHelperTest extends FakeDBApplication {
           details.getPrimaryCluster().userIntent.setFederationConfigured(true);
           u.setUniverseDetails(details);
         });
+    when(mockRuntimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource))
+        .thenReturn(ociSourceEnabled);
     return spyBackupHelper.resolveCrossCloudFederationTarget(
         Universe.getOrBadRequest(testUniverse.getUniverseUUID()), CloudType.gcp);
   }
@@ -1491,7 +1496,9 @@ public class BackupHelperTest extends FakeDBApplication {
     info.crossCloudFederationTargets = gcsTargets();
     cloudInfo(oci).setOci(info);
 
-    assertNull(gcpTargetOfferedToYba(oci));
+    // Every node of an OCI provider is on OCI, so this holds whatever the gate says.
+    assertNull(gcpTargetOfferedToYba(oci, true));
+    assertNull(gcpTargetOfferedToYba(oci, false));
   }
 
   @Test
@@ -1501,7 +1508,27 @@ public class BackupHelperTest extends FakeDBApplication {
     info.enableFederatedIam = true;
     info.crossCloudFederationTargets = gcsTargets();
 
-    CrossCloudFederationTarget offered = gcpTargetOfferedToYba(aws);
+    CrossCloudFederationTarget offered = gcpTargetOfferedToYba(aws, true);
     assertEquals(GCS_AUDIENCE, offered.audience);
+  }
+
+  /**
+   * An on-prem provider says its gcp target is for OCI nodes by having an identity domain URL, once
+   * OCI is a source. Until then the URL changes nothing, so a provider that has it keeps handing
+   * YBA the audience it always did.
+   */
+  @Test
+  public void testOnPremGcpAudienceIsWithheldFromYbaOnlyWhenItIsForOciNodes() {
+    Provider onprem = ModelFactory.onpremProvider(testCustomer);
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = gcsTargets();
+    cloudInfo(onprem).setOnprem(info);
+
+    assertEquals(GCS_AUDIENCE, gcpTargetOfferedToYba(onprem, true).audience);
+
+    info.ociIdentityDomainUrl = OCI_DOMAIN_URL;
+    assertNull(gcpTargetOfferedToYba(onprem, true));
+    assertEquals(GCS_AUDIENCE, gcpTargetOfferedToYba(onprem, false).audience);
   }
 }

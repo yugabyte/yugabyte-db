@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput.CloudProvider;
 import org.junit.Before;
@@ -89,6 +90,21 @@ public class NodeAgentRpcPayloadFederationTest extends FakeDBApplication {
             ociProvider("  " + DOMAIN_URL + "  "),
             CloudType.oci,
             target(CloudType.gcp, AUDIENCE, null));
+    assertEquals(DOMAIN_URL, input.getOciSource().getIdentityDomainUrl());
+  }
+
+  /** An on-prem provider's node detected on OCI takes the URL from the on-prem provider. */
+  @Test
+  public void testOnPremNodeDetectedOnOci() {
+    Provider provider = ModelFactory.onpremProvider(customer);
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.ociIdentityDomainUrl = DOMAIN_URL;
+    cloudInfo(provider).setOnprem(info);
+
+    ConfigureCloudFederationInput input =
+        apply(provider, CloudType.oci, target(CloudType.gcp, AUDIENCE, null));
+
+    assertEquals(CloudProvider.OCI, input.getSourceCloud());
     assertEquals(DOMAIN_URL, input.getOciSource().getIdentityDomainUrl());
   }
 

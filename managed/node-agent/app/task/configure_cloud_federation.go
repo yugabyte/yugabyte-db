@@ -333,6 +333,14 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		return err
 	}
 
+	// A node whose source cloud changed (an on-prem machine replaced by one on another cloud) must
+	// not keep refreshing a token it no longer uses.
+	if !h.isOciSource() {
+		if err := h.removeOciRefresher(ctx); err != nil {
+			return err
+		}
+	}
+
 	var envCtx map[string]any
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:

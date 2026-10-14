@@ -1546,9 +1546,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * tear down ({@code enabled=false}) cross-cloud federated IAM on the given nodes: a node running
    * on AWS or OCI writes to GCS, a node running on GCP writes to S3. Each subtask picks its own
    * direction from the cloud its node actually runs on: an OCI provider's nodes are all on OCI,
-   * while an on-prem universe can mix AWS and GCP nodes. The caller decides when to invoke this:
-   * the provider flag at create, the universe's {@code federationConfigured} flag at edit/add-node,
-   * or the v2 enable/disable API.
+   * while an on-prem universe can mix AWS, GCP and OCI nodes. The caller decides when to invoke
+   * this: the provider flag at create, the universe's {@code federationConfigured} flag at
+   * edit/add-node, or the v2 enable/disable API.
    */
   protected void createConfigureCloudFederationTasks(
       UniverseDefinitionTaskParams.UserIntent userIntent,

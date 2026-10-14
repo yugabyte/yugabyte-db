@@ -218,7 +218,7 @@ func (h *ConfigureCloudFederation) installOciRefresher(
 }
 
 // removeOciRefresher stops and removes the refresher. A safe no-op when it is not installed, so
-// teardown can call it unconditionally.
+// teardown and a switch to another source cloud can call it unconditionally.
 func (h *ConfigureCloudFederation) removeOciRefresher(ctx context.Context) error {
 	if !h.ociRefresherPresent() {
 		return nil

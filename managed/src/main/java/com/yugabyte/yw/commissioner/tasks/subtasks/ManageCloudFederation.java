@@ -8,11 +8,14 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeCloudDetector;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -91,17 +94,17 @@ public class ManageCloudFederation extends NodeTaskBase {
       return;
     }
 
+    boolean ociSourceEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource);
     // For aws/gcp/oci the provider already names the cloud every node runs on. For on-prem it does
-    // not, so the node's own metadata service decides; it reports only aws, gcp or onprem, so OCI
-    // here always means an OCI provider, whose identity domain URL applyFederationDirection
-    // requires.
+    // not, so the node's own metadata service decides, and reports OCI only when OCI is enabled.
     CloudType sourceCloud =
         providerCloud == CloudType.onprem
-            ? detectAndPersistPhysicalCloud(universe, node)
+            ? detectAndPersistPhysicalCloud(universe, node, ociSourceEnabled)
             : providerCloud;
+    Provider provider = Util.getProviderForNode(node, cluster);
     String ociSkipReason =
         ociSourceSkipReason(
-            sourceCloud, confGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource));
+            sourceCloud, ociSourceEnabled, CloudInfoInterface.getOciIdentityDomainUrl(provider));
     if (ociSkipReason != null) {
       log.warn(
           "Skipping cloud federation on {}: it runs on OCI but {}",
@@ -124,6 +127,11 @@ public class ManageCloudFederation extends NodeTaskBase {
           configuredTargetClouds(taskParams().targets));
       return;
     }
+    checkTargetFitsSource(
+        taskParams().nodeName,
+        sourceCloud,
+        target,
+        CloudInfoInterface.isGcpTargetForOciNodes(provider, ociSourceEnabled));
 
     log.info(
         "Configuring cloud federation on {} ({} node reaching {}) using node-agent",
@@ -138,18 +146,53 @@ public class ManageCloudFederation extends NodeTaskBase {
   }
 
   /**
-   * Why a node on OCI is left without federation, or null when it can be configured. It is left
-   * alone rather than failed, so turning the gate off does not break operations on a universe that
-   * already has OCI federation set up.
+   * Why a node on OCI is left without federation, or null when it can be configured. Neither reason
+   * is an error: the node is left as it was before OCI could be a source, so an existing universe
+   * keeps working. Failing it would break every operation on an on-prem universe that has a node on
+   * OCI and a provider that predates the OCI identity domain URL.
    */
   @Nullable
-  static String ociSourceSkipReason(@Nullable CloudType sourceCloud, boolean ociSourceEnabled) {
-    if (sourceCloud != CloudType.oci || ociSourceEnabled) {
+  static String ociSourceSkipReason(
+      @Nullable CloudType sourceCloud,
+      boolean ociSourceEnabled,
+      @Nullable String identityDomainUrl) {
+    if (sourceCloud != CloudType.oci) {
       return null;
     }
-    return String.format(
-        "federated IAM from OCI nodes is not enabled (runtime config %s)",
-        GlobalConfKeys.enableOciFederationSource.getKey());
+    if (!ociSourceEnabled) {
+      return String.format(
+          "federated IAM from OCI nodes is not enabled (runtime config %s)",
+          GlobalConfKeys.enableOciFederationSource.getKey());
+    }
+    if (identityDomainUrl == null) {
+      return "its provider has no OCI identity domain URL";
+    }
+    return null;
+  }
+
+  /**
+   * Refuses a node whose provider's {@code gcp} target is not for it. Nodes on AWS and on OCI both
+   * reach GCS, but through workload identity providers of different types, and a target has one
+   * audience: see {@link CloudInfoInterface#isGcpTargetForOciNodes}. Only an on-prem provider can
+   * hold both kinds of node. Failing here is the alternative to configuring the node with
+   * credentials GCP would reject, which would only show up when a backup runs.
+   */
+  static void checkTargetFitsSource(
+      String nodeName,
+      CloudType sourceCloud,
+      CrossCloudFederationTarget target,
+      boolean gcpTargetForOciNodes) {
+    if (sourceCloud == CloudType.aws
+        && target.targetCloud == CloudType.gcp
+        && gcpTargetForOciNodes) {
+      throw new IllegalStateException(
+          String.format(
+              "Node %s runs on AWS, but its on-prem provider has an OCI identity domain URL, which"
+                  + " makes the provider's gcp target a workload identity provider for OCI nodes."
+                  + " An AWS node cannot use it. Put AWS nodes under a separate on-prem provider,"
+                  + " or remove the OCI identity domain URL from this one.",
+              nodeName));
+    }
   }
 
   /**
@@ -267,14 +310,20 @@ public class ManageCloudFederation extends NodeTaskBase {
    * <p>The value is always written, so a node whose underlying machine was replaced cannot keep a
    * stale one. A node that could not be probed is recorded as unknown, and {@link #resolveTarget}
    * then fails the subtask rather than configuring a guess.
+   *
+   * <p>OCI is only probed for when it is enabled as a source. Until then a node on OCI reads as
+   * on-prem, as it always did, so an existing universe is neither probed differently nor recorded
+   * differently.
    */
   @Nullable
-  private CloudType detectAndPersistPhysicalCloud(Universe universe, NodeDetails node) {
+  private CloudType detectAndPersistPhysicalCloud(
+      Universe universe, NodeDetails node, boolean probeOci) {
     CloudType detected =
         nodeCloudDetector.detect(
             universe,
             node,
-            confGetter.getConfForScope(universe, UniverseConfKeys.nodeCloudDetectionTimeout));
+            confGetter.getConfForScope(universe, UniverseConfKeys.nodeCloudDetectionTimeout),
+            probeOci);
     log.info("Physical cloud of node {} detected as {}", taskParams().nodeName, detected);
     String physicalCloud = detected == null ? null : detected.name();
     saveUniverseDetails(

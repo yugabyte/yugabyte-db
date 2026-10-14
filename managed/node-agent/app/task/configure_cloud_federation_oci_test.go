@@ -369,3 +369,27 @@ func TestOciTokenTimingIsConsistent(t *testing.T) {
 			ociTokenMinLifetime, refreshInterval, ociTokenMinRemaining)
 	}
 }
+
+// Releasing or recommissioning a node runs DestroyServer, which removes the federation directory
+// the refresher writes into. The refresher must go with it, or it keeps exchanging the node's
+// identity every 20 minutes on a node that is back in the pool.
+func TestDestroyServerDisablesTheOciRefresher(t *testing.T) {
+	index := map[string]int{}
+	for i, s := range registeredServices {
+		index[s.unitName] = i
+		if (s.unitName == ociTokenTimerName || s.unitName == ociTokenServiceName) &&
+			(s.home != "" || s.needsProvisioning) {
+			t.Errorf("%s must be disabled on every destroy and has no server home: %+v",
+				s.unitName, s)
+		}
+	}
+	timer, hasTimer := index[ociTokenTimerName]
+	service, hasService := index[ociTokenServiceName]
+	if !hasTimer || !hasService {
+		t.Fatalf("both refresher units must be in registeredServices: timer=%t service=%t",
+			hasTimer, hasService)
+	}
+	if timer > service {
+		t.Error("the timer must be disabled before the service it triggers")
+	}
+}
