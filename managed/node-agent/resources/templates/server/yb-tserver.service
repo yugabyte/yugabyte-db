@@ -26,8 +26,10 @@ ExecStart={{yb_home_dir}}/bin/yb-server-exec.sh \
 {% endif %}
 Restart=always
 RestartSec=5
-# Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-KillMode=process
+# Stop -> SIGTERM to tserver only - 10s - SIGKILL. SIGTERM goes to the tserver alone so it can
+# shut down its postgres children itself. Anything left in the unit cgroup after the tserver
+# exits is then SIGKILLed.
+KillMode=mixed
 TimeoutStopFailureMode=terminate
 KillSignal=SIGTERM
 TimeoutStopSec=10
