@@ -273,6 +273,61 @@ func TestRenderTemplatesExistingProviderValidation(t *testing.T) {
 			wantErr: "not an on-prem",
 		},
 		{
+			name: "node exporter port mismatch rejected",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9301,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir: "/home/yugabyte",
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+			wantErr: "node exporter port (9301) does not match the configured value (9300)",
+		},
+		{
+			name: "matching node exporter port accepted",
+			provider: model.Provider{
+				BasicInfo: model.BasicInfo{
+					Name: "onprem-provider",
+					Code: "onprem",
+					Uuid: "provider-123",
+				},
+				Details: model.ProviderDetails{
+					SkipProvisioning: true,
+					NodeExporterPort: 9300,
+					CloudInfo: model.CloudInfo{
+						Onprem: model.OnPremCloudInfo{
+							YbHomeDir: "/home/yugabyte",
+						},
+					},
+				},
+				Regions: []model.Region{
+					{
+						BasicInfo: model.BasicInfo{Name: "region-a", Code: "region-a"},
+						Zones: []model.Zone{
+							{BasicInfo: model.BasicInfo{Name: "zone-a", Code: "zone-a"}},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "manual onprem accepted",
 			provider: model.Provider{
 				BasicInfo: model.BasicInfo{
