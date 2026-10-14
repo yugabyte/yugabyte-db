@@ -7862,6 +7862,13 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
       return false;
     }
   }
+
+  // System and colocated tables do not wait for their tablets, which belong to another table and
+  // may already be freed.
+  if (table->is_system() || table->IsSecondaryTable()) {
+    return true;
+  }
+
   // The current relevant order of operations during a DeleteTable is:
   // 1) Mark the table as DELETING
   // 2) Abort the current table tasks
@@ -7880,7 +7887,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || table->is_system() || table->IsSecondaryTable();
+  return all_tablets_done;
 }
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
@@ -11819,11 +11826,20 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
-  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
-  // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
-  if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
+  // System and colocated tables do not own their tablets, so the tablets are not deleted with them.
+  // GetTabletsIncludeInactive() must not be called before this check: a colocated table, e.g.
+  // a vector index, holds only weak pointers to tablets owned by another table. DROP DATABASE
+  // deletes that table first, and the background cleanup may free its tablets before this table
+  // is processed, so GetTabletsIncludeInactive() would fail and leave the database FAILED.
+  if (table_info.is_system() || table_info.IsSecondaryTable()) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && delete_retainer.active_cdcsdk &&
         table_info.IsSecondaryTable()) {
+      // Indexes, including vector indexes, are never part of a CDCSDK stream, so only a regular
+      // colocated table gets here, and it lives on exactly one tablet. The entry records only the
+      // tablet id and does not keep the tablet alive.
+      DCHECK(!table_info.is_vector_index())
+          << "Vector index in a CDCSDK stream: " << table_info.ToString();
+      auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
       LockGuard lock(mutex_);
       RSTATUS_DCHECK(
           tablets.size() == 1, InternalError, "Colocated table has more than one tablet");
@@ -11836,6 +11852,7 @@ Status CatalogManager::DeleteOrHideTabletsOfTable(
     return Status::OK();
   }
 
+  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
   });
