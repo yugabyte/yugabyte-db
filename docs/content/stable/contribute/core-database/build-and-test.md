@@ -156,7 +156,7 @@ For example:
 
 Microbenchmarks use [google/benchmark](https://github.com/google/benchmark) to time small code paths in one component, such as a lock primitive or an encoder, without a cluster.
 A benchmark is a `<name>.cc` file next to its `CMakeLists.txt`, registered with `ADD_YB_BENCHMARK(<name> DEPS <libraries>)`; `src/yb/util/mutex-benchmark.cc` is an example.
-Benchmarks compile whenever tests do, so they cannot rot, but the test runner never runs them.
+Benchmarks compile whenever tests do, so they keep compiling, but the test runner never runs them.
 The binaries are placed in `build/latest/benchmarks-<directory>/`.
 
 To build and run one microbenchmark, for example `mutex-benchmark`, run the following command:
@@ -170,7 +170,7 @@ Only that program and what it links are built.
 See the [google/benchmark user guide](https://github.com/google/benchmark/blob/main/docs/user_guide.md) for the available `--benchmark_*` flags.
 `--target benchmarks` builds all microbenchmarks without running them.
 
-Use a `release` build; `debug` and sanitizer builds only check that benchmarks compile.
+Use a `release` build; `--cxx-benchmark` runs in any build type, but numbers from `debug` and sanitizer builds are not meaningful.
 For numbers closest to a release server binary, use an LTO build:
 
 ```sh
