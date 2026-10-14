@@ -55,8 +55,17 @@ public class AZUResourceGroupApiClient {
   private static final String ERROR_202 = "Status code 202, (empty body)";
   private static final int GROUP_DELETE_WAIT_RETRIES = 5;
   private static final int GROUP_DELETE_WAIT_SECONDS = 60;
-  private static final int CONCURRENT_WRITE_RETRIES = 3;
-  private static final long CONCURRENT_WRITE_RETRY_DELAY_MS = 5000;
+  // Azure network writes fail with these codes when the write can succeed later, usually because an
+  // earlier operation on the resource, or on one it references, is still finishing. Leave out codes
+  // that mean a newer write replaced this one: a retry would undo the newer write.
+  private static final Set<String> RETRYABLE_ERROR_CODES =
+      Set.of(
+          "ConflictingConcurrentWriteNotAllowed",
+          "AnotherOperationInProgress",
+          "ReferencedResourceNotProvisioned",
+          "RetryableError");
+  private static final int RETRYABLE_ERROR_RETRIES = 3;
+  private static final long RETRYABLE_ERROR_DELAY_MS = 5000;
 
   private AzureResourceManager azureResourceManager;
   private String resourceGroup;
@@ -68,22 +77,23 @@ public class AZUResourceGroupApiClient {
     this.azureMarketplaceOrderingManager = getAzureMarketplaceOrderingManager(azureCloudInfo);
   }
 
-  // Azure rejects a write to a load balancer that arrives while an earlier write to it is still
-  // finishing, and asks the caller to retry. The SDK retry policy does not retry 409s.
-  static <T> T retryOnConcurrentWrite(Supplier<T> write, long retryDelayMs) {
+  // The SDK retry policy retries 408, 429 and 5xx responses, not these codes. A failed
+  // long-running operation also reaches here as a ManagementException with the Azure code.
+  static <T> T retryOnRetryableError(Supplier<T> write, long retryDelayMs) {
     for (int retry = 1; ; retry++) {
       try {
         return write.get();
       } catch (ManagementException e) {
-        if (retry > CONCURRENT_WRITE_RETRIES
+        if (retry > RETRYABLE_ERROR_RETRIES
             || e.getValue() == null
-            || !"ConflictingConcurrentWriteNotAllowed".equals(e.getValue().getCode())) {
+            || !RETRYABLE_ERROR_CODES.contains(e.getValue().getCode())) {
           throw e;
         }
         log.warn(
-            "Azure load balancer write conflict, retry {} of {}: {}",
+            "Azure write failed with {}, retry {} of {}: {}",
+            e.getValue().getCode(),
             retry,
-            CONCURRENT_WRITE_RETRIES,
+            RETRYABLE_ERROR_RETRIES,
             e.getMessage());
         try {
           Thread.sleep(retryDelayMs);
@@ -94,8 +104,12 @@ public class AZUResourceGroupApiClient {
     }
   }
 
+  private static <T> T retryOnRetryableError(Supplier<T> write) {
+    return retryOnRetryableError(write, RETRYABLE_ERROR_DELAY_MS);
+  }
+
   public BackendAddressPoolInner createBackendPool(String lbName, String poolName) {
-    return retryOnConcurrentWrite(
+    return retryOnRetryableError(
         () ->
             azureResourceManager
                 .networks()
@@ -106,8 +120,7 @@ public class AZUResourceGroupApiClient {
                     resourceGroup,
                     lbName,
                     poolName,
-                    new BackendAddressPoolInner().withName(poolName)),
-        CONCURRENT_WRITE_RETRY_DELAY_MS);
+                    new BackendAddressPoolInner().withName(poolName)));
   }
 
   public BackendAddressPoolInner getBackendPool(String lbName, String poolName) {
@@ -135,27 +148,25 @@ public class AZUResourceGroupApiClient {
             .collect(Collectors.toList());
     BackendAddressPoolInner pool =
         backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
-    return retryOnConcurrentWrite(
+    return retryOnRetryableError(
         () ->
             azureResourceManager
                 .networks()
                 .manager()
                 .serviceClient()
                 .getLoadBalancerBackendAddressPools()
-                .createOrUpdate(resourceGroup, lbName, pool.name(), pool, Context.NONE),
-        CONCURRENT_WRITE_RETRY_DELAY_MS);
+                .createOrUpdate(resourceGroup, lbName, pool.name(), pool, Context.NONE));
   }
 
   public LoadBalancerInner updateLoadBalancer(String lbName, LoadBalancerInner loadBalancer) {
-    return retryOnConcurrentWrite(
+    return retryOnRetryableError(
         () ->
             azureResourceManager
                 .networks()
                 .manager()
                 .serviceClient()
                 .getLoadBalancers()
-                .createOrUpdate(resourceGroup, lbName, loadBalancer),
-        CONCURRENT_WRITE_RETRY_DELAY_MS);
+                .createOrUpdate(resourceGroup, lbName, loadBalancer));
   }
 
   public LoadBalancerInner getLoadBalancerByName(String lbName) {
@@ -192,22 +203,28 @@ public class AZUResourceGroupApiClient {
 
   /** Also deletes the pools, rules and probes of the load balancer. */
   public void deleteLoadBalancer(String lbName) {
-    azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancers()
-        .delete(resourceGroup, lbName);
+    retryOnRetryableError(
+        () -> {
+          azureResourceManager
+              .networks()
+              .manager()
+              .serviceClient()
+              .getLoadBalancers()
+              .delete(resourceGroup, lbName);
+          return null;
+        });
   }
 
   /** Replaces all the tags of the load balancer. */
   public void updateLoadBalancerTags(String lbName, Map<String, String> tags) {
-    azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancers()
-        .updateTags(resourceGroup, lbName, new TagsObject().withTags(tags));
+    retryOnRetryableError(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancers()
+                .updateTags(resourceGroup, lbName, new TagsObject().withTags(tags)));
   }
 
   public String createCapacityReservationGroup(
@@ -457,11 +474,13 @@ public class AZUResourceGroupApiClient {
   }
 
   public void updateNetworkInterface(NetworkInterfaceInner networkInterface) {
-    networkInterfaces(networkInterface.id())
-        .createOrUpdate(
-            ResourceUtils.groupFromResourceId(networkInterface.id()),
-            networkInterface.name(),
-            networkInterface);
+    retryOnRetryableError(
+        () ->
+            networkInterfaces(networkInterface.id())
+                .createOrUpdate(
+                    ResourceUtils.groupFromResourceId(networkInterface.id()),
+                    networkInterface.name(),
+                    networkInterface));
   }
 
   // Devops creates the interfaces in the network subscription and resource group, which can differ

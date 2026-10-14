@@ -16,10 +16,10 @@ public class AZUResourceGroupApiClientTest {
   }
 
   @Test
-  public void testRetryOnConcurrentWrite() {
+  public void testRetryOnRetryableError() {
     AtomicInteger calls = new AtomicInteger();
     String result =
-        AZUResourceGroupApiClient.retryOnConcurrentWrite(
+        AZUResourceGroupApiClient.retryOnRetryableError(
             () -> {
               if (calls.incrementAndGet() == 1) {
                 throw azureError("ConflictingConcurrentWriteNotAllowed");
@@ -36,7 +36,7 @@ public class AZUResourceGroupApiClientTest {
         assertThrows(
             ManagementException.class,
             () ->
-                AZUResourceGroupApiClient.retryOnConcurrentWrite(
+                AZUResourceGroupApiClient.retryOnRetryableError(
                     () -> {
                       calls.incrementAndGet();
                       throw other;
