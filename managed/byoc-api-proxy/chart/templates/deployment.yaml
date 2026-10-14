@@ -6,8 +6,10 @@ metadata:
   labels:
     {{- include "byoc-api-proxy.labels" . | nindent 4 }}
 spec:
-  # Two pollers of one YBA's queue would race for its requests, so there is exactly one, and an
-  # update stops the old pod before starting the new one.
+  # The API server hands each queued request out once, then offers it again after a 5 s lease
+  # without a response, so a crashed poller's requests aren't lost. A poller skips the requests it
+  # is still running; a second poller would not, and would run any request slower than that twice.
+  # So there is exactly one, and an update stops the old pod before starting the new one.
   replicas: 1
   strategy:
     type: Recreate

@@ -42,6 +42,7 @@ jar. Configuration is the same environment variables as `src/main/resources/appl
 ./docker/build-image.sh -t build/releases/byoc_api_proxy-<version>.tar.gz -r byoc-api-proxy
 ```
 
-`chart/` deploys it as a single-replica Deployment (two pollers on one queue would race). As a
+`chart/` deploys it as a single-replica Deployment (a second poller would re-run requests that
+outlast the API server's 5 s claim lease). As a
 yugaware sub-chart it defaults to that release's YBA service; standalone, set `yba.baseUrl`.
 `chart/package.sh <version> <dir>` packages it with the chart version set to the proxy version.
