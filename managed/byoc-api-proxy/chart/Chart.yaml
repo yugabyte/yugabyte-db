@@ -2,7 +2,7 @@ apiVersion: v2
 name: byoc-api-proxy
 description: Relays requests queued by the YugabyteDB Aeon control plane to a YugabyteDB Anywhere instance.
 type: application
-# Both are set from the proxy release version when the chart is packaged (package-chart.sh).
+# Both are set from the proxy release version by chart/package.sh.
 version: 0.0.0
 appVersion: "0.0.0"
 kubeVersion: ">=1.17.0-0"
