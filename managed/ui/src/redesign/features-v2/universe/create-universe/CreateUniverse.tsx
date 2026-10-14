@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useMethods } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +33,8 @@ import {
   fetchCreateUniverseDbVersions,
   fetchCreateUniverseProviders
 } from './helpers/generalSettingsDefaults';
+import { resolveCreateUniverseFormMode } from './helpers/createUniverseFormModePreference';
+import { RESILIENCE_FORM_MODE } from './fields/FieldNames';
 //style imports
 import './styles/override.css';
 
@@ -69,9 +72,27 @@ const CreateHeader = styled('div')(() => ({
   minWidth: '1200px'
 }));
 
+function buildInitialFormState(
+  settings?: Record<string, unknown> | null
+): createUniverseFormProps {
+  const resilienceFormMode = resolveCreateUniverseFormMode(settings);
+  return {
+    ...initialCreateUniverseFormState,
+    resilienceAndRegionsSettings: {
+      ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+      [RESILIENCE_FORM_MODE]: resilienceFormMode
+    }
+  };
+}
+
 export function CreateUniverse() {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
-  const restoreContextData = useMethods(createUniverseFormMethods, initialCreateUniverseFormState);
+  const userSettings = useSelector(
+    (state: any) => state.customer.currentUser?.data?.settings as Record<string, unknown> | null
+  );
+  // Seed once from profile available at mount; never late-overwrite if settings arrive later.
+  const [initialFormState] = useState(() => buildInitialFormState(userSettings));
+  const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
   const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
