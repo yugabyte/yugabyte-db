@@ -1061,6 +1061,15 @@ bool IsUsageMessageSet() {
   return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
 }
 
+bool FlagTakesSeparateValue(std::string_view arg) {
+  if (!arg.starts_with('-') || arg.find('=') != std::string_view::npos) {
+    return false;
+  }
+  arg.remove_prefix(arg.starts_with("--") ? 2 : 1);
+  CommandLineFlagInfo info;
+  return google::GetCommandLineFlagInfo(std::string(arg).c_str(), &info) && info.type != "bool";
+}
+
 void FlagValidatorSink::send(
     google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
     const struct ::tm* tm_time, const char* message, size_t message_len) {

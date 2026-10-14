@@ -517,6 +517,15 @@ TEST_F(AdminCliTest, HelpNeedsNoCluster) {
       &error));
   ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
 
+  // A leading "help" does not shadow the operation it is asking about.
+  for (const auto* help_flag : {"--help", "--helpshort"}) {
+    SCOPED_TRACE(help_flag);
+    output.clear();
+    ASSERT_OK(Subprocess::Call(
+        ToStringVector(exe_path, "help", "delete_table", help_flag), &output, &error));
+    ASSERT_STR_CONTAINS(output, "Usage: yb-admin delete_table <table>");
+  }
+
   const std::vector<std::string> parse_breakers = {
       "--flagfile=/nonexistent/server.conf",  // gflags: "No such file or directory"
       "--timeout_ms=not_a_number",            // gflags: "illegal value ... for int64 flag"

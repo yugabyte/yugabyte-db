@@ -36,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
@@ -668,19 +669,21 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       }
       continue;
     }
-    if (!has_value) {
-      // Skip the value of a two-token "--flag value", so "--master_addresses --help" is not help.
-      google::CommandLineFlagInfo info;
-      if (google::GetCommandLineFlagInfo(name.c_str(), &info) && info.type != "bool") {
-        ++i;
-      }
+    // Skip the value of a two-token "--flag value", so "--master_addresses --help" is not help.
+    if (i + 1 < argc && FlagTakesSeparateValue(token)) {
+      ++i;
     }
   }
   if (help_requested) {
     HelpRequest request;
     request.helpshort = helpshort;
     // Commands usually lead with flags, e.g. "--flagfile server.conf delete_table --help".
-    for (const auto& positional : positionals) {
+    // "help delete_table --help" asks about delete_table, not about the help operation.
+    auto first = positionals.begin();
+    if (positionals.size() > 1 && *first == kHelpOperation) {
+      ++first;
+    }
+    for (const auto& positional : std::ranges::subrange(first, positionals.end())) {
       if (command_indexes_.contains(positional)) {
         request.operation = positional;
         break;
