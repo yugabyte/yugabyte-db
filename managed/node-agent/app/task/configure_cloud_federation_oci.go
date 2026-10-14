@@ -152,12 +152,11 @@ func (h *ConfigureCloudFederation) setupOciSource(
 		Cmd  string
 	}{
 		{
-			// With an empty environment, like the refresher unit: a proxy set only in the user's
-			// shell or in node-agent's own environment would pass here and fail every refresh.
+			// Runs in the user's environment, which can differ from the refresher unit's: a proxy
+			// set only in the user's shell applies here but not to the later refreshes.
 			"fetch-initial-oci-identity-token",
 			fmt.Sprintf(
-				"env -i %s federation oci-token --identity-domain-url %s --output %s "+
-					"--min-lifetime %s",
+				"%s federation oci-token --identity-domain-url %s --output %s --min-lifetime %s",
 				shellSingleQuote(util.NodeAgentBinaryPath()),
 				shellSingleQuote(identityDomainURL),
 				shellSingleQuote(tokenFile),
