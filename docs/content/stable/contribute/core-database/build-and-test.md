@@ -161,6 +161,40 @@ For example:
 
 Note that a high parallelism could result in failures if system resources are overused.
 
+### Profile-guided optimization for microbenchmarks
+
+Release binaries are built with profile-guided optimization (PGO) from a sysbench workload, so their code layout and inlining differ from a plain `release` build.
+You can build a microbenchmark the same way, with a profile you collect yourself.
+It is opt-in and takes two builds.
+
+First, build and run the benchmark instrumented for profiling (`prof_gen` is a release build with profile counters; the benchmark's own timings in this run are meaningless):
+
+```sh
+./yb_build.sh prof_gen --pgo-instrument-type=ir --cxx-benchmark mutex-benchmark
+```
+
+The profile is written to `<build_root>/pgo-profiles/`, and the command prints the `llvm-profdata merge` invocation that turns it into one `.profdata` file.
+Then build and run the benchmark with that profile, with ccache off so no object compiled without the profile is reused:
+
+```sh
+YB_USE_EXTERNAL_BUILD_ROOT=1 ./yb_build.sh release --full-lto --no-ccache \
+    --pgo-data-path <build_root>/pgo-profiles/mutex-benchmark.profdata --cxx-benchmark mutex-benchmark
+```
+
+`YB_USE_EXTERNAL_BUILD_ROOT=1` puts the build under `<source root>__build/`, so your regular `release` build root is not recompiled with the profile flags and then recompiled again without them.
+Collect the profile with the same linking type you measure with (`--full-lto` or not), because the inlining decisions differ.
+
+When to use it: to check whether a change behaves the same way in a PGO-optimized build, or whether a result is fragile under a different code layout.
+It is not a substitute for a plain `release` or `--full-lto` number, and it has downsides:
+
+- A profile collected from the benchmark itself optimizes the benchmark's loop, so it overstates gains that a production profile, collected from a server workload, would not see.
+  In an A/B comparison, a profile collected on one side favors that side; use the same profile for both, or profile each side the same way and say so.
+- Only code the profiling run executed gets profile data; everything else is laid out as cold.
+- A stale profile is accepted silently: the build disables the profile-mismatch warnings, and functions whose code changed simply get no data.
+  Collect a new profile after changing the measured code.
+- It needs Clang and a second full build of the benchmark's dependencies without ccache.
+- The profile used for release binaries is produced inside the release pipeline and is not published, so a self-collected profile is the only one available to developers today.
+
 ### Test frameworks
 
 #### C++ (external) mini cluster

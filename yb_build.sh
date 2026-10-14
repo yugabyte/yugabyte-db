@@ -512,12 +512,28 @@ run_cxx_benchmark() {
     fatal "Could not find benchmark program '$cxx_benchmark_program_name' in" \
           "$BUILD_ROOT/benchmarks-*. Only programs added with ADD_YB_BENCHMARK are placed there."
   fi
+  # In a prof_gen (PGO-instrumented) build, collect the profile under the build root instead of
+  # the current directory, and show how to merge it for a later --pgo-data-path build.
+  local pgo_profile_dir=""
+  if [[ $build_type == "prof_gen" ]]; then
+    pgo_profile_dir=$BUILD_ROOT/pgo-profiles
+    mkdir -p "$pgo_profile_dir"
+  fi
   (
     set_sanitizer_runtime_options
+    if [[ -n $pgo_profile_dir ]]; then
+      export LLVM_PROFILE_FILE=$pgo_profile_dir/$cxx_benchmark_name-%p.profraw
+    fi
     set +u  # "set -u" fails on an empty benchmark_args with bash < 4.4 (macOS /bin/bash).
     set -x
     "${benchmark_paths[0]}" "${benchmark_args[@]}"
   )
+  if [[ -n $pgo_profile_dir ]]; then
+    log "PGO profile written to $pgo_profile_dir. To merge it for a --pgo-data-path build:"
+    log "  ${YB_LLVM_TOOLCHAIN_DIR:-<llvm toolchain>}/bin/llvm-profdata merge" \
+        "-o $pgo_profile_dir/$cxx_benchmark_name.profdata" \
+        "$pgo_profile_dir/$cxx_benchmark_name-*.profraw"
+  fi
 }
 
 register_file_to_rebuild() {
