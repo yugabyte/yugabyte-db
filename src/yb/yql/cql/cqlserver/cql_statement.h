@@ -43,6 +43,8 @@ class CQLStatement;
 // yb_latency_histogram column, and the JSON is compatible with helpers such as yb_get_percentile.
 class StmtLatencyHistogram {
  public:
+  // The live buffer is allocated on the first Record(). Prepared statements stay cached when
+  // ycql_enable_stat_statements is off, and that cache is bounded only by bytes.
   StmtLatencyHistogram();
   // Copies are compact snapshots for dump paths and have no live histogram buffer. Record is a
   // no-op; Reset only clears the snapshot. The same holds when Allocate fails.
@@ -86,6 +88,9 @@ class StmtLatencyHistogram {
 
   // Count of executions slower than the maximum tracked latency (overflow bucket).
   int64_t slow_executions_ = 0;
+
+  // False for snapshots and after a failed Allocate. Those objects must not create hist_.
+  bool owns_histogram_ = true;
 };
 
 // A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
@@ -162,6 +167,13 @@ class CQLStatement : public ql::Statement {
     DCHECK(!stmt_counters_);
     consumption_.Add(other->latency_histogram.DynamicMemoryUsage());
     stmt_counters_ = other;
+  }
+
+  // Histogram bytes show up on the first Record(), after SetCounters has already run.
+  void AddConsumption(size_t bytes) {
+    if (bytes > 0) {
+      consumption_.Add(static_cast<int64_t>(bytes));
+    }
   }
 
  private:

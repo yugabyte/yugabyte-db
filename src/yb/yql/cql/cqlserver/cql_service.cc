@@ -644,7 +644,12 @@ void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
   std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetWritableCounters();
   LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null statement counters.";
   LOG_IF(WARNING, stmt_counters->query.empty()) << "Unexpected empty query string in the counters.";
+  const size_t histogram_bytes_before = stmt_counters->latency_histogram.DynamicMemoryUsage();
   UpdateCountersUnlocked(execute_time_in_msec, stmt_counters);
+  const size_t histogram_bytes_after = stmt_counters->latency_histogram.DynamicMemoryUsage();
+  if (histogram_bytes_after > histogram_bytes_before) {
+    itr->second->AddConsumption(histogram_bytes_after - histogram_bytes_before);
+  }
 }
 
 void CQLServiceImpl::UpdateCountersUnlocked(

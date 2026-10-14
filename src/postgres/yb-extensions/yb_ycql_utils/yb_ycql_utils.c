@@ -67,17 +67,13 @@ ycql_stat_statements_impl(FunctionCallInfo fcinfo, bool with_histogram)
 	if (with_histogram)
 	{
 		if (ncols != ycql_stat_statements_num_cols_v1_2)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("ycql_stat_statements_1_2() catalog has %d columns, expected %d",
-							ncols, ycql_stat_statements_num_cols_v1_2)));
+			elog(ERROR, "ycql_stat_statements_1_2() catalog has %d columns, expected %d",
+				 ncols, ycql_stat_statements_num_cols_v1_2);
 	}
 	else if (ncols > ycql_stat_statements_num_cols_v1_1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ycql_stat_statements() catalog has %d columns; "
-						"version 1.2 uses ycql_stat_statements_1_2()",
-						ncols)));
+		elog(ERROR, "ycql_stat_statements() catalog has %d columns; "
+			 "version 1.2 uses ycql_stat_statements_1_2()",
+			 ncols);
 
 	YbcYCQLStatementStats *stat_list = NULL;
 	size_t		num_stats = 0;

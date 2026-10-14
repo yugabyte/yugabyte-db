@@ -87,12 +87,10 @@ void StmtLatencyHistogram::FreeDeleter::operator()(hdr_histogram* h) const {
   free(h);
 }
 
-StmtLatencyHistogram::StmtLatencyHistogram() {
-  Allocate();
-}
+StmtLatencyHistogram::StmtLatencyHistogram() = default;
 
 StmtLatencyHistogram::StmtLatencyHistogram(const StmtLatencyHistogram& other)
-    : slow_executions_(other.slow_executions_) {
+    : slow_executions_(other.slow_executions_), owns_histogram_(false) {
   SnapshotFrom(other);
 }
 
@@ -101,6 +99,7 @@ StmtLatencyHistogram& StmtLatencyHistogram::operator=(const StmtLatencyHistogram
     hist_.reset();
     snapshot_.clear();
     slow_executions_ = other.slow_executions_;
+    owns_histogram_ = false;
     SnapshotFrom(other);
   }
   return *this;
@@ -144,7 +143,14 @@ void StmtLatencyHistogram::SnapshotFrom(const StmtLatencyHistogram& other) {
 
 void StmtLatencyHistogram::Record(double time_in_msec) {
   if (!hist_) {
-    return;
+    if (!owns_histogram_) {
+      return;
+    }
+    Allocate();
+    if (!hist_) {
+      owns_histogram_ = false;
+      return;
+    }
   }
   if (time_in_msec < 0) {
     time_in_msec = 0;

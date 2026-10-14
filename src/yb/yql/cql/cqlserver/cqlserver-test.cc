@@ -719,18 +719,21 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
 TEST(TestStmtLatencyHistogram, TestJsonFormat) {
   StmtLatencyHistogram hist;
 
-  // Empty histogram is an empty JSON array.
+  // Empty histogram is an empty JSON array, and the buffer is not allocated until a sample.
   ASSERT_EQ("[]", hist.ToJsonArrayString());
+  ASSERT_EQ(0, hist.DynamicMemoryUsage());
 
   // A 0.15 ms sample falls in the [0.1,0.2) bucket (resolution 0.1 ms).
   hist.Record(0.15);
+  ASSERT_GT(hist.DynamicMemoryUsage(), 0);
   ASSERT_STR_CONTAINS(hist.ToJsonArrayString(), "\"[0.1,0.2)\":1");
 
   // Executions slower than the tracked maximum land in the open-ended overflow bucket.
   hist.Record(2'000'000.0);
   ASSERT_STR_CONTAINS(hist.ToJsonArrayString(), "[1677721.6,)");
 
-  // A copy is independent and preserves the recorded buckets.
+  // GetStatementCountersForMetrics copies under the statement-cache mutex and formats JSON
+  // after the lock is released. The copy is a snapshot of populated buckets.
   StmtLatencyHistogram copy = hist;
   ASSERT_EQ(hist.ToJsonArrayString(), copy.ToJsonArrayString());
 
@@ -738,8 +741,7 @@ TEST(TestStmtLatencyHistogram, TestJsonFormat) {
   assigned = copy;
   ASSERT_EQ(copy.ToJsonArrayString(), assigned.ToJsonArrayString());
 
-  // Copies are snapshots: Record/Reset must not dereference a null live buffer, and must not
-  // change the original.
+  // Record/Reset on a snapshot must not dereference a null live buffer or change the original.
   const std::string original = hist.ToJsonArrayString();
   copy.Record(1.0);
   copy.Reset();
