@@ -182,8 +182,8 @@ Build options:
     writes its profile to <build_root>/pgo-profiles/.
   --pgo-data-path <profdata_file>
     Compile and link with the given merged llvm-profdata profile (-fprofile-use). Works with any
-    build type; the release pipeline uses it with --full-lto. Changing this flag recompiles the
-    build root.
+    build type; the release pipeline uses it with --full-lto. The build root remembers the profile:
+    giving a different path, or omitting the flag after it was used, re-runs CMake and rebuilds.
   --no-initdb, --skip-initdb
     Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.

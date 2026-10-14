@@ -173,16 +173,17 @@ First, build and run the benchmark instrumented for profiling (`prof_gen` is a r
 ./yb_build.sh prof_gen --pgo-instrument-type=ir --cxx-benchmark mutex-benchmark
 ```
 
-The profile is written to `<build_root>/pgo-profiles/`, and the command prints the `llvm-profdata merge` invocation that turns it into one `.profdata` file.
+The raw profiles are written to `<build_root>/pgo-profiles/` (one file per instrumented executable or shared library; each run replaces the benchmark's previous ones), and the command prints the `llvm-profdata merge` invocation that turns them into one `.profdata` file.
 Then build and run the benchmark with that profile, with ccache off so no object compiled without the profile is reused:
 
 ```sh
-YB_USE_EXTERNAL_BUILD_ROOT=1 ./yb_build.sh release --full-lto --no-ccache \
+YB_USE_EXTERNAL_BUILD_ROOT=1 ./yb_build.sh release --no-ccache \
     --pgo-data-path <build_root>/pgo-profiles/mutex-benchmark.profdata --cxx-benchmark mutex-benchmark
 ```
 
-`YB_USE_EXTERNAL_BUILD_ROOT=1` puts the build under `<source root>__build/`, so your regular `release` build root is not recompiled with the profile flags and then recompiled again without them.
-Collect the profile with the same linking type you measure with (`--full-lto` or not), because the inlining decisions differ.
+A build root remembers its profile, and giving a different one or none at all re-runs CMake and rebuilds.
+`YB_USE_EXTERNAL_BUILD_ROOT=1` puts the build under `<source root>__build/`, so your regular `release` build root is not rebuilt twice, once with the profile and once without, when you switch back.
+To measure the LTO variant, add `--full-lto` to both commands: collect the profile with the same linking type you measure with, because the inlining decisions differ.
 
 When to use it: to check whether a change behaves the same way in a PGO-optimized build, or whether a result is fragile under a different code layout.
 It is not a substitute for a plain `release` or `--full-lto` number, and it has downsides:

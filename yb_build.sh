@@ -513,16 +513,19 @@ run_cxx_benchmark() {
           "$BUILD_ROOT/benchmarks-*. Only programs added with ADD_YB_BENCHMARK are placed there."
   fi
   # In a prof_gen (PGO-instrumented) build, collect the profile under the build root instead of
-  # the current directory, and show how to merge it for a later --pgo-data-path build.
+  # the current directory, and show how to merge it for a later --pgo-data-path build. %m keeps the
+  # executable and each instrumented shared library in their own raw file, as clang's default
+  # pattern does; previous raw files of this benchmark are removed so the merge sees one run.
   local pgo_profile_dir=""
   if [[ $build_type == "prof_gen" ]]; then
     pgo_profile_dir=$BUILD_ROOT/pgo-profiles
     mkdir -p "$pgo_profile_dir"
+    rm -f "$pgo_profile_dir/$cxx_benchmark_name"-*.profraw
   fi
   (
     set_sanitizer_runtime_options
     if [[ -n $pgo_profile_dir ]]; then
-      export LLVM_PROFILE_FILE=$pgo_profile_dir/$cxx_benchmark_name-%p.profraw
+      export LLVM_PROFILE_FILE=$pgo_profile_dir/$cxx_benchmark_name-%p-%m.profraw
     fi
     set +u  # "set -u" fails on an empty benchmark_args with bash < 4.4 (macOS /bin/bash).
     set -x
@@ -1080,8 +1083,21 @@ if [[ $build_type == "prof_gen" ]]; then
   cmake_opts+=( "-DYB_PGO_INSTRUMENT_TYPE=$pgo_instrument_type" )
 fi
 
+# The profile path lives in CMakeCache.txt once cmake has seen it, so re-run cmake whenever the path
+# given now differs from the cached one. That covers giving a different profile and, with the
+# -U below, dropping the flag after it was used; otherwise the build silently stays on the old
+# profile.
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
+else
+  cmake_opts+=( "-UYB_PGO_DATA_PATH" )
+fi
+if [[ ${force_no_run_cmake} == "false" && -f $BUILD_ROOT/CMakeCache.txt ]]; then
+  cached_pgo_data_path=$(sed -n 's/^YB_PGO_DATA_PATH:[A-Z]*=//p' "$BUILD_ROOT/CMakeCache.txt")
+  if [[ $cached_pgo_data_path != "$pgo_data_path" ]]; then
+    log "PGO profile changed from '${cached_pgo_data_path}' to '${pgo_data_path}', re-running CMake"
+    force_run_cmake=true
+  fi
 fi
 
 if [[ $bolt_enabled == "true" ]]; then
