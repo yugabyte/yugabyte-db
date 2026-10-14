@@ -3443,7 +3443,7 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
       continue;
     }
 
-    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet "
+    LOG(INFO) << "Removing hidden table " << table->name() << " from tablet "
               << tablet_info->tablet_id();
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);

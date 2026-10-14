@@ -2795,8 +2795,10 @@ TEST_P(PgDistributedVectorIndexTest, DroppedIndexRetainedAcrossSplitAndMasterRes
       ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
   ASSERT_EQ(peers.size(), 1);
   auto tablet_id = peers.front()->tablet_id();
-  auto index_id = ASSERT_RESULT(peers.front()->shared_tablet())
-      ->vector_indexes().List()->front()->table_id();
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto vector_indexes = tablet->vector_indexes().List();
+  ASSERT_EQ(vector_indexes->size(), 1);
+  auto index_id = vector_indexes->front()->table_id();
 
   auto restore_at = cluster_->mini_master(0)->Now();
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
