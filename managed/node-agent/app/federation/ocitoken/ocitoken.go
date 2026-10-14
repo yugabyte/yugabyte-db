@@ -193,11 +193,10 @@ func errorDetail(r tokenResponse) string {
 	return ": " + detail
 }
 
-// RequireLifetime returns an error when token will expire within min of now. The refresher runs on
-// a fixed schedule, so a token that does not outlive the gap between runs would leave YBC holding an
-// expired credential for part of every cycle. Setup applies it to the first token; after that it
-// is the token file's own expiry, checked the same way, that says whether the refresher is keeping
-// up.
+// RequireLifetime returns an error when token will expire within min of now. A token that does not
+// outlive the gap between refreshes would leave YBC with an expired credential for part of every
+// cycle. Setup applies it to the first token; after that the token file's own expiry, checked the
+// same way, says whether the refresher is keeping up.
 //
 // The expiry is read without verifying the signature: the token came from the endpoint we called
 // (or from the file the refresher wrote), and the value only decides whether to proceed.

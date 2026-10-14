@@ -174,9 +174,8 @@ public class ManageCloudFederation extends NodeTaskBase {
    * The decision behind {@link #resolveTarget}, free of task state so every outcome can be tested:
    * the one target a node on {@code sourceCloud} needs, or null when it needs none.
    *
-   * @param sourceFixedByProvider whether the provider itself names {@code sourceCloud}, as an AWS,
-   *     GCP or OCI provider does, rather than the node's metadata service having been asked, as it
-   *     is for an on-prem provider
+   * @param sourceFixedByProvider true when the provider names {@code sourceCloud} (AWS, GCP, OCI),
+   *     false for on-prem, where the node's metadata service decides
    */
   @Nullable
   static CrossCloudFederationTarget selectTarget(
