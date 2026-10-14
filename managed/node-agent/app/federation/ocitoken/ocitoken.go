@@ -33,8 +33,9 @@ const (
 	// The identity domain's token-exchange grant, asked to authenticate as the instance principal
 	// and to return an access token (a JWT). This request shape - signed by the instance principal,
 	// with no client credentials - is the one OpenAI documents for OCI workload identity federation.
-	// It has not yet been confirmed against Oracle's own documentation or a live identity domain, so
-	// the first thing to verify against a real tenancy is that this request is accepted.
+	// Oracle's A-Team post "Federate OCI Workload Identity to Google Cloud" describes the whole
+	// OCI-to-GCP flow. Neither has been run against a live identity domain, which is the first thing
+	// to verify: that this request is accepted, and what iss, aud, sub and lifetime the token has.
 	grantType          = "urn:ietf:params:oauth:grant-type:token-exchange"
 	scope              = "urn:opc:idm:__myscopes__"
 	requestedTokenType = "urn:ietf:params:oauth:token-type:access_token"

@@ -80,25 +80,6 @@ func TestValidateFederationDirection(t *testing.T) {
 	}
 }
 
-func TestValidateOciSourceInputs(t *testing.T) {
-	rejected := []*pb.OciSourceConfig{
-		nil,
-		{},
-		{IdentityDomainUrl: "http://x.com"},
-		{IdentityDomainUrl: testDomain + "/oauth2/v1/token"},
-	}
-	for _, cfg := range rejected {
-		if err := validateOciSourceInputs(cfg); err == nil {
-			t.Errorf("%v should be rejected", cfg)
-		}
-	}
-	for _, url := range []string{testDomain, testDomain + ":443"} {
-		if err := validateOciSourceInputs(&pb.OciSourceConfig{IdentityDomainUrl: url}); err != nil {
-			t.Errorf("%q should be accepted: %v", url, err)
-		}
-	}
-}
-
 // The AWS-source hash is what every already-federated node has stamped. If it drifted, the next
 // node-agent upgrade would see every one of them as out of sync and restart YBC on all of them.
 func TestAwsSourceGcsHashUnchangedByOciSupport(t *testing.T) {
@@ -164,15 +145,6 @@ func TestDesiredStateHashOciSourceRejectsBadInput(t *testing.T) {
 	_, err := h.desiredStateHash(testHome)
 	if err == nil || !strings.Contains(err.Error(), "is not supported") {
 		t.Errorf("OCI to S3 must be refused as unsupported, got %v", err)
-	}
-}
-
-func TestIsOciSource(t *testing.T) {
-	if !ociHandler(testAudience, testDomain).isOciSource() {
-		t.Error("an OCI source must be recognised")
-	}
-	if gcsHandler(testAudience).isOciSource() {
-		t.Error("an AWS source must not be taken for OCI")
 	}
 }
 

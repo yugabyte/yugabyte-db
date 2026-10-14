@@ -142,7 +142,7 @@ public class OCICloudInfo implements CloudInfoInterface {
               + " the DB nodes exchange their instance principal at, for example"
               + " https://idcs-<id>.identity.oraclecloud.com. Required when federated IAM is"
               + " enabled.")
-  @EditableInUseProvider(name = "OCI identity domain URL", allowed = true)
+  @EditableInUseProvider(name = "OCI identity domain URL", allowed = false)
   public String ociIdentityDomainUrl;
 
   @Override

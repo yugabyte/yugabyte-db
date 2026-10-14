@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeCloudDetector;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -108,6 +109,15 @@ public class ManageCloudFederation extends NodeTaskBase {
           taskParams().nodeName,
           ociSkipReason);
       return;
+    }
+    if (sourceCloud == CloudType.oci
+        && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
+      // An older node-agent ignores the OCI source and reports success on credentials that fail.
+      throw new IllegalStateException(
+          String.format(
+              "Node-agent on %s is version %s but YBA is %s. Upgrade node-agent before federating a"
+                  + " node on OCI.",
+              taskParams().nodeName, nodeAgent.getVersion(), Util.getYbaVersion()));
     }
     CrossCloudFederationTarget target =
         resolveTarget(sourceCloud, providerCloud != CloudType.onprem);
