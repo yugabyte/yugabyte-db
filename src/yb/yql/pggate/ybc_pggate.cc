@@ -29,8 +29,6 @@
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/common_flags.h"
-#include "yb/common/colocated_util.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"

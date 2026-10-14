@@ -270,9 +270,9 @@ TEST_F(ColocatedTablesWithTablespacesTest, ColocatedTablespaceParentSize) {
       "   AND pg_table_size('t2'::regclass) IS NULL"
       "   AND pg_table_size('t3'::regclass) IS NULL")));
 
-  // Drive info arrives on the tserver metrics heartbeat. Compare every
-  // tablegroup to the parent rows in one statement so a later heartbeat
-  // cannot split the two reads.
+  // Drive info is cached from tserver heartbeats. yb_tablegroup_size and the
+  // view are separate RPCs, so a heartbeat can land between them. Retry until
+  // every tablegroup size is positive and the sums match.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return conn.FetchRow<bool>(
         "SELECT COALESCE("

@@ -15,11 +15,6 @@ BEGIN;
      'yb_tablegroup_size', NULL, NULL, NULL, NULL)
   ON CONFLICT DO NOTHING;
 
-  -- Restrict parallel use: this function RPCs to master for disk size.
-  UPDATE pg_catalog.pg_proc
-     SET proparallel = 'r'
-   WHERE oid = 8121 AND proparallel IS DISTINCT FROM 'r';
-
   INSERT INTO pg_catalog.pg_description (
     objoid, classoid, objsubid, description
   ) VALUES (

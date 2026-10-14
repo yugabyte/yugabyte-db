@@ -203,13 +203,9 @@ TEST_F(PgTableSizeTest, ColocatedTableSize) {
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "T", kTable));
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kIndex));
 
-  // Colocation parent size is available via yb_tablegroup_size and tablet_attrs.
-  auto tg_size = ASSERT_RESULT(test_conn.FetchRow<int64_t>(
-      "SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup WHERE grpname = 'default'"));
-  ASSERT_GT(tg_size, 0);
-
-  // Both sides read the master's heartbeat-cached drive info, which keeps being
-  // refreshed while the test runs, so compare them within a single statement.
+  // Drive info is cached from tserver heartbeats. The view and
+  // yb_tablegroup_size are separate RPCs, so a heartbeat can land between
+  // them. Retry until both observe the same positive cached size.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return test_conn.FetchRow<bool>(
         "SELECT EXISTS ("
@@ -217,6 +213,7 @@ TEST_F(PgTableSizeTest, ColocatedTableSize) {
         "  WHERE db_name = current_database() "
         "    AND relname LIKE '%.colocation.parent.tablename' "
         "    AND tablet_attrs IS NOT NULL "
+        "    AND (tablet_attrs->>'total_bytes')::bigint > 0 "
         "    AND (tablet_attrs->>'total_bytes')::bigint = "
         "        (SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup "
         "         WHERE grpname = 'default'))");

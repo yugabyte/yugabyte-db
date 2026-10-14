@@ -32,8 +32,8 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/pg_types.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 

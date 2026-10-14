@@ -6111,7 +6111,6 @@ yb_tablegroup_size(PG_FUNCTION_ARGS)
 	int32_t		num_missing_tablets = 0;
 	char	   *grpname;
 
-	/* Releases the syscache pin before the disk-size RPC below. */
 	grpname = get_tablegroup_name(tablegroup_oid);
 	if (grpname == NULL)
 		ereport(ERROR,

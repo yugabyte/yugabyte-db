@@ -32,8 +32,8 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
-#include "yb/common/common_flags.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
