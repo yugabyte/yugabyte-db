@@ -351,12 +351,4 @@ std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 
-// Sets the OpIds in the chunk frontiers of the vector indexes restored into db_dir to op_id, the
-// restore op id, before MoveChildren moves them out of it, so a restored index does not keep the
-// OpIds of the Raft group its snapshot was taken in. RocksDBPatcher::ModifyFlushedFrontier clears
-// the per file OpIds of the SST files and sets the restore op id on the DB flushed frontier
-// instead. A vector index has no frontier of its own, its flushed OpId is the maximum over its
-// chunks, and setting the chunks also leaves no window before the stamp after the restore.
-Status SetRestoredVectorIndexesOpId(Env& env, const std::string& db_dir, const OpId& op_id);
-
 }  // namespace yb::docdb

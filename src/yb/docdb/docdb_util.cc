@@ -44,8 +44,6 @@
 #include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/vector_index/vector_lsm_metadata.h"
-
 using std::string;
 using std::vector;
 
@@ -696,25 +694,6 @@ Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_
         (include_intents && child == kIntentsDirName)) {
       RETURN_NOT_OK(MoveChild(env, db_dir, child));
     }
-  }
-  return Status::OK();
-}
-
-Status SetRestoredVectorIndexesOpId(Env& env, const std::string& db_dir, const OpId& op_id) {
-  auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
-  for (const auto& child : children) {
-    auto dir = JoinPathSegments(db_dir, child);
-    if (!child.starts_with(kVectorIndexDirPrefix) || !env.DirExists(dir)) {
-      continue;
-    }
-    RETURN_NOT_OK(vector_index::VectorLSMMetadataModifyFrontiers(
-        &env, dir, [&op_id](google::protobuf::Any& pb) -> Status {
-      ConsensusFrontier frontier;
-      RETURN_NOT_OK(frontier.FromPB(pb));
-      frontier.set_op_id(op_id);
-      frontier.ToPB(&pb);
-      return Status::OK();
-    }));
   }
   return Status::OK();
 }

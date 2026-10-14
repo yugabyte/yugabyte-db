@@ -1049,7 +1049,8 @@ void TabletVectorIndexes::FillBackfillStatus(TabletStatusPB& tablet_status) {
       << ", failed: " << AsString(tablet_status.vector_index_failed_backfills());
 }
 
-Status TabletVectorIndexes::ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
+Status TabletVectorIndexes::ModifyFlushedFrontier(
+    const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) {
   auto list = List();
   if (!list) {
     return Status::OK();
@@ -1057,8 +1058,8 @@ Status TabletVectorIndexes::ModifyFlushedFrontier(const docdb::ConsensusFrontier
   for (const auto& vector_index : *list) {
     LOG_WITH_PREFIX(INFO)
         << "Stamping flushed frontier of vector index " << vector_index->table_id() << ": "
-        << frontier.ToString();
-    RETURN_NOT_OK(vector_index->ModifyFlushedFrontier(frontier));
+        << frontier.ToString() << ", mode: " << mode;
+    RETURN_NOT_OK(vector_index->ModifyFlushedFrontier(frontier, mode));
   }
   return Status::OK();
 }

@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <functional>
-
 #include "yb/util/env.h"
 #include "yb/util/result.h"
 
@@ -50,13 +48,5 @@ Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
     Env* env, const std::string& dir, size_t file_index);
 
 Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update);
-
-// Applies modify_user_frontier to the user frontiers of every chunk in the manifest of dir, and
-// saves the result as a single reset update in a new manifest file. The files of the previous
-// manifest are left in place, to be removed on the next load, so a manifest whose files are hard
-// links to another directory's, e.g. a restored checkpoint, does not change there.
-Status VectorLSMMetadataModifyFrontiers(
-    Env* env, const std::string& dir,
-    const std::function<Status(google::protobuf::Any&)>& modify_user_frontier);
 
 }  // namespace yb::vector_index

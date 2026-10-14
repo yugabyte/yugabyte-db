@@ -736,12 +736,6 @@ Status TabletSnapshots::RestoreCheckpoint(
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
 
-    // The restored chunks can carry OpIds of another Raft group, e.g. the source of a clone or of
-    // an imported backup, which the stamp below cannot move back. Left above this group's OpIds,
-    // they would make bootstrap skip this group's writes to the index. Setting them before the
-    // storages open also leaves no window in which a crash finds the index without the restore
-    // op id.
-    RETURN_NOT_OK(docdb::SetRestoredVectorIndexesOpId(this->env(), db_dir, frontier.op_id()));
     RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
 
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
@@ -818,11 +812,12 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
-  // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
-  // rolled back writes back into them. The restored chunks already carry the restore op id, the
-  // stamp covers an index restored without chunks.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
+  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
+  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
+  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
+  // or of an imported backup, it would skip this group's writes to them.
+  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kForce));
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
