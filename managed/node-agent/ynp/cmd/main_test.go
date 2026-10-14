@@ -388,6 +388,54 @@ func TestConfigOverride(t *testing.T) {
 	})
 }
 
+// TestNodeExporterPort tests that ynp.node_exporter_port from YBA or a config override is
+// rendered into the generated config instead of the default.
+func TestNodeExporterPort(t *testing.T) {
+	configPath := configFilePath(t, ynpCloudConfig)
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	cases := []struct {
+		name         string
+		extraArgs    []string
+		expectedLine string
+	}{
+		{
+			name:         "from extra_vars",
+			expectedLine: "node_exporter_port = 9310",
+		},
+		{
+			name:         "from config override",
+			extraArgs:    []string{"--config_override", "ynp.node_exporter_port=9320"},
+			expectedLine: "node_exporter_port = 9320",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs(append([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				yamlConfigPath,
+				"--extra_vars",
+				configPath,
+				"--dry_run",
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				"ConfigureSystemd", /* This requires some setup */
+			}, tc.extraArgs...))
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err != nil {
+				t.Fatalf("Error executing command: %v\n", err)
+			}
+			iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+			checkLine(t, iniFile, []string{tc.expectedLine})
+		})
+	}
+}
+
 // TestNonExistingEnabledModule tests the scenario where a module is defined in INI but not registered in the command.
 func TestNonExistingEnabledModule(t *testing.T) {
 	configPath := configFilePath(t, ynpCloudConfig)
