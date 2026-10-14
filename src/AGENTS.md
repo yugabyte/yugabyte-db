@@ -69,18 +69,19 @@ This repo **squash-merges** every PR, so the per-commit history of a branch is p
 
 ## Agent signature on automated output
 
-Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end, so humans skimming the PR or `git log` can tell agent-authored output from a teammate's:
+Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end, so humans skimming the PR can tell agent-authored output from a teammate's:
 
 - A reply to a PR review comment (`gh api -X POST .../comments/<id>/replies`).
 - A standalone PR conversation comment (`gh pr comment ...`).
-- A commit message you authored (commit body, **not** subject — subject stays clean).
+
+Commit messages and PR descriptions are not signed this way: Claude Code's `attribution` setting adds a `Co-Authored-By:` trailer and a PR footer, and git reads a trailer only from a message's last paragraph.
 
 ```
 ---
 _automated · <agent>_
 ```
 
-Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature on the commit subject line and in direct chat with the user.
+Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature in direct chat with the user.
 
 ## Reviewing commits
 
