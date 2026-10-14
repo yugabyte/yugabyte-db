@@ -62,6 +62,10 @@ class CountingVectorIndex : public DocVectorIndex {
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
+  bool HasReverseMapping() const override { LOG(FATAL) << "Unexpected call"; }
+  Result<DocVectorIndexViewPtr> CreateImmutableView() override {
+    LOG(FATAL) << "Unexpected call";
+  }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
       Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
@@ -84,9 +88,6 @@ class CountingVectorIndex : public DocVectorIndex {
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
-  Result<bool> HasVectorId(const vector_index::VectorId&) const override {
-    LOG(FATAL) << "Unexpected call";
-  }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
   Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
   uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }

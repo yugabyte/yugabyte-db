@@ -544,12 +544,15 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
+  // Without include_intents it reads the regular DB only, for a read time no running transaction
+  // could have written at.
   Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kTrue) const;
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(

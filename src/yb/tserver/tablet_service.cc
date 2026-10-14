@@ -4365,15 +4365,53 @@ void TabletServiceImpl::Shutdown() {
 
 Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
-  for (auto& peer : tablet_peers) {
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+  if (req.tablet_id().empty()) {
+    SCHECK(req.index_table_ids().empty(), InvalidArgument,
+           "Vector index ids are specified without a tablet id");
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  } else {
+    tablet_peers.push_back(
+        VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()))
+            .tablet_peer);
+  }
+  VerifyVectorIndexesResponsePB resp;
+  for (const auto& peer : tablet_peers) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }
-    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+    std::vector<TableId> index_table_ids(
+        req.index_table_ids().begin(), req.index_table_ids().end());
+    if (index_table_ids.empty()) {
+      auto list = tablet->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& vector_index : *list) {
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
+      }
+    }
+    auto consensus = peer->GetConsensus();
+    auto role = consensus.ok() ? (**consensus).role() : PeerRole::UNKNOWN_ROLE;
+    for (const auto& index_table_id : index_table_ids) {
+      auto& check = *resp.add_checks();
+      check.set_tablet_id(peer->tablet_id());
+      check.set_index_table_id(index_table_id);
+      check.set_role(role);
+      auto result = tablet->vector_indexes().Check(
+          index_table_id, req.max_inconsistencies(), deadline);
+      if (result.ok()) {
+        *check.mutable_result() = std::move(*result);
+      } else {
+        StatusToPB(result.status(), check.mutable_status());
+      }
+    }
   }
-  return VerifyVectorIndexesResponsePB();
+  return resp;
 }
 
 Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
