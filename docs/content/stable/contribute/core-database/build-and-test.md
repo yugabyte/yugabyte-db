@@ -152,6 +152,35 @@ For example:
 
 `--scb` and `--sj` are recommended in case the C++ and Java code was already built beforehand.
 
+### C++ microbenchmarks
+
+Microbenchmarks use [google/benchmark](https://github.com/google/benchmark) to time small code paths in one component, such as a lock primitive or an encoder, without a cluster.
+A benchmark is a `<name>.cc` file next to its `CMakeLists.txt`, registered with `ADD_YB_BENCHMARK(<name> DEPS <libraries>)`; `src/yb/util/mutex-benchmark.cc` is an example.
+Benchmarks compile whenever tests do, so they cannot rot, but the test runner never runs them.
+The binaries are placed in `build/latest/benchmarks-<directory>/`.
+
+To build and run one microbenchmark, for example `mutex-benchmark`, run the following command:
+
+```sh
+./yb_build.sh release --cxx-benchmark mutex-benchmark
+```
+
+Only that program and what it links are built.
+`--benchmark-args` passes flags through to the benchmark, for example `--benchmark-args '--benchmark_filter=AbslMutex'`; `--benchmark_dry_run` runs each benchmark once, as a smoke test.
+See the [google/benchmark user guide](https://github.com/google/benchmark/blob/main/docs/user_guide.md) for the available `--benchmark_*` flags.
+`--target benchmarks` builds all microbenchmarks without running them.
+
+Use a `release` build; `debug` and sanitizer builds only check that benchmarks compile.
+For numbers closest to a release server binary, use an LTO build:
+
+```sh
+./yb_build.sh release --full-lto --cxx-benchmark mutex-benchmark
+```
+
+This builds and runs `mutex-benchmark-lto`, the benchmark statically linked as one LTO unit the way `yb-server` is, so inlining across YugabyteDB libraries is included.
+That link is slow and needs about 13 GiB of free memory, so the `-lto` variant is built only when `--cxx-benchmark` asks for it, never by a plain build or `--target benchmarks`.
+LTO builds need an LTO third-party archive, which is currently published for AlmaLinux 8 only (see `build-support/thirdparty_archives.yml`).
+
 ### Run tests multiple times
 
 `yb_build.sh` has a built-in capability of running tests multiple times with parallelism.
