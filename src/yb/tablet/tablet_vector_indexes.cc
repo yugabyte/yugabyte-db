@@ -38,7 +38,9 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/vector_index_checker.h"
 
 #include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
@@ -988,38 +990,18 @@ Status TabletVectorIndexes::Remove(const TableId& table_id) {
   return index->Destroy();
 }
 
-Status TabletVectorIndexes::Verify() {
-  auto list = List();
-  if (!list) {
-    return Status::OK();
+Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
+    const TableId& index_table_id, size_t max_inconsistencies, CoarseTimePoint deadline) {
+  // Not IndexForTable, which DFATALs on an unknown index, while this id comes from the RPC.
+  docdb::DocVectorIndexPtr vector_index;
+  {
+    SharedLock lock(vector_indexes_mutex_);
+    auto it = vector_indexes_map_.find(index_table_id);
+    SCHECK_FORMAT(
+        it != vector_indexes_map_.end(), NotFound, "Vector index $0 not found", index_table_id);
+    vector_index = it->second;
   }
-  auto read_ht = VERIFY_RESULT(tablet().SafeTime(RequireLease::kFalse));
-  for (const auto& vector_index : *list) {
-    while (!vector_index->BackfillDone()) {
-      std::this_thread::sleep_for(10ms);
-    }
-    auto index_table = VERIFY_RESULT(metadata().GetTableInfo(vector_index->table_id()));
-    auto indexed_table = VERIFY_RESULT(metadata().GetTableInfo(
-        index_table->index_info->indexed_table_id()));
-    IndexedTableReader reader(*vector_index);
-    RETURN_NOT_OK(reader.Init(read_ht, Slice()));
-    auto reverse_mapping_reader = VERIFY_RESULT(vector_index->context().CreateReverseMappingReader(
-        ReadHybridTime::SingleTime(read_ht), nullptr));
-    while (VERIFY_RESULT(reader.FetchNext())) {
-      auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
-      auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(vector_id));
-      if (reader.current_ybctid() != ybctid) {
-        LOG_WITH_FUNC(DFATAL)
-            << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
-            << ", while expected: " << reader.current_ybctid().ToDebugHexString();
-      }
-      if (!VERIFY_RESULT(vector_index->HasVectorId(vector_id))) {
-        LOG_WITH_FUNC(DFATAL) << "Missing vector id in index: " << vector_id;
-      }
-    }
-  }
-  return Status::OK();
+  return CheckVectorIndex(tablet(), *vector_index, max_inconsistencies, deadline);
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(

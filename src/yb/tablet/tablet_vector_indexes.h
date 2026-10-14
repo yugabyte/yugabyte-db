@@ -156,7 +156,10 @@ class TabletVectorIndexes :
     return has_vector_indexes_.load();
   }
 
-  Status Verify();
+  // Checks the specified vector index, see CheckVectorIndex.
+  Result<VectorIndexCheckResultPB> Check(
+      const TableId& index_table_id, size_t max_inconsistencies, CoarseTimePoint deadline)
+      EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
