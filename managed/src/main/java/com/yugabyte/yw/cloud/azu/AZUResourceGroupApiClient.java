@@ -43,6 +43,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +55,8 @@ public class AZUResourceGroupApiClient {
   private static final String ERROR_202 = "Status code 202, (empty body)";
   private static final int GROUP_DELETE_WAIT_RETRIES = 5;
   private static final int GROUP_DELETE_WAIT_SECONDS = 60;
+  private static final int CONCURRENT_WRITE_RETRIES = 3;
+  private static final long CONCURRENT_WRITE_RETRY_DELAY_MS = 5000;
 
   private AzureResourceManager azureResourceManager;
   private String resourceGroup;
@@ -64,14 +68,46 @@ public class AZUResourceGroupApiClient {
     this.azureMarketplaceOrderingManager = getAzureMarketplaceOrderingManager(azureCloudInfo);
   }
 
+  // Azure rejects a write to a load balancer that arrives while an earlier write to it is still
+  // finishing, and asks the caller to retry. The SDK retry policy does not retry 409s.
+  static <T> T retryOnConcurrentWrite(Supplier<T> write, long retryDelayMs) {
+    for (int retry = 1; ; retry++) {
+      try {
+        return write.get();
+      } catch (ManagementException e) {
+        if (retry > CONCURRENT_WRITE_RETRIES
+            || e.getValue() == null
+            || !"ConflictingConcurrentWriteNotAllowed".equals(e.getValue().getCode())) {
+          throw e;
+        }
+        log.warn(
+            "Azure load balancer write conflict, retry {} of {}: {}",
+            retry,
+            CONCURRENT_WRITE_RETRIES,
+            e.getMessage());
+        try {
+          Thread.sleep(retryDelayMs);
+        } catch (InterruptedException ie) {
+          throw new CancellationException(ie.getMessage());
+        }
+      }
+    }
+  }
+
   public BackendAddressPoolInner createBackendPool(String lbName, String poolName) {
-    return azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancerBackendAddressPools()
-        .createOrUpdate(
-            resourceGroup, lbName, poolName, new BackendAddressPoolInner().withName(poolName));
+    return retryOnConcurrentWrite(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancerBackendAddressPools()
+                .createOrUpdate(
+                    resourceGroup,
+                    lbName,
+                    poolName,
+                    new BackendAddressPoolInner().withName(poolName)),
+        CONCURRENT_WRITE_RETRY_DELAY_MS);
   }
 
   public BackendAddressPoolInner getBackendPool(String lbName, String poolName) {
@@ -97,23 +133,29 @@ public class AZUResourceGroupApiClient {
                         .withIpAddress(ipToName.getKey())
                         .withVirtualNetwork(virtualNetwork))
             .collect(Collectors.toList());
-    backendAddressPool = backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
-    return azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancerBackendAddressPools()
-        .createOrUpdate(
-            resourceGroup, lbName, backendAddressPool.name(), backendAddressPool, Context.NONE);
+    BackendAddressPoolInner pool =
+        backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
+    return retryOnConcurrentWrite(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancerBackendAddressPools()
+                .createOrUpdate(resourceGroup, lbName, pool.name(), pool, Context.NONE),
+        CONCURRENT_WRITE_RETRY_DELAY_MS);
   }
 
   public LoadBalancerInner updateLoadBalancer(String lbName, LoadBalancerInner loadBalancer) {
-    return azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancers()
-        .createOrUpdate(resourceGroup, lbName, loadBalancer);
+    return retryOnConcurrentWrite(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancers()
+                .createOrUpdate(resourceGroup, lbName, loadBalancer),
+        CONCURRENT_WRITE_RETRY_DELAY_MS);
   }
 
   public LoadBalancerInner getLoadBalancerByName(String lbName) {
