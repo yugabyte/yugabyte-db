@@ -2167,7 +2167,10 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " and a universe on an OCI provider is not marked as federated. Operations that"
               + " configure federation on the nodes of an OCI provider that already has it, such as"
               + " adding a node, skip those nodes with a warning and leave them without it. Turning"
-              + " federated IAM off still tears it down.",
+              + " federated IAM off still tears it down. YBA reaches the bucket with its own"
+              + " default GCP credentials, for example to delete backups, so it needs them. Give"
+              + " the GCP workload identity provider an attribute condition that limits it to the"
+              + " DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =

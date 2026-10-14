@@ -13,6 +13,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	exchangeAttempts   = 3
+	exchangeRetryDelay = 10 * time.Second
+)
+
 var (
 	// Hidden: these exist for the systemd unit that node-agent installs, not for operators.
 	federationCmd = &cobra.Command{
@@ -81,9 +86,18 @@ func refreshOciToken(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	token, err := ocitoken.Exchange(cmd.Context(), ocitoken.NewClient(), signer, endpoint)
-	if err != nil {
-		return err
+	// Retried so a transient error does not cost a whole refresh cycle; a wrong domain fails the same
+	// way each time, so setup learns of it a little later.
+	var token string
+	for attempt := 1; ; attempt++ {
+		token, err = ocitoken.Exchange(cmd.Context(), ocitoken.NewClient(), signer, endpoint)
+		if err == nil {
+			break
+		}
+		if attempt == exchangeAttempts {
+			return err
+		}
+		time.Sleep(exchangeRetryDelay)
 	}
 	if minLifetime > 0 {
 		if err := ocitoken.RequireLifetime(token, minLifetime, time.Now()); err != nil {
