@@ -84,8 +84,9 @@ func validateOciSourceInputs(cfg *pb.OciSourceConfig) error {
 
 // unitPathRegex is what a path interpolated into a systemd unit may contain. systemd parses the
 // unit, and treats a quote, a newline, a % specifier or a $ expansion as syntax, so any of them in
-// a path could end the value early or inject a directive. The paths come from the provider's
-// ybHome, which an admin sets, so they are checked rather than trusted.
+// a path could end the value early or inject a directive. The token file path comes from the
+// provider's ybHome, which an admin sets, and the binary path from where node-agent was installed,
+// so both are checked rather than trusted.
 var unitPathRegex = regexp.MustCompile(`^/[A-Za-z0-9._/@+-]+$`)
 
 func validateUnitPath(what, path string) error {
