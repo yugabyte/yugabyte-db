@@ -32,6 +32,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
@@ -61,6 +62,31 @@ struct DocVectorIndexSearchResultEntry {
 };
 
 using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResultEntry>;
+
+struct DocVectorIndexEntry {
+  vector_index::VectorId vector_id;
+
+  // The vector in the YSQL encoding, the same as EncodedDocVectorValue::data of the row.
+  Slice vector;
+};
+
+using DocVectorIndexEntryCallback = LWFunction<Status(const DocVectorIndexEntry&)>;
+
+// Read-only view of the index chunks in the manifest when the view was created, which accept no
+// inserts. Flush and WaitForFlush the index first to cover every vector inserted before the view.
+// The view keeps its chunks alive while it exists.
+class DocVectorIndexView {
+ public:
+  virtual ~DocVectorIndexView() = default;
+
+  virtual Status ForEachVector(const DocVectorIndexEntryCallback& callback) const = 0;
+
+  // Number of vectors in the view, including the ones of deleted and updated rows that
+  // compaction has not removed yet.
+  virtual size_t NumVectors() const = 0;
+};
+
+using DocVectorIndexViewPtr = std::unique_ptr<DocVectorIndexView>;
 
 struct DocVectorIndexSearchResult {
   bool could_have_more_data;
@@ -133,6 +159,8 @@ class DocVectorIndex {
   virtual const DocVectorIndexContext& context() const = 0;
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
+  virtual Result<DocVectorIndexViewPtr> CreateImmutableView() = 0;
+
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;
 
@@ -179,7 +207,6 @@ class DocVectorIndex {
   virtual rocksdb::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
-  virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 

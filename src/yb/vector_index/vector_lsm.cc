@@ -526,7 +526,7 @@ class VectorLSMInsertRegistryBase
     }
   }
 
-  virtual void DoTaskDoneUnlocked(InsertTask* /*task*/) REQUIRES(mutex_) {
+  virtual void DoTaskDoneUnlocked([[maybe_unused]] InsertTask* task) REQUIRES(mutex_) {
     // Nothing to do, could be used in derived classes.
   }
 
@@ -1560,6 +1560,22 @@ auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::ManifestIndexes() const
+    -> Result<std::vector<VectorIndexPtr>> {
+  std::vector<VectorIndexPtr> result;
+  SharedLock lock(mutex_);
+  RETURN_NOT_OK(failed_status_);
+  result.reserve(immutable_chunks_.size());
+  for (const auto& chunk : immutable_chunks_) {
+    // A chunk rolled but not yet in the manifest could still have inserts running.
+    if (chunk->index && chunk->IsInManifest()) {
+      result.push_back(chunk->index);
+    }
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
@@ -1606,26 +1622,6 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       << ", time to search index chunks: " << chunks_search_time.ToPrettyString();
 
   return intermediate_results;
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
-    const vector_index::VectorId& vector_id) const {
-  // Search in insert registry is not implemented, so just wait until all entries are inserted.
-  while (insert_registry_->HasRunningTasks()) {
-    std::this_thread::sleep_for(10ms);
-  }
-  auto indexes = VERIFY_RESULT(AllIndexes());
-  for (const auto& index : indexes) {
-    auto vector_res = index->GetVector(vector_id);
-    if (vector_res.ok()) {
-      return true;
-    }
-    if (!vector_res.status().IsNotFound()) {
-      return vector_res.status();
-    }
-  }
-  return false;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

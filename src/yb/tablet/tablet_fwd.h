@@ -65,6 +65,7 @@ class TransactionStatePB;
 class TruncateOperation;
 class TruncatePB;
 class UpdateTxnOperation;
+class VectorIndexCheckResultPB;
 class VectorIndexList;
 class WriteOperation;
 class WriteQuery;
