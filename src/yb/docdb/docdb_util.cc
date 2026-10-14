@@ -42,8 +42,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
 #include "yb/util/string_trim.h"
-
-#include "yb/vector_index/vector_lsm_metadata.h"
 #include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
@@ -695,44 +693,6 @@ Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_
     if (child.starts_with(kVectorIndexDirPrefix) ||
         (include_intents && child == kIntentsDirName)) {
       RETURN_NOT_OK(MoveChild(env, db_dir, child));
-    }
-  }
-  return Status::OK();
-}
-
-namespace {
-
-// Writes a manifest that replaces the existing ones of the vector index storage in dir, with the
-// same chunks but no OpIds in their frontiers.
-Status ClearVectorIndexOpIds(Env& env, const std::string& dir) {
-  auto metadata = VERIFY_RESULT(vector_index::VectorLSMMetadataLoad(&env, dir));
-  vector_index::VectorLSMUpdatePB update;
-  update.set_reset(true);
-  for (auto& chunk : metadata.chunks) {
-    for (auto* boundary : {chunk.mutable_smallest(), chunk.mutable_largest()}) {
-      if (!boundary->has_user_frontier()) {
-        continue;
-      }
-      ConsensusFrontier frontier;
-      RETURN_NOT_OK(frontier.FromPB(boundary->user_frontier()));
-      frontier.set_op_id(OpId());
-      frontier.ToPB(boundary->mutable_user_frontier());
-    }
-    *update.add_add_chunks() = std::move(chunk);
-  }
-  auto file = VERIFY_RESULT(
-      vector_index::VectorLSMMetadataOpenFile(&env, dir, metadata.next_free_file_no));
-  RETURN_NOT_OK(vector_index::VectorLSMMetadataAppendUpdate(*file, update));
-  return file->Close();
-}
-
-} // namespace
-
-Status ClearVectorIndexCheckpointOpIds(Env& env, const std::string& db_dir) {
-  auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
-  for (const auto& child : children) {
-    if (child.starts_with(kVectorIndexDirPrefix)) {
-      RETURN_NOT_OK(ClearVectorIndexOpIds(env, JoinPathSegments(db_dir, child)));
     }
   }
   return Status::OK();
