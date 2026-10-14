@@ -3283,8 +3283,21 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
 
-  const int num_logical_connections = 250;
-  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+  // Without conn mgr each connection is a separate backend with its own threads; keep the count
+  // low enough that parallel test runs don't exhaust the host's process/thread limit.
+  const int num_logical_connections = 100;
+  // Other tservers' postgres may still be starting and issuing master reads; wait until every
+  // postgres accepts connections and the master read count is stable.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
+  }
+  int64_t master_read_count_before = -1;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto prev = master_read_count_before;
+    master_read_count_before = VERIFY_RESULT(GetMasterReadRPCCount());
+    return prev == master_read_count_before;
+  }, 60s * kTimeMultiplier, "Wait for master read count to stabilize",
+     /* initial_delay= */ 2s, /* delay_multiplier= */ 1.0));
   LOG(INFO) << "Create " << num_logical_connections << " logical connections";
   std::vector<PGConn> conns;
   // Create additional logical connections. With
