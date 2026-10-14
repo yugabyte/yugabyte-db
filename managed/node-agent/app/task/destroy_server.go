@@ -30,8 +30,7 @@ var registeredServices = []struct {
 	{"yb-collect_metrics.service", "", false},
 	{"yb-collect_metrics.timer", "", false},
 	{"otel-collector.service", "", false},
-	// Installed by ConfigureCloudFederation on a node federating from OCI. The timer is first so it
-	// cannot start the service again while that is being disabled.
+	// OCI token refresher; the timer first, so it cannot restart the service.
 	{ociTokenTimerName, "", false},
 	{ociTokenServiceName, "", false},
 	{"node_exporter.service", "", true},

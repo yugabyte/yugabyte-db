@@ -187,60 +187,27 @@ public class ManageCloudFederationSelectTargetTest {
     assertTrue(e.getMessage(), e.getMessage().contains("gcp, gcp"));
   }
 
-  // --- a node on OCI that cannot be federated is left as it was ---
+  // --- the gate ---
 
   /**
-   * Before OCI was a source, an on-prem node on OCI read as bare metal and was skipped, so a
-   * provider that predates the identity domain URL has universes that rely on that. Failing the
-   * node would break every operation on them.
+   * While OCI is not enabled as a source, a node on OCI is left alone rather than failed, so
+   * turning the gate off does not break operations on a universe that already has OCI federation.
    */
   @Test
-  public void testOciNodeIsSkippedNotFailedWhenItCannotBeFederated() {
-    assertNull(ManageCloudFederation.ociSourceSkipReason(CloudType.oci, true, "https://d.example"));
+  public void testOciNodeIsSkippedNotFailedWhileTheGateIsOff() {
+    assertNull(ManageCloudFederation.ociSourceSkipReason(CloudType.oci, true));
 
-    String noUrl = ManageCloudFederation.ociSourceSkipReason(CloudType.oci, true, null);
-    assertTrue(noUrl, noUrl.contains("no OCI identity domain URL"));
-
-    String gateOff = ManageCloudFederation.ociSourceSkipReason(CloudType.oci, false, "https://d.x");
+    String gateOff = ManageCloudFederation.ociSourceSkipReason(CloudType.oci, false);
     assertTrue(gateOff, gateOff.contains("yb.cross_cloud_federation.enable_oci_source"));
   }
 
   /** Only OCI is held back: every other node is judged by the direction rules alone. */
   @Test
-  public void testOtherSourcesAreNeverSkippedForOci() {
+  public void testOtherSourcesAreNeverHeldBackByTheOciGate() {
     for (CloudType cloud :
         new CloudType[] {CloudType.aws, CloudType.gcp, CloudType.onprem, CloudType.kubernetes}) {
-      assertNull(cloud.name(), ManageCloudFederation.ociSourceSkipReason(cloud, false, null));
+      assertNull(cloud.name(), ManageCloudFederation.ociSourceSkipReason(cloud, false));
     }
-    assertNull(ManageCloudFederation.ociSourceSkipReason(null, false, null));
-  }
-
-  // --- a gcp target is for one kind of node ---
-
-  /**
-   * An on-prem provider that has an OCI identity domain URL has declared its gcp target to be for
-   * OCI nodes, which present a token an AWS-type workload identity provider cannot accept. An AWS
-   * node under it fails the task rather than getting credentials that only fail when a backup runs.
-   */
-  @Test
-  public void testAwsNodeCannotUseAGcpTargetThatIsForOciNodes() {
-    IllegalStateException e =
-        assertThrows(
-            IllegalStateException.class,
-            () ->
-                ManageCloudFederation.checkTargetFitsSource(
-                    "node-1", CloudType.aws, gcs(), true /* gcpTargetForOciNodes */));
-    assertTrue(e.getMessage(), e.getMessage().contains("node-1"));
-    assertTrue(e.getMessage(), e.getMessage().contains("separate on-prem provider"));
-  }
-
-  @Test
-  public void testEveryOtherPairingFitsItsTarget() {
-    // The same AWS node, once the target is not for OCI nodes.
-    ManageCloudFederation.checkTargetFitsSource("n", CloudType.aws, gcs(), false);
-    // An OCI node is who the target is for.
-    ManageCloudFederation.checkTargetFitsSource("n", CloudType.oci, gcs(), true);
-    // The other direction has its own target and never touches the gcp one.
-    ManageCloudFederation.checkTargetFitsSource("n", CloudType.gcp, s3(), true);
+    assertNull(ManageCloudFederation.ociSourceSkipReason(null, false));
   }
 }

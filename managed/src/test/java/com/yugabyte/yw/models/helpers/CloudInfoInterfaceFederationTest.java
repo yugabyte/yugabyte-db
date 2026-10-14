@@ -245,15 +245,10 @@ public class CloudInfoInterfaceFederationTest extends FakeDBApplication {
   }
 
   @Test
-  public void testIdentityDomainUrlIsReadFromOciAndOnPremProviders() {
+  public void testIdentityDomainUrlIsReadFromTheOciProvider() {
     Provider oci = ModelFactory.ociProvider(customer);
     ociInfo(oci).ociIdentityDomainUrl = DOMAIN_URL;
     assertEquals(DOMAIN_URL, CloudInfoInterface.getOciIdentityDomainUrl(oci));
-
-    Provider onprem = ModelFactory.onpremProvider(customer);
-    OnPremCloudInfo onpremInfo = onPremInfo(onprem);
-    onpremInfo.ociIdentityDomainUrl = DOMAIN_URL;
-    assertEquals(DOMAIN_URL, CloudInfoInterface.getOciIdentityDomainUrl(onprem));
   }
 
   @Test
@@ -269,45 +264,11 @@ public class CloudInfoInterfaceFederationTest extends FakeDBApplication {
     assertNull(CloudInfoInterface.getOciIdentityDomainUrl(provider));
   }
 
-  /** AWS and GCP nodes have no use for an identity domain, so they never report one. */
+  /** Only an OCI provider has an identity domain, so no other provider ever reports one. */
   @Test
   public void testIdentityDomainUrlIsNullForOtherProviders() {
     assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.awsProvider(customer)));
     assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.gcpProvider(customer)));
-  }
-
-  /** Every node of an OCI provider is on OCI, so its gcp target is for OCI nodes, gate or no. */
-  @Test
-  public void testOciProvidersGcpTargetIsForOciNodes() {
-    Provider oci = ModelFactory.ociProvider(customer);
-    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(oci, true));
-    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(oci, false));
-  }
-
-  /**
-   * An on-prem provider says its nodes are on OCI by having an identity domain URL, and only once
-   * OCI is enabled as a source. Before that the URL is ignored, so a provider that already has it
-   * keeps its gcp target for the AWS nodes it was set up for.
-   */
-  @Test
-  public void testOnPremGcpTargetIsForOciNodesOnlyWithTheUrlAndTheGate() {
-    Provider onprem = ModelFactory.onpremProvider(customer);
-    OnPremCloudInfo info = onPremInfo(onprem);
-
-    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
-    info.ociIdentityDomainUrl = DOMAIN_URL;
-    assertTrue(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
-    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, false));
-    info.ociIdentityDomainUrl = "  ";
-    assertFalse(CloudInfoInterface.isGcpTargetForOciNodes(onprem, true));
-  }
-
-  /** AWS and GCP providers have no OCI nodes, so their targets are never for them. */
-  @Test
-  public void testAwsAndGcpProvidersGcpTargetIsNeverForOciNodes() {
-    assertFalse(
-        CloudInfoInterface.isGcpTargetForOciNodes(ModelFactory.awsProvider(customer), true));
-    assertFalse(
-        CloudInfoInterface.isGcpTargetForOciNodes(ModelFactory.gcpProvider(customer), true));
+    assertNull(CloudInfoInterface.getOciIdentityDomainUrl(ModelFactory.onpremProvider(customer)));
   }
 }

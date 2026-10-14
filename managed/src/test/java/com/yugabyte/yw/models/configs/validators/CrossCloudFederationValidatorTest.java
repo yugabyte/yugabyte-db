@@ -189,20 +189,14 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
     return info;
   }
 
-  private Provider onPremProvider(String domainUrl, CrossCloudFederationTarget... targets) {
-    return setOnPremFederation(ModelFactory.onpremProvider(customer), domainUrl, targets);
-  }
-
-  /** Providers are unique per cloud and name, so a test that varies the URL reuses one provider. */
-  private Provider setOnPremFederation(
-      Provider provider, String domainUrl, CrossCloudFederationTarget... targets) {
+  private Provider onPremProvider(CrossCloudFederationTarget... targets) {
+    Provider provider = ModelFactory.onpremProvider(customer);
     ProviderDetails details = provider.getDetails();
     if (details.getCloudInfo() == null) {
       details.setCloudInfo(new ProviderDetails.CloudInfo());
     }
     OnPremCloudInfo info = new OnPremCloudInfo();
     info.enableFederatedIam = true;
-    info.ociIdentityDomainUrl = domainUrl;
     info.crossCloudFederationTargets = java.util.Arrays.asList(targets);
     details.getCloudInfo().setOnprem(info);
     return provider;
@@ -296,11 +290,9 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
   @Test
   public void testOciGateDoesNotAffectOtherProviders() {
     setOciSourceEnabled(false);
-    // An on-prem provider may already hold the URL; it is ignored until the gate opens.
     app.injector()
         .instanceOf(OnPremValidator.class)
-        .validateCrossCloudFederationTargets(
-            onPremProvider(DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null)));
+        .validateCrossCloudFederationTargets(onPremProvider(target(CloudType.gcp, AUDIENCE, null)));
     validateOci(ociProvider(new OCICloudInfo()));
     app.injector().instanceOf(AWSProviderValidator.class).validate(awsProviderWithGcpTarget());
   }
@@ -339,27 +331,6 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
     assertTrue(message, message.contains("oci"));
   }
 
-  /** An on-prem provider may or may not have OCI nodes, so the identity domain is optional. */
-  @Test
-  public void testOnPremIdentityDomainIsOptional() {
-    OnPremValidator validator = app.injector().instanceOf(OnPremValidator.class);
-    Provider provider = onPremProvider(null, target(CloudType.gcp, AUDIENCE, null));
-    validator.validateCrossCloudFederationTargets(provider);
-    setOnPremFederation(provider, DOMAIN_URL, target(CloudType.gcp, AUDIENCE, null));
-    validator.validateCrossCloudFederationTargets(provider);
-  }
-
-  @Test
-  public void testOnPremRejectsMalformedIdentityDomainWhenGiven() {
-    OnPremValidator validator = app.injector().instanceOf(OnPremValidator.class);
-    Provider provider = onPremProvider(DOMAIN_URL + "/path", target(CloudType.gcp, AUDIENCE, null));
-    PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> validator.validateCrossCloudFederationTargets(provider));
-    assertTrue(e.getMessage(), e.getMessage().contains("identity domain URL"));
-  }
-
   /** On-prem keeps both clouds: its nodes may be on any of them. */
   @Test
   public void testOnPremStillAcceptsBothGcpAndAwsTargets() {
@@ -367,8 +338,6 @@ public class CrossCloudFederationValidatorTest extends FakeDBApplication {
         .instanceOf(OnPremValidator.class)
         .validateCrossCloudFederationTargets(
             onPremProvider(
-                DOMAIN_URL,
-                target(CloudType.gcp, AUDIENCE, null),
-                target(CloudType.aws, AUDIENCE, ROLE_ARN)));
+                target(CloudType.gcp, AUDIENCE, null), target(CloudType.aws, AUDIENCE, ROLE_ARN)));
   }
 }
