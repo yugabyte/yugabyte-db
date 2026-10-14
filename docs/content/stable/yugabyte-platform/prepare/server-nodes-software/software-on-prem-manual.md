@@ -15,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Fully manual provisioning is deprecated. For information about why the command list drifted between releases, see [Why the script exists](../software-on-prem/#why-the-script-exists). For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). For the settings to compare with an existing script, see [What the script configures](../software-on-prem/#what-the-script-configures). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For information about which provisioning method to use, and whether each method is still supported, see [Choose a provisioning method](../software-on-prem/#choose-a-provisioning-method).
+Legacy provisioning is being phased out. For information about why the older methods are being replaced, see [Why the script exists](../../prepare/server-nodes-software/software-on-prem/#why-the-script-exists). [Provisioning with the node agent script](../software-on-prem/#how-to-prepare-the-nodes-for-use-in-a-database-cluster) is recommended for new universes when YugabyteDB Anywhere has no sudo. Existing universes provisioned with these methods continue to work. For information about which provisioning method to use, and what methods are supported, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

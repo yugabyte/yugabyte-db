@@ -23,25 +23,11 @@ This displays the configured instance types and instances for the selected provi
 
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-{{< note title="Legacy assisted manual script" >}}
-For legacy manual provisioning, the **Instances** page may still show `provision_instance.py`. That assisted script was removed in v2025.2. For information about which provisioning method to use, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
-
-Prepare new nodes with the [node agent provisioning script](../../prepare/server-nodes-software/software-on-prem/) (`node-agent-provision.sh`).
-{{< /note >}}
-
 To add nodes to a provider manually, do the following:
 
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
 1. [Add the compute instances](#add-instances).
 1. [Run preflight checks](#run-preflight-checks).
-
-{{< tip title="Automatic provisioning" >}}
-
-If you are using the node agent provisioning script, nodes are added to the provider free pool when the script runs. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
-
-A script-provisioned node joins the provider and zone named in its configuration file, including a provider whose other nodes were prepared manually. Keep one provisioning method for a universe: continue the existing procedure, or [re-provision every node](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises) before you add nodes the other way.
-
-{{< /tip >}}
 
 ## Add instance types
 

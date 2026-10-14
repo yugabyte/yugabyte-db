@@ -52,17 +52,10 @@ It is available for universes that YugabyteDB Anywhere provisions itself: public
 
 | Deployment type | Support |
 | :-------------- | :------ |
-| Public cloud (AWS, GCP, Azure, OCI) | Full UI and API support. |
-| On-premises with passwordless sudo | Full UI and API support. This is [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), which is deprecated and still supported: YugabyteDB Anywhere signs in and provisions the node. |
-| On-premises, manual (no passwordless sudo) | Not supported. The UI hides the action. The API returns an error. Re-apply OS settings with the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises) (`node-agent-provision.sh`). |
-
-Passwordless-sudo providers (**Manually Provision Nodes** off) re-apply OS settings with the steps below. Running `node-agent-provision.sh` by hand on those database nodes is unsupported.
-
-For universes with nodes configured using [fully manual legacy provisioning](../../prepare/server-nodes-software/software-on-prem-manual/), Reprovision Universe Nodes is not available, and the API returns an error. Re-apply OS settings by following the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
-
-A node prepared with `node-agent-provision.sh` runs a user-level node agent. When that node belongs to an on-premises provider where YugabyteDB Anywhere has passwordless sudo, the UI still shows the action and the API accepts the request. The task then fails its precheck, because the node is running a user-level node agent, which YugabyteDB Anywhere provisioning does not manage. Re-apply OS settings with the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises), not with this action.
-
-Reprovisioning leaves the universe on the provisioning method used to create it. It does not move a manually provisioned node onto YugabyteDB Anywhere-managed provisioning, and it does not switch a node to user-level systemd. Moving a non-sudo universe to the node agent provisioning script is optional; the procedure is the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises). See also [Node provisioning](../../upgrade/prepare-to-upgrade/#node-provisioning).
+| [Public cloud](../../configure-yugabyte-platform/aws/) (AWS, GCP, Azure, OCI) | Full UI and API support. |
+| On-premises with [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/) | Full UI and API support. YugabyteDB Anywhere signs in and provisions the node. |
+| On-premises, with legacy manual provisioning | Not supported. For universes with nodes configured using fully manual legacy provisioning, **Reprovision Universe Nodes** is not available, and the API returns an error. Re-apply OS settings by following the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises). |
+| On-premises, with node agent provisioning script | Not supported. The UI hides the action. The API returns an error. Re-apply OS settings using the [rolling runbook](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises) (`node-agent-provision.sh`). |
 
 This action does not replace [patching the Linux OS](../upgrade-nodes/) or replacing a boot disk. After a boot disk replacement, continue to follow that procedure, which reinstalls YugabyteDB software on the node.
 

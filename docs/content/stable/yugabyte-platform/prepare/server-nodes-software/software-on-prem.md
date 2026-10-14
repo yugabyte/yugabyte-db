@@ -80,6 +80,19 @@ For a new node, use the node agent provisioning script when YugabyteDB Anywhere 
 
 If **Manually Provision Nodes** is off in the provider, leave provisioning to YugabyteDB Anywhere. Do not run the script.
 
+### Reprovision nodes
+
+For existing universes, how you reprovision nodes depends on how they were originally provisioned.
+
+**Legacy automatic** - YugabyteDB Anywhere has SSH credentials to log in to VMs without a password:
+
+1. Follow the [node patching procedure](/v2025.2/yugabyte-platform/manage-deployments/upgrade-nodes/) when you replace a boot disk.
+1. [Reprovision universe nodes](/stable/yugabyte-platform/manage-deployments/reprovision-nodes/) (v2026.1.2.0 and later) to re-apply OS settings. 
+
+**All others** - YugabyteDB Anywhere does not have SSH credentials:
+
+- Follow the [rolling runbook](/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
+
 ## Prerequisites
 
 - Provide one, three, five, or more VM(s) with the following installed:
