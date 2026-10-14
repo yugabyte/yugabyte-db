@@ -153,7 +153,8 @@ platform:
    trusted_proxies: []
 
    # Lets a SuperAdmin register more than one customer (yb.multiTenant).
-   # A multi-tenant YBA can't enable OIDC SSO.
+   # OIDC SSO logins fail on a multi-tenant YBA, so don't combine this with useOauth: setting
+   # it on an install that already uses SSO breaks SSO login after reconfigure.
    multi_tenant: false
 
    # Maximum open file descriptors
