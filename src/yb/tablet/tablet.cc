@@ -603,6 +603,21 @@ class ActiveCompactionToken {
   std::atomic<size_t>& counter_;
 };
 
+// Returns how many live SST files are numbered below file_number, and how many of those are being
+// compacted. Files numbered below post_split_compaction_file_number_upper_bound are inherited from
+// the parent tablet.
+std::pair<size_t, size_t> CountLiveFilesBelow(rocksdb::DB& db, uint64_t file_number) {
+  size_t num_files = 0;
+  size_t num_being_compacted = 0;
+  for (const auto& file : db.GetLiveFilesMetaData()) {
+    if (file.name_id < file_number) {
+      ++num_files;
+      num_being_compacted += file.being_compacted;
+    }
+  }
+  return {num_files, num_being_compacted};
+}
+
 } // namespace
 
 class Tablet::RocksDbListener : public rocksdb::EventListener {
@@ -643,19 +658,32 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
 
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
+    const auto file_number_upper_bound =
+        metadata.post_split_compaction_file_number_upper_bound().value_or(0);
     if (ci.is_full_compaction) {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
         metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
       }
       metadata.OnPostSplitCompactionDone();
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
-    } else if (ci.is_no_op_compaction &&
-               ci.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
-      // Trivial post split compaction completion generally means that there are no more files
-      // inherited from a parent tablet available for compaction (literally all the files have
-      // been already compacted due to some reason), or there are no files at all (not expected).
-      if (metadata.OnPostSplitCompactionDone()) {
-        ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+    } else if (!metadata.rocksdb_parent_data_compacted() && file_number_upper_bound > 0) {
+      // Without a bound (unset or 0), files inherited from the parent tablet can't be told apart,
+      // so only a full compaction marks the parent data as compacted.
+      const auto [num_inherited, num_being_compacted] =
+          CountLiveFilesBelow(*db, file_number_upper_bound);
+      if (num_inherited == 0) {
+        // Any compaction can remove the last file inherited from the parent tablet, including a
+        // background one that picked those files before the post-split compaction. A no-op
+        // post-split compaction is not enough: another compaction may still hold those files.
+        if (metadata.OnPostSplitCompactionDone()) {
+          ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+        }
+      } else if (ci.is_no_op_compaction &&
+                 ci.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+        LOG_WITH_PREFIX(INFO) << "Post-split compaction found no more files to pick while "
+                              << num_inherited << " files inherited from the parent tablet remain ("
+                              << num_being_compacted << " being compacted); parent data will be "
+                              << "marked as compacted once they are removed";
       }
     }
 
@@ -4934,15 +4962,16 @@ Status Tablet::ForceRocksDBCompact(
     //    bug, but we still want to compact to have rocksdb_parent_data_compacted.
     // (1) and (3) are possible due to async nature of triggering ForceRocksDBCompact()
     // via TriggerPostSplitCompactionIfNeeded().
-    const auto rocksdb_parent_data_compacted = metadata()->rocksdb_parent_data_compacted();
+    // Read both under one lock: any compaction that removes the last inherited file can call
+    // OnPostSplitCompactionDone() concurrently, which sets the flag and resets the bound to 0.
+    const auto [rocksdb_parent_data_compacted, file_number_upper_bound] =
+        metadata()->post_split_compaction_state();
     if (rocksdb_parent_data_compacted) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring post split compaction as "
                                << "parent data have already been compacted.";
       return Status::OK();
     }
 
-    const auto file_number_upper_bound =
-        metadata()->post_split_compaction_file_number_upper_bound();
     LOG_IF(DFATAL, file_number_upper_bound == 0) <<
           "It is unexpected to have file_number_upper_bound == 0 when parent data has not been "
           "compacted yet, it is an inconsistent state. Please check the logic. Ignoring "
