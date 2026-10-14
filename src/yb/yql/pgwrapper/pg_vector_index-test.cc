@@ -2769,6 +2769,69 @@ class PgDistributedVectorIndexTest
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
 
+// A dropped vector index retained by a snapshot schedule must survive a split of its indexed
+// table's tablet followed by a master restart. The reloaded master maps the index onto the split
+// children too, which are not retained, and removing it from them must keep the retained split
+// parent. Otherwise the index is deleted and PITR to before the drop crashes the master.
+TEST_P(PgDistributedVectorIndexTest, DroppedIndexRetainedAcrossSplitAndMasterRestart) {
+  constexpr size_t kNumRows = 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  num_pre_split_tablets_ = 1;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_id = peers.front()->tablet_id();
+  auto index_id = ASSERT_RESULT(peers.front()->shared_tablet())
+      ->vector_indexes().List()->front()->table_id();
+
+  auto restore_at = cluster_->mini_master(0)->Now();
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), tablet_id));
+  ASSERT_OK(RestartMaster());
+
+  auto index_tablets = [this, &index_id]() -> Result<master::TabletInfos> {
+    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto index = catalog_manager.GetTableInfo(index_id);
+    SCHECK_NOTNULL(index);
+    SCHECK(!index->LockForRead()->is_deleted(), IllegalState, "Index table deleted");
+    return index->GetTabletsIncludeInactive();
+  };
+
+  // Hidden table cleanup removes the index from the split children.
+  ASSERT_OK(WaitFor(
+      [&index_tablets, &tablet_id]() -> Result<bool> {
+        return std::ranges::all_of(VERIFY_RESULT(index_tablets()), [&tablet_id](const auto& t) {
+          return t->tablet_id() == tablet_id;
+        });
+      },
+      30s * kTimeMultiplier, "Index removed from split children"));
+
+  // The index stays on the retained split parent.
+  auto tablets = ASSERT_RESULT(index_tablets());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets.front()->tablet_id(), tablet_id);
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows, AddFilter::kFalse));
+}
+
 // Use `BaseTable` test name prefix to identify the tests where indexable table split happens
 // before the vector index creation.
 TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
