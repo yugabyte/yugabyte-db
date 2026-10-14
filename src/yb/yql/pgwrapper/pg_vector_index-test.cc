@@ -2852,8 +2852,9 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   auto* lagging_ts = cluster_->mini_tablet_server(kPgTsIndex == 0 ? 1 : 0);
   const auto lagging_uuid = lagging_ts->server()->permanent_uuid();
 
-  // Also put the source tablet's term past any the clone's new tablets reach, so that the OpIds
-  // that the source stamps on its index chunks sort above the clone's own whatever the elections.
+  // Also put the source tablet's term past any the clone's new tablets reach, so that its OpIds,
+  // which the clone operation and the snapshotted index chunks carry, sort above the clone's own
+  // whatever the elections.
   // The leader stays off the replica about to go down, which CREATE INDEX would wait on.
   const auto source_table_id = ASSERT_RESULT(FindTableId(kSourceDb, "test"));
   ASSERT_OK(RaiseTabletTerm(source_table_id, 5, lagging_uuid));
@@ -2900,10 +2901,21 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
     ASSERT_LT(backfilled, make_signed(kNumRows));
   }
 
+  // The resumed backfill stamped the index table's op id into the flushed frontiers, so it must not
+  // be ahead of the clone's own log.
+  const auto clone_index_id = ASSERT_RESULT(FindTableId(kCloneDb, kVectorIndexName));
+  for (const auto& peer : ListTableTabletPeers(cluster_.get(), clone_table_id)) {
+    auto table_info = ASSERT_RESULT(peer->tablet_metadata()->GetTableInfo(clone_index_id));
+    ASSERT_LE(table_info->op_id, peer->log()->GetLatestEntryOpId()) << peer->permanent_uuid();
+  }
+
   auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
   ASSERT_OK(InsertInTransaction(clone_conn, kNumRows + 1, 2 * kNumRows));
 
-  // Bootstrap has to replay those writes into the index of every replica.
+  // TODO(#34763): Drop this flush once restored vector index chunks stop carrying the source
+  // tablet's OpIds, so that bootstrap has to replay the writes above into the index of every
+  // replica. Until then those OpIds can outrank the clone's own, and bootstrap skips the writes.
+  ASSERT_OK(cluster_->FlushTablets());
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   std::string entries;
