@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <numeric>
 #include <queue>
 
 #include "yb/client/client_error.h"
@@ -2213,6 +2215,130 @@ class PgVectorIndexColocationOnlyTest
     : public PgVectorIndexTestParamsDecoratorBase<
           PgVectorIndexTestBase, PgVectorIndexColocationOnlyParam> {
  protected:
+  static constexpr auto kSourceDb = "source_db";
+  static constexpr auto kCloneDb = "clone_db";
+
+  // Creates kSourceDb holding table test with rows 1..num_rows, one statement per row. The vector
+  // index is left to the caller.
+  Result<PGConn> CreateSourceTable(size_t num_rows) {
+    dimensions_ = 3;
+    auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+    RETURN_NOT_OK(admin_conn.ExecuteFormat(
+        "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
+    auto conn = VERIFY_RESULT(ConnectToDB(kSourceDb));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0",
+        IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS"));
+    for (size_t i = 1; i <= num_rows; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+    }
+    return conn;
+  }
+
+  Status CloneSourceDb() {
+    client::SnapshotTestUtil snapshot_util;
+    snapshot_util.SetProxy(&client_->proxy_cache());
+    snapshot_util.SetCluster(cluster_.get());
+    // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
+    // snapshot is GC'd before the clone is applied.
+    RETURN_NOT_OK(snapshot_util.CreateSchedule(
+        nullptr, YQL_DATABASE_PGSQL, kSourceDb,
+        client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
+    auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
+    return admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb);
+  }
+
+  // Inserts rows first..last into test in one transaction.
+  Status InsertInTransaction(PGConn& conn, size_t first, size_t last) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (size_t i = first; i <= last; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
+    }
+    return conn.CommitTransaction();
+  }
+
+  // Ids that a search through the vector index of test returns, sorted. A seq scan would return
+  // every row whatever the index holds, so the read must go through the index.
+  Result<std::vector<int64_t>> FetchIdsThroughIndex(PGConn& conn, size_t limit) {
+    auto restore_flag = ScopeExit([prev = tablet::TEST_fail_on_seq_scan_with_vector_indexes] {
+      ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = prev;
+    });
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+    auto ids = VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test ORDER BY $0 LIMIT $1", DistanceToQuery(Vector(1)), limit)));
+    std::ranges::sort(ids);
+    return ids;
+  }
+
+  Result<TableId> FindTableId(const std::string& namespace_name, const std::string& table_name) {
+    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
+      if (table.has_table() && table.table_name() == table_name &&
+          table.namespace_name() == namespace_name) {
+        return table.table_id();
+      }
+    }
+    return STATUS_FORMAT(
+        NotFound, "Didn't find table $0 in namespace $1", table_name, namespace_name);
+  }
+
+  // Vector indexes on the replicas of table_id's tablets, only those on ts_uuid if it is set.
+  std::vector<docdb::DocVectorIndexPtr> ListTableVectorIndexes(
+      const TableId& table_id, const std::string& ts_uuid = {}) {
+    std::vector<docdb::DocVectorIndexPtr> result;
+    for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+      if (!ts_uuid.empty() && peer->permanent_uuid() != ts_uuid) {
+        continue;
+      }
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto list = tablet->vector_indexes().List();
+      if (list) {
+        result.insert(result.end(), list->begin(), list->end());
+      }
+    }
+    return result;
+  }
+
+  // Moves the leadership of the tablet holding table_id until its term reaches min_term, never to
+  // the tserver keep_off_uuid.
+  Status RaiseTabletTerm(
+      const TableId& table_id, int64_t min_term, const std::string& keep_off_uuid) {
+    return WaitFor([&]() -> Result<bool> {
+      auto leaders = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+      if (leaders.size() != 1) {
+        return false;
+      }
+      const auto& leader = leaders.front();
+      const auto term = leader->LeaderTerm();
+      if (term >= min_term && leader->permanent_uuid() != keep_off_uuid) {
+        return true;
+      }
+      if (term < 0) {
+        return false;
+      }
+      for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+        if (peer->tablet_id() == leader->tablet_id() &&
+            peer->permanent_uuid() != leader->permanent_uuid() &&
+            peer->permanent_uuid() != keep_off_uuid) {
+          RETURN_NOT_OK(StepDown(leader, peer->permanent_uuid(), ForceStepDown::kTrue));
+          break;
+        }
+      }
+      return false;
+    }, 60s * kTimeMultiplier, Format("Term of the tablet of $0 reaching $1", table_id, min_term));
+  }
+
+  static std::vector<int64_t> Ids(size_t first, size_t last) {
+    std::vector<int64_t> result(last - first + 1);
+    std::iota(result.begin(), result.end(), first);
+    return result;
+  }
+
   void TestDroppedIndexKeepsUnflushedRows(bool skip_deactivation_flush);
 };
 
@@ -2785,56 +2911,18 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
 
-  constexpr auto kSourceDb = "source_db";
-  constexpr auto kCloneDb = "clone_db";
   constexpr size_t kNumRows = 8;
-  dimensions_ = 3;
 
-  client::SnapshotTestUtil snapshot_util;
-  snapshot_util.SetProxy(&client_->proxy_cache());
-  snapshot_util.SetCluster(cluster_.get());
-
-  auto admin_conn = ASSERT_RESULT(PgMiniTestBase::Connect());
-  if (IsColocated()) {
-    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 COLOCATION = true", kSourceDb));
-  } else {
-    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0", kSourceDb));
-  }
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
-  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
-  const auto create_suffix = IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS";
-  ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0", create_suffix));
-  for (size_t i = 1; i <= kNumRows; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
-  }
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
   ASSERT_OK(CreateIndex(conn));
 
-  auto find_table_id = [this](const std::string& namespace_name,
-                              const std::string& table_name) -> Result<TableId> {
-    for (const auto& table : VERIFY_RESULT(client_->ListTables())) {
-      if (table.has_table() && table.table_name() == table_name &&
-          table.namespace_name() == namespace_name) {
-        return table.table_id();
-      }
-    }
-    return STATUS_FORMAT(
-        NotFound, "Didn't find table $0 in namespace $1", table_name, namespace_name);
-  };
+  const auto source_table_id = ASSERT_RESULT(FindTableId(kSourceDb, "test"));
+  const auto source_index_id = ASSERT_RESULT(FindTableId(kSourceDb, kVectorIndexName));
 
-  const auto source_table_id = ASSERT_RESULT(find_table_id(kSourceDb, "test"));
-  const auto source_index_id = ASSERT_RESULT(find_table_id(kSourceDb, kVectorIndexName));
+  ASSERT_OK(CloneSourceDb());
 
-  ASSERT_OK(snapshot_util.CreateSchedule(
-      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
-      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
-
-  ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
-
-  const auto clone_table_id = ASSERT_RESULT(find_table_id(kCloneDb, "test"));
-  const auto clone_index_id = ASSERT_RESULT(find_table_id(kCloneDb, kVectorIndexName));
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  const auto clone_index_id = ASSERT_RESULT(FindTableId(kCloneDb, kVectorIndexName));
   ASSERT_NE(clone_table_id, source_table_id);
   ASSERT_NE(clone_index_id, source_index_id);
 
@@ -2864,6 +2952,142 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
           "SELECT id FROM test ORDER BY $0 LIMIT 1", DistanceToQuery(Vector(1))))),
       1);
+}
+
+// A vector index only takes intent applies committed after its hybrid time. The clone used to
+// leave that time invalid on the target tablet, so rows written transactionally into the clone
+// never reached its vector index (#34767).
+TEST_P(PgVectorIndexColocationOnlyTest, CloneIndexesNewTransactionalWrites) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 8;
+
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(CloneSourceDb());
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_OK(InsertInTransaction(clone_conn, kNumRows + 1, 2 * kNumRows));
+  ASSERT_EQ(
+      ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, 4 * kNumRows)), Ids(1, 2 * kNumRows));
+
+  // After a restart the index takes the hybrid time from the superblock, so writes keep reaching
+  // it.
+  // TODO(#34763): Drop this flush once restored vector index chunks stop carrying the source
+  // tablet's OpIds, so that bootstrap also has to replay the writes above into the index. Until
+  // then those OpIds can outrank the clone's own, and bootstrap skips the writes.
+  ASSERT_OK(cluster_->FlushTablets());
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_OK(InsertInTransaction(clone_conn, 2 * kNumRows + 1, 3 * kNumRows));
+  ASSERT_EQ(
+      ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, 4 * kNumRows)), Ids(1, 3 * kNumRows));
+}
+
+// CREATE INDEX waits only for the tablet leader's backfill (#34899), so a snapshot can hold a
+// replica's vector index with its backfill unfinished, and the clone resumes that backfill. The
+// resumed backfill stamps the index table's op id into flushed frontiers, so that op id must not
+// come from the source tablet's log: it is ahead of the clone's, and bootstrap would skip the
+// clone's writes as already flushed.
+TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // Several chunks, so that a backfill blocked after its first one is left unfinished.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = 8;
+
+  // One write per row puts the source tablet's log well ahead of the clone's.
+  constexpr size_t kNumRows = 64;
+  auto conn = ASSERT_RESULT(CreateSourceTable(kNumRows));
+  // Keep a replica down while the index is created, so that its backfill only starts after
+  // CREATE INDEX returns. Not the PG tserver, which the connections go through.
+  auto* lagging_ts = cluster_->mini_tablet_server(kPgTsIndex == 0 ? 1 : 0);
+  const auto lagging_uuid = lagging_ts->server()->permanent_uuid();
+
+  // Also put the source tablet's term past any the clone's new tablets reach, so that its OpIds,
+  // which the clone operation and the snapshotted index chunks carry, sort above the clone's own
+  // whatever the elections.
+  // The leader stays off the replica about to go down, which CREATE INDEX would wait on.
+  const auto source_table_id = ASSERT_RESULT(FindTableId(kSourceDb, "test"));
+  ASSERT_OK(RaiseTabletTerm(source_table_id, 5, lagging_uuid));
+  lagging_ts->Shutdown();
+  ASSERT_OK(CreateIndex(conn));
+
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  ASSERT_OK(lagging_ts->RestartStoppedServer(tserver::WaitTabletsBootstrapped::kTrue));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& index : ListTableVectorIndexes(source_table_id, lagging_uuid)) {
+      if (index->metrics().backfill_inserted_entries->value() > 0) {
+        return true;
+      }
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Lagging replica backfilled its first chunk"));
+
+  ASSERT_OK(CloneSourceDb());
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+      false;
+
+  const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto indexes = ListTableVectorIndexes(clone_table_id);
+    if (indexes.size() != cluster_->num_tablet_servers()) {
+      return false;
+    }
+    for (const auto& index : indexes) {
+      if (!VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Clone backfills done"));
+  {
+    // The clone resumed the unfinished backfill rather than starting over: it inserted some rows,
+    // but fewer than the table has. Scoped: an index must not outlive its tablet, which the
+    // restart below replaces.
+    auto lagging_clone_indexes = ListTableVectorIndexes(clone_table_id, lagging_uuid);
+    ASSERT_EQ(lagging_clone_indexes.size(), 1);
+    const auto backfilled =
+        lagging_clone_indexes.front()->metrics().backfill_inserted_entries->value();
+    ASSERT_GT(backfilled, 0);
+    ASSERT_LT(backfilled, make_signed(kNumRows));
+  }
+
+  // The resumed backfill stamped the index table's op id into the flushed frontiers, so it must not
+  // be ahead of the clone's own log.
+  const auto clone_index_id = ASSERT_RESULT(FindTableId(kCloneDb, kVectorIndexName));
+  for (const auto& peer : ListTableTabletPeers(cluster_.get(), clone_table_id)) {
+    auto table_info = ASSERT_RESULT(peer->tablet_metadata()->GetTableInfo(clone_index_id));
+    ASSERT_LE(table_info->op_id, peer->log()->GetLatestEntryOpId()) << peer->permanent_uuid();
+  }
+
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_OK(InsertInTransaction(clone_conn, kNumRows + 1, 2 * kNumRows));
+
+  // TODO(#34763): Drop this flush once restored vector index chunks stop carrying the source
+  // tablet's OpIds, so that bootstrap has to replay the writes above into the index of every
+  // replica. Until then those OpIds can outrank the clone's own, and bootstrap skips the writes.
+  ASSERT_OK(cluster_->FlushTablets());
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  std::string entries;
+  auto status = WaitFor([&]() -> Result<bool> {
+    auto indexes = ListTableVectorIndexes(clone_table_id);
+    entries.clear();
+    bool all_match = indexes.size() == cluster_->num_tablet_servers();
+    for (const auto& index : indexes) {
+      auto num_entries = VERIFY_RESULT(index->TotalEntries());
+      entries += Format("$0: $1\n", index->ToString(), num_entries);
+      all_match = all_match && num_entries == 2 * kNumRows;
+    }
+    return all_match;
+  }, 30s * kTimeMultiplier, "Clone indexes hold every row");
+  ASSERT_TRUE(status.ok()) << status << "\n" << entries;
+
+  clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
+  ASSERT_EQ(
+      ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, 4 * kNumRows)), Ids(1, 2 * kNumRows));
 }
 
 // Snapshot import keeps the snapshot's vector index options, so a snapshot of an index without a
