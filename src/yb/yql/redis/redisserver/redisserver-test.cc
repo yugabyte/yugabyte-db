@@ -981,7 +981,12 @@ void TestRedisService::VerifyCallbacks() {
   ASSERT_EQ(expected_callbacks_called_, num_callbacks_called_.load(std::memory_order_acquire));
 }
 
-TEST_F(TestRedisService, SimpleCommandInline) {
+// YEDIS is deprecated, so only a few tests stay enabled: ones that exercise DocDB behavior
+// not already covered by the Java smoke tests in java/yb-jedis-tests. The rest are disabled
+// with this macro.
+#define YB_YEDIS_DEPRECATED(test_name) YB_DISABLE_TEST(test_name)
+
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(SimpleCommandInline)) {
   SendCommandAndExpectResponse(__LINE__, "set foo bar\r\n", "+OK\r\n");
 }
 
@@ -995,7 +1000,7 @@ void TestRedisService::TestAbort(const std::string& command) {
   std::this_thread::sleep_for(2000ms);
 }
 
-TEST_F(TestRedisService, AbortDuringProcessing) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(AbortDuringProcessing)) {
   TestAbort("DEBUGSLEEP 2000\r\n");
 }
 
@@ -1018,11 +1023,12 @@ class TestRedisServiceCleanQueueOnShutdown : public TestRedisService {
   std::optional<google::FlagSaver> saver_;
 };
 
-TEST_F_EX(TestRedisService, AbortQueueOnShutdown, TestRedisServiceCleanQueueOnShutdown) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(AbortQueueOnShutdown),
+          TestRedisServiceCleanQueueOnShutdown) {
   TestAbort("DEBUGSLEEP 2000\r\nDEBUGSLEEP 999999999\r\n");
 }
 
-TEST_F(TestRedisService, AbortBatches) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(AbortBatches)) {
   TestAbort("DEBUGSLEEP 2000\r\nSET foo 1\r\nGET foo\r\nDEBUGSLEEP 999999999\r\n");
 }
 
@@ -1050,7 +1056,8 @@ class TestRedisServiceReceiveBufferOverflow : public TestRedisService {
   ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
 };
 
-TEST_F_EX(TestRedisService, ReceiveBufferOverflow, TestRedisServiceReceiveBufferOverflow) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(ReceiveBufferOverflow),
+          TestRedisServiceReceiveBufferOverflow) {
   auto key = std::string(FLAGS_redis_max_read_buffer_size - 12, 'X');
   SendCommandAndExpectResponse(
       __LINE__, Format("DEBUGSLEEP 2000\r\nSET key $0\r\n", key), "+OK\r\n+OK\r\n");
@@ -1077,7 +1084,7 @@ class TestTooBigCommand : public TestRedisService {
   ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
 };
 
-TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(TooBigCommand), TestTooBigCommand) {
   std::string small_key(FLAGS_redis_max_read_buffer_size / 2, 'X');
   SendCommandAndExpectResponse(
       __LINE__, Format("SET key1 $0\r\nSET key2 $0\r\n", small_key), "+OK\r\n+OK\r\n");
@@ -1087,7 +1094,7 @@ TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
   ASSERT_TRUE(status.IsNetworkError()) << "Status: " << status;
 }
 
-TEST_F_EX(TestRedisService, HugeCommandInline, NoLocalCallsRedisServiceTest) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(HugeCommandInline), NoLocalCallsRedisServiceTest) {
   // Set a larger timeout for the yql layer : 1 min vs 10 min for tsan/asan.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_service_yb_client_timeout_millis) = 6 * kDefaultTimeoutMs;
 
@@ -1134,19 +1141,19 @@ TEST_F_EX(TestRedisService, HugeCommandInline, NoLocalCallsRedisServiceTest) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, SimpleCommandMulti) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(SimpleCommandMulti)) {
   SendCommandAndExpectResponse(
       __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
-TEST_F(TestRedisService, BatchedCommandsInline) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BatchedCommandsInline)) {
   SendCommandAndExpectResponse(
       __LINE__,
       "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
       "+OK\r\n+OK\r\n$3\r\nbar\r\n$1\r\n5\r\n");
 }
 
-TEST_F(TestRedisService, TestTimedoutInQueue) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTimedoutInQueue)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_max_batch) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_backpressure_mode_for_testing) = true;
 
@@ -1167,7 +1174,7 @@ TEST_F(TestRedisService, TestTimedoutInQueue) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BatchedCommandsInlinePartial)) {
   for (int i = 0; i != 1000; ++i) {
     ASSERT_NO_FATAL_FAILURE(
         SendCommandAndExpectResponse(
@@ -1237,7 +1244,7 @@ std::string PipelineGetResponse() {
 
 } // namespace
 
-TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(Pipeline), TestRedisServicePipelined) {
   auto start = std::chrono::steady_clock::now();
   SendCommandAndExpectResponse(__LINE__, PipelineSetCommand(), PipelineSetResponse());
   auto mid = std::chrono::steady_clock::now();
@@ -1248,7 +1255,7 @@ TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
   LOG(INFO) << yb::Format("Unsafe set: $0ms, get: $1ms", set_time.count(), get_time.count());
 }
 
-TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(PipelinePartial), TestRedisServicePipelined) {
   SendCommandAndExpectResponse(__LINE__,
       PipelineSetCommand(),
       PipelineSetResponse(),
@@ -1335,7 +1342,7 @@ class BatchGenerator {
 
 } // namespace
 
-TEST_F_EX(TestRedisService, MixedBatch, TestRedisServicePipelined) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(MixedBatch), TestRedisServicePipelined) {
   constexpr size_t kBatches = 50;
   BatchGenerator generator(false);
   for (size_t i = 0; i != kBatches; ++i) {
@@ -1354,7 +1361,7 @@ class TestRedisServiceSafeBatch : public TestRedisService {
   }
 };
 
-TEST_F_EX(TestRedisService, SafeMixedBatch, TestRedisServiceSafeBatch) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(SafeMixedBatch), TestRedisServiceSafeBatch) {
   constexpr size_t kBatches = 50;
   BatchGenerator generator(true);
   std::vector<decltype(generator.Generate())> batches;
@@ -1370,7 +1377,7 @@ TEST_F_EX(TestRedisService, SafeMixedBatch, TestRedisServiceSafeBatch) {
   LOG(INFO) << Format("Total: $0ms, average: $1ms", ms, ms / kBatches);
 }
 
-TEST_F_EX(TestRedisService, SafeBatchPipeline, TestRedisServiceSafeBatch) {
+TEST_F_EX(TestRedisService, YB_YEDIS_DEPRECATED(SafeBatchPipeline), TestRedisServiceSafeBatch) {
   auto start = std::chrono::steady_clock::now();
   SendCommandAndExpectResponse(__LINE__, PipelineSetCommand(), PipelineSetResponse());
   auto mid = std::chrono::steady_clock::now();
@@ -1381,7 +1388,7 @@ TEST_F_EX(TestRedisService, SafeBatchPipeline, TestRedisServiceSafeBatch) {
   LOG(INFO) << yb::Format("Safe set: $0ms, get: $1ms", set_time.count(), get_time.count());
 }
 
-TEST_F(TestRedisService, BatchedCommandMulti) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BatchedCommandMulti)) {
   SendCommandAndExpectResponse(
       __LINE__,
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
@@ -1390,7 +1397,7 @@ TEST_F(TestRedisService, BatchedCommandMulti) {
       "+OK\r\n+OK\r\n+OK\r\n");
 }
 
-TEST_F(TestRedisService, BatchedCommandMultiPartial) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BatchedCommandMultiPartial)) {
   for (int i = 0; i != 1000; ++i) {
     ASSERT_NO_FATAL_FAILURE(
         SendCommandAndExpectResponse(
@@ -1405,12 +1412,12 @@ TEST_F(TestRedisService, BatchedCommandMultiPartial) {
   }
 }
 
-TEST_F(TestRedisService, IncompleteCommandInline) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(IncompleteCommandInline)) {
   expected_no_sessions_ = true;
   SendCommandAndExpectTimeout("TEST");
 }
 
-TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(MalformedCommandsFollowedByAGoodOne)) {
   expected_no_sessions_ = true;
   ASSERT_NOK(SendCommandAndGetResponse("*3\r\n.1\r\n", 1));
   RestartClient();
@@ -1437,7 +1444,7 @@ void TestBadCommand(std::string command, TestRedisService* test) {
 
 } // namespace
 
-TEST_F(TestRedisService, BadCommand) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BadCommand)) {
   expected_no_sessions_ = true;
 
   TestBadCommand("\n", this);
@@ -1448,7 +1455,7 @@ TEST_F(TestRedisService, BadCommand) {
   TestBadCommand("1\r\n*0\r\n", this);
 }
 
-TEST_F(TestRedisService, BadRandom) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(BadRandom)) {
   expected_no_sessions_ = true;
   const std::string allowed = " -$*\r\n0123456789";
   std::string command;
@@ -1477,12 +1484,12 @@ TEST_F(TestRedisService, BadRandom) {
   }
 }
 
-TEST_F(TestRedisService, IncompleteCommandMulti) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(IncompleteCommandMulti)) {
   expected_no_sessions_ = true;
   SendCommandAndExpectTimeout("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTE");
 }
 
-TEST_F(TestRedisService, Echo) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(Echo)) {
   expected_no_sessions_ = true;
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
   SendCommandAndExpectResponse(
@@ -1497,14 +1504,14 @@ TEST_F(TestRedisService, Echo) {
   );
 }
 
-TEST_F(TestRedisService, TestSetOnly) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSetOnly)) {
   SendCommandAndExpectResponse(
       __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
   SendCommandAndExpectResponse(
       __LINE__, "*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
 }
 
-TEST_F(TestRedisService, TestCaseInsensitiveness) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestCaseInsensitiveness)) {
   SendCommandAndExpectResponse(
       __LINE__, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
   SendCommandAndExpectResponse(
@@ -1517,7 +1524,7 @@ TEST_F(TestRedisService, TestCaseInsensitiveness) {
       __LINE__, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
-TEST_F(TestRedisService, TestSetThenGet) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSetThenGet)) {
   SendCommandAndExpectResponse(__LINE__,
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
   SendCommandAndExpectResponse(__LINE__, "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "$4\r\nTEST\r\n");
@@ -1540,7 +1547,7 @@ TEST_F(TestRedisService, TestSetThenGet) {
   );
 }
 
-TEST_F(TestRedisService, TestUsingOpenSourceClient) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestUsingOpenSourceClient)) {
   DoRedisTestOk(__LINE__, {"SET", "hello", "42"});
 
   DoRedisTest(__LINE__, {"DECRBY", "hello", "12"},
@@ -1556,7 +1563,7 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestBinaryUsingOpenSourceClient)) {
   const std::string kFooValue = "\001\002\r\n\003\004"s;
   const std::string kBarValue = "\013\010\000"s;
 
@@ -1569,7 +1576,7 @@ TEST_F(TestRedisService, TestBinaryUsingOpenSourceClient) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSingleCommand) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSingleCommand)) {
   DoRedisTestOk(__LINE__, {"SET", "k1", ""});
   DoRedisTestInt(__LINE__, {"HSET", "k2", "s1", ""}, 1);
 
@@ -1580,7 +1587,7 @@ TEST_F(TestRedisService, TestSingleCommand) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestEmptyValue) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestEmptyValue)) {
   DoRedisTestOk(__LINE__, {"SET", "k1", ""});
   DoRedisTestInt(__LINE__, {"HSET", "k2", "s1", ""}, 1);
 
@@ -1617,7 +1624,7 @@ void ConnectWithPassword(
   test->UseClient(nullptr);
 }
 
-TEST_F(TestRedisService, TestSelect) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSelect)) {
   auto rc1 = CreateClient();
   auto rc2 = CreateClient();
   auto rc3 = CreateClient();
@@ -1704,7 +1711,7 @@ TEST_F(TestRedisService, TestSelect) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTruncate) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTruncate)) {
   const string default_db("0");
   const string second_db("2");
 
@@ -1765,7 +1772,7 @@ TEST_F(TestRedisService, TestTruncate) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestDeleteDB) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestDeleteDB)) {
   const string default_db("0");
   const string second_db("2");
 
@@ -1840,7 +1847,7 @@ TEST_F(TestRedisService, TestDeleteDB) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestMonitor) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestMonitor)) {
   constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
   expected_no_sessions_ = true;
   auto rc1 = CreateClient();
@@ -2610,46 +2617,47 @@ void TestRedisServiceExternal::TestPubSub(
   }
 }
 
-TEST_F(TestRedisServiceExternal, TestSubscribe) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestSubscribe)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
 }
 
-TEST_F(TestRedisServiceExternal, TestSubscribeCluster) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestSubscribeCluster)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
 }
 
-TEST_F(TestRedisServiceExternal, TestUnsubscribe) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestUnsubscribe)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
 }
 
-TEST_F(TestRedisServiceExternal, TestUnsubscribeCluster) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestUnsubscribeCluster)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
 }
 
-TEST_F(TestRedisServiceExternal, TestPSubscribe) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestPSubscribe)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
 }
 
-TEST_F(TestRedisServiceExternal, TestPSubscribeCluster) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestPSubscribeCluster)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
 }
 
-TEST_F(TestRedisServiceExternal, TestPUnsubscribe) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestPUnsubscribe)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
 }
 
-TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestPUnsubscribeCluster)) {
   expected_no_sessions_ = true;
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
 }
 
+// Disabled as flaky, see #10798.
 TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp)) {
   expected_no_sessions_ = true;
 
@@ -2722,6 +2730,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
   }
 }
 
+// Disabled as flaky, see #15774.
 TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) {
   expected_no_sessions_ = true;
 
@@ -2770,7 +2779,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) 
   DoRedisTestExpectError(__LINE__, {});
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(TestSlowSubscribersHardLimit)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);
@@ -2823,7 +2832,7 @@ TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
   DoRedisTestExpectError(__LINE__, {});
 }
 
-TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
+TEST_F(TestRedisServiceExternal, YB_YEDIS_DEPRECATED(SubscribedClientMode)) {
   expected_no_sessions_ = true;
   const string topic1 = "topic1";
   const string value = "value";
@@ -2848,7 +2857,7 @@ TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestAuth) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestAuth)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_password_caching_duration_ms) = 0;
   const char* kRedisAuthPassword = "redis-password";
   // Expect new connections to require authentication
@@ -2916,7 +2925,7 @@ TEST_F(TestRedisService, TestAuth) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestPasswordChangeWithDelay)) {
   constexpr uint32 kCachingDurationMs = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_password_caching_duration_ms) = kCachingDurationMs;
   const char* kRedisAuthPassword = "redis-password";
@@ -2948,7 +2957,7 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestRename) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRename)) {
   DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
   SyncClient();
   DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
@@ -2984,7 +2993,7 @@ TEST_F(TestRedisService, TestRename) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameSameTablet) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameSameTablet)) {
   // Rename to a key in the same tablet
   // specify prefix to ensure that the keys are on the same tablet.
   DoRedisTestOk(__LINE__, {"SET", "{k}0", "5"});
@@ -2995,7 +3004,7 @@ TEST_F(TestRedisService, TestRenameSameTablet) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameSameTabletRandomized) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameSameTabletRandomized)) {
   // Rename to a key in the same tablet
   // randomized 1/24 odds of being in the same tablet as k0.
   for (int i = 1; i < 100; i++) {
@@ -3011,7 +3020,7 @@ TEST_F(TestRedisService, TestRenameSameTabletRandomized) {
   }
 }
 
-TEST_F(TestRedisService, TestRenamePipeline) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenamePipeline)) {
   // Pipeline case.
   DoRedisTestOk(__LINE__, {"SET", "ka", "4"});
   SyncClient();
@@ -3023,7 +3032,7 @@ TEST_F(TestRedisService, TestRenamePipeline) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameHash) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameHash)) {
   DoRedisTestInt(__LINE__, {"HSET", "k1", "s1", "5"}, 1);
   DoRedisTestInt(__LINE__, {"HSET", "k1", "s2", "6"}, 1);
   SyncClient();
@@ -3054,7 +3063,7 @@ TEST_F(TestRedisService, TestRenameHash) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameSet) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameSet)) {
   DoRedisTestInt(__LINE__, {"SADD", "k1", "s1", "s2"}, 2);
   SyncClient();
   DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
@@ -3080,7 +3089,7 @@ TEST_F(TestRedisService, TestRenameSet) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameSortedSet) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameSortedSet)) {
   DoRedisTestInt(__LINE__, {"ZADD", "k1", "-2", "sk1", "2", "sk2"}, 2);
   SyncClient();
   DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
@@ -3106,7 +3115,7 @@ TEST_F(TestRedisService, TestRenameSortedSet) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestRenameTSType) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestRenameTSType)) {
   DoRedisTestOk(__LINE__, {"TSADD", "k1", "2", "sk1", "-2", "sk2"});
   SyncClient();
 
@@ -3122,7 +3131,7 @@ TEST_F(TestRedisService, TestRenameTSType) {
   SyncClient();
 }
 
-TEST_F(TestRedisService, TestIncr) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestIncr)) {
   DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
   DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
 
@@ -3179,7 +3188,7 @@ TEST_F(TestRedisService, TestIncr) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestKeysPipeline) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestKeysPipeline)) {
   DoRedisTestOk(__LINE__, {"SET", "xa", "5"});
   DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"xa"});
   DoRedisTestNull(__LINE__, {"GET", "xb"});
@@ -3188,7 +3197,7 @@ TEST_F(TestRedisService, TestKeysPipeline) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestIncrCorner) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestIncrCorner)) {
   DoRedisTestOk(__LINE__, {"SET", "kstr", "str"});
   SyncClient();
 
@@ -3234,7 +3243,7 @@ TEST_F(TestRedisService, TestIncrCorner) {
 }
 
 // This test also uses the open source client
-TEST_F(TestRedisService, TestTtlSetEx) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTtlSetEx)) {
 
   DoRedisTestOk(__LINE__, {"SET", "k1", "v1"});
   DoRedisTestOk(__LINE__, {"SET", "k2", "v2", "EX", "1"});
@@ -3272,7 +3281,7 @@ TEST_F(TestRedisService, TestTtlSetEx) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestDummyLocal) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestDummyLocal)) {
   expected_no_sessions_ = true;
   DoRedisTestBulkString(__LINE__, {"INFO"}, kInfoResponse);
   DoRedisTestBulkString(__LINE__, {"INFO", "Replication"}, kInfoResponse);
@@ -3289,7 +3298,7 @@ TEST_F(TestRedisService, TestDummyLocal) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTimeSeriesTtl) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTimeSeriesTtl)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   DoRedisTestOk(__LINE__, {"TSADD", "key", "10", "v", "EXPIRE_IN", "5"});
   SyncClient();
@@ -3303,7 +3312,7 @@ TEST_F(TestRedisService, TestTimeSeriesTtl) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTimeSeries) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTimeSeries)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
 
@@ -3381,7 +3390,7 @@ TEST_F(TestRedisService, TestTimeSeries) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSortedSets) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSortedSets)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
 
@@ -3610,7 +3619,7 @@ TEST_F(TestRedisService, TestSortedSets) {
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "my_z_set", "1", "1"}, {"v1"});
 }
 
-TEST_F(TestRedisService, ZRangeByScoreInvalidOptions) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(ZRangeByScoreInvalidOptions)) {
   expected_no_sessions_ = true;
 
   // Not enough args to ZRANGEBYSCORE should throw an error.
@@ -3627,7 +3636,7 @@ TEST_F(TestRedisService, ZRangeByScoreInvalidOptions) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestZRevRange) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestZRevRange)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
@@ -3668,7 +3677,7 @@ TEST_F(TestRedisService, TestZRevRange) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestZRange) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestZRange)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
@@ -3711,7 +3720,7 @@ TEST_F(TestRedisService, TestZRange) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestZScore) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestZScore)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v0_copy", "1", "v1",
@@ -3731,7 +3740,7 @@ TEST_F(TestRedisService, TestZScore) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTimeSeriesTTL) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTimeSeriesTTL)) {
   int64_t ttl_sec = 10;
   TestTSTtl("EXPIRE_IN", ttl_sec, ttl_sec, "test_expire_in");
   int64_t curr_time_sec = GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
@@ -3762,7 +3771,7 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
                                     std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
-TEST_F(TestRedisService, TestTsCard) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTsCard)) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",
@@ -3811,7 +3820,7 @@ TEST_F(TestRedisService, TestTsCard) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTsLastN) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTsLastN)) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",
@@ -3859,7 +3868,7 @@ TEST_F(TestRedisService, TestTsLastN) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTsRangeByTime) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTsRangeByTime)) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",
@@ -4028,7 +4037,7 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTsRevRangeByTime) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTsRevRangeByTime)) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",
@@ -4251,7 +4260,7 @@ TEST_F(TestRedisService, TestTsRevRangeByTime) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTsRem) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTsRem)) {
 
   // Try some deletes before inserting any data.
   DoRedisTestOk(__LINE__, {"TSREM", "invalid_key", "20", "40", "70", "90"});
@@ -4358,7 +4367,7 @@ TEST_F(TestRedisService, TestOverwrites) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSetNX) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSetNX)) {
   // Test Insert.
   DoRedisTestInt(__LINE__, {"SETNX", "key1", "value1"}, 1);
   DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "value1");
@@ -4594,7 +4603,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestDel) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestDel)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
 
@@ -4606,7 +4615,7 @@ TEST_F(TestRedisService, TestDel) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestHDel) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestHDel)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
 
@@ -4623,7 +4632,7 @@ TEST_F(TestRedisService, TestHDel) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSADDBatch) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSADDBatch)) {
   DoRedisTestInt(__LINE__, {"SADD", "set1", "10"}, 1);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "20"}, 1);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "30"}, 1);
@@ -4636,7 +4645,7 @@ TEST_F(TestRedisService, TestSADDBatch) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSRem) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestSRem)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
 
@@ -4653,7 +4662,7 @@ TEST_F(TestRedisService, TestSRem) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestEmulateFlagFalse) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestEmulateFlagFalse)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = false;
 
   DoRedisTestOk(__LINE__, {"HSET", "map_key", "subkey1", "42"});
@@ -4667,7 +4676,7 @@ TEST_F(TestRedisService, TestEmulateFlagFalse) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestHMGetTiming) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestHMGetTiming)) {
   const int num_keys = 50;
   // For small hset size will not get consistent result.
   const int size_hset = 1000;
@@ -4727,6 +4736,7 @@ TEST_F(TestRedisService, TestHMGetTiming) {
   VerifyCallbacks();
 }
 
+// Disabled as flaky, see #15996.
 TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSet)) {
   std::string collection_key = "russell";
   std::string values[10] = {"the", "set", "of", "all", "sets",
@@ -4735,6 +4745,7 @@ TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSet)) {
   TestTtlSet(&collection_key, values, card);
 }
 
+// Disabled as flaky, see #15996.
 TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSortedSet)) {
   std::string collection_key = "sort_me_up";
   CollectionEntry values[10] = { std::make_tuple("5.4223", "insertion"),
@@ -4751,6 +4762,7 @@ TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSortedSet)) {
   TestTtlSortedSet(&collection_key, values, card);
 }
 
+// Disabled as flaky, see #14416.
 TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlHash)) {
   std::string collection_key = "hash_browns";
   CollectionEntry values[10] = { std::make_tuple("eggs", "hyperloglog"),
@@ -4874,7 +4886,7 @@ TEST_F(TestRedisService, TestTtlModifyNoOverwrite) {
 }
 
 // For testing TTL-related commands on primitives.
-TEST_F(TestRedisService, TestTtlPrimitive) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestTtlPrimitive)) {
   std::string k1 = "foo";
   std::string k2 = "fu";
   std::string k3 = "phu";
@@ -5028,7 +5040,7 @@ TEST_F(TestRedisService, TestTtlPrimitive) {
 }
 
 // For testing TestExpireAt
-TEST_F(TestRedisService, TestExpireAt) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestExpireAt)) {
   std::string k1 = "foo";
   std::string k2 = "fu";
   std::string k3 = "phu";
@@ -5129,7 +5141,7 @@ TEST_F(TestRedisService, TestExpireAt) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestQuit) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestQuit)) {
   DoRedisTestOk(__LINE__, {"SET", "key", "value"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value");
   DoRedisTestInt(__LINE__, {"DEL", "key"}, 1);
@@ -5142,18 +5154,18 @@ TEST_F(TestRedisService, TestQuit) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestFlushAll) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestFlushAll)) {
   TestFlush("FLUSHALL", false);
   TestFlush("FLUSHALL", true);
 }
 
-TEST_F(TestRedisService, TestFlushDb) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestFlushDb)) {
   TestFlush("FLUSHDB", false);
   TestFlush("FLUSHDB", true);
 }
 
 // Test deque functionality of the list.
-TEST_F(TestRedisService, TestListBasic) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(TestListBasic)) {
   DoRedisTestInt(__LINE__, {"LPUSH", "letters", "florea", "elena", "dumitru"}, 3);
   DoRedisTestInt(__LINE__, {"LLEN", "letters"}, 3);
   DoRedisTestInt(__LINE__, {"LPUSH", "letters", "constantin", "barbu"}, 5);
@@ -5201,7 +5213,7 @@ TEST_F(TestRedisService, TestListBasic) {
   DoRedisTestNull(__LINE__, {"RPOP", "sierra"});
 }
 
-TEST_F(TestRedisService, Keys) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(Keys)) {
   // The default value is true, but we explicitly set this here for clarity.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   DoRedisTestInt(__LINE__, {"ZADD", "z_key_0", "1", "a"}, 1);
@@ -5230,7 +5242,7 @@ TEST_F(TestRedisService, Keys) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, KeysZeroChar) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(KeysZeroChar)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_emulate_redis_responses) = true;
   string s("foo\0bar", 6);
   string s1("foo\0bars", 7);
@@ -5243,7 +5255,7 @@ TEST_F(TestRedisService, KeysZeroChar) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, RangeScanTimeout) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(RangeScanTimeout)) {
   // Test SortedSets.
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1.0", "v1"}, 1);
   SyncClient();
@@ -5281,7 +5293,7 @@ TEST_F(TestRedisService, RangeScanTimeout) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, KeysTimeout) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(KeysTimeout)) {
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1.0", "v1"}, 1);
   SyncClient();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
@@ -5294,7 +5306,7 @@ TEST_F(TestRedisService, KeysTimeout) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, KeysWithFlush) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(KeysWithFlush)) {
   for (int i = 0; i < 2; i++) {
     DoRedisTestOk(__LINE__, {"SET", Format("k$0", i), Format("v$0", i)});
     SyncClient();
@@ -5306,7 +5318,7 @@ TEST_F(TestRedisService, KeysWithFlush) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, SortedSetsIncr) {
+TEST_F(TestRedisService, YB_YEDIS_DEPRECATED(SortedSetsIncr)) {
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1", "v1"}, 1);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "incr", "1", "v1"}, 0);
