@@ -32,7 +32,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"

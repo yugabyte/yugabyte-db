@@ -202,6 +202,8 @@ class PgClient {
 
   void SetLockTimeout(int lock_timeout_ms);
 
+  void SetOriginationHt(uint64_t origination_ht);
+
   uint64_t SessionID() const;
 
   void PublishOldestReadPointSerialNo(uint64_t serial_no);

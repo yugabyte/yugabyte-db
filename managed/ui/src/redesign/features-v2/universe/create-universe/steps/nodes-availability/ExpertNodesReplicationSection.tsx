@@ -6,6 +6,8 @@ import InfoIcon from '@app/redesign/assets/info-message.svg';
 import { mui, YBTooltip } from '@yugabyte-ui-library/core';
 import { ReplicationFactorField } from '../../fields';
 import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { getExpertRfOptions } from '../../CreateUniverseUtils';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 
 const { Box, Typography, Link, IconButton } = mui;
 
@@ -123,13 +125,18 @@ export function ExpertNodesReplicationSection({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.expertMode'
   });
+  const { enablePrimaryRf9 } = useRuntimeConfigValues();
+  const replicationOptions = useMemo(
+    () => getExpertRfOptions(enablePrimaryRf9, rf).map(String),
+    [enablePrimaryRf9, rf]
+  );
   const getDisabledRfTooltip = (opt: string) =>
     parseInt(opt, 10) < regionCount ? t('disabledRfTooltip', { rf: opt }) : undefined;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'flex-start' }}>
       <ReplicationFactorField
-        replication_options={['1', '3', '5', '7']}
+        replication_options={replicationOptions}
         fieldName={REPLICATION_FACTOR}
         isOptionDisabled={(opt) => parseInt(opt, 10) < regionCount}
         getOptionTooltip={getDisabledRfTooltip}

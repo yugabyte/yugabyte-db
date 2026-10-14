@@ -68,7 +68,7 @@ To understand how transactions work in YugabyteDB, see [Transactions](transactio
 
 ## Master server
 
-The master service acts a catalog manager and cluster orchestrator, and manages many background tasks.
+The master service acts as a catalog manager and cluster orchestrator, and manages many background tasks.
 
 {{<lead link="./yb-master">}}
 For more details, see [YB-Master](./yb-master).

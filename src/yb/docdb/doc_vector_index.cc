@@ -28,6 +28,8 @@
 #include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/hnsw/hnsw_block_cache.h"
 
 #include "yb/qlexpr/index.h"
@@ -78,6 +80,23 @@ METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
     "Backfilled entries of vector index", yb::MetricUnit::kEntries,
     "Number of entries inserted into the vector index during backfill. Tracks the progress of "
     "vector index backfill.");
+
+DEFINE_test_flag(bool, vector_index_skip_insert, false,
+    "Skip inserting vectors into vector indexes, leaving the rows without index entries.");
+
+DEFINE_test_flag(bool, vector_index_corrupt_inserted_vectors, false,
+    "Alter the first coordinate of every vector inserted into vector indexes, so the index "
+    "stores vectors which differ from the ones in the rows.");
+
+DEFINE_test_flag(bool, vector_index_corrupt_inserted_payloads, false,
+    "Append a byte to the ybctid in the payload of every vector inserted into vector indexes, so "
+    "the payload references a row which does not exist.");
+
+DEFINE_test_flag(bool, vector_index_skip_reverse_mapping_write, false,
+    "Skip writing vector reverse mapping entries and tombstones.");
+
+DEFINE_test_flag(bool, vector_index_duplicate_inserted_vectors, false,
+    "Insert every vector into vector indexes twice, into different chunks.");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
@@ -167,6 +186,25 @@ Result<Vector> VectorFromYSQL(Slice slice) {
   return result;
 }
 
+// Inverse of VectorFromYSQL: dimensions, the unused int16 of the pgvector header, coordinates.
+template<vector_index::IndexableVectorType Vector>
+void VectorToYSQL(const Vector& vector, ValueBuffer* out) {
+  using Coordinate = typename Vector::value_type;
+  out->clear();
+  out->reserve(2 * sizeof(uint16_t) + vector.size() * sizeof(Coordinate));
+  char buffer[2 * sizeof(uint16_t)] = {};
+  Store<uint16_t, LittleEndian>(buffer, narrow_cast<uint16_t>(vector.size()));
+  out->Append(Slice(buffer, sizeof(buffer)));
+  // Store takes integers only, so the coordinate goes through the unsigned type of its size,
+  // the same one Load returns for it.
+  using RawCoordinate = decltype(LoadRaw<Coordinate, LittleEndian>(nullptr));
+  for (const auto& coordinate : vector) {
+    char coordinate_buffer[sizeof(Coordinate)];
+    Store<RawCoordinate, LittleEndian>(coordinate_buffer, bit_cast<RawCoordinate>(coordinate));
+    out->Append(Slice(coordinate_buffer, sizeof(coordinate_buffer)));
+  }
+}
+
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
     const DocVectorIndexInsertEntry& entry, bool store_payload) {
@@ -176,13 +214,62 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
       !store_payload || !entry.ybctid.empty(), InvalidArgument, "Vector ybctid is not specified");
 
   auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
+  auto vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data));
+  if (FLAGS_TEST_vector_index_corrupt_inserted_vectors && !vector.empty()) {
+    vector.front() += 1;
+  }
+  ValueBuffer payload;
+  if (store_payload) {
+    if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
+      // Sorts after every key of the row.
+      dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice());
+    } else {
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice());
+    }
+  }
   return vector_index::VectorLSMInsertEntry<Vector> {
     .vector_id = VERIFY_RESULT(encoded.DecodeId()),
-    .vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data)),
-    .payload =
-        store_payload ? dockv::DocVectorIndexPayload(entry.ybctid.AsSlice()) : ValueBuffer(),
+    .vector = std::move(vector),
+    .payload = std::move(payload),
   };
 }
+
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+class DocVectorIndexViewImpl : public DocVectorIndexView {
+ public:
+  using VectorIndexPtr = vector_index::VectorIndexIfPtr<Vector, DistanceResult>;
+
+  explicit DocVectorIndexViewImpl(std::vector<VectorIndexPtr> indexes)
+      : indexes_(std::move(indexes)) {}
+
+  Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
+    ValueBuffer buffer;
+    for (const auto& index : indexes_) {
+      for (const auto& entry : *index) {
+        VectorToYSQL(entry.vector, &buffer);
+        RETURN_NOT_OK(callback(DocVectorIndexEntry {
+          .vector_id = entry.vector_id,
+          .vector = buffer.AsSlice(),
+          .payload = entry.payload,
+        }));
+      }
+    }
+    return Status::OK();
+  }
+
+  size_t NumVectors() const override {
+    size_t result = 0;
+    for (const auto& index : indexes_) {
+      result += index->Size();
+    }
+    return result;
+  }
+
+ private:
+  const std::vector<VectorIndexPtr> indexes_;
+};
 
 EncodedDistance EncodeDistance(float distance) {
   uint32_t v = bit_cast<uint32_t>(distance);
@@ -259,6 +346,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         indexed_table_key_prefix_(indexed_table_key_prefix),
         options_(options),
         stores_payload_(options.store_payload() || !table_writes_reverse_mapping),
+        table_writes_reverse_mapping_(table_writes_reverse_mapping),
         hybrid_time_(hybrid_time),
         context_(std::move(vector_index_context)),
         block_cache_(block_cache),
@@ -274,6 +362,15 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   bool StoresPayload() const override {
     return stores_payload_;
+  }
+
+  bool HasReverseMapping() const override {
+    return table_writes_reverse_mapping_;
+  }
+
+  Result<DocVectorIndexViewPtr> CreateImmutableView() override {
+    return std::make_unique<DocVectorIndexViewImpl<Vector, DistanceResult>>(
+        VERIFY_RESULT(lsm_.ManifestIndexes()));
   }
 
   Slice indexed_table_key_prefix() const override {
@@ -351,16 +448,24 @@ class DocVectorIndexImpl : public DocVectorIndex {
       const DocVectorIndexInsertEntries& entries,
       const InsertOptions& insert_options) override {
     typename LSM::InsertEntries lsm_entries;
-    lsm_entries.reserve(entries.size());
-    for (const auto& entry : entries) {
-      lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, StoresPayload())));
+    if (!FLAGS_TEST_vector_index_skip_insert) {
+      lsm_entries.reserve(entries.size());
+      for (const auto& entry : entries) {
+        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, StoresPayload())));
+      }
     }
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
       .reservation_mode = insert_options.reservation_mode,
     };
-    return lsm_.Insert(lsm_entries, context);
+    RETURN_NOT_OK(lsm_.Insert(lsm_entries, context));
+    if (FLAGS_TEST_vector_index_duplicate_inserted_vectors && !lsm_entries.empty()) {
+      // The mutable chunk could keep only one copy.
+      RETURN_NOT_OK(lsm_.Flush(/* wait= */ false));
+      return lsm_.Insert(std::move(lsm_entries), context);
+    }
+    return Status::OK();
   }
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
@@ -481,6 +586,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return WaitForFlush();
   }
 
+  Result<bool> AdvanceFlushedOpId(const OpId& op_id) override {
+    ConsensusFrontiers frontiers;
+    frontiers.Largest().set_op_id(op_id);
+    return lsm_.AdvanceFlushedFrontier(frontiers);
+  }
+
   rocksdb::FlushAbility GetFlushAbility() override {
       return lsm_.GetFlushAbility();
   }
@@ -491,10 +602,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& ToString() const override {
     return name_;
-  }
-
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const override {
-    return lsm_.HasVectorId(vector_id);
   }
 
   Result<size_t> TotalEntries() const override {
@@ -614,6 +721,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const KeyBuffer indexed_table_key_prefix_;
   const PgVectorIdxOptionsPB options_;
   const bool stores_payload_;
+  const bool table_writes_reverse_mapping_;
   const HybridTime hybrid_time_;
   const DocVectorIndexContextPtr context_;
   const hnsw::BlockCachePtr block_cache_;
@@ -668,7 +776,7 @@ storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUser
       storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
-bool DocVectorIndex::BackfillDone() {
+Result<bool> DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
     return true;
   }
@@ -677,7 +785,16 @@ bool DocVectorIndex::BackfillDone() {
     backfill_done_cache_.store(true);
     return true;
   }
+  std::lock_guard lock(backfill_status_mutex_);
+  if (!backfill_status_.ok()) {
+    return backfill_status_;
+  }
   return false;
+}
+
+void DocVectorIndex::SetBackfillStatus(const Status& status) {
+  std::lock_guard lock(backfill_status_mutex_);
+  backfill_status_ = status;
 }
 
 bool DocVectorIndex::ParentDataCompacted() {
@@ -696,6 +813,9 @@ bool DocVectorIndex::ParentDataCompacted() {
 void DocVectorIndex::ApplyReverseEntry(
     rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
     ColumnId column_id, Slice table_key_prefix) {
+  if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
+    return;
+  }
   DocHybridTimeBuffer ht_buf;
   auto encoded_write_time = ht_buf.EncodeWithValueType(write_ht);
   auto vector_id = dockv::EncodedDocVectorValue::FromSlice(value).id;

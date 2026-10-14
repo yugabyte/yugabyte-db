@@ -98,6 +98,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.ConfigureNodeExporterTls,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
@@ -126,6 +127,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.PersistUseClockbound,
           TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
+          TaskType.ConfigureNodeExporterTls,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
@@ -262,6 +264,13 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
+    // YNP lays out only the user-level unit, so every new node is recorded as USER.
+    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getNodes()
+        .forEach(
+            n ->
+                assertEquals(
+                    NodeDetails.NodeExporterSystemdLevel.USER, n.nodeExporterSystemdLevel));
   }
 
   private UniverseDefinitionTaskParams getManagedLbTaskParams() {
@@ -287,7 +296,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().placementInfo.cloudList.get(0).regionList.get(0).lbFQDN =
         "db.example.com";
     String lbName = ManagedLoadBalancerUtil.getPrivateName(taskParams.getPrimaryCluster().uuid);
-    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-1"), any(), any(), any()))
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-1"), any(), any(), any(), any()))
         .thenReturn("lbi.elb.example.com");
 
     TaskInfo taskInfo = submitTask(taskParams);

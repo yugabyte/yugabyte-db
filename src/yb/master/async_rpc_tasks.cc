@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
@@ -55,7 +56,6 @@ using std::string;
 using std::shared_ptr;
 using std::vector;
 
-using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
 using server::MonitoredTaskType;
@@ -961,8 +961,8 @@ std::string AsyncTryStepDown::description() const {
 }
 
 Status AsyncTryStepDown::PrepareRequest(int attempt) {
-  LOG_WITH_PREFIX(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
-                                      attempt, permanent_uuid(), change_config_ts_uuid_);
+  LOG_WITH_PREFIX(INFO) << Format("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
+                                  attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
     return STATUS(RuntimeError, "Retry is not allowed");
   }
@@ -1006,7 +1006,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
 void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
         tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
 
@@ -1074,13 +1074,13 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
 }
 
 string AsyncAddTableToTablet::description() const {
-  return Substitute("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("AddTableToTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncAddTableToTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when adding table $0 to tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;
@@ -1180,13 +1180,13 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
 }
 
 string AsyncRemoveTableFromTablet::description() const {
-  return Substitute("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
+  return Format("RemoveTableFromTablet RPC ($0) ($1)", table_->ToString(), tablet_->ToString());
 }
 
 void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Substitute(
+    LOG_WITH_PREFIX(WARNING) << Format(
         "Got error when removing table $0 from tablet $1, attempt $2 and error $3",
         table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
     return;

@@ -1259,6 +1259,50 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testGFlagsUpgradeNonRestartKeepsNewInstallYsqlPgConfCsv() throws Exception {
+    Map<String, String> userTserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of(), userTserverGFlags);
+              Map<String, String> cboFlags =
+                  ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on");
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(MASTER, cboFlags);
+              newInstallGFlags.value.put(TSERVER, cboFlags);
+              universe.setNewInstallGFlags(newInstallGFlags);
+            });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Map<String, String> tserverGFlags = new HashMap<>(userTserverGFlags);
+    tserverGFlags.put("enable_automatic_tablet_splitting", "false");
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("enable_automatic_tablet_splitting", "false"), tserverGFlags);
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    int numTservers = defaultUniverse.getTServers().size();
+    verify(mockClient, times(numTservers))
+        .setFlag(
+            any(),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq("log_statement=DDL,yb_enable_cbo=on"),
+            anyBoolean());
+    // Masters have no user ysql_pg_conf_csv, so it is not set on them at all.
+    verify(mockClient, times(numTservers))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
+  }
+
+  @Test
   public void testValidateGFlagsSkippedOnRetry() {
     defaultUniverse =
         Universe.saveDetails(

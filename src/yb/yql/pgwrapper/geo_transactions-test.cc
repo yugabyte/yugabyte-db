@@ -23,6 +23,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
@@ -673,10 +674,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(3, count);
-  count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_2", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(1, count);
 }
@@ -742,7 +743,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks1;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks1 += strings::Substitute(
+    placement_blocks1 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -753,7 +754,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i);
   }
 
-  std::string tablespace1_sql = strings::Substitute(
+  std::string tablespace1_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace1 WITH (replica_placement='{
             "num_replicas": $0,
@@ -763,7 +764,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks2;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks2 += strings::Substitute(
+    placement_blocks2 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -774,7 +775,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i, i == NumRegions() ? 1 : (i + 1));
   }
 
-  std::string tablespace2_sql = strings::Substitute(
+  std::string tablespace2_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace2 WITH (replica_placement='{
             "num_replicas": $0,
@@ -1549,10 +1550,10 @@ TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRe
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName1)));
   ASSERT_EQ(1, count);
-  count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName2)));
   ASSERT_EQ(101, count);
 }

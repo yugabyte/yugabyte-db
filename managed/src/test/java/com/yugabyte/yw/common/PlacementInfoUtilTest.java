@@ -40,6 +40,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -851,6 +852,48 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     } catch (UnsupportedOperationException e) {
       assertTrue(e.getMessage().contains("Replication factor 4 not allowed"));
     }
+  }
+
+  @Test
+  public void testPrimaryReplicationFactorNineRequiresRuntimeConfig() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enablePrimaryRf9.getKey(), "false");
+
+    UnsupportedOperationException disabledEx =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> PlacementInfoUtil.verifyNumNodesAndRF(ClusterType.PRIMARY, 9, 9));
+    assertTrue(disabledEx.getMessage().contains("Replication factor 9 not allowed"));
+
+    try {
+      mutableConfigFactory
+          .globalRuntimeConf()
+          .setValue(GlobalConfKeys.enablePrimaryRf9.getKey(), "true");
+      PlacementInfoUtil.verifyNumNodesAndRF(ClusterType.PRIMARY, 9, 9);
+    } finally {
+      mutableConfigFactory
+          .globalRuntimeConf()
+          .setValue(GlobalConfKeys.enablePrimaryRf9.getKey(), "false");
+    }
+  }
+
+  @Test
+  public void testPrimaryReplicationFactorNineAllowedOnlyForExistingRf9WhenDisabled() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enablePrimaryRf9.getKey(), "false");
+
+    PlacementInfoUtil.verifyNumNodesAndRF(
+        ClusterType.PRIMARY, 9, 9, 9 /* currentReplicationFactor */);
+
+    UnsupportedOperationException increaseEx =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () ->
+                PlacementInfoUtil.verifyNumNodesAndRF(
+                    ClusterType.PRIMARY, 9, 9, 7 /* currentReplicationFactor */));
+    assertTrue(increaseEx.getMessage().contains("Replication factor 9 not allowed"));
   }
 
   @Test
@@ -5732,5 +5775,37 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Cluster async = new Cluster(ClusterType.ASYNC, intent);
     async.setPartitions(Collections.singletonList(partition));
     PlacementInfoUtil.validatePartitions(async);
+  }
+
+  @Test
+  public void testValidatePartitionsKeepsExistingRf9WhenDisabled() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enablePrimaryRf9.getKey(), "false");
+
+    UniverseDefinitionTaskParams.PartitionInfo currentPartition =
+        buildPartition(testData.get(0).az1, 9, 9, 9, true);
+    UniverseDefinitionTaskParams.PartitionInfo editedPartition =
+        buildPartition(testData.get(0).az1, 9, 9, 9, true);
+    editedPartition.setUuid(currentPartition.getUuid());
+
+    UserIntent intent = new UserIntent();
+    intent.replicationFactor = 9;
+    intent.numNodes = 9;
+    Cluster currentCluster = new Cluster(ClusterType.PRIMARY, intent);
+    currentCluster.setPartitions(Collections.singletonList(currentPartition));
+    Cluster editedCluster = new Cluster(ClusterType.PRIMARY, intent);
+    editedCluster.setPartitions(Collections.singletonList(editedPartition));
+
+    PlacementInfoUtil.validatePartitions(editedCluster, currentCluster);
+
+    Cluster newCluster = new Cluster(ClusterType.PRIMARY, intent);
+    newCluster.setPartitions(
+        Collections.singletonList(buildPartition(testData.get(0).az1, 9, 9, 9, true)));
+    UnsupportedOperationException ex =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> PlacementInfoUtil.validatePartitions(newCluster, currentCluster));
+    assertTrue(ex.getMessage().contains("Replication factor 9 not allowed"));
   }
 }

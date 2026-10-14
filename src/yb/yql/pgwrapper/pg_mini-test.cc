@@ -69,6 +69,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
@@ -3057,7 +3058,7 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
 
         auto read_start = next_write_start.load();
         auto read_end = read_start + 4;
-        auto fetch_query = strings::Substitute(
+        auto fetch_query = Format(
             "SELECT * FROM $0 WHERE a BETWEEN $1 AND $2 ORDER BY a ASC",
             kTableName, read_start, read_end);
 

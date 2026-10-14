@@ -37,14 +37,12 @@
 #include "yb/common/schema.h"
 
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/server/monitored_task.h"
 
 #include "yb/util/format.h"
 #include "yb/util/url-coding.h"
 
-using strings::Substitute;
 
 namespace yb {
 namespace server {
@@ -80,7 +78,7 @@ void HtmlOutputTask(const std::shared_ptr<MonitoredTask>& task,
         task->start_timestamp()).ToSeconds();
   }
 
-  *output << Substitute(
+  *output << Format(
       "<tr><th>$0</th><td>$1</td><td>$2 ago</td><td>$3</td><td>$4</td></tr>\n",
       EscapeForHtmlToString(task->type_name()),
       EscapeForHtmlToString(ToString(task->state())),

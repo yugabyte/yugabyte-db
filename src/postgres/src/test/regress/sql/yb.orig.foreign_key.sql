@@ -573,3 +573,27 @@ INSERT INTO pk VALUES (5, 1);
 UPDATE fk set a = a + 4; -- should pass
 SELECT * from fk;
 DROP TABLE pk, fk;
+
+-- FK checks against a range-sharded key with a non-C collation build a
+-- collation sort key for every row (#34725), in a buffer of at least
+-- kTextBufLen (1024) bytes allocated by YBComputeNonCSortKey(). Compare
+-- against the same INSERT on a C-collation key, which builds no sort key, so
+-- that per-row memory unrelated to sort keys cancels out. A sort key kept per
+-- row would make the difference at least kTextBufLen, so the threshold is half
+-- of that.
+CREATE TABLE pk_range_c (k text COLLATE "C", PRIMARY KEY (k ASC));
+INSERT INTO pk_range_c VALUES ('1');
+CREATE TABLE fk_range_c (a int, b text COLLATE "C" REFERENCES pk_range_c (k));
+CREATE TABLE pk_range_icu (k text COLLATE "en-US-x-icu", PRIMARY KEY (k ASC));
+INSERT INTO pk_range_icu VALUES ('1');
+CREATE TABLE fk_range_icu (a int, b text COLLATE "en-US-x-icu" REFERENCES pk_range_icu (k));
+WITH ins AS (
+    INSERT INTO fk_range_c SELECT i, '1' FROM generate_series(1, 10000) i
+    RETURNING yb_mem_usage_sql_b() AS mem)
+SELECT (max(mem) - min(mem)) / count(*) AS c_per_row FROM ins \gset
+WITH ins AS (
+    INSERT INTO fk_range_icu SELECT i, '1' FROM generate_series(1, 10000) i
+    RETURNING yb_mem_usage_sql_b() AS mem)
+SELECT (max(mem) - min(mem)) / count(*) AS icu_per_row FROM ins \gset
+SELECT :icu_per_row - :c_per_row < 500 AS mem_per_row_ok;
+DROP TABLE fk_range_c, pk_range_c, fk_range_icu, pk_range_icu;

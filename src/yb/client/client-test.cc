@@ -72,7 +72,6 @@
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -106,6 +105,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -326,7 +326,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello $0", index));
     table.AddInt32ColumnValue(req, columns[3].name(), index * 3);
     return insert;
   }
@@ -338,7 +338,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2 + 1);
-    table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello again %d", index));
+    table.AddStringColumnValue(req, columns[2].name(), Format("hello again $0", index));
     return update;
   }
 
@@ -487,7 +487,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       }
     }
     if (!ts_found) {
-      return STATUS(InvalidArgument, strings::Substitute("Could not find tablet server $1", uuid));
+      return STATUS(InvalidArgument, Format("Could not find tablet server $0", uuid));
     }
 
     return Status::OK();
@@ -2277,7 +2277,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(
       s.ToString(),
-      strings::Substitute(
+      Format(
           "The requested number of tablets ($0) is over the permitted maximum ($1)", many_tablets,
           FLAGS_replication_factor));
 }
@@ -2460,7 +2460,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       ASSERT_FALSE(seen_key[key]);
       seen_key[key] = true;
       ASSERT_EQ(key * 2, row.column(1).int32_value());
-      ASSERT_EQ(StringPrintf("hello %d", key), row.column(2).string_value());
+      ASSERT_EQ(Format("hello $0", key), row.column(2).string_value());
       ASSERT_EQ(key * 3, row.column(3).int32_value());
     }
   }

@@ -373,6 +373,10 @@ const Configuration kParallelRPCs{
 const Configuration kTabletSplitRPCs{
   .rpc_list = {
     ash::PggateRPC::kGetTablePartitionList},
+  // The harness default of 0 lets the child's post-split compaction move its history cutoff past
+  // the read time of a concurrent SELECT, which then fails with "Snapshot too old".
+  .tserver_flags = {
+    "--timestamp_history_retention_interval_sec=3600"},
   .master_flags = {
     "--enable_automatic_tablet_splitting=true",
     "--tablet_split_low_phase_shard_count_per_node=2",

@@ -161,6 +161,22 @@ func checkLine(t *testing.T, iniFile string, searchStrings []string) {
 	}
 }
 
+// Returns the set of section names in the generated config.ini file.
+func iniSections(t *testing.T, iniFile string) map[string]bool {
+	data, err := os.ReadFile(iniFile)
+	if err != nil {
+		t.Fatalf("unable to read file: %v", err)
+	}
+	sections := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			sections[strings.Trim(line, "[]")] = true
+		}
+	}
+	return sections
+}
+
 func configFilePath(t *testing.T, content string) string {
 	configPath := filepath.Join(os.TempDir(), "config_*.json")
 	err := os.WriteFile(configPath, []byte(content), 0644)
@@ -488,4 +504,140 @@ func TestYNPProvisionWithYbHomeDir(t *testing.T) {
 	getScriptPath(t, tmpDir, "_precheck")
 	// Verify the precheck script is present.
 	getScriptPath(t, tmpDir, "_run")
+}
+
+// TestCgroupModulesSplitByPrivilege verifies that in split provisioning the root-only cgroup
+// setup runs in the --root step and the yb user side in the --noroot step.
+func TestCgroupModulesSplitByPrivilege(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+	rootOnly := []string{"ConfigureRootSystemd", "ConfigureRootCgroups"}
+	nonRootOnly := []string{"ConfigureRuntimeCgroups", "ConfigureSystemd"}
+	cases := []struct {
+		mode    string
+		present []string
+		absent  []string
+	}{
+		{mode: "--root", present: rootOnly, absent: nonRootOnly},
+		{mode: "--noroot", present: nonRootOnly, absent: rootOnly},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			configPath := configFilePath(t, ynpCloudConfig)
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				yamlConfigPath,
+				"--extra_vars",
+				configPath,
+				"--dry_run",
+				tc.mode,
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				// Skipping only stops script generation; config.ini still has the section.
+				"ConfigureSystemd", /* This requires some setup */
+				"--config_override",
+				"ynp.configure_cgroup=true",
+			})
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err != nil {
+				t.Fatalf("Error executing command: %v\n", err)
+			}
+			sections := iniSections(t, iniFile)
+			for _, name := range tc.present {
+				if !sections[name] {
+					t.Errorf("Expected section %s in %s config", name, tc.mode)
+				}
+			}
+			for _, name := range tc.absent {
+				if sections[name] {
+					t.Errorf("Unexpected section %s in %s config", name, tc.mode)
+				}
+			}
+		})
+	}
+}
+
+// renderModuleScripts renders only the given module, with any extra command-line arguments, and
+// returns its run script followed by its precheck script.
+func renderModuleScripts(t *testing.T, module string, extraArgs ...string) string {
+	configPath := configFilePath(t, ynpCloudConfig)
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	tmpDir, err := os.MkdirTemp("", "ynp-node-exporter-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	testRootCmd := testRootCmd()
+	testRootCmd.SetArgs(append([]string{
+		"--ynp_base_path", ynpBasePath,
+		"--config_file", yamlConfigPath,
+		"--extra_vars", configPath,
+		"--dry_run",
+		"--specific_module", module,
+		"--config_override", `ynp.tmp_directory="` + tmpDir + `"`,
+	}, extraArgs...))
+	setupCommand(testRootCmd)
+	if err := testRootCmd.Execute(); err != nil {
+		t.Fatalf("Error executing command: %v\n", err)
+	}
+	script, err := os.ReadFile(getScriptPath(t, tmpDir, "_run"))
+	if err != nil {
+		t.Fatalf("Failed to read run script: %v", err)
+	}
+	precheck, err := os.ReadFile(getScriptPath(t, tmpDir, "_precheck"))
+	if err != nil {
+		t.Fatalf("Failed to read precheck script: %v", err)
+	}
+	// Precheck is appended so one string carries both scripts for the assertions below.
+	return string(script) + "\n" + string(precheck)
+}
+
+func assertContainsAll(t *testing.T, script string, wanted []string) {
+	for _, w := range wanted {
+		if !strings.Contains(script, w) {
+			t.Errorf("expected run script to contain %q", w)
+		}
+	}
+}
+
+// node_exporter is laid out by the DB user: under the yb home, in the user's systemd, with a web
+// config file. A root-level unit left by an older YBA is ConfigureRootSystemd's to remove.
+func TestNodeExporterUserLevelUnit(t *testing.T) {
+	script := renderModuleScripts(t, "ConfigureNodeExporter")
+	assertContainsAll(t, script, []string{
+		`install_dir="/home/yugabyte/node_exporter"`,
+		`systemd_dir="/home/yugabyte/.config/systemd/user"`,
+		"ExecStart=$install_dir/$node_exported_package_name/node_exporter",
+		"WantedBy=default.target",
+		"systemctl --user",
+		"Run with root provisioning to migrate it",
+		// precheck accepts a legacy node with a warning
+		`add_result "Node Exporter Layout Check" "WARN"`,
+	})
+	for _, unwanted := range []string{
+		"/opt/prometheus", "User=", "useradd", "multi-user.target", "legacy_backup", "yb-master",
+	} {
+		if strings.Contains(script, unwanted) {
+			t.Errorf("node_exporter scripts must not contain %q", unwanted)
+		}
+	}
+}
+
+// A run with only root needs no node_exporter package: it only removes the legacy root-level unit.
+func TestNodeExporterRootRun(t *testing.T) {
+	assertContainsAll(t, renderModuleScripts(t, "ConfigureRootSystemd", "--root"), []string{
+		`service_files+=("node_exporter.service")`,
+	})
+	exporter := renderModuleScripts(t, "ConfigureNodeExporter", "--root")
+	if strings.Contains(exporter, "Executing module ConfigureNodeExporter") {
+		t.Error("a run with only root must not include ConfigureNodeExporter")
+	}
 }

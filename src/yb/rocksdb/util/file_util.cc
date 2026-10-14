@@ -39,9 +39,10 @@ using std::vector;
 using std::unique_ptr;
 
 // Utility function to copy a file up to a specified length
-Status CopyFile(Env* env, const string& source,
-                const string& destination, uint64_t size, CopyFileSync sync) {
-  const EnvOptions soptions;
+Status CopyFile(
+    Env* env, const string& source, const string& destination, uint64_t size, CopyFileSync sync,
+    const EnvOptions& soptions, yb::PriorityThreadPoolSuspender* suspender,
+    const std::atomic<bool>* shutting_down) {
   Status s;
   unique_ptr<SequentialFileReader> src_reader;
   unique_ptr<WritableFileWriter> dest_writer;
@@ -65,12 +66,15 @@ Status CopyFile(Env* env, const string& source,
       }
     }
     src_reader.reset(new SequentialFileReader(std::move(srcfile)));
-    dest_writer.reset(new WritableFileWriter(std::move(destfile), soptions));
+    dest_writer.reset(new WritableFileWriter(std::move(destfile), soptions, suspender));
   }
 
   uint8_t buffer[4096];
   Slice slice;
   while (size > 0) {
+    if (shutting_down && shutting_down->load(std::memory_order_acquire)) {
+      return STATUS(ShutdownInProgress, "Copy aborted: shutting down");
+    }
     size_t bytes_to_read = std::min(sizeof(buffer), static_cast<size_t>(size));
     if (s.ok()) {
       s = src_reader->Read(bytes_to_read, &slice, buffer);

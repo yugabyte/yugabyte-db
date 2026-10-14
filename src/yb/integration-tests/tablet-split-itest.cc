@@ -119,6 +119,7 @@ using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
 DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_min_keys_per_index_block);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_maintenance_manager);
@@ -2814,13 +2815,30 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
 };
 
 // Parameterized extension to test N-way tablet split.
+// Block settings: small data blocks give Cross enough cut points for N-way splits; small index
+// blocks + min_keys_per_index_block=10 give a production-like 2+ level index.
 class TabletNSplitSingleServerITest :
     public TabletSplitSingleServerITest,
     public testing::WithParamInterface<int> {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_min_keys_per_index_block) = 10;
     TabletSplitSingleServerITest::SetUp();
     cluster_->SetSplitFactor(GetParam());
+  }
+
+  size_t DbBlockSizeBytes() const override { return 256; }
+  size_t DbIndexBlockSizeBytes() const override { return 1_KB; }
+
+  // Verifies the index is 2+ levels, so the test really covers multi-level index traversal.
+  static void AssertMultiLevelIndex(tablet::Tablet* tablet) {
+    auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
+        ASSERT_RESULT(tablet->regular_db()->TEST_GetLargestSstTableReader()));
+    ASSERT_NE(table_reader, nullptr);
+    auto index_reader_base = ASSERT_RESULT(table_reader->TEST_GetIndexReader());
+    auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
+    ASSERT_NE(index_reader, nullptr);
+    ASSERT_GE(index_reader->TEST_GetNumLevels(), 2U);
   }
 };
 
@@ -2916,6 +2934,7 @@ TEST_P(TabletNSplitSingleServerITest, ComputeSplitKeys) {
   // Compute split keys.
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  ASSERT_NO_FATALS(AssertMultiLevelIndex(tablet.get()));
 
   const auto split_factor = cluster_->GetSplitFactor();
   const auto expected_num_keys = split_factor - 1;
@@ -2945,6 +2964,7 @@ TEST_P(TabletNSplitSingleServerITest, GetSplitKeys) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  ASSERT_NO_FATALS(AssertMultiLevelIndex(tablet.get()));
   const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(cluster_->GetSplitFactor()));
   const auto& expected_split_encoded_keys = split_keys.encoded_keys;
   const auto expected_first_split_key_hash =

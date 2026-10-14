@@ -21,6 +21,8 @@
 
 #include "yb/dockv/partition.h"
 
+#include "yb/gutil/strings/numbers.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
@@ -32,6 +34,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/math_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -52,7 +55,6 @@ DECLARE_int32(replication_factor);
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_descs) {
   ZoneToDescMap zone_to_ts;
@@ -76,9 +78,9 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
                 << " for placement uuid " << entry.first;
 
       if (std_dev >= FLAGS_balancer_load_max_standard_deviation) {
-        return STATUS(IllegalState, Substitute("Load not balanced: deviation=$0 in $1 for "
-                                               "placement uuid $2.",
-                                               std_dev, zone.first, entry.first));
+        return STATUS(IllegalState, Format("Load not balanced: deviation=$0 in $1 for "
+                                           "placement uuid $2.",
+                                           SimpleDtoa(std_dev), zone.first, entry.first));
       }
     }
   }
@@ -162,7 +164,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
         if (!accepting_leader_load.contains(replica.first)) {
           return STATUS(
               IllegalState,
-              Substitute("Tserver $0 not expected to have leader of tablet $1",
+              Format("Tserver $0 not expected to have leader of tablet $1",
                   replica.first, tablet->id()));
         }
       }
@@ -328,7 +330,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
       cloud_info_string.insert(ci_string);
     } else {
       return STATUS(IllegalState,
-                    Substitute("Placement information specified should not contain duplicates. "
+                    Format("Placement information specified should not contain duplicates. "
                     "Given placement block: $0 is a duplicate", ci.ShortDebugString()));
     }
   }
@@ -356,7 +358,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 
     if (!star_star_star && !c_star_star && !c_r_star && !c_r_z) {
       return STATUS(IllegalState,
-                        Substitute("Placement information specified should be prefixes."
+                        Format("Placement information specified should be prefixes."
                         "Given placement block: $0 isn't a prefix", pb.ShortDebugString()));
     }
   }
@@ -377,7 +379,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
         // pb1 shouldn't be prefix of pb2.
         if (CatalogManagerUtil::IsCloudInfoPrefix(pb1, pb2)) {
           return STATUS(IllegalState,
-                        Substitute("Placement information specified should not overlap. $0 and"
+                        Format("Placement information specified should not overlap. $0 and"
                         " $1 overlap. For instance, c1.r1.z1,c1.r1 is invalid while "
                         "c1.r1.z1,c1.r1.z2 is valid. Also note that c1.r1,c1.r1 is valid.",
                         pb1.ShortDebugString(), pb2.ShortDebugString()));

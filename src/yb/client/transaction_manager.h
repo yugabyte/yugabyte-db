@@ -90,6 +90,12 @@ class TransactionManager {
 
   scoped_refptr<Counter> initially_tablespace_local_transactions_metric() const;
 
+  scoped_refptr<Counter> write_pipelining_aborts_metric() const;
+
+  scoped_refptr<Counter> write_pipelining_abort_discarded_reads_metric() const;
+
+  scoped_refptr<Counter> write_pipelining_abort_discarded_writes_metric() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

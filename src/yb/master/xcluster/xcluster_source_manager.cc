@@ -1209,10 +1209,12 @@ Status XClusterSourceManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   jw.StartArray();
   for (const auto& [table_id, streams] : GetAllStreams()) {
     for (const auto& stream : streams) {
+      jw.StartObject();
       jw.String("stream_id");
       jw.String(stream->StreamId().ToString());
       jw.String("metadata");
       jw.Protobuf(stream->LockForRead()->pb);
+      jw.EndObject();
     }
   }
   jw.EndArray();

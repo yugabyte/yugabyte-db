@@ -150,14 +150,22 @@ class VectorLSM {
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
+  // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
+  // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
+  Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
   Result<size_t> TotalEntries() const;
+
+  // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
+  // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
+  // first to cover every vector inserted before the call.
+  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
 
   Status Flush(bool wait);
   // Waits for insert tasks already allocated when the wait started (including those that raced

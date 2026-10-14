@@ -37,8 +37,8 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bits.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 
 using base::subtle::Atomic64;
@@ -46,7 +46,6 @@ using base::subtle::NoBarrier_AtomicIncrement;
 using base::subtle::NoBarrier_Store;
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_CompareAndSwap;
-using strings::Substitute;
 using std::endl;
 
 namespace yb {
@@ -131,9 +130,9 @@ bool HdrHistogram::IsValidNumSignificantDigits(int num_significant_digits) {
 void HdrHistogram::Init() {
   // Verify parameter validity
   CHECK(IsValidHighestTrackableValue(highest_trackable_value_)) <<
-      Substitute("highest_trackable_value must be >= $0", kMinHighestTrackableValue);
+      Format("highest_trackable_value must be >= $0", kMinHighestTrackableValue);
   CHECK(IsValidNumSignificantDigits(num_significant_digits_)) <<
-      Substitute("num_significant_digits must be between $0 and $1",
+      Format("num_significant_digits must be between $0 and $1",
           kMinValidNumSignificantDigits, kMaxValidNumSignificantDigits);
 
   uint32_t largest_value_with_single_unit_resolution =

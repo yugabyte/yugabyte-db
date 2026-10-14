@@ -23,6 +23,7 @@
 
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/dist_trace.h"
+#include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -147,19 +148,29 @@ struct ThreadPoolMetrics {
   scoped_refptr<EventStats> run_time_us_stats;
 };
 
+// Which parked worker Enqueue wakes for a task. kLifo wakes the most recently parked worker,
+// keeping a small hot set of threads so that idle ones are reclaimed. kFifo wakes the one parked
+// longest, rotating through all parked workers. kMixed wakes in FIFO order but holds back up to 16
+// of the longest parked workers, waking them last, so that idle ones are reclaimed.
+YB_DEFINE_ENUM(WorkerWakeOrder, (kLifo)(kFifo)(kMixed));
+
+// Value of --thread_pool_worker_wake_order, the default for pools that do not set one.
+WorkerWakeOrder DefaultWorkerWakeOrder();
+
 struct ThreadPoolOptions {
   std::string name;
 
   size_t max_workers;
   size_t min_workers = 0;
   MonoDelta idle_timeout = DefaultIdleTimeout();
+  WorkerWakeOrder wake_order = DefaultWorkerWakeOrder();
 
   Cgroup* cgroup = nullptr;
 
   ThreadPoolMetrics metrics = {};
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(name, max_workers, min_workers, idle_timeout);
+    return YB_STRUCT_TO_STRING(name, max_workers, min_workers, idle_timeout, wake_order);
   }
 
   static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();

@@ -446,6 +446,21 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	configureNodeExporterInput := req.GetConfigureNodeExporterInput()
+	if configureNodeExporterInput != nil {
+		configureNodeExporterHandler := task.NewConfigureNodeExporterHandler(
+			configureNodeExporterInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureNodeExporterHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running configure node exporter - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	setupCGroupInput := req.GetSetupCGroupInput()
 	if setupCGroupInput != nil {
 		setupCgroupHandler := task.NewSetupCgroupHandler(
@@ -493,6 +508,17 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, rotateSshKeyHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running rotate SSH key - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	healthCheckInput := req.GetHealthCheckInput()
+	if healthCheckInput != nil {
+		healthCheckHandler := task.NewHealthCheckerHandler(healthCheckInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, healthCheckHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running health check - %s", err.Error())
 			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID

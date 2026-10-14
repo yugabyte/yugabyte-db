@@ -683,7 +683,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
                                            throws Exception {
     HashSet<Integer> pids = new HashSet<>();
     ResultSet rs;
-    for (int i = 0; i < 10; i++) {
+    // Right after startup few idle backends may exist, so for the non-sticky
+    // case keep sampling (bounded) until a second backend shows up.
+    for (int i = 0; i < 10 || (!expectedSticky && pids.size() < 2 && i < 200); i++) {
       rs = stmt.executeQuery("SELECT pg_backend_pid()");
       assertTrue(rs.next());
       pids.add(rs.getInt(1));

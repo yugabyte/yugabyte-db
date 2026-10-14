@@ -117,7 +117,7 @@ Status QLValueFromSubKey(const RedisKeyValueSubKeyMsg& subkey_pb, QLValueMsg *ou
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(IllegalState, "Invalid enum value $0", subkey_pb.subkey_case());
+      return STATUS_FORMAT(IllegalState, "Invalid enum value $0", subkey_pb.subkey_case());
   }
   return Status::OK();
 }
@@ -141,24 +141,24 @@ Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyMsg& subkey_pb,
     case REDIS_TYPE_SET: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_HASH:
       if (!subkey_pb.has_string_subkey()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of string type",
-                                 subkey_pb.ShortDebugString());
+        return STATUS_FORMAT(InvalidArgument, "subkey: $0 should be of string type",
+                             subkey_pb.ShortDebugString());
       }
       break;
     case REDIS_TYPE_TIMESERIES:
       if (!subkey_pb.has_timestamp_subkey()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of int64 type",
-                                 subkey_pb.ShortDebugString());
+        return STATUS_FORMAT(InvalidArgument, "subkey: $0 should be of int64 type",
+                             subkey_pb.ShortDebugString());
       }
       break;
     case REDIS_TYPE_SORTEDSET:
       if (!subkey_pb.has_double_subkey()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of double type",
+        return STATUS_FORMAT(InvalidArgument, "subkey: $0 should be of double type",
                              subkey_pb.ShortDebugString());
       }
       break;
     default:
-      return STATUS_SUBSTITUTE(IllegalState, "Invalid enum value $0", data_type);
+      return STATUS_FORMAT(IllegalState, "Invalid enum value $0", data_type);
   }
   return QLValueFromSubKey(subkey_pb, out);
 }
@@ -178,9 +178,9 @@ Result<RedisDataType> GetRedisValueType(
     encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
   } else {
     if (subkey_index >= static_cast<int64_t>(key_value_pb.subkey_size())) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Size of subkeys ($0) must be larger than subkey_index ($1)",
-                               key_value_pb.subkey_size(), subkey_index);
+      return STATUS_FORMAT(InvalidArgument,
+                           "Size of subkeys ($0) must be larger than subkey_index ($1)",
+                           key_value_pb.subkey_size(), subkey_index);
     }
 
     KeyEntryValue subkey_primitive;
@@ -254,8 +254,8 @@ Result<RedisValue> GetRedisValue(
 
   if (!key_value_pb.subkey().empty()) {
     if (key_value_pb.subkey().size() != 1 && subkey_index == kNilSubkeyIndex) {
-      return STATUS_SUBSTITUTE(Corruption,
-                               "Expected at most one subkey, got $0", key_value_pb.subkey().size());
+      return STATUS_FORMAT(Corruption,
+                           "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
     KeyEntryValue subkey_primitive;
     auto it = key_value_pb.subkey().begin();
@@ -299,8 +299,8 @@ Result<RedisValue> GetRedisValue(
       case ValueEntryType::kRedisList:
         return RedisValue{.type = REDIS_TYPE_LIST, .value = "", .exp = {}};
       default:
-        return STATUS_SUBSTITUTE(IllegalState, "Invalid value type: $0",
-                                 static_cast<int>(doc.value_type()));
+        return STATUS_FORMAT(IllegalState, "Invalid value type: $0",
+                             static_cast<int>(doc.value_type()));
     }
   }
 
@@ -836,20 +836,20 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         break;
     }
     case REDIS_TYPE_STRING: {
-        return STATUS_SUBSTITUTE(InvalidCommand,
+        return STATUS_FORMAT(InvalidCommand,
             "Redis data type $0 in SET command should not have subkeys", kv.type());
       }
       default:
-        return STATUS_SUBSTITUTE(InvalidCommand,
+        return STATUS_FORMAT(InvalidCommand,
             "Redis data type $0 not supported in SET command", kv.type());
     }
   } else {
     if (kv.type() != REDIS_TYPE_STRING) {
-      return STATUS_SUBSTITUTE(InvalidCommand,
+      return STATUS_FORMAT(InvalidCommand,
           "Redis data type for SET must be string if subkey not present, found $0", kv.type());
     }
     if (kv.value_size() != 1) {
-      return STATUS_SUBSTITUTE(InvalidCommand,
+      return STATUS_FORMAT(InvalidCommand,
           "There must be only one value in SET if there is only one key, found $0",
           kv.value_size());
     }
@@ -893,8 +893,8 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
 
   // We only support setting TTLs on top-level keys.
   if (!kv.subkey().empty()) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "Expected no subkeys, got $0", kv.subkey().size());
+    return STATUS_FORMAT(Corruption,
+                         "Expected no subkeys, got $0", kv.subkey().size());
   }
 
   MonoDelta ttl;
@@ -914,7 +914,7 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
   auto value = VERIFY_RESULT(GetValue(data, kNilSubkeyIndex, &exp));
 
   if (value.type == REDIS_TYPE_TIMESERIES) { // This command is not supported.
-    return STATUS_SUBSTITUTE(InvalidCommand,
+    return STATUS_FORMAT(InvalidCommand,
         "Redis data type $0 not supported in EXPIRE and PERSIST commands", value.type);
   }
 
@@ -958,7 +958,7 @@ Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
   const auto& kv = request_.key_value();
 
   if (kv.value_size() != 1) {
-    return STATUS_SUBSTITUTE(Corruption,
+    return STATUS_FORMAT(Corruption,
         "Getset kv should have 1 value, found $0", kv.value_size());
   }
 
@@ -985,7 +985,7 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
   const auto& kv = request_.key_value();
 
   if (kv.value_size() != 1) {
-    return STATUS_SUBSTITUTE(Corruption,
+    return STATUS_FORMAT(Corruption,
         "Append kv should have 1 value, found $0", kv.value_size());
   }
 
@@ -1140,7 +1140,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
 Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
   const auto& kv = request_.key_value();
   if (kv.value_size() != 1) {
-    return STATUS_SUBSTITUTE(Corruption,
+    return STATUS_FORMAT(Corruption,
         "SetRange kv should have 1 value, found $0", kv.value_size());
   }
 
@@ -1179,8 +1179,8 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
   const int64_t incr = request_.incr_request().increment_int();
 
   if (kv.type() != REDIS_TYPE_HASH && kv.type() != REDIS_TYPE_STRING) {
-    return STATUS_SUBSTITUTE(InvalidCommand,
-                             "Redis data type $0 not supported in Incr command", kv.type());
+    return STATUS_FORMAT(InvalidCommand,
+                         "Redis data type $0 not supported in Incr command", kv.type());
   }
 
   RedisDataType container_type = VERIFY_RESULT(GetValueType(data));
@@ -1335,7 +1335,7 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
        doc_path, value_ref, data.read_operation_data, redis_query_id()));
 
   if (value.size() != 1) {
-    return STATUS_SUBSTITUTE(Corruption, "Expected one popped value, got $0", value.size());
+    return STATUS_FORMAT(Corruption, "Expected one popped value, got $0", value.size());
   }
 
   response_.dup_string_response(value[0]);
@@ -1781,8 +1781,8 @@ Status RedisReadOperation::ExecuteGetTtl() {
   }
   // We currently only support getting and setting TTL on top level keys.
   if (!kv.subkey().empty()) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "Expected no subkeys, got $0", kv.subkey().size());
+    return STATUS_FORMAT(Corruption,
+                         "Expected no subkeys, got $0", kv.subkey().size());
   }
 
   auto encoded_doc_key = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());

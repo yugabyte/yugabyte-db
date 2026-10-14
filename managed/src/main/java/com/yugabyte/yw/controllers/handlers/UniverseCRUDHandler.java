@@ -884,15 +884,21 @@ public class UniverseCRUDHandler {
       // Record the intended cross-cloud federated IAM state on the cluster's UserIntent (like
       // providerType/rootCA), so CreateUniverse and later edit/add-node/replace key off this one
       // flag.
-      Provider federationProvider =
-          Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-      boolean federationConfigured =
-          !CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty();
-      if (federationConfigured && c.userIntent.isMulticloudSupport()) {
+      Set<UUID> providerUUIDs = c.userIntent.getAllProviderUUIDs();
+      boolean federationConfigured = false;
+      for (UUID providerUUID : providerUUIDs) {
+        Provider federationProvider = Provider.getOrBadRequest(providerUUID);
+        if (!CloudInfoInterface.getCrossCloudFederationTargets(federationProvider).isEmpty()) {
+          federationConfigured = true;
+          break;
+        }
+      }
+      if (federationConfigured && providerUUIDs.size() > 1) {
         throw new PlatformServiceException(
             BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
       }
       c.userIntent.setFederationConfigured(federationConfigured);
+
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       ManagedLoadBalancerUtil.validateNewCluster(
@@ -2936,7 +2942,7 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
       if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
-        PlacementInfoUtil.validatePartitions(newCluster);
+        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
