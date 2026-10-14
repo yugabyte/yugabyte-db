@@ -1021,8 +1021,8 @@ TEST_F(RaftConsensusWalSyncTest, TestHeartbeatSyncsAnIdleFollowersWal) {
   // requests through the same entry point.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        LWConsensusResponsePB resp(nullptr);
         auto req = MakeHeartbeat(last_op_id);
+        LWConsensusResponsePB resp(&req->arena());
         RETURN_NOT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
         return drive_stats->sync_count() > syncs_before;
       },
@@ -1051,8 +1051,8 @@ TEST_F(RaftConsensusWalSyncTest, TestNoSyncWhenDisabled) {
 
   SleepFor(MonoDelta::FromMilliseconds(kIntervalMs + 10));
   for (int i = 0; i < 20; ++i) {
-    LWConsensusResponsePB resp(nullptr);
     auto req = MakeHeartbeat(last_op_id);
+    LWConsensusResponsePB resp(&req->arena());
     ASSERT_OK(follower->Update(req, &resp, CoarseBigDeadline()));
   }
   ASSERT_EQ(drive_stats->sync_count(), syncs_before);
