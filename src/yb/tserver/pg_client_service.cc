@@ -685,10 +685,9 @@ class SessionProvider {
   virtual ~SessionProvider() = default;
   virtual Result<SessionAccessor> GetSessionAccessor(
       uint64_t session_id, std::optional<PgRequestSequencer::SequenceNum> request_serial_no) = 0;
-  virtual rpc::Messenger& Messenger() = 0;
 };
 
-class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
+class PerformQuery : public std::enable_shared_from_this<PerformQuery>,
                      public PgTablesQueryListener {
  public:
   using ContextHolder = rpc::TypedPBRpcContextHolder<
@@ -696,47 +695,30 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
 
   PerformQuery(
       SessionProvider& provider, ContextHolder&& context)
-      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()),
+      : provider_(provider), context_(std::move(context)),
         wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
-  void Ready(const PgTablesQueryResult& tables) override {
-    tables_ = tables;
-    if (Thread::UniqueThreadId() == tid_) {
-      Run();
-    } else {
-      retained_self_ = shared_from_this();
-      provider_.Messenger().ThreadPool().Enqueue(this);
-    }
+  void Ready(PgTablesQueryResult&& tables) override {
+    tables_ = std::move(tables);
+    ADOPT_WAIT_STATE(wait_state_ptr_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
+    RespondIfError(DoReady());
   }
 
  private:
-  PgPerformRequestMsg& req() {
-    return context_.req();
-  }
+  auto& req() { return context_.req(); }
 
-  PgPerformResponseMsg& resp() {
-    return context_.resp();
-  }
+  auto& resp() { return context_.resp(); }
 
-  void Run() override {
-    ADOPT_WAIT_STATE(wait_state_ptr_);
-    SCOPED_WAIT_STATUS(OnCpu_Active);
-    if (const auto status = RunImpl(); !status.ok()) {
-      RespondWithError(status);
-    }
-  }
-
-  Status RunImpl() {
+  Status DoReady() {
     auto accessor = VERIFY_RESULT(provider_.GetSessionAccessor(
         req().session_id(), RequestSequenceNumFromPB(req().sequence_num())));
     if (auto session = accessor.GetSessionNoWait(); !session) {
       RETURN_NOT_OK(accessor.Enqueue(
-          [shared_this = shared_from_this()](Result<PgClientSession&> session) {
-            if (!session.ok()) {
-              shared_this->RespondWithError(session.status());
-            } else {
-              shared_this->DoPerform(*session);
+          [self = shared_from_this()](Result<PgClientSession&> session) {
+            if (!self->RespondIfError(ResultToStatus(session))) {
+              self->DoPerform(*session);
             }
           }, context_.context().GetClientDeadline()));
     } else {
@@ -745,24 +727,21 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
     return Status::OK();
   }
 
-  void Done(const Status& status) override {
-    retained_self_ = nullptr;
-  }
-
-  void RespondWithError(const Status& status) {
-    DCHECK(!status.ok());
+  bool RespondIfError(const Status& status) {
+    if (status.ok()) {
+      return false;
+    }
     Respond(status, &resp(), &context_.context());
+    return true;
   }
 
   void DoPerform(PgClientSession& session) {
-    session.Perform(req(), resp(), std::move(context_.context()), *tables_);
+    session.Perform(req(), resp(), std::move(context_.context()), tables_);
   }
 
   SessionProvider& provider_;
   ContextHolder context_;
-  const int64_t tid_;
-  std::optional<PgTablesQueryResult> tables_;
-  std::shared_ptr<PerformQuery> retained_self_;
+  PgTablesQueryResult tables_;
 
   // kept here in case the task is scheduled in another thread.
   const ash::WaitStateInfoPtr wait_state_ptr_;
@@ -802,7 +781,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         transaction_manager_provider_(std::move(transaction_manager_provider)),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
-        table_cache_(client_future_),
+        table_cache_(client_future_, messenger_.ThreadPool()),
         db_cache_(client_future_),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
@@ -3106,10 +3085,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       uint64_t session_id,
       std::optional<PgRequestSequencer::SequenceNum> request_serial_no) override {
     return SessionAccessor::Make(VERIFY_RESULT(DoGetSession(session_id)), request_serial_no);
-  }
-
-  rpc::Messenger& Messenger() override {
-    return messenger_;
   }
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(

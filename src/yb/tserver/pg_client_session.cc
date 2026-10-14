@@ -973,28 +973,6 @@ using QueryDataPtr = std::shared_ptr<QueryData<Traits>>;
 using ObjectLockQueryDataPtr = QueryDataPtr<ObjectLockQueryTraits>;
 using PerformQueryDataPtr = QueryDataPtr<PerformQueryTraits>;
 
-class AsyncPgTablesQueryResultProvider : public PgTablesQueryListener {
- public:
-  [[nodiscard]] std::future<PgTablesQueryResult> GetTables() {
-    return promise_.get_future();
-  }
-
- private:
-  void Ready(const PgTablesQueryResult& result) override {
-    promise_.set_value(result);
-  }
-
-  std::promise<PgTablesQueryResult> promise_;
-};
-
-[[nodiscard]] std::future<PgTablesQueryResult> GetTablesAsync(
-  PgTableCache& table_cache, std::span<const TableId> table_ids,
-  const PgTableCacheGetOptions& options = {}) {
-  auto provider = std::make_shared<AsyncPgTablesQueryResultProvider>();
-  table_cache.GetTables(table_ids, provider);
-  return provider->GetTables();
-}
-
 template <QueryTraitsType T>
 class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQuery<T>> {
   class PrivateTag {};
@@ -2770,10 +2748,15 @@ class PgClientSession::Impl {
       CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    auto tables_future = GetTablesAsync(table_cache(), table_ids);
-    RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
-    RETURN_NOT_OK(precondition_waiter(data->req.sequence_num(), deadline));
-    return DoPerform(tables_future.get(), data, deadline);
+    auto tables_res = table_cache().GetTables(table_ids, deadline);
+    // To avoid waiting by further requests for predecessor make sure request is registered.
+    // In case of table lookup failure request is not going to be processed, so no reasons to wait
+    // for appropriate preconditions till request's deadline.
+    const auto status = precondition_waiter(
+        data->req.sequence_num(), tables_res.ok() ? deadline : CoarseMonoClock::Now());
+    RETURN_NOT_OK(tables_res);
+    RETURN_NOT_OK(status);
+    return DoPerform(*tables_res, data, deadline);
   }
 
   Status DoHandleSharedExchangeQuery(
