@@ -44,7 +44,17 @@ func SetupFederationCommand(parentCmd *cobra.Command) {
 	parentCmd.AddCommand(federationCmd)
 }
 
+// ociTokenHandler also writes a failure to stderr: the federation task shows only a failed step's
+// stderr, while the root command reports errors on stdout.
 func ociTokenHandler(cmd *cobra.Command, args []string) error {
+	err := refreshOciToken(cmd)
+	if err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), err)
+	}
+	return err
+}
+
+func refreshOciToken(cmd *cobra.Command) error {
 	identityDomainURL, err := cmd.Flags().GetString("identity-domain-url")
 	if err != nil {
 		return err
