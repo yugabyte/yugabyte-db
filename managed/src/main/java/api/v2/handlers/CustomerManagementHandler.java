@@ -22,16 +22,12 @@ import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
-import io.ebean.annotation.Transactional;
+import io.ebean.Transaction;
 import org.apache.commons.validator.routines.EmailValidator;
 import play.mvc.Http;
 
 @Singleton
 public class CustomerManagementHandler {
-
-  // Key of the transaction-scoped advisory lock that serializes registrations. Without it, two
-  // concurrent first registrations both see no customers and both create a SuperAdmin.
-  private static final long REGISTRATION_LOCK_KEY = 0x5942415265676973L;
 
   private final Config config;
   private final RuntimeConfGetter confGetter;
@@ -53,53 +49,54 @@ public class CustomerManagementHandler {
     this.userService = userService;
   }
 
-  @Transactional
   public CustomerRegistration registerCustomer(
       Http.Request request, CustomerRegistrationSpec spec) {
     if (!EmailValidator.getInstance(true /* allowLocal */).isValid(spec.getEmail())) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid email: " + spec.getEmail());
     }
 
-    DB.sqlQuery("SELECT pg_advisory_xact_lock(:key)")
-        .setParameter("key", REGISTRATION_LOCK_KEY)
-        .findOne();
-    boolean firstCustomer = Customer.find.query().findCount() == 0;
-    if (!firstCustomer) {
-      if (!config.getBoolean("yb.multiTenant")) {
-        throw new PlatformServiceException(
-            CONFLICT, "A customer is already registered on this single-tenant YBA instance");
-      }
-      if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
-        throw new PlatformServiceException(
-            CONFLICT, "A customer is already registered on this SSO-enabled YBA instance");
-      }
-      if (!tokenAuthenticator.superAdminAuthentication(request)) {
-        if (tokenAuthenticator.getCurrentAuthenticatedUser(request) == null) {
-          throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
+    // Explicit, because ebean.mf enhances @Transactional only under com.yugabyte.yw. The
+    // registration lock, the checks and the inserts must share this transaction.
+    try (Transaction txn = DB.beginTransaction()) {
+      boolean firstCustomer = customerRegistrationHandler.lockAndCountCustomers() == 0;
+      if (!firstCustomer) {
+        if (!config.getBoolean("yb.multiTenant")) {
+          throw new PlatformServiceException(
+              CONFLICT, "A customer is already registered on this single-tenant YBA instance");
         }
-        throw new PlatformServiceException(
-            FORBIDDEN, "Only SuperAdmins can register additional customers");
+        if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
+          throw new PlatformServiceException(
+              CONFLICT, "A customer is already registered on this SSO-enabled YBA instance");
+        }
+        if (!tokenAuthenticator.superAdminAuthentication(request)) {
+          if (tokenAuthenticator.getCurrentAuthenticatedUser(request) == null) {
+            throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
+          }
+          throw new PlatformServiceException(
+              FORBIDDEN, "Only SuperAdmins can register additional customers");
+        }
       }
+
+      Users user =
+          customerRegistrationHandler.register(
+              spec.getCode(),
+              spec.getName(),
+              spec.getEmail(),
+              spec.getPassword(),
+              firstCustomer ? Users.Role.SuperAdmin : Users.Role.Admin);
+      String apiToken = user.upsertApiToken();
+      txn.commit();
+
+      // The first registration has no authenticated user to audit; attribute it to the new user.
+      Customer customer = Customer.get(user.getCustomerUUID());
+      RequestContext.putIfAbsent(
+          TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
+
+      return new CustomerRegistration()
+          .customerUuid(customer.getUuid())
+          .userUuid(user.getUuid())
+          .apiToken(apiToken)
+          .apiTokenVersion(user.getApiTokenVersion());
     }
-
-    Users user =
-        customerRegistrationHandler.register(
-            spec.getCode(),
-            spec.getName(),
-            spec.getEmail(),
-            spec.getPassword(),
-            firstCustomer ? Users.Role.SuperAdmin : Users.Role.Admin);
-    String apiToken = user.upsertApiToken();
-
-    // The first registration has no authenticated user to audit; attribute it to the new user.
-    Customer customer = Customer.get(user.getCustomerUUID());
-    RequestContext.putIfAbsent(
-        TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
-
-    return new CustomerRegistration()
-        .customerUuid(customer.getUuid())
-        .userUuid(user.getUuid())
-        .apiToken(apiToken)
-        .apiTokenVersion(user.getApiTokenVersion());
   }
 }

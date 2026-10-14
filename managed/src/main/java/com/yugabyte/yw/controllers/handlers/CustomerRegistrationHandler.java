@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import db.migration.default_.common.R__Sync_System_Roles;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
@@ -26,6 +27,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Singleton
 public class CustomerRegistrationHandler {
+
+  // Key of the advisory lock that serializes registrations.
+  private static final long REGISTRATION_LOCK_KEY = 0x5942415265676973L;
 
   private final PasswordPolicyService passwordPolicyService;
   private final AlertDestinationService alertDestinationService;
@@ -48,6 +52,22 @@ public class CustomerRegistrationHandler {
     this.roleBindingUtil = roleBindingUtil;
     this.confGetter = confGetter;
     this.paCollectorSync = paCollectorSync;
+  }
+
+  /**
+   * Takes the registration lock and returns the number of customers. The lock is held until the
+   * caller's transaction ends, so the caller must check the count and create the customer in that
+   * same transaction. Without it, two concurrent first registrations both count zero customers and
+   * both create a SuperAdmin.
+   */
+  public int lockAndCountCustomers() {
+    if (DB.currentTransaction() == null) {
+      throw new IllegalStateException("Customer registration must run in a transaction");
+    }
+    DB.sqlQuery("SELECT pg_advisory_xact_lock(:key)")
+        .setParameter("key", REGISTRATION_LOCK_KEY)
+        .findOne();
+    return Customer.find.query().findCount();
   }
 
   /**

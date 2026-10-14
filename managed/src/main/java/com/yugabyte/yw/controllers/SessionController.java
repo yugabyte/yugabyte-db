@@ -701,7 +701,7 @@ public class SessionController extends AbstractPlatformController {
         formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
     boolean multiTenant = config.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    int customerCount = Customer.getAll().size();
+    int customerCount = customerRegistrationHandler.lockAndCountCustomers();
     if (!multiTenant && customerCount >= 1) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
