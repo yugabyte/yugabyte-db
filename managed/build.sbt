@@ -160,7 +160,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "org.postgresql" % "postgresql" % "42.7.13",
-  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.5.38",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
