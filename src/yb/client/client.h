@@ -729,12 +729,14 @@ class YBClient {
       const ReplicationSlotName& replication_slot_name,
       std::unordered_map<uint32_t, PgReplicaIdentity>* replica_identities);
 
+  // xcluster_bootstrap_tablet_ids: see master::XClusterStreamBootstrapInfoPB.
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       StdStatusCallback callback,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr,
+      std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids = nullptr);
 
   // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
   Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
@@ -893,7 +895,7 @@ class YBClient {
       std::vector<master::TabletLocationsPB>* locations = nullptr);
 
   Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
-      const std::vector<TabletId>& tablet_ids);
+      const std::vector<TabletId>& tablet_ids, bool include_hidden = false);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.

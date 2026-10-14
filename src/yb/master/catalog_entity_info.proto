@@ -701,6 +701,18 @@ message SysCDCStreamEntryPB {
   // never consumed by the target, they only pin the source WAL at the table's creation point so
   // that an in flight DDL can be retried.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
+
+  // Set on INITIATED xCluster streams once their checkpoint has been written to cdc_state, and
+  // cleared when the stream turns ACTIVE.
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
+}
+
+message XClusterStreamBootstrapInfoPB {
+  // The source tablets whose cdc_state rows the stream's checkpoint wrote. The target starts
+  // polling from exactly these tablets, which may since have been split (hidden), so that it
+  // replicates their WAL up to the SPLIT_OP before moving on to the children. A tablet's start op
+  // id is its cdc_state checkpoint.
+  repeated bytes checkpointed_tablet_ids = 1;
 }
 
 

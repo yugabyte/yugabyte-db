@@ -1796,11 +1796,12 @@ void YBClient::GetCDCStream(
     std::shared_ptr<TableId> table_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     StdStatusCallback callback,
-    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
+    std::shared_ptr<bool> xcluster_use_target_applied_filter,
+    std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetCDCStream(
       this, stream_id, table_id, options, deadline, std::move(callback),
-      std::move(xcluster_use_target_applied_filter));
+      std::move(xcluster_use_target_applied_filter), std::move(xcluster_bootstrap_tablet_ids));
 }
 
 Result<std::vector<CDCSDKStreamInfo>> YBClient::ListCDCSDKStreams() {
@@ -2427,12 +2428,15 @@ Status YBClient::GetTablets(const YBTableName& table_name,
 }
 
 Result<yb::master::GetTabletLocationsResponsePB> YBClient::GetTabletLocations(
-    const std::vector<TabletId>& tablet_ids) {
+    const std::vector<TabletId>& tablet_ids, bool include_hidden) {
   GetTabletLocationsRequestPB req;
   GetTabletLocationsResponsePB resp;
   req.mutable_tablet_ids()->Reserve(static_cast<int>(tablet_ids.size()));
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
+  }
+  if (include_hidden) {
+    req.set_include_hidden(true);
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletLocations);
 

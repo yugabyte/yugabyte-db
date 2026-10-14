@@ -20,6 +20,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -30,6 +31,9 @@
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -1032,6 +1036,27 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
   }
 
   return PostSetUp();
+}
+
+Status XClusterYsqlTestBase::SplitTabletsOnce(Cluster& cluster, const TableId& table_id) {
+  auto* mini_cluster = cluster.mini_cluster_.get();
+  RETURN_NOT_OK(mini_cluster->FlushTablets());
+  auto& catalog_manager = VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager();
+  const auto peers = ListTableActiveTabletLeadersPeers(mini_cluster, table_id);
+  SCHECK(!peers.empty(), IllegalState, Format("Table $0 has no active tablets", table_id));
+  for (const auto& peer : peers) {
+    RETURN_NOT_OK(catalog_manager.SplitTablet(
+        peer->tablet_id(), master::ManualSplit::kTrue, mini_cluster->GetSplitFactor(),
+        catalog_manager.GetLeaderEpochInternal()));
+  }
+
+  const auto expected_num_tablets = peers.size() * mini_cluster->GetSplitFactor();
+  return LoggedWaitFor(
+      [mini_cluster, &table_id, expected_num_tablets]() -> Result<bool> {
+        return ListTableActiveTabletLeadersPeers(mini_cluster, table_id).size() ==
+               expected_num_tablets;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), Format("Wait for tablets of $0 to split", table_id));
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(

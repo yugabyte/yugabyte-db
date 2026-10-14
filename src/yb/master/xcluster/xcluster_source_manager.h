@@ -171,6 +171,13 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& source_table_ids);
 
+  // Records, on each INITIATED stream, the tablets whose cdc_state checkpoints were just written
+  // for it. Streams that are not INITIATED are skipped, since their target has already mapped its
+  // tablets. Every code path that writes xCluster checkpoints to cdc_state for an INITIATED stream
+  // must call this after the write succeeds, otherwise the stream keeps blocking tablet splits.
+  Status RecordXClusterStreamBootstrapInfo(
+      const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
+
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
       NamespaceId namespace_filter) const;
 
@@ -236,14 +243,29 @@ class XClusterSourceManager {
 
   // Checkpoint the xCluster stream to the given location. Invokes callback with true if bootstrap
   // is required, and false is bootstrap is not required.
+  // op0_tablet_ids is only valid with kOpId0; see CheckpointStreamsToOp0.
   Status CheckpointXClusterStreams(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
       StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch,
-      bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback);
+      bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback,
+      const std::vector<TabletId>& op0_tablet_ids = {});
 
+  // Checkpoints the streams to OpId 0 and records the checkpointed tablets on INITIATED streams.
+  // By default the table's current tablets are checkpointed. tablet_ids overrides that with the
+  // tablets of an earlier checkpoint of the same table (which may since have been split); all
+  // table_streams must then belong to one table.
   Status CheckpointStreamsToOp0(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-      StdStatusCallback user_callback);
+      const LeaderEpoch& epoch, StdStatusCallback user_callback,
+      const std::vector<TabletId>& tablet_ids = {});
+
+  // Tablets recorded by RecordXClusterStreamBootstrapInfo, or empty if there are none.
+  Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
+
+  // The tablets must be tablets of the table (hidden ones included) that together cover its whole
+  // key range exactly once.
+  Status ValidateBootstrapTablets(const TableId& table_id, const std::vector<TabletId>& tablet_ids)
+      const;
 
   Status SetWALRetentionOnTables(const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
 
@@ -266,7 +288,9 @@ class XClusterSourceManager {
       const std::vector<CDCStreamInfoPtr>& outbound_streams,
       std::vector<cdc::CDCStateTableKey>& entries_to_delete);
 
-  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
+  // A bootstrapping (INITIATED) stream blocks splits of its table unless it has recorded its
+  // bootstrap tablets, which the target then starts from, and splits during bootstrap are enabled.
+  bool DoesTableHaveBootstrappingStreamThatBlocksSplit(const TableId& table_id) const
       EXCLUDES(tables_to_stream_map_mutex_);
 
   Status SetupDDLReplicationExtension(

@@ -56,6 +56,10 @@ class XClusterProducerBootstrap {
 
   Status UpdateCdcStateTableWithCheckpoints();
 
+  // Must run after UpdateCdcStateTableWithCheckpoints. Tells the master which tablets were
+  // checkpointed for each stream, which lets their tables split while the streams are INITIATED.
+  Status RecordStreamBootstrapInfo();
+
   void PrepareResponse();
 
   Result<bool> IsBootstrapRequired();
