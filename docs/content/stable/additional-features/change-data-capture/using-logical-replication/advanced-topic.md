@@ -17,7 +17,20 @@ This section explores a range of topics designed to provide deeper insights and 
 
 ## Schema evolution
 
-A change in the schema of the tables (ALTER TABLE) being streamed is transparently handled by the database without manual intervention.
+Logical replication keeps streaming while the schema of the published tables, or the publication itself, changes. You do not drop or recreate the replication slot. The following table summarizes what is supported in each release and how the behavior compares with PostgreSQL.
+
+| Change | v2024.2 to v2025.2 | v2026.1 and later | PostgreSQL |
+| :--- | :--- | :--- | :--- |
+| `ALTER TABLE` without a table rewrite (for example, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`) | Streamed. The client receives the new schema before the first change that uses it. See [Column changes](#column-changes). | Same. | Same. |
+| `ALTER TABLE ... REPLICA IDENTITY` | No effect on existing slots. A slot uses the replica identity in effect when the slot was created. See [Replica identity](../key-concepts/#replica-identity). | Same. | Takes effect immediately. |
+| `ALTER PUBLICATION ... ADD TABLE` or `DROP TABLE`, or a new table in a `FOR ALL TABLES` publication | Applied at the next [periodic refresh](#periodic-publication), 15 minutes by default. | Applied at commit time. See [Implicit publication](#implicit-publication). | Applied at commit time. |
+| `ALTER TABLE` with a [table rewrite](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (for example, `ALTER TYPE`, `ADD PRIMARY KEY`, `ADD COLUMN` with a volatile `DEFAULT`) | Blocked with an error. | Non-colocated tables: allowed; existing rows are streamed again. Colocated tables: blocked. See [Streaming DDLs causing table rewrite](#streaming-ddls-causing-table-rewrite). | Allowed; existing rows are not streamed again. |
+| `TRUNCATE` | Blocked with an error. | Non-colocated tables: allowed; no truncate record is sent. Colocated tables: blocked. | Allowed; a truncate record is sent. |
+| `DROP TABLE` | Not supported. The table's data is deleted immediately, and changes not yet streamed are lost. | Allowed. Changes committed before the drop are streamed, then the table leaves the stream. | Allowed. Changes committed before the drop are streamed. |
+
+### Column changes
+
+A change to the columns of a streamed table is handled by the database without manual intervention. The replication protocol has no separate DDL message. As in PostgreSQL, the output plugin sends the table's updated relation metadata (the `Relation` message in pgoutput and yboutput) before the first change that uses the new schema. Changes committed before the `ALTER TABLE` are decoded with the old schema.
 
 This is illustrated in the following example. The client used for the example is [pg_recvlogical](../../../../explore/change-data-capture/#try-it-out).
 
@@ -48,7 +61,7 @@ This is illustrated in the following example. The client used for the example is
     INSERT INTO demo_table VALUES (2);
     ```
 
-    pg_recvlogical receives the inserts and prints it on the console.
+    pg_recvlogical receives the inserts and prints them on the console.
 
     ```output
     BEGIN 2
@@ -59,7 +72,7 @@ This is illustrated in the following example. The client used for the example is
     COMMIT 3
     ```
 
-1. Add a new column to the `demo_table` and insert some more rows.
+1. Add a new column to `demo_table` and insert some more rows.
 
     ```sql
     ALTER TABLE demo_table ADD COLUMN address TEXT;
@@ -67,14 +80,14 @@ This is illustrated in the following example. The client used for the example is
     INSERT INTO demo_table VALUES (4, 'address2');
     ```
 
-    Without any manual intervention, pg_recvlogical receives the inserts with the new schema and prints it on the console.
+    Without any manual intervention, pg_recvlogical receives the inserts with the new schema and prints them on the console.
 
     ```output
     BEGIN 4
-    TABLE public.demo_table: INSERT: id[integer]:3 col_text[text]:'address1'
+    TABLE public.demo_table: INSERT: id[integer]:3 address[text]:'address1'
     COMMIT 4
     BEGIN 5
-    TABLE public.demo_table: INSERT: id[integer]:4 col_text[text]:'address2'
+    TABLE public.demo_table: INSERT: id[integer]:4 address[text]:'address2'
     COMMIT 5
     ```
 
@@ -113,8 +126,6 @@ As the publication was created for ALL TABLES, ALTER PUBLICATION is not required
 
 ### Implicit publication
 
-Available in v2026.1 and later.
-
 When implicit publication is enabled (the default), changes to a publication are reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed. This behavior matches PostgreSQL. (Implicit publication applies only to the logical replication model of CDC.)
 
 Regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
@@ -130,7 +141,7 @@ ALTER PUBLICATION pub DROP TABLE employees;
 INSERT INTO employees VALUES (1343, 'Jane Doe'); -- This will NOT be captured by CDC
 ```
 
-For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#publication-change-detection) in the logical replication architecture documentation.
+For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#detecting-publication-changes) in the logical replication architecture documentation.
 
 Implicit publication is controlled by the following flags. Set them on both YB-Master and YB-TServer.
 
@@ -141,7 +152,7 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 ### Periodic publication
 
-If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. (This is also the behavior in versions earlier than v2026.1.) Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
+If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
 
 You manage the refresh interval using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case. The default is 15 minutes (900 seconds).
 
@@ -171,24 +182,38 @@ If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you s
 
 ## Streaming DDLs causing table rewrite
 
-By default (v2026.1 and later), you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. When a DDL causes a table rewrite, logical replication detects it, sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.
+A table rewrite replaces the table's tablets with new ones. `TRUNCATE` and `DROP TABLE` are handled by the same mechanism as an `ALTER TABLE` that [rewrites the table](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite). On a _non-colocated_ table in a database with active logical replication, the DDL is allowed and the replication slots stay valid:
 
-For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
+1. The old tablets are hidden rather than deleted.
+1. Logical replication keeps streaming from the hidden tablets until every change committed before the DDL has been sent.
+1. Streaming switches to the new tablets. For `DROP TABLE`, the table leaves the stream.
+1. The hidden tablets are deleted after every replication slot in the database has acknowledged the changes committed before the DDL. A lagging consumer delays reclaiming this storage.
 
-This feature is controlled by the following flag. Set the flag on both YB-Master and YB-TServer.
+For architectural details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
+
+### What the client receives
+
+- **Rewriting `ALTER TABLE`**: the updated relation metadata, as for any [column change](#column-changes), followed by every existing row streamed again from the new tablets. Consumers must tolerate rows they have already received, for example by applying inserts as upserts. Tracked in {{<issue 31636>}}.
+- **`TRUNCATE`**: no truncate record. Changes committed before the truncate that were not yet streamed are delivered first, followed by changes made after the truncate. The consumer cannot tell where the truncate happened, so an insert after the truncate that reuses a primary key arrives as an insert of a key the consumer already holds. Tracked in {{<issue 29674>}}.
+- **`DROP TABLE`**: changes committed before the drop, after which no further records for the table are sent.
+
+### Colocated tables
+
+Rewriting `ALTER TABLE` and `TRUNCATE` on a _colocated_ table are blocked with an error while logical replication is active on the database. To perform such a DDL, drop the replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. Tracked in {{<issue 31908>}}.
+
+### Slots created with periodic publication refresh
+
+A replication slot created while [implicit publication](#implicit-publication) was disabled, including any slot created before an upgrade to v2026.1, detects publication changes by periodic refresh. While such a slot exists on a table, rewriting `ALTER TABLE` and `TRUNCATE` on that table are blocked with an error that names the mechanism. To lift the restriction, drop and recreate those slots. Use [yb-admin list_cdc_streams](../../../../admin/yb-admin/#list-cdc-streams) to find streams whose `detect_publication_changes_implicitly` is not `true`.
+
+### Flags
+
+Set these flags on both YB-Master and YB-TServer.
 
 | Flag | Details |
 | :--- | :--- |
-| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (the default), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. When set to `false`, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1); to perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
-
-<!-- This is an auto-flag, so commenting it out
-cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. -->
-
-### Unsupported scenarios
-
-- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in {{<issue 29674>}}.
-- When a DDL causes a table rewrite, existing data is re-written to new tablets. CDC re-sends this existing data again after the table rewrite. Tracked in {{<issue 31636>}}.
-- Streaming DDLs that cause table rewrites is not supported for _colocated_ tables when CDC is enabled. Tracked in {{<issue 31908>}}.
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | Default `true`. When `false`, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error on tables with active logical replication; to perform such a DDL, drop the replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
+| [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-master/#enable-truncate-cdcsdk-table) | Default `false`. When `true`, `TRUNCATE` is allowed on tables with an active stream regardless of the checks above. |
+| cdc_enable_dynamic_schema_changes | Auto flag promoted when an upgrade is finalized. Until it is promoted, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error. |
 
 ## Initial snapshot
 
