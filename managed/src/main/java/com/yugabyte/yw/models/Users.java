@@ -553,11 +553,18 @@ public class Users extends Model {
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null
-          && version != -1
-          && apiTokenVersion != null
-          && !version.equals(apiTokenVersion)) {
-        throw new PlatformServiceException(versionMismatchStatus, "API token version has changed");
+      if (version != null && version != -1) {
+        // This instance was loaded before the lock was taken, so compare against the stored
+        // version.
+        // Otherwise two rotations that both loaded version N would both pass, and the second would
+        // silently replace the first one's token.
+        if (uuid != null) {
+          refresh();
+        }
+        if (apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+          throw new PlatformServiceException(
+              versionMismatchStatus, "API token version has changed");
+        }
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
       apiToken = Users.pbkdf2Hasher.hash(apiTokenUnhashed);

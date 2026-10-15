@@ -13,12 +13,14 @@ import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -80,9 +82,13 @@ public class CustomerApiTokenApiTest extends FakeDBApplication {
     assertEquals(customerUuid.toString(), json.get("customer_uuid").asText());
     assertEquals(userUuid.toString(), json.get("user_uuid").asText());
     assertEquals(apiTokenVersion + 1, json.get("api_token_version").asLong());
-    // The previous token stops working.
+    // The previous token stops working, including for this endpoint.
     assertNull(Users.authWithApiToken(apiToken));
     assertEquals(userUuid, Users.authWithApiToken(newToken).getUuid());
+    assertUnauthorized(
+        assertPlatformException(
+            () -> generate(customerUuid, TokenAuthenticator.API_TOKEN_HEADER, apiToken, null)),
+        "Unable to authenticate user");
     // One entry for the registration, one for the rotation.
     assertAuditEntry(2, customerUuid);
   }
@@ -153,5 +159,19 @@ public class CustomerApiTokenApiTest extends FakeDBApplication {
 
     assertForbidden(result, "User does not belong to customer " + other.getUuid());
     assertEquals(userUuid, Users.authWithApiToken(apiToken).getUuid());
+  }
+
+  @Test
+  public void concurrentRotationsFromTheSameVersionConflict() {
+    // Both requests loaded the user at the same version before either rotated.
+    Users first = Users.getOrBadRequest(userUuid);
+    Users second = Users.getOrBadRequest(userUuid);
+    String firstToken = first.rotateApiToken(apiTokenVersion);
+
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> second.rotateApiToken(apiTokenVersion));
+
+    assertEquals(Http.Status.CONFLICT, e.getHttpStatus());
+    assertEquals(userUuid, Users.authWithApiToken(firstToken).getUuid());
   }
 }
