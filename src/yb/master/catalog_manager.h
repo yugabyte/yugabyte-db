@@ -1063,22 +1063,34 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
-  // Loops through the table's placement infos and populates the corresponding config from
-  // each placement.
-  Status HandlePlacementUsingReplicationInfo(
-      const ReplicationInfoPB& replication_info,
-      const TSDescriptorVector& all_ts_descs,
-      consensus::RaftConfigPB* config,
-      CMPerTableLoadState* per_table_state,
-      CMGlobalLoadState* global_state);
+  // Tservers one PlacementInfoPB of a table allows its replicas on. Built once per table and
+  // reused for every tablet of that table; the bool vectors are indexed like the ts_descs the
+  // candidates were built from.
+  struct PlacementCandidates {
+    struct Block {
+      size_t min_num_replicas;
+      // Effective maximum, a hard cap on replicas placed in the block.
+      size_t max_num_replicas;
+      size_t num_allowed;
+      std::vector<bool> allowed;
+    };
+    consensus::PeerMemberType member_type;
+    size_t nreplicas;
+    // Empty when the placement has no placement blocks.
+    std::vector<Block> blocks;
+    // Union of the blocks, or every tserver in the placement when there are none.
+    size_t num_allowed;
+    std::vector<bool> all_allowed;
+  };
 
-  // Handles the config creation for a given placement.
-  Status HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
-                                           const TSDescriptorVector& ts_descs,
-                                           consensus::PeerMemberType member_type,
-                                           consensus::RaftConfigPB* config,
-                                           CMPerTableLoadState* per_table_state,
-                                           CMGlobalLoadState* global_state);
+  // Resolves and validates the table's replication info and builds the candidates for its live
+  // placement and each read replica placement.
+  Result<std::vector<PlacementCandidates>> BuildPlacementCandidates(
+      const TableInfoPtr& table, const TSDescriptorVector& ts_descs);
+
+  Result<PlacementCandidates> BuildPlacementCandidates(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs,
+      consensus::PeerMemberType member_type);
 
   // Populates ts_descs with all tservers belonging to a certain placement.
   void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
@@ -2238,13 +2250,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& table_id, const TabletInfos& tablets, const LeaderEpoch& epoch,
       CMGlobalLoadState* global_load_state);
 
-  // Select a tablet server from 'ts_descs' on which to place a new replica.
-  // Any tablet servers in 'excluded' are not considered.
-  // REQUIRES: 'ts_descs' must include at least one non-excluded server.
-  std::shared_ptr<TSDescriptor> SelectReplica(
-      const TSDescriptorVector& ts_descs,
-      std::set<TabletServerId>* excluded,
-      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
+  // Index of the least loaded tserver that is in 'allowed' and not in 'excluded', if any.
+  static std::optional<size_t> SelectReplica(
+      const std::vector<bool>& allowed, const std::vector<bool>& excluded,
+      const CMPerTableLoadState& per_table_state);
 
   // Select and assign a tablet server as the protege 'config'. This protege is selected from the
   // set of tservers in 'global_state' that have the lowest current protege load.
@@ -2252,39 +2261,33 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfoPtr& tablet, consensus::RaftConfigPB* config,
       CMGlobalLoadState* global_state);
 
-  // Select N Replicas from online tablet servers (as specified by
-  // 'ts_descs') for the specified tablet and populate the consensus configuration
-  // object. If 'ts_descs' does not specify enough online tablet
-  // servers to select the N replicas, return Status::InvalidArgument.
+  // Fills the tablet's consensus configuration with replicas chosen from 'candidates', which
+  // must have been built from 'ts_descs'.
   //
   // This method is called by "ProcessPendingAssignmentsPerTable()".
   Status SelectReplicasForTablet(
-      const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
-      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
-
-  // Select N Replicas from the online tablet servers that have been chosen to respect the
-  // placement information provided. Populate the consensus configuration object with choices and
-  // also update the set of selected tablet servers, to not place several replicas on the same TS.
-  // member_type indicated what type of replica to select for.
-  //
-  // This method is called by "SelectReplicasForTablet".
-  void SelectReplicas(
-      const TSDescriptorVector& ts_descs,
-      size_t nreplicas, consensus::RaftConfigPB* config,
-      std::set<TabletServerId>* already_selected_ts,
-      consensus::PeerMemberType member_type,
-      CMPerTableLoadState* per_table_state,
+      const TSDescriptorVector& ts_descs, const std::vector<PlacementCandidates>& candidates,
+      const TabletInfoPtr& tablet, CMPerTableLoadState* per_table_state,
       CMGlobalLoadState* global_state);
 
-  // Adds 'ts' as a replica of the given member_type to 'config' and updates the selection and
-  // load bookkeeping accordingly. Used by SelectReplicas for each tserver it picks, and directly
-  // when the caller has already chosen the tservers.
+  // Places one placement's replicas: the minimum for each placement block first, then the rest
+  // anywhere in the placement.
+  Status SelectReplicasForPlacement(
+      const TSDescriptorVector& ts_descs, const PlacementCandidates& placement,
+      consensus::RaftConfigPB* config, CMPerTableLoadState* per_table_state);
+
+  // Adds 'nreplicas' peers of 'member_type' to 'config', least loaded tservers in 'allowed'
+  // first, skipping and then marking the ones in 'already_selected'.
+  Status SelectReplicas(
+      const TSDescriptorVector& ts_descs, const std::vector<bool>& allowed, size_t nreplicas,
+      consensus::RaftConfigPB* config, std::vector<bool>* already_selected,
+      consensus::PeerMemberType member_type, CMPerTableLoadState* per_table_state);
+
+  // Adds tserver 'idx' as a replica of 'member_type' to 'config' and updates the load bookkeeping.
   void AddReplicaToConfig(
-      const std::shared_ptr<TSDescriptor>& ts, consensus::RaftConfigPB* config,
-      std::set<TabletServerId>* already_selected_ts,
-      consensus::PeerMemberType member_type,
-      CMPerTableLoadState* per_table_state,
-      CMGlobalLoadState* global_state);
+      const TSDescriptorVector& ts_descs, size_t idx, consensus::RaftConfigPB* config,
+      std::vector<bool>* already_selected, consensus::PeerMemberType member_type,
+      CMPerTableLoadState* per_table_state);
 
   void HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
                                    DeferredAssignmentActions* deferred);
