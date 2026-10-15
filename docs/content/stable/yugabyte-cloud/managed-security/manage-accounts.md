@@ -65,6 +65,8 @@ Keep in mind the following when using multiple accounts:
 - To add users to multiple accounts, you must sign in to each account and send an invitation.
 - If multiple accounts are enabled, all users must choose the account to sign into when they sign in.
 
+To change your organization name, navigate to **Organization > Settings** and enter a new name.
+
 ### Add accounts
 
 To add an account:
@@ -104,10 +106,13 @@ To view a summary of billing for all accounts:
 
 - Navigate to **Organization > Billing**.
 
-## Limitations (Early Access)
+The **Billing** page lists all your accounts and the Organization total across all accounts for the current billing period.
 
-This feature is in Early Access. The following limitations apply to the current release; they are being addressed in the GA version.
+You can view different billing periods or a custom range using the billing period dropdown menu.
+
+To access the billing for an individual account, in the list, click **...** and choose **View Detailed Breakdown**. This takes you to the account's Billing page.
+
+## Limitations
 
 - **You must contact Yugabyte Support to enable it.** Contact {{% support-cloud %}} to enable multi-account for your organization. Once enabled, the users designated by Yugabyte Support (when enabling the feature) can create and manage accounts in Aeon without further support.
 - **No automation.** Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts. Automation of account lifecycle management is planned for GA.
-- **No organization-level overview.** There is no consolidated view of all accounts, their users, or cross-account activity. An organization management layer with aggregated views is planned for GA.
