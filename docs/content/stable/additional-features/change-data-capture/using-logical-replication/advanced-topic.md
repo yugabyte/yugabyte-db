@@ -24,8 +24,8 @@ Logical replication keeps streaming while the schema of the published tables, or
 | `ALTER TABLE` without a table rewrite (for example, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`) | Streamed. The client receives the new schema before the first change that uses it. See [Column changes](#column-changes). | Same. | Same. |
 | `ALTER TABLE ... REPLICA IDENTITY` | No effect on existing slots. A slot uses the replica identity in effect when the slot was created. See [Replica identity](../key-concepts/#replica-identity). | Same. | Takes effect immediately. |
 | `ALTER PUBLICATION ... ADD TABLE` or `DROP TABLE`, or a new table in a `FOR ALL TABLES` publication | Applied at the next [periodic refresh](#periodic-publication), 15 minutes by default. | Applied at commit time. See [Implicit publication](#implicit-publication). | Applied at commit time. |
-| `ALTER TABLE` with a [table rewrite](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (for example, `ALTER TYPE`, `ADD PRIMARY KEY`, `ADD COLUMN` with a volatile `DEFAULT`) | Blocked with an error. | Non-colocated tables: allowed; existing rows are streamed again. Colocated tables: blocked. See [Streaming DDLs causing table rewrite](#streaming-ddls-causing-table-rewrite). | Allowed; existing rows are not streamed again. |
-| `TRUNCATE` | Blocked with an error. | Non-colocated tables: allowed; no truncate record is sent. Colocated tables: blocked. | Allowed; a truncate record is sent. |
+| `ALTER TABLE` with a [table rewrite](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (for example, `ALTER TYPE`, `ADD PRIMARY KEY`, `ADD COLUMN` with a volatile `DEFAULT`) | Blocked with an error. | Non-colocated tables: allowed, unless a slot using [periodic publication](#slots-using-periodic-publication) exists on the table; existing rows are streamed again. Colocated tables: blocked. See [Streaming DDLs causing table rewrite](#streaming-ddls-causing-table-rewrite). | Allowed; existing rows are not streamed again. |
+| `TRUNCATE` | Blocked with an error. | Non-colocated tables: allowed, unless a slot using [periodic publication](#slots-using-periodic-publication) exists on the table; no truncate record is sent. Colocated tables: blocked. | Allowed; a truncate record is sent. |
 | `DROP TABLE` | Not supported. The table's data is deleted immediately, and changes not yet streamed are lost. | Allowed. Changes committed before the drop are streamed, then the table leaves the stream. | Allowed. Changes committed before the drop are streamed. |
 
 ### Column changes
@@ -132,13 +132,15 @@ When the publication changes, a replication stream applies the change to the set
 | Version | Default mode | How to select the other mode |
 | :--- | :--- | :--- |
 | v2024.2 to v2025.2 | Periodic publication | Not available. |
-| v2026.1 and later | Implicit publication | Set [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) to `false` before creating the slot. |
+| v2026.1 and later | Implicit publication, after the upgrade is finalized. | Set [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) to `false` on every YB-Master and YB-TServer and restart them. |
+
+The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
 
 ### Implicit publication
 
 Implicit publication is the mechanism by which a logical replication stream learns that the set of tables in its publication has changed. The stream watches the system catalog as part of the change stream it is already reading, so an `ALTER PUBLICATION`, or the creation of a table in a `FOR ALL TABLES` publication, is detected at the commit time of that statement, in order with the surrounding changes. The stream then starts or stops polling the affected tables from exactly that point. No events from a newly added table are missed, and no events from a dropped table are sent, regardless of how far behind the consumer is. This behavior matches PostgreSQL.
 
-Implicit publication is the default and applies only to the logical replication model of CDC. The alternative, used when it is disabled, is [periodic publication](#periodic-publication), where the stream re-reads the publication's table list on a timer.
+Implicit publication is the default and applies only to the logical replication model of CDC. The alternative, used when it is disabled, is [periodic publication](#periodic-publication), where the stream re-reads the publication's table list on a timer. A slot's mode is fixed when the slot is created: a slot created with implicit publication cannot stream while the flag is `false`, and a slot created with periodic publication keeps it after the flag is set to `true`.
 
 For example:
 
@@ -164,7 +166,7 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 Periodic publication is the mechanism by which a logical replication stream learns of publication changes when [implicit publication](#implicit-publication) is disabled. The stream does not watch the catalog. Instead, on a fixed timer it re-reads the publication's table list, compares it with the list it is polling, and starts or stops polling the tables that differ. A change to the publication therefore takes effect only at the next refresh, not at the commit time of the `ALTER PUBLICATION`, and rows written to a newly added table before that refresh are not streamed. This behavior differs from PostgreSQL.
 
-Periodic publication is used when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, and by any replication slot that was created while it was `false`.
+Periodic publication is used by every replication slot created while [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) was `false`, or before an upgrade to v2026.1 was finalized. Setting the flag to `true` later does not change those slots.
 
 You manage the refresh interval using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case. The default is 15 minutes (900 seconds).
 
@@ -213,19 +215,17 @@ For architectural details, see [Table rewrite and DROP TABLE handling](../../../
 
 Rewriting `ALTER TABLE` and `TRUNCATE` on a _colocated_ table are blocked with an error while logical replication is active on the database. To perform such a DDL, drop the replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. Tracked in {{<issue 31908>}}.
 
-### Slots created with periodic publication refresh
+### Slots using periodic publication
 
-A replication slot created while [implicit publication](#implicit-publication) was disabled, including any slot created before an upgrade to v2026.1, detects publication changes by periodic refresh. While such a slot exists on a table, rewriting `ALTER TABLE` and `TRUNCATE` on that table are blocked with an error that names the mechanism. To lift the restriction, drop and recreate those slots. Use [yb-admin list_cdc_streams](../../../../admin/yb-admin/#list-cdc-streams) to find streams whose `detect_publication_changes_implicitly` is not `true`.
+A replication slot created while [implicit publication](#implicit-publication) was disabled, or before an upgrade to v2026.1 was finalized (including slots created on v2026.1 binaries before the `cdc_enable_dynamic_schema_changes` auto flag was promoted), uses [periodic publication](#periodic-publication) for its lifetime. While such a slot exists on a table, rewriting `ALTER TABLE` and `TRUNCATE` on that table are blocked with an error that names the mechanism. To lift the restriction, drop and recreate those slots. Use [yb-admin list_cdc_streams](../../../../admin/yb-admin/#list-cdc-streams) to find streams whose `detect_publication_changes_implicitly` is not `true`.
 
 ### Flags
 
-Set these flags on both YB-Master and YB-TServer.
-
 | Flag | Details |
 | :--- | :--- |
-| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | Default `true`. When `false`, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error on tables with active logical replication; to perform such a DDL, drop the replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
-| [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-master/#enable-truncate-cdcsdk-table) | Default `false`. When `true`, `TRUNCATE` is allowed on tables with an active stream regardless of the checks above. |
-| cdc_enable_dynamic_schema_changes | Auto flag promoted when an upgrade is finalized. Until it is promoted, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error. |
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | YB-Master and YB-TServer flag. Default `true`. When `false`, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error on tables with active logical replication, and a dropped table's tablets are not retained for CDC, so changes not yet streamed are lost. To perform a blocked DDL, drop the replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
+| [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-master/#enable-truncate-cdcsdk-table) | YB-Master flag. Default `false`. When `true`, `TRUNCATE` is allowed on tables with an active stream regardless of the checks above. |
+| cdc_enable_dynamic_schema_changes | Auto flag, not set by users; promoted when an upgrade to v2026.1 is finalized. Until it is promoted, rewriting `ALTER TABLE` and `TRUNCATE` are blocked with an error, and slots created in that window use [periodic publication](#slots-using-periodic-publication). |
 
 ## Initial snapshot
 
