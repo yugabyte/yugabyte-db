@@ -17,16 +17,7 @@ This section explores a range of topics designed to provide deeper insights and 
 
 ## Schema evolution
 
-Logical replication keeps streaming while the schema of the published tables, or the publication itself, changes. You do not drop or recreate the replication slot. The following table summarizes what is supported in each release and how the behavior compares with PostgreSQL.
-
-| Change | v2024.2 to v2025.2 | v2026.1 and later | PostgreSQL |
-| :--- | :--- | :--- | :--- |
-| `ALTER TABLE` without a table rewrite (for example, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`) | Streamed. The client receives the new schema before the first change that uses it. See [Column changes](#column-changes). | Same. | Same. |
-| `ALTER TABLE ... REPLICA IDENTITY` | No effect on existing slots. A slot uses the replica identity in effect when the slot was created. See [Replica identity](../key-concepts/#replica-identity). | Same. | Takes effect immediately. |
-| `ALTER PUBLICATION ... ADD TABLE` or `DROP TABLE`, or a new table in a `FOR ALL TABLES` publication | Applied at the next [periodic refresh](#periodic-publication), 15 minutes by default. | Applied at commit time. See [Implicit publication](#implicit-publication). | Applied at commit time. |
-| `ALTER TABLE` with a [table rewrite](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (for example, `ALTER TYPE`, `ADD PRIMARY KEY`, `ADD COLUMN` with a volatile `DEFAULT`) | Blocked with an error. | Non-colocated tables: allowed, unless a slot using [periodic publication](#slots-using-periodic-publication) exists on the table; existing rows are streamed again. Colocated tables: blocked. See [Streaming DDLs causing table rewrite](#streaming-ddls-causing-table-rewrite). | Allowed; existing rows are not streamed again. |
-| `TRUNCATE` | Blocked with an error. | Non-colocated tables: allowed, unless a slot using [periodic publication](#slots-using-periodic-publication) exists on the table; no truncate record is sent. Colocated tables: blocked. | Allowed; a truncate record is sent. |
-| `DROP TABLE` | Not supported. The table's data is deleted immediately, and changes not yet streamed are lost. | Allowed. Changes committed before the drop are streamed, then the table leaves the stream. | Allowed. Changes committed before the drop are streamed. |
+Logical replication keeps streaming while the schema of the published tables, or the publication itself, changes. You do not drop or recreate the replication slot. This page describes the current behavior. For how it differs across releases and from PostgreSQL, see [Behavior by release](../behavior-by-release/).
 
 ### Column changes
 
@@ -129,12 +120,7 @@ When the publication changes, a replication stream applies the change to the set
 - **Immediate effect**, called [implicit publication](#implicit-publication). The change takes effect at the commit point of the `ALTER PUBLICATION` or `CREATE TABLE`.
 - **Refresh interval**, called [periodic publication](#periodic-publication). The change takes effect at the next scheduled refresh of the publication's table list.
 
-| Version | Default mode | How to select the other mode |
-| :--- | :--- | :--- |
-| v2024.2 to v2025.2 | Periodic publication | Not available. |
-| v2026.1 and later | Implicit publication, after the upgrade is finalized. | Set [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) to `false` on every YB-Master and YB-TServer and restart them. |
-
-The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
+Implicit publication is the default. [Behavior by release](../behavior-by-release/#publication-change-detection) lists the default in each release. The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
 
 ### Implicit publication
 
