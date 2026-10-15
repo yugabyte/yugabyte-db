@@ -431,8 +431,29 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
     ASSERT_LE(line.size(), 100) << line;
   }
   ASSERT_TRUE(std::regex_search(
-      output, std::regex(R"(alter_universe_replication [^\n]*\.\.\.)")))
+      output, std::regex(R"(alter_universe_replication [^\n]* \.\.\.\n)")))
       << "expected a truncated entry";
+  // A cut must not read as the "]..." repetition syntax: a line ending in " ..." is cut, and a
+  // line ending in a bare "..." is the operation's complete usage.
+  const std::regex line_re(R"(^\s*\d+\. (\S+) (.*)$)");
+  for (const auto& line : StringSplit(output, '\n')) {
+    std::smatch m;
+    if (!line.ends_with("...") || !std::regex_match(line, m, line_re)) {
+      continue;
+    }
+    std::string usage;
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", m[1].str()), &usage, &error));
+    const auto full = StringSplit(usage, '\n').front();
+    const auto prefix = Format("Usage: yb-admin $0 ", m[1].str());
+    ASSERT_TRUE(full.starts_with(prefix)) << full;
+    const auto args = full.substr(prefix.size());
+    if (line.ends_with(" ...")) {
+      ASSERT_GT(args.size(), m[2].str().size() - 4) << line;
+      ASSERT_TRUE(args.starts_with(m[2].str().substr(0, m[2].str().size() - 4))) << line;
+    } else {
+      ASSERT_EQ(args, m[2].str()) << "cut without the \" ...\" marker: " << line;
+    }
+  }
   ASSERT_OK(Subprocess::Call(
       ToStringVector(exe_path, "help", "alter_universe_replication"), &output, &error));
   const auto usage_line = StringSplit(output, '\n').front();
