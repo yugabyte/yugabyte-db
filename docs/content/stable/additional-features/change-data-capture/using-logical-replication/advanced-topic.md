@@ -126,9 +126,9 @@ As the publication was created for ALL TABLES, ALTER PUBLICATION is not required
 
 ### Implicit publication
 
-When implicit publication is enabled (the default), changes to a publication are reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed. This behavior matches PostgreSQL. (Implicit publication applies only to the logical replication model of CDC.)
+Implicit publication is the mechanism by which a logical replication stream learns that the set of tables in its publication has changed. The stream watches the system catalog as part of the change stream it is already reading, so an `ALTER PUBLICATION`, or the creation of a table in a `FOR ALL TABLES` publication, is detected at the commit time of that statement, in order with the surrounding changes. The stream then starts or stops polling the affected tables from exactly that point. No events from a newly added table are missed, and no events from a dropped table are sent, regardless of how far behind the consumer is. This behavior matches PostgreSQL.
 
-Regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
+Implicit publication is the default and applies only to the logical replication model of CDC. The alternative, used when it is disabled, is [periodic publication](#periodic-publication), where the stream re-reads the publication's table list on a timer.
 
 For example:
 
