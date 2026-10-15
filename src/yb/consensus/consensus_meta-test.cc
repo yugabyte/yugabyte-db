@@ -266,6 +266,52 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
   ASSERT_OK(VerifyConsensusState(new_committed_cstate, COMMITTED_QUORUM));
 }
 
+// The cached committed state must track every setter and match ToConsensusStatePB(COMMITTED),
+// including the rule that a leader outside the committed config is not reported.
+TEST_F(ConsensusMetadataTest, TestConsensusStateCache) {
+  vector<string> uuids = { "a", "b", "c" };
+  RaftConfigPB committed_config = BuildConfig(uuids);
+  committed_config.set_committed_op_index(1);
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      &fs_manager_, kTabletId, "a", committed_config, kInitialTerm));
+
+  auto cached = cmeta->GetConsensusStateFromCache();
+  ASSERT_EQ(kInitialTerm, cached.current_term());
+  ASSERT_FALSE(cached.has_leader_uuid());
+  ASSERT_EQ(committed_config.ShortDebugString(), cached.config().ShortDebugString());
+
+  cmeta->set_leader_uuid("b");
+  cmeta->set_current_term(kInitialTerm + 1);
+  cached = cmeta->GetConsensusStateFromCache();
+  ASSERT_EQ(kInitialTerm + 1, cached.current_term());
+  ASSERT_EQ("b", cached.leader_uuid());
+  ASSERT_EQ(cmeta->ToConsensusStatePB(CONSENSUS_CONFIG_COMMITTED).ShortDebugString(),
+            cached.ShortDebugString());
+
+  // A leader that is not a voter in the committed config is not reported.
+  cmeta->set_leader_uuid("z");
+  ASSERT_FALSE(cmeta->GetConsensusStateFromCache().has_leader_uuid());
+
+  // A new committed config that makes the leader a voter again brings it back.
+  uuids.push_back("z");
+  RaftConfigPB new_config = BuildConfig(uuids);
+  new_config.set_committed_op_index(2);
+  cmeta->set_committed_config(new_config);
+  cached = cmeta->GetConsensusStateFromCache();
+  ASSERT_EQ("z", cached.leader_uuid());
+  ASSERT_EQ(new_config.ShortDebugString(), cached.config().ShortDebugString());
+
+  cmeta->clear_leader_uuid();
+  ASSERT_FALSE(cmeta->GetConsensusStateFromCache().has_leader_uuid());
+
+  // Load() rebuilds the cache from disk.
+  ASSERT_OK(cmeta->Flush());
+  std::unique_ptr<ConsensusMetadata> loaded;
+  ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, "a", &loaded));
+  ASSERT_EQ(loaded->ToConsensusStatePB(CONSENSUS_CONFIG_COMMITTED).ShortDebugString(),
+            loaded->GetConsensusStateFromCache().ShortDebugString());
+}
+
 namespace {
 
 // Helper for TestMergeCommittedConsensusStatePB.

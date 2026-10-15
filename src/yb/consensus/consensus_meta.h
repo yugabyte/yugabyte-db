@@ -34,6 +34,7 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -61,49 +62,18 @@ struct CloneSourceInfo {
 
 namespace consensus {
 
-// This class is used to cache the values of consensus state so we don't have to wait for the
-// current consensus state operation to finish before being able to retrieve the values.
-// The fields here are updated atomically but independently so may independently be from before or
-// after the current running consensus config update.
+// Snapshot of the committed consensus state, rebuilt whole on every change so readers never see
+// the term, leader and config from different updates. Readers take no lock.
 class ConsensusStateCache {
  public:
-  RaftConfigPB config() const {
-    SharedLock lock(mutex_);
-    return config_;
+  std::shared_ptr<const ConsensusStatePB> Get() const {
+    return std::atomic_load_explicit(&state_, std::memory_order_acquire);
   }
 
-  void set_config(const RaftConfigPB& config) {
-    std::lock_guard lock(mutex_);
-    config_ = config;
-  }
-
-  std::string leader_uuid() const {
-    SharedLock lock(mutex_);
-    return leader_uuid_;
-  }
-
-  void set_leader_uuid(std::string uuid) {
-    std::lock_guard lock(mutex_);
-    leader_uuid_ = uuid;
-  }
-
-  int64_t current_term() const {
-    SharedLock lock(mutex_);
-    return current_term_;
-  }
-
-  void set_current_term(int64_t term) {
-    std::lock_guard lock(mutex_);
-    current_term_ = term;
-  }
+  void Update(int64_t term, const std::string& leader_uuid, const RaftConfigPB& config);
 
  private:
-  mutable rw_spinlock mutex_;
-
-  // These fields are protected by mutex_.
-  RaftConfigPB config_;
-  std::string leader_uuid_;
-  int64_t current_term_;
+  std::shared_ptr<const ConsensusStatePB> state_ = std::make_shared<ConsensusStatePB>();
 };
 
 // Provides methods to read, write, and persist consensus-related metadata.
@@ -274,6 +244,8 @@ class ConsensusMetadata {
 
   void UpdateRoleAndTermCache();
 
+  void UpdateConsensusStateCache();
+
   // Transient fields.
   // Constants:
   FsManager* const fs_manager_;
@@ -286,10 +258,8 @@ class ConsensusMetadata {
   // RaftConfig used by the peers when there is a pending config change operation.
   RaftConfigPB pending_config_;
 
-  // Committed Consensus Info, stored as a struct for fast read-only access. Contains the
-  // currently committed consensus state, it is not atomic and needs to be locked by its internal
-  // lock before being modified. This cache will not take into account of the currently writing
-  // config change, therefore it could be behind by one committed config change.
+  // Lock-free view of the committed consensus state for readers that must not wait on the
+  // ReplicaState lock. Does not reflect a config change that is still being written.
   ConsensusStateCache committed_consensus_state_cache_;
 
   OpId pending_config_op_id_;
