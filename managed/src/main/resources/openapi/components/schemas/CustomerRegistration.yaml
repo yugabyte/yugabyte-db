@@ -1,0 +1,33 @@
+title: CustomerRegistration
+description: |
+  CustomerRegistration
+
+  Registered customer and the API token of its primary user. Part of CustomerRegistrationResp.
+type: object
+required:
+  - customer_uuid
+  - user_uuid
+  - api_token
+  - api_token_version
+properties:
+  customer_uuid:
+    description: UUID of the registered customer
+    type: string
+    format: uuid
+    readOnly: true
+  user_uuid:
+    description: UUID of the primary user
+    type: string
+    format: uuid
+    readOnly: true
+  api_token:
+    description: 'API token of the primary user, to be sent in the X-AUTH-YW-API-TOKEN header'
+    type: string
+    readOnly: true
+  api_token_version:
+    description: Version of the API token
+    type: integer
+    format: int64
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
