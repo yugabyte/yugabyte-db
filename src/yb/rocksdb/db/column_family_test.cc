@@ -39,11 +39,17 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/priority_thread_pool.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
+DECLARE_uint64(manual_compaction_max_wait_files);
 DECLARE_int32(memstore_arena_size_kb);
 
 using std::atomic;
@@ -2621,6 +2627,131 @@ TEST_F(ColumnFamilyTest, GetColumnFamiliesOptions) {
   DropColumnFamilies({3});
   compare_with({{"default", std::ref(src_d)}});
   Close();
+}
+
+// Uses debug-only sync points to block compactions.
+class ManualCompactionWaitTest : public ColumnFamilyTest {
+ protected:
+  static constexpr int kCompactionTrigger = 4;
+  // Files compacted by the blocked automatic compaction plus the files flushed while the manual
+  // compaction waits.
+  static constexpr uint64_t kFilesWhileWaiting = 2 * kCompactionTrigger;
+
+  // Blocks an automatic compaction, starts a manual compaction that waits behind it, and flushes
+  // enough files to trigger another automatic compaction. Checks whether that automatic
+  // compaction runs while the manual compaction waits, then lets everything finish.
+  void TestAutomaticCompactionWhileManualWaits(
+      uint64_t max_wait_files, bool exclusive, bool expect_automatic_compaction,
+      yb::PriorityThreadPool* thread_pool = nullptr) {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_manual_compaction_max_wait_files) = max_wait_files;
+    const auto kTimeout = yb::MonoDelta::FromSeconds(30 * yb::kTimeMultiplier);
+
+    Open();
+    CreateColumnFamilies({"one"});
+    db_options_.max_background_compactions = 3;
+    db_options_.priority_thread_pool_for_compactions_and_flushes = thread_pool;
+    ColumnFamilyOptions default_cf, one;
+    one.compaction_style = kCompactionStyleUniversal;
+    one.num_levels = 1;
+    one.level0_file_num_compaction_trigger = kCompactionTrigger;
+    Reopen({default_cf, one});
+
+    yb::CountDownLatch first_compaction_blocked(1);
+    yb::CountDownLatch release_first_compaction(1);
+    yb::CountDownLatch manual_compaction_waiting(1);
+    yb::CountDownLatch automatic_compaction_while_waiting(1);
+    std::atomic<int> num_compactions{0};
+
+    auto* sync_point = yb::SyncPoint::GetInstance();
+    sync_point->SetCallBack("DBImpl::BackgroundCompaction:NonTrivial:AfterRun", [&](void*) {
+      if (++num_compactions == 1) {
+        first_compaction_blocked.CountDown();
+        release_first_compaction.Wait();
+      } else if (release_first_compaction.count() > 0) {
+        // The manual compaction cannot run before the first compaction is released.
+        automatic_compaction_while_waiting.CountDown();
+      }
+    });
+    sync_point->SetCallBack("DBImpl::RunManualCompaction()::Conflict", [&](void*) {
+      manual_compaction_waiting.CountDown();
+    });
+    sync_point->EnableProcessing();
+
+    Status manual_status;
+    yb::TestThreadHolder threads;
+    // Unblock and join background work before the callbacks' captures go out of scope, including
+    // when an assertion fails.
+    auto cleanup = yb::ScopeExit([&] {
+      release_first_compaction.CountDown();
+      threads.JoinAll();
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+
+    for (int i = 0; i < kCompactionTrigger; ++i) {
+      ASSERT_NO_FATALS(PutRandomData(1, 10, 1000, /* save= */ true));
+      ASSERT_OK(Flush(1));
+    }
+    ASSERT_TRUE(first_compaction_blocked.WaitFor(kTimeout));
+
+    threads.AddThreadFunctor([this, exclusive, &manual_status] {
+      CompactRangeOptions options;
+      options.exclusive_manual_compaction = exclusive;
+      manual_status = db_->CompactRange(options, handles_[1], nullptr, nullptr);
+    });
+    ASSERT_TRUE(manual_compaction_waiting.WaitFor(kTimeout));
+
+    for (int i = 0; i < kCompactionTrigger; ++i) {
+      ASSERT_NO_FATALS(PutRandomData(1, 10, 1000, /* save= */ true));
+      ASSERT_OK(Flush(1));
+    }
+    if (expect_automatic_compaction) {
+      ASSERT_TRUE(automatic_compaction_while_waiting.WaitFor(kTimeout));
+    }
+
+    release_first_compaction.CountDown();
+    threads.JoinAll();
+    ASSERT_OK(manual_status);
+    ASSERT_NO_FATALS(WaitForCompaction());
+
+    // The first automatic compaction, the manual compaction, and the automatic compaction that ran
+    // while the manual compaction waited, if any.
+    ASSERT_EQ(num_compactions.load(), expect_automatic_compaction ? 3 : 2);
+    ASSERT_NO_FATALS(AssertFilesPerLevel("1", 1));
+    for (const auto& key : keys_) {
+      ASSERT_NE("NOT_FOUND", Get(1, key));
+    }
+  }
+};
+
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(FlagOffBlocksAutomaticCompactions)) {
+  TestAutomaticCompactionWhileManualWaits(
+      /* max_wait_files= */ 0, /* exclusive= */ false, /* expect_automatic_compaction= */ false);
+}
+
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(BelowThresholdBlocksAutomaticCompactions)) {
+  TestAutomaticCompactionWhileManualWaits(
+      kFilesWhileWaiting + 1, /* exclusive= */ false, /* expect_automatic_compaction= */ false);
+}
+
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(AtThresholdRunsAutomaticCompactions)) {
+  TestAutomaticCompactionWhileManualWaits(
+      kFilesWhileWaiting, /* exclusive= */ false, /* expect_automatic_compaction= */ true);
+}
+
+TEST_F(ManualCompactionWaitTest,
+       YB_DEBUG_ONLY_TEST(AtThresholdRunsAutomaticCompactionsWithPriorityThreadPool)) {
+  // Static so that it outlives the DB, which the fixture closes after the test body.
+  static yb::PriorityThreadPool thread_pool(/* max_running_tasks= */ 3);
+  TestAutomaticCompactionWhileManualWaits(
+      kFilesWhileWaiting, /* exclusive= */ false, /* expect_automatic_compaction= */ true,
+      &thread_pool);
+}
+
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(ExclusiveBlocksAutomaticCompactions)) {
+  TestAutomaticCompactionWhileManualWaits(
+      kFilesWhileWaiting, /* exclusive= */ true, /* expect_automatic_compaction= */ false);
 }
 
 }  // namespace rocksdb

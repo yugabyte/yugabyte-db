@@ -182,6 +182,13 @@ DEFINE_RUNTIME_bool(rocksdb_determine_compaction_input_at_start, true,
     "compaction. Only has effect when use_priority_thread_pool_for_compactions is set to true.");
 TAG_FLAG(rocksdb_determine_compaction_input_at_start, hidden);
 
+DEFINE_RUNTIME_uint64(manual_compaction_max_wait_files, 0,
+    "While a non-exclusive manual compaction waits to start, automatic compactions are not "
+    "scheduled for its column family. If the column family has at least this many SST files, "
+    "automatic compactions are scheduled anyway, so that files do not pile up behind a long "
+    "running compaction. 0 disables this.");
+TAG_FLAG(manual_compaction_max_wait_files, advanced);
+
 namespace rocksdb {
 
 namespace {
@@ -3717,8 +3724,22 @@ void DBImpl::MaybeAddToCompactionQueue(ColumnFamilyData* cfd, bool use_priority_
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
 
   if (mutable_cf_options->disable_auto_compactions || cfd->IsDropped()
-      || HasExclusiveManualCompaction() || HaveManualCompaction(cfd)) {
+      || HasExclusiveManualCompaction()) {
     return;
+  }
+
+  if (HaveManualCompaction(cfd)) {
+    // A waiting manual compaction can be blocked for a long time by a running L0 compaction
+    // (see CompactionPicker::CompactRange). Without this escape hatch, flushes keep adding files
+    // until writes are rejected (#16798).
+    const auto max_wait_files = FLAGS_manual_compaction_max_wait_files;
+    const auto num_files = cfd->current()->storage_info()->NumFiles();
+    if (max_wait_files == 0 || num_files < max_wait_files) {
+      return;
+    }
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 60)
+        << "Scheduling automatic compaction while manual compaction waits, SST files: "
+        << num_files << ", manual_compaction_max_wait_files: " << max_wait_files;
   }
 
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
