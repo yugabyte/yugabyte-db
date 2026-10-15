@@ -4728,6 +4728,118 @@ TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
+class PgVectorIndexSplitTest : public PgVectorIndexUtilTest {
+ protected:
+  void SetUp() override {
+    // Delete split parents quickly.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    PgVectorIndexUtilTest::SetUp();
+  }
+};
+
+// GH#34286: CREATE INDEX hung forever when a tablet that had already finished its backfill was
+// split and deleted while another tablet was still backfilling.
+TEST_F(PgVectorIndexSplitTest, SplitBackfilledTabletDuringCreateIndex) {
+  constexpr size_t kChunkSize = 100;
+  // With db_block_size_bytes = 256 this is enough for the small tablet to have a split key. It is
+  // below kChunkSize, so the small tablet backfills in its final chunk and is not blocked.
+  constexpr size_t kSmallTabletRows = 40;
+  // More than one chunk, so the large tablet blocks after its first chunk.
+  constexpr size_t kNumRows = kSmallTabletRows + 2 * kChunkSize;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigint, embedding vector(3), PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES (($0))", kSmallTabletRows));
+  dimensions_ = 3;
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 2);
+  auto small_tablet_it = std::ranges::find_if(peers, [](const auto& peer) {
+    return peer->tablet_metadata()->partition()->partition_key_start().empty();
+  });
+  ASSERT_NE(small_tablet_it, peers.end());
+  const auto small_tablet_id = (*small_tablet_it)->tablet_id();
+
+  // Keep the large tablet backfilling until the split parent is deleted.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  auto unblock_backfill = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+        false;
+  });
+
+  // Split only after the readiness poll has looked up the tablets, so its cache has the parent.
+  std::atomic<bool> poll_looked_up_tablets{false};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "PgClientService::PollVectorIndexReady:TabletsLookedUp",
+      [&poll_looked_up_tablets](void*) { poll_looked_up_tablets = true; });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    // Fail instead of hanging the test if CREATE INDEX never returns.
+    ASSERT_OK(index_conn.ExecuteFormat(
+        "SET statement_timeout = $0", ToMilliseconds(120s * kTimeMultiplier)));
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+
+  ASSERT_OK(WaitFor(
+      [&poll_looked_up_tablets] { return poll_looked_up_tablets.load(); },
+      30s * kTimeMultiplier, "Readiness poll looked up tablets"));
+
+  auto small_tablet_backfill_done = [this, &small_tablet_id]() -> Result<bool> {
+    auto small_tablet_peers = VERIFY_RESULT(ListTabletActivePeers(cluster_.get(), small_tablet_id));
+    if (small_tablet_peers.empty()) {
+      return false;
+    }
+    for (const auto& peer : small_tablet_peers) {
+      auto indexes = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
+      if (!indexes || indexes->empty()) {
+        return false;
+      }
+      for (const auto& index : *indexes) {
+        if (!index->BackfillDone()) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor(
+      small_tablet_backfill_done, 30s * kTimeMultiplier, "Small tablet backfill done"));
+
+  ASSERT_OK(InvokeSplitTabletRpc(cluster_.get(), small_tablet_id));
+  ASSERT_OK(WaitFor([this, &small_tablet_id]() -> Result<bool> {
+    auto all_peers = VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+    return std::ranges::none_of(all_peers, [&small_tablet_id](const auto& peer) {
+      return peer->tablet_id() == small_tablet_id;
+    });
+  }, 60s * kTimeMultiplier, "Split parent deleted"));
+
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+      false;
+  threads.JoinAll();
+
+  auto query_vector = Vector(RandomUniformInt<size_t>(0, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_EQ(num_found, kNumRows);
+}
+
 using PgVectorIndexReverseMappingTestParam = std::tuple<bool, PackingMode>;
 
 template <>

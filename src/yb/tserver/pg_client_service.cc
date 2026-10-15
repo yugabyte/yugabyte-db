@@ -94,6 +94,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -1041,6 +1042,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
       auto tablets = *lookup_result;
       VLOG_WITH_FUNC(2) << "num tablets: " << tablets.size();
+      TEST_SYNC_POINT("PgClientService::PollVectorIndexReady:TabletsLookedUp");
 
       ready = true;
       for (const auto& tablet : tablets) {
@@ -1057,6 +1059,9 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
         rpc::RpcController controller;
         controller.set_deadline(deadline);
         auto status = leader->proxy()->GetTabletStatus(status_req, &status_resp, &controller);
+        if (status.ok() && status_resp.has_error()) {
+          status = StatusFromPB(status_resp.error().status());
+        }
         if (!status.ok()) {
           LOG_WITH_FUNC(INFO) << "Failed to query tablet " << tablet->tablet_id() << ": " << status;
           ready = false;
