@@ -733,8 +733,6 @@ Status CatalogManagerUtil::FillTableLoadState(
 
 template Status CatalogManagerUtil::FillTableLoadState(
     const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
-template Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
 
 Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
   if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||
