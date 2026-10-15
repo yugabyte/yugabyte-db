@@ -42,7 +42,6 @@ namespace master {
 
 using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 
-struct Comparator;
 class SetPreferredZonesRequestPB;
 class IsTruncateTableDoneResponsePB;
 
@@ -206,34 +205,38 @@ class CMGlobalLoadState {
   std::unordered_map<TabletServerId, uint32_t> per_ts_protege_load_;
 };
 
+// Per-tserver replica load of one table, indexed like the TSDescriptorVector passed to Init().
 class CMPerTableLoadState {
  public:
   explicit CMPerTableLoadState(CMGlobalLoadState* global_state)
     : global_load_state_(global_state) {}
 
-  Result<bool> CompareReplicaLoads(const TabletServerId& ts1, const TabletServerId& ts2);
+  // Call once after per_ts_replica_load_ is filled; sorts by (table load, global load, uuid).
+  Status Init(const TSDescriptorVector& ts_descs);
 
-  void SortLoad();
+  // Adds one replica on tserver 'uuid' and keeps the sorted order.
+  void AddReplica(const TabletServerId& uuid);
 
-  std::vector<TabletServerId> sorted_replica_load_;
+  // Tserver indexes, least loaded first.
+  const std::vector<size_t>& sorted_by_load() const { return sorted_; }
+
+  const TabletServerId& uuid(size_t idx) const { return uuids_[idx]; }
+
+  // Filled by CatalogManagerUtil::FillTableLoadState before Init().
   std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
+
+ private:
+  bool LessLoaded(size_t a, size_t b) const;
+
   CMGlobalLoadState* global_load_state_;
-};
-
-struct Comparator {
-  explicit Comparator(CMPerTableLoadState* state) : state_(state) {}
-
-  bool operator()(const TabletServerId& id1, const TabletServerId& id2) {
-    auto result = state_->CompareReplicaLoads(id1, id2);
-    if (!result.ok()) {
-      LOG(WARNING) << result.ToString();
-      return false;
-    }
-
-    return *result;
-  }
-
-  CMPerTableLoadState* state_;
+  std::vector<TabletServerId> uuids_;
+  std::unordered_map<TabletServerId, size_t> index_;
+  std::vector<uint32_t> table_load_;
+  // Mirror of global_load_state_->per_ts_replica_load_ for the tservers in uuids_.
+  std::vector<uint32_t> global_load_;
+  std::vector<size_t> sorted_;
+  // Position of each tserver index in sorted_.
+  std::vector<size_t> pos_;
 };
 
 template <class PB>
