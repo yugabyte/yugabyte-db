@@ -1514,7 +1514,7 @@ Timeout after which it is inferred that a particular tablet is not of interest f
 Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2026.1.2.0 and later.
+Available in v2025.2.7.0, v2026.1.2.0, and later.
 
 When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
 
