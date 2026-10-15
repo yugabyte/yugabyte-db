@@ -78,8 +78,13 @@ bool CompareListTabletServersEntries(
   return a.instance_id().permanent_uuid() < b.instance_id().permanent_uuid();
 }
 
-// Only a plural suffix extends a name token, so "setup" does not match "set".
+// Only a plural suffix extends a name token, so "setup" does not match "set". A typed token
+// shorter than 3 characters must match exactly, or "t" would abbreviate every "table" and "to".
 bool TokenCovers(const string& op_token, const string& name_token) {
+  constexpr size_t kMinAbbreviationLength = 3;
+  if (op_token.size() < kMinAbbreviationLength) {
+    return op_token == name_token;
+  }
   if (HasPrefixString(name_token, op_token)) {
     return true;
   }

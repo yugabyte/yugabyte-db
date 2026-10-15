@@ -94,7 +94,8 @@ class ClusterAdminCli {
   };
 
   // Scans raw argv for --help/-h/--helpshort or a leading `help` operation, so help answers even
-  // when the flag parse would fail. Returns nullopt when help was not requested.
+  // when the flag parse would fail. Returns nullopt when help was not requested, or when a flag
+  // that prints and exits during the flag parse (e.g. --version, --helpxml) takes precedence.
   std::optional<HelpRequest> ScanForHelpRequest(int argc, char** argv) const;
   void PrintHelpRequest(const HelpRequest& request, std::ostream& out);
   Status RunHelp(const CLIArguments& args);

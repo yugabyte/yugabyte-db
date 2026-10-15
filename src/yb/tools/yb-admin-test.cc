@@ -600,6 +600,14 @@ TEST_F(AdminCliTest, TokenMatchSuggestions) {
     ASSERT_TRUE(SuggestByNameTokens(word, names, 5).empty()) << word;
   }
 
+  // Short tokens must match a name token exactly.
+  for (const auto& word : {"t", "l", "ts", "li"}) {
+    ASSERT_TRUE(SuggestByNameTokens(word, names, 5).empty()) << word;
+  }
+  ASSERT_EQ(
+      SuggestByNameTokens("is_enabled", names, 5),
+      (std::vector<std::string>{"is_encryption_enabled"}));
+
   ASSERT_TRUE(SuggestByNameTokens("", names, 5).empty());
   ASSERT_TRUE(SuggestByNameTokens("___", names, 5).empty());
 }

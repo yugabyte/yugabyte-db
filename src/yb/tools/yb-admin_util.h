@@ -31,8 +31,8 @@ namespace tools {
 bool IsUnsupportedRpcError(const Status& s);
 
 // Returns the names whose '_'-separated tokens cover every token of op (case-insensitive), where a
-// typed token covers a name token it abbreviates or pluralizes. Ranked by fewest uncovered name
-// tokens, then alphabetically, and capped at max_results.
+// typed token covers a name token it abbreviates (with 3+ characters) or pluralizes. Ranked by
+// fewest uncovered name tokens, then alphabetically, and capped at max_results.
 std::vector<std::string> SuggestByNameTokens(
     const std::string& op, const std::vector<std::string>& names, size_t max_results);
 

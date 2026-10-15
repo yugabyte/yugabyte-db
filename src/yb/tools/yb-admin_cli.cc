@@ -647,8 +647,11 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
       name = name.substr(0, eq);
       has_value = true;
     }
-    const bool off = has_value && (value.empty() || value == "false" || value == "f" ||
-                                   value == "0" || value == "no" || value == "n");
+    // --helpmatch and --helpon take a string, so only an empty value turns them off.
+    const bool string_valued = name == "helpmatch" || name == "helpon";
+    const bool false_value = value == "false" || value == "f" || value == "0" ||
+                             value == "no" || value == "n";
+    const bool off = has_value && (value.empty() || (!string_valued && false_value));
     // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help (--version
     // through its callback in init.cc).
     static constexpr std::string_view kYbDumpFlags[] = {
