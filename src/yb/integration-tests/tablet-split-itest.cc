@@ -326,6 +326,36 @@ TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
   }
 }
 
+// GH#34286: LookupAllTablets with a table opened after a split must not return the tablets cached
+// before the split.
+TEST_F(TabletSplitITest, LookupAllTabletsWithTableOpenedAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const client::YBTableName table_name = table_->name();
+  auto pre_split_table = ASSERT_RESULT(client_->OpenTable(table_name));
+  auto initial_tablets = ASSERT_RESULT(
+      client_->LookupAllTabletsFuture(pre_split_table, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(initial_tablets.size(), 1);
+  const TabletId parent_id = initial_tablets[0]->tablet_id();
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /*expected_non_split_tablets=*/2, /*expected_split_tablets=*/1));
+
+  auto post_split_table = ASSERT_RESULT(client_->OpenTable(table_name));
+  ASSERT_GT(
+      post_split_table->GetPartitionListVersion(), pre_split_table->GetPartitionListVersion());
+  auto post_split_tablets = ASSERT_RESULT(
+      client_->LookupAllTabletsFuture(post_split_table, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(post_split_tablets.size(), 2);
+  for (const auto& tablet : post_split_tablets) {
+    ASSERT_NE(tablet->tablet_id(), parent_id);
+  }
+}
+
 TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
