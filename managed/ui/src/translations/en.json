@@ -2916,7 +2916,10 @@
         "successMsg": "Success. Click <0>here</0> for task details",
         "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
         "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade.",
-        "runPrecheckOnlyButton": "Run Pre-check Only"
+        "runPrecheckOnlyButton": "Run Pre-check Only",
+        "marketplaceBasedWarning": "This upgrade replaces every node with a new instance, which gets a new IP and name, and moves the data onto it. If you have verified that the current and target images are eligible for an in-place upgrade, set the runtime configuration {{configKey}} to allow an in-place image upgrade instead.",
+        "fullMoveInfoContent": "<b>Note!</b><br/><br/>A full move is <b>time-consuming</b>. YBA creates a new node from the target image for each existing node, moves the data onto the new nodes, and then removes the old ones. The new nodes get new IP addresses and names.<br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
+        "unknownMarketplaceFlagWarning": "Whether this image bundle is based on an OCI Marketplace image is unknown. An in-place upgrade will try to determine that and will fail if the image is Marketplace-based or if the lookup fails."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
