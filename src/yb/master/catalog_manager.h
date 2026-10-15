@@ -2374,10 +2374,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       std::map<TableId, DeletingTableData>* data_map);
 
-  // Delete the specified table in memory and persist the deletion. The TableInfo, DeletedTableInfo
-  // and lock of the deleted table are appended to op->tables. The call for the requested table
-  // persists the changes collected in op and commits them in memory. The caller will be responsible
-  // for altering op->altered_indexed_table and deleting the actual table and tablets.
+  // Delete the specified table in memory. The DeletingTableData of the deleted table, with its
+  // TableInfo and write lock, is added to op->tables, and the changes to persist are collected in
+  // op. The top-level caller is responsible for persisting op, altering
+  // op->altered_indexed_table, and deleting the actual table and tablets.
   Status DeleteTableInMemory(
       const TableIdentifierPB& table_identifier,
       bool is_index_table,

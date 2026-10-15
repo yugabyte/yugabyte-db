@@ -2064,6 +2064,88 @@ TEST_F(PgDdlAtomicityMiniClusterTest, DropTableWithIndexesOnMasterCrash) {
       kTableName, "Wait for the table and its indexes to be deleted"));
 }
 
+// Restarts the master after a DROP INDEX is written to the sys catalog and before it is applied in
+// memory. Expects the index to be deleted and the indexed table to no longer list it.
+TEST_F(PgDdlAtomicityMiniClusterTest, DropIndexOnMasterCrash) {
+  const auto kTableName = "drop_index_crash"s;
+  const auto kIndexName = kTableName + "_idx";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v)", kIndexName, kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  const auto index_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kIndexName));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), index_id));
+
+  auto lists_index = [&index_id](const master::TableInfo& table) {
+    return !table.GetIndexInfo(index_id).table_id().empty();
+  };
+  uint32_t version_before_drop;
+  {
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto table = catalog_manager.GetTableInfo(table_id);
+    ASSERT_NE(table, nullptr);
+    ASSERT_TRUE(lists_index(*table));
+    version_before_drop = table->LockForRead()->pb.version();
+  }
+
+  // The master persists the deletion and then fails before it applies it in memory.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = false;
+  });
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = true;
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // The DDL log entry of an index drop is recorded under the indexed table.
+  ASSERT_OK(LoggedWaitFor([this, &table_id, &kIndexName]() -> Result<bool> {
+    return HasDdlLogEntry(table_id, "Drop index " + kIndexName);
+  }, MonoDelta::FromSeconds(120) * kTimeMultiplier,
+      "Wait for the deletion to be written to the sys catalog"));
+
+  {
+    // The failed master did not apply the deletion in memory.
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto index = catalog_manager.GetTableInfo(index_id);
+    ASSERT_NE(index, nullptr);
+    ASSERT_TRUE(index->LockForRead()->is_running());
+    auto table = catalog_manager.GetTableInfo(table_id);
+    ASSERT_NE(table, nullptr);
+    ASSERT_TRUE(lists_index(*table));
+  }
+  ASSERT_OK(RestartMaster());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_crash_after_table_marked_deleting) = false;
+  {
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto index = catalog_manager.GetTableInfo(index_id);
+    ASSERT_TRUE(index == nullptr || index->LockForRead()->started_deleting());
+    auto table = catalog_manager.GetTableInfo(table_id);
+    ASSERT_NE(table, nullptr);
+    ASSERT_FALSE(table->LockForRead()->started_deleting());
+    ASSERT_FALSE(lists_index(*table));
+    ASSERT_GT(table->LockForRead()->pb.version(), version_before_drop);
+  }
+  ASSERT_OK(LoggedWaitFor([this, &index_id]() -> Result<bool> {
+    auto* mini_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    auto index = mini_master->catalog_manager().GetTableInfo(index_id);
+    return index == nullptr || index->LockForRead()->is_deleted();
+  }, MonoDelta::FromSeconds(120) * kTimeMultiplier, "Wait for the index to be deleted"));
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table, nullptr);
+  ASSERT_FALSE(table->LockForRead()->started_deleting());
+  ASSERT_FALSE(lists_index(*table));
+
+  // The indexed table finishes the alter that removes the index and stays usable.
+  ASSERT_OK(LoggedWaitFor([&table]() -> Result<bool> {
+    return table->LockForRead()->pb.state() == master::SysTablesEntryPB::RUNNING;
+  }, MonoDelta::FromSeconds(120) * kTimeMultiplier, "Wait for the indexed table to be running"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+      Format("SELECT v FROM $0 WHERE k = 1", kTableName))), 10);
+}
+
 // Restarts the master after the rollback of a CREATE TABLE with a unique index is written to the
 // sys catalog and before it is applied in memory. Expects the table and index to be deleted.
 TEST_F(PgDdlAtomicityMiniClusterTest, CreateTableWithIndexRollbackOnMasterCrash) {

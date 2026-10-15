@@ -3853,7 +3853,9 @@ Status CatalogManager::PersistDeleteTableOperation(
     return STATUS(InternalError, "Simulated crash after the table was marked deleting");
   }
 
-  // Release the tables this delete leaves unchanged.
+  // Unlock the tables that were locked but not changed: an index that is already being deleted, or
+  // an indexed table that does not list the dropped index. The deleted tables were moved to
+  // op.tables, and altered_indexed_table is committed below.
   for (auto& data : op.data_map | std::views::values) {
     if (&data.table_info_with_write_lock != op.altered_indexed_table) {
       data.table_info_with_write_lock.lock.Unlock();
@@ -5173,8 +5175,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // The creation is persisted, so a failure from here on is returned without undoing it. The
-  // remaining steps still run, so that the table is handled like any other created table.
+  // The table is persisted and committed, so a failure from here on is not rolled back. A failed
+  // alter of the indexed table is returned at the end, so DDL verification is still scheduled.
   Status post_persist_status;
   if (IsIndex(req)) {
     // if test flag to abort create table is set and this is to create
@@ -7536,6 +7538,7 @@ Status CatalogManager::DeleteTableInternal(
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */, schedules_to_tables_map, epoch,
                                     &op, resp, rpc, ns_info));
+  RETURN_NOT_OK(PersistDeleteTableOperation(epoch, op, resp));
   auto& tables = op.tables;
 
   std::unordered_set<TableId> sys_table_ids;
@@ -7552,8 +7555,8 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  // The deletion is persisted, so a failure from here on is returned without undoing it. The
-  // remaining steps still run, so that the tables are handled like any other deleted tables.
+  // The deletion is persisted and committed, so a failure from here on is not rolled back. A
+  // failed alter of the indexed table is returned at the end, after the steps below have run.
   Status post_persist_status;
   if (op.altered_indexed_table) {
     post_persist_status = SendAlterTableRequest(op.altered_indexed_table->info, epoch);
@@ -7777,9 +7780,8 @@ Status CatalogManager::DeleteTableInMemory(
   // TODO(NIC): How to handle a DeleteTable request when the namespace is being deleted?
   const char* const object_type = is_index_table ? "index" : "table";
   const bool cascade_delete_index = is_index_table && !update_indexed_table;
-  // The call for the requested table takes the write locks of all the tables involved, writes the
-  // changes they produce to the sys catalog and commits them in memory. The calls for the indexes
-  // deleted along with it find their tables already locked in op->data_map and add to op.
+  // The call for the requested table takes the write locks of all the tables involved. The calls
+  // for the indexes deleted along with it find their tables already locked in op->data_map.
   const bool is_requested_table = op->data_map.empty();
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(
@@ -7881,8 +7883,6 @@ Status CatalogManager::DeleteTableInMemory(
     }
   }
 
-  // The removed table state is written to the sys catalog by the call for the requested table,
-  // together with the state of every other table this delete changes.
   op->ddl_log_entries.push_back(std::move(ddl_log_entry));
 
   // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
@@ -7911,10 +7911,6 @@ Status CatalogManager::DeleteTableInMemory(
   // index table, append them to the end. We do so so that we will delete the indexed table first
   // before its indexes.
   op->tables.insert(is_index_table ? op->tables.end() : op->tables.begin(), std::move(data));
-
-  if (is_requested_table) {
-    RETURN_NOT_OK(PersistDeleteTableOperation(epoch, *op, resp));
-  }
 
   return Status::OK();
 }
