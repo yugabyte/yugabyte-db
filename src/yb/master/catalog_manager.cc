@@ -12495,11 +12495,18 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // For those tablets which need to be created in this round, assign replicas.
   Status s;
   std::unordered_set<TableInfo*> ok_status_tables;
+  Result<std::vector<PlacementCandidates>> candidates = std::vector<PlacementCandidates>();
+  if (!deferred.needs_create_rpc.empty()) {
+    candidates = BuildPlacementCandidates(deferred.needs_create_rpc.front()->table(), ts_descs);
+  }
   for (const TabletInfoPtr& tablet : deferred.needs_create_rpc) {
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
-    s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
+    s = candidates.ok()
+        ? SelectReplicasForTablet(ts_descs, *candidates, tablet, &table_load_state,
+                                  global_load_state)
+        : candidates.status();
     if (!s.ok()) {
       LOG_WITH_FUNC(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
       s = s.CloneAndPrepend(Format(
@@ -12615,27 +12622,102 @@ Status CatalogManager::SelectProtegeForTablet(
   return Status::OK();
 }
 
-Status CatalogManager::SelectReplicasForTablet(
-    const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  auto table_guard = tablet->table()->LockForRead();
+namespace {
 
-  if (!table_guard->pb.IsInitialized()) {
-    return STATUS_FORMAT(InvalidArgument,
-        "TableInfo for tablet $0 is not initialized (aborted CreateTable attempt?)",
-        tablet->tablet_id());
+// A tserver belongs to the placement that names its placement uuid; a placement without one is
+// the live placement, whose tservers have an empty placement uuid.
+bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  if (placement_info.has_placement_uuid()) {
+    return ts_desc.placement_uuid() == placement_info.placement_uuid();
+  }
+  return ts_desc.placement_uuid().empty();
+}
+
+}  // namespace
+
+Result<std::vector<CatalogManager::PlacementCandidates>> CatalogManager::BuildPlacementCandidates(
+    const TableInfoPtr& table, const TSDescriptorVector& ts_descs) {
+  ReplicationInfoPB replication_info;
+  {
+    auto table_guard = table->LockForRead();
+    if (!table_guard->pb.IsInitialized()) {
+      return STATUS_FORMAT(InvalidArgument,
+          "TableInfo for table $0 is not initialized (aborted CreateTable attempt?)", table->id());
+    }
+    replication_info = VERIFY_RESULT(GetTableReplicationInfo(
+        table_guard->pb.replication_info(), table->TablespaceIdForTableCreation()));
   }
 
-  auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(
-        table_guard->pb.replication_info(), tablet->table()->TablespaceIdForTableCreation()));
+  // Validate if we have enough tservers to put the replicas.
+  ValidateReplicationInfoRequestPB req;
+  *req.mutable_replication_info() = replication_info;
+  ValidateReplicationInfoResponsePB resp;
+  RETURN_NOT_OK(ValidateReplicationInfo(&req, &resp));
 
+  std::vector<PlacementCandidates> candidates;
+  candidates.push_back(VERIFY_RESULT(BuildPlacementCandidates(
+      replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER)));
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    candidates.push_back(VERIFY_RESULT(BuildPlacementCandidates(
+        read_replicas, ts_descs, PeerMemberType::OBSERVER)));
+  }
+  return candidates;
+}
+
+Result<CatalogManager::PlacementCandidates> CatalogManager::BuildPlacementCandidates(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs,
+    PeerMemberType member_type) {
+  PlacementCandidates result;
+  result.member_type = member_type;
+  result.nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  result.num_allowed = 0;
+  result.all_allowed.assign(ts_descs.size(), false);
+  for (const auto& block : placement_info.placement_blocks()) {
+    result.blocks.push_back(PlacementCandidates::Block{
+        .min_num_replicas = static_cast<size_t>(block.min_num_replicas()),
+        .max_num_replicas = static_cast<size_t>(
+            GetEffectiveMaxNumReplicas(block, narrow_cast<int32_t>(result.nreplicas))),
+        .num_allowed = 0,
+        .allowed = std::vector<bool>(ts_descs.size(), false)});
+  }
+
+  for (size_t i = 0; i < ts_descs.size(); ++i) {
+    const auto& ts = *ts_descs[i];
+    if (!TsInPlacement(placement_info, ts)) {
+      continue;
+    }
+    if (result.blocks.empty()) {
+      result.all_allowed[i] = true;
+      ++result.num_allowed;
+      continue;
+    }
+    for (int b = 0; b < placement_info.placement_blocks_size(); ++b) {
+      if (!ts.MatchesCloudInfo(placement_info.placement_blocks(b).cloud_info())) {
+        continue;
+      }
+      result.blocks[b].allowed[i] = true;
+      ++result.blocks[b].num_allowed;
+      if (!result.all_allowed[i]) {
+        result.all_allowed[i] = true;
+        ++result.num_allowed;
+      }
+    }
+  }
+  return result;
+}
+
+Status CatalogManager::SelectReplicasForTablet(
+    const TSDescriptorVector& ts_descs, const std::vector<PlacementCandidates>& candidates,
+    const TabletInfoPtr& tablet, CMPerTableLoadState* per_table_state,
+    CMGlobalLoadState* global_state) {
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   consensus::RaftConfigPB* config = cstate->mutable_config();
 
-  RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
-      replication_info, ts_descs, config, per_table_state, global_state));
+  for (const auto& placement : candidates) {
+    RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
+  }
 
   LOG_WITH_FUNC(INFO)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
@@ -12655,137 +12737,75 @@ Status CatalogManager::SelectReplicasForTablet(
   return Status::OK();
 }
 
+Status CatalogManager::SelectReplicasForPlacement(
+    const TSDescriptorVector& ts_descs, const PlacementCandidates& placement,
+    consensus::RaftConfigPB* config, CMPerTableLoadState* per_table_state) {
+  // Keep track of servers we've already selected, so that we don't attempt to
+  // put two replicas on the same host.
+  std::vector<bool> already_selected(ts_descs.size(), false);
+  if (placement.blocks.empty()) {
+    // No placement blocks: spread the replicas across the whole placement.
+    return SelectReplicas(
+        ts_descs, placement.all_allowed, min(placement.nreplicas, placement.num_allowed), config,
+        &already_selected, placement.member_type, per_table_state);
+  }
+
+  // Assign the minimum requested replicas in each placement block, then the leftover replicas
+  // anywhere in the allowed blocks, up to each block's effective maximum.
+  size_t min_replica_count_sum = 0;
+  // Replicas each block can still take after its minimums before reaching its maximum.
+  std::vector<size_t> remaining_block_capacity;
+  for (const auto& block : placement.blocks) {
+    // This works because currently we don't allow placement blocks to overlap.
+    size_t num_replicas = min(block.min_num_replicas, block.num_allowed);
+    min_replica_count_sum += block.min_num_replicas;
+    RETURN_NOT_OK(SelectReplicas(
+        ts_descs, block.allowed, num_replicas, config, &already_selected, placement.member_type,
+        per_table_state));
+    remaining_block_capacity.push_back(block.max_num_replicas - num_replicas);
+  }
+
+  // Distribute the remaining replicas across the least loaded tservers left, skipping any
+  // tserver whose placement block has already reached its effective maximum. The maximums are
+  // hard caps: if they prevent placing every remaining replica, the tablet starts
+  // under-replicated rather than violating a maximum.
+  size_t replicas_left = placement.nreplicas - min_replica_count_sum;
+  std::vector<size_t> chosen;
+  for (size_t idx : per_table_state->sorted_by_load()) {
+    if (chosen.size() == replicas_left) {
+      break;
+    }
+    if (already_selected[idx]) {
+      continue;
+    }
+    // Placement blocks don't overlap, so the first block allowing the tserver is its block.
+    size_t b = 0;
+    while (b < placement.blocks.size() && !placement.blocks[b].allowed[idx]) {
+      ++b;
+    }
+    if (b == placement.blocks.size() || remaining_block_capacity[b] == 0) {
+      continue;
+    }
+    --remaining_block_capacity[b];
+    chosen.push_back(idx);
+  }
+  // AddReplicaToConfig reorders sorted_by_load(), so add only after the walk.
+  for (size_t idx : chosen) {
+    AddReplicaToConfig(
+        ts_descs, idx, config, &already_selected, placement.member_type, per_table_state);
+  }
+  return Status::OK();
+}
+
 void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
                                                  const TSDescriptorVector& all_ts_descs,
                                                  TSDescriptorVector* ts_descs) {
   ts_descs->clear();
   for (const auto& ts_desc : all_ts_descs) {
-    if (placement_info.has_placement_uuid()) {
-      string placement_uuid = placement_info.placement_uuid();
-      if (ts_desc->placement_uuid() == placement_uuid) {
-        ts_descs->push_back(ts_desc);
-      }
-    } else if (ts_desc->placement_uuid() == "") {
-      // Since the placement info has no placement id, we know it is live, so we add this ts.
+    if (TsInPlacement(placement_info, *ts_desc)) {
       ts_descs->push_back(ts_desc);
     }
   }
-}
-
-Status CatalogManager::HandlePlacementUsingReplicationInfo(
-    const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& all_ts_descs,
-    consensus::RaftConfigPB* config,
-    CMPerTableLoadState* per_table_state,
-    CMGlobalLoadState* global_state) {
-  // Validate if we have enough tservers to put the replicas.
-  ValidateReplicationInfoRequestPB req;
-  req.mutable_replication_info()->CopyFrom(replication_info);
-  ValidateReplicationInfoResponsePB resp;
-  RETURN_NOT_OK(ValidateReplicationInfo(&req, &resp));
-
-  TSDescriptorVector ts_descs;
-  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
-  RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
-      replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER,
-      config, per_table_state, global_state));
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
-    RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
-        replication_info.read_replicas(i), ts_descs, PeerMemberType::OBSERVER,
-        config, per_table_state, global_state));
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
-                                                         const TSDescriptorVector& ts_descs,
-                                                         PeerMemberType member_type,
-                                                         consensus::RaftConfigPB* config,
-                                                         CMPerTableLoadState* per_table_state,
-                                                         CMGlobalLoadState* global_state) {
-  size_t nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
-  size_t ntservers = ts_descs.size();
-  // Keep track of servers we've already selected, so that we don't attempt to
-  // put two replicas on the same host.
-  set<TabletServerId> already_selected_ts;
-  if (placement_info.placement_blocks().empty()) {
-    // If we don't have placement info, just place the replicas as before, distributed across the
-    // whole cluster.
-    // We cannot put more than ntservers replicas.
-    nreplicas = min(nreplicas, ntservers);
-    SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type,
-                   per_table_state, global_state);
-  } else {
-    // TODO(bogdan): move to separate function
-    //
-    // If we do have placement info, we'll try to use the same power of two algorithm, but also
-    // match the requested policies. We'll assign the minimum requested replicas in each combination
-    // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
-    // in any of the allowed areas.
-    // Loop through placements and assign to respective available TSs.
-    size_t min_replica_count_sum = 0;
-    // Remaining replicas each placement block can accept, after the minimums below, before it
-    // reaches its effective maximum.
-    std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> remaining_block_capacity;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      // This works because currently we don't allow placement blocks to overlap.
-      auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t available_ts_descs_size = available_ts_descs.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      // We cannot put more than the available tablet servers in that placement block.
-      size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
-      min_replica_count_sum += min_num_replicas;
-      SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
-      remaining_block_capacity[pb.cloud_info()] =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)) - num_replicas;
-    }
-
-    // Distribute the remaining replicas across the least loaded tservers left, skipping any
-    // tserver whose placement block has already reached its effective maximum. The maximums are
-    // hard caps: if they prevent placing every remaining replica, the tablet starts
-    // under-replicated rather than violating a maximum.
-    size_t replicas_left = nreplicas - min_replica_count_sum;
-    TSDescriptorVector candidates;
-    for (size_t idx : per_table_state->sorted_by_load()) {
-      const auto& ts_uuid = per_table_state->uuid(idx);
-      if (candidates.size() == replicas_left) {
-        break;
-      }
-      if (already_selected_ts.contains(ts_uuid)) {
-        continue;
-      }
-      const auto ts_it = std::find_if(
-          ts_descs.begin(), ts_descs.end(),
-          [&ts_uuid](const auto& ts) { return ts->permanent_uuid() == ts_uuid; });
-      if (ts_it == ts_descs.end()) {
-        continue;
-      }
-      // Find the (unique) placement block this tserver belongs to; placement blocks cannot
-      // overlap.
-      const auto pb = std::find_if(
-          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
-          [&ts_it](const auto& block) { return (*ts_it)->MatchesCloudInfo(block.cloud_info()); });
-      if (pb == placement_info.placement_blocks().end()) {
-        continue;
-      }
-      auto& capacity = remaining_block_capacity[pb->cloud_info()];
-      if (capacity == 0) {
-        continue;
-      }
-      --capacity;
-      candidates.push_back(*ts_it);
-    }
-    // Every candidate is selected, so there is nothing left to choose: apply them directly rather
-    // than re-searching the candidate list through SelectReplicas. The per-block caps hold by
-    // construction.
-    for (const auto& ts : candidates) {
-      AddReplicaToConfig(
-          ts, config, &already_selected_ts, member_type, per_table_state, global_state);
-    }
-  }
-  return Status::OK();
 }
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
@@ -12977,52 +12997,38 @@ void CatalogManager::StartElectionIfReady(
   WARN_NOT_OK(task->Run(), "Failed to send new tablet start election request");
 }
 
-shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
-    const TSDescriptorVector& ts_descs,
-    set<TabletServerId>* excluded,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  shared_ptr<TSDescriptor> found_ts;
-  for (size_t idx : per_table_state->sorted_by_load()) {
-    const auto& sorted_load = per_table_state->uuid(idx);
-    // Don't consider a tserver that has already been considered for this tablet.
-    if (excluded->count(sorted_load)) {
-      continue;
-    }
-    // Only choose from the set of allowed tservers for this tablet.
-    auto it = std::find_if(ts_descs.begin(), ts_descs.end(), [&sorted_load](const auto& ts) {
-      return ts->permanent_uuid() == sorted_load;
-    });
-
-    if (it != ts_descs.end()) {
-      found_ts = *it;
-      break;
+std::optional<size_t> CatalogManager::SelectReplica(
+    const std::vector<bool>& allowed, const std::vector<bool>& excluded,
+    const CMPerTableLoadState& per_table_state) {
+  for (size_t idx : per_table_state.sorted_by_load()) {
+    if (allowed[idx] && !excluded[idx]) {
+      return idx;
     }
   }
-
-  return found_ts;
+  return std::nullopt;
 }
 
-void CatalogManager::SelectReplicas(
-    const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
-    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  DCHECK_LE(nreplicas, ts_descs.size());
-
+Status CatalogManager::SelectReplicas(
+    const TSDescriptorVector& ts_descs, const std::vector<bool>& allowed, size_t nreplicas,
+    consensus::RaftConfigPB* config, std::vector<bool>* already_selected,
+    PeerMemberType member_type, CMPerTableLoadState* per_table_state) {
   for (size_t i = 0; i < nreplicas; ++i) {
-    shared_ptr<TSDescriptor> ts = SelectReplica(
-        ts_descs, already_selected_ts, per_table_state, global_state);
-    AddReplicaToConfig(ts, config, already_selected_ts, member_type, per_table_state, global_state);
+    auto idx = SelectReplica(allowed, *already_selected, *per_table_state);
+    SCHECK_FORMAT(idx, IllegalState, "Not enough tablet servers to place $0 replicas", nreplicas);
+    AddReplicaToConfig(ts_descs, *idx, config, already_selected, member_type, per_table_state);
   }
+  return Status::OK();
 }
 
 void CatalogManager::AddReplicaToConfig(
-    const shared_ptr<TSDescriptor>& ts, consensus::RaftConfigPB* config,
-    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
-  InsertOrDie(already_selected_ts, ts->permanent_uuid());
+    const TSDescriptorVector& ts_descs, size_t idx, consensus::RaftConfigPB* config,
+    std::vector<bool>* already_selected, PeerMemberType member_type,
+    CMPerTableLoadState* per_table_state) {
+  (*already_selected)[idx] = true;
   // Update the load state at global and table level.
-  per_table_state->AddReplica(ts->permanent_uuid());
+  per_table_state->AddReplica(idx);
 
+  const auto& ts = ts_descs[idx];
   // Increment the number of pending replicas so that we take this selection into
   // account when assigning replicas for other tablets of the same table. This
   // value decays back to 0 over time.
