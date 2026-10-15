@@ -32,6 +32,8 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager_if.h"
+
 #include "yb/qlexpr/index.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -67,6 +69,7 @@
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_allow_parallel_compactions);
@@ -4574,6 +4577,67 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
 
     tablet_peers.pop_back();
   }
+}
+
+// DROP DATABASE deletes the tablets of indexed tables before it gets to their indexes. A vector
+// index lives on its indexed table's tablets, so the background cleanup may free those tablets in
+// between. Processing the index afterwards must not fail the drop (#34249).
+TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
+  // Finished tasks kept for the UI hold their tablets, which keeps tablets of dropped tables
+  // alive. In a busy cluster they are evicted quickly, so do not keep them at all. The tracker
+  // is sized when the master starts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 0;
+  ASSERT_OK(RestartMaster());
+
+  constexpr auto kDbName = "vector_db";
+  constexpr size_t kNumTables = 2;
+
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+  {
+    auto db_conn = ASSERT_RESULT(ConnectToDB(kDbName));
+    ASSERT_OK(db_conn.Execute("CREATE EXTENSION vector"));
+    for (size_t i = 0; i != kNumTables; ++i) {
+      ASSERT_OK(db_conn.ExecuteFormat(
+          "CREATE TABLE t$0 (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS",
+          i));
+      ASSERT_OK(db_conn.ExecuteFormat(
+          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i, VectorOpsName()));
+    }
+  }
+
+  std::vector<TableId> table_ids;
+  for (size_t i = 0; i != kNumTables; ++i) {
+    table_ids.push_back(ASSERT_RESULT(GetTableIDFromTableName(Format("t$0", i))));
+  }
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  std::atomic<size_t> num_started_tables{0};
+  std::atomic<bool> table_cleaned_up{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start", [&](void*) {
+        // Tables go first, so here the first table's tablets are deleted and the second's are not.
+        // Hold the drop until the background cleanup removes the first table and its tablets.
+        if (num_started_tables.fetch_add(1) != 1) {
+          return;
+        }
+        table_cleaned_up = WaitFor(
+            [&]() -> Result<bool> {
+              return std::ranges::any_of(table_ids, [&catalog_manager](const auto& table_id) {
+                return catalog_manager.GetTableInfo(table_id) == nullptr;
+              });
+            },
+            30s * kTimeMultiplier, "Indexed table removed by the background cleanup").ok();
+      });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDbName));
+  ASSERT_TRUE(table_cleaned_up);
 }
 
 TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
