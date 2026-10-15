@@ -458,7 +458,9 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.
-  s = CreateCheckpoint(tmp_snapshot_dir);
+  s = CreateCheckpoint(
+      tmp_snapshot_dir, CreateCheckpointIn::kSubDir, UseTryLock::kFalse,
+      FlushVectorIndexes::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Cannot create RocksDB checkpoint: " << s;
     return s.CloneAndPrepend("Cannot create RocksDB checkpoint");
@@ -1243,7 +1245,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 
 Status TabletSnapshots::CreateCheckpoint(
     const std::string& dir, CreateCheckpointIn create_checkpoint_in,
-    TabletSnapshots::UseTryLock use_try_lock) {
+    TabletSnapshots::UseTryLock use_try_lock, FlushVectorIndexes flush_vector_indexes) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1268,8 +1270,9 @@ Status TabletSnapshots::CreateCheckpoint(
 
     TEST_PAUSE_IF_FLAG(TEST_pause_create_checkpoint);
 
-    // Order does not matter because we flush both DBs and does not have parallel writes.
-    status = DoCreateCheckpoint(dir, create_checkpoint_in);
+    // Writes can continue during the checkpoint, so DoCreateCheckpoint takes the regular DB
+    // checkpoint before it checkpoints, and with flush_vector_indexes flushes, the vector indexes.
+    status = DoCreateCheckpoint(dir, create_checkpoint_in, flush_vector_indexes);
   }
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
@@ -1283,7 +1286,8 @@ Status TabletSnapshots::CreateCheckpoint(
 }
 
 Status TabletSnapshots::DoCreateCheckpoint(
-    const std::string& dir, CreateCheckpointIn create_checkpoint_in) {
+    const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+    FlushVectorIndexes flush_vector_indexes) {
   const auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
@@ -1293,6 +1297,15 @@ Status TabletSnapshots::DoCreateCheckpoint(
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
   if (auto vector_indexes = VectorIndexesList()) {
+    if (flush_vector_indexes) {
+      // A vector index checkpoint only takes chunks that are already flushed. Every row in the
+      // regular DB checkpoint has queued its vector by now, because vectors are queued inside the
+      // write that adds the row, so this flush puts all of them in the chunks below. It can't
+      // happen any earlier, because writes such as background intent applies continue during the
+      // checkpoint. See #34759. A failed flush is not reported here yet (#35156).
+      vector_indexes.Flush();
+      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+    }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir
