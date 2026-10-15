@@ -195,9 +195,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 + 'inf'::rea
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::real, v4 = v4 - '-Infinity'::float4 WHERE h = 2;
 SELECT * FROM numeric_table;
 -- Casting from NaN to NaN should not cause a change in representation.
--- Similarly, note that NaN is not supported for NUMERIC types in Yugabyte (GH-711) does not support NaN prior to PG 14.
--- This should error out
 INSERT INTO numeric_table VALUES (3, 'nan', 'NaN', 'naN', 'NaN');
+-- Duplicate primary key (row 3 already inserted above).
 INSERT INTO numeric_table VALUES (3, 'nan', 0, 0, 'NaN');
 -- ('inf'::real - 'inf'::real) produces a different representation of NaN than 'NaN'::real in some
 -- compilers/optimization levels. So the query below updates the index in some cases, but not in others.

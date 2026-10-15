@@ -20,12 +20,10 @@ INSERT INTO num_exp_add VALUES (0,0,'0');
 INSERT INTO num_exp_sub VALUES (0,0,'0');
 INSERT INTO num_exp_mul VALUES (0,0,'0');
 INSERT INTO num_exp_div VALUES (0,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (0,1,'0');
 INSERT INTO num_exp_sub VALUES (0,1,'0');
 INSERT INTO num_exp_mul VALUES (0,1,'0');
 INSERT INTO num_exp_div VALUES (0,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (0,2,'-34338492.215397047');
 INSERT INTO num_exp_sub VALUES (0,2,'34338492.215397047');
 INSERT INTO num_exp_mul VALUES (0,2,'0');
@@ -62,12 +60,10 @@ INSERT INTO num_exp_add VALUES (1,0,'0');
 INSERT INTO num_exp_sub VALUES (1,0,'0');
 INSERT INTO num_exp_mul VALUES (1,0,'0');
 INSERT INTO num_exp_div VALUES (1,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (1,1,'0');
 INSERT INTO num_exp_sub VALUES (1,1,'0');
 INSERT INTO num_exp_mul VALUES (1,1,'0');
 INSERT INTO num_exp_div VALUES (1,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (1,2,'-34338492.215397047');
 INSERT INTO num_exp_sub VALUES (1,2,'34338492.215397047');
 INSERT INTO num_exp_mul VALUES (1,2,'0');
@@ -104,12 +100,10 @@ INSERT INTO num_exp_add VALUES (2,0,'-34338492.215397047');
 INSERT INTO num_exp_sub VALUES (2,0,'-34338492.215397047');
 INSERT INTO num_exp_mul VALUES (2,0,'0');
 INSERT INTO num_exp_div VALUES (2,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (2,1,'-34338492.215397047');
 INSERT INTO num_exp_sub VALUES (2,1,'-34338492.215397047');
 INSERT INTO num_exp_mul VALUES (2,1,'0');
 INSERT INTO num_exp_div VALUES (2,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (2,2,'-68676984.430794094');
 INSERT INTO num_exp_sub VALUES (2,2,'0');
 INSERT INTO num_exp_mul VALUES (2,2,'1179132047626883.596862135856320209');
@@ -146,12 +140,10 @@ INSERT INTO num_exp_add VALUES (3,0,'4.31');
 INSERT INTO num_exp_sub VALUES (3,0,'4.31');
 INSERT INTO num_exp_mul VALUES (3,0,'0');
 INSERT INTO num_exp_div VALUES (3,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (3,1,'4.31');
 INSERT INTO num_exp_sub VALUES (3,1,'4.31');
 INSERT INTO num_exp_mul VALUES (3,1,'0');
 INSERT INTO num_exp_div VALUES (3,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (3,2,'-34338487.905397047');
 INSERT INTO num_exp_sub VALUES (3,2,'34338496.525397047');
 INSERT INTO num_exp_mul VALUES (3,2,'-147998901.44836127257');
@@ -188,12 +180,10 @@ INSERT INTO num_exp_add VALUES (4,0,'7799461.4119');
 INSERT INTO num_exp_sub VALUES (4,0,'7799461.4119');
 INSERT INTO num_exp_mul VALUES (4,0,'0');
 INSERT INTO num_exp_div VALUES (4,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (4,1,'7799461.4119');
 INSERT INTO num_exp_sub VALUES (4,1,'7799461.4119');
 INSERT INTO num_exp_mul VALUES (4,1,'0');
 INSERT INTO num_exp_div VALUES (4,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (4,2,'-26539030.803497047');
 INSERT INTO num_exp_sub VALUES (4,2,'42137953.627297047');
 INSERT INTO num_exp_mul VALUES (4,2,'-267821744976817.8111137106593');
@@ -230,12 +220,10 @@ INSERT INTO num_exp_add VALUES (5,0,'16397.038491');
 INSERT INTO num_exp_sub VALUES (5,0,'16397.038491');
 INSERT INTO num_exp_mul VALUES (5,0,'0');
 INSERT INTO num_exp_div VALUES (5,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (5,1,'16397.038491');
 INSERT INTO num_exp_sub VALUES (5,1,'16397.038491');
 INSERT INTO num_exp_mul VALUES (5,1,'0');
 INSERT INTO num_exp_div VALUES (5,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (5,2,'-34322095.176906047');
 INSERT INTO num_exp_sub VALUES (5,2,'34354889.253888047');
 INSERT INTO num_exp_mul VALUES (5,2,'-563049578578.769242506736077');
@@ -272,12 +260,10 @@ INSERT INTO num_exp_add VALUES (6,0,'93901.57763026');
 INSERT INTO num_exp_sub VALUES (6,0,'93901.57763026');
 INSERT INTO num_exp_mul VALUES (6,0,'0');
 INSERT INTO num_exp_div VALUES (6,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (6,1,'93901.57763026');
 INSERT INTO num_exp_sub VALUES (6,1,'93901.57763026');
 INSERT INTO num_exp_mul VALUES (6,1,'0');
 INSERT INTO num_exp_div VALUES (6,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (6,2,'-34244590.637766787');
 INSERT INTO num_exp_sub VALUES (6,2,'34432393.793027307');
 INSERT INTO num_exp_mul VALUES (6,2,'-3224438592470.18449811926184222');
@@ -314,12 +300,10 @@ INSERT INTO num_exp_add VALUES (7,0,'-83028485');
 INSERT INTO num_exp_sub VALUES (7,0,'-83028485');
 INSERT INTO num_exp_mul VALUES (7,0,'0');
 INSERT INTO num_exp_div VALUES (7,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (7,1,'-83028485');
 INSERT INTO num_exp_sub VALUES (7,1,'-83028485');
 INSERT INTO num_exp_mul VALUES (7,1,'0');
 INSERT INTO num_exp_div VALUES (7,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (7,2,'-117366977.215397047');
 INSERT INTO num_exp_sub VALUES (7,2,'-48689992.784602953');
 INSERT INTO num_exp_mul VALUES (7,2,'2851072985828710.485883795');
@@ -356,12 +340,10 @@ INSERT INTO num_exp_add VALUES (8,0,'74881');
 INSERT INTO num_exp_sub VALUES (8,0,'74881');
 INSERT INTO num_exp_mul VALUES (8,0,'0');
 INSERT INTO num_exp_div VALUES (8,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (8,1,'74881');
 INSERT INTO num_exp_sub VALUES (8,1,'74881');
 INSERT INTO num_exp_mul VALUES (8,1,'0');
 INSERT INTO num_exp_div VALUES (8,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (8,2,'-34263611.215397047');
 INSERT INTO num_exp_sub VALUES (8,2,'34413373.215397047');
 INSERT INTO num_exp_mul VALUES (8,2,'-2571300635581.146276407');
@@ -398,12 +380,10 @@ INSERT INTO num_exp_add VALUES (9,0,'-24926804.045047420');
 INSERT INTO num_exp_sub VALUES (9,0,'-24926804.045047420');
 INSERT INTO num_exp_mul VALUES (9,0,'0');
 INSERT INTO num_exp_div VALUES (9,0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (9,1,'-24926804.045047420');
 INSERT INTO num_exp_sub VALUES (9,1,'-24926804.045047420');
 INSERT INTO num_exp_mul VALUES (9,1,'0');
 INSERT INTO num_exp_div VALUES (9,1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_add VALUES (9,2,'-59265296.260444467');
 INSERT INTO num_exp_sub VALUES (9,2,'9411688.170349627');
 INSERT INTO num_exp_mul VALUES (9,2,'855948866655588.453741509242968740');
@@ -451,9 +431,7 @@ INSERT INTO num_exp_sqrt VALUES (9,'4992.67503899937593364766');
 COMMIT TRANSACTION;
 -- BEGIN TRANSACTION; -- YB: avoid transaction to test all queries after failure
 INSERT INTO num_exp_ln VALUES (0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_ln VALUES (1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_ln VALUES (2,'17.35177750493897715514');
 INSERT INTO num_exp_ln VALUES (3,'1.46093790411565641971');
 INSERT INTO num_exp_ln VALUES (4,'15.86956523951936572464');
@@ -465,9 +443,7 @@ INSERT INTO num_exp_ln VALUES (9,'17.03145425013166006962');
 -- COMMIT TRANSACTION; -- YB
 -- BEGIN TRANSACTION; -- YB: avoid transaction to test all queries after failure
 INSERT INTO num_exp_log10 VALUES (0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_log10 VALUES (1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_log10 VALUES (2,'7.53578122160797276459');
 INSERT INTO num_exp_log10 VALUES (3,'.63447727016073160075');
 INSERT INTO num_exp_log10 VALUES (4,'6.89206461372691743345');
@@ -479,9 +455,7 @@ INSERT INTO num_exp_log10 VALUES (9,'7.39666659961986567059');
 -- COMMIT TRANSACTION; -- YB
 -- BEGIN TRANSACTION; -- YB: avoid transaction to test all queries after failure
 INSERT INTO num_exp_power_10_ln VALUES (0,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_power_10_ln VALUES (1,'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_exp_power_10_ln VALUES (2,'224790267919917955.13261618583642653184');
 INSERT INTO num_exp_power_10_ln VALUES (3,'28.90266599445155957393');
 INSERT INTO num_exp_power_10_ln VALUES (4,'7405685069594999.07733999469386277636');
@@ -1169,7 +1143,6 @@ DETAIL:  A field with precision 4, scale 4 must round to an absolute value less 
 INSERT INTO fract_only VALUES (7, '0.00001');
 INSERT INTO fract_only VALUES (8, '0.00017');
 INSERT INTO fract_only VALUES (9, 'NaN');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO fract_only VALUES (10, 'Inf');	-- should fail
 ERROR:  numeric field overflow
 DETAIL:  A field with precision 4, scale 4 cannot hold an infinite value.
@@ -1185,7 +1158,8 @@ SELECT * FROM fract_only;
   5 |  0.9999
   7 |  0.0000
   8 |  0.0002
-(6 rows)
+  9 |     NaN
+(7 rows)
 
 DROP TABLE fract_only;
 -- Check conversion to integers
@@ -2159,21 +2133,13 @@ INSERT INTO num_input_test(n1) VALUES ('  -93853');
 INSERT INTO num_input_test(n1) VALUES ('555.50');
 INSERT INTO num_input_test(n1) VALUES ('-555.50');
 INSERT INTO num_input_test(n1) VALUES ('NaN ');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_input_test(n1) VALUES ('        nan');
-ERROR:  DECIMAL does not support NaN yet
 INSERT INTO num_input_test(n1) VALUES (' inf ');
-ERROR:  DECIMAL does not support Infinity yet
 INSERT INTO num_input_test(n1) VALUES (' +inf ');
-ERROR:  DECIMAL does not support Infinity yet
 INSERT INTO num_input_test(n1) VALUES (' -inf ');
-ERROR:  DECIMAL does not support Infinity yet
 INSERT INTO num_input_test(n1) VALUES (' Infinity ');
-ERROR:  DECIMAL does not support Infinity yet
 INSERT INTO num_input_test(n1) VALUES (' +inFinity ');
-ERROR:  DECIMAL does not support Infinity yet
 INSERT INTO num_input_test(n1) VALUES (' -INFINITY ');
-ERROR:  DECIMAL does not support Infinity yet
 -- bad inputs
 INSERT INTO num_input_test(n1) VALUES ('     ');
 ERROR:  invalid input syntax for type numeric: "     "
@@ -2212,14 +2178,22 @@ ERROR:  invalid input syntax for type numeric: "+ infinity"
 LINE 1: INSERT INTO num_input_test(n1) VALUES ('+ infinity');
                                                ^
 SELECT * FROM num_input_test;
-   n1    
----------
-     123
- 3245874
-  -93853
-   555.5
-  -555.5
-(5 rows)
+    n1     
+-----------
+       123
+   3245874
+    -93853
+     555.5
+    -555.5
+       NaN
+       NaN
+  Infinity
+  Infinity
+ -Infinity
+  Infinity
+  Infinity
+ -Infinity
+(13 rows)
 
 --
 -- Test precision and scale typemods
@@ -2251,7 +2225,6 @@ INSERT INTO num_typemod_test VALUES (87654321, 87654, 87.654, 0.087654, 0.000087
 INSERT INTO num_typemod_test VALUES (123456789, 123456, 123.456, 0.123456, 0.000123456);
 INSERT INTO num_typemod_test VALUES (987654321, 987654, 987.654, 0.987654, 0.000987654);
 INSERT INTO num_typemod_test VALUES ('NaN', 'NaN', 'NaN', 'NaN', 'NaN');
-ERROR:  DECIMAL does not support NaN yet
 SELECT scale(millions), * FROM num_typemod_test ORDER BY millions;
  scale | millions  | thousands | units | thousandths | millionths 
 -------+-----------+-----------+-------+-------------+------------
@@ -2263,7 +2236,8 @@ SELECT scale(millions), * FROM num_typemod_test ORDER BY millions;
      0 |  88000000 |     88000 |    88 |       0.088 |   0.000088
      0 | 123000000 |    123000 |   123 |       0.123 |   0.000123
      0 | 988000000 |    988000 |   988 |       0.988 |   0.000988
-(8 rows)
+       |       NaN |       NaN |   NaN |         NaN |        NaN
+(9 rows)
 
 -- invalid inputs
 INSERT INTO num_typemod_test (millions) VALUES ('inf');

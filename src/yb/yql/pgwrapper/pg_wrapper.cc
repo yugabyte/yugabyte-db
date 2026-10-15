@@ -225,6 +225,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_xcluster_analyze_replication, kExter
     "If true, an xCluster automatic mode source records each relation it analyzes in ddl_queue so "
     "that the target refreshes that relation's statistics.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_decimal_infinity_nan, kExternal, false, true,
+    "Enable DECIMAL Infinity and NaN support in YSQL. Emits new DocDB key/value entry types; "
+    "do not enable until the cluster is fully upgraded.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
