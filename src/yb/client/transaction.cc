@@ -110,7 +110,8 @@ DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
 
 DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
-                 "Inject delay before sending initial heartbeat to new transaction status tablet.");
+                 "Inject delay before sending the initial heartbeat to the new status tablet of a "
+                 "transaction being promoted.");
 
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
@@ -832,23 +833,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
-      auto tablet_id = op->tablet->tablet_id();
-      auto status = STATUS_FORMAT(
-            IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
-      VLOG_WITH_PREFIX(4) << "Prepare, rejected: " << status;
-      return status;
-    }
-
-    VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     // We start the promotion first, to avoid sending transaction status move RPCs to tablets
     // that were first involved in the transaction with this batch of changes.
-    auto status = StartPromotionToGlobal();
-    if (!status.ok()) {
-      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
-                  << " rejected (promotion failed): " << status;
-      return status;
-    }
+    RETURN_NOT_OK(StartPromotionToGlobal(op));
     return true;
   }
 
@@ -858,15 +845,34 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (metadata_.locality.IsGlobal()) {
         return Status::OK();
       }
+      RETURN_NOT_OK(CheckRunningUnlocked());
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
     return Status::OK();
   }
 
-  Status StartPromotionToGlobal() REQUIRES(mutex_) {
+  Status StartPromotionToGlobal(internal::InFlightOp* violating_op = nullptr) REQUIRES(mutex_) {
     if (metadata_.locality.IsGlobal()) {
-      return STATUS(IllegalState, "Global transactions cannot be promoted");
+      auto status = STATUS(IllegalState, "Global transactions cannot be promoted");
+      LOG_WITH_PREFIX(DFATAL) << "Promotion failed: " << status;
+      return status;
+    }
+
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+      auto status = violating_op
+          ? STATUS_FORMAT(
+                IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0",
+                violating_op->tablet->tablet_id())
+          : STATUS(
+                IllegalState, "FLAGS_auto_promote_nonlocal_transactions_to_global set to false");
+      VLOG_WITH_PREFIX(4) << (violating_op ? "Prepare, rejected: " : "EnsureGlobal, rejected: ")
+                          << status;
+      return status;
+    }
+
+    if (violating_op) {
+      VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     }
 
     auto running_state = TransactionState::kRunning;
@@ -2014,7 +2020,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         SendHeartbeatToNewTablet(promoting));
         }
       };
-      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
+      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0) && promoting) {
         manager_->client()->messenger()->scheduler().Schedule(
             std::move(send_new_heartbeat),
             std::chrono::milliseconds(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms));

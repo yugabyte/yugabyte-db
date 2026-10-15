@@ -2954,8 +2954,20 @@ class PgClientSession::Impl {
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     data->TEST_mock_service = context_.TEST_mock_service;
     const auto& options = data->req.options();
-    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
-              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
+    // Don't promote local txns when requesting local locks on catalog relations.
+    const auto relation_oid = data->req.lock_oid().relation_oid();
+    // Promote txns with global locks to detect potential deadlock. txns for DDLs should
+    // probably be globally replicated anyways to avoid issues if one region goes down.
+    auto locality = IsTableLockTypeGlobal(lock_type) || options.force_global_transaction()
+        ? TransactionFullLocality::Global()
+        : TransactionFullLocality::RegionLocal();
+    if (!locality.IsGlobal() && relation_oid >= kPgFirstNormalObjectId) {
+      locality = GetTargetTransactionLocality(data->req);
+    }
+    VLOG_WITH_PREFIX(3)
+        << "Object lock for relation " << AsString(data->req.lock_oid())
+        << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
@@ -2984,7 +2996,8 @@ class PgClientSession::Impl {
       }
       active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
-      RETURN_NOT_OK(SetupSession(options, deadline, /* arena= */ nullptr));
+      RETURN_NOT_OK(SetupSession(
+          options, deadline, /* arena= */ nullptr, /* in_txn_limit */ {}, locality));
       active_subtxn_id = options.active_sub_transaction_id();
     }
 
@@ -2998,12 +3011,10 @@ class PgClientSession::Impl {
         primary_session_data->transaction || primary_session_kind == PgClientSessionKind::kPlain,
         IllegalState, Format("Expected valid transaction for $0", AsString(primary_session_kind)));
 
-    auto locality = GetTargetTransactionLocality(data->req);
     auto txn_meta_res = primary_session_data->transaction
         ? primary_session_data->transaction->GetMetadata(deadline).get()
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
-    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
@@ -4132,14 +4143,16 @@ class PgClientSession::Impl {
           txn->isolation(), isolation);
       }
 
-      return options.ddl_mode() && options.ddl_use_regular_transaction_block()
+      return locality.IsGlobal() ||
+             (options.ddl_mode() && options.ddl_use_regular_transaction_block())
                  ? txn->EnsureGlobal(deadline)
                  : Status::OK();
     }
 
     const bool global_required =
         options.force_global_transaction() ||
-        (options.ddl_mode() && options.ddl_use_regular_transaction_block());
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block()) ||
+        locality.IsGlobal();
     if (global_required) {
       locality = TransactionFullLocality::Global();
     }

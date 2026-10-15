@@ -702,7 +702,9 @@ void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
     return;
   }
   std::lock_guard lock(transaction_entry->mutex);
-  transaction_entry->status_tablet = std::move(request.status_tablet);
+  if (transaction_entry->status_tablet.empty()) {
+    transaction_entry->status_tablet = std::move(request.status_tablet);
+  }
   DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
 }
 
