@@ -15,17 +15,15 @@ import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YcqlSessionBuilder;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
-import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -129,8 +127,8 @@ public class CreateTable extends AbstractTaskBase {
   }
 
   private CqlSession getCassandraSession() {
-    List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().getUniverseUUID());
-    CqlSessionBuilder builder = CqlSession.builder().addContactPoints(addresses);
+    CqlSessionBuilder builder =
+        YcqlSessionBuilder.forUniverse(Universe.getOrBadRequest(taskParams().getUniverseUUID()));
     // TODO This does not take into account both auth and SSL.
     // But also it seems like it's not used anywhere right now.
     log.info("Creating a session...");
