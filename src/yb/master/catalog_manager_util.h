@@ -248,5 +248,10 @@ Status ExecutePgsqlStatements(
 
 bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
 
+// Tablets cannot open a vector index with a deprecated (non-block-based) or unset backend, see
+// HnswBackend. Returns NotSupported for such an index, so that a restore that would bring one back
+// is rejected before it changes the cluster.
+Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table);
+
 } // namespace master
 } // namespace yb

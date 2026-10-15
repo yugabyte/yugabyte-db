@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
 
