@@ -1750,6 +1750,61 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
   }
 
+  // ReplicationSlotAcquire() scans the local slot array. The tserver gflag
+  // bounds that scan. The master keeps its default, so both slots can be
+  // created. The hint names the gflag and the GUC.
+  @Test
+  public void replicationSlotAcquireFailsWhenLocalArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put("max_replication_slots", "1");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t_slot_limit (a int primary key, b text)");
+      stmt.execute("SELECT pg_create_logical_replication_slot('slot_limit_1', 'test_decoding')");
+      stmt.execute("SELECT pg_create_logical_replication_slot('slot_limit_2', 'test_decoding')");
+    }
+
+    Connection conn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection repl1 = conn1.unwrap(PGConnection.class).getReplicationAPI();
+    PGReplicationStream stream1 = repl1.replicationStream()
+        .logical()
+        .withSlotName("slot_limit_1")
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    Connection conn2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection repl2 = conn2.unwrap(PGConnection.class).getReplicationAPI();
+
+    String expectedError = "all replication slots are in use";
+    String expectedHint = "Free one or increase gflag \"--max_replication_slots\" " +
+                          "and/or GUC \"max_replication_slots\".";
+
+    boolean exceptionThrown = false;
+    try {
+      repl2.replicationStream()
+          .logical()
+          .withSlotName("slot_limit_2")
+          .withStartPosition(LogSequenceNumber.valueOf(0L))
+          .start();
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      if (e.getMessage().contains(expectedError) && e.getMessage().contains(expectedHint)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format(
+            "Unexpected Error Message. Got: '%s', Expected to contain: '%s' and '%s'",
+            e.getMessage(), expectedError, expectedHint));
+      }
+    }
+
+    assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
+
+    stream1.close();
+    conn1.close();
+    conn2.close();
+  }
+
   @Test
   public void replicationConnectionConsumptionAttributeDroppedRecreated() throws Exception {
     try (Statement stmt = connection.createStatement()) {

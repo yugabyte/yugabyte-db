@@ -946,11 +946,24 @@ retry:
 		 */
 		CreateSlotOnDisk(s);
 
+		/*
+		 * YB: AllocationLock is the outer lock and covers this whole sequence.
+		 * CheckPointReplicationSlots() reads in_use under it.
+		 * ControlLock is taken only to publish in_use.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (!slot_for_array)
 		{
-			for (int i = 0; i < *YBCGetGFlags()->ysql_max_replication_slots; i++)
+			/*
+			 * YB: ysql_max_replication_slots is independent of the GUCs
+			 * that size replication_slots. Stop at the end of the array.
+			 */
+			const int	yb_nslots = Min((int) *YBCGetGFlags()->ysql_max_replication_slots,
+										max_replication_slots + max_repack_replication_slots);
+
+			for (int i = 0; i < yb_nslots; i++)
 			{
 				ReplicationSlot *temp_s = &ReplicationSlotCtl->replication_slots[i];
 
@@ -960,14 +973,35 @@ retry:
 					break;
 				}
 			}
+
+			/*
+			 * YB: both limits are tserver settings and apply only at process start.
+			 * The gflag is set with --max_replication_slots=N.
+			 * The GUC is set with --ysql_pg_conf_csv=max_replication_slots=N.
+			 * The master gflag of the same name limits only catalog slots.
+			 */
+			if (!slot_for_array)
+				ereport(ERROR,
+						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+						 errmsg("all replication slots are in use"),
+						 errhint("Free one or increase gflag \"--max_replication_slots\" "
+								 "and/or GUC \"max_replication_slots\".")));
+
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 			namestrcpy(&slot_for_array->data.name, name);
 			pgstat_create_replslot(slot_for_array);
+
+			/*
+			 * YB: SearchNamedReplicationSlot() only returns an entry that is already in_use,
+			 * so this store is only needed for a free slot.
+			 */
+			LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
+			slot_for_array->in_use = true;
+			LWLockRelease(ReplicationSlotControlLock);
 		}
 
-		slot_for_array->in_use = true;
 		pgstat_acquire_replslot(slot_for_array);
-
+		LWLockRelease(ReplicationSlotAllocationLock);
 		return;
 	}
 
@@ -1311,14 +1345,27 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 			YBCDropReplicationSlot(name, yb_if_exists);
 		}
 
+		/*
+		 * YB: AllocationLock covers the whole drop.
+		 * in_use is cleared before pgstat_drop_replslot(), under ControlLock,
+		 * so a scan cannot observe the slot after its stats entry is gone.
+		 * pgstat_drop_replslot() finds that entry by slot index,
+		 * so the index must not be reused until AllocationLock is released.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (slot_for_array)
 		{
-			pgstat_drop_replslot(slot_for_array);
+			LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 			slot_for_array->in_use = false;
+			LWLockRelease(ReplicationSlotControlLock);
+
+			pgstat_drop_replslot(slot_for_array);
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}
+
+		LWLockRelease(ReplicationSlotAllocationLock);
 
 		/*
 		 * Release only after the cleanup, so no other session can acquire the
