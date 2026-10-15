@@ -23,6 +23,11 @@
         <a class="dropdown-item{{$changeFilePath}}" href="https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/{{ .File.Path }}"{{- if $editPage }} data-git="{{ $editPage }}"{{- end }} title="Edit this page" target="_blank" rel="noopener">
           Edit this page
         </a>
+        {{- with .OutputFormats.Get "markdown" -}}
+        <a class="dropdown-item" href="{{ .RelPermalink }}" title="View this page as Markdown">
+          View as Markdown
+        </a>
+        {{- end -}}
         <a class="dropdown-item" href="/stable/contribute/docs/" title="Contributor guide" target="_blank" rel="noopener">
           Contributor guide
         </a>

@@ -5940,6 +5940,17 @@ ybIsRelationNameInScope(char *hintRelationName)
 	return relationNameInScope;
 }
 
+/*
+ * The number of disable_cost charges in a plan node's startup cost.  Every
+ * disabled path is charged disable_cost at startup, so a node's own charge is
+ * what its inputs' counts do not account for.
+ */
+static int64
+ybDisableCostCount(Plan *plan)
+{
+	return plan != NULL ? (int64) (plan->startup_cost / disable_cost) : 0;
+}
+
 static char *
 ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt)
 {
@@ -5986,9 +5997,19 @@ ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt)
 			case T_MergeJoin:
 			case T_HashJoin:
 				{
+					/*
+					 * A join disabled by its own method used a method no hint
+					 * allowed, even when it follows the Leading order, e.g.
+					 * because the hinted method cannot be built for it.
+					 */
+					bool		ownMethodDisabled =
+						ybDisableCostCount(plan) >
+						ybDisableCostCount(plan->lefttree) +
+						ybDisableCostCount(plan->righttree);
+
 					if (plan->total_cost >= disable_cost)
 					{
-						if (!(plan->ybIsHinted))
+						if (!(plan->ybIsHinted) || ownMethodDisabled)
 						{
 							if (plan->ybUniqueId > 0)
 							{

@@ -17,6 +17,10 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 CREATE INDEX NONCONCURRENTLY bkt_tbl_expr_idx ON bkt_tbl ((yb_hash_code(r3, r2, r4, r5, r1) % 3) ASC, r1, r2, r3, r4, r5);
 ANALYZE bkt_tbl;
 CREATE ROLE regress_merge_scan_rls_user;
@@ -149,8 +153,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
                Output: r1, r2, r3, r4, r5, (yb_hash_code(r3, r2, r4, r5, r1) % 3)
                Storage Filter: (bkt_tbl.n >= 0)
                Filter: ((yb_hash_code(bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r4, bkt_tbl.r5, bkt_tbl.r1) % 3) = ANY ('{0,1,2}'::integer[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 11
+               Storage Table Read Requests: 107
+               Storage Table Read Ops: 321
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -241,8 +245,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: c, s, d
                Index Cond: (rls_ec_tbl.s = ANY ('{1,2}'::integer[]))
                Storage Filter: ((rls_ec_tbl.d = rls_ec_tbl.t) AND (rls_ec_tbl.t = 'Thu Jan 02 00:00:00 2020'::timestamp without time zone))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 202
 (13 rows)
 
@@ -299,8 +303,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: c, s, d
                Index Cond: ((rls_ec_tbl.s = ANY ('{1,2}'::integer[])) AND (rls_ec_tbl.d = '01-02-2020'::date) AND (rls_ec_tbl.d = '01-02-2020'::date))
                Storage Filter: ((rls_ec_tbl.d = rls_ec_tbl.t) AND (rls_ec_tbl.t = 'Thu Jan 02 00:00:00 2020'::timestamp without time zone))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 4
                Storage Table Rows Scanned: 51
 (13 rows)
 

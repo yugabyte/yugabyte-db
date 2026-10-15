@@ -463,12 +463,31 @@ func (m *InstallNodeAgent) RenderTemplates(
 		return nil, err
 	}
 	if err == nil {
+		if provider.Code != "onprem" {
+			return nil, fmt.Errorf("Provider is not an on-prem provider")
+		}
+		if !provider.Details.SkipProvisioning {
+			return nil, fmt.Errorf(
+				"Provider is configured for sudo provisioning, which is not supported",
+			)
+		}
 		providerYbHomeDir := provider.Details.CloudInfo.Onprem.YbHomeDir
 		if providerYbHomeDir != "" && providerYbHomeDir != values["yb_home_dir"].(string) {
 			return nil, fmt.Errorf(
 				"Provider YugabyteDB home directory (%s) does not match the configured value (%s)",
 				providerYbHomeDir,
 				values["yb_home_dir"].(string),
+			)
+		}
+		// YBA scrapes node exporter on the provider's port, so installing it on another port
+		// leaves the node unreachable.
+		nodeExporterPort := int(config.GetInt(values, "node_exporter_port", 9300))
+		if provider.Details.NodeExporterPort != 0 &&
+			provider.Details.NodeExporterPort != nodeExporterPort {
+			return nil, fmt.Errorf(
+				"Provider node exporter port (%d) does not match the configured value (%d)",
+				provider.Details.NodeExporterPort,
+				nodeExporterPort,
 			)
 		}
 		regionExists := false

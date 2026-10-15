@@ -2050,7 +2050,7 @@ public class OtelCollectorConfigGenerator {
 
     // Add node exporter scrape config if the scrape config target is enabled.
     if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.NODE_EXPORT)) {
-      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, nodeDetails));
+      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, universe, nodeDetails));
     }
 
     // Add node-agent scrape config if the scrape config target is enabled.
@@ -2398,11 +2398,11 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createNodeExporterScrapeConfig(
-      String nodeAddress, NodeDetails nodeDetails) {
+      String nodeAddress, Universe universe, NodeDetails nodeDetails) {
     OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
         new OtelCollectorConfigFormat.ScrapeConfig();
     scrapeConfig.setJob_name(JOB_NAME_NODE);
-    scrapeConfig.setScheme("http");
+    scrapeConfig.setScheme(universe.isNodeExporterHttps() ? "https" : "http");
     scrapeConfig.setMetrics_path("/metrics");
 
     // Add TLS config

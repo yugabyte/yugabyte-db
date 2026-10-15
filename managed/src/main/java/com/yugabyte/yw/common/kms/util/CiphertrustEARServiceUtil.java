@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.util.CiphertrustManagerClient.AuthType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -146,12 +145,8 @@ public class CiphertrustEARServiceUtil {
 
   public byte[] generateRandomBytes(int numBytes) {
     byte[] randomBytes = new byte[numBytes];
-    try {
-      SecureRandom.getInstanceStrong().nextBytes(randomBytes);
-    } catch (NoSuchAlgorithmException e) {
-      log.warn("Could not generate CIPHERTRUST random bytes, no such algorithm.");
-      return null;
-    }
+    // Not getInstanceStrong(): it resolves to SUN, not to the FIPS provider.
+    new SecureRandom().nextBytes(randomBytes);
     return randomBytes;
   }
 

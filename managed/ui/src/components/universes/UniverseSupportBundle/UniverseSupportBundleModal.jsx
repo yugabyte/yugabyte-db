@@ -1,8 +1,9 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
+import { usePrevious } from 'react-use';
 
 import { FirstStep } from './FirstStep/FirstStep';
 import {
@@ -112,6 +113,15 @@ const UniverseSupportBundleWizard = (props) => {
       }
     }
   );
+  // Registering with PA is a universe task, so a bundle opened while it runs checks too early;
+  // check again once the task completes.
+  const isUpdateInProgress = !!universeDetails.updateInProgress;
+  const wasUpdateInProgress = usePrevious(isUpdateInProgress);
+  useEffect(() => {
+    if (wasUpdateInProgress && !isUpdateInProgress) {
+      paRegistrationQuery.refetch();
+    }
+  }, [isUpdateInProgress]);
   const isPerfAdvisorRegistered =
     paRegistrationQuery.isSuccess && !!paRegistrationQuery.data?.success;
   const [isOnCreateForm, setIsOnCreateForm] = useState(false);

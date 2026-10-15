@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -44,11 +46,6 @@ DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -1306,14 +1303,7 @@ class PgReadTimeBaseTest
 
   void SetUp() override {
     const auto concurrent_ddl = IsConcurrentDdl();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = concurrent_ddl;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
+    ToggleDDLMode(/* use_legacy = */ !concurrent_ddl);
     PgReadTimeTest::SetUp();
   }
 

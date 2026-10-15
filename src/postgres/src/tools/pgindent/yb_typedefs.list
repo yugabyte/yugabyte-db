@@ -29,6 +29,7 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
 YbAshTrackNestedQueries
@@ -61,6 +62,8 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
+YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
@@ -117,7 +120,8 @@ YbIndexCorruptionErrors
 YbIndexErrorInfo
 YbIndexInconsistencyLogStore
 YbIndexPathInfo
-YbIndexProcessorState
+YbIndiciesHTABEntry
+YbIndiciesHTABEntryData
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
@@ -364,6 +368,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode

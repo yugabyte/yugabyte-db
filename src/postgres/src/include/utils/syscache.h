@@ -290,10 +290,13 @@ extern bool YbCheckCatalogCacheIndexNameTable();
 extern bool YbCheckSysCacheNames();
 #endif
 extern const char *YbGetCatalogCacheIndexName(int cache_id);
+extern const char *YbGetCatalogCacheName(int cache_id);
 extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
 extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
 extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
 extern uint32 YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4);
+extern void YbSysCachePrefetchList(int cache_id, Datum key1, int nfull_keys,
+								   const Datum *full_keys);
 extern void YbCopyCacheInfoToValues(int cache_id, Datum *values);
 extern void YbSetAdditionalNegCacheIds(List *neg_cache_ids);
 

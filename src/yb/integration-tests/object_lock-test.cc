@@ -21,6 +21,7 @@
 
 // #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
@@ -58,9 +59,6 @@
 using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
@@ -112,8 +110,7 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
   ObjectLockTest() {}
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
@@ -2589,6 +2586,7 @@ ClusterFlags ExternalObjectLockTest::BaseFlags() {
   cluster_flags.tserver_flags = FlagMap{
       {"ysql_yb_ddl_transaction_block_enabled", true},
       {"enable_object_locking_for_table_locks", true},
+      {"ysql_enable_concurrent_ddl", true},
       {"ysql_lease_refresher_interval_ms", kDefaultYSQLLeaseRefreshIntervalMilli},
       {"TEST_olm_skip_sending_wait_for_probes", false}};
   return cluster_flags;

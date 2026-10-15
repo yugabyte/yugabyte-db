@@ -116,6 +116,12 @@ public enum PlatformMetrics {
       "Requested number of CPU cores for the db process", Unit.COUNT, false),
   UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
   UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false),
+  UNIVERSE_NODE_EXPORTER_HTTPS_ALLOWED(
+      "Flag, indicating that node-to-node encryption and YBA config call for node_exporter HTTPS",
+      Unit.STATUS,
+      false),
+  UNIVERSE_NODE_EXPORTER_HTTPS(
+      "Flag, indicating that the universe's node_exporters serve HTTPS", Unit.STATUS, false),
   UNIVERSE_OS_UPDATE_REQUIRED(
       "More recent OS version is recommended for this universe", Unit.STATUS, false),
   UNIVERSE_RELEASE_FILES_STATUS(

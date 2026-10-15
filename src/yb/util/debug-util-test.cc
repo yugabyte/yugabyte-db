@@ -63,6 +63,7 @@ using std::vector;
 using namespace std::literals;
 
 DECLARE_bool(track_stack_traces);
+DECLARE_bool(stack_trace_symbolize);
 DECLARE_bool(TEST_disable_thread_stack_collection_wait);
 
 namespace yb {
@@ -147,6 +148,32 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
 #else
   ASSERT_GE(without_file_line, 0);
 #endif
+}
+
+TEST_F(DebugUtilTest, TestStackTraceNoSymbolize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = false;
+  auto se = ScopeExit([] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = true; });
+
+  StackTrace t;
+  t.Collect(1);
+  for (const auto& trace : {t.Symbolize(), GetStackTrace()}) {
+    LOG(INFO) << "Trace:\n" << trace;
+    // Every frame is "@ 0x<pc> (<module>+0x<offset>)", no symbol names.
+    const std::regex kLineRe(R"#(^\s*@\s+0x[0-9a-f]+ \(\S+\+0x[0-9a-f]+\)$)#");
+    std::stringstream ss(trace);
+    std::string line;
+    int num_lines = 0;
+    while (std::getline(ss, line)) {
+      SCOPED_TRACE(line);
+      ASSERT_TRUE(std::regex_match(line, kLineRe));
+      ++num_lines;
+    }
+    ASSERT_GT(num_lines, 2);
+    ASSERT_STR_NOT_CONTAINS(trace, "TestBody");
+    // TestBody is the top frame, or the second one when GetStackTrace() reports itself first.
+    auto second_newline = trace.find('\n', trace.find('\n') + 1);
+    ASSERT_STR_CONTAINS(trace.substr(0, second_newline), "debug-util-test");
+  }
 }
 
 // DumpThreadStack is only supported on Linux, since the implementation relies
@@ -400,6 +427,12 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   start_latch.Wait();
   auto deadline = MonoTime::Now() + 10s;
 
+  // Every empty result must say why; see HandleStackTraceSignal. A thread that misses the
+  // ThreadStacks deadline is reported by the caller, not the handler, and is allowed.
+  int num_in_alloc_dealloc = 0;
+  int num_collecting = 0;
+  int num_timed_out = 0;
+
   // Keep dumping thread stacks.
   while (MonoTime::Now() < deadline) {
     for (size_t i = 0; i < 100; ++i) {
@@ -416,7 +449,17 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
             num_empty_stacks++;
           }
         } else {
-          error_statuses.insert(stack.status().ToString());
+          const auto status_str = stack.status().ToString();
+          if (status_str.find(kThreadStackInAllocDeallocMsg) != std::string::npos) {
+            ++num_in_alloc_dealloc;
+          } else if (status_str.find(kThreadStackCollectingMsg) != std::string::npos) {
+            ++num_collecting;
+          } else if (status_str.find(kThreadStackTimedOutMsg) != std::string::npos) {
+            ++num_timed_out;
+          } else {
+            FAIL() << "Unexpected error status: " << status_str;
+          }
+          error_statuses.insert(status_str);
           num_errors++;
         }
       }
@@ -429,6 +472,13 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   }
   thread_holder.Stop();
   thread_holder.JoinAll();
+
+  LOG(INFO) << "Empty stacks inside tcmalloc alloc/dealloc: " << num_in_alloc_dealloc
+            << ", during another stack collection: " << num_collecting
+            << ", timed out: " << num_timed_out;
+#if YB_GOOGLE_TCMALLOC
+  ASSERT_GT(num_in_alloc_dealloc, 0);
+#endif
 
   for (size_t i = 0; i < kNumThreads; ++i) {
     auto& queue = queues[i];

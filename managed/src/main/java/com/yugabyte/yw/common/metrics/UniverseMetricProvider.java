@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -165,6 +166,26 @@ public class UniverseMetricProvider implements MetricsProvider {
                   PlatformMetrics.UNIVERSE_IS_SYSTEMD,
                   statusValue(
                       universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd)));
+          // The node_exporter TLS alert fires where HTTPS is allowed but the exporters serve HTTP.
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_NODE_EXPORTER_HTTPS_ALLOWED,
+                  statusValue(
+                      universe
+                              .getUniverseDetails()
+                              .getPrimaryCluster()
+                              .userIntent
+                              .enableNodeToNodeEncrypt
+                          && ConfigureNodeExporterTls.isNodeExporterTlsAllowed(
+                              confGetter, customer, universe))));
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_NODE_EXPORTER_HTTPS,
+                  statusValue(universe.isNodeExporterHttps())));
           Double encryptionKeyExpiryDays =
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);

@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Assisted manual provisioning is deprecated, and it is removed in v2025.1 and later. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

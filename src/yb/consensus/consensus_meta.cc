@@ -45,9 +45,9 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -66,7 +66,6 @@ namespace yb {
 namespace consensus {
 
 using std::string;
-using strings::Substitute;
 
 namespace {
 
@@ -348,8 +347,8 @@ Status ConsensusMetadata::Flush() {
                           pb_util::OVERWRITE,
                           // Always fsync the consensus metadata.
                           pb_util::SYNC),
-                        Substitute("Unable to write consensus meta file for tablet $0 to path $1",
-                                   tablet_id_, meta_file_path));
+                        Format("Unable to write consensus meta file for tablet $0 to path $1",
+                               tablet_id_, meta_file_path));
   RETURN_NOT_OK(UpdateOnDiskSize());
   return Status::OK();
 }

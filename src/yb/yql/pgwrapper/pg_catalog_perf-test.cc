@@ -17,9 +17,13 @@
 #include <string_view>
 #include <thread>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/json_util.h"
+#include "yb/common/pgsql_error.h"
 
 #include "yb/master/master.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 
@@ -28,6 +32,7 @@
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
@@ -69,12 +74,11 @@ DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_ysql_catalog_prefetch_rejections_to_inject);
 DECLARE_int32(master_max_concurrent_ysql_catalog_prefetches);
-DECLARE_uint32(master_new_ysql_catalog_prefetch_pct);
+DECLARE_uint32(master_new_ysql_catalog_prefetch_percent);
+DECLARE_int32(TEST_ysql_catalog_prefetch_load_override);
 
 using namespace std::literals;
 
@@ -182,13 +186,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
         FLAGS_ysql_enable_read_request_cache_for_connection_auth) =
         config.enable_read_request_cache_for_connection_auth;
 
-    // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
-    // common_flags.cc), so enable/ disable them based on whether invalidation messages are
-    // turned on/ off above.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) =
-        config.enable_invalidation_messages;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) =
-        config.enable_invalidation_messages;
+    // The new DDL mode requires invalidation messages (see the gflag validators in
+    // common_flags.cc), so follow whether they are turned on/ off above.
+    ToggleDDLMode(/* use_legacy = */ !config.enable_invalidation_messages);
 
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.
@@ -329,6 +329,88 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     }));
     ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
   }
+
+  // Test checks that after an ANALYZE, a warm backend with the cost model on plans the tables the
+  // ANALYZE did not touch without any RPC to a master, and the analyzed tables with one list read
+  // of pg_statistic each rather than one read per column. The ANALYZE invalidates pg_statistic
+  // rows of the analyzed tables only, but it also drops all of the backend's pg_statistic catcache
+  // lists. A partitioned table only has stainherit = true rows, which the GROUP BY estimate reads,
+  // and so does an inheritance parent whose rows are all in its child.
+  void TestPlanRPCCountAfterAnalyzeOfOtherTable() {
+    constexpr auto kNumColumns = 20;
+    constexpr auto kAnalyzed = "analyzed";
+    constexpr auto kNotReanalyzed = "not_reanalyzed";
+    constexpr auto kNeverAnalyzed = "never_analyzed";
+    constexpr auto kPartitioned = "partitioned";
+    constexpr auto kInheritanceParent = "inheritance_parent";
+
+    auto aux_conn = ASSERT_RESULT(Connect());
+    std::string columns = "k INT PRIMARY KEY";
+    std::string group_by_columns;
+    for (int i = 1; i <= kNumColumns; ++i) {
+      columns += Format(", c$0 INT", i);
+      group_by_columns += Format("$0c$1", i == 1 ? "" : ", ", i);
+    }
+    for (const auto* table : {kAnalyzed, kNotReanalyzed, kNeverAnalyzed}) {
+      ASSERT_OK(aux_conn.ExecuteFormat("CREATE TABLE $0 ($1)", table, columns));
+    }
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1) PARTITION BY RANGE (k)", kPartitioned, columns));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0_1 PARTITION OF $0 FOR VALUES FROM (MINVALUE) TO (MAXVALUE)",
+        kPartitioned));
+    ASSERT_OK(aux_conn.ExecuteFormat("CREATE TABLE $0 ($1)", kInheritanceParent, columns));
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "CREATE TABLE $0_child () INHERITS ($0)", kInheritanceParent));
+    for (const auto& table : {
+        std::string(kAnalyzed), std::string(kNotReanalyzed), std::string(kNeverAnalyzed),
+        std::string(kPartitioned), Format("$0_child", kInheritanceParent)}) {
+      ASSERT_OK(aux_conn.ExecuteFormat(
+          "INSERT INTO $0 (k, c1) SELECT i, i FROM generate_series(1, 100) i", table));
+    }
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "ANALYZE $0, $1, $2, $3, $3_child",
+        kAnalyzed, kNotReanalyzed, kPartitioned, kInheritanceParent));
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
+    const auto plan_rpc_count =
+        [this, &conn, &group_by_columns](const std::string& table) -> Result<uint64_t> {
+      return VERIFY_RESULT(metrics_->Delta([&conn, &table, &group_by_columns] {
+        return ResultToStatus(conn.FetchFormat(
+            "EXPLAIN SELECT $0 FROM $1 GROUP BY $0", group_by_columns, table));
+      })).master_read_rpc;
+    };
+    for (const auto* table :
+         {kAnalyzed, kNotReanalyzed, kNeverAnalyzed, kPartitioned, kInheritanceParent}) {
+      ASSERT_RESULT(plan_rpc_count(table));
+      ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(table)), 0) << table;
+    }
+
+    ASSERT_OK(aux_conn.ExecuteFormat(
+        "ANALYZE $0, $1, $2", kAnalyzed, kPartitioned, kInheritanceParent));
+    const auto target_version = ASSERT_RESULT(aux_conn.FetchRow<int64_t>(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
+        "(SELECT oid FROM pg_database WHERE datname = current_database())"));
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, target_version]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(
+              "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()")) >=
+              target_version;
+        },
+        30s, "backend applies the ANALYZE invalidation"));
+
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kNotReanalyzed)), 0);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kNeverAnalyzed)), 0);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kAnalyzed)), 1);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kAnalyzed)), 0);
+    // One list read for the partitioned table and one for its partition.
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 2);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kPartitioned)), 0);
+    // ANALYZE of an inheritance parent does not touch its child.
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kInheritanceParent)), 1);
+    ASSERT_EQ(ASSERT_RESULT(plan_rpc_count(kInheritanceParent)), 0);
+  }
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
@@ -378,6 +460,12 @@ constexpr Configuration kConfigStatsPreload{
 constexpr Configuration kConfigAggregatePreload{
     .preload_additional_catalog_list = kAggregateTableList};
 
+constexpr Configuration kConfigInvalMessages{.enable_invalidation_messages = true};
+
+constexpr Configuration kConfigStatsPreloadInvalMessages{
+    .preload_additional_catalog_list = kStatsTableList,
+    .enable_invalidation_messages = true};
+
 // Connection-auth cache (#32063). The connection-auth prefetch (pg_authid,
 // pg_database, ...) is served from the tserver response cache. Applies to
 // both connection manager auth backends and regular backends; the test runs
@@ -405,6 +493,9 @@ using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefaul
 using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
 using PgStatsPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreload>;
 using PgAggregatePreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigAggregatePreload>;
+using PgInvalMessagesTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigInvalMessages>;
+using PgStatsPreloadInvalMessagesTest =
+    ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreloadInvalMessages>;
 using PgCatalogWithUnlimitedCachePerfTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithUnlimitedCache>;
 using PgCatalogWithLimitedCachePerfTest =
@@ -556,7 +647,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/14);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
@@ -577,6 +668,16 @@ TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithAggregatesPreload,
           PgAggregatePreloadTest) {
   TestAfterCacheRefreshRPCCountOnSelectWithAggregates(/*expected_master_rpc_count=*/ 12);
+}
+
+TEST_F_EX(PgCatalogPerfTest, PlanRPCCountAfterAnalyzeOfOtherTable, PgInvalMessagesTest) {
+  TestPlanRPCCountAfterAnalyzeOfOtherTable();
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          PlanRPCCountAfterAnalyzeOfOtherTableStatsPreload,
+          PgStatsPreloadInvalMessagesTest) {
+  TestPlanRPCCountAfterAnalyzeOfOtherTable();
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -1220,10 +1321,9 @@ TEST_F(PgCatalogPrefetchAdmissionTest, RejectedPrefetchIsRetried) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
 
-  // At least, not exactly: the countdown in AdmitRead is a plain read-modify-write, so two
-  // overlapping prefetches can both take the last injection. The limit is pinned above, so any
-  // rejection counted here is an injected one.
-  ASSERT_GE(Rejections(), rejections_before + 1)
+  // The limit is pinned above, so any rejection counted here is an injected one, and the
+  // injection count is exact.
+  ASSERT_EQ(Rejections(), rejections_before + 1)
       << "the injected rejection did not reach a prefetch, so the retry path was not exercised";
 }
 
@@ -1251,13 +1351,158 @@ TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndRelease
 // connection could never begin and the limit would be a deadlock rather than a bound.
 TEST_F(PgCatalogPrefetchAdmissionTest, NewPrefetchShareHasAFloor) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 4;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_new_ysql_catalog_prefetch_pct) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_new_ysql_catalog_prefetch_percent) = 0;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
 
   ASSERT_OK(LoggedWaitFor(
       [this] { return InProgress() == 0; }, 30s, "prefetch admissions released"));
+}
+
+// Covers the DDL-side half of prefetch pacing: a session that has just bumped the catalog
+// version waits for the master to work through the prefetches that bump caused, so that a script
+// running DDLs back to back does not stack wave on wave.
+class PgDdlPrefetchPacingTest : public PgMiniTestBase {
+ protected:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  // The level travels master -> heartbeat -> this tserver's shared memory, so a test that sets it
+  // has to let a heartbeat land before the backend can observe it.
+  Status WaitForSharedPrefetchLoad(uint32_t expected) {
+    return LoggedWaitFor(
+        [this, expected] {
+          return cluster_->mini_tablet_server(0)->server()->shared_object()
+                     ->ysql_catalog_prefetch_load() == expected;
+        },
+        30s, Format("shared prefetch load to become $0", expected));
+  }
+
+  Status SetPrefetchLoad(master::YsqlCatalogPrefetchLoadPB load) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_catalog_prefetch_load_override) = load;
+    return WaitForSharedPrefetchLoad(load);
+  }
+
+  // Elapsed time of a DDL that bumps the catalog version.
+  Result<MonoDelta> TimeDdl(PGConn* conn, const std::string& table_name) {
+    const auto start = MonoTime::Now();
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE $0 (k INT)", table_name));
+    return MonoTime::Now() - start;
+  }
+
+  // A session waits only for a bump it made itself, so the first DDL of a connection never waits.
+  // Running one here arms the session for the DDLs the test then measures, and absorbs the one-off
+  // costs of the first CREATE TABLE on a fresh cluster, which would otherwise land in the baseline.
+  Status ArmSession(PGConn* conn, const std::string& table_name) {
+    return conn->ExecuteFormat("CREATE TABLE $0 (k INT)", table_name);
+  }
+};
+
+TEST_F(PgDdlPrefetchPacingTest, DdlWaitsWhileMasterIsBusyPrefetching) {
+  constexpr int kWaitMs = 3000;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_ddl_wait_for_master_prefetch_drain_ms = $0", kWaitMs));
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(ArmSession(&conn, "t_warmup"));
+
+  // With the master reporting low load the DDL must not wait at all, although the session is armed
+  // and so is eligible to.
+  const auto unpaced = ASSERT_RESULT(TimeDdl(&conn, "t_low"));
+
+  // With the master reporting busy the DDL must wait, and must give up at the configured bound
+  // rather than blocking forever on a level that never falls.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  const auto paced = ASSERT_RESULT(TimeDdl(&conn, "t_busy"));
+
+  // Compared against the unpaced run rather than against the clock: what a DDL costs on its own
+  // varies with the machine, but the wait it adds does not.
+  const auto added_ms = (paced - unpaced).ToMilliseconds();
+  ASSERT_GE(added_ms, kWaitMs * 0.8)
+      << "a DDL did not wait although the master reported busy prefetch load"
+      << " (unpaced " << unpaced << ", paced " << paced << ")";
+  ASSERT_LT(paced.ToMilliseconds(), kWaitMs * 10)
+      << "a DDL waited far past its configured bound";
+
+  // Super busy means the leader is turning away prefetches already under way, which earns twice
+  // the budget. The level never falls here, so each wait runs to its bound and the two bounds are
+  // what separate the runs.
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_SUPER_BUSY));
+  const auto super_paced = ASSERT_RESULT(TimeDdl(&conn, "t_super_busy"));
+
+  const auto super_added_ms = (super_paced - unpaced).ToMilliseconds();
+  ASSERT_GE(super_added_ms, kWaitMs * 1.6)
+      << "a super busy leader did not earn the doubled wait"
+      << " (busy added " << added_ms << "ms, super busy added " << super_added_ms << "ms)";
+}
+
+// The wait is opt out: set to zero a DDL must not pay for it however loaded the master is.
+TEST_F(PgDdlPrefetchPacingTest, DdlDoesNotWaitWhenDisabled) {
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_SUPER_BUSY));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_ddl_wait_for_master_prefetch_drain_ms = 0"));
+  ASSERT_OK(ArmSession(&conn, "t_disabled_warmup"));
+  const auto elapsed = ASSERT_RESULT(TimeDdl(&conn, "t_disabled"));
+  // Deliberately loose: this guards against the wait running when it is switched off, not against
+  // a DDL being slow for its own reasons.
+  ASSERT_LT(elapsed.ToMilliseconds(), 10000)
+      << "a DDL waited although yb_ddl_wait_for_master_prefetch_drain_ms is 0";
+}
+
+// A DDL run from a function body bumps the version like any other, so it waits like any other.
+// Worth pinning: the wait hangs off the utility hook, and a nested statement reaches that hook with
+// a different context than a DDL the client sent directly.
+TEST_F(PgDdlPrefetchPacingTest, DdlInsideFunctionWaits) {
+  constexpr int kWaitMs = 3000;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_ddl_wait_for_master_prefetch_drain_ms = $0", kWaitMs));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION make_table(name TEXT) RETURNS void LANGUAGE plpgsql AS $$ "
+      "BEGIN EXECUTE 'CREATE TABLE ' || name || ' (k INT)'; END $$"));
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(ArmSession(&conn, "t_fn_warmup"));
+  const auto start_low = MonoTime::Now();
+  ASSERT_RESULT(conn.Fetch("SELECT make_table('t_fn_low')"));
+  const auto unpaced = MonoTime::Now() - start_low;
+
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
+  const auto start_busy = MonoTime::Now();
+  ASSERT_RESULT(conn.Fetch("SELECT make_table('t_fn_busy')"));
+  const auto paced = MonoTime::Now() - start_busy;
+
+  ASSERT_GE((paced - unpaced).ToMilliseconds(), kWaitMs * 0.8)
+      << "a DDL run from a function body did not wait although the master reported busy"
+      << " (unpaced " << unpaced << ", paced " << paced << ")";
+}
+
+// The wait has to be interruptible. It runs at statement start, where statement_timeout is armed
+// and CHECK_FOR_INTERRUPTS does something; in the commit path it ran under HOLD_INTERRUPTS, where
+// a cancel and a timeout were both inert for the length of the wait.
+TEST_F(PgDdlPrefetchPacingTest, StatementTimeoutInterruptsTheWait) {
+  constexpr int kWaitMs = 60000;
+  constexpr int kTimeoutMs = 2000;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_ddl_wait_for_master_prefetch_drain_ms = $0", kWaitMs));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_SUPER_BUSY));
+  // Arms the session while nothing is pending, so this one does not wait.
+  ASSERT_OK(ArmSession(&conn, "t_timeout_warmup"));
+
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = $0", kTimeoutMs));
+  const auto start = MonoTime::Now();
+  const auto status = conn.Execute("CREATE TABLE t_timeout (k INT)");
+  const auto elapsed = MonoTime::Now() - start;
+
+  ASSERT_NOK_PG_ERROR_CODE(status, YBPgErrorCode::YB_PG_QUERY_CANCELED);
+  // The level never falls, so without the timeout this would run to twice kWaitMs.
+  ASSERT_LT(elapsed.ToMilliseconds(), kTimeoutMs * 10)
+      << "statement_timeout did not interrupt the wait (took " << elapsed << ")";
 }
 
 } // namespace yb::pgwrapper

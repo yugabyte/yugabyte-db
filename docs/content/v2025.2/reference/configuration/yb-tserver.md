@@ -385,6 +385,19 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
+##### client_connection_check_interval
+
+{{% tags/wrap %}}
+
+Default: `0` (disabled)
+{{% /tags/wrap %}}
+
+PostgreSQL parameter that sets how often a backend checks whether its client is still connected while a query runs. A backend whose client has disconnected ends the query and exits. For details, refer to [client_connection_check_interval](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL) in the PostgreSQL documentation.
+
+In YugabyteDB (on Linux), the check also applies while a new connection starts up, including while the backend waits for catalog preload requests. If the client disconnects during startup, for example because its connect timeout expires, the backend exits with `FATAL: connection to client lost` instead of waiting for the preload to finish.
+
+During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
+
 ##### enable_bitmapscan
 
 {{% tags/wrap %}}
@@ -946,6 +959,17 @@ Default: `1`
 
 When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
+##### --export_drive_io_metrics
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Enables [per-drive write I/O metrics](../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#per-drive-write-i-o). When `false`, those metrics are not exported.
+
 ##### --log_min_seconds_to_retain
 
 {{% tags/wrap %}}
@@ -1374,6 +1398,24 @@ Default: `14400` (4 hours)
 {{% /tags/wrap %}}
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+##### --cdc_skip_unqualified_tables_for_polling
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
+
+When this flag is `false` (the default), VWAL refuses to add the unqualified tablet to the polling list and returns `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. The tablet is not polled.
+
+A table is unqualified if its tablets have expired (not polled within [--cdc_intent_retention_ms](#cdc-intent-retention-ms)) or are not of interest (not polled within [--cdcsdk_tablet_not_of_interest_timeout_secs](#cdcsdk-tablet-not-of-interest-timeout-secs) of stream or slot creation).
+
+For more information, refer to [Limitations](../../../additional-features/change-data-capture/using-logical-replication/#limitations).
 
 ##### --timestamp_syscatalog_history_retention_interval_sec
 

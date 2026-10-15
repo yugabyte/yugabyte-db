@@ -75,6 +75,31 @@ public class KubernetesUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testIsMCSEnabled() {
+    // AWS universe: user intent is not kubernetes, so this returns false
+    // without looking up a provider.
+    Universe vmUniverse = ModelFactory.createUniverse("vm-universe", customer.getId());
+    assertFalse(KubernetesUtil.isMCSEnabled(vmUniverse));
+
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    params.setUniverseUUID(UUID.randomUUID());
+    Universe k8sUniverse = Universe.create(params, customer.getId());
+
+    // Zones exist, but none has a pod address template.
+    assertFalse(KubernetesUtil.isMCSEnabled(k8sUniverse));
+
+    pair.getSecond()
+        .get(0)
+        .updateConfig(
+            ImmutableMap.of(
+                "KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}"));
+    pair.getSecond().get(0).save();
+    assertTrue(KubernetesUtil.isMCSEnabled(k8sUniverse));
+  }
+
+  @Test
   public void testExtraNSScopedServiceToRemoveRRDeleteDifferentNS() throws IOException {
     Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
         addClusterAndNodeDetailsK8s("2024.2.0.0-b2", true /* createRR */);

@@ -31,6 +31,16 @@ public interface TaskRollbackComputer {
   }
 
   /**
+   * Whether this rollback needs a captured {@code state_transition_details} checkpoint (edit /
+   * add-node style, where rollback replays a before/target delta). When true, a failed task that
+   * never reached the freeze/checkpoint - e.g. aborted at precheck - has no checkpoint and is not
+   * rollbackable. Non-checkpoint rollbacks (software upgrade) leave this false.
+   */
+  default boolean requiresStateTransitionDetails() {
+    return false;
+  }
+
+  /**
    * Build the rollback submission for the failed task described by {@code context}.
    *
    * @throws com.yugabyte.yw.common.PlatformServiceException if rollback cannot proceed

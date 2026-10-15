@@ -15,9 +15,8 @@
 // Treenode definitions for ALTER TYPE statements.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/crypt.h"
 
@@ -32,7 +31,6 @@ DEFINE_RUNTIME_bool(ycql_allow_non_authenticated_password_reset, false,
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 using yb::util::bcrypt_hashpw;
 using yb::util::kBcryptHashSize;
 
@@ -89,7 +87,7 @@ Status PTAlterRole::Analyze(SemContext* sem_context) {
           char hash[kBcryptHashSize];
           int ret = bcrypt_hashpw(passwordOpt->password(), hash);
           if (ret != 0) {
-            return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
+            return STATUS(IllegalState, Format("Could not hash password, reason: $0", ret));
           }
           salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash , kBcryptHashSize);
           seen_password = true;

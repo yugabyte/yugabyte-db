@@ -32,6 +32,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class JedisPoolTest extends BaseYBClassForJedis {
   private static HostAndPort hnp;
 

@@ -28,6 +28,9 @@
 
 namespace yb {
 struct YsqlFullTableName;
+namespace client {
+class PgAutoAnalyzeServiceClient;
+}
 namespace tserver {
 
 struct XClusterOutputClientResponse;
@@ -60,12 +63,24 @@ struct XClusterDDLQueryInfo {
     }
   };
   std::vector<RelationInfo> relation_map;
+
+  // Relations that were analyzed on the source. The target does not run the ANALYZE, it only
+  // marks these as needing one so its auto analyze service picks them up.
+  struct AnalyzeRelationInfo {
+    std::string relation_name;
+    std::string relation_pgschema_name;
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(relation_name, relation_pgschema_name);
+    }
+  };
+  std::vector<AnalyzeRelationInfo> analyze_relations;
   std::map<std::string, std::string> variables;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         query, ddl_end_time, query_id, version, command_tag, search_path_schema, user,
-        json_for_oid_assignment, is_manual_execution, relation_map, variables);
+        json_for_oid_assignment, is_manual_execution, relation_map, analyze_relations,
+        variables);
   }
 };
 
@@ -87,6 +102,13 @@ class XClusterDDLQueueHandler {
   virtual ~XClusterDDLQueueHandler();
 
   void Shutdown();
+
+  // Whether a replicated DDL batch is currently executing on pg_conn_.
+  bool HasDdlInFlight() const;
+
+  // Terminates the Postgres backend running the in-flight replicated DDL, if any. Blocks on a
+  // Postgres round trip.
+  void KillPgConnection();
 
   // This function is called before the poller calls GetChanges. This will detect if we are in the
   // middle of a executing a DDL batch and complete it.
@@ -136,6 +158,19 @@ class XClusterDDLQueueHandler {
 
   Status ProcessManualExecutionQuery(const XClusterDDLQueryInfo& query_info);
 
+  // Handles an entry recording an ANALYZE that ran on the source. Instead of analyzing on the
+  // target, which would sample the whole table and hold up the queue, tell the auto analyze
+  // service that these relations changed enough to need one.
+  Status ProcessAnalyzeQuery(const XClusterDDLQueryInfo& query_info);
+
+  // Looks up the target's relfilenode oid for a relation, or nullopt if it no longer exists.
+  Result<std::optional<uint32_t>> GetTargetRelfileNodeOid(
+      const XClusterDDLQueryInfo::AnalyzeRelationInfo& relation);
+
+  // Records the query in the replicated_ddls table so that it is not processed again.
+  Status InsertIntoReplicatedDDLs(const XClusterDDLQueryInfo& query_info,
+                                  bool is_manual_execution);
+
   virtual Status InitPGConnection();
   // Safe time excluding ddl_queue table.
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
@@ -173,6 +208,13 @@ class XClusterDDLQueueHandler {
   client::YBClient* local_client_;
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
+  std::unique_ptr<client::PgAutoAnalyzeServiceClient> auto_analyze_client_;
+
+  // Backend pid of pg_conn_, read by other threads to terminate a stuck DDL. 0 if none.
+  std::atomic<uint32_t> pg_backend_pid_{0};
+  // Whether ExecuteCommittedDDLs is running a DDL batch on pg_conn_.
+  std::atomic<bool> ddl_in_flight_{false};
+
   NamespaceName namespace_name_;
   NamespaceId source_namespace_id_;
   NamespaceId target_namespace_id_;

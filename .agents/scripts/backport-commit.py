@@ -374,7 +374,8 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     # footers, with `Original commit: <SHA> / #<PR>` (GitHub-merged) or
     # `Original commit: <SHA> / D<diff>` (Phorge-merged) inserted above the
     # test-plan heading -- either Markdown `## Test plan` or Phorge
-    # `Test Plan:` -- or appended at the end if no heading exists.
+    # `Test Plan:` -- or appended at the end, above any trailers, if no
+    # heading exists.
     raw_body = git("log", "-n1", "--format=%b", commit)
     body_lines = [
         line for line in raw_body.splitlines()
@@ -411,13 +412,27 @@ def amend_message(commit: str, branch: str, pr_url: Optional[str]) -> None:
     if not inserted:
         while new_body_lines and not new_body_lines[-1].strip():
             new_body_lines.pop()
-        if new_body_lines:
-            new_body_lines.append("")
-        new_body_lines.append(original_line)
+        # Git reads trailers only from the last paragraph, so a line after
+        # `Co-authored-by:` would drop that co-author from the backport.
+        if ends_with_trailers(new_body_lines):
+            blanks = [i for i, line in enumerate(new_body_lines)
+                      if not line.strip()]
+            last_paragraph = blanks[-1] + 1 if blanks else 0
+            new_body_lines[last_paragraph:last_paragraph] = [original_line, ""]
+        else:
+            if new_body_lines:
+                new_body_lines.append("")
+            new_body_lines.append(original_line)
     new_body = "\n".join(new_body_lines)
 
     run(["git", "commit", "--amend", "--cleanup=verbatim",
          "-m", new_subject, "-m", new_body])
+
+
+def ends_with_trailers(body_lines: list[str]) -> bool:
+    message = "Subject\n\n" + "\n".join(body_lines) + "\n"
+    return bool(run(["git", "interpret-trailers", "--parse", "--no-divider"],
+                    input_=message).stdout.strip())
 
 
 def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> None:

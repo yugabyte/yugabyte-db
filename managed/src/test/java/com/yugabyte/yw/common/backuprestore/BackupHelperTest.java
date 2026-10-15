@@ -361,6 +361,58 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   @Test
+  @Parameters({"true", "false"})
+  public void testRestorePreflightRejectsNonFipsBackupIntoFipsUniverse(boolean recorded) {
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "test_S3");
+    BackupTableParams parentParams = new BackupTableParams();
+    parentParams.setUniverseUUID(testUniverse.getUniverseUUID());
+    parentParams.customerUuid = testCustomer.getUuid();
+    parentParams.storageConfigUUID = storageConfig.getConfigUUID();
+    BackupTableParams childParams = new BackupTableParams();
+    childParams.setKeyspace("foo");
+    childParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    childParams.storageConfigUUID = storageConfig.getConfigUUID();
+    parentParams.backupList = Arrays.asList(childParams);
+    Backup backup =
+        Backup.create(
+            testCustomer.getUuid(),
+            parentParams,
+            BackupCategory.YB_BACKUP_SCRIPT,
+            BackupVersion.V2);
+    if (!recorded) {
+      // A backup taken before the mode was recorded: inferred from the source universe.
+      BackupTableParams info = backup.getBackupInfo();
+      info.fipsEnabled = null;
+      backup.setBackupInfo(info);
+      backup.save();
+    }
+    Universe fipsUniverse = ModelFactory.createUniverse("fips-target", testCustomer.getId());
+    Universe.saveDetails(
+        fipsUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.fipsEnabled = true;
+          u.setUniverseDetails(details);
+        });
+
+    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    preflightParams.setBackupUUID(backup.getBackupUUID());
+    preflightParams.setUniverseUUID(fipsUniverse.getUniverseUUID());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.generateRestorePreflightAPIResponse(
+                    preflightParams, testCustomer.getUuid()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .startsWith(
+                "Cannot restore a backup of a universe that is not FIPS-enabled into"
+                    + " FIPS-enabled universe 'fips-target'"));
+  }
+
+  @Test
   @Parameters({"false, true", "true, false", "true, true", "false, false"})
   public void testRestorePreflightWithoutBackupObjectS3NonYBC(boolean isYSQL, boolean isKMS) {
     CustomerConfig testStorageConfigS3 =

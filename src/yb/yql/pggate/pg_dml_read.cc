@@ -32,7 +32,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
@@ -442,6 +441,10 @@ Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
 Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   read_req_->mutable_vector_idx_options()->mutable_hnsw_options()->set_ef_search(ef_search);
   return Status::OK();
+}
+
+void PgDmlRead::ANNAddPartitionKeyPrefix(Slice prefix) {
+  read_req_->mutable_vector_idx_options()->add_dup_partition_key_prefixes(prefix);
 }
 
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {

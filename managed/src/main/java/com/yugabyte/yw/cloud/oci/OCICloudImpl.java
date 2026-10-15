@@ -36,12 +36,14 @@ import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -182,6 +184,30 @@ public class OCICloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "Image details extraction failed: " + e.getMessage());
     }
+  }
+
+  /**
+   * Returns the OCID of the Marketplace image that a custom image was built from, following base
+   * image links through intermediate custom images. Returns null if the chain ends at a platform
+   * image or at an image with no base. Throws NOT_FOUND if a base image no longer exists or is not
+   * accessible, in which case the origin is unknown.
+   */
+  @Nullable
+  public String getMarketplaceBaseImageId(Provider provider, String regionCode, Image image) {
+    Set<String> visited = new HashSet<>();
+    String baseImageId = image.getBaseImageId();
+    while (StringUtils.isNotBlank(baseImageId) && visited.add(baseImageId)) {
+      Image baseImage = getImageOrBadRequest(provider, regionCode, baseImageId);
+      switch (OCICloudUtil.getImageType(baseImage)) {
+        case MARKETPLACE:
+          return baseImageId;
+        case PLATFORM:
+          return null;
+        default:
+          baseImageId = baseImage.getBaseImageId();
+      }
+    }
+    return null;
   }
 
   /**

@@ -41,6 +41,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
   final byte[] bbar3 = { 0x05, 0x06, 0x07, 0x08, 0x0C };
   final byte[] bbarstar = { 0x05, 0x06, 0x07, 0x08, '*' };
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hset() {
     long status = jedis.hset("foo", "bar", "car");
@@ -56,6 +57,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hget() {
     jedis.hset("foo", "bar", "car");
@@ -99,6 +101,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hmset() {
     Map<String, String> hash = new HashMap<String, String>();
@@ -120,6 +123,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hmget() {
     Map<String, String> hash = new HashMap<String, String>();
@@ -150,6 +154,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertByteArrayListEquals(bexpected, bvalues);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hincrBy() {
     long value = jedis.hincrBy("foo", "bar", 1);
@@ -188,6 +193,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hexists() {
     Map<String, String> hash = new HashMap<String, String>();
@@ -211,6 +217,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hdel() {
     Map<String, String> hash = new HashMap<String, String>();
@@ -236,6 +243,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hlen() {
     Map<String, String> hash = new HashMap<String, String>();
@@ -257,6 +265,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hkeys() {
     Map<String, String> hash = new LinkedHashMap<String, String>();
@@ -283,6 +292,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertByteArraySetEquals(bexpected, bkeys);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hvals() {
     Map<String, String> hash = new LinkedHashMap<String, String>();
@@ -332,6 +342,7 @@ public class HashesCommandsTest extends JedisCommandTestBase {
     assertArrayEquals(bbar, bhash.get(bcar));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void hgetAllPipeline() {
     Map<byte[], byte[]> bh = new HashMap<byte[], byte[]>();

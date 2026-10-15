@@ -418,7 +418,7 @@ public class TestMisc extends BaseYsqlConnMgr {
     testSequenceFunctions("SELECT lastval()");
   }
 
-  private void testPgPreparedStatementsStateHelper(boolean optimized_mode) throws Exception {
+  private void testPgPreparedStatementsStateHelper() throws Exception {
     Properties props = new Properties();
     props.setProperty("prepareThreshold", "1");
     try (Connection conn1 = getConnectionBuilder()
@@ -446,34 +446,20 @@ public class TestMisc extends BaseYsqlConnMgr {
             rowCount++;
           }
           // Expectation of cached plans on the physical connection being used:
-          // Optimized mode:
           // 1. SELECT 1 (S_0 on conn1/conn2)
           // 2. SELECT 1 (S_1 on conn1/conn2)
-          // 2. SELECT * FROM pg_prepared_statements
-          // Unoptimized mode:
-          // 1. SELECT 1 (S_0 on conn1)
-          // 2. SELECT 1 (S_1 on conn1)
-          // 3. SELECT 1 (S_0 on conn2)
-          // 4. SELECT 1 (S_1 on conn2)
-          // 5. SELECT * FROM pg_prepared_statements
-          if (optimized_mode) {
-            assertEquals(3, rowCount);
-          } else {
-            assertEquals(5, rowCount);
-          }
+          // 3. SELECT * FROM pg_prepared_statements
+          assertEquals(3, rowCount);
         }
   }
 
   @Test
   public void testPgPreparedStatementsState() throws Exception {
-    // Assert the state of pg_prepared_statements table across optimization
-    // modes to assert the behavior of cached plans created by connection
-    // manager to handle the extended query protocol.
+    // Assert the state of pg_prepared_statements table to assert the behavior
+    // of cached plans created by connection manager to handle the extended
+    // query protocol.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
-    testPgPreparedStatementsStateHelper(true);
-    modifyExtendedQueryProtocolAndRestartCluster(false);
-    testPgPreparedStatementsStateHelper(false);
+    testPgPreparedStatementsStateHelper();
   }
 
   private void testPreparedStatementsOnNewPhysicalConnsHelper() throws Exception {
@@ -508,9 +494,6 @@ public class TestMisc extends BaseYsqlConnMgr {
     // connection manager smartly allows any physical connection to be ready
     // to handle the Bind and Execute phases of the prepared statement.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
-    testPreparedStatementsOnNewPhysicalConnsHelper();
-    modifyExtendedQueryProtocolAndRestartCluster(false);
     testPreparedStatementsOnNewPhysicalConnsHelper();
   }
 
@@ -541,9 +524,6 @@ public class TestMisc extends BaseYsqlConnMgr {
     // prepared statements, we can ascertain hash collision and verify that
     // Connection Manager can handle this corner case.
     disableWarmupModeAndRestartCluster();
-    modifyExtendedQueryProtocolAndRestartCluster(true);
-    testPreparedStatementHashCollisionsHelper();
-    modifyExtendedQueryProtocolAndRestartCluster(false);
     testPreparedStatementHashCollisionsHelper();
   }
 

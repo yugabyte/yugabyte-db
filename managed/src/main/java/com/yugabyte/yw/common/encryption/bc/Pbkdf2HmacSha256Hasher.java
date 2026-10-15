@@ -49,12 +49,19 @@ public class Pbkdf2HmacSha256Hasher implements HashBuilder {
     String hashKeyBase64 = versionSaltAndKey[2];
     byte[] hashKey = Base64.decode(hashKeyBase64);
 
-    FipsPBKD.Parameters parameters =
-        FipsPBKD.PBKDF2.using(FipsSHS.Algorithm.SHA256_HMAC, password.getBytes()).withSalt(salt);
-    byte[] key =
-        new FipsPBKD.DeriverFactory()
-            .createDeriver(parameters)
-            .deriveKey(PasswordBasedDeriver.KeyType.CIPHER, hashKey.length);
+    byte[] key;
+    try {
+      FipsPBKD.Parameters parameters =
+          FipsPBKD.PBKDF2.using(FipsSHS.Algorithm.SHA256_HMAC, password.getBytes()).withSalt(salt);
+      key =
+          new FipsPBKD.DeriverFactory()
+              .createDeriver(parameters)
+              .deriveKey(PasswordBasedDeriver.KeyType.CIPHER, hashKey.length);
+    } catch (FipsUnapprovedOperationError e) {
+      // Approved-only mode refuses passwords under 112 bits. Every stored hash was derived through
+      // the same module, so such a password cannot match: a wrong password, not a server error.
+      return false;
+    }
 
     return Arrays.equals(hashKey, key);
   }

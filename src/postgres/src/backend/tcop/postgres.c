@@ -6619,6 +6619,8 @@ PostgresMain(const char *dbname, const char *username)
 		proc_exit(0);
 	}
 
+	YbReleaseFreeMemoryAfterStartup();
+
 	/*
 	 * Also set up handler to log session end; we have to wait till now to be
 	 * sure Log_disconnections has its final value.
@@ -7095,6 +7097,9 @@ PostgresMain(const char *dbname, const char *username)
 			 * call in YSQL too when we have object locking enabled.
 			 */
 			YbInvalidateCatalogSnapshot();
+			/* Before the catalog version check; see yb_origination_time. */
+			if (!IsTransactionOrTransactionBlock())
+				YbRefreshOriginationTime();
 			YBCheckSharedCatalogCacheVersion();
 			YBCRefreshClusterReplicationInfo();
 			yb_run_with_explain_analyze = false;

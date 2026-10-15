@@ -121,7 +121,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
-
           // update password from default to new custom password.
           createUpdateAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
@@ -166,6 +165,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 taskParams().isYbcInstalled());
             createPersistMultiTenancyTask(mtConfig).setSubTaskGroupType(getTaskSubGroupType());
           }
+
+          // The load balancers forward the API ports, which these subtasks read when they run.
+          // Last,
+          // so a load balancer error can't leave auth on with the default password.
+          createEnsureManagedLoadBalancerTasks(universe.getUniverseDetails().getPrimaryCluster());
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
         });
   }
 

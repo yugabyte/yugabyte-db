@@ -34,7 +34,6 @@
 
 #include "common/pg_yb_common.h"
 #include "utils/elog.h"
-#include "yb/yql/pggate/ybc_gflags.h"
 
 bool
 YBCIsEnvVarTrue(const char *env_var_name)
@@ -173,24 +172,6 @@ YBIsNonTxnCopyEnabled()
 		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_non_txn_copy");
 	}
 	return cached_value;
-}
-
-const char *
-YBGetCurrentCloud()
-{
-	return YBCGetGFlags()->placement_cloud;
-}
-
-const char *
-YBGetCurrentRegion()
-{
-	return YBCGetGFlags()->placement_region;
-}
-
-const char *
-YBGetCurrentZone()
-{
-	return YBCGetGFlags()->placement_zone;
 }
 
 const char *

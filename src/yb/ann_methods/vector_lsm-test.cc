@@ -71,23 +71,18 @@ namespace yb::ann_methods {
 
 namespace {
 
-using ParamType = std::tuple<ANNMethodKind, bool, vector_index::StoreVectorPayload>;
+using ParamType = std::tuple<ANNMethodKind, vector_index::StoreVectorPayload>;
 
 ANNMethodKind GetANNMethodKind(const ParamType& param) {
   return std::get<0>(param);
 }
 
-bool UseYbHnsw(const ParamType& param) {
+vector_index::StoreVectorPayload StorePayload(const ParamType& param) {
   return std::get<1>(param);
 }
 
-vector_index::StoreVectorPayload StorePayload(const ParamType& param) {
-  return std::get<2>(param);
-}
-
 std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
-  return "k"s +
-         (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
+  return "kYbHnsw"s +
          AsString(GetANNMethodKind(param_info.param)).substr(1) +
          (StorePayload(param_info.param) ? "WithPayload" : "");
 }
@@ -362,24 +357,20 @@ class VectorLSMUsearchTest : public VectorLSMTestBase {
  public:
   VectorLSMUsearchTest()
       : VectorLSMTestBase({
-            ANNMethodKind::kUsearch, /* use_yb_hnsw = */ false,
-            vector_index::StoreVectorPayload::kFalse,
+            ANNMethodKind::kUsearch, vector_index::StoreVectorPayload::kFalse,
         }) {}
 };
 
 Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorIndexTraits(
     const ParamType& param, const vector_index::HNSWOptions& options,
     const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker = {}) {
-  bool use_yb_hnsw = UseYbHnsw(param);
   switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
       return CreateUsearchIndexTraits<std::vector<float>, float>(
-          block_cache, options,
-          use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH, mem_tracker);
+          block_cache, options, mem_tracker);
     case ANNMethodKind::kHnswlib:
       return CreateHnswlibIndexTraits<std::vector<float>, float>(
-          block_cache, options,
-          use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB, mem_tracker);
+          block_cache, options, mem_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
@@ -689,10 +680,8 @@ void VectorLSMTestBase::CheckQueryVector(
 
 Result<std::vector<std::string>> VectorLSMTestBase::GetFiles(FloatVectorLSM& lsm) {
   auto files = VERIFY_RESULT(vector_index::ListVectorLSMFiles(lsm.TEST_GetEnv(), lsm.StorageDir()));
-  // Payload files are expected only when the LSM stores payloads, and only for backends based
-  // on IndexWrapperWithExternalPayload: yb_hnsw stores payloads in the chunk file itself.
-  SCHECK(!files.has_payload_files || (store_vector_payload() && !UseYbHnsw(backend_param())),
-         IllegalState, "Unexpected payload file");
+  // yb_hnsw stores payloads in the chunk file itself, so there are no separate payload files.
+  SCHECK(!files.has_payload_files, IllegalState, "Unexpected payload file");
   return std::move(files.manifest_and_chunk_files);
 }
 
@@ -776,6 +765,70 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   }
   auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+}
+
+// AdvanceFlushedFrontier keeps a single chunk without a file however often it is called, also
+// across a reopen, and the flushed frontier is the largest one recorded.
+TEST_F(VectorLSMUsearchTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumAdvances = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  std::string test_dir;
+  ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
+  const auto storage_dir = JoinPathSegments(
+      test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
+  auto open = [this, &storage_dir](FloatVectorLSM& lsm) {
+    return OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+        /* mem_tracker = */ {}, storage_dir);
+  };
+  auto flushed_vertex_id = [](FloatVectorLSM& lsm) -> std::optional<VectorId> {
+    auto frontier = lsm.GetFlushedFrontier();
+    if (!frontier) {
+      return std::nullopt;
+    }
+    return down_cast<const TestFrontier&>(*frontier).vertex_id();
+  };
+
+  std::optional<VectorId> expected;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(open(lsm));
+    ASSERT_OK(InsertCube(lsm, kDimensions, kDefaultChunkSize));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+    TestFrontiers frontiers;
+    frontiers.Largest().SetVertexId(VectorId::GenerateRandom());
+    // Refused while there are unflushed entries.
+    ASSERT_FALSE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_EQ(1, lsm.NumImmutableChunks());
+    expected = flushed_vertex_id(lsm);
+
+    for (size_t i = 0; i != kNumAdvances; ++i) {
+      auto vertex_id = VectorId::GenerateRandom();
+      frontiers.Largest().SetVertexId(vertex_id);
+      ASSERT_TRUE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
+      if (!expected || *expected < vertex_id) {
+        expected = vertex_id;
+      }
+      // The chunk is saved in the background, the next call needs it in the manifest.
+      ASSERT_OK(WaitFor(
+          [&lsm] { return lsm.GetFlushAbility() == storage::FlushAbility::kNoNewData; },
+          10s, "Frontier only chunk in manifest"));
+      ASSERT_EQ(flushed_vertex_id(lsm), expected);
+      ASSERT_EQ(2, lsm.NumImmutableChunks());
+    }
+  }
+
+  // The manifest has a record per call, loading collapses them.
+  FloatVectorLSM lsm;
+  ASSERT_OK(open(lsm));
+  ASSERT_EQ(2, lsm.NumImmutableChunks());
+  ASSERT_EQ(flushed_vertex_id(lsm), expected);
 }
 
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
@@ -1427,7 +1480,8 @@ TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
 // Absolute MB limit wins over the percentage-of-cache limit when both are set.
 TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
   constexpr size_t kDimensions = 16;
-  constexpr size_t kNumInputChunks = 4;
+  // Two chunks suffice for multiple output chunks; more exceed the test timeout under TSAN.
+  constexpr size_t kNumInputChunks = 2;
   constexpr size_t kMemStoreLimitMb = 1;
   // 100% of the 8MB test cache would allow ~8x more vectors per chunk than the 1MB absolute limit.
   constexpr uint32_t kBlockCachePercentage = 100;
@@ -1678,14 +1732,13 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
-  // exact ratio depends on the backend layout and on whether the chunk is rewritten through
-  // the YbHnsw saver, which packs less data than the native usearch/hnswlib formats.
+  // exact ratio depends on the in-memory layout of the backend the chunk was built with.
   const auto on_disk_lower_bound_ratio = [&]() -> double {
     switch (GetANNMethodKind(GetParam())) {
       case ANNMethodKind::kUsearch:
-        return UseYbHnsw(GetParam()) ? 0.80 : 0.90;
+        return 0.80;
       case ANNMethodKind::kHnswlib:
-        return UseYbHnsw(GetParam()) ? 0.65 : 0.70;
+        return 0.65;
     }
     FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
   }();
@@ -1717,7 +1770,6 @@ INSTANTIATE_TEST_SUITE_P(
     VectorLSMTest,
     testing::Combine(
         testing::ValuesIn(kANNMethodKindArray),
-        testing::Bool(),
         testing::Values(
             vector_index::StoreVectorPayload::kTrue, vector_index::StoreVectorPayload::kFalse)),
     ParamToString);

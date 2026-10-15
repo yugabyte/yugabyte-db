@@ -577,6 +577,13 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     // master failover that aborts in-progress clones.
     opts->extra_master_flags.emplace_back(
         Format("--leader_failure_max_missed_heartbeat_periods=$0", 10 * kTimeMultiplier));
+    // Such stalls (up to ~8s) outlast the default 2s raft lease, so the master leader keeps losing
+    // its lease and cannot refresh YSQL leases. Must stay below the 15s leader failure timeout.
+    if (IsSanitizer()) {
+      for (auto flag : {"leader_lease_duration_ms", "ht_lease_duration_ms"}) {
+        opts->extra_master_flags.emplace_back(Format("--$0=$1", flag, 4000 * kTimeMultiplier));
+      }
+    }
     opts->num_masters = 3;
   }
 
@@ -4118,6 +4125,17 @@ class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest 
  public:
   // Suppresses the base class flags; keep the defaults.
   std::vector<std::string> ExtraTSFlags() override { return {}; }
+
+  // Under TSAN, pthread_create on the master leader can stall for ~12s around snapshot completion,
+  // starving raft heartbeats. Tolerate that without a master leader change, which would abort the
+  // in-flight restore. Raise the heartbeat interval rather than the missed-periods count, since the
+  // cluster appends its own sanitizer value for the latter after these flags.
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--raft_heartbeat_interval_ms=2000");
+    flags.push_back("--leader_lease_duration_ms=6000");
+    return flags;
+  }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -4285,7 +4303,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
           return false;
         }
         auto status = future.Wait();
-        if (!status.ok() && !status.IsTimedOut()) {
+        // Restore rolls back the status tablet, aborting transactions in flight across it.
+        if (!status.ok() && !status.IsTimedOut() &&
+            status.ToString().find("aborted") == std::string::npos) {
           EXPECT_OK(status);
         }
         return true;

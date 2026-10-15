@@ -75,6 +75,7 @@
 #include "yb/util/dist_trace.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -144,7 +145,6 @@ using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::vector;
-using strings::Substitute;
 
 namespace yb::server {
 
@@ -357,7 +357,7 @@ Status RpcServerBase::Init() {
 }
 
 string RpcServerBase::ToString() const {
-  return strings::Substitute("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
+  return Format("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
 }
 
 void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -655,12 +655,12 @@ string RpcAndWebServerBase::GetEasterEggMessage() const {
 }
 
 string RpcAndWebServerBase::FooterHtml() const {
-  return Substitute("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
-                    " $0</pre><pre>$1\nserver uuid $2 local time $3</pre>",
-                    GetEasterEggMessage(),
-                    VersionInfo::GetShortVersionString(),
-                    instance_pb_->permanent_uuid(),
-                    Timestamp(GetCurrentTimeMicros()).ToHumanReadableTime());
+  return Format("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
+                " $0</pre><pre>$1\nserver uuid $2 local time $3</pre>",
+                GetEasterEggMessage(),
+                VersionInfo::GetShortVersionString(),
+                instance_pb_->permanent_uuid(),
+                Timestamp(GetCurrentTimeMicros()).ToHumanReadableTime());
 }
 
 void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const string icon,

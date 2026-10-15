@@ -7,7 +7,7 @@
   {{ $tocClasses = printf "%s hide-h4" $tocClasses }}
 {{ end }}
 
-{{ partial "contribute_list" }}
+{{ partial "contribute_list" . }}
 
 {{ if not .Params.notoc }}
 {{ with .TableOfContents }}

@@ -1299,6 +1299,49 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testOciProviderEditKeepsMarketplaceFlags() throws InterruptedException {
+    Provider ociProvider = ModelFactory.ociProvider(defaultCustomer);
+    Region.create(ociProvider, "us-ashburn-1", "us-ashburn-1", null);
+    Region.create(ociProvider, "us-phoenix-1", "us-phoenix-1", null);
+    ImageBundleDetails.BundleInfo info = new ImageBundleDetails.BundleInfo();
+    info.setYbImage("ocid1.image.oc1.iad.marketplace");
+    info.setIsImageMarketplaceBased(true);
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-ashburn-1", info);
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_ACTIVE);
+    ImageBundle bundle = ImageBundle.create(ociProvider, "oci-default", details, metadata, true);
+    when(mockOCICloudImpl.getImageOrBadRequest(any(), eq("us-phoenix-1"), eq("ybImage-default")))
+        .thenReturn(
+            com.oracle.bmc.core.model.Image.builder()
+                .compartmentId("publisherCompartment")
+                .build());
+
+    // Resend the bundle with a wrong flag; the edit also fills in us-phoenix-1 with the default.
+    Result providerRes = getProvider(ociProvider.getUuid());
+    Provider editReq = Json.fromJson(Json.parse(contentAsString(providerRes)), Provider.class);
+    editReq
+        .getImageBundles()
+        .get(0)
+        .getDetails()
+        .getRegions()
+        .get("us-ashburn-1")
+        .setIsImageMarketplaceBased(false);
+    TaskInfo taskInfo = waitForTask(doEditProvider(editReq, false));
+    assertEquals(Success, taskInfo.getTaskState());
+
+    Map<String, ImageBundleDetails.BundleInfo> stored =
+        ImageBundle.get(bundle.getUuid()).getDetails().getRegions();
+    assertEquals(true, stored.get("us-ashburn-1").getIsImageMarketplaceBased());
+    assertEquals("ybImage-default", stored.get("us-phoenix-1").getYbImage());
+    assertEquals(true, stored.get("us-phoenix-1").getIsImageMarketplaceBased());
+    verify(mockOCICloudImpl, times(1)).getImageOrBadRequest(any(), anyString(), anyString());
+  }
+
+  @Test
   public void testFailEditProviderRegionAddCustomBundle() throws InterruptedException {
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");

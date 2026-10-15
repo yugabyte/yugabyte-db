@@ -464,7 +464,7 @@ public class CustomerTaskManager {
     Path restoreFilePath = Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE);
     Path restoreCustomerTaskFilePath =
         Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
-    if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+    if (Util.restoreTaskInfoExists()) {
       finalizeRestoredYbaBackupTask();
       try {
         TaskInfo restoreTaskInfo =

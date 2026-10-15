@@ -1253,6 +1253,9 @@ public enum TaskType {
 
   ManageCloudFederation(com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation.class),
 
+  ConfigureNodeExporterTls(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls.class),
+
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
 
@@ -1366,6 +1369,12 @@ public enum TaskType {
 
   DeleteCapacityReservation(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
+
+  EnsureManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.EnsureManagedLoadBalancer.class),
+
+  DeleteManagedLoadBalancer(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteManagedLoadBalancer.class),
 
   DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
 

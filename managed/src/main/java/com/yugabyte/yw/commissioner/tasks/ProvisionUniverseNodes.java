@@ -314,6 +314,13 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                             RuntimeInfo.class,
                             info -> info.provisionedNodeUuids.add(singleNode.get(0).nodeUuid)));
           }
+          // Re-provisioning moves each exporter to the user-level unit; having done every node, the
+          // task may decide the universe's node_exporter scheme.
+          if (getNodeNames()
+              .containsAll(
+                  universe.getNodes().stream().map(n -> n.nodeName).collect(Collectors.toSet()))) {
+            createUpdateNodeExporterTlsTask(universe);
+          }
           createUpdateUniverseFieldsTask(u -> u.getUniverseDetails().installNodeAgent = false)
               .setSubTaskGroupType(SubTaskGroupType.Configuring);
         });

@@ -375,14 +375,14 @@ void TabletSplitITest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = kDbBlockSizeBytes;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = DbBlockSizeBytes();
   // We set other block sizes to be small for following test reasons:
   // 1) To have more granular change of SST file size depending on number of rows written.
   // This helps to do splits earlier and have faster tests.
   // 2) To don't have long flushes when simulating slow compaction/flush. This way we can
   // test compaction abort faster.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = DbIndexBlockSizeBytes();
   // Split size threshold less than memstore size is not effective, because splits are triggered
   // based on flushed SST files size.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;

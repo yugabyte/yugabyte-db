@@ -14,8 +14,14 @@
 
 #include "yb/yql/cql/ql/audit/audit_logger.h"
 
+#include <atomic>
+#include <mutex>
+#include <string_view>
+
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/rpc/connection.h"
 
@@ -45,9 +51,17 @@ DEFINE_RUNTIME_bool(ycql_enable_audit_log, false,
     "Enable YCQL audit. Use ycql_audit_* flags for fine-grained configuration");
 
 // IMPORTANT:
-// These flags are expected to change at runtime, but due to the nature of std::string we shouldn't
-// access them directly as a concurrent read-write access would lead to an undefined behaviour.
-// Instead, use GFLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
+// These flags change at runtime. A std::string gflag cannot be read directly while another thread
+// assigns it, and the safe accessor, GFLAGS_NAMESPACE::GetCommandLineOption, takes gflags' global
+// FlagRegistry lock, so it must not be called per statement. The filter flags are therefore read
+// once into the AuditFilterSet snapshot below, which flag callbacks rebuild.
+//
+// To add a filter flag:
+//   1. DEFINE_RUNTIME_string it here.
+//   2. Add an AuditFilter field of the same name to AuditFilterSet.
+//   3. Add a READ_AUDIT_FILTER line for it in RebuildAuditFilters.
+//   4. Add a REGISTER_CALLBACK for it next to the existing ones.
+//   5. Check it in ShouldBeLogged and add a case to TestAudit#filteringChangedAtRuntime.
 
 DEFINE_RUNTIME_string(ycql_audit_log_level, "ERROR",
     "Severity level at which an audit will be logged. Could be INFO, WARNING, or ERROR");
@@ -204,6 +218,39 @@ struct LogEntry {
   }
 };
 
+using GflagStringValue = std::string;
+using GflagListValue = std::unordered_set<std::string>;
+
+// One comma-separated list gflag, as set and as parsed.
+struct AuditFilter {
+  // The flag's value as written.
+  GflagStringValue value;
+  // The value split on commas, trimmed and upper-cased. Entries are keyspace names, Category enum
+  // names or role names, depending on the flag. Empty means the filter is off.
+  GflagListValue split;
+};
+
+// Parsed values of all audit filter flags, from one read of each.
+struct AuditFilterSet {
+  AuditFilter ycql_audit_included_keyspaces;
+  AuditFilter ycql_audit_excluded_keyspaces;
+  AuditFilter ycql_audit_included_categories;
+  AuditFilter ycql_audit_excluded_categories;
+  AuditFilter ycql_audit_included_users;
+  AuditFilter ycql_audit_excluded_users;
+};
+
+namespace {
+
+// The current snapshot. GetCommandLineOption takes gflags' process-wide FlagRegistry lock, so the
+// snapshot is rebuilt only by flag update callbacks, never per statement. g_audit_filters_mutex
+// guards the pointer; g_audit_filters_version is bumped on every rebuild so loggers can detect a
+// new snapshot with one atomic load.
+std::mutex g_audit_filters_mutex;
+std::shared_ptr<const AuditFilterSet> g_audit_filters GUARDED_BY(g_audit_filters_mutex);
+std::atomic<uint64_t> g_audit_filters_version{0};
+
+} // anonymous namespace
 
 //
 // Local functions
@@ -230,6 +277,50 @@ std::unordered_set<std::string> SplitGflagList(const std::string& gflag) {
 template<typename T>
 bool Contains(const std::unordered_set<T>& set, const T& value) {
   return set.count(value) != 0;
+}
+
+AuditFilter ReadAuditFilter(const std::string& gflag_name) {
+  AuditFilter filter;
+  if (!GFLAGS_NAMESPACE::GetCommandLineOption(gflag_name.c_str(), &filter.value)) {
+    // This should never happen as we use a compile-time check in a macro.
+    LOG(DFATAL) << "Gflag " << gflag_name << " does not exist!";
+  }
+  filter.split = SplitGflagList(filter.value);
+  return filter;
+}
+
+#define READ_AUDIT_FILTER(gflag) \
+    static_assert(std::is_same<decltype(BOOST_PP_CAT(FLAGS_, gflag)), std::string&>::value, \
+                  "Flag " BOOST_PP_STRINGIZE(gflag) " must be string"); \
+    filters->gflag = ReadAuditFilter(BOOST_PP_STRINGIZE(gflag)); \
+    /**/
+
+void RebuildAuditFilters() REQUIRES(g_audit_filters_mutex) {
+  auto filters = std::make_shared<AuditFilterSet>();
+  READ_AUDIT_FILTER(ycql_audit_included_keyspaces)
+  READ_AUDIT_FILTER(ycql_audit_excluded_keyspaces)
+  READ_AUDIT_FILTER(ycql_audit_included_categories)
+  READ_AUDIT_FILTER(ycql_audit_excluded_categories)
+  READ_AUDIT_FILTER(ycql_audit_included_users)
+  READ_AUDIT_FILTER(ycql_audit_excluded_users)
+  g_audit_filters = std::move(filters);
+  g_audit_filters_version.fetch_add(1, std::memory_order_release);
+}
+
+void RefreshAuditFilters() {
+  std::lock_guard lock(g_audit_filters_mutex);
+  RebuildAuditFilters();
+}
+
+// Copies the current snapshot and its version into the caller's variables under the mutex, building
+// the snapshot first if no flag callback has run yet.
+void LoadAuditFilters(std::shared_ptr<const AuditFilterSet>* filters, uint64_t* version) {
+  std::lock_guard lock(g_audit_filters_mutex);
+  if (!g_audit_filters) {
+    RebuildAuditFilters();
+  }
+  *DCHECK_NOTNULL(version) = g_audit_filters_version.load(std::memory_order_relaxed);
+  *DCHECK_NOTNULL(filters) = g_audit_filters;
 }
 
 // Return an audit log type for a tree node, or nullptr if a node can't be audited.
@@ -530,7 +621,34 @@ Status AddLogEntry(const LogEntry& e) {
   }
 }
 
+// Checks whether a given predicate holds on the comma-separated list gflag.
+template<class Pred>
+bool SatisfiesGFlag(const LogEntry& e,
+                    std::string_view gflag_name,
+                    const AuditFilter& filter,
+                    const Pred& predicate) {
+  if (!filter.split.empty() && !predicate(filter.split, e)) {
+    VLOG(1) << "Filtered out audit record: " << e.ToString()
+            << ", flag: " << gflag_name << " = " << filter.value;
+    return false;
+  }
+  return true;
+}
+
 } // anonymous namespace
+
+REGISTER_CALLBACK(ycql_audit_included_keyspaces, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
+REGISTER_CALLBACK(ycql_audit_excluded_keyspaces, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
+REGISTER_CALLBACK(ycql_audit_included_categories, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
+REGISTER_CALLBACK(ycql_audit_excluded_categories, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
+REGISTER_CALLBACK(ycql_audit_included_users, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
+REGISTER_CALLBACK(ycql_audit_excluded_users, "Refresh YCQL audit filters",
+                  RefreshAuditFilters);
 
 //
 // AuditLogger class definitions
@@ -539,42 +657,10 @@ Status AddLogEntry(const LogEntry& e) {
 AuditLogger::AuditLogger(const QLEnv& ql_env) : ql_env_(ql_env) {
 }
 
-template<class Pred>
-bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
-                                 const std::string& gflag_name,
-                                 const Pred& predicate) {
-  std::string gflag_value;
-  bool found = GFLAGS_NAMESPACE::GetCommandLineOption(gflag_name.c_str(), &gflag_value);
-  if (!found) {
-    // This should never happen as we use a compile-time check in a macro.
-    LOG(DFATAL) << "Gflag " << gflag_name << " does not exist!";
-    return false;
-  }
-
-  auto& cached = gflags_cache_[gflag_name];
-  if (cached.first != gflag_value) {
-    VLOG(2) << "Audit flag " << gflag_name << " = " << gflag_value
-            << " cache was invalid, old value = " << cached.first;
-    cached.first  = gflag_value;
-    cached.second = SplitGflagList(gflag_value);
-  }
-  const auto& split = cached.second;
-
-  if (!split.empty() && !predicate(split, e)) {
-    VLOG(1) << "Filtered out audit record: " << e.ToString()
-            << ", flag: " << gflag_name << " = " << gflag_value;
-    return false;
-  }
-  return true;
-}
-
 // Helper macro to avoid boilerplate when using SatisfiesGFlag function.
 // Returns false if the given predicate is not satisfied.
 #define RETURN_IF_NOT_SATISFIES_GFLAG(gflag, entry, predicate_on_split_and_e) \
-    static_assert(std::is_same<decltype(BOOST_PP_CAT(FLAGS_, gflag)), std::string&>::value, \
-                  "Flag " BOOST_PP_STRINGIZE(gflag) " must be string"); \
-    \
-    if (!SatisfiesGFlag(e, BOOST_PP_STRINGIZE(gflag), \
+    if (!SatisfiesGFlag(e, BOOST_PP_STRINGIZE(gflag), filters.gflag, \
                         [](const GflagListValue& split, const LogEntry& e) { \
                           return predicate_on_split_and_e; \
                         })) { \
@@ -583,6 +669,11 @@ bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
     /**/
 
 bool AuditLogger::ShouldBeLogged(const LogEntry& e) {
+  if (!filters_ || filters_version_ != g_audit_filters_version.load(std::memory_order_acquire)) {
+    LoadAuditFilters(&filters_, &filters_version_);
+  }
+  const auto& filters = *filters_;
+
   // If a keyspace isn't present, it's not used for filtering.
   if (!e.keyspace.empty()) {
     RETURN_IF_NOT_SATISFIES_GFLAG(

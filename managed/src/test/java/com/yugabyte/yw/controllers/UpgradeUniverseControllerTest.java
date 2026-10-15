@@ -469,6 +469,36 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testKubernetesOverridesUpgradeCannotDisableFipsOnFipsUniverse() {
+    Universe universe = prepareK8sUniverseForOverridesUpgrade("Overrides FIPS Universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+
+    Universe fipsUniverse = universe;
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    fipsUniverse,
+                    p ->
+                        p.universeOverrides =
+                            "gflags:\n  tserver:\n    openssl_require_fips: \"false\"",
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(
+        result,
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set tserver openssl_require_fips to false");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testKubernetesOverridesUpgradeWithBatchSize() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);

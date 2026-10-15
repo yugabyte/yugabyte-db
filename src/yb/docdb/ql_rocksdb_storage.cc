@@ -301,10 +301,10 @@ Result<Slice> ExtractDocKey(Slice encoded_key) {
 // If encoded_key_prefix contains full encoded doc key - extract encoded doc key and return it.
 // Otherwise, return encoded_key itself.
 Slice TryExtractDocKey(Slice encoded_key) {
-  const auto doc_key_size_result =
-      dockv::DocKey::EncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
-  if (doc_key_size_result.ok()) {
-    return Slice(encoded_key.data(), doc_key_size_result.get());
+  const auto doc_key_size =
+      dockv::DocKey::TryGetEncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
+  if (doc_key_size) {
+    return Slice(encoded_key.data(), *doc_key_size);
   }
   return encoded_key;
 }

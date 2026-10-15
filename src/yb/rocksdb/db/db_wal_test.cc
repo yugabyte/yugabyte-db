@@ -66,6 +66,35 @@ TEST_F(DBWALTest, WAL) {
   } while (ChangeCompactOptions());
 }
 
+// With disable_wal the DB creates and writes no WAL file, a reopen leaves the MANIFEST alone, and
+// WAL files left by an open without it are dropped unread.
+TEST_F(DBWALTest, DisableWal) {
+  Options options = CurrentOptions();
+  DestroyAndReopen(options);
+  ASSERT_OK(Put("in_old_wal", "1"));
+  dbfull()->SetDisableFlushOnShutdown();
+
+  options.disable_wal = true;
+  Reopen(options);
+  VectorLogPtr wal_files;
+  ASSERT_OK(dbfull()->GetSortedWalFiles(&wal_files));
+  ASSERT_TRUE(wal_files.empty());
+  ASSERT_EQ("NOT_FOUND", Get("in_old_wal"));
+
+  WriteOptions sync_write;
+  sync_write.sync = true;
+  ASSERT_OK(Put("a", "1", sync_write));
+  ASSERT_OK(dbfull()->SyncWAL());
+  ASSERT_OK(Flush());
+  ASSERT_OK(dbfull()->GetSortedWalFiles(&wal_files));
+  ASSERT_TRUE(wal_files.empty());
+  const auto manifest = dbfull()->TEST_Current_Manifest_FileNo();
+
+  Reopen(options);
+  ASSERT_EQ(dbfull()->TEST_Current_Manifest_FileNo(), manifest);
+  ASSERT_EQ("1", Get("a"));
+}
+
 TEST_F(DBWALTest, RollLog) {
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());

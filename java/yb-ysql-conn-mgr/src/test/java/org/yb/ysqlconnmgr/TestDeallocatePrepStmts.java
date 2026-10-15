@@ -53,8 +53,6 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerFlag(
-      "ysql_conn_mgr_optimized_extended_query_protocol", "true");
     builder.addCommonTServerFlag("ysql_conn_mgr_log_settings",
     "log_query,log_debug");
     builder.addCommonTServerFlag("ysql_conn_mgr_idle_time",

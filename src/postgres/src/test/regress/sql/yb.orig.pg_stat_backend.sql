@@ -12,16 +12,17 @@ SELECT datname, usename, state, query, backend_type,
     FROM pg_stat_activity ORDER BY usename;
 
 -- Test yb_pg_stat_get_backend_catalog_version.
-SELECT beid,
-       backend_type,
+-- beid depends on backend slot assignment order, so do not output it.
+SELECT backend_type,
        yb_pg_stat_get_backend_catalog_version(beid) IS NOT NULL AS has_catalog_snapshot
 FROM pg_stat_get_backend_idset() beid
-JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid;
+JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid
+ORDER BY backend_type, has_catalog_snapshot;
 
 -- Test that yb_pg_stat_get_backend_catalog_version for this backend matches
 -- yb_catalog_version.
-SELECT beid,
-       backend_type,
+SELECT backend_type,
+       s.pid = pg_backend_pid() AS is_self,
        yb_catalog_version() - be_catalog_version AS catalog_version_diff
 FROM pg_stat_get_backend_idset() AS beid
 JOIN pg_stat_activity s ON pg_stat_get_backend_pid(beid) = s.pid

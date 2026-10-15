@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
@@ -27,7 +28,10 @@
 
 #include "yb/util/fast_varint.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::dockv {
 
@@ -141,6 +145,75 @@ TEST(PackedRowTest, Random) {
 
 TEST(PackedRowTest, RandomV2) {
   TestRandom<RowPackerV2, PackedRowDecoderV2>();
+}
+
+// Packs a single value, e.g. a packed value of the other version the way compaction does when
+// ysql_use_packed_row_v2 changes, and returns the value stored in the resulting row.
+template <class Packer, class Decoder, class Value>
+Result<std::string> Repack(
+    const SchemaPacking& schema_packing, ColumnId column_id, Value value,
+    VectorValueFormat vector_value_format) {
+  constexpr int kVersion = 1;
+  Packer packer(
+      kVersion, schema_packing, std::numeric_limits<int64_t>::max(), Slice(),
+      /* is_update= */ false, vector_value_format);
+  SCHECK(VERIFY_RESULT(packer.AddValue(column_id, value, /* tail_size= */ 0)), IllegalState,
+         "Value was not packed");
+  auto packed = VERIFY_RESULT(packer.Complete());
+  SCHECK_EQ(static_cast<ValueEntryType>(packed.consume_byte()), Decoder::kValueEntryType,
+            IllegalState, "Unexpected packed row version");
+  SCHECK_EQ(VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed)), kVersion, IllegalState,
+            "Unexpected schema version");
+  Decoder decoder(schema_packing, packed.data());
+  return decoder.FetchValue(0)->ToBuffer();
+}
+
+// A V1 vector value starts with the value type byte, a V2 vector value does not. Repacking
+// between the versions has to add or strip it. See DB-23864.
+TEST(PackedRowTest, RepackVector) {
+  constexpr uint8_t kVectorData[] = {
+      0x03, 0x00, 0x00, 0x00, 0x00, 0x40, 0x40, 0x40, 0x00, 0x40, 0x40, 0x40,
+  };
+
+  auto schema = ASSERT_RESULT(BuildSchema({DataType::VECTOR}, /* allow_nullable= */ false));
+  SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
+  const auto column_id = schema.column_id(schema.num_key_columns());
+
+  LWQLValuePB ql_value(nullptr);
+  ql_value.ref_binary_value(Slice(kVectorData, sizeof(kVectorData)));
+  const auto vector_id = vector_index::VectorId::GenerateRandom();
+
+  for (auto format : {VectorValueFormat::kLegacy, VectorValueFormat::kTyped}) {
+    SCOPED_TRACE(Format("format: $0", format));
+    DocVectorValue vector_value(format, ql_value, vector_id);
+    ValueBuffer expected_v1;
+    vector_value.PackToV1(&expected_v1);
+    ValueBuffer expected_v2;
+    vector_value.PackToV2(&expected_v2);
+
+    auto value_v1 = ASSERT_RESULT((Repack<RowPackerV1, PackedRowDecoderV1>(
+        schema_packing, column_id, PackedValueV2(expected_v2.AsSlice()), format)));
+    ASSERT_EQ(Slice(value_v1).ToDebugHexString(), expected_v1.AsSlice().ToDebugHexString());
+
+    auto value_v2 = ASSERT_RESULT((Repack<RowPackerV2, PackedRowDecoderV2>(
+        schema_packing, column_id, PackedValueV1(expected_v1.AsSlice()), format)));
+    ASSERT_EQ(Slice(value_v2).ToDebugHexString(), expected_v2.AsSlice().ToDebugHexString());
+
+    // The schema missing value is DocDB encoded, i.e. starts with the value type byte.
+    QLValuePB raw_value;
+    raw_value.set_binary_value(kVectorData, sizeof(kVectorData));
+    const auto missing_value = ASSERT_RESULT(EncodeVectorSchemaMissingValue(raw_value, format));
+    const Slice encoded_missing_value(missing_value.binary_value());
+
+    auto missing_v1 = ASSERT_RESULT((Repack<RowPackerV1, PackedRowDecoderV1>(
+        schema_packing, column_id, missing_value, format)));
+    ASSERT_EQ(Slice(missing_v1).ToDebugHexString(), encoded_missing_value.ToDebugHexString());
+
+    auto missing_v2 = ASSERT_RESULT((Repack<RowPackerV2, PackedRowDecoderV2>(
+        schema_packing, column_id, missing_value, format)));
+    ASSERT_EQ(Slice(missing_v2).ToDebugHexString(),
+              encoded_missing_value.WithoutPrefix(1).ToDebugHexString());
+  }
 }
 
 TEST(PackedRowTest, PackWithLimitV2) {

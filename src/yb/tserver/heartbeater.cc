@@ -466,7 +466,7 @@ Status HeartbeatPoller::TryHeartbeat() {
       // Put another way, during the upgrade master may be sending both the deprecated fields and
       // the xcluster_guarded_info or just the deprecated fields.  We want to apply only one of
       // them, giving preference to the new xcluster_guarded_info if present.
-      server_.set_oid_cache_invalidations_count(resp.deprecated_oid_cache_invalidations_count());
+      server_.UpdateOidCacheInvalidationsCount(resp.deprecated_oid_cache_invalidations_count());
     }
 
     RETURN_NOT_OK(server_.ClusterConfigHandleMasterHeartbeatResponse(resp));
@@ -533,6 +533,11 @@ Status HeartbeatPoller::TryHeartbeat() {
   if (all_processed) {
     full_report_seq_no_.reset();
   }
+
+  // Applied even when the response does not carry the field, which an old master's never does:
+  // the default is UNKNOWN, so masters rolled back to a version that does not report load stop
+  // the pacing instead of freezing it at the last level the new ones reported.
+  server_.SetYsqlCatalogPrefetchLoad(last_hb_response_.ysql_catalog_prefetch_load());
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (FLAGS_enable_ysql &&

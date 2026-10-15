@@ -114,7 +114,7 @@ class RandomVectorGenerator : public FloatVectorSource {
     if (num_points() >= 1000000) {
       how_many_points_str += Format(
           " ($0 million)",
-          StringPrintf("%.3f", num_points() / 1000000.0));
+          FixedPoint(num_points() / 1000000.0, 3));
     }
 
     return Format(

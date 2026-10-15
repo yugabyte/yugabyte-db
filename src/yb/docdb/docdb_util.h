@@ -267,6 +267,10 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
     txn_isolation_level_ = isolation_level;
   }
 
+  void SetSkipPrefixLocks(dockv::SkipPrefixLocks skip_prefix_locks) {
+    skip_prefix_locks_ = skip_prefix_locks;
+  }
+
   void ResetCurrentTransactionId() {
     current_txn_id_.reset();
   }
@@ -317,6 +321,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::optional<TransactionId> current_txn_id_;
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
+  dockv::SkipPrefixLocks skip_prefix_locks_ = dockv::SkipPrefixLocks::kFalse;
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
   HybridTime delete_marker_retention_time_ = HybridTime::kMax;
 

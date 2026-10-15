@@ -64,6 +64,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 - Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
 
+- If you are upgrading from v2024.2 and use the `vector` (pgvector) extension, export the data in tables that use it, and drop those tables and the extension (`DROP EXTENSION vector;`) before upgrading. Recreate them after the upgrade is finalized. See [Upgrade from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrade-from-v2024-2).
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.

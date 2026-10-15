@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -45,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Retryable
+@Abortable
 @CanRollback
 public class ResizeNode extends UpgradeTaskBase {
 
@@ -611,6 +613,30 @@ public class ResizeNode extends UpgradeTaskBase {
       Universe universe) {
     return universe.getUniverseDetails().clusters.stream()
         .collect(Collectors.toMap(c -> c.uuid, c -> c));
+  }
+
+  /**
+   * Records the gflags this resize applies into the freeze-captured target. Legacy top-level {@code
+   * masterGFlags}/{@code tserverGFlags} are not cluster fields, so the generic target would drop
+   * them; RollbackResizeNode diffs against what is stored here.
+   */
+  @Override
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target = super.getTargetUniverseDetails();
+    Universe universe = getUniverse();
+    if (target == null || !taskParams().flagsProvided(universe)) {
+      return target;
+    }
+    Map<UUID, Cluster> newVersions = taskParams().getNewVersionsOfClusters(universe);
+    for (Cluster cluster : target.clusters) {
+      Cluster newVersion = newVersions.get(cluster.uuid);
+      if (newVersion != null) {
+        cluster.userIntent.specificGFlags = newVersion.userIntent.specificGFlags;
+        cluster.userIntent.masterGFlags = newVersion.userIntent.masterGFlags;
+        cluster.userIntent.tserverGFlags = newVersion.userIntent.tserverGFlags;
+      }
+    }
+    return target;
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {

@@ -234,6 +234,9 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
  protected:
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+
+  virtual size_t DbBlockSizeBytes() const { return kDbBlockSizeBytes; }
+  virtual size_t DbIndexBlockSizeBytes() const { return 2_KB; }
 };
 
 
