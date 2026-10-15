@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -536,6 +537,18 @@ public class Users extends Model {
   }
 
   public String upsertApiToken(Long version) {
+    return upsertApiToken(version, BAD_REQUEST);
+  }
+
+  /**
+   * Like {@link #upsertApiToken(Long)}, but a stale {@code expectedVersion} is a 409 rather than a
+   * 400, so a caller can tell a concurrent rotation from bad input. Null skips the check.
+   */
+  public String rotateApiToken(@Nullable Long expectedVersion) {
+    return upsertApiToken(expectedVersion, Status.CONFLICT);
+  }
+
+  private String upsertApiToken(Long version, int versionMismatchStatus) {
     String apiTokenFormatVersion = "4";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
@@ -544,7 +557,7 @@ public class Users extends Model {
           && version != -1
           && apiTokenVersion != null
           && !version.equals(apiTokenVersion)) {
-        throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
+        throw new PlatformServiceException(versionMismatchStatus, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
       apiToken = Users.pbkdf2Hasher.hash(apiTokenUnhashed);
