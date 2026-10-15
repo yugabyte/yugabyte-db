@@ -25,7 +25,6 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -43,16 +42,21 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Value;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -132,19 +136,23 @@ public class UniverseResourceDetails {
     pricingKnown = val;
   }
 
-  public void addPrice(UniverseDefinitionTaskParams params, Context context) {
-
+  public void addPrice(
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
     // Calculate price
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
+    Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
 
-    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params);
     Map<Pair<String, String>, Double> spotPrices = new HashMap<>();
-    for (NodeDetails nodeDetails : params.nodeDetailsSet) {
+    for (NodeDetails nodeDetails : nodes) {
       Cluster cluster = params.getClusterByUuid(nodeDetails.placementUuid);
+      // Additional caching for the case if node has incorrect az, so that we will not end up with
+      // db query per node.
+      UUID providerUUID =
+          providerUUIDByAZ.computeIfAbsent(nodeDetails.azUuid, cluster::getProviderUUIDByAZ);
+      Provider provider = context.getProvider(providerUUID);
       UserIntent userIntent = cluster.userIntent;
 
-      Provider provider = providerGetter.apply(nodeDetails);
       Region region = context.getRegion(provider.getUuid(), nodeDetails.cloudInfo.region);
 
       if (region == null) {
@@ -381,33 +389,50 @@ public class UniverseResourceDetails {
     boolean pricingKnown = true;
   }
 
-  public static UniverseResourceDetails create(
-      UniverseDefinitionTaskParams params, Context context) {
-    return create(params.nodeDetailsSet, params, context);
-  }
-
   /**
    * Create a UniverseResourceDetails object, which contains info on the various pricing and other
    * sorts of resources used by this universe.
    *
+   * @param providerUUID Optional provider uuid. If present - we count only nodes for provider.
    * @param nodes Nodes that make up this universe.
    * @param params Parameters describing this universe.
    * @return a UniverseResourceDetails object containing info on the universe's resources.
    */
   public static UniverseResourceDetails create(
-      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
+      Optional<UUID> providerUUID,
+      Collection<NodeDetails> nodes,
+      UniverseDefinitionTaskParams params,
+      Context context) {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
     details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
-
-    for (Cluster cluster : params.clusters) {
-      details.addNumNodes(cluster.userIntent.numNodes);
+    if (CollectionUtils.isEmpty(nodes)) {
+      return details;
     }
-    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params);
+    Set<UUID> clusterUUIDs = nodes.stream().map(n -> n.placementUuid).collect(Collectors.toSet());
+    for (Cluster cluster : params.clusters) {
+      if (!clusterUUIDs.contains(cluster.uuid)) {
+        continue;
+      }
+      if (cluster.getOverallPlacement() != null) {
+        cluster
+            .getOverallPlacement()
+            .azInfoStream()
+            .filter(az -> providerUUID.isEmpty() || providerUUID.get().equals(az.cloud.uuid))
+            .mapToInt(az -> az.placementAZ.numNodesInAZ)
+            .forEach(num -> details.numNodes += num);
+      }
+    }
+    Collection<NodeDetails> providerNodes = new ArrayList<>();
     for (NodeDetails node : nodes) {
       Cluster cluster = params.getClusterByUuid(node.placementUuid);
+      UUID nodeProviderUUID = cluster.getProviderUUIDForNode(node);
+      if (providerUUID.isPresent() && !Objects.equals(providerUUID.get(), nodeProviderUUID)) {
+        continue;
+      }
+      providerNodes.add(node);
       UserIntent userIntent = cluster.userIntent;
-      Provider provider = providerGetter.apply(node);
+      Provider provider = context.getProvider(nodeProviderUUID);
       if (node.isActive()) {
         DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
         if (deviceInfo != null && deviceInfo.volumeSize != null && deviceInfo.numVolumes != null) {
@@ -455,9 +480,33 @@ public class UniverseResourceDetails {
         }
       }
     }
-
-    details.addPrice(params, context);
+    details.addPrice(providerNodes, params, context);
     return details;
+  }
+
+  /** Resource estimate for each provider represented by {@code nodes} */
+  public static Map<UUID, UniverseResourceDetails> createPerProvider(
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
+    Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
+
+    Map<UUID, List<NodeDetails>> nodesByProvider =
+        nodes.stream()
+            .collect(
+                Collectors.groupingBy(
+                    n -> {
+                      Cluster cluster = params.getClusterByUuid(n.placementUuid);
+                      // Additional caching for the case if node has incorrect az,
+                      // so that we will not end up with db query per node.
+                      return providerUUIDByAZ.computeIfAbsent(
+                          n.azUuid, cluster::getProviderUUIDByAZ);
+                    }));
+    Map<UUID, UniverseResourceDetails> result = new HashMap<>();
+    nodesByProvider.forEach(
+        (providerUUID, providerNodes) -> {
+          result.put(
+              providerUUID, create(Optional.of(providerUUID), providerNodes, params, context));
+        });
+    return result;
   }
 
   @Value

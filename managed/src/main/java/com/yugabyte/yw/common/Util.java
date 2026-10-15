@@ -2661,4 +2661,19 @@ public class Util {
     return universe.getUniverseDetails().clusters.stream()
         .anyMatch(c -> c.userIntent.isMulticloudSupport());
   }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(Universe universe) {
+    return getDefaultProviderUUID(universe.getUniverseDetails());
+  }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(UniverseDefinitionTaskParams taskParams) {
+    return getDefaultProviderUUID(taskParams.getPrimaryCluster());
+  }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(Cluster cluster) {
+    return cluster.userIntent.getAllProviderUUIDs().stream().sorted().findFirst().get();
+  }
 }

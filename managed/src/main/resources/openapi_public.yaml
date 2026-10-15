@@ -3397,6 +3397,49 @@ paths:
         checkOnlyPermission: false
       x-yba-api-since: 2025.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/fetch-universe-resources-per-provider:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: getUniverseResourcesPerProvider
+      summary: Get per-provider resource utilisation of a YugabyteDB Universe
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Fetches an estimate of pricing
+        and cpu/memory/storage resource utilisation for each provider in the Universe.
+        This is meant to be used before creating the Universe.'
+      tags:
+      - Universe
+      requestBody:
+        $ref: '#/components/requestBodies/UniverseCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/UniverseResourcesPerProviderResp'
+        '400':
+          description: Invalid input
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: READ
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: false
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   /customers/{cUUID}/universes/{uniUUID}/gflags:
     parameters:
     - name: cUUID
@@ -12965,6 +13008,19 @@ components:
             type: string
         gflags:
           $ref: '#/components/schemas/ClusterGFlags'
+    UniverseResourcesPerProvider:
+      title: UniverseResourcesPerProvider
+      description: Estimated pricing and cpu/memory/storage resource utilisation for
+        each provider in a universe.
+      type: object
+      required:
+      - resources_per_provider
+      properties:
+        resources_per_provider:
+          description: Resource details keyed by provider UUID.
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/UniverseResourceDetails'
     SleepAfterRestartSchema:
       title: Sleep time after restart
       description: Time to wait after restarting a tserver or master process
@@ -14335,6 +14391,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UniverseResourceDetails'
+    UniverseResourcesPerProviderResp:
+      description: success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UniverseResourcesPerProvider'
     UniverseSoftwareUpgradeFinalizeResp:
       description: Software Upgrade Finalize information
       content:

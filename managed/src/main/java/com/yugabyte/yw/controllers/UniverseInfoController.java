@@ -60,6 +60,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -159,7 +160,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
-        universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails()));
+        universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails(), null));
   }
 
   @ApiOperation(
@@ -185,7 +186,8 @@ public class UniverseInfoController extends AuthenticatedController {
         new Context(
             runtimeConfigFactory.globalRuntimeConf(), customer, universe.getUniverseDetails());
     return PlatformResults.withData(
-        UniverseResourceDetails.create(universe.getUniverseDetails(), context));
+        UniverseResourceDetails.create(
+            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context));
   }
 
   @ApiOperation(
