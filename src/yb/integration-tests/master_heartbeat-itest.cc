@@ -621,10 +621,10 @@ class MasterHeartbeatITestSixTablets : public MasterHeartbeatITest {
   int num_tablets() override { return 6; }
 };
 
-// A tserver abandons a full report whenever its heartbeat RPC times out, even if the master went on
-// to process that RPC, and starts a new full report. The master must accept the continuations of
-// the new report. Here the master is slow enough that the first full report chunk times out on the
-// tserver but is still processed by the master.
+// A tserver abandons a full report whenever the heartbeat RPC carrying the first chunk times out,
+// even if the master went on to process that RPC, and starts a new full report. The master must
+// accept the continuations of the new report. Here the master is slow enough that the first full
+// report chunk times out on the tserver but is still processed by the master.
 TEST_F(MasterHeartbeatITestSixTablets, FullReportCompletesAfterHeartbeatTimeout) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();

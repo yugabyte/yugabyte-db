@@ -202,7 +202,7 @@ Status TSDescriptor::UpdateFromHeartbeat(
       latest_report_seqno_ = std::max(latest_report_seqno_, report.sequence_number());
 
       // If a full report is starting, set our state to that so we don't mix up
-      // continuation pages from different full reports
+      // continuation chunks from different full reports
       if (!report.is_incremental() && report.has_full_report_seq_no() &&
           report.full_report_seq_no() == report.sequence_number()) {
         if (receiving_full_report_seq_no_ != report.full_report_seq_no()) {
@@ -311,8 +311,10 @@ bool TSDescriptor::PreCheckTabletReport(const TabletReportPB& report) const {
                  << ": Received an incremental tablet report when a full one was needed";
     return false;
   }
-  // Tservers before 22708c2eda7 (#26554) do not set full_report_seq_no, so the master cannot tell
-  // which full report this chunk belongs to. Accept it as before.
+  // 1. receiving_full_report_seq_no_ is set to the latest full report seen, including the current
+  //    one. Reject chunks of older full reports.
+  // 2. Tservers before 22708c2eda7 (#26554) do not set full_report_seq_no, so the master cannot
+  //    tell which full report this chunk belongs to. Accept it as before.
   if (!report.has_full_report_seq_no() ||
       report.full_report_seq_no() == receiving_full_report_seq_no_) {
     return true;
