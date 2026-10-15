@@ -19,7 +19,8 @@ Env overrides:
     YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
                     Must be a fork of YB_GH_REPO; may be owned by the
                     upstream org (e.g. yugabyte/yugabyte-db-backports).
-    YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol
+    YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol.
+                    Its path must name the YB_GH_FORK repo.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import NoReturn, Optional
 
@@ -284,6 +286,27 @@ def is_same_owner_fork(gh_repo: str, gh_fork: str) -> bool:
     return gh_fork.split("/", 1)[0].lower() == gh_repo.split("/", 1)[0].lower()
 
 
+def repo_from_url(url: str) -> Optional[str]:
+    """Return "<owner>/<repo>" from a git remote URL, or None if it has no such path.
+
+    Handles scheme URLs (https://, ssh://, with or without userinfo/port)
+    and scp-like ones (git@host:owner/repo); a trailing ".git" is dropped.
+    """
+    if "://" in url:
+        path = urllib.parse.urlsplit(url).path
+    elif ":" in url:
+        path = url.split(":", 1)[1]
+    else:
+        return None
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-len(".git")]
+    parts = path.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    return path
+
+
 def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str, str, str]:
     """Return (gh_fork, fork_owner, push_url). Aborts unless gh_fork is a fork of gh_repo."""
     upstream_owner = gh_repo.split("/", 1)[0]
@@ -313,8 +336,18 @@ def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str,
     info(f"Pushing to fork: {gh_fork} (PRs target {gh_repo})")
 
     # Build push URL: env override wins; otherwise mirror upstream's protocol.
+    # The override must name the fork checked above, or it would bypass that
+    # check, and the head_repo / existing-PR lookups would name a repo the
+    # branch was never pushed to.
     push_url = os.environ.get("YB_FORK_URL")
-    if not push_url:
+    if push_url:
+        url_repo = repo_from_url(push_url)
+        if (url_repo or "").lower() != gh_fork.lower():
+            # Don't echo the URL: it may carry a token in its userinfo.
+            fail(f"YB_FORK_URL names '{url_repo or '<no owner/repo path>'}', "
+                 f"not the fork {gh_fork}. Point it at {gh_fork}, or unset it "
+                 f"to derive the URL.")
+    else:
         upstream_url = git("remote", "get-url", upstream_remote, check=False)
         if upstream_url.startswith("https://"):
             push_url = f"https://github.com/{gh_fork}.git"
