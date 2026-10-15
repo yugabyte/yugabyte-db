@@ -479,6 +479,17 @@ func (m *InstallNodeAgent) RenderTemplates(
 				values["yb_home_dir"].(string),
 			)
 		}
+		// YBA scrapes node exporter on the provider's port, so installing it on another port
+		// leaves the node unreachable.
+		nodeExporterPort := int(config.GetInt(values, "node_exporter_port", 9300))
+		if provider.Details.NodeExporterPort != 0 &&
+			provider.Details.NodeExporterPort != nodeExporterPort {
+			return nil, fmt.Errorf(
+				"Provider node exporter port (%d) does not match the configured value (%d)",
+				provider.Details.NodeExporterPort,
+				nodeExporterPort,
+			)
+		}
 		regionExists := false
 		zoneExists := false
 		regionName := values["provider_region_name"].(string)

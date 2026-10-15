@@ -32,9 +32,11 @@
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -63,6 +65,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
@@ -77,11 +80,13 @@
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_bool(TEST_skip_flush_deactivated_vector_indexes);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
+DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -132,6 +137,7 @@ DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 
+METRIC_DECLARE_event_stats(vector_index_partitions_queried);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::docdb {
@@ -181,7 +187,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
+YB_DEFINE_ENUM(VectorIndexEngine, (kYbHnswUsearch)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
 // Returns the tablet peers matching `filter` that currently host at least one vector index.
@@ -195,6 +201,28 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
     }
   }
   return result;
+}
+
+// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
+// waits for every replica to apply all the ops its leader has committed.
+Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
+  std::unordered_map<TabletId, int64_t> leader_committed_idx;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
+    leader_committed_idx.emplace(
+        peer->tablet_id(), VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
+  }
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    auto it = leader_committed_idx.find(peer->tablet_id());
+    SCHECK(it != leader_committed_idx.end(), IllegalState,
+           Format("No leader for tablet $0", peer->tablet_id()));
+    RETURN_NOT_OK(Wait(
+        [idx = it->second, &peer]() -> Result<bool> {
+          return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
+        },
+        deadline, Format("$0apply op index $1", peer->LogPrefix(), it->second)));
+  }
+  return Status::OK();
 }
 
 ////////////////////////////////////////////////////////
@@ -226,14 +254,8 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
     switch (Engine()) {
-      case VectorIndexEngine::kUsearch:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
-        break;
       case VectorIndexEngine::kYbHnswUsearch:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
-        break;
-      case VectorIndexEngine::kHnswlib:
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
         break;
       case VectorIndexEngine::kYbHnswHnswlib:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
@@ -811,7 +833,7 @@ std::string ParamsToString(
   return Format(
       "$0$1$2",
       !is_colocated.has_value() ? "" : *is_colocated ? "Colocated" : "Distributed",
-      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
+      ToString(engine).substr(1),
       packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
 }
 
@@ -1904,13 +1926,8 @@ TEST_P(PgVectorIndexTest, Options) {
         prev_value = value;
       }
       switch (Engine()) {
-        case VectorIndexEngine::kUsearch:
-          break;
         case VectorIndexEngine::kYbHnswUsearch:
           expected_options += " backend: YB_HNSW_USEARCH";
-          break;
-        case VectorIndexEngine::kHnswlib:
-          expected_options += " backend: HNSWLIB";
           break;
         case VectorIndexEngine::kYbHnswHnswlib:
           expected_options += " backend: YB_HNSW_HNSWLIB";
@@ -2017,12 +2034,8 @@ struct TestParamTraits<PgDistributedVectorIndexTestParam> {
 
   static auto TestParamNameGenerator() {
     return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
-      auto engine = Engine(param_info.param);
-      auto packing_mode = GetPackingMode(param_info.param);
-      if (engine == VectorIndexEngine::kUsearch && packing_mode == PackingMode::kNone) {
-        return "None";
-      }
-      return ParamsToString(std::nullopt, engine, packing_mode);
+      return ParamsToString(
+          std::nullopt, Engine(param_info.param), GetPackingMode(param_info.param));
     };
   }
 };
@@ -2126,7 +2139,7 @@ template <typename TestClass>
 using PgVectorIndexColocatedPackingTestParamsDecorator =
     PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocatedPackingTestParam>;
 
-// Colocation only; engine and packing stay kUsearch / kNone.
+// Colocation only; engine and packing stay kYbHnswHnswlib / kNone.
 using PgVectorIndexColocationOnlyParam = bool;
 
 template <>
@@ -2138,7 +2151,7 @@ struct TestParamTraits<PgVectorIndexColocationOnlyParam> {
   }
 
   static VectorIndexEngine Engine(const ParamType&) {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   static PackingMode GetPackingMode(const ParamType&) {
@@ -2697,27 +2710,39 @@ TEST_P(PgVectorIndexColocationOnlyTest, IndexRestoredAwayRetainedBySnapshotSched
   // Storage dir of each replica of the kept index (false) and the restored away index (true).
   std::map<bool, std::vector<std::string>> index_dirs;
   TableId restored_away_index_id;
-  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
-    auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    for (const auto& vector_index : *tablet->vector_indexes().List()) {
-      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
-      if (table_info->table_name == kEarlierDroppedIndexName) {
-        continue;
-      }
-      const bool restored_away = table_info->table_name == kRestoredAwayIndexName;
-      if (restored_away) {
-        restored_away_index_id = vector_index->table_id();
-      }
-      index_dirs[restored_away].push_back(vector_index->path());
-    }
-  }
+  // CREATE INDEX can return before a follower applies the change metadata op that adds the index.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        index_dirs.clear();
+        for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          for (const auto& vector_index : *tablet->vector_indexes().List()) {
+            auto table_info =
+                VERIFY_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+            if (table_info->table_name == kEarlierDroppedIndexName) {
+              continue;
+            }
+            const bool restored_away = table_info->table_name == kRestoredAwayIndexName;
+            if (restored_away) {
+              restored_away_index_id = vector_index->table_id();
+            }
+            index_dirs[restored_away].push_back(vector_index->path());
+          }
+        }
+        if (index_dirs[false].size() != index_dirs[true].size()) {
+          LOG(INFO) << "Found " << index_dirs[true].size() << " replicas of "
+                    << kRestoredAwayIndexName << ", expected " << index_dirs[false].size();
+          return false;
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "All replicas host the restored away index"));
   ASSERT_FALSE(restored_away_index_id.empty());
-  ASSERT_EQ(index_dirs[false].size(), index_dirs[true].size());
 
   ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
   ASSERT_OK(wait_hidden(restored_away_index_id));
   // Followers apply the restore, which replaces the index storage dirs, after it returns.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
 
   // The restore replaced the storages, so count the chunks it left. A directory the master already
   // removed from the tablets counts as unchanged.
@@ -3023,6 +3048,333 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   }
 }
 
+// Routing does not depend on the vector index engine or the row packing, so these tests run with
+// the defaults only.
+class PgVectorIndexPkRoutingTest : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override {
+    return false;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV2;
+  }
+
+  static constexpr int kNumTenants = 20;
+  static constexpr int kRowsPerTenant = 10;
+  static constexpr int kNumTablets = 4;
+
+  struct QueryStats {
+    std::vector<int32_t> ids;
+    // Partitions searched over all fetch rounds of the query, and the number of rounds.
+    int64_t partitions = 0;
+    uint64_t rounds = 0;
+  };
+
+  std::pair<int64_t, uint64_t> PartitionsQueried() {
+    int64_t sum = 0;
+    uint64_t count = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      const auto* stats = cluster_->mini_tablet_server(i)->metric_entity()
+          .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying();
+      sum += stats->TotalSum();
+      count += stats->TotalCount();
+    }
+    return {sum, count};
+  }
+
+  Result<QueryStats> Query(PGConn& conn, const std::string& query) {
+    auto [sum_before, count_before] = PartitionsQueried();
+    QueryStats result;
+    result.ids = VERIFY_RESULT(conn.FetchRows<int32_t>(query));
+    auto [sum_after, count_after] = PartitionsQueried();
+    result.partitions = sum_after - sum_before;
+    result.rounds = count_after - count_before;
+    return result;
+  }
+
+  // Embedding of row (tenant, id) is [tenant, id, 0], so the rows of a tenant ordered by distance
+  // to [tenant, 0, 0] are ordered by id.
+  Status CreateAndFill(PGConn& conn, const std::string& table, const std::string& key_columns,
+                       const std::string& primary_key, const std::string& split) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1, embedding vector(3), PRIMARY KEY ($2)) $3",
+        table, key_columns, primary_key, split));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
+    return conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+        "FROM generate_series(0, $1) t, generate_series(0, $2) i",
+        table, kNumTenants - 1, kRowsPerTenant - 1);
+  }
+
+  static std::string KnnQuery(
+      const std::string& table, const std::string& where, int tenant, int limit) {
+    return Format(
+        "/*+IndexScan($0 $0_embedding_idx)*/ SELECT id FROM $0 WHERE $1 "
+        "ORDER BY embedding <-> '[$2, 0, 0]' LIMIT $3",
+        table, where, tenant, limit);
+  }
+
+  static std::vector<int32_t> Ids(int32_t first, int32_t count) {
+    std::vector<int32_t> result(count);
+    std::iota(result.begin(), result.end(), first);
+    return result;
+  }
+
+  // Index of the partition of table_name that holds hash code hash.
+  Result<size_t> HashPartition(const std::string& table_name, uint16_t hash) {
+    auto table = VERIFY_RESULT(client_->OpenTable(
+        VERIFY_RESULT(GetTableIDFromTableName(table_name))));
+    return client::FindPartitionStartIndex(
+        table->GetVersionedPartitions()->keys,
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(hash));
+  }
+};
+
+TEST_F(PgVectorIndexPkRoutingTest, HashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "th", "tenant INT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("th", Format("tenant = $0", tenant), tenant, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // Without a filter on the key, and with routing disabled, every partition is searched.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "id < 3", 4, 3)));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+  {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_pk_routing) = false;
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4", 4, 5)));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_pk_routing) = true;
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, kNumTablets);
+  }
+
+  // A non-integer cross-type equality isn't routed, but still returns the right rows.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("th", "tenant = 4.0", 4, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // With several equalities on the key, the one with the fewest values bounds the search.
+  for (const auto* where : {"tenant = 3 AND tenant IN (3, 4)", "tenant IN (3, 4) AND tenant = 3"}) {
+    SCOPED_TRACE(where);
+    stats = ASSERT_RESULT(Query(conn, KnnQuery("th", where, 3, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // IN list: one partition per distinct partition of the tenants.
+  auto hashes = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
+      "SELECT yb_hash_code(t) FROM generate_series(0, $0) t ORDER BY t", kNumTenants - 1)));
+  std::vector<size_t> partition_of_tenant;
+  for (auto hash : hashes) {
+    partition_of_tenant.push_back(ASSERT_RESULT(HashPartition("th", hash)));
+  }
+  int other_tenant = 1;
+  while (partition_of_tenant[other_tenant] == partition_of_tenant[0]) {
+    ++other_tenant;
+    ASSERT_LT(other_tenant, kNumTenants);
+  }
+  // Fetch every row of both tenants, so a missing partition would lose rows.
+  stats = ASSERT_RESULT(Query(
+      conn, KnnQuery("th", Format("tenant IN (0, $0)", other_tenant), 0, 2 * kRowsPerTenant)));
+  std::ranges::sort(stats.ids);
+  std::vector<int32_t> expected_ids;
+  for (int id = 0; id != kRowsPerTenant; ++id) {
+    expected_ids.insert(expected_ids.end(), {id, id});
+  }
+  ASSERT_EQ(stats.ids, expected_ids);
+  ASSERT_EQ(stats.partitions, 2);
+
+  // Prepared statement with a generic plan: the parameter is bound at execution.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(int, vector) AS /*+IndexScan(th)*/ SELECT id FROM th WHERE tenant = $1 "
+      "ORDER BY embedding <-> $2 LIMIT 4"));
+  for (int tenant : {3, 7}) {
+    auto stats = ASSERT_RESULT(Query(
+        conn, Format("EXECUTE knn($0, '[$0, 0, 0]')", tenant)));
+    ASSERT_EQ(stats.ids, Ids(0, 4));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  ASSERT_OK(conn.Execute("RESET plan_cache_mode"));
+
+  // Nested loop: the inner scan is routed again on each rescan.
+  stats = ASSERT_RESULT(Query(conn,
+      "/*+NestLoop(t th) Leading((t th)) IndexScan(th)*/ "
+      "SELECT x.id FROM (VALUES (2), (9)) t(tenant), LATERAL ("
+      "  SELECT id FROM th WHERE th.tenant = t.tenant "
+      "  ORDER BY embedding <-> '[0, 0, 0]' LIMIT 2) x"));
+  ASSERT_EQ(stats.ids, (std::vector<int32_t>{0, 1, 0, 1}));
+  ASSERT_EQ(stats.partitions, 2);
+
+  // The join rejects the first rows returned by the vector index, so Postgres fetches more rounds.
+  // The pruned partitions must not keep the query waiting for them.
+  ASSERT_OK(conn.Execute("CREATE TABLE keep (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO keep VALUES (6), (7), (8)"));
+  stats = ASSERT_RESULT(Query(conn,
+      "SELECT th.id FROM th INNER JOIN keep AS k ON th.id = k.id WHERE th.tenant = 5 "
+      "ORDER BY th.embedding <-> '[5, 0, 0]' LIMIT 3"));
+  ASSERT_EQ(stats.ids, Ids(6, 3));
+  ASSERT_GE(stats.rounds, 2);
+  ASSERT_LE(stats.partitions, static_cast<int64_t>(stats.rounds));
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, MultiColumnHashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tm", "tenant INT, id INT", "(tenant, id) HASH",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tm", "tenant = 3 AND id = 2", 3, 5)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{2});
+  ASSERT_EQ(stats.partitions, 1);
+
+  // Only some of the hash columns: every partition is searched.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("tm", "tenant = 3", 3, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tt", "tenant TEXT COLLATE \"C\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  // Expressions with a non-C collation are not pushed down, so their key equalities can't be
+  // routed. Their results must still be correct.
+  ASSERT_OK(CreateAndFill(
+      conn, "tt_icu", "tenant TEXT COLLATE \"en-US-x-icu\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tt", Format("tenant = '$0'", tenant), tenant, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, 1);
+
+    stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tt_icu", Format("tenant = '$0'", tenant), tenant, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, kNumTablets);
+  }
+
+  // varchar has no equality operator of its own: the column is compared with text's operator, and
+  // the value can be text or varchar.
+  ASSERT_OK(CreateAndFill(
+      conn, "tv", "tenant VARCHAR(20) COLLATE \"C\", id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  for (const auto* value : {"'7'", "'7'::varchar", "'7'::text", "'7'::varchar(5)"}) {
+    SCOPED_TRACE(value);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tv", Format("tenant = $0", value), 7, 3)));
+    ASSERT_EQ(stats.ids, Ids(0, 3));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tv", "tenant IN ('7', '7')", 7, 3)));
+  ASSERT_EQ(stats.ids, Ids(0, 3));
+  ASSERT_EQ(stats.partitions, 1);
+}
+
+// Integer literals are int4 and parameters can be int8, so equalities on integer keys are often
+// cross-type (e.g. int8 = int4). Those are routed after converting the value to the column type.
+TEST_F(PgVectorIndexPkRoutingTest, IntegerCrossTypeKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tb", "tenant BIGINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  ASSERT_OK(CreateAndFill(
+      conn, "ts", "tenant SMALLINT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  for (const auto* where : {"tenant = 6", "6 = tenant", "tenant = 6::smallint", "tenant IN (6)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tb", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+  for (const auto* where : {"tenant = 6", "tenant = 6::bigint", "tenant IN (6::bigint)"}) {
+    SCOPED_TRACE(where);
+    auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", where, 6, 5)));
+    ASSERT_EQ(stats.ids, Ids(0, 5));
+    ASSERT_EQ(stats.partitions, 1);
+  }
+
+  // A value outside the smallint range matches no row, so the column isn't routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant = 70000", 6, 5)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{});
+  ASSERT_EQ(stats.partitions, kNumTablets);
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("ts", "tenant IN (6, 70000)", 6, 5)));
+  ASSERT_EQ(stats.ids, Ids(0, 5));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+
+  // A bigint parameter against a smallint column, with a generic plan.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(bigint, vector) AS /*+IndexScan(ts ts_embedding_idx)*/ SELECT id FROM ts "
+      "WHERE tenant = $1 ORDER BY embedding <-> $2 LIMIT 4"));
+  stats = ASSERT_RESULT(Query(conn, "EXECUTE knn(9, '[9, 0, 0]')"));
+  ASSERT_EQ(stats.ids, Ids(0, 4));
+  ASSERT_EQ(stats.partitions, 1);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, FloatKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "tf", "tenant FLOAT8, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+
+  // -0 equals 0 but has a different key encoding, so float keys are never routed.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tf", "tenant = '-0'", 0, 3)));
+  ASSERT_EQ(stats.ids, Ids(0, 3));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  // Partitions: [, 5), [5, (10, 5)), [(10, 5), 15), [15, ).
+  ASSERT_OK(CreateAndFill(
+      conn, "tr", "tenant INT, id INT", "tenant ASC, id ASC",
+      "SPLIT AT VALUES ((5), (10, 5), (15))"));
+
+  for (auto [tenant, partitions] : std::initializer_list<std::pair<int, int64_t>>{
+           // The split point (5) sorts after the prefix of tenant 5, so both of its neighbours
+           // are searched.
+           {2, 1}, {5, 2}, {7, 1}, {10, 2}, {12, 1}, {15, 2}, {19, 1}}) {
+    SCOPED_TRACE(Format("tenant: $0", tenant));
+    auto stats = ASSERT_RESULT(Query(
+        conn, KnnQuery("tr", Format("tenant = $0", tenant), tenant, 7)));
+    ASSERT_EQ(stats.ids, Ids(0, 7));
+    ASSERT_EQ(stats.partitions, partitions);
+  }
+
+  // A prefix of two range columns.
+  auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "tenant = 10 AND id = 7", 10, 3)));
+  ASSERT_EQ(stats.ids, std::vector<int32_t>{7});
+  ASSERT_EQ(stats.partitions, 1);
+
+  // No equality on the leading range column: every partition is searched.
+  stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "id = 7", 10, 3)));
+  ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
 // leave that time invalid on the target tablet, so rows written transactionally into the clone
 // never reached its vector index (#34767).
@@ -3157,6 +3509,51 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   clone_conn = ASSERT_RESULT(ConnectToDB(kCloneDb));
   ASSERT_EQ(
       ASSERT_RESULT(FetchIdsThroughIndex(clone_conn, 4 * kNumRows)), Ids(1, 2 * kNumRows));
+}
+
+// Snapshot import keeps the snapshot's vector index options, so a snapshot of an index without a
+// block-based backend (here: no backend set, as in indexes that predate the backend field) must be
+// rejected before the import creates anything.
+TEST_P(PgVectorIndexColocationOnlyTest, ImportRejectsDeprecatedBackend) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto schedule_snapshot = ASSERT_RESULT(snapshot_util.WaitScheduleSnapshot(schedule_id));
+  auto snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(schedule_snapshot.id()));
+  auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+  auto snapshot = snapshots[0];
+
+  size_t num_vector_indexes = 0;
+  for (auto& backup_entry : *snapshot.mutable_backup_entries()) {
+    auto& entry = *backup_entry.mutable_entry();
+    if (entry.type() != master::SysRowEntryType::TABLE) {
+      continue;
+    }
+    auto meta = ASSERT_RESULT(pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data()));
+    if (!meta.has_index_info() || !meta.index_info().has_vector_idx_options()) {
+      continue;
+    }
+    auto& options = *meta.mutable_index_info()->mutable_vector_idx_options();
+    ASSERT_EQ(options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
+    options.mutable_hnsw()->clear_backend();
+    entry.set_data(meta.SerializeAsString());
+    ++num_vector_indexes;
+  }
+  ASSERT_EQ(num_vector_indexes, 1);
+
+  auto import_result = snapshot_util.StartImportSnapshot(snapshot);
+  ASSERT_NOK(import_result);
+  ASSERT_TRUE(import_result.status().IsNotSupported()) << import_result.status();
+  ASSERT_STR_CONTAINS(import_result.status().ToString(), "no longer supported");
 }
 
 class PgDistributedVectorIndexTest
@@ -4785,7 +5182,7 @@ struct TestParamTraits<PgVectorIndexEngineOnlyParam> {
 
   static auto TestParamNameGenerator() {
     return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
-      // ToString(kUsearch) is "kUsearch"; drop the leading "k" to get "Usearch", "Hnswlib", etc.
+      // Drop the leading "k" of the enum value name, e.g. "kYbHnswHnswlib" -> "YbHnswHnswlib".
       return ToString(param_info.param).substr(1);
     };
   }
@@ -5611,7 +6008,7 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
@@ -5778,6 +6175,67 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
   }
 }
 
+// DROP DATABASE deletes the tablets of indexed tables before it gets to their indexes. A vector
+// index lives on its indexed table's tablets, so the background cleanup may free those tablets in
+// between. Processing the index afterwards must not fail the drop (#34249).
+TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
+  // Finished tasks kept for the UI hold their tablets, which keeps tablets of dropped tables
+  // alive. In a busy cluster they are evicted quickly, so do not keep them at all. The tracker
+  // is sized when the master starts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 0;
+  ASSERT_OK(RestartMaster());
+
+  constexpr auto kDbName = "vector_db";
+  constexpr size_t kNumTables = 2;
+
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+  {
+    auto db_conn = ASSERT_RESULT(ConnectToDB(kDbName));
+    ASSERT_OK(db_conn.Execute("CREATE EXTENSION vector"));
+    for (size_t i = 0; i != kNumTables; ++i) {
+      ASSERT_OK(db_conn.ExecuteFormat(
+          "CREATE TABLE t$0 (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS",
+          i));
+      ASSERT_OK(db_conn.ExecuteFormat(
+          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i, VectorOpsName()));
+    }
+  }
+
+  std::vector<TableId> table_ids;
+  for (size_t i = 0; i != kNumTables; ++i) {
+    table_ids.push_back(ASSERT_RESULT(GetTableIDFromTableName(Format("t$0", i))));
+  }
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  std::atomic<size_t> num_started_tables{0};
+  std::atomic<bool> table_cleaned_up{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start", [&](void*) {
+        // Tables go first, so here the first table's tablets are deleted and the second's are not.
+        // Hold the drop until the background cleanup removes the first table and its tablets.
+        if (num_started_tables.fetch_add(1) != 1) {
+          return;
+        }
+        table_cleaned_up = WaitFor(
+            [&]() -> Result<bool> {
+              return std::ranges::any_of(table_ids, [&catalog_manager](const auto& table_id) {
+                return catalog_manager.GetTableInfo(table_id) == nullptr;
+              });
+            },
+            30s * kTimeMultiplier, "Indexed table removed by the background cleanup").ok();
+      });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDbName));
+  ASSERT_TRUE(table_cleaned_up);
+}
+
 TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
 
@@ -5808,7 +6266,7 @@ struct TestParamTraits<PgVectorIndexReverseMappingTestParam> {
   }
 
   static VectorIndexEngine Engine(const ParamType&) {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   static PackingMode GetPackingMode(const ParamType& param) {
@@ -6809,6 +7267,17 @@ TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) 
 
   ASSERT_EQ(ASSERT_RESULT(NumVectorIndexesOnTablet()), kNumIndexes);
   ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
+}
+
+class PgVectorIndexBackendFlagTest : public YBTest {};
+
+TEST_F(PgVectorIndexBackendFlagTest, RejectsRemovedBackends) {
+  for (const auto* backend : {"usearch", "hnswlib", "yb_hnsw"}) {
+    ASSERT_NOK(SET_FLAG(vector_index_backend, backend));
+  }
+  for (const auto* backend : {"yb_hnsw_usearch", "yb_hnsw_hnswlib"}) {
+    ASSERT_OK(SET_FLAG(vector_index_backend, backend));
+  }
 }
 
 }  // namespace yb::pgwrapper
