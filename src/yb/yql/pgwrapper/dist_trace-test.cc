@@ -2073,13 +2073,7 @@ TEST_F(DistTraceTest, TestOneSampleDrawPerCycle) {
   auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
   constexpr size_t kNumExecutions = 40;
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "0.5"));
-  ASSERT_OK(WaitFor(
-      [this]() -> Result<bool> {
-        return VERIFY_RESULT(conn_->FetchRow<std::string>(
-            "SHOW yb_dist_trace_sample_rate")) == "0.5";
-      },
-      30s * kTimeMultiplier, "yb_dist_trace_sample_rate = 0.5"));
+  ASSERT_OK(SetSampleRate("0.5"));
   ASSERT_OK(ext_conn.Prepare("stmt", "SELECT 18"));
   for (size_t i = 0; i < kNumExecutions; ++i) {
     ASSERT_OK(ext_conn.FetchPrepared("stmt"));
@@ -2118,22 +2112,11 @@ TEST_F(DistTraceTest, TestUnsampledTraceparentNotTraced) {
 
 // The rate is a runtime tserver flag; a change reaches sessions that are already open.
 TEST_F(DistTraceTest, TestSampleRateFlagChangeReachesOpenSession) {
-  auto wait_for_rate = [this](const std::string& rate) -> Status {
-    return WaitFor(
-        [this, &rate]() -> Result<bool> {
-          return VERIFY_RESULT(conn_->FetchRow<std::string>(
-              "SHOW yb_dist_trace_sample_rate")) == rate;
-        },
-        30s * kTimeMultiplier, Format("yb_dist_trace_sample_rate = $0", rate));
-  };
-
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "1"));
-  ASSERT_OK(wait_for_rate("1"));
+  ASSERT_OK(SetSampleRate("1"));
   ASSERT_OK(conn_->Fetch("SELECT 6"));
   ASSERT_RESULT(collector_.WaitForTraceWithQueryText("SELECT 6"));
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_dist_trace_sample_rate", "0"));
-  ASSERT_OK(wait_for_rate("0"));
+  ASSERT_OK(SetSampleRate("0"));
   ASSERT_OK(conn_->Fetch("SELECT 7"));
   ASSERT_OK(collector_.VerifyQueryNotTraced("SELECT 7"));
 }
