@@ -11,6 +11,10 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -18,6 +22,9 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -1382,8 +1389,40 @@ class AsyncWritesExternalTest : public pgwrapper::LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=true");
     options->extra_tserver_flags.push_back("--flush_rocksdb_on_shutdown=false");
     options->extra_tserver_flags.push_back("--leader_failure_max_missed_heartbeat_periods=100");
-    options->extra_master_flags.push_back("--enable_load_balancing=false");
     options->extra_master_flags.push_back("--use_create_table_leader_hint=false");
+  }
+
+  void SetUp() override {
+    TEST_SETUP_SUPER(LibPqTestBase);
+
+    // The master's background task may create system.transactions (via the transactional
+    // pg_advisory_locks table) while only 2 tservers are live, giving its tablets 2 replicas.
+    // Let the LB add the third before disabling it, so shutting down a tserver can't lose quorum.
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    const client::YBTableName table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      // GetTablets omits tablets that are not yet running, so wait for creation to complete.
+      bool create_in_progress = true;
+      auto status = client->IsCreateTableInProgress(table_name, &create_in_progress);
+      if (status.IsNotFound()) {
+        return false;
+      }
+      RETURN_NOT_OK(status);
+      if (create_in_progress) {
+        return false;
+      }
+      std::vector<TabletId> tablet_ids;
+      std::vector<master::TabletLocationsPB> locations;
+      RETURN_NOT_OK(client->GetTablets(table_name, 0, &tablet_ids, nullptr, &locations));
+      return !locations.empty() && std::ranges::all_of(locations, [this](const auto& tablet) {
+        return tablet.replicas_size() == GetNumTabletServers() &&
+               std::ranges::all_of(tablet.replicas(), [](const auto& replica) {
+                 return replica.member_type() == consensus::PeerMemberType::VOTER;
+               });
+      });
+    }, 120s * kTimeMultiplier, "Wait for transaction status tablets to have all voters"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   }
 
   int GetNumTabletServers() const override { return 3; }
