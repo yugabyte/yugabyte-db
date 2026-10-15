@@ -272,3 +272,18 @@ ALTER TABLE altercoltab RENAME COLUMN j TO k;
 SELECT * FROM altercoltab WHERE a && '{1}';
 -- Cleanup
 DROP TABLE altercoltab;
+
+--
+-- Join on a ybgin-indexed column (GH#33922).  A batched nested loop join turns
+-- the join clause into a ScalarArrayOpExpr, which ybgin cannot execute, so the
+-- hinted query must fall back to an unbatched ybgin index scan.  The arrays are
+-- non-empty: that scan still fails on an outer '{}' (GH#12322).
+--
+CREATE TABLE ybgin_selfjoin (k int PRIMARY KEY, v int[]);
+CREATE INDEX NONCONCURRENTLY ON ybgin_selfjoin USING ybgin (v);
+INSERT INTO ybgin_selfjoin VALUES (1, '{1,2}'), (2, '{1,2}'), (3, '{3}'), (4, '{1}');
+SET enable_memoize = off;
+EXPLAIN (COSTS OFF) /*+ Leading((p c)) YbBatchedNL(p c) */ SELECT p.k, c.k FROM ybgin_selfjoin p JOIN ybgin_selfjoin c ON c.v = p.v ORDER BY p.k, c.k;
+/*+ Leading((p c)) YbBatchedNL(p c) */ SELECT p.k, c.k FROM ybgin_selfjoin p JOIN ybgin_selfjoin c ON c.v = p.v ORDER BY p.k, c.k;
+RESET enable_memoize;
+DROP TABLE ybgin_selfjoin;
