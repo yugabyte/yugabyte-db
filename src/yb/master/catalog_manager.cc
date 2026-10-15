@@ -389,6 +389,9 @@ DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
 DEFINE_test_flag(bool, hang_on_namespace_transition, false,
     "Used in tests to simulate a lapse between issuing a namespace op and final processing.");
 
+DEFINE_test_flag(bool, skip_persistence_block_erase_on_drop, false,
+    "Skip erasing a YSQL database's persistence block map entry when its drop finishes.");
+
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
@@ -636,19 +639,14 @@ TAG_FLAG(emergency_repair_mode, unsafe);
 DEPRECATE_FLAG(bool, vector_index_use_hnswlib, "02_2026");
 DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 
-static constexpr char kHnswlib[] = "hnswlib";
-static constexpr char kUsearch[] = "usearch";
-static constexpr char kYbHnsw[] = "yb_hnsw";
 static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
 static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
 DEFINE_RUNTIME_string(vector_index_backend, kYbHnswHnswlib,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
-    "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
-    "\"yb_hnsw_usearch\".");
+    "Which vector index backend to use. Options are \"yb_hnsw_usearch\" and \"yb_hnsw_hnswlib\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
+    FLAG_IN_SET_VALIDATOR(kYbHnswUsearch, kYbHnswHnswlib));
 
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
@@ -1435,12 +1433,14 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
           state->epoch.leader_term),
       "Failed restoring snapshot in sys catalog");
   LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-  cluster_config_.reset();
+  std::atomic_store(&cluster_config_, std::shared_ptr<ClusterConfigInfo>());
   RETURN_NOT_OK(PrepareDefaultClusterConfig(state->epoch.leader_term));
 
   LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
   RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
       state->epoch.leader_term, /* recreate = */ true));
+  RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(
+      state->epoch.leader_term, /*recreate=*/true));
 
   LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
   RETURN_NOT_OK(ysql_manager_->SetInitDbDone(state->epoch));
@@ -1577,6 +1577,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
     RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultPersistenceBlockMap(term, /*recreate=*/false));
 
     permissions_manager_->BuildRecursiveRoles();
 
@@ -1623,7 +1624,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  cluster_config_.reset();
+  std::atomic_store(&cluster_config_, std::shared_ptr<ClusterConfigInfo>());
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1775,7 +1776,7 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   }
 
   // Create in memory object.
-  cluster_config_ = std::make_shared<ClusterConfigInfo>();
+  std::atomic_store(&cluster_config_, std::make_shared<ClusterConfigInfo>());
 
   // Prepare write.
   auto l = cluster_config_->LockForWrite();
@@ -1807,7 +1808,7 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
 
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config.get()));
   l.Commit();
   return Status::OK();
 }
@@ -4745,14 +4746,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.set_store_payload(
           FLAGS_vector_index_store_payload ||
           indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
-      auto backend = FLAGS_vector_index_backend;
-      if (backend == kHnswlib) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (backend == kYbHnswUsearch || backend == kYbHnsw) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
-      } else if (backend == kYbHnswHnswlib) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
-      }
+      vector_index_options.mutable_hnsw()->set_backend(
+          FLAGS_vector_index_backend == kYbHnswUsearch
+              ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -6268,6 +6264,7 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -7872,6 +7869,13 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
       return false;
     }
   }
+
+  // System and colocated tables do not wait for their tablets, which belong to another table and
+  // may already be freed.
+  if (table->is_system() || table->IsSecondaryTable()) {
+    return true;
+  }
+
   // The current relevant order of operations during a DeleteTable is:
   // 1) Mark the table as DELETING
   // 2) Abort the current table tasks
@@ -7890,7 +7894,7 @@ bool CatalogManager::ShouldDeleteTable(const TableInfoPtr& table) {
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  return all_tablets_done || table->is_system() || table->IsSecondaryTable();
+  return all_tablets_done;
 }
 
 std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDeletion(
@@ -10359,6 +10363,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
     // We consider a restart enough time, so we just need to remove it from the SysCatalog.
     if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+      // Backstop for the erase when the drop finished, which may have been lost or failed.  Must
+      // precede deleting the tombstone, which keeps the database's OID from being reused.
+      if (auto erase_status = xcluster_manager_->ErasePersistenceBlock(epoch, database->id());
+          !erase_status.ok()) {
+        LOG(WARNING) << "Failed to erase the persistence block map entry of "
+                     << database->ToString() << "; keeping its tombstone to retry: "
+                     << erase_status;
+        return;
+      }
       Status s = sys_catalog_->Delete(leader_ready_term(), database);
       WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
       return;
@@ -10454,6 +10467,15 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
   TRACE("Committing in-memory state");
   l.Commit();
+
+  // No need to propagate: the dropped database has no more writes to block.  If this erase is
+  // lost or fails, the tombstone pass at the top of this function retries it on the next leader
+  // load.
+  if (!FLAGS_TEST_skip_persistence_block_erase_on_drop) {
+    WARN_NOT_OK(
+        xcluster_manager_->ErasePersistenceBlock(epoch, database->id()),
+        Format("Failed to erase the persistence block map entry of $0", database->ToString()));
+  }
 
   // The verification-failure path may already have released this name so a CREATE retry could
   // proceed. Tolerate that, and do not steal a name now owned by a different namespace.
@@ -11232,7 +11254,7 @@ Status CatalogManager::InvalidateTserverOidCaches() {
                         << oid_cache_invalidations_count;
   l.mutable_data()->pb.set_oid_cache_invalidations_count(oid_cache_invalidations_count);
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_.get()));
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()));
   l.Commit();
   return Status::OK();
 }
@@ -11829,11 +11851,20 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
-  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
-  // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
-  if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
+  // System and colocated tables do not own their tablets, so the tablets are not deleted with them.
+  // GetTabletsIncludeInactive() must not be called before this check: a colocated table, e.g.
+  // a vector index, holds only weak pointers to tablets owned by another table. DROP DATABASE
+  // deletes that table first, and the background cleanup may free its tablets before this table
+  // is processed, so GetTabletsIncludeInactive() would fail and leave the database FAILED.
+  if (table_info.is_system() || table_info.IsSecondaryTable()) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && delete_retainer.active_cdcsdk &&
         table_info.IsSecondaryTable()) {
+      // Indexes, including vector indexes, are never part of a CDCSDK stream, so only a regular
+      // colocated table gets here, and it lives on exactly one tablet. The entry records only the
+      // tablet id and does not keep the tablet alive.
+      DCHECK(!table_info.is_vector_index())
+          << "Vector index in a CDCSDK stream: " << table_info.ToString();
+      auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
       LockGuard lock(mutex_);
       RSTATUS_DCHECK(
           tablets.size() == 1, InternalError, "Colocated table has more than one tablet");
@@ -11846,6 +11877,7 @@ Status CatalogManager::DeleteOrHideTabletsOfTable(
     return Status::OK();
   }
 
+  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
   });
@@ -14185,7 +14217,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
-  return cluster_config_;
+  return std::atomic_load(&cluster_config_);
 }
 
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {

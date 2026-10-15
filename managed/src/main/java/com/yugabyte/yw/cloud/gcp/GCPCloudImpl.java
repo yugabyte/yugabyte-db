@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -660,12 +661,13 @@ public class GCPCloudImpl implements CloudAPI {
       throw new PlatformServiceException(BAD_REQUEST, "The provider has no VPC network");
     }
     String networkUrl = String.format(GCPUtil.NETWORK_SELFLINK, vpcProject, network);
+    // The zones of a GCP region share one subnet.
     String subnetworkUrl =
         String.format(
             GCPUtil.SUBNETWORK_SELFLINK,
             vpcProject,
             regionCode,
-            getSubnet(zones, regionCode, name));
+            ManagedLoadBalancerUtil.getFirstZoneWithSubnet(zones, regionCode, name).getSubnet());
     GCPProjectApiClient apiClient = getApiClient(provider);
 
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
@@ -814,19 +816,6 @@ public class GCPCloudImpl implements CloudAPI {
   private static String toLabelPart(String value) {
     String part = StringUtils.defaultString(value).toLowerCase().replaceAll("[^a-z0-9_-]", "_");
     return part.length() > 63 ? part.substring(0, 63) : part;
-  }
-
-  // The zones of a GCP region share one subnet.
-  private static String getSubnet(List<AvailabilityZone> zones, String regionCode, String name) {
-    return zones.stream()
-        .map(AvailabilityZone::getSubnet)
-        .filter(StringUtils::isNotBlank)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                new PlatformServiceException(
-                    BAD_REQUEST,
-                    "No zone of region " + regionCode + " has a subnet for load balancer " + name));
   }
 
   @Override

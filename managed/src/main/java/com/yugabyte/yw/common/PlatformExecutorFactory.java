@@ -15,6 +15,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.time.Duration;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
@@ -54,6 +55,10 @@ public class PlatformExecutorFactory {
     return config.getInt(getPath(poolName, ".queue_capacity"));
   }
 
+  private Duration coalescingDelay(String poolName) {
+    return config.getDuration(getPath(poolName, ".coalescing_delay"));
+  }
+
   private String getPath(String poolName, String confKey) {
     return "yb." + poolName + confKey;
   }
@@ -81,6 +86,19 @@ public class PlatformExecutorFactory {
         poolName, poolSize, poolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
+  public ThreadPoolExecutor createCoalescingDelayExecutor(
+      String poolName, ThreadFactory namedThreadFactory) {
+    Duration delay = coalescingDelay(poolName);
+    // No core thread so that execute() always goes through the queue and its delay.
+    return createExecutor(
+        poolName,
+        0 /* corePoolSize */,
+        1 /* maxPoolSize */,
+        delay.plusMinutes(1) /* keepAliveTime */,
+        new CoalescingDelayQueue<>(delay),
+        namedThreadFactory);
+  }
+
   public ThreadPoolExecutor createExecutor(
       String poolName,
       int corePoolSize,
@@ -88,15 +106,29 @@ public class PlatformExecutorFactory {
       Duration keepAliveTime,
       int queueCapacity,
       ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        poolName,
+        corePoolSize,
+        maxPoolSize,
+        keepAliveTime,
+        queueCapacity <= 0 ? new SynchronousQueue<>() : new LinkedBlockingQueue<>(queueCapacity),
+        namedThreadFactory);
+  }
+
+  public ThreadPoolExecutor createExecutor(
+      String poolName,
+      int corePoolSize,
+      int maxPoolSize,
+      Duration keepAliveTime,
+      BlockingQueue<Runnable> queue,
+      ThreadFactory namedThreadFactory) {
     ThreadPoolExecutor executor =
         new PlatformThreadPoolExecutor(
             corePoolSize,
             maxPoolSize,
             keepAliveTime.getSeconds(),
             TimeUnit.SECONDS,
-            queueCapacity <= 0
-                ? new SynchronousQueue<>()
-                : new LinkedBlockingQueue<>(queueCapacity),
+            queue,
             namedThreadFactory);
     shutdownHookHandler.addShutdownHook(
         executor,

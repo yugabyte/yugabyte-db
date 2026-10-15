@@ -133,7 +133,7 @@ func upgradeCmd() *cobra.Command {
 				}
 				targetVersion := ybactl.Version
 				if !common.LessVersions(installedVersion, targetVersion) {
-					log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
+					log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater than the installed "+
 						"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
 				}
 			}

@@ -46,6 +46,12 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   // Only ever raises the count.
   void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) EXCLUDES(mutex_);
 
+  Result<std::shared_ptr<const PersistenceBlockMapPB>> GetPersistenceBlockMap() const override
+      EXCLUDES(mutex_);
+
+  void UpdatePersistenceBlockMap(const PersistenceBlockMapPB& persistence_block_map)
+      EXCLUDES(mutex_);
+
   bool IsReadOnlyMode(NamespaceIdView namespace_id) const override;
   bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
 
@@ -98,6 +104,10 @@ class TserverXClusterContext : public TserverXClusterContextIf {
       GUARDED_BY(mutex_);
 
   uint32_t oid_cache_invalidations_count_ GUARDED_BY(mutex_) = 0;
+
+  // Replaced, never modified, so readers can use a snapshot without holding mutex_.
+  std::shared_ptr<const PersistenceBlockMapPB> persistence_block_map_ GUARDED_BY(mutex_) =
+      std::make_shared<const PersistenceBlockMapPB>();
 
   struct CreateTableInfo {
     PgObjectId source_table_id;

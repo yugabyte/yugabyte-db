@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.rollback.EditKubernetesUniverseRollbackComputer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -1259,7 +1260,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertNotNull(universe.getStateTransitionDetails());
     assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(commissioner.canTaskRollback(failedEdit));
     assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+    // With the flag off, neither listing nor submit offers rollback of the same failed edit.
+    EditKubernetesUniverseRollbackComputer rollbackComputer =
+        app.injector().instanceOf(EditKubernetesUniverseRollbackComputer.class);
+    assertTrue(rollbackComputer.isEnabled());
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "false");
+    assertFalse(rollbackComputer.isEnabled());
+    assertFalse(commissioner.canTaskRollback(failedEdit));
+    assertFalse(commissioner.canTaskRollbackDetailed(failedEdit));
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
 
     // Scale-back-down rollback: helm succeeds, pods report the restored pre-edit set.
     doNothing()

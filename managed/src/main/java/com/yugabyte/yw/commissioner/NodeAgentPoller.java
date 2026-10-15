@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -63,7 +64,7 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 public class NodeAgentPoller {
   public static final String RETENTION_DURATION_PROPERTY = "yb.node_agent.retention_duration";
-  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(5);
+  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(2);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
@@ -122,6 +123,7 @@ public class NodeAgentPoller {
   private final NodeAgentClient nodeAgentClient;
   private final NodeAgentManager nodeAgentManager;
   private final SwamperHelper swamperHelper;
+  private final com.google.inject.Provider<PlatformReplicationManager> replicationManagerProvider;
 
   private final Map<UUID, PollerTask> pollerTasks = new ConcurrentHashMap<>();
 
@@ -139,13 +141,15 @@ public class NodeAgentPoller {
       PlatformScheduler platformScheduler,
       NodeAgentManager nodeAgentManager,
       NodeAgentClient nodeAgentClient,
-      SwamperHelper swamperHelper) {
+      SwamperHelper swamperHelper,
+      com.google.inject.Provider<PlatformReplicationManager> replicationManagerProvider) {
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
     this.swamperHelper = swamperHelper;
+    this.replicationManagerProvider = replicationManagerProvider;
   }
 
   enum PollerTaskState {
@@ -458,6 +462,7 @@ public class NodeAgentPoller {
           nodeAgentManager.postUpgrade(nodeAgent);
           nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
           log.info("Node agent {} has been upgraded successfully", nodeAgent);
+          replicationManagerProvider.get().coalesceOneOffSync();
         }
       }
     }
@@ -471,7 +476,7 @@ public class NodeAgentPoller {
   /** Starts background tasks. */
   public void init() {
     Duration pollerInterval = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentPollerInterval);
-    if (pollerInterval.isZero()) {
+    if (pollerInterval.isZero() || pollerInterval.isNegative()) {
       throw new IllegalArgumentException(
           String.format(
               "%s must be greater than 0", GlobalConfKeys.nodeAgentPollerInterval.getKey()));

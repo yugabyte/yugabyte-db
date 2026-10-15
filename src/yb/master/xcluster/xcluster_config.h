@@ -43,7 +43,7 @@ class XClusterConfig {
   explicit XClusterConfig(SysCatalogTable* sys_catalog);
   ~XClusterConfig() = default;
 
-  void ClearState();
+  void ClearState() EXCLUDES(mutex_);
 
   void Load(const SysXClusterConfigEntryPB& metadata) EXCLUDES(mutex_);
 

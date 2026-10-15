@@ -2500,6 +2500,19 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
+Result<std::vector<NamespaceId>> GetYsqlNamespaceIds(
+    const std::string& comma_separated_names, ClusterAdminClient* client) {
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, comma_separated_names, boost::is_any_of(","));
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& namespace_name : namespace_names) {
+    const auto& namespace_info = VERIFY_RESULT_REF(
+        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
+    namespace_ids.push_back(namespace_info.id());
+  }
+  return namespace_ids;
+}
+
 const auto create_xcluster_checkpoint_args =
     "<replication_group_id> <namespace_names> [automatic_ddl_mode]";
 Status create_xcluster_checkpoint_action(
@@ -2511,13 +2524,7 @@ Status create_xcluster_checkpoint_action(
   auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
   std::vector<NamespaceName> namespace_names;
   boost::split(namespace_names, args[1], boost::is_any_of(","));
-  std::vector<NamespaceName> namespace_ids;
-
-  for (const auto& namespace_name : namespace_names) {
-    const auto& namespace_info = VERIFY_RESULT_REF(
-        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
-    namespace_ids.push_back(namespace_info.id());
-  }
+  const auto namespace_ids = VERIFY_RESULT(GetYsqlNamespaceIds(args[1], client));
 
   if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "automatic_ddl_mode")) {
     return ClusterAdminCli::kInvalidArguments;
@@ -2560,6 +2567,39 @@ Status create_xcluster_checkpoint_action(
             << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
 
   return Status::OK();
+}
+
+const auto stop_persisting_args = "<namespace_names>";
+Status stop_persisting_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(
+      client->XClusterClient().StopPersisting(VERIFY_RESULT(GetYsqlNamespaceIds(args[0], client))));
+  std::cout << "Stopped persisting for database(s) " << args[0] << std::endl;
+  return Status::OK();
+}
+
+const auto start_persisting_args = "<namespace_names>";
+Status start_persisting_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(client->XClusterClient().StartPersisting(
+      VERIFY_RESULT(GetYsqlNamespaceIds(args[0], client))));
+  std::cout << "Started persisting for database(s) " << args[0] << std::endl;
+  return Status::OK();
+}
+
+const auto get_persistence_block_map_args = "";
+Status get_persistence_block_map_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  return PrintJsonResult(client->GetPersistenceBlockMap());
 }
 
 const auto is_xcluster_bootstrap_required_args = "<replication_group_id> <namespace_names>";
@@ -3319,6 +3359,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
   REGISTER_COMMAND(xcluster_failover);
+  REGISTER_COMMAND(stop_persisting);
+  REGISTER_COMMAND(start_persisting);
+  REGISTER_COMMAND(get_persistence_block_map);
 
   /* Upgrade related commands */
   // AutoFlags
