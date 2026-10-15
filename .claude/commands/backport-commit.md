@@ -133,11 +133,7 @@ jq -Rs '{body: .}' < /tmp/claude/pr-body-<pr-number>.md |
   gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<pr-number> --input -
 ```
 
-### Step 5: Jenkins (no action)
-
-Jenkins starts on push for release-branch PRs. Do not run `trigger-jenkins.sh` or post a "Trigger Jenkins" comment.
-
-### Step 6: Report back to the user
+### Step 5: Report back to the user
 
 Output a single summary listing, per branch:
 - The PR URL.
