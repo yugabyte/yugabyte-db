@@ -2990,8 +2990,7 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetNewInstallGflags(
-      Customer customer, Universe universe, Cluster primaryCluster) {
+  void maybeSetNewInstallGflags(Customer customer, Universe universe, Cluster primaryCluster) {
 
     Map<String, String> newInstallMasterGflags = new HashMap<>();
     Map<String, String> newInstallTserverGflags = new HashMap<>();
@@ -3040,6 +3039,10 @@ public class UniverseCRUDHandler {
         newInstallGFlags.value,
         universe.getName());
     universe.setNewInstallGFlags(newInstallGFlags);
+    if (primaryCluster != null
+        && primaryCluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
+      universe.updateConfig(Map.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    }
   }
 
   // This method enforces the user tags provided in runtime config.
