@@ -7484,6 +7484,18 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 	return true;
 }
 
+/*
+ * Whether the local catalog version can be reset right now.  Inside a
+ * transaction block it does not get refreshed (see check_yb_read_time).
+ */
+static bool
+YbCanResetCatalogVersion(void)
+{
+	return (yb_disable_catalog_version_check ||
+			am_walsender ||
+			!IsTransactionBlock());
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7520,9 +7532,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
 	 *    reads do not send a catalog version anyway.
 	 */
-	if (!yb_disable_catalog_version_check &&
-		!am_walsender &&
-		IsTransactionBlock())
+	if (!YbCanResetCatalogVersion())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
@@ -7674,6 +7684,34 @@ assign_yb_read_time(const char *newval, void *extra)
 						"Write-DML or DDL queries are not allowed when yb_read_time is "
 						"set.")));
 	}
+}
+
+bool
+check_yb_read_time_skip_catalog(bool *newval, void **extra, GucSource source)
+{
+	/*
+	 * Changing this while yb_read_time is set resets the local catalog
+	 * version, which check_yb_read_time does not allow inside a transaction
+	 * block either.
+	 */
+	if (yb_read_time != 0 &&
+		*newval != yb_read_time_skip_catalog &&
+		!YbCanResetCatalogVersion())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time_skip_catalog cannot be changed inside a "
+						 "transaction block while yb_read_time is set");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time_skip_catalog(bool newval, void *extra)
+{
+	/* Whatever catalog we have cached was read as of some other time. */
+	if (yb_read_time != 0 && newval != yb_read_time_skip_catalog)
+		YbResetCatalogCacheVersion();
 }
 
 void

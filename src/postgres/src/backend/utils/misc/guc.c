@@ -3747,6 +3747,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_read_time_skip_catalog", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Makes yb_read_time apply only to reads of user tables;"
+						 " the catalog is read as of now."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_read_time_skip_catalog,
+		false,
+		check_yb_read_time_skip_catalog, assign_yb_read_time_skip_catalog, NULL
+	},
+
+	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("DEPRECATED - Enable advisory lock feature"),
 			NULL,

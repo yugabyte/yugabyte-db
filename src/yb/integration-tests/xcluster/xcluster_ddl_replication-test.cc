@@ -4614,6 +4614,114 @@ TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyze
       stats_query, "Waiting for auto analyze on the target after enabling it"));
 }
 
+// Tests that ANALYZEs captured while xCluster setup is still in progress don't break the setup
+// and that none of their results go missing on the target.  In automatic mode the source starts
+// capturing ANALYZE in ddl_queue at checkpoint time, but the target database only gets created
+// later, by the restore, so the target has to read ddl_queue as of commit times from before its
+// own copy of ddl_queue existed.
+class XClusterDDLReplicationAnalyzeDuringSetupTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    // The tests run ANALYZE by hand and check the results, so keep auto analyze off.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ToggleDDLMode(/*use_legacy=*/!transactional_ddl_);
+    TEST_SETUP_SUPER(XClusterDDLReplicationAnalyzeTestBase);
+  }
+
+ protected:
+  static constexpr auto kCreateTableStmt = "CREATE TABLE tbl1(id int PRIMARY KEY, col1 int)";
+  static constexpr int kNumAnalyzes = 2;
+
+  // Legacy DDL mode by default. The Txn subfixture sets this to true for transactional DDL.
+  bool transactional_ddl_ = false;
+
+  // Runs ANALYZEs on the source after the checkpoint, both before and after the backup, and checks
+  // that setup still completes.  The stats from before the backup must come over with the restore,
+  // and the target must process the ANALYZEs from after the backup.
+  void TestAnalyzeBeforeRestore() {
+    if (!UseYbController()) {
+      GTEST_SKIP() << "This test does not work with yb_backup.py";
+    }
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.start_yb_controller_servers = true;
+    ASSERT_OK(SetUpClusters(params));
+
+    ASSERT_OK(producer_conn_->Execute(kCreateTableStmt));
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(1, 10) g"));
+    ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    // Make the stats stale so that the target would get different ones if it analyzed on its own.
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(11, 30) g"));
+    constexpr auto kStatsQuery =
+        "SELECT reltuples, attname, n_distinct, histogram_bounds::text FROM pg_class "
+        "JOIN pg_stats ON tablename = relname WHERE relname = 'tbl1' ORDER BY attname";
+    const auto source_stats = ASSERT_RESULT(producer_conn_->FetchAllAsString(kStatsQuery));
+    ASSERT_OK(BackupFromProducer());
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    ASSERT_OK(RestoreToConsumer());
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(kStatsQuery)), source_stats);
+
+    // This waits for the xCluster safe time, and the safe time can't move past a captured ANALYZE
+    // until the handler runs it.  So once this returns, all the ANALYZEs got handled.
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+    // Only the ANALYZEs after the backup get processed.  The restore brings the source's
+    // replicated_ddls rows for the ones before it, so those are skipped.
+    ASSERT_EQ(ASSERT_RESULT(CountAnalyzesProcessedByTarget(*consumer_conn_)), kNumAnalyzes);
+    ASSERT_OK(CheckReplicationStillWorks());
+  }
+
+  // Runs num_analyzes ANALYZEs on the source that all get captured in ddl_queue.
+  static Status AnalyzeOnSource(pgwrapper::PGConn& conn, int num_analyzes) {
+    constexpr auto kCountQuery =
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue "
+        "WHERE yb_data->>'command_tag' = 'ANALYZE'";
+    // Only count what this call captures, since ddl_queue can already have ANALYZEs from an
+    // earlier call.
+    const auto captured_before = VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery));
+    // Each WaitFor attempt runs an ANALYZE and then checks if one got captured.  The first tries
+    // can fail or get skipped until the tserver learns the source role from heartbeats.
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          WARN_NOT_OK(conn.Execute("ANALYZE tbl1"), "ANALYZE on the source failed");
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery)) > captured_before;
+        },
+        kTimeout, "Waiting for the source to capture ANALYZE"));
+    for (int i = 1; i < num_analyzes; ++i) {
+      RETURN_NOT_OK(conn.Execute("ANALYZE tbl1"));
+    }
+    return Status::OK();
+  }
+
+  // The handler writes the qualified table name, so the source's own rows that the restore brings
+  // over don't count.
+  static Result<int64_t> CountAnalyzesProcessedByTarget(pgwrapper::PGConn& conn) {
+    // The target writes replicated_ddls locally, at times that can be past the xCluster safe time,
+    // so read it at tablet level instead of at the safe time.
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
+    return conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls "
+        "WHERE yb_data->>'query' = 'ANALYZE public.tbl1'");
+  }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
+}
+
+// Runs TestAnalyzeBeforeRestore with transactional DDL, where pggate reads the catalog through a
+// different path.
+class XClusterDDLReplicationAnalyzeDuringSetupTxnTest
+    : public XClusterDDLReplicationAnalyzeDuringSetupTest {
+ public:
+  XClusterDDLReplicationAnalyzeDuringSetupTxnTest() { transactional_ddl_ = true; }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTxnTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
+}
+
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
 TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_OK(SetUpClustersAndReplication());
