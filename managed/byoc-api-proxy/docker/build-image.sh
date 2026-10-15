@@ -13,7 +13,8 @@ Options:
   -t, --tarball <path>
     Release tarball byoc_api_proxy-<version>.tar.gz, as built by release.sh. Required.
   -r, --repository <name>
-    Image repository (default: quay.io/yugabyte/byoc-api-proxy-itest).
+    Image repository, e.g. quay.io/yugabyte/byoc-api-proxy-itest for a release build. Required:
+    releases are pushed to the -itest repository and reach the public one only by promotion.
   -b, --base-image <image>
     Base image override (default: the BASE_IMAGE in the Dockerfile).
   -p, --push
@@ -25,7 +26,7 @@ EOT
 readonly docker_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 tarball=""
-repository="quay.io/yugabyte/byoc-api-proxy-itest"
+repository=""
 base_image=""
 push=""
 
@@ -59,6 +60,11 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+if [[ -z "${repository}" ]]; then
+  echo "--repository is required" >&2
+  print_help >&2
+  exit 1
+fi
 if [[ ! -f "${tarball}" ]]; then
   echo "Release tarball not found: '${tarball}'" >&2
   exit 1
