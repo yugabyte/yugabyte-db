@@ -613,5 +613,21 @@ bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
 
+Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
+  if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||
+      table.index_info().vector_idx_options().idx_type() != PgVectorIndexType::HNSW) {
+    return Status::OK();
+  }
+  const auto backend = table.index_info().vector_idx_options().hnsw().backend();
+  if (backend == HnswBackend::YB_HNSW_USEARCH || backend == HnswBackend::YB_HNSW_HNSWLIB) {
+    return Status::OK();
+  }
+  return STATUS(
+      NotSupported,
+      Format("Vector index $0 ($1) uses backend $2, which is no longer supported",
+             table.name(), table_id, HnswBackend_Name(backend)),
+      MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+}
+
 } // namespace master
 } // namespace yb

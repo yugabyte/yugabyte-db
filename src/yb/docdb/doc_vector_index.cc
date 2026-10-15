@@ -18,6 +18,8 @@
 
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -130,28 +132,32 @@ typename LSM::Options::VectorIndexFactory VectorLSMFactoryImpl(
     const MemTrackerPtr& mem_tracker) {
   auto hnsw_options = ConvertToHnswOptions(options);
   using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [block_cache, hnsw_options,
-          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
+  return [block_cache, hnsw_options, mem_tracker](vector_index::FactoryMode mode) {
+    return FactoryImpl::Create(mode, block_cache, hnsw_options, mem_tracker);
   };
 }
 
 template <class LSM>
-typename LSM::Options::VectorIndexFactory VectorLSMFactory(
+Result<typename LSM::Options::VectorIndexFactory> VectorLSMFactory(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
-  switch (options.hnsw().backend()) {
-    case HnswBackend::USEARCH: [[fallthrough]];
+  auto backend = options.hnsw().backend();
+  switch (backend) {
     case HnswBackend::YB_HNSW_USEARCH:
       return VectorLSMFactoryImpl<LSM, ann_methods::UsearchIndexFactory>(
           block_cache, options, mem_tracker);
-    case HnswBackend::HNSWLIB: [[fallthrough]];
-    case HnswBackend::YB_HNSW_HNSWLIB: {
+    case HnswBackend::YB_HNSW_HNSWLIB:
       return VectorLSMFactoryImpl<LSM, ann_methods::HnswlibIndexFactory>(
           block_cache, options, mem_tracker);
-    }
+    case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
+    case HnswBackend::DEPRECATED_HNSWLIB:
+      break;
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
+  return STATUS_FORMAT(
+      NotSupported,
+      "Vector index backend $0 is no longer supported. Roll back to the previous release and drop "
+      "the index before upgrading",
+      HnswBackend_Name(backend));
 }
 
 template<vector_index::IndexableVectorType Vector,

@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
