@@ -28,7 +28,7 @@ $ARGUMENTS
 ## Prerequisites
 
 - `gh` CLI installed and authenticated (`gh auth status`).
-- A personal fork of `yugabyte/yugabyte-db` (the script auto-detects it from the authenticated `gh` user).
+- A fork of `yugabyte/yugabyte-db` to push to: the authenticated `gh` user's personal fork by default, or `YB_GH_FORK=<owner>/<repo>`, which may be a fork owned by the `yugabyte` org (e.g. `yugabyte/yugabyte-db-backports`).
 
 ## Workflow
 
@@ -155,6 +155,6 @@ Output a single summary listing, per branch:
 - The script auto-detects reviewers from the originating PR (union of pending review requests and actual reviewers, minus bots and self) — do not pass `-r` unless the user asks for a different list.
 - The script auto-links the originating PR in the backport body via the `/repos/<repo>/commits/<sha>/pulls` API; do not duplicate that link manually.
 - `master` is silently skipped by the script if passed as a branch — that's expected.
-- If a backport PR for `<head>=<fork-owner>:backport-<id>-<branch>` already exists, the script logs and skips it. Treat that as a no-op success for that branch.
+- If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.
 - Do **not** bypass the script's dirty-workspace check by stashing or `git checkout -- .` without confirming with the user — those changes may be the user's in-progress work.
 - Do **not** pass `-n` (preview mode) unless the user explicitly asks for a dry run; the command is meant to actually publish PRs.

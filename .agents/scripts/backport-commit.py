@@ -16,7 +16,9 @@ Env overrides:
                     (created as a git worktree off this script's repo,
                     sharing .git so fetches don't duplicate the object DB)
     YB_GH_REPO      upstream owner/name; default yugabyte/yugabyte-db
-    YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>
+    YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
+                    May be owned by the upstream org (e.g.
+                    yugabyte/yugabyte-db-backports), but not the upstream repo.
     YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol
 """
 
@@ -268,8 +270,17 @@ def detect_auto_reviewers(gh_repo: str, prnum: int, self_login: str) -> str:
     return ",".join(out)
 
 
+def is_same_owner_fork(gh_repo: str, gh_fork: str) -> bool:
+    """True iff gh_fork is owned by gh_repo's owner (e.g. yugabyte/yugabyte-db-backports).
+
+    "<owner>:<branch>" can't name such a fork -- GitHub reads it as the
+    upstream repo itself -- so its PRs need the REST head_repo field.
+    """
+    return gh_fork.split("/", 1)[0].lower() == gh_repo.split("/", 1)[0].lower()
+
+
 def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str, str, str]:
-    """Return (gh_fork, fork_owner, push_url). Aborts if fork == upstream owner."""
+    """Return (gh_fork, fork_owner, push_url). Aborts if the fork is the upstream repo."""
     upstream_owner = gh_repo.split("/", 1)[0]
     repo_name = gh_repo.split("/", 1)[1]
 
@@ -281,8 +292,8 @@ def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str,
         gh_fork = f"{gh_user}/{repo_name}"
 
     fork_owner = gh_fork.split("/", 1)[0]
-    if fork_owner == upstream_owner:
-        fail(f"YB_GH_FORK '{gh_fork}' resolves to the upstream owner ({upstream_owner}). "
+    if gh_fork.lower() == gh_repo.lower():
+        fail(f"YB_GH_FORK '{gh_fork}' is the upstream repo itself. "
              f"Refusing to push to the upstream repo.")
 
     info(f"Pushing to fork: {gh_fork} (PRs target {gh_repo})")
@@ -309,17 +320,25 @@ def task_branch_name(commit: str, branch: str) -> str:
     return f"backport-{commit[:9]}-{branch}"
 
 
-def existing_pr_url(gh_repo: str, head: str) -> Optional[str]:
-    """If a PR with this head already exists, return its URL; otherwise None."""
-    data = gh_json([
-        f"repos/{gh_repo}/pulls",
-        "-X", "GET",
-        "-F", f"head={head}",
-        "-F", "state=all",
-        "-F", "per_page=1",
-    ], check=False)
-    if data and isinstance(data, list) and data:
-        return data[0].get("html_url")
+def existing_pr_url(gh_repo: str, gh_fork: str, task: str) -> Optional[str]:
+    """If a PR from gh_fork's branch $task already exists, return its URL.
+
+    Looks PRs up by branch name and matches the head repo, rather than
+    using the REST "head=<owner>:<branch>" filter: for a fork owned by the
+    upstream's owner, that label is ambiguous with the upstream repo itself.
+    """
+    proc = run(["gh", "pr", "list", "-R", gh_repo, "--head", task,
+                "--state", "all", "--json", "url,headRepository"], check=False)
+    if proc.returncode != 0:
+        return None
+    try:
+        prs = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        return None
+    for pr in prs if isinstance(prs, list) else []:
+        repo = (pr or {}).get("headRepository") or {}
+        if (repo.get("nameWithOwner") or "").lower() == gh_fork.lower():
+            return pr.get("url")
     return None
 
 
@@ -488,17 +507,26 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> N
         raise ResumableConflict()
 
 
-def push_and_create_pr(*, gh_repo: str, push_url: str, pr_head: str, base: str,
-                        task: str, title: str, body: str) -> str:
+def push_and_create_pr(*, gh_repo: str, gh_fork: str, push_url: str, pr_head: str,
+                       base: str, task: str, title: str, body: str) -> str:
     """Push the task branch and open the PR. Returns PR URL."""
     info(f"Publishing backport PR for branch {task}")
     run(["git", "push", "-u", push_url, task])
-    proc = run(
-        ["gh", "pr", "create",
-         "-R", gh_repo, "-B", base, "-H", pr_head,
-         "-t", title, "-F", "-"],
-        input_=body,
-    )
+    if is_same_owner_fork(gh_repo, gh_fork):
+        proc = run(
+            ["gh", "api", "-X", "POST", f"repos/{gh_repo}/pulls",
+             "--jq", ".html_url", "--input", "-"],
+            input_=json.dumps({"title": title, "body": body, "base": base,
+                               "head": task,
+                               "head_repo": gh_fork.split("/", 1)[1]}),
+        )
+    else:
+        proc = run(
+            ["gh", "pr", "create",
+             "-R", gh_repo, "-B", base, "-H", pr_head,
+             "-t", title, "-F", "-"],
+            input_=body,
+        )
     pr_url = proc.stdout.strip()
     print(pr_url)
     return pr_url
@@ -756,7 +784,7 @@ def main(argv: list[str]) -> int:
 
         # Skip if a backport PR for this head already exists.
         try:
-            existing = existing_pr_url(gh_repo, pr_head)
+            existing = existing_pr_url(gh_repo, gh_fork, task)
         except Exception:
             existing = None
         if existing:
@@ -837,8 +865,13 @@ def main(argv: list[str]) -> int:
             info(f"Task branch: {task}")
             print("Would have run:")
             print(f"  git push -u {push_url} {task}")
-            print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
-                  f"-t {shlex.quote(new_subject)} -F -  (body from stdin):")
+            if is_same_owner_fork(gh_repo, gh_fork):
+                print(f"  gh api -X POST repos/{gh_repo}/pulls  (head={task}, "
+                      f"head_repo={gh_fork.split('/', 1)[1]}, base={branch}, "
+                      f"title={shlex.quote(new_subject)}, body:)")
+            else:
+                print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
+                      f"-t {shlex.quote(new_subject)} -F -  (body from stdin):")
             print("----")
             print(new_body)
             print("----")
@@ -846,7 +879,7 @@ def main(argv: list[str]) -> int:
                 print(f"  And then request reviewers: {final_reviewers}")
         else:
             new_url = push_and_create_pr(
-                gh_repo=gh_repo, push_url=push_url, pr_head=pr_head,
+                gh_repo=gh_repo, gh_fork=gh_fork, push_url=push_url, pr_head=pr_head,
                 base=branch, task=task, title=new_subject, body=new_body,
             )
             new_pr_num_match = re.search(r"/pull/(\d+)$", new_url)
