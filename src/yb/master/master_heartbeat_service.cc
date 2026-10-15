@@ -81,6 +81,11 @@ DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
     "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
 TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
+DEFINE_test_flag(bool, no_grant_xcluster_guarded_lease, false,
+    "When true, master leaves the xCluster-guarded information lease out of heartbeat "
+    "responses.  TServers then cannot acquire or extend the xCluster lease.  The rest of the "
+    "heartbeat, including the xCluster-guarded information itself, is unaffected.");
+
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
@@ -508,7 +513,9 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
-    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    if (!FLAGS_TEST_no_grant_xcluster_guarded_lease) {
+      resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    }
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {

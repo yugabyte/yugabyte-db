@@ -41,6 +41,7 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       (const, override));
 
   MOCK_METHOD(Result<uint32_t>, GetOidCacheInvalidationsCount, (), (const, override));
+  MOCK_METHOD(bool, HasXClusterGuardedInfoLease, (), (const, override));
 
   MOCK_METHOD(
       (Result<std::optional<HybridTime>>), GetPersistenceBlockedThrough, (uint32_t database_oid),

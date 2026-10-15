@@ -103,6 +103,11 @@ void TserverXClusterContext::UpdatePersistenceBlockMap(
   persistence_block_map_ = std::move(new_map);
 }
 
+bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasXClusterGuardedInfoUnlocked();
+}
+
 bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
   if (FLAGS_enforce_xcluster_guarded_lease) {
     return xcluster_guarded_lease_expiration_ &&

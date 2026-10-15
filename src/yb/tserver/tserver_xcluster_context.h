@@ -65,6 +65,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
 
+  bool HasXClusterGuardedInfoLease() const override EXCLUDES(mutex_);
+
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
           automatic_mode_replication_state_per_namespace) EXCLUDES(mutex_);
