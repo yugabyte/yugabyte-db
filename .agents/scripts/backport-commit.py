@@ -17,8 +17,8 @@ Env overrides:
                     sharing .git so fetches don't duplicate the object DB)
     YB_GH_REPO      upstream owner/name; default yugabyte/yugabyte-db
     YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
-                    May be owned by the upstream org (e.g.
-                    yugabyte/yugabyte-db-backports), but not the upstream repo.
+                    Must be a fork of YB_GH_REPO; may be owned by the
+                    upstream org (e.g. yugabyte/yugabyte-db-backports).
     YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol
 """
 
@@ -74,10 +74,15 @@ def git_ok(*args, cwd=None) -> bool:
 
 def gh_json(args, *, check=True):
     """Run `gh api <args>` and parse stdout as JSON. Returns None on failure."""
-    proc = run(["gh", "api", *args], check=False)
+    return gh_cmd_json(["gh", "api", *args], check=check)
+
+
+def gh_cmd_json(cmd, *, check=True):
+    """Run a `gh` command whose stdout is JSON and parse it. Returns None on failure."""
+    proc = run(cmd, check=False)
     if proc.returncode != 0:
         if check:
-            raise CmdError(["gh", "api", *args], proc.returncode, proc.stdout, proc.stderr)
+            raise CmdError(cmd, proc.returncode, proc.stdout, proc.stderr)
         return None
     if not proc.stdout.strip():
         return None
@@ -280,7 +285,7 @@ def is_same_owner_fork(gh_repo: str, gh_fork: str) -> bool:
 
 
 def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str, str, str]:
-    """Return (gh_fork, fork_owner, push_url). Aborts if the fork is the upstream repo."""
+    """Return (gh_fork, fork_owner, push_url). Aborts unless gh_fork is a fork of gh_repo."""
     upstream_owner = gh_repo.split("/", 1)[0]
     repo_name = gh_repo.split("/", 1)[1]
 
@@ -291,10 +296,19 @@ def resolve_fork(gh_repo: str, gh_user: str, upstream_remote: str) -> tuple[str,
                  "Set YB_GH_FORK=<your-user>/<repo> or run 'gh repo fork' and re-run.")
         gh_fork = f"{gh_user}/{repo_name}"
 
+    # Ask GitHub rather than compare names: the fork may share the upstream's
+    # owner, and other spellings of the upstream (".git" suffix, a renamed
+    # repo's old name) must not slip through as a push target.
+    repo = gh_json([f"repos/{gh_fork}"], check=False) or {}
+    if not repo.get("fork") or gh_repo.lower() not in {
+            ((repo.get(k) or {}).get("full_name") or "").lower()
+            for k in ("parent", "source")}:
+        fail(f"'{gh_fork}' is not a fork of {gh_repo} (or could not be looked up). "
+             f"Set YB_GH_FORK=<owner>/<repo> to a fork of {gh_repo}, or run "
+             f"'gh repo fork {gh_repo}', and re-run. "
+             f"Refusing to push to anything else.")
+    gh_fork = repo["full_name"]
     fork_owner = gh_fork.split("/", 1)[0]
-    if gh_fork.lower() == gh_repo.lower():
-        fail(f"YB_GH_FORK '{gh_fork}' is the upstream repo itself. "
-             f"Refusing to push to the upstream repo.")
 
     info(f"Pushing to fork: {gh_fork} (PRs target {gh_repo})")
 
@@ -327,17 +341,17 @@ def existing_pr_url(gh_repo: str, gh_fork: str, task: str) -> Optional[str]:
     using the REST "head=<owner>:<branch>" filter: for a fork owned by the
     upstream's owner, that label is ambiguous with the upstream repo itself.
     """
-    proc = run(["gh", "pr", "list", "-R", gh_repo, "--head", task,
-                "--state", "all", "--json", "url,headRepository"], check=False)
-    if proc.returncode != 0:
-        return None
-    try:
-        prs = json.loads(proc.stdout or "[]")
-    except json.JSONDecodeError:
-        return None
+    # gh before 2.89 returns headRepository as {id, name} only, without
+    # nameWithOwner, so the owner comes from headRepositoryOwner.
+    prs = gh_cmd_json(["gh", "pr", "list", "-R", gh_repo, "--head", task,
+                       "--state", "all",
+                       "--json", "url,headRepository,headRepositoryOwner"],
+                      check=False)
     for pr in prs if isinstance(prs, list) else []:
-        repo = (pr or {}).get("headRepository") or {}
-        if (repo.get("nameWithOwner") or "").lower() == gh_fork.lower():
+        pr = pr or {}
+        owner = (pr.get("headRepositoryOwner") or {}).get("login") or ""
+        name = (pr.get("headRepository") or {}).get("name") or ""
+        if f"{owner}/{name}".lower() == gh_fork.lower():
             return pr.get("url")
     return None
 
