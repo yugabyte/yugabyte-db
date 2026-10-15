@@ -147,7 +147,7 @@ To run the examples in YugabyteDB Aeon, create a single- or multi-node universe 
 
   {{% tab header="Single-node cluster" lang="YBM Single" %}}
 
-Examples requiring a single-node cluster can be run using the free [Sandbox](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Examples requiring a single-node cluster can be run using the free [Sandbox](/stable/yugabyte-cloud/serverless/#sandbox-clusters) cluster.
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 

@@ -19,8 +19,6 @@ cascade:
 
 YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-[Serverless Postgres](serverless/) is YugabyteDB AMP, fully managed in YugabyteDB Aeon. Sandbox and Dedicated clusters are the other ways to run YugabyteDB.
-
 {{<tip>}}
 YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [Status](https://status.yugabyte.cloud/).
 {{</tip>}}
@@ -29,31 +27,23 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
 {{</note>}}
 
-{{< sections/3-boxes >}}
-  {{< sections/3-box-card
-    title="Free"
-    description="Create a Sandbox cluster and follow the built-in tutorial. No credit card required."
-    linkText1="Sign up"
-    linkUrl1="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
-    linkTarget1="_blank"
-    linkText2="Learn more"
-    linkUrl2="cloud-quickstart/"
-  >}}
-
-  {{< sections/3-box-card
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
     title="Serverless Postgres"
-    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Fully managed by Yugabyte."
+    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 1 vCPU. Fully managed by Yugabyte."
     buttonText="Learn more"
     buttonUrl="serverless/"
+    imageAlt="Serverless Postgres" imageUrl="/images/homepage/serverless-postgres.svg"
   >}}
 
-  {{< sections/3-box-card
-    title="Dedicated"
+  {{< sections/bottom-image-box
+    title="Distributed Postgres"
     description="Deploy single- and multi-region YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
+    imageAlt="Distributed Postgres" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
-{{< /sections/3-boxes >}}
+{{< /sections/2-boxes >}}
 
 ## Cluster basics
 

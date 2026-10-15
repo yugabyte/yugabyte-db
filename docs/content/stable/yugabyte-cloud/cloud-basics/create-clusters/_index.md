@@ -14,15 +14,9 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="Sandbox"
-    body="Create your free single-node Sandbox cluster."
-    href="create-clusters-free/"
-    icon="fa-thin fa-box">}}
-
-  {{<index/item
     title="Serverless Postgres"
     body="Create an AMP Managed cluster for agents and tenants."
-    href="../../serverless/"
+    href="/stable/yugabyte-cloud/serverless/"
     icon="fa-thin fa-bolt">}}
 
   {{<index/item
