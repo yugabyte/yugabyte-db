@@ -6440,6 +6440,110 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
   ASSERT_EQ(v1_meta_values, 1);
 }
 
+// The merge keeps a vector only when it finds its reverse mapping, so whether a merge can drop
+// the vectors of a write depends on how the reverse mappings are stored. The engine, the packing
+// mode and colocation do not change when the reverse mappings of a write become visible.
+class PgVectorIndexMergeTest : public PgVectorIndexUtilTest,
+                               public testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    PgVectorIndexUtilTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = GetParam();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexMergeTest, testing::Bool(),
+    [](const testing::TestParamInfo<bool>& param_info) -> std::string {
+      return param_info.param ? "TableOwned" : "LegacyOwned";
+    });
+
+// Applying a write hands the row's vectors to the VectorLSM before RocksDB publishes the batch
+// that carries the row and its reverse mapping. The merge filter reads reverse mappings from the
+// regular DB at a snapshot taken when the merge starts, so a merge that runs while such a batch is
+// still open cannot see the mappings of the vectors it merges and discards them for good, although
+// the rows do land in the table. A flush from another thread, e.g. the forced flush of an index
+// lagging the log tail, can save the mutable chunk while the batch is open. Here the write is
+// parked at the sync point hit right after its vector is handed to the insert thread pool, the
+// mutable chunk is flushed and all saved chunks are merged, and only then the write is released.
+// Expected: the row is found both by primary key and by vector search (GH #34246).
+TEST_P(PgVectorIndexMergeTest, MergeDuringUnpublishedWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
+  // point used to park the write.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+
+  constexpr size_t kNumRows = 8;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+  // The fill is applied in the background, so its inserts could otherwise hit the sync points
+  // below instead of the parked write.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(indexes.size(), 1);
+  auto index = indexes.front();
+
+  CountDownLatch parked(1);
+  CountDownLatch resume(1);
+  std::atomic<bool> armed{true};
+  // The insert task is held as well, so it completes only after the flush below: the completion
+  // of the last task of an immutable chunk saves the chunk, unless the chunk is held by the write.
+  CountDownLatch resume_task(1);
+  std::atomic<bool> task_armed{true};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued", [&](void*) {
+    if (!armed.exchange(false)) {
+      return;
+    }
+    parked.CountDown();
+    resume.Wait();
+  });
+  sync_point->SetCallBack("VectorLSMInsertTask::Run:Begin", [&](void*) {
+    if (task_armed.exchange(false)) {
+      resume_task.Wait();
+    }
+  });
+  sync_point->EnableProcessing();
+
+  const int64_t kRowId = kNumRows + 1;
+  TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the parked threads before they are
+  // joined.
+  auto release_parked = ScopeExit([&resume, &resume_task, sync_point] {
+    resume_task.CountDown();
+    resume.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([this, kRowId] {
+    auto insert_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(insert_conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1')", kRowId, AsString(Vector(kRowId))));
+  });
+  ASSERT_TRUE(parked.WaitFor(60s * kTimeMultiplier));
+
+  // The write is open: the vector is in the mutable chunk, the row and its reverse mapping are in
+  // an unpublished RocksDB batch. WaitForFlush would wait for the write, so wait for the insert
+  // task instead.
+  ASSERT_OK(index->Flush());
+  resume_task.CountDown();
+  ASSERT_OK(WaitFor(
+      [&index] { return !index->TEST_HasBackgroundInserts(); }, 60s * kTimeMultiplier,
+      "Wait for vector inserts"));
+  ASSERT_OK(index->Compact());
+  ASSERT_OK(index->WaitForCompaction());
+
+  resume.CountDown();
+  threads.WaitAndStop(60s * kTimeMultiplier);
+  ASSERT_OK(index->WaitForFlush());
+
+  auto id = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT id FROM test WHERE id = $0", kRowId)));
+  ASSERT_EQ(id, kRowId);
+  VerifyRows(conn, "", ExpectedRows(kNumRows + 1));
+}
+
 // ysql_dump recreates the table from the surviving columns, so DocDB assigns those columns dense
 // ids. The ybhnsw index records that dense id. ImportSnapshot puts the source column ids back on
 // the master catalog. Restore merges the snapshot superblock, which still has the source

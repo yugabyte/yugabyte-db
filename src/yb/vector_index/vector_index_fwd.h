@@ -14,12 +14,19 @@
 #pragma once
 
 #include <functional>
+#include <vector>
 
+#include "yb/util/scope_exit.h"
+#include "yb/util/slice.h"
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb::vector_index {
 
 struct SearchOptions;
+
+// See VectorLSMInsertContext::chunk_holds.
+using VectorLSMChunkHold = CancelableScopeExit<std::function<void()>>;
+using VectorLSMChunkHolds = std::vector<VectorLSMChunkHold>;
 
 // Vector Id is a unique identifier of a vector (unique inside a particular vector index table).
 // A value of a vector id never gets reused, even if the same vector is deleted and re-inserted

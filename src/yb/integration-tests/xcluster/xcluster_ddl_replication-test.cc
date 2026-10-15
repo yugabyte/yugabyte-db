@@ -55,6 +55,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -107,6 +108,9 @@ DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(vector_index_enable_compactions);
+DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_merge_tasks);
 
 using namespace std::chrono_literals;
 
@@ -5724,6 +5728,238 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
       "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
   ASSERT_EQ(p_search, c_search)
       << "Producer and consumer vector search should match (commit_ht < index ht case).";
+}
+
+// The consumer applies every external transaction of a polled batch in one write op, and each
+// write of those transactions inserts its vectors into the vector index separately. So a single
+// op can fill and save several vector chunks before RocksDB publishes the op's rows and their
+// reverse mappings. A merge of those chunks running before the publish must not discard their
+// vectors as deleted. Here the consumer apply is parked after enough inserts to roll several
+// chunks, the saved chunks are merged without flushing the mutable chunk, and only then the apply
+// is released (GH #34246).
+TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) {
+  constexpr int kNumTxns = 40;
+  constexpr int kRowsPerTxn = 5;
+  constexpr int kNumRows = kNumTxns * kRowsPerTxn;
+  constexpr size_t kChunkSize = 8;
+  // Even with a single vector per insert, this many inserts roll several chunks of kChunkSize.
+  constexpr int kParkAtInsert = 30;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
+  // point used to park the apply.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 1;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto producer_tablet_id = tablets[0].tablet_id();
+
+  // Pause replication of the table, so the consumer later receives all transactions in one batch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // Distributed transactions are replicated as external transactions, a single row insert would
+  // take the fast path and reach the consumer as a plain write.
+  for (int txn = 0; txn != kNumTxns; ++txn) {
+    ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (int i = 0; i != kRowsPerTxn; ++i) {
+      const auto id = txn * kRowsPerTxn + i + 1;
+      ASSERT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+    }
+    ASSERT_OK(producer_conn_->CommitTransaction());
+  }
+
+  // The producer applies the committed transactions, inserting their vectors, in the background.
+  // Wait for that, so that only the consumer apply inserts vectors once the sync point is armed.
+  ASSERT_OK(WaitForAllIntentsApplied(producer_cluster(), kTimeout));
+  ASSERT_OK(WaitFor(
+      [this] {
+        for (const auto& index : ListVectorIndexes(producer_cluster())) {
+          if (index->TEST_HasBackgroundInserts()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for producer vector inserts"));
+
+  CountDownLatch parked(1);
+  CountDownLatch resume(1);
+  std::atomic<int> num_inserts{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued", [&](void*) {
+    if (++num_inserts != kParkAtInsert) {
+      return;
+    }
+    parked.CountDown();
+    resume.Wait();
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([&resume, sync_point] {
+    resume.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_TRUE(parked.WaitFor(kTimeout));
+
+  // The apply is open: its rows and reverse mappings are in an unpublished RocksDB batch, while
+  // the chunks rolled by its earlier inserts are being saved. Merge them, but leave the mutable
+  // chunk alone. WaitForFlush would wait for the apply, so wait for the insert tasks instead: a
+  // chunk which is not held is saved by the last of them.
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  auto& index = indexes.front();
+  ASSERT_OK(WaitFor(
+      [&index] { return !index->TEST_HasBackgroundInserts(); }, kTimeout,
+      "Wait for vector inserts"));
+  ASSERT_OK(index->Compact());
+  ASSERT_OK(index->WaitForCompaction());
+
+  resume.CountDown();
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  LOG(INFO) << "Consumer vector inserts: " << num_inserts.load();
+
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN (COSTS OFF) " + query)),
+      "vec_test_idx");
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// The consumer applies a polled batch in one write op, which can write the vectors of applied
+// external transactions to the regular DB and the external intents of open ones to the intents DB.
+// The intents DB write can stall until the intents DB flushes, and that flush waits for the vector
+// indexes to flush. So the op must release the holds on the chunks its vectors went into once the
+// regular DB write returned, otherwise a held chunk blocks the vector index flush and the op never
+// completes. Here the apply is parked between the two writes, and the vector index flush must
+// complete meanwhile (GH #34246).
+TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 1;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto producer_tablet_id = tablets[0].tablet_id();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // Committed while replication is paused, so the consumer applies it in the same op that writes
+  // the intents of the transaction below.
+  constexpr int kNumRows = 5;
+  ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+  }
+  ASSERT_OK(producer_conn_->CommitTransaction());
+  auto open_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(open_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  constexpr int kOpenTxnRowId = kNumRows + 1;
+  ASSERT_OK(open_conn.ExecuteFormat(
+      "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", kOpenTxnRowId));
+
+  CountDownLatch parked(1);
+  CountDownLatch resume(1);
+  CountDownLatch flushed(1);
+  std::atomic<bool> armed{true};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite", [&](void*) {
+    if (!armed.exchange(false)) {
+      return;
+    }
+    parked.CountDown();
+    resume.Wait();
+  });
+  sync_point->EnableProcessing();
+  TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the parked apply before the flush
+  // thread is joined.
+  auto release_parked = ScopeExit([&resume, sync_point] {
+    resume.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_TRUE(parked.WaitFor(kTimeout));
+
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  auto index = indexes.front();
+  // The consumer index was empty before the resume, so this checks that the parked op is the one
+  // that inserted the vectors of the committed transaction, i.e. that it holds their chunk.
+  ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), static_cast<size_t>(kNumRows));
+  threads.AddThreadFunctor([index, &flushed] {
+    ASSERT_OK(index->Flush());
+    ASSERT_OK(index->WaitForFlush());
+    flushed.CountDown();
+  });
+  ASSERT_TRUE(flushed.WaitFor(30s * kTimeMultiplier))
+      << "Vector index flush is blocked by the apply parked before its intents DB write";
+
+  resume.CountDown();
+  threads.WaitAndStop(60s * kTimeMultiplier);
+  ASSERT_OK(open_conn.CommitTransaction());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")),
+      kOpenTxnRowId);
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kOpenTxnRowId);
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
 }
 
 // A regular DB flush must not advance the intents DB flushed OpId past vectors that an external

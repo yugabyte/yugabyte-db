@@ -29,6 +29,7 @@
 #include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
@@ -57,6 +58,11 @@ struct VectorLSMInsertContext {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // When set, a non empty insert adds a hold on its chunk here. While held, the chunk is not saved,
+  // and therefore not merged. A merge drops the vectors whose reverse mappings it does not find, so
+  // the caller must keep the hold until the write that carries the reverse mappings of the inserted
+  // vectors is visible to readers, and should release it right after.
+  VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -246,6 +252,9 @@ class VectorLSM {
   Status RollChunk(size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
+
+  // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
+  void ReleaseChunkHold(MutableChunk& chunk);
 
   // The caller increments num_pending_saves_ when it schedules the save.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);

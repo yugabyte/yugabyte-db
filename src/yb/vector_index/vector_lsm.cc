@@ -1543,12 +1543,22 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
+    if (num_tasks && context.chunk_holds) {
+      // Counted as one more task, so the chunk is saved only after the hold is released.
+      ++chunk->num_tasks;
+    }
   }
   release_tasks.Cancel();
 
   if (!num_tasks) {
     // Empty insert could be used to update frontiers.
     return Status::OK();
+  }
+
+  if (context.chunk_holds) {
+    context.chunk_holds->emplace_back([this, chunk] {
+      ReleaseChunkHold(*chunk);
+    });
   }
 
   std::shared_ptr<storage::UserFrontiers> frontiers_to_apply;
@@ -2074,6 +2084,16 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
     mutable_chunk_->save_callback = {};
   }
   return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::ReleaseChunkHold(MutableChunk& chunk) {
+  if (--chunk.num_tasks == 0) {
+    // Holds are released on the write path, so save the chunk on the insert thread pool.
+    DCHECK(chunk.save_callback);
+    options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
+    chunk.save_callback = {};
+  }
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
