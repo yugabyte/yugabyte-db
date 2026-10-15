@@ -177,6 +177,11 @@ message PgVectorReadOptionsPB {
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }
+  // Prefixes of the partition keys of the rows matching the query: the partition key itself (the
+  // encoded hash code) for a hash partitioned table, the leading range components without the
+  // group end for a range partitioned table. When set and the vector_index_enable_pk_routing
+  // AutoFlag is on, PgClient only searches the partitions whose key ranges these prefixes overlap.
+  repeated bytes partition_key_prefixes = 5;
 }
 
 message TablePropertiesPB {
