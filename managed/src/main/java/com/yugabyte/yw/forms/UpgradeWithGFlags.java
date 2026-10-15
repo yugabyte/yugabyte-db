@@ -53,6 +53,14 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
                 String.join(", ", changedNonRollingOnlyGFlags)));
       }
     }
+    Collection<Cluster> newClusters = getNewVersionsOfClusters(universe).values();
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
+        && !GFlagsUtil.getChangedGFlags(
+                universe.getUniverseDetails().clusters, newClusters, GFlagsUtil.YSQL_HBA_GFLAGS)
+            .isEmpty()
+        && GFlagsUtil.hasYsqlHbaGFlags(newClusters)) {
+      throw new PlatformServiceException(BAD_REQUEST, GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR);
+    }
   }
 
   public Set<String> getChangedNonRollingOnlyGFlags(Universe universe) {

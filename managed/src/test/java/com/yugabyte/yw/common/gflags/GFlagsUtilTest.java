@@ -113,6 +113,34 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testYsqlHbaGFlagsRequireYsqlAuth() {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.tserverGFlags.put(GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all all md5");
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.tserverGFlags.clear();
+    userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value =
+        ImmutableMap.of(
+            ServerType.MASTER, ImmutableMap.of(GFlagsUtil.YSQL_HBA_CONF, "host all all all md5"));
+    userIntent.specificGFlags.setPerAZ(ImmutableMap.of(UUID.randomUUID(), azFlags));
+    exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.enableYSQLAuth = true;
+    GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+  }
+
+  @Test
   public void testCheckGFlagsChanged() {
     UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.UserIntent intent2 = new UniverseDefinitionTaskParams.UserIntent();
