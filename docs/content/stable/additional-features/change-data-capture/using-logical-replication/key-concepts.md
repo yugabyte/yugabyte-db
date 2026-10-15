@@ -35,6 +35,75 @@ You can specify the type of LSN to use when you create a replication slot. Yugab
 - SEQUENCE - (Default) PostgreSQL-style LSN that is valid in the context of a slot. It is a monotonic increasing number that determines the record in global order in the context of a slot. It can't be compared across two different slots.
 - HYBRID_TIME - A hybrid time value which can be used natively with YugabyteDB. HYBRID_TIME is denoted by the HybridTime of the transaction commit record. All the records of the transaction that is streamed will have the same LSN as that of the commit record. You need to ensure that the changes of a transaction are applied in totality and the acknowledgement is sent only if the commit record of a transaction is processed.
 
+#### Slot scope
+
+A replication slot belongs to one database and is not tied to a publication. The client names the publication when it starts streaming (the `publication_names` option of `START_REPLICATION`), so the same slot can be started with different publications over time, as in PostgreSQL.
+
+When you create a slot, YugabyteDB takes a consistent snapshot of the database and starts retaining changes for every table in the database, not only for the tables in a publication. Tables created after the slot are added to the slot automatically. The publication only selects which of those tables are streamed to the client.
+
+If the client starts streaming without naming a publication, YugabyteDB streams the changes of all tables in the database, as if a `FOR ALL TABLES` publication had been used. This applies to `test_decoding` and `wal2json`. `pgoutput` and `yboutput` require the `publication_names` option and fail without it, as in PostgreSQL.
+
+#### Tables of interest
+
+Retaining changes for a table has a cost. Every tablet of the table keeps its WAL and transaction intents until the slot consumes them, and compaction is held back if the slot needs before images. To avoid paying that cost for tables a slot never reads, YugabyteDB tracks whether each tablet is _of interest_ to the slot:
+
+- A tablet becomes of interest the first time the slot polls it. The slot polls every tablet of every table in the publication, whether or not the table has changes.
+- A tablet that has not been polled within [cdcsdk_tablet_not_of_interest_timeout_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-tablet-not-of-interest-timeout-secs) (default 4 hours) of slot creation is marked as not of interest. Its retention barriers are released, and the slot stops tracking it.
+- Tablets of tables created after the slot are always of interest.
+
+A table whose tablets are not of interest, or have [expired](#when-a-slot-becomes-unusable), is _unqualified_ for the slot. This has the following implications:
+
+- The publication you use when you first start streaming decides which tables the slot can ever stream. A table that is left out of the publication for the first 4 hours becomes unqualified: its changes are no longer retained for the slot, and adding it to the publication later does not bring it back. To stream the table, create a new slot.
+- Start streaming within 4 hours of creating a slot. If no client connects in that window, every table becomes unqualified and the slot can't be used.
+- If the publication contains an unqualified table, the slot fails to start with the error `Cannot add tablet: <id> to the polling list as it has been unqualified for stream: <id>`. Either remove the table from the publication, or set the [cdc_skip_unqualified_tables_for_polling](../../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) flag (v2025.2.7.0, v2026.1.2.0, and later) so that the slot skips unqualified tables and streams the rest.
+
+#### Restart time
+
+The restart time of a slot is the commit time from which streaming resumes when the client reconnects. It is also the point up to which the database must retain changes for the slot. `pg_replication_slots` reports it as `restart_lsn`, and from v2025.1 also as `yb_restart_commit_ht` (a hybrid time) and `yb_restart_time` (a timestamp). `confirmed_flush_lsn` is the last LSN the client acknowledged.
+
+The restart time advances in the following cases:
+
+- When the client acknowledges an LSN (a standby status update with the flushed LSN). The restart time moves to the commit of the latest transaction whose `COMMIT` record is at or before the acknowledged LSN. Acknowledging an LSN in the middle of a transaction does not move the restart time past the previous commit. With the HYBRID_TIME LSN type, acknowledge only the LSN of a `COMMIT` record, after applying the whole transaction.
+- When the slot is idle. If the client has acknowledged everything it received and there is nothing new to stream, the restart time advances to the slot's safe time every 60 seconds, so that an idle slot does not accumulate retained changes. This is controlled by the `cdcsdk_update_restart_time_when_nothing_to_stream` and `cdcsdk_update_restart_time_interval_secs` flags.
+
+The restart time does not advance while the client is disconnected, or while a connected client receives changes without acknowledging them. In both cases the retained WAL and intents keep growing on every tablet the slot polls.
+
+The slot state is stored in the `cdc_state` system table together with a checkpoint for each tablet, so it survives client reconnections, walsender restarts, and node failures.
+
+#### Disconnection and reconnection
+
+When the client disconnects, the walsender exits, and the in-memory state of the slot on the YB-TServer is discarded. The slot itself, its restart time, and the per-tablet checkpoints remain. After 60 seconds without consumption (the `ysql_cdc_active_replication_slot_window_ms` flag) `pg_replication_slots` shows the slot as not `active`.
+
+While the client is disconnected, every tablet the slot polls keeps retaining WAL, transaction intents, and, if the slot needs before images, row history from the slot's restart time. Nothing is released until the client reconnects and acknowledges changes. The retention lasts up to [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) (default 8 hours), measured from the last successful poll of each tablet. After that the slot expires; see [When a slot becomes unusable](#when-a-slot-becomes-unusable). The matching WAL retention is set by [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) (default 8 hours), which must be at least as long.
+
+When the client reconnects, streaming resumes from the restart time. Every transaction committed after the restart time is sent again, in full, including transactions the client received but had not acknowledged before it disconnected. The records keep the LSNs they had before (see [Determinism](#lsn)), so the client can detect and skip duplicates.
+
+#### When a slot becomes unusable
+
+A slot stops working in the following cases:
+
+- **Expired.** A tablet of the slot was not polled for `cdc_intent_retention_ms` (default 8 hours), for example because the client was disconnected. The retention barriers are released, intents are garbage collected, and the next poll fails with `Stream ID <id> is expired for Tablet ID <id>`. From v2025.1, `pg_replication_slots` shows `wal_status` as `lost` for an expired slot.
+- **Unqualified table in the publication.** A table that is [not of interest](#tables-of-interest) is in the publication used to start streaming. The slot fails to start unless `cdc_skip_unqualified_tables_for_polling` is set.
+- **Database dropped.** Dropping the database drops its slots.
+
+An expired slot can't be recovered. Drop the slot and create a new one. The new slot takes a fresh snapshot of the database, so the consumer must take a new initial snapshot as well.
+
+#### Slot behavior by version
+
+The following table summarizes how slot behavior has changed across releases and how it compares with PostgreSQL 15, which YugabyteDB logical replication is based on.
+
+| Behavior | v2024.2 to v2025.2 | v2026.1 and later | PostgreSQL 15 |
+| :--- | :--- | :--- | :--- |
+| Tables retained for a slot | All tables in the database, from slot creation. Tables created later are added automatically. | Same. | The slot retains WAL, which is shared by all tables and databases. |
+| Streaming without a publication | All tables, for `test_decoding` and `wal2json`. `pgoutput` and `yboutput` require a publication. | Same. | Same. |
+| Publication changes while streaming | Applied at the next [periodic refresh](../advanced-topic/#periodic-publication), 15 minutes by default. From v2025.1, [implicit publication](../advanced-topic/#implicit-publication) is available as a preview and applies changes at commit time. | Implicit publication is the default. | Applied at commit time. |
+| Tables not of interest | A table not polled within 4 hours of slot creation becomes unqualified. Its changes are no longer retained for the slot, even if it is added to the publication later. From v2025.2.7.0, `cdc_skip_unqualified_tables_for_polling` lets the slot skip such tables instead of failing. | Same. The flag is available from v2026.1.2.0. | No equivalent. A slot retains WAL regardless of which tables are published. |
+| When the restart time advances | On acknowledgment, to the latest fully acknowledged commit. Every 60 seconds while idle, if everything sent has been acknowledged. | Same. | On acknowledgment, `restart_lsn` moves to the oldest WAL still needed to decode unacknowledged transactions. |
+| Retention while the client is disconnected | WAL, intents, and row history from the restart time, for up to 8 hours since the last poll (`cdc_intent_retention_ms`, `cdc_wal_retention_time_secs`). | Same. | WAL from `restart_lsn`, without a time limit. `max_slot_wal_keep_size` (off by default) caps it by size. |
+| Resuming after reconnection | From the restart time. Transactions after it are re-sent in full with the same LSNs. | Same. | From `restart_lsn`. Transactions after `confirmed_flush_lsn` are re-sent in full. |
+| When a slot becomes unusable | After 8 hours without a poll (expired), or when the publication contains an unqualified table. The slot must be dropped and recreated. | Same. | When WAL beyond `max_slot_wal_keep_size` is removed. The slot must be dropped and recreated. |
+| Slot state in `pg_replication_slots` | `active` is true if the slot was consumed in the last 60 seconds. From v2025.1: `yb_stream_id`, `yb_restart_commit_ht`, `yb_lsn_type`, and `yb_restart_time` columns, and `wal_status` is `lost` for an expired slot. | Same. | `active` is true while a process holds the slot. `wal_status` is `lost` for an invalidated slot. |
+
 ### Publication
 
 A publication is a set of changes generated from a table or a group of tables, and might also be described as a change set or replication set. Each publication exists in only one database.
