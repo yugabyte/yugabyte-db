@@ -30224,6 +30224,13 @@
           "$ref" : "#/definitions/UniverseResourceDetails",
           "description" : "Universe resource details"
         },
+        "resourcesPerProvider" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/UniverseResourceDetails"
+          },
+          "description" : "WARNING: This is a preview API that could change. Universe resource details per provider",
+          "type" : "object"
+        },
         "sampleAppCommandTxt" : {
           "description" : "Sample command",
           "type" : "string"

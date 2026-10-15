@@ -895,30 +895,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public PlacementInfo getOverallPlacement() {
       if (!CollectionUtils.isEmpty(partitions)) {
-        PlacementInfo result = new PlacementInfo();
-        // TODO Sort?
+        Collection<PlacementInfo> allPlacements = new ArrayList<>();
+        Set<UUID> defaultPartitionAzs = new HashSet<>();
         for (PartitionInfo partition : partitions) {
-          partition
-              .getPlacement()
-              .azStream()
-              .forEach(
-                  az -> {
-                    int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfo.PlacementAZ mergedAz =
-                        PlacementInfoUtil.addPlacementZone(
-                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
-                    // AZs are disjoint across partitions, so each AZ is added exactly once
-                    // and it is safe to copy the K8s statefulset indices directly. These
-                    // indices must be preserved: master addresses and pod names computed
-                    // from the overall placement (e.g. during a K8s full move) rely on them,
-                    // and dropping them would generate stale/incorrect master addresses.
-                    mergedAz.masterStsIndex = az.masterStsIndex;
-                    mergedAz.tsStsIndex = az.tsStsIndex;
-                    // addPlacementZone does not set leaderPreference, so rankings would
-                    // otherwise reset to 0.
-                    mergedAz.leaderPreference = az.leaderPreference;
-                  });
+          allPlacements.add(partition.placement);
+          if (partition.defaultPartition && partition.placement != null) {
+            defaultPartitionAzs.addAll(partition.placement.getAllAZUUIDs());
+          }
         }
+        PlacementInfo result = PlacementInfoUtil.mergePlacements(allPlacements);
+        result
+            .azStream()
+            .forEach(
+                az -> {
+                  // AZs are disjoint across partitions.
+                  if (!defaultPartitionAzs.contains(az.uuid)) {
+                    // For non-default partition RF should be zero.
+                    az.replicationFactor = 0;
+                  }
+                });
         return result;
       }
       return placementInfo;

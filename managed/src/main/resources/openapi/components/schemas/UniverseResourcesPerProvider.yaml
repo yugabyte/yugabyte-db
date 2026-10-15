@@ -1,0 +1,11 @@
+title: UniverseResourcesPerProvider
+description: Estimated pricing and cpu/memory/storage resource utilisation for each provider in a universe.
+type: object
+required:
+  - resources_per_provider
+properties:
+  resources_per_provider:
+    description: Resource details keyed by provider UUID.
+    type: object
+    additionalProperties:
+      $ref: "./UniverseResourceDetails.yaml"

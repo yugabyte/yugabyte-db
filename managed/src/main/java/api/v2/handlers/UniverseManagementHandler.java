@@ -1124,6 +1124,40 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   public api.v2.models.UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws JsonProcessingException {
     Customer customer = Customer.getOrNotFound(cUUID);
+    UniverseDefinitionTaskParams v1DefnParams = configureUniverse(request, customer, universeSpec);
+    UniverseResourceDetails v1UniverseResourceDetails =
+        universeInfoHandler.getUniverseResources(customer, v1DefnParams, null);
+    // map to v2 UniverseResourceDetails
+    api.v2.models.UniverseResourceDetails v2Response =
+        UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(
+            v1UniverseResourceDetails);
+    if (log.isTraceEnabled()) {
+      log.trace("Got Universe resource details {}", prettyPrint(v2Response));
+    }
+    return v2Response;
+  }
+
+  public api.v2.models.UniverseResourcesPerProvider getUniverseResourcesPerProvider(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws JsonProcessingException {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    UniverseDefinitionTaskParams v1DefnParams = configureUniverse(request, customer, universeSpec);
+    Map<UUID, UniverseResourceDetails> perProvider =
+        universeInfoHandler.getUniverseResourcesPerProvider(customer, v1DefnParams, null);
+    api.v2.models.UniverseResourcesPerProvider response =
+        new api.v2.models.UniverseResourcesPerProvider();
+    perProvider.forEach(
+        (providerUUID, details) ->
+            response.putResourcesPerProviderItem(
+                providerUUID.toString(),
+                UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(details)));
+    if (log.isTraceEnabled()) {
+      log.trace("Got per-provider Universe resource details {}", prettyPrint(response));
+    }
+    return response;
+  }
+
+  private UniverseDefinitionTaskParams configureUniverse(
+      Request request, Customer customer, UniverseCreateSpec universeSpec) {
     log.info("Get Universe resource details with v2 spec: {}", prettyPrint(universeSpec));
     // map universeSpec to v1 universe details
     UniverseDefinitionTaskParams v1DefnParams =
@@ -1144,19 +1178,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       v1Params.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, v1Params);
     }
-
-    v1DefnParams.nodeDetailsSet = v1Params.nodeDetailsSet;
-
-    UniverseResourceDetails v1UniverseResourceDetails =
-        universeInfoHandler.getUniverseResources(customer, v1DefnParams);
-    // map to v2 UniverseResourceDetails
-    api.v2.models.UniverseResourceDetails v2Response =
-        UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(
-            v1UniverseResourceDetails);
-    if (log.isTraceEnabled()) {
-      log.trace("Got Universe resource details {}", prettyPrint(v2Response));
-    }
-    return v2Response;
+    return v1Params;
   }
 
   public void precheckOperatorImportUniverse(
