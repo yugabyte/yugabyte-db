@@ -165,7 +165,8 @@ class TabletVectorIndexes :
 
   // Stamps `frontier` as flushed on every vector index, see
   // DocVectorIndex::ModifyFlushedFrontier.
-  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
