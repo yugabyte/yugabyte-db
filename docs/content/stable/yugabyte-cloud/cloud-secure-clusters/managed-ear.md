@@ -29,9 +29,9 @@ Note that, regardless of whether you enable YugabyteDB EAR for a cluster, Yugaby
 
 ## How the CMK encrypts the cluster
 
-The CMK you create in your cloud provider KMS does not encrypt cluster data directly. The CMK is the master key. It wraps each universe (cluster) key. YugabyteDB Aeon keeps those wrapped copies, and backup metadata includes them.
+The CMK you create in your cloud provider KMS does not encrypt cluster data directly. The CMK is the master key. It encrypts (wraps) each universe (cluster) key. YugabyteDB Aeon keeps those wrapped copies, and backup metadata includes them.
 
-A universe key protects data written to disk by encrypting the key for each data file. The cluster keeps a registry of universe keys, encrypted with the latest universe key. YugabyteDB Aeon generates the universe keys. You do not create them in AWS, Azure, or GCP. For the full key hierarchy, refer to [Encryption at rest in YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-at-rest/). (Note that Anywhere uses the same key names and calls a cluster a universe.)
+A universe key protects data on disk by encrypting the data encryption key (DEK) for each data file. The cluster keeps a registry of universe keys, encrypted with the latest universe key. YugabyteDB Aeon generates the universe keys. You do not create them in AWS, Azure, or GCP. For the full key hierarchy, refer to [Encryption at rest in YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-at-rest/). (Note that Anywhere uses the same key names and calls a cluster a universe.)
 
 ## Limitations
 
@@ -170,14 +170,11 @@ To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Aeon us
 When you edit the CMK configuration, YugabyteDB Aeon rotates the master key (your CMK) only. The existing universe keys stay in place. See [How the CMK encrypts the cluster](#how-the-cmk-encrypts-the-cluster).
 
 {{< warning title="Deleting your CMK" >}}
-Deleting the CMK that is currently configured makes YugabyteDB Aeon unable to unwrap the universe keys it stores for the cluster, including the copies recorded in backup metadata.
+Deleting the CMK that is currently configured makes YugabyteDB Aeon unable to unwrap the universe keys it stores for the cluster, including the copies recorded in backup metadata. As a result you will no longer be able to decrypt clusters or backups encrypted using the key.
 
-You can remove a previous CMK after both of the following are true:
+You can remove a previous CMK after every full and incremental backup taken before the key rotation has passed its retention period and been deleted.
 
-- Incremental backups taken before the rotation have aged out, so they can no longer be restored. The same applies to any full backup from before the rotation that you still need.
-- You no longer need [point-in-time recovery (PITR)](../cloud-clusters/aeon-pitr/) to a time before the rotation.
-
-If you must be able to restore a backup for 30 days, keep the rotated CMK for those 30 days.
+For example, if you must be able to restore a backup for 30 days, keep the rotated CMK for those 30 days.
 {{< /warning >}}
 
 To rotate the CMK used for EAR, do the following:
@@ -203,4 +200,4 @@ To rotate the CMK used for EAR, do the following:
 YugabyteDB Aeon then does the following:
 
 - Every universe key that YugabyteDB Aeon stores for the cluster is re-wrapped with the new CMK immediately. No new universe key is generated. Backups taken after the rotation record those newly wrapped keys. The cluster's universe key registry and the data on disk stay as they are.
-- The previous CMK is still required to restore backups and PITR history from before the rotation.
+- The previous CMK is still required to restore backups taken before the rotation.
