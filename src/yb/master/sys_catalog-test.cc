@@ -977,5 +977,15 @@ TEST(SysCatalogInitializationTest, MergeAddTableChanges) {
   ASSERT_EQ(merged_table_ids(merged[6]), (vector<string>{"not_a_pg_table"}));
 }
 
+TEST(SysCatalogInitializationTest, MergeAddTableChangesWithUnmergedField) {
+  tserver::ExportedTabletMetadataChanges changes;
+  auto* change = changes.add_metadata_changes();
+  change->set_tablet_id("t1");
+  change->mutable_add_table()->set_table_id(GetPgsqlTableId(1, 1));
+  change->set_wal_retention_secs(1);
+
+  EXPECT_DEBUG_DEATH(MergeAddTableChanges(std::move(changes)), "does not carry over");
+}
+
 } // namespace master
 } // namespace yb

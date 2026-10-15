@@ -13,6 +13,8 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/entity_ids.h"
@@ -83,6 +85,21 @@ bool CanAddToBatch(
          SameDatabase(batch.add_multiple_tables(0).table_id(), change.add_table().table_id());
 }
 
+// Describes the fields of an add_table change that MergeAddTableChanges does not carry over.
+std::string FieldsDroppedByMerge(const tablet::ChangeMetadataRequestPB& change) {
+  tablet::ChangeMetadataRequestPB kept;
+  kept.set_tablet_id(change.tablet_id());
+  *kept.mutable_add_table() = change.add_table();
+  if (change.has_only_abort_txns_not_using_table_locks()) {
+    kept.set_only_abort_txns_not_using_table_locks(change.only_abort_txns_not_using_table_locks());
+  }
+  std::string diff_str;
+  google::protobuf::util::MessageDifferencer md;
+  md.ReportDifferencesToString(&diff_str);
+  md.Compare(kept, change);
+  return diff_str;
+}
+
 }  // anonymous namespace
 
 // ------------------------------------------------------------------------------------------------
@@ -135,8 +152,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
 
 // Each change metadata operation on the sys catalog rewrites and fsyncs the whole superblock, so
 // replaying the snapshot's add_table changes one by one is quadratic. Batch them the way CREATE
-// DATABASE does. CatalogManager::CompleteCreateYsqlSysTable, which records these changes, sets no
-// fields other than tablet_id, add_table and only_abort_txns_not_using_table_locks.
+// DATABASE does.
 std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
     tserver::ExportedTabletMetadataChanges&& changes) {
   std::vector<tablet::ChangeMetadataRequestPB> result;
@@ -145,6 +161,9 @@ std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
       result.push_back(std::move(change));
       continue;
     }
+    DCHECK_EQ(FieldsDroppedByMerge(change), "")
+        << "CatalogManager::CompleteCreateYsqlSysTable recorded a field that MergeAddTableChanges "
+           "does not carry over";
     if (result.empty() || !CanAddToBatch(result.back(), change)) {
       auto& batch = result.emplace_back();
       batch.set_tablet_id(change.tablet_id());
