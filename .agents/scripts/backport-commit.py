@@ -527,12 +527,14 @@ def push_and_create_pr(*, gh_repo: str, gh_fork: str, push_url: str, pr_head: st
     info(f"Publishing backport PR for branch {task}")
     run(["git", "push", "-u", push_url, task])
     if is_same_owner_fork(gh_repo, gh_fork):
+        # head_repo must be the full "<owner>/<repo>": GitHub's docs call it
+        # the repository's name, but the bare name gets 422 "field head is
+        # invalid".
         proc = run(
             ["gh", "api", "-X", "POST", f"repos/{gh_repo}/pulls",
              "--jq", ".html_url", "--input", "-"],
             input_=json.dumps({"title": title, "body": body, "base": base,
-                               "head": task,
-                               "head_repo": gh_fork.split("/", 1)[1]}),
+                               "head": task, "head_repo": gh_fork}),
         )
     else:
         proc = run(
@@ -881,7 +883,7 @@ def main(argv: list[str]) -> int:
             print(f"  git push -u {push_url} {task}")
             if is_same_owner_fork(gh_repo, gh_fork):
                 print(f"  gh api -X POST repos/{gh_repo}/pulls  (head={task}, "
-                      f"head_repo={gh_fork.split('/', 1)[1]}, base={branch}, "
+                      f"head_repo={gh_fork}, base={branch}, "
                       f"title={shlex.quote(new_subject)}, body:)")
             else:
                 print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
