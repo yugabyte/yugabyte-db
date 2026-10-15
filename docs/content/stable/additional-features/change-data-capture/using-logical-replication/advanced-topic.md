@@ -152,7 +152,9 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 ### Periodic publication
 
-If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
+Periodic publication is the mechanism by which a logical replication stream learns of publication changes when [implicit publication](#implicit-publication) is disabled. The stream does not watch the catalog. Instead, on a fixed timer it re-reads the publication's table list, compares it with the list it is polling, and starts or stops polling the tables that differ. A change to the publication therefore takes effect only at the next refresh, not at the commit time of the `ALTER PUBLICATION`, and rows written to a newly added table before that refresh are not streamed. This behavior differs from PostgreSQL.
+
+Periodic publication is used when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, and by any replication slot that was created while it was `false`.
 
 You manage the refresh interval using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case. The default is 15 minutes (900 seconds).
 
