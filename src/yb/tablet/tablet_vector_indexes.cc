@@ -1104,38 +1104,42 @@ Status TabletVectorIndexes::Remove(const TableId& table_id) {
   {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
-    if (it == vector_indexes_map_.end()) {
-      return DestroySkippedIndexStorage(table_id);
+    if (it != vector_indexes_map_.end()) {
+      index = RemoveTableFromList(table_id);
+      RSTATUS_DCHECK(
+          index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
+      vector_indexes_map_.erase(it);
     }
-    index = RemoveTableFromList(table_id);
-    RSTATUS_DCHECK(
-        index != nullptr, IllegalState, "Index $0 present in map but missing in list", table_id);
-    vector_indexes_map_.erase(it);
+  }
+  if (!index) {
+    DestroySkippedIndexStorage(table_id);
+    return Status::OK();
   }
   return index->Destroy();
 }
 
-Status TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
+void TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
   // An index skipped by DoCreateIndex (its column missing from the schema) can still have storage
   // on disk, e.g. written before a PITR restore removed the column. The caller erases the table
   // from the metadata next, and DeleteTabletData only cleans up indexes still listed there
   // (#35063).
-  auto table_info_res = metadata().GetTableInfo(table_id);
-  if (!table_info_res.ok()) {
-    return table_info_res.status().IsNotFound() ? Status::OK() : table_info_res.status();
+  auto table_info = metadata().GetTableInfo(table_id);
+  if (!table_info.ok() || !(*table_info)->NeedVectorIndex()) {
+    return;
   }
-  const auto& table_info = *table_info_res;
-  if (!table_info->NeedVectorIndex()) {
-    return Status::OK();
-  }
-  auto storage_dir = metadata().vector_index_dir(table_info->index_info->vector_idx_options());
+  auto storage_dir = metadata().vector_index_dir((*table_info)->index_info->vector_idx_options());
   if (!env().FileExists(storage_dir)) {
-    return Status::OK();
+    return;
   }
   LOG_WITH_PREFIX(INFO)
       << "Destroying storage of not instantiated vector index " << table_id << " at "
       << storage_dir;
-  return env().DeleteRecursively(storage_dir);
+  // Like DeleteTabletData, leak the directory rather than fail the apply, which would fail the
+  // tablet.
+  auto status = env().DeleteRecursively(storage_dir);
+  LOG_IF_WITH_PREFIX(WARNING, !status.ok())
+      << "Failed to destroy storage of vector index " << table_id << " at " << storage_dir << ": "
+      << status;
 }
 
 Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
