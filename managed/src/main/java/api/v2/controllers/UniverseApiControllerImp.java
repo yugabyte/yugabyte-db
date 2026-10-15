@@ -33,6 +33,7 @@ import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseQueryLogsExport;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
+import api.v2.models.UniverseResourcesPerProvider;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseResumeCanaryUpgrade;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -323,6 +324,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
     return universeHandler.getUniverseResources(request, cUUID, universeSpec);
+  }
+
+  @Override
+  public UniverseResourcesPerProvider getUniverseResourcesPerProvider(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
+    return universeHandler.getUniverseResourcesPerProvider(request, cUUID, universeSpec);
   }
 
   @Override

@@ -20,7 +20,6 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Mockito.mock;
 
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.cloud.oci.OCIPriceUtil;
@@ -42,7 +41,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -288,7 +287,8 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = setUpValidSSD(3);
     Context context = new Context(getApp().config(), customer, params);
     UniverseResourceDetails details =
-        UniverseResourceDetails.create(params.nodeDetailsSet, params, context);
+        UniverseResourceDetails.create(
+            Optional.of(provider.getUuid()), params.nodeDetailsSet, params, context);
 
     assertThat(details, notNullValue());
     assertThat(details.ebsPricePerHour, equalTo(0.0));
@@ -298,11 +298,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddPriceToDetailsSSD() {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params = setUpValidSSD();
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 3 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
@@ -313,7 +312,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.IO1);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -329,7 +328,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.GP2);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(String.format("%.4f", 3 * numVolumes * volumeSize * sizePrice));
     assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
@@ -345,7 +344,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -370,7 +369,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -400,7 +399,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
             });
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 2 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
@@ -421,7 +420,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
             });
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 2 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
@@ -436,7 +435,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     assertThat(details.pricePerHour, equalTo(0.0));
   }
@@ -450,7 +449,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -475,7 +474,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -501,7 +500,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     assertThat(details.pricePerHour, equalTo(0.0));
   }
@@ -513,7 +512,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     TestUtils.existingProviderInitializer(params.getPrimaryCluster().userIntent)
         .setInstanceType("c4.large");
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     double expectedEbsPrice =
         Double.parseDouble(String.format("%.4f", 3 * numVolumes * volumeSize * sizePrice));
     assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
@@ -529,7 +528,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     TestUtils.existingProviderInitializer(params.getPrimaryCluster().userIntent)
         .setInstanceType("c4.large");
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     assertThat(details.pricePerHour, equalTo(0.0));
   }
@@ -636,7 +635,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     context = new Context(null, customer, params);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
 
     int vpusPerGb = OCIPriceUtil.vpusPerGb(StorageType.OCI_Balanced);
     double expectedInstance = ocpus * ocpuPerHour + memGb * memoryGbPerHour;
@@ -706,7 +705,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     context = new Context(null, customer, params);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
 
     double nvmeTb = nvmeGb / OCIPriceUtil.NVME_GB_PER_TB;
     double expectedInstance =
@@ -753,7 +752,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     context = new Context(null, customer, params);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params, context);
+    details.addPrice(params.nodeDetailsSet, params, context);
 
     double expectedTotal =
         Double.parseDouble(String.format("%.4f", NUM_NODES * ocpus * ocpuPerHour));

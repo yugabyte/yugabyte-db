@@ -97,6 +97,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -1542,7 +1543,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     Context context = new Context(mockRuntimeConfig, dbUniverse);
     com.yugabyte.yw.cloud.UniverseResourceDetails v1UniverseResourceDetails =
         com.yugabyte.yw.cloud.UniverseResourceDetails.create(
-            dbUniverse.getUniverseDetails(), context);
+            Optional.of(Util.getDefaultProviderUUID(dbUniverse)),
+            dbUniverse.getNodes(),
+            dbUniverse.getUniverseDetails(),
+            context);
     validateUniverseInfoResources(v2UnivInfo.getResources(), v1UniverseResourceDetails);
     assertThat(
         v2UnivInfo.getSoftwareUpgradeState().getValue(), is(dbUniv.softwareUpgradeState.name()));

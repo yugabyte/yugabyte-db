@@ -654,7 +654,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         oldUniverse.getName());
 
     // Need a response object otherwise reconciler fails with null
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    UniverseResp uResp = new UniverseResp(defaultUniverse);
     Mockito.when(
             universeCRUDHandler.createUniverse(
                 Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
@@ -3270,7 +3270,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     String universeName = "test-new-universe-naming";
     YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
     ybUniverse.getSpec().setUniverseName("user-chosen-name");
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    UniverseResp uResp = new UniverseResp(defaultUniverse);
     Mockito.when(
             universeCRUDHandler.createUniverse(
                 Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
