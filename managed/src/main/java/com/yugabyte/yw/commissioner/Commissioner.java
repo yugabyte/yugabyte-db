@@ -554,6 +554,16 @@ public class Commissioner {
   }
 
   /**
+   * Whether the matching {@link TaskRollbackComputer} accepts rolling back the failed task on this
+   * universe. Submit path only; listing checks ownership from the task list's own query. No bound
+   * computer -> true.
+   */
+  private boolean isRollbackAllowedOnUniverse(TaskInfo taskInfo, UUID universeUUID) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskInfo.getTaskType());
+    return computer == null || computer.canRollback(taskInfo, universeUUID);
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -569,9 +579,10 @@ public class Commissioner {
   }
 
   /**
-   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
-   * (software-upgrade style). When details are present, requires placement ownership and a safe
-   * delta (including refusing dedicatedNodes flips).
+   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. If there is no
+   * {@code state_transition_details}, the rollback must not need that checkpoint. When details are
+   * present, requires placement ownership and a safe delta (including refusing dedicatedNodes
+   * flips).
    */
   private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
     try {
@@ -582,6 +593,9 @@ public class Commissioner {
       UUID universeUUID = UUID.fromString(params.get("universeUUID").asText());
       Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
       if (!universeOpt.isPresent()) {
+        return false;
+      }
+      if (!isRollbackAllowedOnUniverse(taskInfo, universeUUID)) {
         return false;
       }
       Universe universe = universeOpt.get();
