@@ -218,6 +218,7 @@
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
@@ -12526,7 +12527,13 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
                                                  const TSDescriptorVector& all_ts_descs,
                                                  TSDescriptorVector* ts_descs) {
   ts_descs->clear();
+  // Only servers with a disk on the placement's storage tier can host its replicas.
+  const std::string storage_tier =
+      placement_info.has_storage_tier() ? placement_info.storage_tier() : kDefaultStorageTier;
   for (const auto& ts_desc : all_ts_descs) {
+    if (!ts_desc->HasStorageTier(storage_tier)) {
+      continue;
+    }
     if (placement_info.has_placement_uuid()) {
       string placement_uuid = placement_info.placement_uuid();
       if (ts_desc->placement_uuid() == placement_uuid) {

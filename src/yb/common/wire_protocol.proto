@@ -136,6 +136,13 @@ message ServerRegistrationPB {
   optional CloudInfoPB cloud_info = 3;
   // Placement uuid of the tserver's cluster.
   optional bytes placement_uuid = 4;
+
+  // Storage tiers this server has data directories for, from the --fs_data_dirs tier labels
+  // (see ValidStorageTiers() in src/yb/util/storage_tier.h). Only tservers set it. The master
+  // persists it with the rest of the registration, so placement can rely on it before the first
+  // metrics heartbeat and across a master failover. A tserver from before this field sends none;
+  // see TSDescriptor::GetStorageTiers for the fallback.
+  repeated string storage_tiers = 7;
 }
 
 message ServerEntryPB {
