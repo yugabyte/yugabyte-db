@@ -148,6 +148,11 @@ message TabletServerErrorPB {
     // A pipelined (async) write acked by an earlier leader cannot be verified on the current one:
     // it was overwritten after the leader change, or is more than one term old.
     ASYNC_WRITE_LOST = 36;
+
+    // The tserver has no data directory labeled with the requested storage tier, so it cannot
+    // place or migrate the tablet there. Not retryable on this tserver: its tier set is fixed by
+    // --fs_data_dirs. Returned by AlterTabletTier.
+    STORAGE_TIER_NOT_AVAILABLE = 37;
   }
 
   // The error code.

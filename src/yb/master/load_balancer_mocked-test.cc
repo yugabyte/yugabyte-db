@@ -47,6 +47,19 @@ class LoadBalancerMockedTest : public LoadBalancerMockedBase {
     path_metrics->set_total_space(total_space);
     ts_desc->UpdateMetrics(metrics);
   }
+
+  // Re-register a tserver with the given storage tiers, as its registration heartbeat would.
+  void SetTsStorageTiers(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const std::vector<std::string>& tiers) {
+    auto registration = ts_desc->GetTSRegistrationPB();
+    registration.mutable_common()->clear_storage_tiers();
+    for (const auto& tier : tiers) {
+      registration.mutable_common()->add_storage_tiers(tier);
+    }
+    auto lock = ASSERT_RESULT(ts_desc->UpdateRegistration(
+        ts_desc->GetNodeInstancePB(), registration, RegisteredThroughHeartbeat::kTrue));
+    lock.Commit();
+  }
 };
 
 TEST_F(LoadBalancerMockedTest, TestStartingTablet) {
@@ -984,6 +997,46 @@ TEST_F(LoadBalancerMockedTest, UnknownDiskCapacityTserverAcceptedAsDestination) 
   std::string tablet_id, from_ts, to_ts;
   ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
   ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+// A table placed on a storage tier only gets replicas on tservers that registered that tier.
+TEST_F(LoadBalancerMockedTest, StorageTierRejectsTserverWithoutTier) {
+  PrepareTestStateSingleAz();
+  replication_info_.mutable_live_replicas()->set_storage_tier("hdd");
+  for (const auto& ts_desc : ts_descs_) {
+    SetTsStorageTiers(ts_desc, {"ssd", "hdd"});
+  }
+  // An empty tserver with only ssd disks is the least loaded destination, but cannot host hdd.
+  auto ssd_only_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  SetTsStorageTiers(ssd_only_ts, {"ssd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_FALSE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), ssd_only_ts->permanent_uuid())));
+
+  // With an hdd disk it becomes a valid destination.
+  SetTsStorageTiers(ssd_only_ts, {"ssd", "hdd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ssd_only_ts->permanent_uuid());
+}
+
+// A table without a tier is on kDefaultStorageTier: an hdd-only tserver cannot host it, while a
+// tserver that registered no tiers (a binary from before the field) counts as ssd.
+TEST_F(LoadBalancerMockedTest, StorageTierDefaultsToSsd) {
+  PrepareTestStateSingleAz();
+  auto hdd_only_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  SetTsStorageTiers(hdd_only_ts, {"hdd"});
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  auto unlabeled_ts = ts_descs_.emplace_back(SetupTS("4444", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, unlabeled_ts->permanent_uuid());
 }
 
 class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {
