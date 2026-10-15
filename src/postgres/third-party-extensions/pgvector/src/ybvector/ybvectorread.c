@@ -288,7 +288,7 @@ StaticAssertDecl(sizeof(Datum) == sizeof(uint64_t),
  * are still checked for every row.
  */
 static void
-bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
+bindKeyFilter(IndexScanDesc scan, YbScanDesc yb_scan)
 {
 	Relation	rel = scan->heapRelation;
 	TupleDesc	tupdesc = RelationGetDescr(rel);

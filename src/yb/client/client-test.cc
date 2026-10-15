@@ -757,6 +757,8 @@ std::string RangeKeyPrefix(
 
 } // namespace
 
+class ClientTestNoCluster : public YBTest {};
+
 TEST_F_EX(ClientTest, SelectPartitionsForHashPartitionKeys, ClientTestNoCluster) {
   const std::vector<std::string> partitions = {
       "", HashPartitionKey(0x4000), HashPartitionKey(0x8000), HashPartitionKey(0xC000)};
