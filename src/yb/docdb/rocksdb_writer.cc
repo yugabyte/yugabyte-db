@@ -48,6 +48,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
+#include "yb/vector_index/vector_lsm.h"
+
 DEFINE_UNKNOWN_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_UNKNOWN_int32(txn_max_apply_batch_records, 100000,
@@ -607,6 +609,10 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
       rocksdb::CacheRestartBlockKeys::kFalse);
 }
 
+void IntentsWriter::WriteApplied() {
+  context_.WriteApplied();
+}
+
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   Slice key_prefix = txn_reverse_index_prefix_.AsSlice();
   key_prefix.remove_suffix(1);
@@ -722,8 +728,15 @@ ApplyIntentsContext::ApplyIntentsContext(
 
   if (ShouldMaintainVectorIndexes(table_type)) {
     vector_indexes_updater_.emplace(
-        std::move(vector_indexes), schema_packing_provider, frontiers_, apply_to_storages);
+        std::move(vector_indexes), schema_packing_provider, frontiers_, apply_to_storages,
+        chunk_holds_);
   }
+}
+
+ApplyIntentsContext::~ApplyIntentsContext() = default;
+
+void ApplyIntentsContext::WriteApplied() {
+  chunk_holds_.clear();
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(
@@ -1086,6 +1099,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
   }
 }
 
+NonTransactionalBatchWriter::~NonTransactionalBatchWriter() = default;
+
 bool NonTransactionalBatchWriter::Empty() const {
   return !put_batch_.write_pairs_size() && !put_batch_.apply_external_transactions_size();
 }
@@ -1132,7 +1147,7 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   if (ShouldMaintainVectorIndexes(table_type_)) {
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        /* xcluster_target= */ true);
+        chunk_holds_, /* xcluster_target= */ true);
   }
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
@@ -1321,7 +1336,8 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   IntraTxnWriteId write_id = 0;
   if (ShouldMaintainVectorIndexes(table_type_)) {
     vector_indexes_updater.emplace(
-        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_);
+        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
+        chunk_holds_);
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
@@ -1379,12 +1395,18 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   return Status::OK();
 }
 
+void NonTransactionalBatchWriter::WriteApplied() {
+  chunk_holds_.clear();
+}
+
 VectorIndexesUpdater::VectorIndexesUpdater(
     DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
-    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, bool xcluster_target)
+    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
+    vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target)
     : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
       frontiers_(frontiers),
-      apply_to_storages_(apply_to_storages), xcluster_target_(xcluster_target) {
+      apply_to_storages_(apply_to_storages), chunk_holds_(chunk_holds),
+      xcluster_target_(xcluster_target) {
   if (indexes_) {
     batches_.resize(indexes_->size());
   }
@@ -1669,6 +1691,7 @@ Status VectorIndexesUpdater::Complete() {
       InsertOptions options = {
         .frontiers = &frontiers_,
         .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
+        .chunk_holds = &chunk_holds_,
       };
       RETURN_NOT_OK((*indexes_)[i]->Insert(batch.entries, options));
     }

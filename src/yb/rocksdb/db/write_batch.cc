@@ -216,6 +216,12 @@ WriteBatch& WriteBatch::operator=(WriteBatch&& src) {
 
 WriteBatch::~WriteBatch() {}
 
+void WriteBatch::Applied(const Status& status) {
+  if (status.ok() && direct_writer_) {
+    direct_writer_->WriteApplied();
+  }
+}
+
 WriteBatch::Handler::~Handler() { }
 
 void WriteBatch::Handler::LogData(const Slice& blob) {

@@ -32,6 +32,8 @@
 
 #include "yb/rocksdb/write_batch.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
+
 namespace yb {
 namespace docdb {
 
@@ -172,6 +174,9 @@ class IntentsWriterContext {
 
   virtual Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) = 0;
 
+  // Called from IntentsWriter::WriteApplied.
+  virtual void WriteApplied() {}
+
   const TransactionId& transaction_id() const {
     return transaction_id_;
   }
@@ -215,6 +220,7 @@ class IntentsWriter : public rocksdb::DirectWriter {
                 const Slice& key_to_apply = Slice());
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
+  void WriteApplied() override;
   bool key_applied() { return key_applied_; }
 
  private:
@@ -260,10 +266,12 @@ class FrontierSchemaVersionUpdater {
 
 class VectorIndexesUpdater {
  public:
+  // The vectors are inserted with holds on their chunks added to chunk_holds, see
+  // vector_index::VectorLSMInsertContext::chunk_holds.
   VectorIndexesUpdater(
       DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
-      bool xcluster_target = false);
+      vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target = false);
 
   // write_time is the time the regular record is written at. The reverse mapping entry is written
   // at the same time, and the vector index feed is gated by it.
@@ -302,6 +310,7 @@ class VectorIndexesUpdater {
   SchemaPackingProvider& schema_packing_provider_;
   ConsensusFrontiers& frontiers_;
   StorageSet apply_to_storages_;
+  vector_index::VectorLSMChunkHolds& chunk_holds_;
   const bool xcluster_target_;
   // Write time of the record being fed, see Feed.
   DocHybridTime write_time_;
@@ -334,6 +343,8 @@ class ApplyIntentsContext : public IntentsWriterContext,
       DocVectorIndexesPtr vector_indexes, const StorageSet& apply_to_storages,
       TableType table_type, ApplyIntentsContextCompleteListener complete_listener);
 
+  ~ApplyIntentsContext() override;
+
   void Start(const std::optional<Slice>& first_key) override;
 
   Result<bool> Entry(
@@ -343,6 +354,9 @@ class ApplyIntentsContext : public IntentsWriterContext,
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
   Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+
+  // Releases the holds on the vector index chunks the applied intents were inserted into.
+  void WriteApplied() override;
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler& handler);
@@ -364,6 +378,9 @@ class ApplyIntentsContext : public IntentsWriterContext,
 
   ApplyIntentsContextCompleteListener complete_listener_;
   BoundedRocksDbIterator intent_iter_;
+
+  // Released by WriteApplied, at the latest on destruction.
+  vector_index::VectorLSMChunkHolds chunk_holds_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -410,9 +427,17 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       const StorageSet& apply_to_storages, TableType table_type,
       std::atomic<bool>* can_advance_intents_flush_op_id);
 
+  ~NonTransactionalBatchWriter() override;
+
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
+
+  // Releases the holds on the vector index chunks this writer inserted into. This has to happen as
+  // soon as the regular DB write returned, before the intents DB write of the same op: when that
+  // write stalls, the intents DB flush waits for the vector indexes to flush, which a held chunk
+  // blocks.
+  void WriteApplied() override;
 
  private:
   // Reads all stored external intents for provided transactions and prepares batches that will
@@ -445,6 +470,9 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   StorageSet apply_to_storages_;
   TableType table_type_;
   std::atomic<bool>* can_advance_intents_flush_op_id_;
+
+  // Released by WriteApplied, at the latest on destruction.
+  vector_index::VectorLSMChunkHolds chunk_holds_;
 };
 
 } // namespace docdb

@@ -5274,13 +5274,25 @@ Status DBImpl::SingleDelete(const WriteOptions& write_options,
 }
 
 Status DBImpl::Write(const WriteOptions& write_options, WriteBatch* my_batch) {
-  return WriteImpl(write_options, my_batch, nullptr);
+  auto status = WriteImpl(write_options, my_batch, nullptr);
+  // A successful write returns only once its batch is visible to readers, also when the batch
+  // was written by the leader of a write group.
+  if (my_batch) {
+    my_batch->Applied(status);
+  }
+  return status;
 }
 
 Status DBImpl::WriteWithCallback(const WriteOptions& write_options,
                                  WriteBatch* my_batch,
                                  WriteCallback* callback) {
-  return WriteImpl(write_options, my_batch, callback);
+  auto status = WriteImpl(write_options, my_batch, callback);
+  // A successful write returns only once its batch is visible to readers, also when the batch
+  // was written by the leader of a write group.
+  if (my_batch) {
+    my_batch->Applied(status);
+  }
+  return status;
 }
 
 Status DBImpl::WriteImpl(const WriteOptions& write_options,

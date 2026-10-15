@@ -76,6 +76,10 @@ class DirectWriter {
  public:
   virtual Status Apply(DirectWriteHandler& handler) = 0;
 
+  // Called by DB::Write once the batch the writer is attached to was written successfully, i.e. the
+  // entries written by Apply are visible to readers.
+  virtual void WriteApplied() {}
+
   virtual ~DirectWriter() = default;
 };
 
@@ -275,6 +279,9 @@ class WriteBatch : public WriteBatchBase {
   void SetDirectWriter(DirectWriter* direct_writer) {
     direct_writer_ = direct_writer;
   }
+
+  // Called by DB::Write with the status of the write of this batch, see DirectWriter::WriteApplied.
+  void Applied(const Status& status);
 
   bool HasDirectWriter() const {
     return direct_writer_ != nullptr;

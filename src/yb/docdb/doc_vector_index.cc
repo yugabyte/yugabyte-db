@@ -418,6 +418,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
       .reservation_mode = insert_options.reservation_mode,
+      .chunk_holds = insert_options.chunk_holds,
     };
     RETURN_NOT_OK(lsm_.Insert(lsm_entries, context));
     if (FLAGS_TEST_vector_index_duplicate_inserted_vectors && !lsm_entries.empty()) {

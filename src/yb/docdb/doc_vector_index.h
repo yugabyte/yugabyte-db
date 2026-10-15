@@ -148,6 +148,8 @@ struct InsertOptions {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // See vector_index::VectorLSMInsertContext::chunk_holds.
+  vector_index::VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 class DocVectorIndex {
