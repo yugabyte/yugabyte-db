@@ -676,7 +676,7 @@ message UpdateCdcReplicatedIndexResponsePB {
 message BootstrapProducerRequestPB {
   repeated string table_ids = 1;
   // If the stream_ids are not provided, a new stream for each table will be created.
-  repeated bytes xrepl_stream_ids = 2;
+  repeated bytes xrepl_stream_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Check if data bootstrap is required. Equivalent to the IsBootstrapRequired RPC.
   optional bool check_if_bootstrap_required = 3; // [default = false]
 }
@@ -707,7 +707,7 @@ message GetLatestEntryOpIdResponsePB {
 }
 
 message TableInfo {
-  optional bytes stream_id = 1;
+  optional bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes table_id = 2;
 }
 
@@ -765,7 +765,7 @@ message IsBootstrapRequiredResponsePB {
 
 // Metadata regarding replication status of a stream set up on a tablet.
 message StreamTabletDrainInfoPB {
-  required bytes stream_id = 1;
+  required bytes stream_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   required bytes tablet_id = 2;
 }
 
