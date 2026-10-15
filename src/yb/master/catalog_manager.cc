@@ -6823,8 +6823,7 @@ Status CatalogManager::BackfillIndex(
   Status s;
   for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
     uint32_t current_version;
-    // IndexInfoPB default, i.e. what an index absent from the list reports.
-    auto index_permissions = INDEX_PERM_READ_WRITE_AND_DELETE;
+    std::optional<IndexPermissions> index_permissions;
     {
       auto l = indexed_table->LockForRead();
       current_version = l->pb.version();
@@ -6835,16 +6834,35 @@ Status CatalogManager::BackfillIndex(
         }
       }
     }
+    // A concurrent DROP INDEX removes the index from the list before its table is gone.
+    if (!index_permissions) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::INVALID_SCHEMA,
+          STATUS_FORMAT(
+              InvalidArgument, "Index $0 is not an index of $1", index_table->id(),
+              indexed_table->ToString()));
+    }
 
-    // Validate that the index is at the correct permission.
-    if (index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
+    // A YSQL index is created at WRITE_AND_DELETE and
+    // MultiStageAlterTable::AdvanceYsqlIndexToBackfill below moves it to DO_BACKFILL.  An index
+    // already at or past DO_BACKFILL has been moved by an earlier attempt of this same request,
+    // resent after a network error or a leader change, so the request has succeeded.  Anything else
+    // is unexpected.
+    if (*index_permissions >= INDEX_PERM_DO_BACKFILL) {
+      LOG(INFO) << "BackfillIndex for " << index_table->id() << " on " << indexed_table->ToString()
+                << " finds it at " << IndexPermissions_Name(*index_permissions)
+                << ", already requested";
+      return Status::OK();
+    }
+    if (*index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
       return SetupError(
           resp->mutable_error(),
           MasterErrorPB::INVALID_SCHEMA,
           STATUS_FORMAT(
               InvalidArgument,
               "Expected WRITE_AND_DELETE perm, got $0",
-              IndexPermissions_Name(index_permissions)));
+              IndexPermissions_Name(*index_permissions)));
     }
 
     s = MultiStageAlterTable::AdvanceYsqlIndexToBackfill(
