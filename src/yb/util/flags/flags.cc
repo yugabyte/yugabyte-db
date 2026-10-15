@@ -228,8 +228,7 @@ DECLARE_bool(help);
 TAG_FLAG(help, stable);
 
 DECLARE_bool(helpfull);
-// Hidden because --help is already the full dump for master/tserver. yb-admin, whose --help is an
-// overview, advertises --helpfull from that overview instead.
+// Hidden because --help already dumps every flag, unless a program handles --help itself.
 TAG_FLAG(helpfull, stable);
 TAG_FLAG(helpfull, hidden);
 
@@ -715,8 +714,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     PromoteAllAutoFlags();
   }
 
-  // yb-admin answers --help before this parse unless one of these flags is set; a new
-  // print-and-exit flag here must also go in kYbDumpFlags in tools/yb-admin_cli.cc.
+  // A program that handles --help before this parse must let these print-and-exit flags through.
   if (FLAGS_helpxml) {
     DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kFalse);
   } else if (FLAGS_dump_flags_xml) {

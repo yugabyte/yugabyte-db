@@ -58,7 +58,6 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
@@ -600,12 +599,11 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
       line += " " + command->usage_arguments_;
     }
     if (line.size() > kMaxLineWidth) {
-      // Usage strings write repetition as "]..." or ",...", so a bare "..." cut can read as part
-      // of the syntax. " ..." never appears in a usage string.
-      ClipString(&line, kMaxLineWidth - 1);
-      line.resize(line.size() - 3);
-      StripTrailingWhitespace(&line);
-      line += " ...";
+      // Usage strings write repetition as "]..." or ",...", so mark the cut with " ...", which
+      // never appears in a usage string.
+      constexpr std::string_view kCutMarker = " ...";
+      line.resize(line.rfind(' ', kMaxLineWidth - kCutMarker.size()));
+      line += kCutMarker;
     }
     out << line << endl;
   }
