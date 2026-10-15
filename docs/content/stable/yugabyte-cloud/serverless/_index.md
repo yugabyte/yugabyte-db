@@ -54,7 +54,7 @@ To create a Serverless Postgres cluster:
         - **Custom** lets you set **vCPU** and **Memory**. vCPU can be from 0.5 to 64, including millicores such as `1500m`. Memory can be from 1 to 512, in `Mi` or `Gi`, and must be at least 8Gi per vCPU.
 
         Sizes beyond your remaining free compute are marked **Billed**. If you select one, you are asked to create a billing profile when you click **Create Cluster**.
-    - **Extensions**. Optional. What you select is seeded on the `main` branch, and every branch forked from it inherits those extensions. Extensions that the engine includes are marked **Included with engine**. You can add extensions to a branch later. You cannot remove them. For pgvector, enable it in the database with `CREATE EXTENSION vector`.
+    - **Extensions**. Optional. The cluster starts with a `main` branch, and you fork other branches from it. What you select is seeded on `main`, and every branch forked from it inherits those extensions. Extensions that the engine includes are marked **Included with engine**. You can add extensions to a branch later. You cannot remove them. For pgvector, enable it in the database with `CREATE EXTENSION vector`.
 
 1. On **Network Access**, under **Connectivity Method**, choose how clients connect and click **Next**.
 
@@ -64,7 +64,7 @@ To create a Serverless Postgres cluster:
 
     {{< warning title="Important" >}}
 
-    A public endpoint with no trusted IP addresses accepts connections from anywhere on the internet. The database password is the only protection. Do not use `0.0.0.0/0` for production data.
+A public endpoint with no trusted IP addresses accepts connections from anywhere on the internet. The database password is the only protection. Do not use `0.0.0.0/0` for production data.
 
     {{< /warning >}}
 
@@ -74,7 +74,7 @@ To create a Serverless Postgres cluster:
 
     {{< warning title="Important" >}}
 
-    Save the credentials file. You need it to connect, and the console does not show the password again.
+Save the credentials file. You need it to connect, and the console does not show the password again.
 
     {{< /warning >}}
 
@@ -108,7 +108,7 @@ While a change is being applied, a banner at the top of the cluster page shows w
 
 ### Add a branch
 
-A branch is an isolated, zero-copy version of a database. Creating a branch does not add storage cost. Additional storage is charged only when branch data changes.
+A branch is an isolated, zero-copy version of a database. The cluster starts with a `main` branch, and you fork other branches from it. Creating a branch does not add storage cost. Additional storage is charged only when branch data changes.
 
 1. Click **Add Branch**. To fork from a specific branch, open the actions menu on that branch and click **Add Child Branch**.
 
@@ -120,7 +120,7 @@ A branch is an isolated, zero-copy version of a database. Creating a branch does
 
 1. Click **Add**.
 
-The branch actions menu also includes **Add Extensions**, **Edit Postgres Settings** (under **Advanced Settings**), and **Delete Branch**. You can't delete the source branch. Extensions can't be removed after they are added, and adding one restarts every compute endpoint on the branch.
+The branch actions menu also includes **Add Extensions**, **Edit Postgres Settings** (under **Advanced Settings**), and **Delete Branch**. You can't delete the `main` branch. Extensions can't be removed after they are added, and adding one restarts every compute endpoint on the branch.
 
 ### Add a compute endpoint
 
