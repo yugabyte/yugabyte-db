@@ -33,6 +33,7 @@
 
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <vector>
 
 #include "yb/common/opid.h"
@@ -163,6 +164,20 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
+  struct SafeTimeWaiter;
+  // Threads that wait for safe time, keyed by the min_allowed that they wait for.
+  using SafeTimeWaiters = std::multimap<HybridTime, SafeTimeWaiter*>;
+
+  template <class Predicate>
+  bool WaitForSafeTime(
+      SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
+      const Predicate& predicate, std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
+
+  // Wakes the waiters whose min_allowed the current safe time has reached.
+  void ReleaseSafeTimeWaiters() REQUIRES(mutex_);
+
+  SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
+
   const std::string& LogPrefix() const { return prefix_; }
 
   struct InvariantViolationLoggingHelper;
@@ -176,7 +191,10 @@ class MvccManager {
   std::string prefix_;
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
-  mutable std::condition_variable cond_;
+
+  // Waiters in DoGetSafeTime and in SafeTimeForFollower.
+  mutable SafeTimeWaiters safe_time_waiters_ GUARDED_BY(mutex_);
+  mutable SafeTimeWaiters follower_safe_time_waiters_ GUARDED_BY(mutex_);
 
   struct QueueItem {
     HybridTime hybrid_time;
