@@ -653,7 +653,7 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
                              value == "no" || value == "n";
     const bool off = has_value && (value.empty() || (!string_valued && false_value));
     // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help (--version
-    // through its callback in init.cc).
+    // through its callback in init.cc). Keep in sync with util/flags/flags.cc.
     static constexpr std::string_view kYbDumpFlags[] = {
         "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpxml", "version"};
     // gflags prints these unless --help or --helpshort is also given.

@@ -714,6 +714,8 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     PromoteAllAutoFlags();
   }
 
+  // yb-admin answers --help before this parse unless one of these flags is set; a new
+  // print-and-exit flag here must also go in kYbDumpFlags in tools/yb-admin_cli.cc.
   if (FLAGS_helpxml) {
     DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kFalse);
   } else if (FLAGS_dump_flags_xml) {
