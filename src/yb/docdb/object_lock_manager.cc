@@ -485,7 +485,7 @@ class ObjectLockManagerImpl {
   // Performs necessary cleanup and checks whether the locks request needs to be processed.
   Status PrepareAcquire(
       std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-      const LockData& data, size_t resume_it_offset, Status resume_with_status,
+      const LockData& data, size_t resume_it_offset, const Status& resume_with_status,
       IsLockRetry is_retry) REQUIRES(transaction_entry->mutex) EXCLUDES(global_mutex_);
 
   std::vector<LockState> FetchExistingStatesForBgTxn(const LockData& data) EXCLUDES(global_mutex_);
@@ -837,14 +837,15 @@ Status ObjectLockManagerImpl::MakePrepareAcquireResult(
 
 Status ObjectLockManagerImpl::PrepareAcquire(
     std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-    const LockData& data, size_t resume_it_offset, Status resume_with_status,
+    const LockData& data, size_t resume_it_offset, const Status& resume_with_status,
     IsLockRetry is_retry) {
   auto it = data.key_to_lock.lock_batch.begin() + resume_it_offset;
   const auto& key_to_lock = data.key_to_lock;
   const auto& object_lock_owner = data.object_lock_owner;
+  const bool resumed_with_ok = is_retry && resume_with_status.ok();
   if (transaction_entry->ShouldSkipAcquireUnlocked(object_lock_owner.subtxn_id)) {
     // Release corresponding to this acquire has already been processed.
-    if (is_retry) {
+    if (resumed_with_ok) {
       it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
     }
     DoSignal(it->locked);
@@ -857,10 +858,12 @@ Status ObjectLockManagerImpl::PrepareAcquire(
   if (status.ok()) {
     return Status::OK();
   }
-  if (is_retry) {
+  // Don't signal queue when resuming timedout waiter, as the waiter can re-enter with earlier
+  // start time. Force signaling it in !resumed_with_ok case affects fairness.
+  if (resumed_with_ok) {
     it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
+    DoSignal(it->locked);
   }
-  DoSignal(it->locked);
   while (it != key_to_lock.lock_batch.begin()) {
     --it;
     if (UnlockSingleEntry(*it)) {
@@ -1220,9 +1223,7 @@ void ObjectLockManagerImpl::Poll() {
       while (!index.empty() && (*index.begin())->deadline() <= now) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
-        entry->waiters_in_resuming_state.fetch_add(delta);
-        entry->waiting_state.fetch_sub(delta);
+        entry->waiting_state.fetch_sub(IntentTypeSetAdd(waiter_entry->resume_it()->intent_types));
         timed_out_waiters.push_back(std::move(waiter_entry));
       }
     }
@@ -1262,9 +1263,7 @@ void ObjectLockManagerImpl::Shutdown() {
       while (!index.empty()) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
-        entry->waiters_in_resuming_state.fetch_add(delta);
-        entry->waiting_state.fetch_sub(delta);
+        entry->waiting_state.fetch_sub(IntentTypeSetAdd(waiter_entry->resume_it()->intent_types));
         waiters.push_back(std::move(waiter_entry));
       }
     }
