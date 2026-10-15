@@ -124,6 +124,16 @@ CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
 
 As the publication was created for ALL TABLES, ALTER PUBLICATION is not required.
 
+When the publication changes, a replication stream applies the change to the set of tables it polls in one of two modes:
+
+- **Immediate effect**, called [implicit publication](#implicit-publication). The change takes effect at the commit point of the `ALTER PUBLICATION` or `CREATE TABLE`.
+- **Refresh interval**, called [periodic publication](#periodic-publication). The change takes effect at the next scheduled refresh of the publication's table list.
+
+| Version | Default mode | How to select the other mode |
+| :--- | :--- | :--- |
+| v2024.2 to v2025.2 | Periodic publication | Not available. |
+| v2026.1 and later | Implicit publication | Set [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) to `false` before creating the slot. |
+
 ### Implicit publication
 
 Implicit publication is the mechanism by which a logical replication stream learns that the set of tables in its publication has changed. The stream watches the system catalog as part of the change stream it is already reading, so an `ALTER PUBLICATION`, or the creation of a table in a `FOR ALL TABLES` publication, is detected at the commit time of that statement, in order with the surrounding changes. The stream then starts or stops polling the affected tables from exactly that point. No events from a newly added table are missed, and no events from a dropped table are sent, regardless of how far behind the consumer is. This behavior matches PostgreSQL.
