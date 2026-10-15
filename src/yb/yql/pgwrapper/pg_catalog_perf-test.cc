@@ -69,6 +69,7 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(ysql_max_connections);
 
 using namespace std::literals;
 
@@ -436,6 +437,24 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) =
         ReleaseVsDebugVsAsanVsTsan(1000, 5000, 5000, 10000);
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
+  }
+};
+
+class PgCatalogTempNamespaceReuseTest : public PgCatalogWithUnlimitedCachePerfTest {
+ protected:
+  static constexpr size_t kMaxConnections = 10;
+
+  // Temp namespace name is derived from the backend's PGPROC slot (MyProcNumber). Keep the number
+  // of slots small to find a connection that gets the slot of a closed connection quickly.
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_connections) = kMaxConnections;
+    PgCatalogWithUnlimitedCachePerfTest::SetUp();
+  }
+
+  static Result<int32_t> GetProcNumber(PGConn& conn) {
+    return conn.FetchRow<int32_t>(
+        "SELECT s.id FROM pg_stat_get_backend_idset() AS s(id) "
+        "WHERE pg_stat_get_backend_pid(s.id) = pg_backend_pid()");
   }
 };
 
@@ -1034,13 +1053,15 @@ TEST_F_EX(PgCatalogPerfTest,
 // namespace reusing when response cache is enabled.
 TEST_F_EX(PgCatalogPerfTest,
           SameTempTableCreationWithResponseCache,
-          PgCatalogWithUnlimitedCachePerfTest) {
+          PgCatalogTempNamespaceReuseTest) {
   const auto temp_table_creator = [](PGConn* conn) {
     return conn->Execute("CREATE TEMP TABLE temptest(k INT)");
   };
 
+  int32_t proc_number;
   {
     auto conn = ASSERT_RESULT(Connect());
+    proc_number = ASSERT_RESULT(GetProcNumber(conn));
     ASSERT_OK(temp_table_creator(&conn));
     // Trigger catalog version update.
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT);DROP TABLE $0", "t"));
@@ -1051,7 +1072,22 @@ TEST_F_EX(PgCatalogPerfTest,
   }
   ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
 
-  auto conn = ASSERT_RESULT(Connect());
+  // Freed PGPROC slots are appended to the tail of the free list, so a new connection does not
+  // necessarily get the slot (and the temp namespace) of the closed one. Open connections until
+  // one gets that slot, keeping the others open so that they don't return their slots to the list.
+  std::vector<PGConn> other_conns;
+  std::optional<PGConn> reusing_conn;
+  while (!reusing_conn) {
+    ASSERT_LT(other_conns.size(), kMaxConnections);
+    auto aux_conn = ASSERT_RESULT(Connect());
+    if (ASSERT_RESULT(GetProcNumber(aux_conn)) == proc_number) {
+      reusing_conn.emplace(std::move(aux_conn));
+    } else {
+      other_conns.push_back(std::move(aux_conn));
+    }
+  }
+
+  auto& conn = *reusing_conn;
   const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&conn, &temp_table_creator] {
     return temp_table_creator(&conn);
   })).cache.disable_calls;
