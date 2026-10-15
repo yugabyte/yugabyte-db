@@ -63,7 +63,7 @@ DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(load_balancer_num_idle_runs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
-DECLARE_bool(xcluster_enable_split_of_bootstrapping_tables);
+DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
@@ -1352,7 +1352,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
 TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_split_of_bootstrapping_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets) = false;
   // Default cluster_ will be our producer.
   // Create a consumer universe and table, then setup universe replication.
   client::TableHandle consumer_cluster_table;

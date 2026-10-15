@@ -1112,6 +1112,7 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
     StdStatusCallback completion_cb) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(namespace_id, table_id);
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
+  std::optional<xrepl::StreamId> anchor_stream_id;
   std::vector<TabletId> anchor_tablet_ids;
 
   {
@@ -1140,24 +1141,27 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
 
     if (ns_table_info->has_wal_anchor_stream_id() &&
         !ns_table_info->wal_anchor_stream_id().empty()) {
-      auto anchor_stream_id =
+      anchor_stream_id =
           VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info->wal_anchor_stream_id()));
-      anchor_tablet_ids =
-          VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(anchor_stream_id));
-      if (anchor_tablet_ids.empty()) {
-        // The anchor has not been checkpointed yet, so checkpoint it together with the table
-        // stream.
-        table_streams.emplace_back(table_id, anchor_stream_id);
-      } else {
-        // The table stream is being replaced after the target rolled back its DDL. Start it from
-        // the anchor's tablets: the table may have split since the anchor was checkpointed, and
-        // checkpointing the current tablets would skip the parents' WAL before the split.
-        // Re-checkpointing the anchor itself would lose its original tablets in the same way.
-        LOG_WITH_PREFIX(INFO) << "Checkpointing xCluster stream " << table_streams.front().second
-                              << " of table " << table_id << " from the tablets of WAL_ANCHOR "
-                              << "stream " << anchor_stream_id << ": "
-                              << AsString(anchor_tablet_ids);
-      }
+    }
+  }
+
+  // Looked up outside mutex_, which is not held while taking stream locks.
+  if (anchor_stream_id) {
+    anchor_tablet_ids =
+        VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(*anchor_stream_id));
+    if (anchor_tablet_ids.empty()) {
+      // The anchor has not been checkpointed yet, so checkpoint it together with the table stream.
+      table_streams.emplace_back(table_id, *anchor_stream_id);
+    } else {
+      // The table stream is being replaced after the target rolled back its DDL. Start it from the
+      // anchor's tablets: the table may have split since the anchor was checkpointed, and
+      // checkpointing the current tablets would skip the parents' WAL before the split.
+      // Re-checkpointing the anchor itself would lose its original tablets in the same way.
+      LOG_WITH_PREFIX(INFO) << "Checkpointing xCluster stream " << table_streams.front().second
+                            << " of table " << table_id << " from the tablets of WAL_ANCHOR "
+                            << "stream " << *anchor_stream_id << ": "
+                            << AsString(anchor_tablet_ids);
     }
   }
 

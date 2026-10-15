@@ -33,8 +33,8 @@ DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
 
 DEFINE_test_flag(bool, xcluster_fail_record_stream_bootstrap_info, false,
-    "Fail BootstrapProducer after the checkpoints are written to cdc_state, when recording the "
-    "checkpointed tablets in the master.");
+    "Fail to record the checkpointed tablets in the master after BootstrapProducer writes the "
+    "checkpoints to cdc_state.");
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -134,7 +134,9 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
 
   LOG_WITH_FUNC(INFO) << "Updating cdc_state table with checkpoints.";
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
-  RETURN_NOT_OK(RecordStreamBootstrapInfo());
+  // Without a record the streams keep blocking tablet splits until they turn ACTIVE, which is safe.
+  WARN_NOT_OK(
+      RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 
   if (req_.check_if_bootstrap_required()) {
     LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";

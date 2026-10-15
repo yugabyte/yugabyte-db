@@ -41,6 +41,9 @@ struct KeyRange {
   std::string end_key;
 };
 
+// Checks that the key ranges cover the whole key space exactly once.
+Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys);
+
 Status PopulateXClusterStreamEntryTabletMapping(
     const TableId& producer_table_id, const TableId& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry,

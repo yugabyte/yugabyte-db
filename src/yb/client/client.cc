@@ -2428,19 +2428,23 @@ Status YBClient::GetTablets(const YBTableName& table_name,
 }
 
 Result<yb::master::GetTabletLocationsResponsePB> YBClient::GetTabletLocations(
-    const std::vector<TabletId>& tablet_ids, bool include_hidden) {
+    const std::vector<TabletId>& tablet_ids) {
   GetTabletLocationsRequestPB req;
   GetTabletLocationsResponsePB resp;
   req.mutable_tablet_ids()->Reserve(static_cast<int>(tablet_ids.size()));
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
-  if (include_hidden) {
-    req.set_include_hidden(true);
-  }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletLocations);
 
   return resp;
+}
+
+void YBClient::GetTabletLocations(
+    const std::vector<TabletId>& tablet_ids, master::IncludeHidden include_hidden,
+    GetTabletLocationsCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->GetTabletLocations(this, tablet_ids, include_hidden, deadline, std::move(callback));
 }
 
 Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(

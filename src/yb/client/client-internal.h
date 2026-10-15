@@ -388,6 +388,11 @@ class YBClient::Data {
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
       CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
+  void GetTabletLocations(
+      YBClient* client, const std::vector<TabletId>& tablet_ids,
+      master::IncludeHidden include_hidden, CoarseTimePoint deadline,
+      GetTabletLocationsCallback callback);
+
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
   Status CreateSnapshot(

@@ -58,6 +58,7 @@ class XClusterProducerBootstrap {
 
   // Must run after UpdateCdcStateTableWithCheckpoints. Tells the master which tablets were
   // checkpointed for each stream, which lets their tables split while the streams are INITIATED.
+  // Best effort: a stream without a record keeps blocking splits.
   Status RecordStreamBootstrapInfo();
 
   void PrepareResponse();

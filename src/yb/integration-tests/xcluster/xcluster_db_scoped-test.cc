@@ -49,8 +49,11 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_return_legacy_universe_replication_info);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
+DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -443,8 +446,37 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
 
-  // Only needed until the target has mapped the tablets.
+  // Kept after the stream turns ACTIVE, for setups that are retried. Once the target has polled
+  // all the children of a split parent, the record moves on to them. A child counts as polled once
+  // a write to it has been replicated, so write to all of them.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ASSERT_OK(InsertRowsInProducer(150, 1000));
+  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(LoggedWaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(GetProducerStreamBootstrapTablets()) == ProducerActiveTabletIds();
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier), "Wait for the record to reach the children"));
+}
+
+// If the source fails to record the checkpointed tablets, the checkpoint still succeeds, and the
+// stream keeps blocking splits.
+TEST_F(XClusterDBScopedTest, SplitBlockedWithoutRecordedTablets) {
+  ASSERT_OK(SetUpClusters());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = true;
+  ASSERT_TRUE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets);
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+
   ASSERT_TRUE(ASSERT_RESULT(GetProducerStreamBootstrapTablets()).empty());
+  auto& catalog_manager =
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto status = catalog_manager.XReplValidateSplitCandidateTable(producer_table_->id());
+  ASSERT_TRUE(status.IsNotSupported()) << status;
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on

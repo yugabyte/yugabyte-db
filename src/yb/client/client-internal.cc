@@ -2232,6 +2232,71 @@ class GetTableLocationsRpc
   GetTableLocationsCallback user_cb_;
 };
 
+class GetTabletLocationsRpc
+    : public ClientMasterRpc<
+          master::GetTabletLocationsRequestPB, master::GetTabletLocationsResponsePB> {
+ public:
+  GetTabletLocationsRpc(
+      YBClient* client, const std::vector<TabletId>& tablet_ids,
+      master::IncludeHidden include_hidden, GetTabletLocationsCallback user_cb,
+      CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.mutable_tablet_ids()->Reserve(narrow_cast<int>(tablet_ids.size()));
+    for (const auto& tablet_id : tablet_ids) {
+      req_.add_tablet_ids(tablet_id);
+    }
+    req_.set_include_hidden(include_hidden);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetTabletLocationsRpc(tablet_ids: $0, include_hidden: $1, num_attempts: $2)",
+        AsString(req_.tablet_ids()), req_.include_hidden(), num_attempts());
+  }
+
+  ~GetTabletLocationsRpc() override = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_client_proxy()->GetTabletLocationsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetTabletLocationsRpc::Finished, this, Status::OK()));
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    if (status.IsShutdownInProgress() || status.IsAborted() || status.IsNotFound() ||
+        status.IsInvalidArgument()) {
+      // Permanent errors.
+      LOG(WARNING) << ToString() << " failed: " << status;
+      return false;
+    }
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << ToString() << ": error getting tablet locations: " << status << ", retrying.";
+      return true;
+    }
+    for (const auto& error : resp_.errors()) {
+      if (StatusFromPB(error.status()).IsServiceUnavailable()) {
+        YB_LOG_EVERY_N_SECS(WARNING, 10)
+            << ToString() << ": tablet " << error.tablet_id() << " is not running, retrying.";
+        resp_.Clear();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.ok()) {
+      user_cb_(&resp_);
+    } else {
+      user_cb_(status);
+    }
+  }
+
+  GetTabletLocationsCallback user_cb_;
+};
+
 // A simple RPC that keeps retrying if resp has not_ready set.
 class GetXClusterStreamsRpc
     : public ClientMasterRpc<
@@ -2800,6 +2865,14 @@ void YBClient::Data::GetTableLocations(
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
       client, table_id, max_tablets, require_tablets_running, partitions_only,
       callback, deadline);
+}
+
+void YBClient::Data::GetTabletLocations(
+    YBClient* client, const std::vector<TabletId>& tablet_ids,
+    master::IncludeHidden include_hidden, CoarseTimePoint deadline,
+    GetTabletLocationsCallback callback) {
+  auto rpc = StartRpc<internal::GetTabletLocationsRpc>(
+      client, tablet_ids, include_hidden, std::move(callback), deadline);
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,

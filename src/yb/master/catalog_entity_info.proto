@@ -702,8 +702,8 @@ message SysCDCStreamEntryPB {
   // that an in flight DDL can be retried.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
 
-  // Set on INITIATED xCluster streams once their checkpoint has been written to cdc_state, and
-  // cleared when the stream turns ACTIVE.
+  // Set on INITIATED xCluster streams once their checkpoint has been written to cdc_state. Kept
+  // after the stream turns ACTIVE, so that a target setup retried after a failure still finds it.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
 }
 
@@ -711,7 +711,9 @@ message XClusterStreamBootstrapInfoPB {
   // The source tablets whose cdc_state rows the stream's checkpoint wrote. The target starts
   // polling from exactly these tablets, which may since have been split (hidden), so that it
   // replicates their WAL up to the SPLIT_OP before moving on to the children. A tablet's start op
-  // id is its cdc_state checkpoint.
+  // id is its cdc_state checkpoint. Once the stream has polled all the children of a recorded split
+  // parent, the source replaces the parent with its children, so the record never names a tablet
+  // that the stream has finished reading.
   repeated bytes checkpointed_tablet_ids = 1;
 }
 

@@ -36,6 +36,7 @@ struct YBTableInfo;
 namespace master {
 
 class GetTableLocationsResponsePB;
+class GetTabletLocationsResponsePB;
 class GetTableSchemaResponsePB;
 class UniverseReplicationInfo;
 
@@ -149,7 +150,9 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
   Status ProcessNewStream(const Result<xrepl::StreamId>& stream_id);
 
   void PopulateTabletMapping();
-  Status PopulateTabletMappingFromBootstrapTablets();
+  void BootstrapTabletLocationsCallback(
+      const Result<master::GetTabletLocationsResponsePB*>& result);
+  Status ProcessBootstrapTabletLocations(master::GetTabletLocationsResponsePB& resp);
   void PopulateTabletMappingCallback(const Result<master::GetTableLocationsResponsePB*>& result);
   Status ProcessTabletMapping(const Result<master::GetTableLocationsResponsePB>& result);
 

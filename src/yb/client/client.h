@@ -181,6 +181,8 @@ class ClientMasterRpcBase;
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+using GetTabletLocationsCallback =
+    std::function<void(const Result<master::GetTabletLocationsResponsePB*>&)>;
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
@@ -895,7 +897,13 @@ class YBClient {
       std::vector<master::TabletLocationsPB>* locations = nullptr);
 
   Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
-      const std::vector<TabletId>& tablet_ids, bool include_hidden = false);
+      const std::vector<TabletId>& tablet_ids);
+
+  // Retries while any of the tablets is not running. Errors for individual tablets, such as
+  // deleted ones, are returned in the response.
+  void GetTabletLocations(
+      const std::vector<TabletId>& tablet_ids, master::IncludeHidden include_hidden,
+      GetTabletLocationsCallback callback);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
