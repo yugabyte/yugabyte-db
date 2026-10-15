@@ -4087,6 +4087,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
+    const HybridTime origination_ht,
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
     const uint64_t postgres_auth_key,
@@ -4110,6 +4111,15 @@ Status Tablet::BackfillIndexesForYsql(
     // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
     // hold up the xCluster safe time, and thus backfill would get stuck.
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
+  }
+
+  // The backfill's writes are made on behalf of a CREATE INDEX DDL, so they need to carry its
+  // origination time, not that of the BACKFILL INDEX statements.
+  if (origination_ht) {
+    VLOG(1) << "Backfilling index " << index.table_id() << " with origination time "
+            << origination_ht.GetPhysicalValueMicros();
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_origination_time_override = $0;", origination_ht.GetPhysicalValueMicros()));
   }
 
   // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres

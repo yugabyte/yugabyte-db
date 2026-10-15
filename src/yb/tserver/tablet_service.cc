@@ -1077,11 +1077,19 @@ void TabletServiceAdminImpl::BackfillIndex(
     DCHECK_EQ(indexes_to_backfill.size(), 1)
         << "We don't support batching index backfill in YSQL yet";
     const qlexpr::IndexInfo& index_to_backfill = indexes_to_backfill[0];
+    // The backfill's writes carry the origination time recorded on the index by the CREATE INDEX
+    // that created it.  One BACKFILL INDEX runs with one origination time override, so batching
+    // indexes with different origination times into it would need a different way to stamp their
+    // writes; whoever adds batching must decide how.  qlexpr::IndexInfo does not keep this field,
+    // so read it from the request.
+    DCHECK_EQ(req->indexes_size(), 1) << "We don't support batching index backfill in YSQL yet";
+    const auto origination_ht = HybridTime::FromPB(req->indexes(0).backfill_origination_ht());
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
         index_to_backfill,
         req->start_key(),
         deadline,
         read_at,
+        origination_ht,
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
