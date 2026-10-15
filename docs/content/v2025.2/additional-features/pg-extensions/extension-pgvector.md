@@ -266,6 +266,12 @@ For example, to increase recall for the current session:
 SET hnsw.ef_search = 100;
 ```
 
+{{< note title="Encryption at rest" >}}
+
+When [encryption at rest](../../../secure/encryption-at-rest/) is enabled, vector index files on tablet servers are not encrypted. These files hold the indexed vectors and the HNSW graph, but not the rows they belong to. Table data, including the vector column itself, is encrypted as usual.
+
+{{< /note >}}
+
 ### Limitations
 
 - Concurrent index creation is not currently supported. For example, the following syntax falls back to non-concurrent implementation:
