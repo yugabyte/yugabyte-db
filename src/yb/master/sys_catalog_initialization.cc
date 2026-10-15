@@ -65,6 +65,17 @@ const char* kSysCatalogSnapshotRocksDbSubDir = "rocksdb";
 const char* kSysCatalogSnapshotTabletMetadataChangesFile =
     "exported_tablet_metadata_changes";
 const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SNAPSHOT";
+
+bool IsSingleAddTable(const tablet::ChangeMetadataRequestPB& req) {
+  if (!req.has_add_table()) {
+    return false;
+  }
+  std::vector<const google::protobuf::FieldDescriptor*> fields;
+  req.GetReflection()->ListFields(req, &fields);
+  // tablet_id and add_table.
+  return fields.size() == 2;
+}
+
 }  // anonymous namespace
 
 // ------------------------------------------------------------------------------------------------
@@ -115,6 +126,28 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
 // End of InitialSysCatalogSnapshotWriter
 // ------------------------------------------------------------------------------------------------
 
+// Each change metadata operation on the sys catalog rewrites and fsyncs the whole superblock, so
+// replaying the snapshot's add_table changes one by one is quadratic. Merge consecutive ones into
+// add_multiple_tables requests.
+std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
+    tserver::ExportedTabletMetadataChanges&& changes) {
+  std::vector<tablet::ChangeMetadataRequestPB> result;
+  bool last_is_merged = false;
+  for (auto& change : *changes.mutable_metadata_changes()) {
+    if (!IsSingleAddTable(change)) {
+      result.push_back(std::move(change));
+      last_is_merged = false;
+      continue;
+    }
+    if (!last_is_merged || result.back().tablet_id() != change.tablet_id()) {
+      result.emplace_back().set_tablet_id(change.tablet_id());
+      last_is_merged = true;
+    }
+    *result.back().add_add_multiple_tables() = std::move(*change.mutable_add_table());
+  }
+  return result;
+}
+
 Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
@@ -148,14 +181,16 @@ Status RestoreInitialSysCatalogSnapshot(
       Env::Default(),
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotTabletMetadataChangesFile),
       &tablet_metadata_changes));
-  for (const auto& change_metadata_req : tablet_metadata_changes.metadata_changes()) {
+  const auto num_changes = tablet_metadata_changes.metadata_changes_size();
+  const auto merged_changes = MergeAddTableChanges(std::move(tablet_metadata_changes));
+  for (const auto& change_metadata_req : merged_changes) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_metadata_req,
         sys_catalog_tablet_peer,
         term));
   }
-  LOG(INFO) << "Imported " << tablet_metadata_changes.metadata_changes_size()
-            << " tablet metadata changes";
+  LOG(INFO) << "Imported " << num_changes << " tablet metadata changes in "
+            << merged_changes.size() << " operations";
 
   latch.Wait();
   return Status::OK();

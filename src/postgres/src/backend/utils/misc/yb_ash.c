@@ -388,7 +388,14 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
+
+		/*
+		 * The buffer is not zeroed here: the postmaster always creates a new
+		 * shared memory segment (also on crash restart), which the kernel
+		 * zero-fills. Zeroing it explicitly would fault in every page of a
+		 * buffer that is hundreds of MB by default, which takes a large part
+		 * of postmaster startup and makes all of it resident at once.
+		 */
 	}
 }
 

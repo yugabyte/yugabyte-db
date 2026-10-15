@@ -272,6 +272,12 @@ DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
+DEFINE_NON_RUNTIME_bool(quick_leader_election_on_restart, false,
+    "Whether a restarted replica starts a (pre-)election after a short random delay instead of "
+    "waiting for the leader failure timeout. Meant for tablets with few replicas, such as the "
+    "sys catalog.");
+TAG_FLAG(quick_leader_election_on_restart, advanced);
+
 DEFINE_UNKNOWN_bool(stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
@@ -569,14 +575,18 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     // If this is the first term expire the FD immediately so that we have a fast first
     // election, otherwise we just let the timer expire normally.
     MonoDelta initial_delta = MonoDelta();
-    if (state_->GetCurrentTermUnlocked() == 0) {
+    if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection) &&
+        state_->GetCommittedConfigUnlocked().peers_size() == 1) {
+      // A single peer has no one to wait for or conflict with, so elect it right away, also
+      // after a restart.
+      initial_delta = MonoDelta::kZero;
+    } else if (state_->GetCurrentTermUnlocked() == 0) {
       // The failure detector is initialized to a low value to trigger an early election
       // (unless someone else requested a vote from us first, which resets the
       // election timer). We do it this way instead of immediately running an
       // election to get a higher likelihood of enough servers being available
       // when the first one attempts an election to avoid multiple election
-      // cycles on startup, while keeping that "waiting period" random. If there is only one peer,
-      // trigger an election right away.
+      // cycles on startup, while keeping that "waiting period" random.
       if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
         LOG_WITH_PREFIX(INFO) << "Consensus starting up: Expiring fail detector timer "
                                  "to make a prompt election more likely";
@@ -584,11 +594,15 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
         // more likely to fail due to uninitialized peers or conflicting elections, which could
         // have unforseen consequences.
         if (FLAGS_quick_leader_election_on_create) {
-          initial_delta = (state_->GetCommittedConfigUnlocked().peers_size() == 1) ?
-              MonoDelta::kZero :
+          initial_delta =
               MonoDelta::FromMilliseconds(rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
         }
       }
+    } else if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection) &&
+               FLAGS_quick_leader_election_on_restart) {
+      // If there is a live leader, the pre-election this starts fails without disturbing it.
+      initial_delta =
+          MonoDelta::FromMilliseconds(rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
     }
     RETURN_NOT_OK(BecomeReplicaUnlocked(std::string(), initial_delta));
   }
