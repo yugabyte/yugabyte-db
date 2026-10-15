@@ -4284,7 +4284,8 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // ones start from an empty frontier, and bootstrap replays the truncated writes back into them.
   // Stamped here rather than in ModifyFlushedFrontier: every snapshot op goes through that one, and
   // each stamp adds a chunk to the index manifest.
-  RETURN_NOT_OK(vector_indexes_->ModifyFlushedFrontier(frontier));
+  RETURN_NOT_OK(
+      vector_indexes_->ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
