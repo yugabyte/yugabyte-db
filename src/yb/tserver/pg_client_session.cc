@@ -3716,7 +3716,7 @@ class PgClientSession::Impl {
             ToSteady(CoarseMonoClock::now()) - start_time >= FLAGS_txn_slow_op_threshold_ms * 1ms;
         Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
       }
-    });
+    }, /* buffers_holder= */ data);
     RefreshHistoryRetentionPinFromSharedMemory();
     return Status::OK();
   }

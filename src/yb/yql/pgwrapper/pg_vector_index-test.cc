@@ -48,6 +48,9 @@
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+
 #include "yb/tablet/kv_formatter.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -84,6 +87,7 @@ DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_bool(TEST_skip_flush_deactivated_vector_indexes);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
+DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
@@ -117,6 +121,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_int64(db_block_cache_size_bytes);
@@ -7326,6 +7331,82 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
   ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
                     "Index removal hung waiting for the chunk of the failed insert"));
   threads.JoinAll();
+}
+
+// A stuck vector index insert blocks the apply of a write sent by a local call. The Perform that
+// sent the write should still finish at its deadline, not when the insert is unblocked.
+TEST_P(PgVectorIndexTest, PerformDeadlineWithStuckLocalWrite) {
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto* pg_ts = cluster_->mini_tablet_server(kPgTsIndex);
+  const auto pg_ts_uuid = pg_ts->fs_manager().uuid();
+  ASSERT_OK(WaitFor([this, &table_id, &pg_ts_uuid]() -> Result<bool> {
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
+      if (VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() !=
+              consensus::LeaderStatus::LEADER_AND_READY) {
+        continue;
+      }
+      if (peer->permanent_uuid() == pg_ts_uuid) {
+        return true;
+      }
+      WARN_NOT_OK(StepDown(peer, pg_ts_uuid, ForceStepDown::kTrue), "StepDown failed");
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Tablet leader on postgres tserver"));
+
+  // Performs are sent over RPC, so DumpRunningRpcs lists them.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 2000 * kTimeMultiplier;
+  ASSERT_OK(RestartPostgres());
+  conn = ASSERT_RESULT(Connect());
+  // Updates the meta cache with the new leader.
+  ASSERT_OK(InsertRows(conn, 1, 1, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+
+  auto leader_indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_EQ(leader_indexes.size(), 1);
+  const auto leader_index_path = leader_indexes.front()->path();
+
+  CountDownLatch insert_parked{1};
+  CountDownLatch resume_insert{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Insert:BeforeAllocateTasks", [&](void* arg) {
+    if (*static_cast<const std::string*>(arg) != leader_index_path) {
+      return;
+    }
+    insert_parked.CountDown();
+    ASSERT_TRUE(resume_insert.WaitFor(60s * kTimeMultiplier));
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point, &resume_insert] {
+    resume_insert.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  // Autocommit single row insert is a non-transactional write, it inserts the vector on apply.
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO test VALUES (2, '$0')", AsString(Vector(2))));
+  ASSERT_EQ(insert_parked.count(), 0);
+
+  ASSERT_OK(WaitFor([pg_ts]() -> Result<bool> {
+    rpc::DumpRunningRpcsRequestPB req;
+    rpc::DumpRunningRpcsResponsePB resp;
+    RETURN_NOT_OK(pg_ts->server()->messenger()->DumpRunningRpcs(req, &resp));
+    for (const auto& connection : resp.inbound_connections()) {
+      for (const auto& call : connection.calls_in_flight()) {
+        if (call.header().remote_method().method_name() == "Perform") {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 5s * kTimeMultiplier, "Perform finished while the insert is stuck"));
+
+  resume_insert.CountDown();
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (3, '$0')", AsString(Vector(3))));
+  // The timed out write is applied once unblocked.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 2")), 2);
 }
 
 ////////////////////////////////////////////////////////

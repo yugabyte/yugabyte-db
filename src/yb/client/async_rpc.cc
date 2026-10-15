@@ -225,8 +225,23 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
   return ops_[0].yb_op->table();
 }
 
+bool AsyncRpc::HasResponse() const {
+  return retrier().controller().status().ok();
+}
+
+rpc::RpcController* AsyncRpc::PrepareController() {
+  auto* controller = Rpc::PrepareController();
+  if (batcher_->local_calls_can_time_out()) {
+    // The rpc keeps alive the request, the response and the batcher with the rest of buffers.
+    controller->set_local_call_buffers_holder(shared_from_this());
+  }
+  return controller;
+}
+
 void AsyncRpc::Finished(const Status& status) {
-  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
+  VLOG_WITH_FUNC(4)
+      << "status: " << status << ", error: "
+      << (HasResponse() ? AsString(response_error()) : "<no response>");
   Status new_status = status;
   RefCntBuffer data_holder;
   if (status.ok()) {
@@ -646,7 +661,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
     RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
+  if (HasResponse() && resp_.has_trace_buffer()) {
     TRACE_TO(
         trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
         resp_.trace_buffer().ToBuffer());
@@ -686,6 +701,9 @@ void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) 
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
+  if (!HasResponse()) {
+    return {};
+  }
   return {GetPropagatedHybridTime(resp_),
           resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
                                      : ReadHybridTime()};
