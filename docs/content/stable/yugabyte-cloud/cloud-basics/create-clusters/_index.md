@@ -20,6 +20,12 @@ type: indexpage
     icon="fa-thin fa-box">}}
 
   {{<index/item
+    title="Serverless Postgres"
+    body="Create an AMP Managed cluster for agents and tenants."
+    href="../../serverless/"
+    icon="fa-thin fa-bolt">}}
+
+  {{<index/item
     title="Single region"
     body="Deploy single-region clusters with node- and availability zone-level fault tolerance."
     href="create-single-region/"
