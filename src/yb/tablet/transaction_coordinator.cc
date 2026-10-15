@@ -780,6 +780,16 @@ class TransactionState {
             TryAgain, "Heartbeat with inactive pg_session_req_version",
             AdvisoryLocksError(*pg_session_req_version_));
       }
+      // A transaction of a blocked database is aborted here, so its locks release and its waiters
+      // fail at once; the client's own cleanup on the refused heartbeat does not abort it at the
+      // coordinator.
+      if (status.ok() && state.has_origination_info()) {
+        status = context_.coordinator_context().CheckTransactionMayContinue(
+            state.origination_info());
+        if (!status.ok()) {
+          Abort();
+        }
+      }
       // When session level txns are involved in a deadlock due to cyclic advisory lock request
       // dependencies, the detector sends an update transaction request with PENDING status but
       // deadlock status set. In such cases, don't update meta information like first_touch_ etc.
