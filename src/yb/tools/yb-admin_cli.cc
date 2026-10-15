@@ -57,6 +57,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
@@ -589,8 +590,7 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
   for (const auto* command : matches) {
     std::string line = "  ";
     if (filter.empty()) {
-      const auto number_str = std::to_string(++number);
-      line += std::string(number_width - number_str.size(), ' ') + number_str + ". ";
+      line += PadLeft(std::to_string(++number), number_width) + ". ";
     } else {
       line += "* ";
     }
@@ -598,9 +598,7 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
     if (!command->usage_arguments_.empty()) {
       line += " " + command->usage_arguments_;
     }
-    if (line.size() > kMaxLineWidth) {
-      line = line.substr(0, kMaxLineWidth - 3) + "...";
-    }
+    ClipString(&line, kMaxLineWidth);
     out << line << endl;
   }
   return matches.size();
@@ -876,7 +874,7 @@ void ClusterAdminCli::SetUsage() {
       {prog_name_ + " help", Format("List all $0 operations", visible_operations)},
       {prog_name_ + " help <operation>", "Usage of one operation"},
       {prog_name_ + " help <text>", "Operations whose name contains <text>"},
-      {prog_name_ + " --helpshort", prog_name_ + "'s own global flags"},
+      {prog_name_ + " --helpshort", prog_name_ + "'s own flags"},
       {prog_name_ + " --helpmatch=<substring>",
        "Flags defined in source files whose path contains <substring>"},
       {prog_name_ + " --helpfull", "All flags (long)"},
