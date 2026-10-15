@@ -18,8 +18,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import io.ebean.DB;
+import io.ebean.Transaction;
+import java.util.List;
 import java.util.UUID;
 import org.junit.Test;
 import play.Application;
@@ -160,5 +164,31 @@ public class CustomerRegistrationApiTest extends FakeDBApplication {
 
     assertEquals(Http.Status.BAD_REQUEST, result.status());
     assertEquals(0, Customer.find.query().findCount());
+  }
+
+  @Test
+  public void registrationOnPopulatedInstanceDoesNotWaitForFirstRegistrationLock() {
+    // Integration tests register a customer per test on one shared YBA at the same moment. None
+    // of them can be the first customer, so none may wait on the first-registration lock: a waiter
+    // holds a pooled DB connection, and enough waiters starve the pool.
+    String superAdminToken =
+        registerOk(app, registrationSpec("admin@example.com"), null).get("api_token").asText();
+    // Hold the lock, as a first registration in progress would.
+    try (Transaction txn = DB.beginTransaction()) {
+      DB.sqlQuery("SELECT pg_advisory_xact_lock(:key)")
+          .setParameter("key", CustomerRegistrationHandler.REGISTRATION_LOCK_KEY)
+          .findOne();
+      int i = 0;
+      for (String url : List.of(REGISTER_URL, "/api/v1/register")) {
+        Result result =
+            Helpers.route(
+                app,
+                Helpers.fakeRequest("POST", url)
+                    .bodyJson(registrationSpec("tenant" + i++ + "@example.com"))
+                    .header(TokenAuthenticator.API_TOKEN_HEADER, superAdminToken));
+        assertEquals(contentAsString(result), OK, result.status());
+      }
+    }
+    assertEquals(3, Customer.find.query().findCount());
   }
 }

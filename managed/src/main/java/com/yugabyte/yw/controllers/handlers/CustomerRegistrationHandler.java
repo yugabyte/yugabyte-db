@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.RedactingService;
@@ -28,8 +29,8 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class CustomerRegistrationHandler {
 
-  // Key of the advisory lock that serializes registrations.
-  private static final long REGISTRATION_LOCK_KEY = 0x5942415265676973L;
+  // Key of the advisory lock that serializes first registrations.
+  @VisibleForTesting public static final long REGISTRATION_LOCK_KEY = 0x5942415265676973L;
 
   private final PasswordPolicyService passwordPolicyService;
   private final AlertDestinationService alertDestinationService;
@@ -55,14 +56,22 @@ public class CustomerRegistrationHandler {
   }
 
   /**
-   * Takes the registration lock and returns the number of customers. The lock is held until the
-   * caller's transaction ends, so the caller must check the count and create the customer in that
-   * same transaction. Without it, two concurrent first registrations both count zero customers and
-   * both create a SuperAdmin.
+   * Returns the number of customers for a registration to decide on. Without a lock, two concurrent
+   * first registrations both count zero customers and both create a SuperAdmin, so while there are
+   * no customers this takes a lock held until the caller's transaction ends, and counts again. The
+   * caller must create the customer in that same transaction.
+   *
+   * <p>Once a customer exists no registration can become the first one, so none waits on the lock.
+   * A waiter holds a pooled DB connection, and concurrent registrations on a populated instance
+   * would otherwise exhaust the pool.
    */
-  public int lockAndCountCustomers() {
+  public int countCustomersForRegistration() {
     if (DB.currentTransaction() == null) {
       throw new IllegalStateException("Customer registration must run in a transaction");
+    }
+    int count = Customer.find.query().findCount();
+    if (count > 0) {
+      return count;
     }
     DB.sqlQuery("SELECT pg_advisory_xact_lock(:key)")
         .setParameter("key", REGISTRATION_LOCK_KEY)

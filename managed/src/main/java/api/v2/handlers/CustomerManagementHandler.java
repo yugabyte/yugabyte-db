@@ -58,7 +58,7 @@ public class CustomerManagementHandler {
     // Explicit, because ebean.mf enhances @Transactional only under com.yugabyte.yw. The
     // registration lock, the checks and the inserts must share this transaction.
     try (Transaction txn = DB.beginTransaction()) {
-      boolean firstCustomer = customerRegistrationHandler.lockAndCountCustomers() == 0;
+      boolean firstCustomer = customerRegistrationHandler.countCustomersForRegistration() == 0;
       if (!firstCustomer) {
         if (!config.getBoolean("yb.multiTenant")) {
           throw new PlatformServiceException(
