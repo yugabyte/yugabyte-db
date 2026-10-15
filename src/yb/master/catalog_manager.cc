@@ -103,6 +103,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -2284,8 +2285,8 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return STATUS_FORMAT(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader", uuid);
   }
-  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
-  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetRaftConsensus());
+  ConsensusStatePB cstate = consensus->GetConsensusStateFromCache();
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     return STATUS_FORMAT(IllegalState,
         "Not the leader. Local UUID: $0, Consensus state: $1", uuid, cstate.ShortDebugString());
@@ -13514,9 +13515,9 @@ Status CatalogManager::GetTableLocations(
 Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
   auto tablet_peer = sys_catalog_->tablet_peer();
   SCHECK(tablet_peer, IllegalState, "Node $0 peer not initialized.", master_->fs_manager()->uuid());
-  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  auto consensus = VERIFY_RESULT(tablet_peer->GetRaftConsensus());
 
-  *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  *cpb = consensus->GetConsensusStateFromCache();
 
   return Status::OK();
 }
