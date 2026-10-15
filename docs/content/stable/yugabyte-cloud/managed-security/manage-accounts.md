@@ -55,7 +55,7 @@ The **Accounts** page lists the accounts in your organization.
 
 To rename an account, click the **Edit Account Name** icon next to the name in the list, enter a new name, and click **Confirm**.
 
-To delete an account, click **...** and choose **Delete Account**.
+To delete an account, click **...** and choose **Delete Account**. Note that you cannot delete the account where you are currently signed in; switch accounts and return to this page to delete the account.
 
 Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
 
@@ -82,13 +82,13 @@ To switch between accounts:
 
 - Click the **Organization** menu in the top left corner and choose the account you want to switch to.
 
-## Manage organization roles
+## Manage organization users
 
 To view all users in your organization:
 
 - Navigate to **Organization > Security > Access Control > Users**.
 
-You can delete a user from your organization; this deletes the user from all accounts. To add users, go to the individual account and invite them.
+You can delete a user from your organization; this deletes the user from all accounts. To add users, go to the individual account and [invite them](../manage-access/).
 
 Each user you add to individual accounts is added to your organization as a **Member** role.
 
@@ -98,7 +98,7 @@ To change a user's role, in the **Organization Role** column, choose a role.
 - Your organization can have a maximum of 5 Super Admins.
 - Users who are promoted to Super Admin are added to _all_ your accounts as an Admin.
 
-## Billing
+## View organization billing
 
 Each account has its own [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
 
@@ -106,7 +106,7 @@ To view a summary of billing for all accounts:
 
 - Navigate to **Organization > Billing**.
 
-The **Billing** page lists all your accounts and the Organization total across all accounts for the current billing period.
+The organization **Billing** page lists all your accounts and the total across all accounts in your organization for the current billing period.
 
 You can view different billing periods or a custom range using the billing period dropdown menu.
 
