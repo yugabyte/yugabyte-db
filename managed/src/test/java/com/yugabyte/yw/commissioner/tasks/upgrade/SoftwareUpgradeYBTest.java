@@ -1350,17 +1350,20 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     UniverseDefinitionTaskParams details =
         Universe.getOrBadRequest(customerTask.getTargetUUID()).getUniverseDetails();
     Set<String> owners = new HashSet<>();
+    Set<String> placementLockOwners = new HashSet<>();
     if (details.updatingTaskUUID != null) {
       owners.add(details.updatingTaskUUID.toString());
     }
     if (details.placementModificationTaskUuid != null) {
       owners.add(details.placementModificationTaskUuid.toString());
+      placementLockOwners.add(details.placementModificationTaskUuid.toString());
     }
     return commissioner
         .buildTaskStatus(
             customerTask,
             customerTask.getTaskInfo().getSubTasks(),
             ImmutableMap.of(customerTask.getTargetUUID(), owners),
+            ImmutableMap.of(customerTask.getTargetUUID(), placementLockOwners),
             ImmutableMap.of(customerTask.getTargetUUID(), customerTask))
         .map(status -> status.get("canRollback").asBoolean())
         .orElseThrow();
