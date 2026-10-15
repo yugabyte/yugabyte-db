@@ -28,6 +28,7 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/master/catalog_loaders.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -422,6 +423,10 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     }
     return false;
   }
+
+  // PITR restores in place: an index brought back with a deprecated backend would fail its live
+  // tablets, e.g. one dropped before upgrading and restored to before the drop.
+  RETURN_NOT_OK(ValidateVectorIndexBackend(id, *pb));
 
   auto it = existing_objects_.tables.find(id);
   if (it == existing_objects_.tables.end()) {
