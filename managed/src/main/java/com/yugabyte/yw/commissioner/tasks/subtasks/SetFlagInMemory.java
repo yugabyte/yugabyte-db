@@ -15,7 +15,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
@@ -112,9 +111,10 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         String finalYsqlPgConfCsv =
             GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, queryAndAuditLogYsqlPgConfCsv, true);
         if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
-          // New install gflags are in the server conf file of VM nodes only, so keep the in-memory
-          // value matching it. Merge default values for CSV gflags with user-set flag values.
-          if (!Util.isKubernetesBasedUniverse(universe)) {
+          // Keep the in-memory value matching the server's gflags file, which has the new install
+          // gflags only where they are applied. Merge default values for CSV gflags with user-set
+          // flag values.
+          if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
             String newInstallYsqlPgConfCsv =
                 universe
                     .getNewInstallGFlags(taskParams().serverType)
