@@ -203,6 +203,28 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
   return result;
 }
 
+// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
+// waits for every replica to apply all the ops its leader has committed.
+Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
+  std::unordered_map<TabletId, int64_t> leader_committed_idx;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
+    leader_committed_idx.emplace(
+        peer->tablet_id(), VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
+  }
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    auto it = leader_committed_idx.find(peer->tablet_id());
+    SCHECK(it != leader_committed_idx.end(), IllegalState,
+           Format("No leader for tablet $0", peer->tablet_id()));
+    RETURN_NOT_OK(Wait(
+        [idx = it->second, &peer]() -> Result<bool> {
+          return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
+        },
+        deadline, Format("$0apply op index $1", peer->LogPrefix(), it->second)));
+  }
+  return Status::OK();
+}
+
 ////////////////////////////////////////////////////////
 // PgVectorIndexTestBase
 ////////////////////////////////////////////////////////
@@ -2688,27 +2710,39 @@ TEST_P(PgVectorIndexColocationOnlyTest, IndexRestoredAwayRetainedBySnapshotSched
   // Storage dir of each replica of the kept index (false) and the restored away index (true).
   std::map<bool, std::vector<std::string>> index_dirs;
   TableId restored_away_index_id;
-  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
-    auto tablet = ASSERT_RESULT(peer->shared_tablet());
-    for (const auto& vector_index : *tablet->vector_indexes().List()) {
-      auto table_info = ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
-      if (table_info->table_name == kEarlierDroppedIndexName) {
-        continue;
-      }
-      const bool restored_away = table_info->table_name == kRestoredAwayIndexName;
-      if (restored_away) {
-        restored_away_index_id = vector_index->table_id();
-      }
-      index_dirs[restored_away].push_back(vector_index->path());
-    }
-  }
+  // CREATE INDEX can return before a follower applies the change metadata op that adds the index.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        index_dirs.clear();
+        for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          for (const auto& vector_index : *tablet->vector_indexes().List()) {
+            auto table_info =
+                VERIFY_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+            if (table_info->table_name == kEarlierDroppedIndexName) {
+              continue;
+            }
+            const bool restored_away = table_info->table_name == kRestoredAwayIndexName;
+            if (restored_away) {
+              restored_away_index_id = vector_index->table_id();
+            }
+            index_dirs[restored_away].push_back(vector_index->path());
+          }
+        }
+        if (index_dirs[false].size() != index_dirs[true].size()) {
+          LOG(INFO) << "Found " << index_dirs[true].size() << " replicas of "
+                    << kRestoredAwayIndexName << ", expected " << index_dirs[false].size();
+          return false;
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "All replicas host the restored away index"));
   ASSERT_FALSE(restored_away_index_id.empty());
-  ASSERT_EQ(index_dirs[false].size(), index_dirs[true].size());
 
   ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
   ASSERT_OK(wait_hidden(restored_away_index_id));
   // Followers apply the restore, which replaces the index storage dirs, after it returns.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
 
   // The restore replaced the storages, so count the chunks it left. A directory the master already
   // removed from the tablets counts as unchanged.
