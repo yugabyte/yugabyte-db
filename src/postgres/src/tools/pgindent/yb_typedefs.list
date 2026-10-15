@@ -350,6 +350,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode
