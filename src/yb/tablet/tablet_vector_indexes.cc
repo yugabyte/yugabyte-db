@@ -1100,15 +1100,12 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
 
 Status TabletVectorIndexes::Remove(const TableId& table_id) {
   VLOG_WITH_FUNC(2) << "table_id: " << table_id;
-  if (!has_vector_indexes_.load()) {
-    return Status::OK();
-  }
   docdb::DocVectorIndexPtr index;
   {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
     if (it == vector_indexes_map_.end()) {
-      return Status::OK();
+      return DestroySkippedIndexStorage(table_id);
     }
     index = RemoveTableFromList(table_id);
     RSTATUS_DCHECK(
@@ -1116,6 +1113,29 @@ Status TabletVectorIndexes::Remove(const TableId& table_id) {
     vector_indexes_map_.erase(it);
   }
   return index->Destroy();
+}
+
+Status TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
+  // An index skipped by DoCreateIndex (its column missing from the schema) can still have storage
+  // on disk, e.g. written before a PITR restore removed the column. The caller erases the table
+  // from the metadata next, and DeleteTabletData only cleans up indexes still listed there
+  // (#35063).
+  auto table_info_res = metadata().GetTableInfo(table_id);
+  if (!table_info_res.ok()) {
+    return table_info_res.status().IsNotFound() ? Status::OK() : table_info_res.status();
+  }
+  const auto& table_info = *table_info_res;
+  if (!table_info->NeedVectorIndex()) {
+    return Status::OK();
+  }
+  auto storage_dir = metadata().vector_index_dir(table_info->index_info->vector_idx_options());
+  if (!env().FileExists(storage_dir)) {
+    return Status::OK();
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Destroying storage of not instantiated vector index " << table_id << " at "
+      << storage_dir;
+  return env().DeleteRecursively(storage_dir);
 }
 
 Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
