@@ -16,7 +16,7 @@ type: docs
 
 ## Overview
 
-Using multi-account management, you can add multiple accounts for your organization, each with its own access control.
+Using multi-account management, you can add multiple accounts for your organization, each with its own access control and billing.
 
 {{<tip title="Early Access">}}
 Multi-account management is Early Access; to try it, contact {{% support-cloud %}}.
@@ -32,11 +32,11 @@ Currently, when you sign up for YugabyteDB Aeon, you get a single account, and m
 
 ### What multi-account management adds
 
-Multi-account management decouples the *user* entity from the *account* entity. A single user can be a member of multiple accounts simultaneously, with a different role in each. Each account remains fully isolated:
+With Multi-account management, a single user can be a member of multiple accounts simultaneously under a single organization, with a different role in each account. Each account remains fully isolated:
 
 - **Clusters** - each account has its own clusters; no cross-account visibility.
 - **Billing** - each account has its own billing profile and usage tracking.
-- **Users and roles** - each account controls its own user list and RBAC independently.
+- **Users and roles** - each account controls its own user list and RBAC independently. Organization Super Admins are added to every account as an Admin.
 - **VPCs, IP allow lists, API keys, and other resources** - all scoped to the account.
 
 This is conceptually similar to how AWS Organizations or GCP projects work: a single identity can access multiple isolated environments, choosing which one to enter at sign-in.
@@ -86,13 +86,15 @@ To view all users in your organization:
 
 - Navigate to **Organization > Security > Access Control > Users**.
 
+You can delete a user from your organization; this deletes the user from all accounts. To add users, go to the individual account and invite them.
+
 Each user you add to individual accounts is added to your organization as a **Member** role.
 
 To change a user's role, in the **Organization Role** column, choose a role.
 
 - You cannot modify your own role.
 - Your organization can have a maximum of 5 Super Admins.
-- Users who are propmoted to Super Admin are added to _all_ your accounts as an Admin.
+- Users who are promoted to Super Admin are added to _all_ your accounts as an Admin.
 
 ## Billing
 
@@ -108,8 +110,4 @@ This feature is in Early Access. The following limitations apply to the current 
 
 - **You must contact Yugabyte Support to enable it.** Contact {{% support-cloud %}} to enable multi-account for your organization. Once enabled, the users designated by Yugabyte Support (when enabling the feature) can create and manage accounts in Aeon without further support.
 - **No automation.** Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts. Automation of account lifecycle management is planned for GA.
-- **Accounts cannot be deleted.** Once created, accounts cannot be removed. This restriction will be lifted in the GA release.
-- **No aggregated user management.** You cannot view all users across all accounts in one place, or remove a user from all accounts at once. User management must be done account by account.
-- **SSO requires a separate app per account.** If your organization uses federated authentication (SSO/IdP), you must configure a separate identity provider application for each account. This differs from the industry-standard experience (AWS, GCP) where one IdP application covers all accounts. Single IdP configuration at the organization level is planned for GA.
-- **Account switching requires reauthentication.** Switching between accounts currently requires signing in again. Seamless account switching without reauthentication is planned for GA.
 - **No organization-level overview.** There is no consolidated view of all accounts, their users, or cross-account activity. An organization management layer with aggregated views is planned for GA.
