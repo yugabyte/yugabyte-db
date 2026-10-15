@@ -3838,17 +3838,20 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
       cdc_state_table_->DeleteEntries(entries_to_delete),
       "Error deleting XRepl stream rows from cdc_state table");
 
-  std::vector<CDCStreamInfo::WriteLock> locks;
-  locks.reserve(streams.size());
   std::vector<CDCStreamInfo*> streams_to_delete;
   streams_to_delete.reserve(streams.size());
-
   for (auto& stream : streams) {
-    locks.push_back(stream->LockForWrite());
     streams_to_delete.push_back(stream.get());
   }
 
+  // Must be done before locking the streams: outbound replication groups are locked before streams.
   RETURN_NOT_OK(xcluster_manager_->RemoveStreamsFromSysCatalog(epoch, streams_to_delete));
+
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  locks.reserve(streams.size());
+  for (auto& stream : streams) {
+    locks.push_back(stream->LockForWrite());
+  }
 
   bool TEST_fail = false;
   TEST_SYNC_POINT_CALLBACK("CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", &TEST_fail);

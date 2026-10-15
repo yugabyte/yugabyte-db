@@ -25,6 +25,7 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/random_util.h"
@@ -110,9 +111,7 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
-  std::string load_index_from_path;
   std::string query_vecs_path;
-  std::string save_index_to_path;
   ann_methods::ANNMethodKind ann_method;
 
   // Parsed version of k_values.
@@ -207,11 +206,6 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
        "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
-      (OPTIONAL_ARG_FIELD(save_index_to_path),
-       "Save the index to this path.")
-      (OPTIONAL_ARG_FIELD(load_index_from_path),
-       "Load the index from this path, or read it from disk without loading fully into memory, "
-       "if the index supports it. This supersedes the index build procedure.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
@@ -382,23 +376,7 @@ class BenchmarkTool {
         std::thread::hardware_concurrency(),
         std::thread::hardware_concurrency(),
         rocksdb::Cache::ReservationMode::kAlways));
-    if (!args_.load_index_from_path.empty()) {
-      LOG(INFO) << "Loading index from " << args_.load_index_from_path;
-      auto load_start_time = MonoTime::Now();
-      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path, 0));
-      LOG(INFO) << "Loaded index from " << args_.load_index_from_path
-                << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
-    } else {
-      RETURN_NOT_OK(BuildIndex());
-      if (!args_.save_index_to_path.empty()) {
-        auto save_start_time = MonoTime::Now();
-        LOG(INFO) << "Saving index to " << args_.save_index_to_path;
-        RETURN_NOT_OK(vector_index_->SaveToFile(args_.save_index_to_path));
-        LOG(INFO) << "Saved index to " << args_.save_index_to_path
-                  << " in " << MonoTime::Now().GetDeltaSince(save_start_time);
-
-      }
-    }
+    RETURN_NOT_OK(BuildIndex());
 
     RETURN_NOT_OK(Validate());
 
@@ -580,7 +558,7 @@ class BenchmarkTool {
       auto elapsed_time = MonoTime::Now() - start_time;
       LOG(INFO) << "Validation finished in " << elapsed_time;
       for (size_t j = 0; j < result.size(); ++j) {
-        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << StringPrintf("%.10f", result[j]);
+        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << FixedPoint(result[j], 10);
       }
     }
     return Status::OK();
@@ -620,12 +598,12 @@ class BenchmarkTool {
     size_t remaining_points = max_num_vectors_to_insert() - num_inserted;
     auto keys_per_sec = num_inserted / elapsed_time_sec;
     LOG(INFO) << "n: " << num_inserted << ", "
-              << "elapsed time: " << StringPrintf("%.1f", elapsed_time_sec) << " sec, "
+              << "elapsed time: " << FixedPoint(elapsed_time_sec, 1) << " sec, "
               << "O(n*log(n)) constant: " << n_log_n_constant << ", "
               << "remaining points: " << remaining_points << ", "
               << "keys per second: " << static_cast<size_t>(keys_per_sec) << ", "
               << "time remaining: "
-              << StringPrintf("%.1f", keys_per_sec > 0 ? remaining_points / keys_per_sec : 0)
+              << FixedPoint(keys_per_sec > 0 ? remaining_points / keys_per_sec : 0, 1)
               << " sec";
     prev_elapsed_usec_ = elapsed_usec;
   }
@@ -813,7 +791,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, InnerProduct, float,      float  ))        \
     ((Usearch, InnerProduct, uint8_t,    float  ))        \
     ((Hnswlib, InnerProduct, float,      float  ))        \
-    ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
+    ((Hnswlib, InnerProduct, uint8_t,    float  ))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
     if (auto status = BenchmarkExecuteHelper< \

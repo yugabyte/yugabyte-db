@@ -13,9 +13,9 @@
 
 #include "yb/common/roles_permissions.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 using std::string;
 using std::vector;
@@ -55,15 +55,15 @@ bool valid_permission_for_resource(PermissionType permission, ResourceType resou
 }
 
 std::string get_canonical_keyspace(const std::string &keyspace) {
-  return strings::Substitute("$0/$1", kRolesDataResource, keyspace);
+  return Format("$0/$1", kRolesDataResource, keyspace);
 }
 
 std::string get_canonical_table(const std::string &keyspace, const std::string &table) {
-  return strings::Substitute("$0/$1/$2", kRolesDataResource, keyspace, table);
+  return Format("$0/$1/$2", kRolesDataResource, keyspace, table);
 }
 
 std::string get_canonical_role(const std::string &role) {
-  return strings::Substitute("$0/$1", kRolesRoleResource, role);
+  return Format("$0/$1", kRolesRoleResource, role);
 }
 
 std::string PermissionName(const PermissionType permission) {

@@ -41,6 +41,17 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
       NamespaceIdView namespace_id) const override EXCLUDES(mutex_);
 
+  Result<uint32_t> GetOidCacheInvalidationsCount() const override EXCLUDES(mutex_);
+
+  // Only ever raises the count.
+  void UpdateOidCacheInvalidationsCount(uint32_t oid_cache_invalidations_count) EXCLUDES(mutex_);
+
+  Result<std::shared_ptr<const PersistenceBlockMapPB>> GetPersistenceBlockMap() const override
+      EXCLUDES(mutex_);
+
+  void UpdatePersistenceBlockMap(const PersistenceBlockMapPB& persistence_block_map)
+      EXCLUDES(mutex_);
+
   bool IsReadOnlyMode(NamespaceIdView namespace_id) const override;
   bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
 
@@ -70,6 +81,9 @@ class TserverXClusterContext : public TserverXClusterContextIf {
       const PgCreateTableRequestPB& req, PgCreateTable& helper) const override;
 
  private:
+  // Whether xCluster-guarded information may be given out.
+  bool HasXClusterGuardedInfoUnlocked() const REQUIRES_SHARED(mutex_);
+
   XClusterSafeTimeMap safe_time_map_;
 
   mutable std::shared_mutex mutex_;
@@ -88,6 +102,12 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   UnorderedStringMap<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
       GUARDED_BY(mutex_);
+
+  uint32_t oid_cache_invalidations_count_ GUARDED_BY(mutex_) = 0;
+
+  // Replaced, never modified, so readers can use a snapshot without holding mutex_.
+  std::shared_ptr<const PersistenceBlockMapPB> persistence_block_map_ GUARDED_BY(mutex_) =
+      std::make_shared<const PersistenceBlockMapPB>();
 
   struct CreateTableInfo {
     PgObjectId source_table_id;

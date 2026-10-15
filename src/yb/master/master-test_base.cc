@@ -39,8 +39,6 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
@@ -55,6 +53,7 @@
 #include "yb/rpc/proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -515,7 +514,7 @@ void MasterTestBase::CheckNamespaces(
     auto search_key = std::make_tuple(namespaces.namespaces(i).name(),
                                       namespaces.namespaces(i).id());
     ASSERT_TRUE(namespace_info.find(search_key) != namespace_info.end())
-                  << strings::Substitute("Couldn't find namespace $0", namespaces.namespaces(i)
+                  << Format("Couldn't find namespace $0", namespaces.namespaces(i)
                       .name());
   }
 
@@ -544,7 +543,7 @@ void MasterTestBase::CheckTables(
                                       tables.tables(i).namespace_().id(),
                                       tables.tables(i).relation_type());
     ASSERT_TRUE(table_info.find(search_key) != table_info.end())
-        << strings::Substitute("Couldn't find table $0.$1",
+        << Format("Couldn't find table $0.$1",
             tables.tables(i).namespace_().name(), tables.tables(i).name());
   }
 

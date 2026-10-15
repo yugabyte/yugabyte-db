@@ -273,7 +273,7 @@ func init() {
 		"[Required] The name of the universe to be created.")
 
 	createUniverseCmd.Flags().String("provider-code", "",
-		"[Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.")
+		"[Required] Provider code. Allowed values: "+util.ProviderCodesString()+".")
 
 	// fss := cliflag.NamedFlagSets{}
 	// createUniverseCmd.AddGroup()
@@ -284,7 +284,7 @@ func init() {
 			"to check the list of providers for the given provider-code. "+
 			"Fetches the first provider in the list by default.")
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
-		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
+		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, oci, onprem."+
 			" Defaults to true for kubernetes.")
 	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
 		"[Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64.")
@@ -353,7 +353,8 @@ func init() {
 		"[Optional] Instance Type for the universe nodes. Provide the instance types for each "+
 			"cluster as a separate flag."+
 			" Defaults to \"c5.large\" for aws, \"Standard_DS2_v2\" "+
-			"for azure and \"n1-standard-1\" for gcp. Fetches the first available "+
+			"for azure, \"n1-standard-1\" for gcp and \"VM.Standard.E4.Flex\" for oci. "+
+			"Fetches the first available "+
 			"instance type for onprem providers.")
 	createUniverseCmd.Flags().IntSlice("num-volumes", []int{1, 1},
 		"[Optional] Number of volumes to be mounted on this instance at the default path."+
@@ -368,13 +369,19 @@ func init() {
 			"as a separate flag, in the following format: "+
 			"\"--mount-points 'mount-point-1-for-primary-cluster,mount-point-2-for-primary-cluster' "+
 			"--mount-points 'mount-point-1-for-read-replica,mount-point-2-for-read-replica'\". "+
-			"Defaults to null for aws, azure, gcp. Fetches the first available "+
+			"Defaults to null for aws, azure, gcp, oci. Fetches the first available "+
 			"instance mount points for onprem providers.")
+	storageTypeProviders := "aws/azure/gcp"
+	if util.IsFeatureFlagEnabled(util.PREVIEW) {
+		storageTypeProviders += "/oci"
+	}
 	createUniverseCmd.Flags().StringArray("storage-type", []string{},
 		"[Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type "+
 			" of volumes for each cluster as a separate flag. "+
-			"Run \"yba provider [aws/azure/gcp] instance-type supported-storage\" to check list of supported storage types. "+
-			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp.")
+			"Run \"yba provider ["+storageTypeProviders+"] instance-type supported-storage\" "+
+			"to check list of supported storage types. "+
+			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure, \"Persistent\" for gcp "+
+			"and \"OCI_Balanced\" for oci.")
 	createUniverseCmd.Flags().StringArray("storage-class", []string{},
 		"[Optional] Name of the storage class, supported for Kubernetes. Provide "+
 			"the storage type of volumes for each cluster as a separate flag. Defaults"+
@@ -403,7 +410,8 @@ func init() {
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
 		"[Optional] Instance Type for the dedicated master nodes in the primary cluster."+
 			" Defaults to \"c5.large\" for aws, \"Standard_DS2_v2\" "+
-			"for azure and \"n1-standard-1\" for gcp. Fetches the first available "+
+			"for azure, \"n1-standard-1\" for gcp and \"VM.Standard.E4.Flex\" for oci. "+
+			"Fetches the first available "+
 			"instance type for onprem providers.")
 	createUniverseCmd.Flags().Int("dedicated-master-num-volumes", 1,
 		"[Optional] Number of volumes to be mounted on master instance at the default path.")
@@ -414,11 +422,12 @@ func init() {
 		"[Optional] Disk mount points for master nodes. Provide comma-separated strings "+
 			"in the following format: \"--mount-points 'mount-point-1-for-master,"+
 			"mount-point-2-for-master'\""+
-			" Defaults to null for aws, azure, gcp. Fetches the first available "+
+			" Defaults to null for aws, azure, gcp, oci. Fetches the first available "+
 			"instance mount points for onprem providers.")
 	createUniverseCmd.Flags().String("dedicated-master-storage-type", "",
 		"[Optional] Storage type (EBS for AWS) used for master instance. "+
-			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp. "+
+			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure, \"Persistent\" for gcp "+
+			"and \"OCI_Balanced\" for oci. "+
 			"Fetches the first available storage type for onprem providers.")
 	createUniverseCmd.Flags().String("dedicated-master-storage-class", "",
 		"[Optional] Name of the storage class for the master instance. "+

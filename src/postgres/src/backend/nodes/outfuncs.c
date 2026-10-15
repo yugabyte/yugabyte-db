@@ -870,6 +870,13 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
 
+	appendStringInfoString(str, " :innerHashExprs");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].innerHashExpr);
+	}
+
 	appendStringInfoString(str, " :outerParamExprs");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 	{

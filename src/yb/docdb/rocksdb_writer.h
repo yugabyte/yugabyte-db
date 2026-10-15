@@ -416,7 +416,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
       const StorageSet& apply_to_storages, TableType table_type,
-      std::atomic<bool>* can_advance_intents_flush_op_id);
+      std::atomic<bool>* can_advance_intents_flush_op_id,
+      XClusterTargetApplied xcluster_target_applied);
 
   bool Empty() const;
 
@@ -460,6 +461,7 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   StorageSet apply_to_storages_;
   TableType table_type_;
   std::atomic<bool>* can_advance_intents_flush_op_id_;
+  const XClusterTargetApplied xcluster_target_applied_;
 
   // Table-tombstone (key, value, write_ht) triples seen while applying external intents. Flushed
   // via FlushPendingTableTombstoneNotifies after WriteToRocksDB (see that method's comment).

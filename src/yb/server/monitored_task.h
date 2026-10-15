@@ -91,6 +91,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kTruncateTablet)
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
+  (kApplyXClusterGuardedInfoIfNewer)
   (kAddTableToXClusterTarget)
   (kMarkTableAsRunning)
   (kAddTableToXClusterSource)

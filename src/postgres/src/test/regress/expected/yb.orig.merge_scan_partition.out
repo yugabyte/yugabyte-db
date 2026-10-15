@@ -16,6 +16,10 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 -- No order
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;'
@@ -65,26 +69,26 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 28
+                     Storage Table Read Ops: 28
                      Storage Table Rows Scanned: 439
                ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 16
+                     Storage Table Read Ops: 16
                      Storage Table Rows Scanned: 247
                ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 47
+                     Storage Table Read Ops: 47
                      Storage Table Rows Scanned: 751
                ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 35
+                     Storage Table Read Ops: 35
                      Storage Table Rows Scanned: 546
 (31 rows)
 
@@ -172,26 +176,26 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=439 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 28
+                     Storage Table Read Ops: 28
                      Storage Table Rows Scanned: 439
                ->  Index Scan using child1b_pkey on public.child1b parent_3 (actual rows=247 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 16
+                     Storage Table Read Ops: 16
                      Storage Table Rows Scanned: 247
                ->  Index Scan using child2_pkey on public.child2 parent_4 (actual rows=751 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 47
+                     Storage Table Read Ops: 47
                      Storage Table Rows Scanned: 751
                ->  Index Scan using child3_pkey on public.child3 parent_5 (actual rows=546 loops=1)
                      Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
                      Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 35
+                     Storage Table Read Ops: 35
                      Storage Table Rows Scanned: 546
 (31 rows)
 
@@ -311,20 +315,20 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 51
+                     Storage Table Read Ops: 51
                      Storage Table Rows Scanned: 807
                ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 52
+                     Storage Table Read Ops: 52
                      Storage Table Rows Scanned: 818
                ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 25
+                     Storage Table Read Ops: 25
                      Storage Table Rows Scanned: 393
 (25 rows)
 
@@ -411,20 +415,20 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=807 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 51
+                     Storage Table Read Ops: 51
                      Storage Table Rows Scanned: 807
                ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=818 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 52
+                     Storage Table Read Ops: 52
                      Storage Table Rows Scanned: 818
                ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=393 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
+                     Storage Table Read Requests: 25
+                     Storage Table Read Ops: 25
                      Storage Table Rows Scanned: 393
 (25 rows)
 

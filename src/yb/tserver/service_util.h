@@ -36,6 +36,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_callback.h"
@@ -86,7 +87,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
   const std::string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
   if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
-    std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
+    std::string msg = Format("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
     YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;

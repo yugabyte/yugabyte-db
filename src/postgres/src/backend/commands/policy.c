@@ -57,7 +57,7 @@ static void RangeVarCallbackForPolicy(const RangeVar *rv,
 									  Oid relid, Oid oldrelid, void *arg);
 static char parse_policy_command(const char *cmd_name);
 static Datum *policy_role_list_to_array(List *roles, int *num_roles);
-static int	YbPolicyNameCmp(const void *a, const void *b);
+static int	YbPolicyNameCmp(const ListCell *a, const ListCell *b);
 
 /*
  * Callback to RangeVarGetRelidExtended().
@@ -231,9 +231,10 @@ RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cac
 	 * visit the rel's policies in name order, at least when system indexes
 	 * aren't disabled.  This simplifies equalRSDesc().
 	 *
-	 * YB note: We load the policies from the YB tuple cache, which doesn't
-	 * guarantee any order. We instead sort the policies at the end of this
-	 * function to match vanilla PG behavior.
+	 * YB note: The YB tuple cache doesn't guarantee any order, so when it is
+	 * used we sort the policies at the end of this function to match vanilla
+	 * PG behavior.  Vanilla PG visits the policies in name order and prepends
+	 * each one to the list, so the resulting list is in reverse name order.
 	 */
 	catalog = table_open(PolicyRelationId, AccessShareLock);
 
@@ -340,9 +341,7 @@ RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cac
 	if (use_yb_cache)
 	{
 		YbTupleCacheIteratorEnd(iter);
-		/* Sort policies by name to match vanilla PG behavior */
-		qsort(rsdesc->policies, list_length(rsdesc->policies),
-			  sizeof(RowSecurityPolicy), YbPolicyNameCmp);
+		list_sort(rsdesc->policies, YbPolicyNameCmp);
 	}
 	else
 		systable_endscan(sscan);
@@ -1320,14 +1319,14 @@ relation_has_policies(Relation rel)
 }
 
 /*
- * Used to sort policies in RelationBuildRowSecurity() to match vanilla
- * PG behavior.
+ * list_sort comparator that orders policies by descending name, matching the
+ * list vanilla PG builds in RelationBuildRowSecurity().
  */
 static int
-YbPolicyNameCmp(const void *a, const void *b)
+YbPolicyNameCmp(const ListCell *a, const ListCell *b)
 {
-	const RowSecurityPolicy *pa = (const RowSecurityPolicy *) a;
-	const RowSecurityPolicy *pb = (const RowSecurityPolicy *) b;
+	const RowSecurityPolicy *pa = (const RowSecurityPolicy *) lfirst(a);
+	const RowSecurityPolicy *pb = (const RowSecurityPolicy *) lfirst(b);
 
-	return strcmp(pa->policy_name, pb->policy_name);
+	return strcmp(pb->policy_name, pa->policy_name);
 }

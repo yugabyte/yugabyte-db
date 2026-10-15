@@ -58,6 +58,8 @@ public class XClusterCreatePrecheck {
       throw new IllegalArgumentException("requestedTableInfoList is empty");
     }
 
+    XClusterUtil.ensureFipsModesMatch(sourceUniverse, targetUniverse);
+
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
     if (configType == XClusterConfig.ConfigType.Txn) {

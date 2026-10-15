@@ -154,6 +154,15 @@ class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
     return has_value_.load() && !future_.get().ok();
   }
 
+  // Non-blocking: nullptr while the load is in flight or if it failed.
+  client::YBTablePtr GetIfReady() const {
+    if (!has_value_.load()) {
+      return nullptr;
+    }
+    const auto& value = future_.get();
+    return value.ok() ? *value : nullptr;
+  }
+
  private:
   Result<PgTablesQueryResult::TableInfo> MakeTableInfo(const Result<client::YBTablePtr>& value) {
     RETURN_NOT_OK(value);
@@ -199,16 +208,38 @@ class PgTableCache::Impl {
     return GetEntry(table_id)->Get();
   }
 
+  void GetIfCached(
+      std::span<const TableId> table_ids,
+      boost::container::small_vector_base<client::YBTablePtr>& tables) {
+    boost::container::small_vector<CacheEntryPtr, 4> entries;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& table_id : table_ids) {
+        entries.push_back(FindEntryUnlocked(table_id));
+      }
+    }
+    for (const auto& entry : entries) {
+      tables.push_back(entry ? entry->GetIfReady() : nullptr);
+    }
+  }
+
   void GetTables(
       std::span<const TableId> table_ids,
       const PgTablesQueryListenerPtr& listener,
       const PgTableCacheGetOptions& options) {
+    const auto tables_sz = table_ids.size();
+    if (!tables_sz) [[unlikely]] {
+      listener->Ready({});
+      return;
+    }
+
     boost::container::small_vector<std::pair<const TableId*, CacheEntryPtr>, 8> entries;
+    entries.reserve(tables_sz);
     {
       std::lock_guard lock(mutex_);
       for (const auto& table_id : table_ids) {
         auto [entry, need_load] = DoGetEntryUnlocked(table_id, options);
-        entries.emplace_back(need_load ? &table_id : nullptr, entry);
+        entries.emplace_back(need_load ? &table_id : nullptr, std::move(entry));
       }
     }
     const Waiter waiter{table_ids.size(), listener};
@@ -284,6 +315,19 @@ class PgTableCache::Impl {
       LoadEntry(table_id, options.include_hidden, p.first);
     }
     return p.first;
+  }
+
+  CacheEntryPtr FindEntryUnlocked(TableIdView table_id) REQUIRES(mutex_) {
+    const auto db_oid = GetPgsqlDatabaseOid(table_id);
+    if (!db_oid.ok()) {
+      return nullptr;
+    }
+    auto iter = caches_.find(*db_oid);
+    if (iter == caches_.end()) {
+      return nullptr;
+    }
+    auto it = iter->second.first.find(table_id);
+    return it != iter->second.first.end() ? it->second : nullptr;
   }
 
   std::pair<CacheEntryPtr, bool> DoGetEntry(
@@ -370,6 +414,12 @@ Result<client::YBTablePtr> PgTableCache::Get(TableIdView table_id) {
   return impl_->Get(table_id);
 }
 
+void PgTableCache::GetIfCached(
+    std::span<const TableId> table_ids,
+    boost::container::small_vector_base<client::YBTablePtr>& tables) {
+  impl_->GetIfCached(table_ids, tables);
+}
+
 void PgTableCache::GetTables(
     std::span<const TableId> table_ids,
     const PgTablesQueryListenerPtr& listener,
@@ -397,12 +447,18 @@ Result<const client::YBTablePtr&> PgTablesQueryResult::Get(TableIdView table_id)
 
 Result<const PgTablesQueryResult::TableInfo&> PgTablesQueryResult::GetInfo(
     TableIdView table_id) const {
-  RETURN_NOT_OK(*tables_);
-  const auto& tables = **tables_;
-  const auto it = std::ranges::find_if(
-      tables, [&table_id](const auto& table_info) { return table_info.table->id() == table_id; });
-  SCHECK(it != tables.end(), InvalidArgument, "Table $0 not found in query", table_id);
-  return *it;
+  const PgTablesQueryResult::TableInfo* result = nullptr;
+  if (tables_) {
+    RETURN_NOT_OK(*tables_);
+    const auto& tables = **tables_;
+    const auto it = std::ranges::find_if(
+        tables, [&table_id](const auto& table_info) { return table_info.table->id() == table_id; });
+    if (it != tables.end()) {
+      result = &*it;
+    }
+  }
+  SCHECK(result, InvalidArgument, "Table $0 not found in query", table_id);
+  return *result;
 }
 
 }  // namespace yb::tserver

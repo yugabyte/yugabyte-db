@@ -56,6 +56,9 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid);
 
+// Sent with every request so PG client service can tell which database the backend serves.
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -103,6 +106,10 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
@@ -148,6 +155,7 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
@@ -598,6 +606,11 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
 YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
 
+// Restrict a vector index search to the tablets that can hold rows whose primary key columns
+// have the given values. Columns that don't bound the tablets are ignored.
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -752,7 +765,7 @@ YbcStatus YBCSRFGetNext(YbcPgFunction handle, uint64_t *values, bool *is_nulls, 
 YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YbcStatus YBCPgBeginTransaction(int64_t start_time);
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -786,6 +799,14 @@ bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
+
+// Whether DDLs run inside the enclosing transaction block.
+// ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
+// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
+// object locking feature. It therefore follows table locking for the current transaction, which
+// is off until the object locking infra auto flag is promoted and stays at the value latched when
+// the transaction began.
+bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
 // doesn't request a smaller limit.  Equals
@@ -1132,6 +1153,7 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 YbcStatus YBCResetAutoAnalyzeMutationCounters(

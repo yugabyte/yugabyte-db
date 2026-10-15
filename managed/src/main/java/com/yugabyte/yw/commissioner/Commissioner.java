@@ -333,10 +333,17 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
+  /**
+   * @param updatingTasks per target, the task UUIDs that own the target for retry/rollback:
+   *     updatingTaskUUID plus placementModificationTaskUuid.
+   * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
+   *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
+   */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
+      Map<UUID, Set<String>> placementLockTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null) {
       return Optional.empty();
@@ -437,9 +444,16 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
-              Set<String> taskUuidsToAllowRollback =
-                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
-              return taskUuidsToAllowRollback.contains(tf.getUuid().toString());
+              // An edit's auto-rollback clears placementModificationTaskUuid but keeps
+              // updatingTaskUUID so the task stays retryable. Checkpoint-based rollbacks must hold
+              // the placement lock, as canRollbackTaskOnUniverse requires on submit.
+              Map<UUID, Set<String>> owners =
+                  rollbackRequiresStateTransitionDetails(tf.getTaskType())
+                      ? placementLockTasks
+                      : updatingTasks;
+              return owners
+                  .getOrDefault(task.getTargetUUID(), Collections.emptySet())
+                  .contains(tf.getUuid().toString());
             });
     responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
@@ -531,6 +545,25 @@ public class Commissioner {
   }
 
   /**
+   * Whether rollback of this task type replays a {@code state_transition_details} checkpoint (edit
+   * universe / add node). Such rollbacks are ineligible when no checkpoint was captured.
+   */
+  private boolean rollbackRequiresStateTransitionDetails(TaskType taskType) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskType);
+    return computer != null && computer.requiresStateTransitionDetails();
+  }
+
+  /**
+   * Whether the matching {@link TaskRollbackComputer} accepts rolling back the failed task on this
+   * universe. Submit path only; listing checks ownership from the task list's own query. No bound
+   * computer -> true.
+   */
+  private boolean isRollbackAllowedOnUniverse(TaskInfo taskInfo, UUID universeUUID) {
+    TaskRollbackComputer computer = taskRollbackComputers.get().get(taskInfo.getTaskType());
+    return computer == null || computer.canRollback(taskInfo, universeUUID);
+  }
+
+  /**
    * Submit-path eligibility: {@link #canTaskRollback(TaskInfo, Predicate)} with {@link
    * #canRollbackTaskOnUniverse(TaskInfo)}. The rollback task's precheck remains the authoritative
    * safety gate.
@@ -546,9 +579,10 @@ public class Commissioner {
   }
 
   /**
-   * Universe-aware rollback gate. If there is no {@code state_transition_details}, returns true
-   * (software-upgrade style). When details are present, requires placement ownership and a safe
-   * delta (including refusing dedicatedNodes flips).
+   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. If there is no
+   * {@code state_transition_details}, the rollback must not need that checkpoint. When details are
+   * present, requires placement ownership and a safe delta (including refusing dedicatedNodes
+   * flips).
    */
   private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
     try {
@@ -561,10 +595,17 @@ public class Commissioner {
       if (!universeOpt.isPresent()) {
         return false;
       }
+      if (!isRollbackAllowedOnUniverse(taskInfo, universeUUID)) {
+        return false;
+      }
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
-        return true;
+        // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
+        // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
+        // submit stays consistent with listing (which requires placement ownership the task never
+        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
+        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(
@@ -626,6 +667,7 @@ public class Commissioner {
     }
     TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
+    Map<UUID, Set<String>> placementLockByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
             String.class,
@@ -641,14 +683,22 @@ public class Commissioner {
             task.getTargetUUID(),
             UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD)
         .ifPresent(
-            id ->
-                updatingTaskByTargetMap
-                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
-                    .add(id));
+            id -> {
+              updatingTaskByTargetMap
+                  .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                  .add(id);
+              placementLockByTargetMap
+                  .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                  .add(id);
+            });
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
-        task, taskInfo.getSubTasks(), updatingTaskByTargetMap, lastTaskByTargetMap);
+        task,
+        taskInfo.getSubTasks(),
+        updatingTaskByTargetMap,
+        placementLockByTargetMap,
+        lastTaskByTargetMap);
   }
 
   // Returns a map of target to updating task UUID.

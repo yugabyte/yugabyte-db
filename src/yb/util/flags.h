@@ -105,6 +105,11 @@ namespace yb {
 // See gflags.h for more information.
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 
+// ParseCommandLineFlags() with remove_flags for test and benchmark binaries. Before parsing, it
+// defaults --TEST_promote_all_auto_flags to ShouldTestPromoteAllAutoFlags(), so these binaries run
+// with all AutoFlags promoted unless the binary opts out or the command line overrides it.
+void ParseCommandLineFlagsForTests(int* argc, char*** argv);
+
 void RegisterGlobalFlagsCallbacksOnce();
 
 // Reads the given file and updates the value of all flags specified in the file. Returns true on

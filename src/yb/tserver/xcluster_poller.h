@@ -122,6 +122,16 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void SetPaused(bool is_paused);
 
+  bool IsShutdownComplete() const { return shutdown_completed_; }
+  bool IsDdlQueuePoller() const { return ddl_queue_handler_ != nullptr; }
+
+  // Whether this is a paused ddl_queue poller blocked inside a replicated DDL. Lock free.
+  bool ShouldKillStuckDdlBackend() const;
+
+  // Terminates the Postgres backend running that DDL. Blocks on a Postgres round trip, so must not
+  // be called while holding locks.
+  void KillStuckDdlBackend();
+
   const ash::WaitStateInfoPtr& wait_state() { return wait_state_; }
 
  private:
@@ -210,6 +220,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::atomic<uint32> idle_polls_ = 0;
 
   bool processed_change_metadata_op_in_last_poll_ = false;
+  bool TEST_has_polled_ = false;
 
   // Replication errors that are tracked and reported to the master.
   std::mutex replication_error_mutex_;

@@ -237,6 +237,8 @@ class LockablePgClientSession {
 
  public:
   auto id() const { return session_.id(); }
+  pid_t pid() const { return session_.pid(); }
+  PgOid TEST_database_oid() const { return session_.TEST_database_oid(); }
 
   template <class... Args>
   explicit LockablePgClientSession(
@@ -1033,6 +1035,12 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
           ready = false;
           break;
         }
+        for (const auto& failure : status_resp.tablet_status().vector_index_failed_backfills()) {
+          if (failure.table_id() == req.table_id()) {
+            return StatusFromPB(failure.status()).CloneAndPrepend(
+                Format("Vector index backfill failed on tablet $0", tablet->tablet_id()));
+          }
+        }
         bool tablet_ready = false;
         VLOG_WITH_FUNC(4)
             << "Finished on " << tablet->tablet_id() << ": "
@@ -1131,8 +1139,13 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       oid_chunk.allocated_from_secondary_space = use_secondary_space;
       oid_chunk.oid_cache_invalidations_count = 0;
     }
-    uint32_t highest_received_invalidations_count =
-        tablet_server_.get_oid_cache_invalidations_count();
+    // The master process has no xCluster context and nothing to invalidate its OID cache.
+    const auto* xcluster_context = session_context_.xcluster_context;
+    const uint32_t highest_received_invalidations_count =
+        xcluster_context ? VERIFY_RESULT_PREPEND(
+                               xcluster_context->GetOidCacheInvalidationsCount(),
+                               "Cannot allocate a new object identifier")
+                         : 0;
     while (oid_chunk.oid_count == 0 ||
            oid_chunk.oid_cache_invalidations_count < highest_received_invalidations_count) {
       // We don't have any valid OIDs left so fetch more.
@@ -2955,6 +2968,15 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return session_registry_.Count();
   }
 
+  std::optional<PgOid> TEST_SessionDatabaseOid(pid_t pid) {
+    for (const auto& session_info : session_registry_.Snapshot()) {
+      if (session_info->session().pid() == pid) {
+        return session_info->session().TEST_database_oid();
+      }
+    }
+    return std::nullopt;
+  }
+
   std::unordered_map<PgOid, HybridTime> GetDatabasePins() {
     const uint64_t min_txn_age_micros =
         static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
@@ -3010,6 +3032,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   void TEST_SetMockService(PgClientServiceMockImpl* mock) {
     session_context_.TEST_mock_service = mock;
   }
+
+  PgTableCache& TEST_TableCache() { return table_cache_; }
 
  private:
   client::YBClient& client() { return *client_future_.get(); }
@@ -3226,6 +3250,10 @@ std::unordered_map<PgOid, HybridTime> PgClientServiceImpl::GetDatabasePins() {
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
 
+std::optional<PgOid> PgClientServiceImpl::TEST_SessionDatabaseOid(pid_t pid) {
+  return impl_->TEST_SessionDatabaseOid(pid);
+}
+
 size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
   return impl_->TEST_ExchangeThreadPoolWorkersCreated();
 }
@@ -3233,6 +3261,8 @@ size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
 void PgClientServiceImpl::TEST_SetMockService(PgClientServiceMockImpl* mock) {
   impl_->TEST_SetMockService(mock);
 }
+
+PgTableCache& PgClientServiceImpl::TEST_TableCache() { return impl_->TEST_TableCache(); }
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

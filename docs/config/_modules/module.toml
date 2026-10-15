@@ -6,7 +6,7 @@
 # as it's intended to be a section of the final 'module.toml'.
 [hugoVersion]
   extended = true
-  min = "0.145.0"
+  min = "0.151.0"
 
 [[imports]]
   path = "github.com/google/docsy"

@@ -58,6 +58,8 @@ DEFINE_UNKNOWN_int32(txn_max_apply_batch_records, 100000,
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
 
+DECLARE_bool(TEST_vector_index_skip_reverse_mapping_write);
+
 DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
@@ -259,6 +261,9 @@ void HandleRegularRecord(
 
 Status TombstoneVectorReverseMappingIds(
     rocksdb::DirectWriteHandler& handler, Slice ids, DocHybridTime write_ht) {
+  if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
+    return Status::OK();
+  }
   RSTATUS_DCHECK_EQ(
       ids.size() % vector_index::VectorId::StaticSize(), 0, Corruption,
       Format("Wrong size of deleted vector ids: $0", ids.ToDebugHexString()));
@@ -779,7 +784,10 @@ ApplyIntentsContext::ApplyIntentsContext(
     const docdb::StorageSet& apply_to_storages,
     TableType table_type,
     ApplyIntentsContextCompleteListener complete_listener)
-      // TODO(vector_index) Add support for large transactions.
+      // TODO(vector_index): Add support for large transactions. Their later chunks are applied by
+      // a deferred task that carries apply_to_storages across vector index list changes, which
+      // StorageSet does not support yet; see the TODO in docdb::StorageSet. That requires
+      // reworking TransactionApplyData::apply_to_storages, which the deferred task keeps.
     : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr),
           intents_db, key_bounds, file_filter_ht),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
@@ -1151,7 +1159,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
     const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
-    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id)
+    TableType table_type, std::atomic<bool>* can_advance_intents_flush_op_id,
+    XClusterTargetApplied xcluster_target_applied)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
@@ -1160,7 +1169,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
       table_type_(table_type),
-      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id) {
+      can_advance_intents_flush_op_id_(can_advance_intents_flush_op_id),
+      xcluster_target_applied_(xcluster_target_applied) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1406,9 +1416,11 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   std::optional<VectorIndexesUpdater> vector_indexes_updater;
   IntraTxnWriteId write_id = 0;
   if (ShouldMaintainVectorIndexes(table_type_)) {
+    // On an xCluster target write_hybrid_time_ is the source's hybrid time, which can be below
+    // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        write_hybrid_time_, write_id);
+        write_hybrid_time_, write_id, xcluster_target_applied_.get());
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
@@ -1538,6 +1550,12 @@ VectorIndexesUpdater::VectorIndexesUpdater(
 
 bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
     const DocVectorIndex& vector_index) const {
+  // Also applies to xCluster targets: a restore can only bring a deactivated index back as of a
+  // time before it was deactivated. An active index has an invalid cutoff, which compares above
+  // any commit time.
+  if (commit_ht_ > vector_index.deactivated_hybrid_time()) {
+    return false;
+  }
   return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
 }
 

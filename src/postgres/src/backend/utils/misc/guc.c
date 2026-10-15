@@ -121,6 +121,7 @@
 #include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
+#include "commands/yb_analyze.h"
 #include "common/ip.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
@@ -907,7 +908,9 @@ bool		yb_enable_pg_subscription = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
+static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
+static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
@@ -915,6 +918,7 @@ static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
+static bool yb_disable_ddl_transaction_block_for_read_committed;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -3492,13 +3496,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
-						 "be executed in a separate DDL transaction instead of "
-						 "the as part of the enclosing transaction block even "
-						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
-						 "other words, for Read Committed, fall back to the "
-						 "mode when ysql_yb_ddl_transaction_block_enabled is "
-						 "false."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -3786,6 +3784,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_analyze_width_skip", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Do not materialize sampled values ANALYZE will not read."),
+			gettext_noop("The statistics code ignores varlena values wider than its "
+						 "per-type width threshold, so ANALYZE keeps only their size."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_analyze_width_skip,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,
 			gettext_noop("Set to true when upgrading extensions during "
 						 "a YSQL major version upgrade."),
@@ -3973,6 +3983,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_dump_presplit_in_create,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_xcluster_analyze_replication", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to enable capturing ANALYZE for xCluster DDL "
+						 "replication. Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_xcluster_analyze_replication,
 		true,
 		NULL, NULL, NULL
 	},
@@ -6286,6 +6308,31 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_ddl_wait_for_master_prefetch_drain_ms", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Maximum time a DDL waits for the master to work through the catalog "
+						 "prefetches caused by the previous catalog version bump, before "
+						 "bumping the version again."),
+			gettext_noop("Each bump sends every tserver to the master leader for a fresh catalog "
+						 "prefetch, and a bump before the previous wave drains adds to it rather "
+						 "than replacing it. Spacing bumps out trades latency in this session for "
+						 "load on the leader. The wait runs up to twice this long while the "
+						 "leader is turning away prefetches that are already under way, since "
+						 "adding to that discards work it has started. This is a deadline, not "
+						 "an expected wait: a leader that is keeping up reports no load and "
+						 "nothing waits at all. A leader that stays loaded is the other end: "
+						 "every transaction pays the full deadline, so a long migration runs at "
+						 "one catalog version bump per deadline. The wait counts against "
+						 "statement_timeout. On a leader that is already loaded, the DDL itself "
+						 "would often reach that timeout anyway. 0 disables the wait. The DDL "
+						 "proceeds when the time is up whether or not the leader has drained."),
+			GUC_UNIT_MS
+		},
+		&yb_ddl_wait_for_master_prefetch_drain_ms,
+		30000, 0, 86400000,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_max_num_invalidation_messages", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Max number of invalidation messages supported for incremental "
 						 "catalog cache refresh."),
@@ -6308,6 +6355,21 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_log_heap_snapshot_on_exit_threshold,
 		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_startup_free_memory_release_threshold", PGC_SIGHUP, RESOURCES_MEM,
+			gettext_noop("When a backend finishes connection startup, return "
+						 "the free memory held by TCMalloc to the operating "
+						 "system if it is at least this amount."),
+			gettext_noop("0 (the default) always releases. -1 disables the release."),
+			GUC_UNIT_KB
+		},
+		&yb_startup_free_memory_release_threshold,
+		0,
 		-1,
 		INT_MAX,
 		NULL, NULL, NULL
@@ -7719,6 +7781,22 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
+		{"yb_test_catalog_preload_cache_list", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Catalog caches to fill when preloading the catalog."),
+			gettext_noop("A comma separated list of catalogs, catalog caches, or "
+						 "indexes of catalog caches. If set, "
+						 "ysql_catalog_preload_additional_tables and "
+						 "ysql_catalog_preload_additional_table_list are "
+						 "ignored for prefetch and prefill."),
+			GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_catalog_preload_cache_list_string,
+		"",
+		yb_check_test_catalog_preload_cache_list,
+		yb_assign_test_catalog_preload_cache_list, NULL
+	},
+
+	{
 		{"yb_extra_commands_to_retry", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Comma-separated list of command tags to additionally "
 						 "retry on a serialization error."),
@@ -7775,6 +7853,23 @@ static struct config_string ConfigureNamesString[] =
 		check_yb_dist_tracecontext,
 		assign_yb_dist_tracecontext,
 		NULL
+	},
+
+	{
+		{"yb_origination_time_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Origination time to stamp on this session's "
+						 "writes and commits instead of the time each "
+						 "transaction originated. Takes a Unix timestamp in "
+						 "microseconds; 0 means unset."),
+			gettext_noop("Set by the tablet server on internal connections "
+						 "that do work on behalf of an earlier statement, "
+						 "such as index backfill."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_origination_time_override_string,
+		"0",
+		yb_check_origination_time_override,
+		yb_assign_origination_time_override, NULL
 	},
 
 	/* End-of-list marker */

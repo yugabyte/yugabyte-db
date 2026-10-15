@@ -205,8 +205,10 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
     Map<String, String> tsFlagMap = new HashMap<>();
     tsFlagMap.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
     tsFlagMap.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "0");
-    tsFlagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), tsFlagMap);
+    toggleDDLMode(tsFlagMap, /* useLegacy */ false);
+    Map<String, String> masterFlagMap = new HashMap<>();
+    toggleDDLMode(masterFlagMap, /* useLegacy */ false);
+    restartClusterWithAdditionalFlags(masterFlagMap, tsFlagMap);
 
     long oldVersion = getLogicalClientVersionFromPgEndpoint();
 

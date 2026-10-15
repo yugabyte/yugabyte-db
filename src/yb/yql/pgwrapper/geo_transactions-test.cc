@@ -15,12 +15,15 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/util/format.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
@@ -29,17 +32,12 @@ using std::string;
 
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(use_tablespace_based_transaction_placement);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
-DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
 DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -342,15 +340,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
  protected:
   void SetUp() override {
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
   }
 };
@@ -684,10 +674,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(3, count);
-  count = EXPECT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = EXPECT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0$1_2", kTablePrefix, kLocalRegion)));
   ASSERT_EQ(1, count);
 }
@@ -753,7 +743,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks1;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks1 += strings::Substitute(
+    placement_blocks1 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -764,7 +754,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i);
   }
 
-  std::string tablespace1_sql = strings::Substitute(
+  std::string tablespace1_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace1 WITH (replica_placement='{
             "num_replicas": $0,
@@ -774,7 +764,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
 
   std::string placement_blocks2;
   for (size_t i = 1; i <= NumRegions(); ++i) {
-    placement_blocks2 += strings::Substitute(
+    placement_blocks2 += Format(
         R"#($0{
               "cloud": "cloud0",
               "region": "region$1",
@@ -785,7 +775,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
         i > 1 ? "," : "", i, i == NumRegions() ? 1 : (i + 1));
   }
 
-  std::string tablespace2_sql = strings::Substitute(
+  std::string tablespace2_sql = Format(
       R"#(
           CREATE TABLESPACE tablespace2 WITH (replica_placement='{
             "num_replicas": $0,
@@ -1064,14 +1054,7 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
 
   void SetUp() override {
     // These tests are failing when table-level locks are enabled due to #28317.
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    // The in-txn-block write fastpath requires transactional DDL, so keep the two flags
-    // consistent.
-    ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
@@ -1567,10 +1550,10 @@ TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRe
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName1)));
   ASSERT_EQ(1, count);
-  count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
         "SELECT COUNT(*) FROM $0", kTableName2)));
   ASSERT_EQ(101, count);
 }

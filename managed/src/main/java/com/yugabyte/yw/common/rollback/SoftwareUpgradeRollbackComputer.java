@@ -6,8 +6,10 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,20 @@ public class SoftwareUpgradeRollbackComputer implements TaskRollbackComputer {
   @Inject
   public SoftwareUpgradeRollbackComputer(UpgradeUniverseHandler upgradeUniverseHandler) {
     this.upgradeUniverseHandler = upgradeUniverseHandler;
+  }
+
+  /**
+   * The failed task must still own the universe, as listing requires. Ownership starts at the
+   * freeze, so a task that failed before it (in prechecks, or aborted before the freeze) is
+   * refused: the universe still describes an earlier upgrade, and a rollback would downgrade that
+   * one. After the freeze, the rollback's own precheck ({@link RollbackUpgradeParams#verifyParams})
+   * decides.
+   */
+  @Override
+  public boolean canRollback(TaskInfo failedTask, UUID universeUUID) {
+    return Universe.maybeGet(universeUUID)
+        .map(u -> u.getUniverseDetails().isOwnedByTask(failedTask.getUuid()))
+        .orElse(false);
   }
 
   @Override

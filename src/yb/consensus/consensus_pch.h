@@ -181,7 +181,6 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"

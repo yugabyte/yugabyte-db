@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include "yb/common/common.pb.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
 
 #include "yb/util/mem_tracker_fwd.h"
@@ -33,6 +31,6 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlibIndexTraits(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-    HnswBackend backend, const MemTrackerPtr& mem_tracker);
+    const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::ann_methods
