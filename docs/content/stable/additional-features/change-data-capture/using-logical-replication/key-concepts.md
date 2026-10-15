@@ -110,6 +110,8 @@ A publication is a set of changes generated from a table or a group of tables, a
 
 Publications are different from schemas and do not affect how the table is accessed. Each table can be added to multiple publications if needed. Publications may currently only contain tables. Objects must be added explicitly, except when a publication is created for ALL TABLES.
 
+Changing a publication while a slot is streaming takes effect at commit time with [implicit publication](../advanced-topic/#implicit-publication), the default from v2026.1, or at the next refresh with [periodic publication](../advanced-topic/#periodic-publication), the only mode in earlier releases. A slot's mode is fixed when the slot is created. See [Adding tables to publication](../advanced-topic/#adding-tables-to-publication) for the version table.
+
 For more information, refer to [Publication](https://www.postgresql.org/docs/15/logical-replication-publication.html#LOGICAL-REPLICATION-PUBLICATION) in the PostgreSQL documentation.
 
 ### Output plugin
