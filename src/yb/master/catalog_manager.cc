@@ -14431,24 +14431,10 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;
   for (const auto& ts : ts_descs) {
-    // Touch every tserver with 0 load.
-    state.per_ts_replica_load_[ts->permanent_uuid()];
+    // Global load is only a tie-breaker, so the tserver's last heartbeat count is good enough and
+    // avoids walking every tablet in the cluster.
+    state.per_ts_replica_load_[ts->permanent_uuid()] = ts->num_live_replicas();
     state.per_ts_protege_load_[ts->permanent_uuid()];
-  }
-
-  SharedLock l(mutex_);
-  // todo(zdrudi): replace this with a better index
-  for (const auto& info : tables_->GetAllTables()) {
-    // Ignore system, colocated and deleting/deleted tables.
-    {
-      auto l = info->LockForRead();
-      if (info->is_system() ||
-          info->IsSecondaryTable() ||
-          l->started_deleting()) {
-        continue;
-      }
-    }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }
