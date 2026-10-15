@@ -766,7 +766,8 @@ Status ClusterAdminCli::RunHelp(const CLIArguments& args) {
     PrintCommandUsage(commands_[cmd->second], std::cout);
     return Status::OK();
   }
-  if (PrintOperationNames(std::cout, topic) > 0) {
+  // An empty filter matches every operation, so treat "help ''" like "yb-admin ''".
+  if (!topic.empty() && PrintOperationNames(std::cout, topic) > 0) {
     std::cout << endl
               << "Run '" << prog_name_ << " help <operation>' for the usage of one operation."
               << endl;

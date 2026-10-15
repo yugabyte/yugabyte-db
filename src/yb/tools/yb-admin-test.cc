@@ -462,6 +462,13 @@ TEST_F(AdminCliTest, HelpOperationDispatch) {
   ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "help", "42"), &output, &error));
   ASSERT_STR_CONTAINS(error, "Invalid operation: 42");
 
+  // An empty topic does not list every operation.
+  output.clear();
+  error.clear();
+  ASSERT_NOK(Subprocess::Call(ToStringVector(exe_path, "help", ""), &output, &error));
+  ASSERT_STR_CONTAINS(error, "Invalid operation: ");
+  ASSERT_TRUE(output.empty()) << output;
+
   // No match falls back to the typo suggestions.
   output.clear();
   error.clear();
