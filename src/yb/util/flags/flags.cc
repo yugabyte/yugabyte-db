@@ -228,7 +228,8 @@ DECLARE_bool(help);
 TAG_FLAG(help, stable);
 
 DECLARE_bool(helpfull);
-// We hide --helpfull because it's the same as --help for now.
+// Hidden because --help is already the full dump for master/tserver. yb-admin, whose --help is an
+// overview, advertises --helpfull from that overview instead.
 TAG_FLAG(helpfull, stable);
 TAG_FLAG(helpfull, hidden);
 

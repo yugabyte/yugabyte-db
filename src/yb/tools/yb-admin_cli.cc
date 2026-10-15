@@ -77,6 +77,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 #include "yb/util/jsonwriter.h"
 
 DEFINE_NON_RUNTIME_string(master_addresses, "localhost:7100",
@@ -740,7 +741,7 @@ void ClusterAdminCli::PrintHelpRequest(const HelpRequest& request, std::ostream&
   std::sort(own_flags.begin(), own_flags.end());
   out << endl << prog_name_ << "'s own flags:" << endl;
   for (const auto& [left, default_value] : own_flags) {
-    out << "  " << left << std::string(width - left.size() + 2, ' ') << "(default: "
+    out << "  " << RightPadToWidth(left, narrow_cast<int>(width + 2)) << "(default: "
         << default_value << ")" << endl;
   }
 }
@@ -885,7 +886,7 @@ void ClusterAdminCli::SetUsage() {
     width = std::max(width, invocation.size());
   }
   for (const auto& [invocation, description] : help_lines) {
-    str << "  " << invocation << string(width - invocation.size() + 2, ' ') << description << endl;
+    str << "  " << RightPadToWidth(invocation, narrow_cast<int>(width + 2)) << description << endl;
   }
 
   str << endl
