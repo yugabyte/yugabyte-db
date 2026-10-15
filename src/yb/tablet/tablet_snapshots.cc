@@ -395,7 +395,19 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // The checkpoint only takes vector index chunks that are already flushed, and nothing replays
+    // the rest into a tablet restored from it (#34759), so flush the vector indexes along with the
+    // regular DB. As in split, a second vector-only flush seals vectors from applies that finished
+    // during the first one, which the regular DB flush already covers.
+    s = tablet().Flush(
+        FlushMode::kSync,
+        FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+        rocksdb::FlushReason::kSnapshotCreation);
+    if (s.ok()) {
+      s = tablet().Flush(
+          FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+          rocksdb::FlushReason::kSnapshotCreation);
+    }
   }
 
   if (PREDICT_FALSE(!s.ok())) {
