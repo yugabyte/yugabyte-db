@@ -59,25 +59,17 @@ yb-admin \
 
 ### Online help
 
-To list all operations, run `yb-admin help` from the YugabyteDB home directory.
+To list all operations, run `yb-admin` with no arguments from the YugabyteDB home directory.
 
 ```sh
-./bin/yb-admin help
+./bin/yb-admin
 ```
 
-The `help` operation is available in v2026.2 and later. In earlier versions, run `./bin/yb-admin` with no arguments to list the operations.
+In v2026.2 and later, you can also use the `help` operation:
 
-To display the usage of a single operation, pass its name to `help`:
-
-```sh
-./bin/yb-admin help delete_table
-```
-
-You can also pass any text to list the operations whose name contains it. For example, to list all snapshot operations:
-
-```sh
-./bin/yb-admin help snapshot
-```
+- `./bin/yb-admin help` lists all operations.
+- `./bin/yb-admin help delete_table` displays the usage of a single operation.
+- `./bin/yb-admin help snapshot` lists the operations whose name contains the given text, in this case all snapshot operations.
 
 ## Commands
 
