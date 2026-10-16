@@ -537,6 +537,7 @@ Status CDCStateTable::WaitForCreateTableToFinishWithoutCache() {
 Result<std::shared_ptr<client::TableHandle>> CDCStateTable::OpenTable() {
   auto cdc_table = std::make_shared<client::TableHandle>();
   RETURN_NOT_OK(cdc_table->Open(kCdcStateYBTableName, &client()));
+  table_opened_.store(true, std::memory_order_release);
   return cdc_table;
 }
 
@@ -694,6 +695,13 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
   RETURN_NOT_OK(client().IsCreateTableInProgress(kCdcStateYBTableName, &creation_in_progress));
   SCHECK(!creation_in_progress, Uninitialized, "CDC State Table creation is in progress");
   return GetTableRange(std::move(field_filter), iteration_status);
+}
+
+Result<bool> CDCStateTable::TableExists() {
+  if (table_opened_.load(std::memory_order_acquire)) {
+    return true;
+  }
+  return client().TableExists(kCdcStateYBTableName);
 }
 
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
