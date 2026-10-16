@@ -209,6 +209,17 @@ If running on a virtual machine, execute the following to tune kernel settings:
     sysctl vm.max_map_count
     ```
 
+1. If the node runs a Linux kernel older than 5.2, configure the parameter `vm.overcommit_memory` as follows:
+
+    ```sh
+    sudo sysctl -w vm.overcommit_memory=1
+    sudo bash -c 'sysctl vm.overcommit_memory=1 >> /etc/sysctl.conf'
+    ```
+
+    Kernels older than 5.2 include those in Red Hat Enterprise Linux 8, AlmaLinux 8, Rocky Linux 8, and Oracle Linux 8 with the Red Hat Compatible Kernel. Run `uname -r` to check the kernel version.
+
+    With the default setting (`0`), these kernels can refuse a memory request when the node is nearly out of memory, and the YugabyteDB process that made the request stops. With `1`, the Linux OOM killer handles out-of-memory conditions instead, as it does on kernels 5.2 and later. On kernels 5.2 and later, leave the default setting.
+
 ### Using systemd
 
 If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, add the ulimits in the `Service` section of the systemd configuration file:

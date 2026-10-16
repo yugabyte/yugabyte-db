@@ -216,6 +216,17 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
         sysctl vm.max_map_count
         ```
 
+    1. If the node runs a Linux kernel older than 5.2, configure the parameter `vm.overcommit_memory` as follows:
+
+        ```sh
+        sudo sysctl -w vm.overcommit_memory=1
+        sudo bash -c 'sysctl vm.overcommit_memory=1 >> /etc/sysctl.conf'
+        ```
+
+        Kernels older than 5.2 include those in Red Hat Enterprise Linux 8, AlmaLinux 8, Rocky Linux 8, and Oracle Linux 8 with the Red Hat Compatible Kernel. Run `uname -r` to check the kernel version.
+
+        With the default setting (`0`), these kernels can refuse a memory request when the node is nearly out of memory, and the YugabyteDB process that made the request stops. With `1`, the Linux OOM killer handles out-of-memory conditions instead, as it does on kernels 5.2 and later. On kernels 5.2 and later, leave the default setting.
+
 1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
     - List the available storage volumes, as follows:
