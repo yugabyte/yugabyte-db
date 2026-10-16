@@ -189,7 +189,6 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   using ReportedTablets = std::vector<ReportedTablet>;
 
-  // Returns true if report was processed, or false if full report should be requested.
   Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
@@ -662,6 +661,7 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
       "Report from an orphaned tablet" /* reason */, epoch);
 }
 
+// Returns true if report was processed, or false if full report should be requested.
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
@@ -674,22 +674,8 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
   }
   const auto& report = *report_ptr;
 
-  if (!ts_desc->has_tablet_report()) {
-    if (report.is_incremental()) {
-      LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
-                 << ": Received an incremental tablet report when a full one was needed";
-      return false;
-    } else if (report.has_full_report_seq_no() &&
-               report.full_report_seq_no() != report.sequence_number() &&
-               report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
-      LOG(WARNING) << Format(
-          "$0 sent a tablet report with sequence number $1, which continues full report starting "
-          "at sequence number $2. However we expected a tablet report continuing the full report "
-          "starting at sequence number $3",
-          ts_desc->permanent_uuid(), report.sequence_number(),
-          report.full_report_seq_no(), ts_desc->receiving_full_report_seq_no());
-      return false;
-    }
+  if (!ts_desc->PreCheckTabletReport(report)) {
+    return false;
   }
 
   int num_tablets = report.updated_tablets_size();
@@ -782,14 +768,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
                 << reported_tablets.size() << " tablets.";
     }
     if (completed_full_report) {
-      // We have a tablet report only once we're done processing all the chunks of the initial
-      // report.
-      ts_desc->set_has_tablet_report(completed_full_report);
-    } else if (!ts_desc->receiving_full_report_seq_no()) {
-      LOG_WITH_FUNC(INFO)
-          << ts_desc->permanent_uuid() << " set full report seq no: "
-          << report.full_report_seq_no();
-      ts_desc->set_receiving_full_report_seq_no(report.full_report_seq_no());
+      ts_desc->CompleteFullReport(ts_instance);
     }
   }
 
