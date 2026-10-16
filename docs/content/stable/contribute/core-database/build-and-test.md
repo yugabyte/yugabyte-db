@@ -181,8 +181,8 @@ YB_USE_EXTERNAL_BUILD_ROOT=1 ./yb_build.sh release --no-ccache \
     --pgo-data-path <build_root>/pgo-profiles/mutex-benchmark.profdata --cxx-benchmark mutex-benchmark
 ```
 
-A build root remembers its profile, and giving a different one or none at all re-runs CMake and rebuilds.
-`YB_USE_EXTERNAL_BUILD_ROOT=1` puts the build under `<source root>__build/`, so your regular `release` build root is not rebuilt twice, once with the profile and once without, when you switch back.
+A build root remembers its profile: later builds in it without `--pgo-data-path` keep using it, and only a different profile, a different build root, or `--clean` changes that.
+`YB_USE_EXTERNAL_BUILD_ROOT=1` puts this build under `<source root>__build/`, so your regular `release` build root stays a plain release build.
 To measure the LTO variant, add `--full-lto` to both commands: collect the profile with the same linking type you measure with, because the inlining decisions differ.
 
 When to use it: to check whether a change behaves the same way in a PGO-optimized build, or whether a result is fragile under a different code layout.

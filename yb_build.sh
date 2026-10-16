@@ -1083,21 +1083,24 @@ if [[ $build_type == "prof_gen" ]]; then
   cmake_opts+=( "-DYB_PGO_INSTRUMENT_TYPE=$pgo_instrument_type" )
 fi
 
-# The profile path lives in CMakeCache.txt once cmake has seen it, so re-run cmake whenever the path
-# given now differs from the cached one. That covers giving a different profile and, with the
-# -U below, dropping the flag after it was used; otherwise the build silently stays on the old
-# profile.
+# The profile path lives in CMakeCache.txt once cmake has seen it, and a build root keeps it until a
+# different one is given: later invocations without --pgo-data-path (the release pipeline's initdb
+# step, test runs) must not change how the root is compiled. So re-run cmake only when a different
+# profile is given explicitly, and say so when a cached profile is in effect.
+cached_pgo_data_path=""
+if [[ -f $BUILD_ROOT/CMakeCache.txt ]]; then
+  cached_pgo_data_path=$(sed -n 's/^YB_PGO_DATA_PATH:[A-Z]*=//p' "$BUILD_ROOT/CMakeCache.txt")
+fi
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
-else
-  cmake_opts+=( "-UYB_PGO_DATA_PATH" )
-fi
-if [[ ${force_no_run_cmake} == "false" && -f $BUILD_ROOT/CMakeCache.txt ]]; then
-  cached_pgo_data_path=$(sed -n 's/^YB_PGO_DATA_PATH:[A-Z]*=//p' "$BUILD_ROOT/CMakeCache.txt")
-  if [[ $cached_pgo_data_path != "$pgo_data_path" ]]; then
+  if [[ -n $cached_pgo_data_path && $cached_pgo_data_path != "$pgo_data_path" &&
+        ${force_no_run_cmake} == "false" ]]; then
     log "PGO profile changed from '${cached_pgo_data_path}' to '${pgo_data_path}', re-running CMake"
     force_run_cmake=true
   fi
+elif [[ -n $cached_pgo_data_path ]]; then
+  log "Using the PGO profile recorded in this build root: ${cached_pgo_data_path}" \
+      "(use a different build root, or --clean, to build without it)"
 fi
 
 if [[ $bolt_enabled == "true" ]]; then
