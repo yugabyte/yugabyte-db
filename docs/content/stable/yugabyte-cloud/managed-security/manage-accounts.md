@@ -4,8 +4,6 @@ headertitle: Manage accounts
 linkTitle: Manage accounts
 description: Create and manage multiple accounts for your organization.
 headcontent: Create and manage multiple accounts for your organization
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-cloud:
     identifier: manage-accounts
@@ -14,23 +12,13 @@ menu:
 type: docs
 ---
 
-## Overview
-
 Using multi-account management, you can add multiple accounts for your organization, each with its own access control and billing.
 
-{{<tip title="Early Access">}}
-Multi-account management is Early Access; to try it, contact {{% support-cloud %}}.
-{{</tip>}}
+Previously, when you signed up for YugabyteDB Aeon, you had a single account:
 
-### Before multi-account management
-
-Currently, when you sign up for YugabyteDB Aeon, you get a single account, and multi-account management is not enabled.
-
-- All users you invite, all clusters you create, billing, VPCs, API keys, and access controls live inside that one account.
-- Users can only belong to that one account, and the same user cannot sign in to access a second, separate Aeon account.
-- If you require environment separation (for example, staging vs. production) or team isolation, you must create entirely separate Aeon sign-ups with different email addresses.
-
-### What multi-account management adds
+- All users you invited, all clusters you created, billing, VPCs, API keys, and access controls lived inside that one account.
+- Users could only belong to that one account, and the same user could not sign in to access a second, separate Aeon account.
+- If you needed environment separation (for example, staging vs. production) or team isolation, you needed to create entirely separate Aeon sign-ups with different email addresses.
 
 With Multi-account management, a single user can be a member of multiple accounts simultaneously under a single organization, with a different role in each account. Each account remains fully isolated:
 
@@ -43,11 +31,17 @@ This is conceptually similar to how AWS Organizations or GCP projects work: a si
 
 A common use case is separating environments (development, staging, production) or separating business units or product lines that need distinct budgets, teams, and clusters, while still allowing designated administrators to move between accounts with the same login.
 
-Multi-account is in Early Access; see the [Limitations](#limitations-early-access).
+## Switch accounts
+
+Switch between accounts using the **Account Switcher** menu in the top left corner of the Aeon window.
+
+Users can switch between accounts they have joined. Organization Super Admins can switch between all accounts and access organization settings.
 
 ## Manage accounts
 
-To manage your organization and its accounts, click the **Organization** menu in the top left corner and choose your organization to display the **Accounts** page.
+Only an organization Super Admin can access organization settings and manage accounts.
+
+To manage your organization and its accounts, in the **Account Switcher** menu, choose your organization.
 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 
@@ -55,48 +49,44 @@ The **Accounts** page lists the accounts in your organization.
 
 To rename an account, click the **Edit Account Name** icon next to the name in the list, enter a new name, and click **Confirm**.
 
-To delete an account, click **...** and choose **Delete Account**. Note that you cannot delete the account where you are currently signed in; switch accounts and return to this page to delete the account.
-
-Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
+To delete an account, click **...** and choose **Delete Account**. Note that you cannot delete the account where you are currently signed in; [switch accounts](#switch-accounts) and return to the organization **Accounts** page to delete the account.
 
 Keep in mind the following when using multiple accounts:
 
-- Account users are managed from the account. To [manage users](../manage-access/) for an account, first [switch to the account](#switch-accounts).
+- Account users and roles are managed from the account. To [manage users](../manage-access/) for an account, first [switch to the account](#switch-accounts).
 - To add users to multiple accounts, you must sign in to each account and send an invitation.
 - If multiple accounts are enabled, all users must choose the account to sign into when they sign in.
 
-To change your organization name, navigate to **Organization > Settings** and enter a new name.
+To change your organization name, select the **Settings** page and enter a new name.
 
 ### Add accounts
 
 To add an account:
 
-1. Click the **Organization** menu in the top left corner and choose your organization and, on the **Accounts** page, click **Create Account**.
+1. In the **Account Switcher** menu, choose your organization.
+1. On the **Accounts** page, click **Create Account**.
 1. Enter a name for the account and click **Create Account**.
 
 The account is listed on the **Accounts** page.
-
-### Switch accounts
-
-To switch between accounts:
-
-- Click the **Organization** menu in the top left corner and choose the account you want to switch to.
 
 ## Manage organization users
 
 To view all users in your organization:
 
-- Navigate to **Organization > Security > Access Control > Users**.
+1. In the **Account Switcher** menu, choose your organization.
+1. On the **Security** page, select **Access Control > Users**.
 
-You can delete a user from your organization; this deletes the user from all accounts. To add users, go to the individual account and [invite them](../manage-access/).
+You can delete a user from your organization; this deletes the user from your organization and all accounts.
 
-Each user you add to individual accounts is added to your organization as a **Member** role.
+To add users, go to the individual account and [invite them](../manage-access/).
+
+Each user you add to individual accounts is added to your organization as a **Member** role. Members can switch between accounts they have joined.
 
 To change a user's role, in the **Organization Role** column, choose a role.
 
 - You cannot modify your own role.
 - Your organization can have a maximum of 5 Super Admins.
-- Users who are promoted to Super Admin are added to _all_ your accounts as an Admin.
+- Users who are promoted to Super Admin are added to _all_ your accounts as an [Admin](../managed-roles/#built-in-roles).
 
 ## View organization billing
 
@@ -114,5 +104,4 @@ To access the billing for an individual account, in the list, click **...** and 
 
 ## Limitations
 
-- **You must contact Yugabyte Support to enable it.** Contact {{% support-cloud %}} to enable multi-account for your organization. Once enabled, the users designated by Yugabyte Support (when enabling the feature) can create and manage accounts in Aeon without further support.
 - **No automation.** Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts. Automation of account lifecycle management is planned for GA.
