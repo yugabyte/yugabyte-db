@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.Util;
@@ -2244,21 +2245,23 @@ public class OtelCollectorConfigGenerator {
 
   /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847). Same per-node rules as SwamperHelper. MASTER_EXPORT
-   * is not gated: a master can start on a tserver-only node (master failover, edit universe), and
-   * no task regenerates the collector config when that happens.
+   * a closed port every interval (PLAT-21847). The collector config is written during configure,
+   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
+   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
+   * when it changes them). This is why MASTER_EXPORT is not gated.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
-    if (!nodeDetails.isTserver) {
+    boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
+    if (dedicatedMaster) {
       targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
     }
-    if (!nodeDetails.isTserver || !nodeDetails.isYsqlServer) {
+    if (dedicatedMaster || !nodeDetails.isYsqlServer) {
       targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
     }
-    if (!nodeDetails.isTserver || !nodeDetails.isYqlServer) {
+    if (dedicatedMaster || !nodeDetails.isYqlServer) {
       targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
     }
     return targets;

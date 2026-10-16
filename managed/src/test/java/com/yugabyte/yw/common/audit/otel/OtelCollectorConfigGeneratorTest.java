@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -685,6 +686,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     NodeDetails dedicatedMaster = new NodeDetails();
     dedicatedMaster.isMaster = true;
     dedicatedMaster.isTserver = false;
+    dedicatedMaster.dedicatedTo = ServerType.MASTER;
     assertEquals(
         EnumSet.complementOf(
             EnumSet.of(
@@ -693,13 +695,20 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                 ScrapeConfigTargetType.CQL_EXPORT)),
         OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(dedicatedMaster, all));
 
-    // MASTER_EXPORT is never dropped: a master can start on this node later without a config
-    // regeneration.
+    // A removed or stopped node has isTserver=false stored while add/start node writes its
+    // collector config. It must keep the tserver targets, because the tserver starts after.
+    NodeDetails beingReAdded = new NodeDetails();
+    beingReAdded.isTserver = false;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(beingReAdded, all));
+
+    // MASTER_EXPORT is never dropped: isMaster is stored only after a master move writes the
+    // collector config.
     NodeDetails tserverOnly = new NodeDetails();
     tserverOnly.isMaster = false;
-    assertTrue(
-        OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all)
-            .contains(ScrapeConfigTargetType.MASTER_EXPORT));
+    tserverOnly.dedicatedTo = ServerType.TSERVER;
+    assertEquals(
+        all, OtelCollectorConfigGenerator.getYugabyteScrapeTargetsForNode(tserverOnly, all));
   }
 
   private String generateConfig(
