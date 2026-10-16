@@ -577,3 +577,98 @@ SELECT COUNT(*) FROM users3;
 ERROR:  relation "users3" does not exist
 LINE 1: SELECT COUNT(*) FROM users3;
                              ^
+-- #34485: a function replaced after a savepoint must run its old definition
+-- after ROLLBACK TO.
+BEGIN;
+CREATE OR REPLACE FUNCTION f_34485_a() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 401; END $$;
+SELECT f_34485_a();
+ f_34485_a 
+-----------
+       401
+(1 row)
+
+SAVEPOINT sp1;
+CREATE OR REPLACE FUNCTION f_34485_a() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 402; END $$;
+SELECT f_34485_a();
+ f_34485_a 
+-----------
+       402
+(1 row)
+
+ROLLBACK TO SAVEPOINT sp1;
+SELECT f_34485_a();
+ f_34485_a 
+-----------
+       401
+(1 row)
+
+ROLLBACK;
+-- Same, with the function created before the transaction.
+CREATE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 401; END $$;
+CREATE FUNCTION f_34485_b_other() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       401
+(1 row)
+
+BEGIN;
+SAVEPOINT sp1;
+CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 402; END $$;
+CREATE OR REPLACE FUNCTION f_34485_b_other() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 2; END $$;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       402
+(1 row)
+
+ROLLBACK TO SAVEPOINT sp1;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       401
+(1 row)
+
+ROLLBACK;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       401
+(1 row)
+
+-- Same, with the replacement undone by an exception block instead of
+-- ROLLBACK TO.
+BEGIN;
+DO $d$
+BEGIN
+  CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 403; END $$;
+  RAISE NOTICE 'inside block: %', f_34485_b();
+  RAISE EXCEPTION 'undo';
+EXCEPTION WHEN raise_exception THEN
+  RAISE NOTICE 'after block: %', f_34485_b();
+END $d$;
+NOTICE:  inside block: 403
+NOTICE:  after block: 401
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       401
+(1 row)
+
+ROLLBACK;
+-- Same, with the replacement undone by aborting the whole transaction.
+BEGIN;
+CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 404; END $$;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       404
+(1 row)
+
+ROLLBACK;
+SELECT f_34485_b();
+ f_34485_b 
+-----------
+       401
+(1 row)
+
