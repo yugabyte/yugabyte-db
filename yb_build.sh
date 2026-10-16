@@ -513,12 +513,13 @@ run_cxx_benchmark() {
           "$BUILD_ROOT/benchmarks-*. Only programs added with ADD_YB_BENCHMARK are placed there."
   fi
   # In a prof_gen (PGO-instrumented) build, collect the profile under the build root instead of
-  # the current directory, and show how to merge it for a later --pgo-data-path build. %m keeps the
-  # executable and each instrumented shared library in their own raw file, as clang's default
-  # pattern does; previous raw files of this benchmark are removed so the merge sees one run.
+  # the current directory, in a subdirectory named after the instrumentation type (ir or csir), and
+  # show how to merge it for a later --pgo-data-path build. %m keeps the executable and each
+  # instrumented shared library in their own raw file, as clang's default pattern does; previous
+  # raw files of this benchmark are removed so the merge sees one run.
   local pgo_profile_dir=""
   if [[ $build_type == "prof_gen" ]]; then
-    pgo_profile_dir=$BUILD_ROOT/pgo-profiles
+    pgo_profile_dir=$BUILD_ROOT/pgo-profiles/$pgo_instrument_type
     mkdir -p "$pgo_profile_dir"
     rm -f "$pgo_profile_dir/$cxx_benchmark_name"-*.profraw
   fi

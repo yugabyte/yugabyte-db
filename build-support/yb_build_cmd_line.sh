@@ -179,7 +179,7 @@ Build options:
   --pgo-instrument-type <ir|csir>
     With the prof_gen build type: instrument the build for profile-guided optimization (PGO) with
     IR or context-sensitive IR profiles. A benchmark run with --cxx-benchmark in such a build
-    writes its profile to <build_root>/pgo-profiles/.
+    writes its profile to <build_root>/pgo-profiles/<instrumentation type>/.
   --pgo-data-path <profdata_file>
     Compile and link with the given merged llvm-profdata profile (-fprofile-use). Works with any
     build type; the release pipeline uses it with --full-lto. The build root remembers the profile:
