@@ -111,7 +111,7 @@ You can handle and mitigate read restart errors using the following techniques:
 
   Read-write SERIALIZABLE transactions and single-row (fast-path) writes don't face read restart errors, so they don't wait.
 
-  In {{<release "2025.2.7">}} and later, `deferred` also applies to DDL statements that read user tables, such as `REFRESH MATERIALIZED VIEW`, `CREATE TABLE AS`, `ALTER TABLE ... ADD FOREIGN KEY`, `ALTER TABLE ... VALIDATE CONSTRAINT`, and `ALTER TABLE` operations that rewrite the table.
+  In {{<release "2025.2.7">}} and later, `deferred` also applies to DDL statements that read user tables, such as `REFRESH MATERIALIZED VIEW`, `CREATE TABLE AS`, `ALTER TABLE ... ADD FOREIGN KEY`, and `ALTER TABLE ... VALIDATE CONSTRAINT`. This applies only when [transactional DDL](../transactional-ddl/#enable-transactional-ddl) is disabled (the default). With transactional DDL enabled, these DDLs don't get read restart errors, so `deferred` has no effect on them.
 
   ```sql
   SET yb_read_after_commit_visibility TO deferred;
