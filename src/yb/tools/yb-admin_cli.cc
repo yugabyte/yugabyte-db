@@ -134,14 +134,16 @@ constexpr auto kHelpOperation = "help";
 
 const char* GroupName(CommandGroup group) {
   switch (group) {
-    case CommandGroup::kUniverseAndCluster: return "Universe and cluster";
+    case CommandGroup::kUniverse: return "Universe";
     case CommandGroup::kTable: return "Table";
     case CommandGroup::kBackupAndSnapshot: return "Backup and snapshot";
     case CommandGroup::kMultiRegion: return "Multi-zone and multi-region deployment";
     case CommandGroup::kReadReplica: return "Read replica deployment";
     case CommandGroup::kSecurity: return "Security";
     case CommandGroup::kCdc: return "Change Data Capture (CDC)";
-    case CommandGroup::kXCluster: return "xCluster Replication";
+    case CommandGroup::kXClusterAutomatic: return "xCluster replication, automatic mode";
+    case CommandGroup::kXClusterManual: return "xCluster replication, manual mode";
+    case CommandGroup::kXClusterGeneral: return "xCluster replication, either mode";
     case CommandGroup::kDecommissioning: return "Decommissioning";
     case CommandGroup::kClusterBalancing: return "Cluster balancing";
     case CommandGroup::kUpgrade: return "Upgrade";
@@ -3614,7 +3616,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(compact_table_by_id);
   REGISTER_COMMAND(compaction_status);
   REGISTER_COMMAND(list_all_tablet_servers, {
-      .group = CommandGroup::kUniverseAndCluster,
+      .group = CommandGroup::kUniverse,
       .description = "List all tablet servers",
       .flags = {"exclude_dead"}});
   REGISTER_COMMAND(remove_tablet_server);

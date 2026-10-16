@@ -54,16 +54,19 @@ class YBTableName;
 namespace tools {
 
 // The groups `help` lists operations under, in the order it prints them. They follow the
-// sections of the yb-admin docs page, so help and docs group operations the same way.
+// sections of the yb-admin docs page, except that xCluster is split by replication mode so the
+// operations used together are listed together.
 enum class CommandGroup {
-  kUniverseAndCluster,
+  kUniverse,
   kTable,
   kBackupAndSnapshot,
   kMultiRegion,
   kReadReplica,
   kSecurity,
   kCdc,
-  kXCluster,
+  kXClusterAutomatic,
+  kXClusterManual,
+  kXClusterGeneral,
   kDecommissioning,
   kClusterBalancing,
   kUpgrade,
@@ -75,7 +78,8 @@ enum class CommandGroup {
 struct CommandMetadata {
   // Unset for operations not yet populated; they render as they did before groups existed.
   std::optional<CommandGroup> group = std::nullopt;
-  // One line, at most 80 characters, verb-first, no trailing period.
+  // One line, at most 80 characters, verb-first, no trailing period. An operation with a _by_id
+  // twin says how it identifies its target ("given its name"), since the twin says "by ID".
   std::string description = {};
   // Global gflags that change this operation's behavior. Register() CHECKs that each exists, so
   // a typo fails every test instead of silently dropping out of help.
