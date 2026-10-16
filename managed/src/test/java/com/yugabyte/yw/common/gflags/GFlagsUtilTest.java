@@ -20,17 +20,22 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -1093,5 +1098,37 @@ public class GFlagsUtilTest extends FakeDBApplication {
   public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
     assertFalse(
         GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
+  }
+
+  @Test
+  public void testJwtJWKSPathByProvider() throws IOException {
+    Customer customer = ModelFactory.testCustomer();
+    String hbaConf = "host all all 0.0.0.0/0 jwt jwks={\"keys\":[]}";
+    Path localDir = Files.createTempDirectory("jwks");
+    try {
+      String k8sHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.kubernetesProvider(customer).getUuid().toString());
+      String awsHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.awsProvider(customer).getUuid().toString());
+
+      String[] jwksFiles = localDir.toFile().list();
+      assertEquals(1, jwksFiles.length);
+      String jwksFile = jwksFiles[0];
+      assertEquals("{\"keys\":[]}", Files.readString(localDir.resolve(jwksFile)));
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/mnt/disk0/yw-data/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          k8sHbaConf);
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/home/yugabyte/tserver/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          awsHbaConf);
+    } finally {
+      FileUtils.deleteDirectory(localDir.toFile());
+    }
   }
 }
