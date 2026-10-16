@@ -1385,32 +1385,6 @@ When enabled, the PostgreSQL backend processes preload the `pg_am`, `pg_amproc`,
 
 If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
 
-##### --ysql_yb_catalog_preload_attname_cache
-
-{{% tags/wrap %}}
-
-Default: `true`
-{{% /tags/wrap %}}
-
-When `true`, catalog preload fills the `pg_attribute` cache used to look up a column by name. When `false`, that cache stays empty until a lookup needs it. Preload still fetches `pg_attribute`. v2025.2.8.0 and later only.
-
-On a schema with many columns, this cache and [ysql_yb_catalog_preload_attnum_cache](#ysql-yb-catalog-preload-attnum-cache) are most of the catalog cache memory in each PostgreSQL backend. Leaving either cache empty lowers the memory held after startup. The first lookup that needs the cache loads the entry.
-
-The flag applies to connections started after you change it, and to the next full catalog cache refresh. Preload runs at connection startup when [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is `true` or [ysql_use_relcache_file](#ysql-use-relcache-file) is `false`, and on every full catalog cache refresh.
-
-See [Skip preloading the pg_attribute caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/#skip-pg-attribute-cache-preload).
-
-##### --ysql_yb_catalog_preload_attnum_cache
-
-{{% tags/wrap %}}
-
-Default: `true`
-{{% /tags/wrap %}}
-
-When `true`, catalog preload fills the `pg_attribute` cache used to look up a column by number. When `false`, that cache stays empty until a lookup needs it. Preload still fetches `pg_attribute`. v2025.2.8.0 and later only.
-
-The flag applies to connections started after you change it, and to the next full catalog cache refresh. See [ysql_yb_catalog_preload_attname_cache](#ysql-yb-catalog-preload-attname-cache).
-
 ##### --ysql_enable_read_request_caching
 
 {{% tags/wrap %}}
@@ -1504,7 +1478,7 @@ When `true`, the YB-Master leader limits how many YSQL catalog prefetches it ser
 
 The limit stays off until every YB-Master and YB-TServer in the universe has been upgraded. A YB-TServer from an earlier version does not report that a read is a prefetch, so applying the limit before then would cover only the upgraded servers. A value you set yourself takes effect immediately and is kept when the upgrade is finalized.
 
-The number of prefetches allowed at once is [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches). The share of that limit available to a prefetch that is just starting is [master_new_ysql_catalog_prefetch_pct](#master-new-ysql-catalog-prefetch-pct).
+The number of prefetches allowed at once is [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches). The share of that limit available to a prefetch that is just starting is [master_new_ysql_catalog_prefetch_percent](#master-new-ysql-catalog-prefetch-percent).
 
 A prefetch past the limit is rejected. The client retries after backing off.
 
@@ -1519,16 +1493,16 @@ Maximum number of YSQL catalog prefetches the YB-Master leader serves at once wh
 
 `-1`, the default, is resolved once at process startup to `max(8, 2 * cores)` for this YB-Master. `0` means no limit. Setting the flag to `-1` after startup also means no limit, because that resolution runs only at startup.
 
-A prefetch beyond the limit is rejected, and the client retries. Set the limit at or above what the leader can serve. A lower limit makes those callers wait out their deadline and fail.
+A prefetch beyond the limit is rejected, and the client retries until its RPC deadline which is 10 minutes by default expires, and then the connection fails. Set the limit at or above what the leader can serve. A lower limit makes those callers wait out their deadline and fail.
 
-##### --master_new_ysql_catalog_prefetch_pct
+##### --master_new_ysql_catalog_prefetch_percent
 
 {{% tags/wrap %}}
 
 Default: `50`
 {{% /tags/wrap %}}
 
-Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, and a prefetch that refreshes a catalog cache, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`. v2025.2.8.0 and later only.
+Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`. v2025.2.8.0 and later only.
 
 A prefetch is a sequence of paged reads. Holding new prefetches to this share leaves room for sequences already under way to finish.
 
