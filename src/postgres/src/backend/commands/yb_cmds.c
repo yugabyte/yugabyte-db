@@ -1739,7 +1739,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				 * switch block. But, for now, only apply it to ALTER TABLE ...
 				 * ADD PRIMARY KEY/UNIQUE USING INDEX.
 				 */
-				/* YB_TODO_PG19MERGE: AT_AddConstraintRecurse -> AT_AddConstraint+cmd->recurse (PG 840ff5f451c). */
 				if (YBCIsInitDbModeEnvVarSet() &&
 					cmd->subtype == AT_AddConstraint && cmd->recurse &&
 					(((Constraint *) cmd->def)->contype == CONSTR_UNIQUE ||
