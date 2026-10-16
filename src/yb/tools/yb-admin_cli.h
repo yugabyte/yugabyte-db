@@ -64,6 +64,7 @@ enum class CommandGroup {
   kReadReplica,
   kSecurity,
   kCdc,
+  // Database-scoped replication: automatic and semi-automatic mode.
   kXClusterAutomatic,
   kXClusterManual,
   kXClusterGeneral,
