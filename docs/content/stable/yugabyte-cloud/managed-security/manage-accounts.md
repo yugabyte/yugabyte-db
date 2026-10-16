@@ -98,9 +98,14 @@ For more information on configuring social logins or federated authentication, r
 
 ## View organization activity
 
-Audit organization activity using the **Activity** tab on the **Security** page. The **Activity** tab provides the following two logs:
+To audit organization activity, navigate to **Organization > Security > Activity**.
 
-- **Console Activity** - lists organization activity, such as adding and removing accounts, including the activity type, who performed the activity, timestamp, and result.
+The **Activity** tab provides the following two logs:
+
+- **Console Activity** - lists organization activity, including the activity type, who performed the activity, timestamp, and result.
+
+    Organization activity includes creating, editing, and deleting accounts; changing the organization name; changing organization user roles; changing login types and federated authentication.
+
 - **Authentication Activity** - lists all login activity, including the client IP address, activity type, number of attempts, timestamp, and result.
 
 To view activity details and associated messages, select the activity in the list to display the **Activity Details** sheet.
