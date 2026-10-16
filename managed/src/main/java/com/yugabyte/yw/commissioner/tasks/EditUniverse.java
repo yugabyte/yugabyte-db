@@ -194,6 +194,14 @@ public class EditUniverse extends EditUniverseTaskBase {
         }
       }
 
+      // A full move leaves only nodes it added. Only here, after the old nodes are gone, are they
+      // all the nodes left, so the move may decide the universe's node_exporter scheme.
+      if (taskParams().nodeDetailsSet.stream()
+          .filter(n -> n.state != NodeDetails.NodeState.ToBeRemoved)
+          .allMatch(n -> n.state == NodeDetails.NodeState.ToBeAdded)) {
+        createUpdateNodeExporterTlsTask(universe);
+      }
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

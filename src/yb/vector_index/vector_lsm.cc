@@ -1591,6 +1591,22 @@ auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::ManifestIndexes() const
+    -> Result<std::vector<VectorIndexPtr>> {
+  std::vector<VectorIndexPtr> result;
+  SharedLock lock(mutex_);
+  RETURN_NOT_OK(failed_status_);
+  result.reserve(immutable_chunks_.size());
+  for (const auto& chunk : immutable_chunks_) {
+    // A chunk rolled but not yet in the manifest could still have inserts running.
+    if (chunk->index && chunk->IsInManifest()) {
+      result.push_back(chunk->index);
+    }
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
@@ -1637,26 +1653,6 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       << ", time to search index chunks: " << chunks_search_time.ToPrettyString();
 
   return intermediate_results;
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
-    const vector_index::VectorId& vector_id) const {
-  // Search in insert registry is not implemented, so just wait until all entries are inserted.
-  while (insert_registry_->HasRunningTasks()) {
-    std::this_thread::sleep_for(10ms);
-  }
-  auto indexes = VERIFY_RESULT(AllIndexes());
-  for (const auto& index : indexes) {
-    auto vector_res = index->GetVector(vector_id);
-    if (vector_res.ok()) {
-      return true;
-    }
-    if (!vector_res.status().IsNotFound()) {
-      return vector_res.status();
-    }
-  }
-  return false;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2071,6 +2067,63 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   TEST_SYNC_POINT("VectorLSM::Flush:AfterDoFlush");
 
   return wait ? promise.get_future().get() : Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
+    const std::function<void(storage::UserFrontiers&)>& modify) {
+  RETURN_NOT_OK(RUNNING_STATUS());
+
+  AcquireManifest();
+  auto release_manifest = ScopeExit([this] { ReleaseManifest(); });
+
+  std::vector<std::pair<ImmutableChunkPtr, storage::UserFrontiersPtr>> modified;
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  WritableFile* manifest_file = nullptr;
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+    SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
+           "Cannot modify chunk frontiers of a vector index with unflushed entries");
+    for (const auto& chunk : immutable_chunks_) {
+      SCHECK(chunk->IsInManifest(), IllegalState,
+             "Cannot modify chunk frontiers of a vector index with unflushed chunks");
+    }
+    if (immutable_chunks_.empty()) {
+      return Status::OK();
+    }
+
+    // Modify copies, so the in-memory chunks keep matching the manifest if the write fails.
+    modified.reserve(immutable_chunks_.size());
+    for (const auto& chunk : immutable_chunks_) {
+      auto frontiers = chunk->user_frontiers ? chunk->user_frontiers->Clone()
+                                             : storage::UserFrontiersPtr{};
+      if (frontiers) {
+        modify(*frontiers);
+      }
+      chunk->AddToUpdate(update);
+      if (frontiers) {
+        auto& added_chunk = *update.mutable_add_chunks(update.add_chunks_size() - 1);
+        frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+        frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+      }
+      modified.emplace_back(chunk, std::move(frontiers));
+    }
+    manifest_file = VERIFY_RESULT(RollManifest());
+  }
+
+  VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+
+  {
+    std::lock_guard lock(mutex_);
+    for (auto& [chunk, frontiers] : modified) {
+      chunk->user_frontiers = std::move(frontiers);
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Modified frontiers of " << modified.size() << " chunks";
+  return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

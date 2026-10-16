@@ -165,7 +165,8 @@ class TabletVectorIndexes :
 
   // Stamps `frontier` as flushed on every vector index, see
   // DocVectorIndex::ModifyFlushedFrontier.
-  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
@@ -174,7 +175,10 @@ class TabletVectorIndexes :
     return has_vector_indexes_.load();
   }
 
-  Status Verify();
+  // Checks the specified vector index, see CheckVectorIndex.
+  Result<VectorIndexCheckResultPB> Check(
+      const TableId& index_table_id, size_t max_inconsistencies, CoarseTimePoint deadline)
+      EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;

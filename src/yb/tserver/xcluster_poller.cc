@@ -75,6 +75,10 @@ DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
 DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
                  "If true, polling will be skipped.");
 
+DEFINE_test_flag(bool, xcluster_block_first_poll, false,
+    "If true, pollers that have not yet sent a GetChanges request will not send one. Pollers that "
+    "have already polled are not affected.");
+
 DEFINE_test_flag(bool, xcluster_simulate_get_changes_response_error, false,
                  "Simulate xCluster GetChanges returning an error.");
 
@@ -404,6 +408,13 @@ void XClusterPoller::DoPoll() {
     SchedulePoll();
     return;
   }
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_block_first_poll) && !TEST_has_polled_) {
+    idle_polls_ = FLAGS_async_replication_max_idle_wait;
+    SchedulePoll();
+    return;
+  }
+  TEST_has_polled_ = true;
 
   const auto xcluster_simulated_lag_ms = FLAGS_TEST_xcluster_simulated_lag_ms;
   if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {

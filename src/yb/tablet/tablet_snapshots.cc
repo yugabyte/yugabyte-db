@@ -717,8 +717,13 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   if (snapshot_dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
-    // TODO(pitr) apply transactions and reset intents.
+    // TODO(pitr) apply intents of transactions committed at or before restore_at.
     CompleteShutdownStorages(op_pauses);
+    // Drop intents like the snapshot path does. Otherwise provisional records of transactions
+    // committed after restore_at survive and are resolved as committed by readers.
+    if (!intents_db_dir.empty() && env().FileExists(intents_db_dir)) {
+      RETURN_NOT_OK(env().DeleteRecursively(intents_db_dir));
+    }
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
@@ -812,10 +817,12 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Stamp the same op id
-  // on the vector indexes, otherwise they keep their snapshot time OpId and bootstrap replays the
-  // rolled back writes back into them.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(frontier));
+  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
+  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
+  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
+  // or of an imported backup, it would skip this group's writes to them.
+  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kForce));
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";

@@ -2942,7 +2942,7 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
       if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
-        PlacementInfoUtil.validatePartitions(newCluster);
+        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
@@ -3169,6 +3169,9 @@ public class UniverseCRUDHandler {
         newInstallGFlags.value,
         universe.getName());
     universe.setNewInstallGFlags(newInstallGFlags);
+    if (primaryCluster != null && Util.isKubernetesBased(primaryCluster)) {
+      universe.updateConfig(Map.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    }
   }
 
   // This method enforces the user tags provided in runtime config.

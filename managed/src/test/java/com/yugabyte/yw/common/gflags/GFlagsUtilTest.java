@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -189,6 +191,21 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
     String mergeKeyValues = mergeCSVs(csv1, csv2, true);
     assertThat(mergeKeyValues, equalTo("key1=val1,key2=val2,qwe,key3=val3,qwe asd"));
+  }
+
+  @Test
+  public void testAreNewInstallGFlagsApplied() {
+    long customerId = ModelFactory.testCustomer().getId();
+    Universe vmUniverse =
+        ModelFactory.createUniverse("vm-universe", customerId, Common.CloudType.aws);
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(vmUniverse));
+
+    Universe k8sUniverse =
+        ModelFactory.createUniverse("k8s-universe", customerId, Common.CloudType.kubernetes);
+    assertFalse(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+    k8sUniverse.updateConfig(
+        ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
   }
 
   @Test

@@ -127,21 +127,27 @@ const (
 	// OCIKeyOCIDField field name to denote in Json request
 	OCIKeyOCIDField = "ociKeyOcid"
 
-	// OCIKmsAuthTypeAPIKey is API signing key authentication
-	OCIKmsAuthTypeAPIKey = "API_KEY"
-	// OCIKmsAuthTypeInstancePrincipal is OCI instance principal authentication
-	OCIKmsAuthTypeInstancePrincipal = "INSTANCE_PRINCIPAL"
+	// OCIAuthTypeAPIKey is API signing key authentication
+	OCIAuthTypeAPIKey = "API_KEY"
+	// OCIAuthTypeInstancePrincipal is OCI instance principal authentication
+	OCIAuthTypeInstancePrincipal = "INSTANCE_PRINCIPAL"
 
-	// OCITenancyIDEnv env variable name for oci kms config
+	// OCITenancyIDEnv env variable name for oci kms config and provider
 	OCITenancyIDEnv = "OCI_TENANCY"
-	// OCIUserIDEnv env variable name for oci kms config
+	// OCIUserIDEnv env variable name for oci kms config and provider
 	OCIUserIDEnv = "OCI_USER"
-	// OCIFingerprintEnv env variable name for oci kms config
+	// OCIFingerprintEnv env variable name for oci kms config and provider
 	OCIFingerprintEnv = "OCI_FINGERPRINT"
-	// OCIPrivateKeyFileEnv env variable name for oci kms config
+	// OCIPrivateKeyFileEnv env variable name for oci kms config and provider
 	OCIPrivateKeyFileEnv = "OCI_PRIVATE_KEY_FILE"
-	// OCIRegionEnv env variable name for oci kms config
+	// OCIRegionEnv env variable name for oci kms config and provider
 	OCIRegionEnv = "OCI_REGION"
+	// OCIAuthTypeEnv env variable name for oci provider
+	OCIAuthTypeEnv = "OCI_AUTH_TYPE"
+	// OCICompartmentIDEnv env variable name for oci provider
+	OCICompartmentIDEnv = "OCI_COMPARTMENT_ID"
+	// OCIHostedZoneIDEnv env variable name for oci provider
+	OCIHostedZoneIDEnv = "OCI_HOSTED_ZONE_ID"
 
 	// HashicorpVaultTokenEnv env variable name for hashicorp vault
 	HashicorpVaultTokenEnv = "VAULT_TOKEN"
@@ -518,6 +524,8 @@ const (
 	AzureProviderType = "azu"
 	// GCPProviderType type
 	GCPProviderType = "gcp"
+	// OCIProviderType type
+	OCIProviderType = "oci"
 	// K8sProviderType type
 	K8sProviderType = "kubernetes"
 	// OnpremProviderType type
@@ -924,10 +932,26 @@ func ValidExposingServiceStates() []string {
 	return []string{ExposedServiceState, UnexposedServiceState, NoneServiceState}
 }
 
-// IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP
+// IsCloudBasedProvider returns true if the provider is AWS, Azure, GCP or OCI
 func IsCloudBasedProvider(providerType string) bool {
 	return providerType == AWSProviderType ||
-		providerType == AzureProviderType || providerType == GCPProviderType
+		providerType == AzureProviderType || providerType == GCPProviderType ||
+		providerType == OCIProviderType
+}
+
+// ProviderCodes returns the supported provider codes. OCI is listed only
+// when the preview feature flag is enabled
+func ProviderCodes() []string {
+	codes := []string{AWSProviderType, GCPProviderType, AzureProviderType}
+	if IsFeatureFlagEnabled(PREVIEW) {
+		codes = append(codes, OCIProviderType)
+	}
+	return append(codes, OnpremProviderType, K8sProviderType)
+}
+
+// ProviderCodesString returns the supported provider codes as a comma separated string
+func ProviderCodesString() string {
+	return strings.Join(ProviderCodes(), ", ")
 }
 
 const (

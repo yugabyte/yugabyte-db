@@ -1893,6 +1893,44 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("CREATE TABLE test4(k INT PRIMARY KEY REFERENCES test3(k))"));
     thread_holder.JoinAll();
 
+    // Case: A long (auto) ANALYZE is not interrupted by DISCARD ALL
+    auto pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                       .host = ts2->bind_host(),
+                                                       .port = ts2->ysql_port(),
+                                                   })
+                                         .Connect());
+    thread_holder.AddThreadFunctor([&conn1]() -> void {
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+      ASSERT_OK(conn1.Execute("ANALYZE test1, test2"));
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+    });
+    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+    for (int i = 0; i < 20; ++i) {
+      ASSERT_OK(pooler_conn.Execute("DISCARD ALL"));
+    }
+    thread_holder.JoinAll();
+
+    // Case: (auto) ANALYZE is not interrupted by a long DISCARD ALL. DISCARD ALL resets session
+    // GUCs before it commits, so the delay must come from a role default.
+    ASSERT_OK(conn2.Execute("CREATE ROLE pooler LOGIN"));
+    ASSERT_OK(conn2.Execute("ALTER ROLE pooler SET yb_test_delay_next_ddl=" + wait_time_str));
+    auto delayed_pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                               .host = ts3->bind_host(),
+                                                               .port = ts3->ysql_port(),
+                                                               .user = "pooler",
+                                                           })
+                                                 .Connect());
+    thread_holder.AddThreadFunctor([&delayed_pooler_conn]() -> void {
+      ASSERT_OK(delayed_pooler_conn.Execute("DISCARD ALL"));
+    });
+    ASSERT_OK(LogWaiter(ts3, wait_string).WaitFor(30s));
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+    // Join before asserting: the thread is still using delayed_pooler_conn.
+    auto analyze_status = conn2.Execute("ANALYZE test1, test2");
+    thread_holder.JoinAll();
+    ASSERT_OK(analyze_status);
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+
     // Case: A long regular DDL cannot be interrupted by (auto) ANALYZE
     thread_holder.AddThreadFunctor(
         [&conn1]() -> void { ASSERT_OK(conn1.Execute("ALTER TABLE test3 ADD COLUMN v1 INT")); });

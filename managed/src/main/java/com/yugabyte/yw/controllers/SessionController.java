@@ -30,19 +30,16 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
+import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.AlertingData;
@@ -61,16 +58,11 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.rbac.ResourceGroup;
-import com.yugabyte.yw.models.rbac.Role;
-import com.yugabyte.yw.models.rbac.RoleBinding;
-import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
-import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -142,10 +134,6 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject private AlertConfigurationService alertConfigurationService;
-
-  @Inject private AlertDestinationService alertDestinationService;
-
   @Inject private SessionHandler sessionHandler;
 
   @Inject private UserService userService;
@@ -160,7 +148,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
-  @Inject private PACollectorSync paCollectorSync;
+  @Inject private CustomerRegistrationHandler customerRegistrationHandler;
 
   private final ApiHelper apiHelper;
 
@@ -713,7 +701,7 @@ public class SessionController extends AbstractPlatformController {
         formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
     boolean multiTenant = config.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    int customerCount = Customer.getAll().size();
+    int customerCount = customerRegistrationHandler.countCustomersForRegistration();
     if (!multiTenant && customerCount >= 1) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
@@ -749,48 +737,14 @@ public class SessionController extends AbstractPlatformController {
       boolean isSuper,
       boolean generateApiToken,
       Http.Request request) {
-    Customer cust = Customer.create(data.getCode(), data.getName());
-    Users.Role role = Users.Role.Admin;
-    if (isSuper) {
-      role = Users.Role.SuperAdmin;
-    }
-    passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-
-    alertDestinationService.createDefaultDestination(cust.getUuid());
-    alertConfigurationService.createDefaultConfigs(cust);
-
-    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
-
-    boolean useNewAuthz =
-        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
-
-    // Sync all the built-in roles when a new customer is created.
-    R__Sync_System_Roles.syncSystemRoles(cust.getUuid());
-
-    if (useNewAuthz) {
-      Role newRbacRole = Role.get(cust.getUuid(), role.name());
-
-      // Now add the role binding for the above user.
-      ResourceGroup resourceGroup =
-          ResourceGroup.getSystemDefaultResourceGroup(cust.getUuid(), user);
-      // Create a single role binding for the user.
-      RoleBinding createdRoleBinding =
-          roleBindingUtil.createRoleBinding(
-              user.getUuid(), newRbacRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
-
-      log.info(
-          "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
-              + "with role '{}' (name '{}'), and default role binding '{}'.",
-          user.getUuid(),
-          RedactingService.SECRET_REPLACEMENT,
-          cust.getUuid(),
-          newRbacRole.getRoleUUID(),
-          newRbacRole.getName(),
-          createdRoleBinding.toString());
-    }
-
-    // Have to call it here, because customer only present inside the same transaction.
-    paCollectorSync.initialize(cust);
+    Users user =
+        customerRegistrationHandler.register(
+            data.getCode(),
+            data.getName(),
+            data.getEmail(),
+            data.getPassword(),
+            isSuper ? Users.Role.SuperAdmin : Users.Role.Admin);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;

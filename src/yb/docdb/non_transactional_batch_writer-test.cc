@@ -62,6 +62,10 @@ class CountingVectorIndex : public DocVectorIndex {
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
+  bool HasReverseMapping() const override { LOG(FATAL) << "Unexpected call"; }
+  Result<DocVectorIndexViewPtr> CreateImmutableView() override {
+    LOG(FATAL) << "Unexpected call";
+  }
   size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
       Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
@@ -73,7 +77,8 @@ class CountingVectorIndex : public DocVectorIndex {
   Status Compact() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
-  Status ModifyFlushedFrontier(const ConsensusFrontier&) override {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier&, rocksdb::FrontierModificationMode) override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<bool> AdvanceFlushedOpId(const OpId&) override { LOG(FATAL) << "Unexpected call"; }
@@ -84,9 +89,6 @@ class CountingVectorIndex : public DocVectorIndex {
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
-  Result<bool> HasVectorId(const vector_index::VectorId&) const override {
-    LOG(FATAL) << "Unexpected call";
-  }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
   Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
   uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }
@@ -124,7 +126,8 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id);
+        vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id,
+        XClusterTargetApplied::kFalse);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);

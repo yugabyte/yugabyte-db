@@ -197,6 +197,9 @@
             "hsts_enabled": {
               "type": "boolean"
             },
+            "multi_tenant": {
+              "type": "boolean"
+            },
             "custom_headers": {
               "type": "array"
             },

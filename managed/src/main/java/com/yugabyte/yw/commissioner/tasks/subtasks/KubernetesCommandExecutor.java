@@ -1315,9 +1315,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
+    boolean applyNewInstallGFlags = GFlagsUtil.areNewInstallGFlagsApplied(universeFromDB);
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(masterGFlags, universeFromDB, ServerType.MASTER);
+    }
     if (universeFromDBParams.fipsEnabled) {
       masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
     }
@@ -1338,11 +1342,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster
-        && universeFromDB
-            .getConfig()
-            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
-            .equals("true")) {
+    if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (primaryClusterIntent.enableYSQL) {
@@ -1379,6 +1379,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> tserverGFlags =
         GFlagsUtil.getGFlagsForAZ(
             azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(tserverGFlags, universeFromDB, ServerType.TSERVER);
+    }
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");

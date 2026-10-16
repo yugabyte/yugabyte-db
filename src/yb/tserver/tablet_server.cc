@@ -2523,6 +2523,7 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
   if (info.has_oid_cache_invalidations_count()) {
     UpdateOidCacheInvalidationsCount(info.oid_cache_invalidations_count());
   }
+  xcluster_context_->UpdatePersistenceBlockMap(info.persistence_block_map());
 }
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"sync"
@@ -593,4 +594,39 @@ func (e *StatusError) Cause() error {
 // Code returns the status code of the error.
 func (e *StatusError) Code() int {
 	return e.code
+}
+
+// WriteFileIfChanged replaces path atomically with content, owned by username, and leaves it alone if
+// it already has that content. Readers never see a partially written file.
+func WriteFileIfChanged(path, content string, mode os.FileMode, username string) error {
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == content {
+		return nil
+	}
+	userDetail, err := UserInfo(username)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return err
+	}
+	if !userDetail.IsCurrent {
+		if err := tmp.Chown(int(userDetail.UserID), int(userDetail.GroupID)); err != nil {
+			tmp.Close()
+			return err
+		}
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

@@ -1092,6 +1092,7 @@ extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
+extern bool YBCurrentStmtCannotIncrementCatalogVersion();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();

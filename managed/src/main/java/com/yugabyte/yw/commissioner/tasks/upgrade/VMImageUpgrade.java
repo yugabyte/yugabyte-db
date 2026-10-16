@@ -300,6 +300,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               nodeSet,
               context,
               taskParams().isYbcInstalled());
+          // Having re-provisioned every node, the upgrade may decide the universe's node_exporter
+          // scheme.
+          Set<String> upgraded =
+              allNodesSet.stream().map(n -> n.nodeName).collect(Collectors.toSet());
+          if (universe.getNodes().stream().allMatch(n -> upgraded.contains(n.nodeName))) {
+            createUpdateNodeExporterTlsTask(universe);
+          }
 
           createPersistCpuCgroupConfiguredTask(universe);
 

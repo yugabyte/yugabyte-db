@@ -820,7 +820,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
               BAD_REQUEST,
-              cloudType.name() + " instance with ephemeral storage can't have storageType set");
+              cloudType.name().toUpperCase()
+                  + " instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
@@ -2819,6 +2820,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return new File(xClusterInfo.sourceRootCertDirPath);
     }
     return null;
+  }
+
+  /**
+   * Returns true if task {@code taskUuid} owns this universe, as the updating task or the placement
+   * modification task. Retry and rollback eligibility both require it.
+   */
+  @JsonIgnore
+  public boolean isOwnedByTask(UUID taskUuid) {
+    return taskUuid != null
+        && (taskUuid.equals(updatingTaskUUID) || taskUuid.equals(placementModificationTaskUuid));
   }
 
   @JsonIgnore

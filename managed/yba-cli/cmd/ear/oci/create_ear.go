@@ -38,7 +38,7 @@ var createOCIEARCmd = &cobra.Command{
 		}
 		authType = strings.ToUpper(authType)
 		switch authType {
-		case util.OCIKmsAuthTypeAPIKey:
+		case util.OCIAuthTypeAPIKey:
 			missing := make([]string, 0)
 			for _, name := range apiKeyFlagNames {
 				if util.IsEmptyString(apiKeyValueFromFlagOrEnv(cmd, name)) {
@@ -53,7 +53,7 @@ var createOCIEARCmd = &cobra.Command{
 						strings.Join(missing, ", ")),
 					formatter.RedColor))
 			}
-		case util.OCIKmsAuthTypeInstancePrincipal:
+		case util.OCIAuthTypeInstancePrincipal:
 			if apiKeyFlagsSetCount(cmd) > 0 {
 				cmd.Help()
 				logrus.Fatalln(formatter.Colorize(
@@ -81,7 +81,7 @@ var createOCIEARCmd = &cobra.Command{
 func init() {
 	createOCIEARCmd.Flags().SortFlags = false
 
-	createOCIEARCmd.Flags().String("auth-type", util.OCIKmsAuthTypeAPIKey,
+	createOCIEARCmd.Flags().String("auth-type", util.OCIAuthTypeAPIKey,
 		"[Optional] OCI authentication type. Allowed values: API_KEY, INSTANCE_PRINCIPAL.")
 	createOCIEARCmd.Flags().String("vault-id", "",
 		"[Required] OCI vault OCID.")
@@ -155,7 +155,7 @@ func runCreateOCIEAR(cmd *cobra.Command) {
 		util.OCICompartmentIDField: compartmentID,
 		util.OCIKeyNameField:       keyName,
 	}
-	if authType == util.OCIKmsAuthTypeAPIKey {
+	if authType == util.OCIAuthTypeAPIKey {
 		requestBody[util.OCITenancyIDField] = apiKeyValueFromFlagOrEnv(cmd, "tenancy-id")
 		requestBody[util.OCIUserIDField] = apiKeyValueFromFlagOrEnv(cmd, "user-id")
 		requestBody[util.OCIFingerprintField] = apiKeyValueFromFlagOrEnv(cmd, "fingerprint")

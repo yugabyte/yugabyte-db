@@ -2677,12 +2677,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // At all other times, the address pointed to remains the same
   // (thus the value of this shared ptr remains the same), only
   // the underlying object is read or modified via cow read/write lock mechanism.
-  // We don't need a lock guard for changing this pointer value since
-  // we already acquire the leader write lock during catalog loading,
-  // so all concurrent accesses of this shared ptr -- either external via RPCs or
-  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
-  // are locked out since they grab the scoped leader shared lock that
-  // depends on this leader lock.
+  // Catalog load holds leader_mutex_ for writing, so RPC handlers and bg tasks (which hold
+  // ScopedLeaderSharedLock) never observe the swap. Some ClusterConfig() callers
+  // (e.g. XClusterSafeTimeService) do not hold leader_mutex_, so the pointer is accessed via
+  // std::atomic_load/std::atomic_store. Direct reads are only allowed on the load path.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // Transaction tables information.

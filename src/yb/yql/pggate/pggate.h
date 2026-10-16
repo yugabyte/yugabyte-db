@@ -16,6 +16,7 @@
 #include <concepts>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -641,6 +642,9 @@ class PgApiImpl {
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
+
+  Status DmlANNBindKeyFilter(
+      PgStatement *handle, std::span<const YbcPgVectorKeyColumn> columns);
 
   void IncrementIndexRecheckCount();
 

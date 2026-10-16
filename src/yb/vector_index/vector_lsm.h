@@ -14,8 +14,10 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -154,14 +156,24 @@ class VectorLSM {
   // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
   Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
 
+  // Applies `modify` to the frontiers of every chunk, and saves them as a single reset update in a
+  // new manifest file. Unlike adding a chunk, this can move the flushed frontier backwards. Fails
+  // when anything is unflushed. The caller keeps compactions off, so no compaction output can
+  // bring back frontiers computed before the change.
+  Status ModifyChunkFrontiers(const std::function<void(storage::UserFrontiers&)>& modify);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
   Result<size_t> TotalEntries() const;
+
+  // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
+  // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
+  // first to cover every vector inserted before the call.
+  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
 
   Status Flush(bool wait);
   // Waits for insert tasks already allocated when the wait started (including those that raced
