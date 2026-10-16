@@ -69,7 +69,7 @@ To add an account:
 
 The account is listed on the **Accounts** page.
 
-## Manage organization users
+## Manage organization users and authentication
 
 To view all users in your organization:
 
@@ -88,6 +88,30 @@ To change a user's role, in the **Organization Role** column, choose a role.
 - Your organization can have a maximum of 5 Super Admins.
 - Users who are promoted to Super Admin are added to _all_ your accounts as an [Admin](../managed-roles/#built-in-roles).
 
+### Social logins and federated authentication
+
+To configure social logins or federated authentication:
+
+- On the **Security** page, select **Access Control > Authentication**.
+
+For more information on configuring social logins or federated authentication, refer to [Manage account authentication](../managed-authentication/).
+
+## View organization activity
+
+Audit organization activity using the **Activity** tab on the **Security** page. The **Activity** tab provides the following two logs:
+
+- **Console Activity** - lists organization activity, such as adding and removing accounts, including the activity type, who performed the activity, timestamp, and result.
+- **Authentication Activity** - lists all login activity, including the client IP address, activity type, number of attempts, timestamp, and result.
+
+To view activity details and associated messages, select the activity in the list to display the **Activity Details** sheet.
+
+To filter the activity list, enter a search term. You can also filter the list by Source, Activity, Performed by, Result, and Date range.
+
+For [cluster activity](../../cloud-monitor/monitor-activity/), navigate to the cluster **Activity** tab.
+
+For individual [account activity](../../cloud-secure-clusters/cloud-activity/), [switch to the account](#switch-accounts) and navigate to **Security > Activity**.
+
+
 ## View organization billing
 
 Each account has its own [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
@@ -101,7 +125,3 @@ The organization **Billing** page lists all your accounts and the total across a
 You can view different billing periods or a custom range using the billing period dropdown menu.
 
 To access the billing for an individual account, in the list, click **...** and choose **View Detailed Breakdown**. This takes you to the account's Billing page.
-
-## Limitations
-
-- **No automation.** Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts. Automation of account lifecycle management is planned for GA.
