@@ -16,8 +16,7 @@ In addition to password authentication, you can use social logins or federated a
 
 To configure social logins and federated authentication:
 
-- Navigate to **Security > Access Control > Authentication**; or
-- If you have [Multi-account access](../manage-accounts/) enabled, navigate to **Organization > Security > Access Control > Authentication**.
+- Navigate to **Organization > Security > Access Control > Authentication**.
 
 {{< tip title="Allow pop-ups for federated authentication" >}}
 

@@ -18,7 +18,7 @@ In addition to password login, you can use social logins, including Google, GitH
 
 To manage the social logins available to your account users, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, or, if you have [Multi-account access](../../manage-accounts/) enabled, **Organization > Security > Access Control > Authentication**.
+1. Navigate **Organization > Security > Access Control > Authentication**.
 1. Click **Edit Configuration** to display the **Login Methods** dialog.
 
     ![Login methods](/images/yb-cloud/managed-authentication-social.png)
