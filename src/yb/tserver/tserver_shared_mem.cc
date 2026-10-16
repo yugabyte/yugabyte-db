@@ -13,7 +13,9 @@
 
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
@@ -158,8 +160,10 @@ class SharedExchangeHeader {
     return state_.load(std::memory_order_acquire) == SharedExchangeState::kResponseSent;
   }
 
-  Result<size_t> FetchResponse(std::chrono::system_clock::time_point deadline) {
-    RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &response_semaphore_));
+  Result<size_t> FetchResponse(
+      std::chrono::system_clock::time_point deadline, const SharedExchangeWaitPoller* poller) {
+    RETURN_NOT_OK(DoWait(
+        SharedExchangeState::kResponseSent, deadline, &response_semaphore_, poller));
     RETURN_NOT_OK(TransferState(SharedExchangeState::kResponseSent, SharedExchangeState::kIdle));
     return data_size_;
   }
@@ -200,22 +204,39 @@ class SharedExchangeHeader {
   Status DoWait(
       SharedExchangeState expected_state,
       std::chrono::system_clock::time_point deadline,
-      InterprocessSemaphore* semaphore) {
+      InterprocessSemaphore* semaphore,
+      const SharedExchangeWaitPoller* poller = nullptr) {
     auto state = state_.load(std::memory_order_acquire);
     for (;;) {
       if (state == SharedExchangeState::kShutdown) {
         return STATUS_FORMAT(ShutdownInProgress, "Shutting down shared exchange");
       }
-      auto wait_status = semaphore->TimedWait(deadline);
+      auto wait_status = semaphore->TimedWait(NextWakeUp(deadline, poller));
       state = state_.load(std::memory_order_acquire);
       if (state == expected_state) {
         return Status::OK();
       }
       if (wait_status.IsTimedOut()) {
-        return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
+        if (!poller || std::chrono::system_clock::now() >= deadline) {
+          return STATUS_FORMAT(
+              TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
+        }
+        poller->callback();
+        continue;
       }
       RETURN_NOT_OK(wait_status);
     }
+  }
+
+  static std::chrono::system_clock::time_point NextWakeUp(
+      std::chrono::system_clock::time_point deadline, const SharedExchangeWaitPoller* poller) {
+    if (!poller) {
+      return deadline;
+    }
+    const std::chrono::system_clock::time_point next_poll =
+        std::chrono::system_clock::now() +
+        std::chrono::milliseconds(poller->interval.ToMilliseconds());
+    return std::min(deadline, next_poll);
   }
 
   InterprocessSemaphore request_semaphore_{0};
@@ -444,8 +465,9 @@ bool SharedExchange::ResponseReady() {
   return header_.ResponseReady();
 }
 
-Result<Slice> SharedExchange::FetchResponse(CoarseTimePoint deadline) {
-  auto size_res = header_.FetchResponse(ToSystem(deadline));
+Result<Slice> SharedExchange::FetchResponse(
+    CoarseTimePoint deadline, const SharedExchangeWaitPoller* poller) {
+  auto size_res = header_.FetchResponse(ToSystem(deadline), poller);
   if (!size_res.ok()) {
     failed_previous_request_ = true;
     return size_res.status();
