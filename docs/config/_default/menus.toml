@@ -1024,6 +1024,22 @@
     showSection = true
     hideLink = true
 
+[[stable_yugabyte-cloud]]
+  name = "Serverless"
+  parent = "yugabytedb-managed"
+  weight = 23
+  identifier = "aeon-serverless-label"
+  [stable_yugabyte-cloud.params]
+    classes = "no-link"
+
+[[stable_yugabyte-cloud]]
+  name = "Distributed"
+  parent = "yugabytedb-managed"
+  weight = 25
+  identifier = "aeon-distributed-label"
+  [stable_yugabyte-cloud.params]
+    classes = "no-link"
+
 ########## Menus (in stable) for YB Voyager section
 
 [[stable_yugabyte-voyager]]

@@ -12,7 +12,9 @@ menu:
   stable_yugabyte-cloud:
     identifier: aeon-serverless
     parent: yugabytedb-managed
-    weight: 15
+    weight: 24
+    params:
+      classes: separator
 type: docs
 ---
 
