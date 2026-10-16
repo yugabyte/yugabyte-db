@@ -141,6 +141,34 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testYsqlHbaHelmOverridesRequireYsqlAuth() {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.universeOverrides =
+        "gflags:\n  tserver:\n    ysql_hba_conf_csv: host all all all md5\n";
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.universeOverrides = "tserver:\n  podLabels:\n    env: test\n";
+    userIntent.azOverrides =
+        Map.of("az-1", "gflags:\n  master:\n    ysql_hba_conf: host all all all md5\n");
+    assertEquals(
+        Map.of("az-1/gflags.master.ysql_hba_conf", "host all all all md5"),
+        GFlagsUtil.getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides));
+    exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
+    assertEquals(GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR, exception.getLocalizedMessage());
+
+    userIntent.enableYSQLAuth = true;
+    GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+  }
+
+  @Test
   public void testCheckGFlagsChanged() {
     UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.UserIntent intent2 = new UniverseDefinitionTaskParams.UserIntent();

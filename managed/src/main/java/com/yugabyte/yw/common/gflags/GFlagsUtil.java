@@ -1285,14 +1285,7 @@ public class GFlagsUtil {
       overrides.addAll(azOverrides.values());
     }
     for (String overridesYaml : overrides) {
-      Map<String, String> flatOverrides;
-      try {
-        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
-      } catch (Exception e) {
-        // Overrides that cannot be read cannot be checked, so they are not accepted either.
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
-      }
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
       for (String server : List.of("master", "tserver")) {
         String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
         if (value != null && !value.equals("true")) {
@@ -1307,6 +1300,40 @@ public class GFlagsUtil {
     }
   }
 
+  /** Returns the HBA gflags set in kubernetes helm overrides, keyed by AZ and override path. */
+  public static Map<String, String> getYsqlHbaHelmOverrides(
+      @Nullable String universeOverrides, @Nullable Map<String, String> azOverrides) {
+    Map<String, String> overridesByScope = new HashMap<>();
+    overridesByScope.put("", universeOverrides);
+    if (azOverrides != null) {
+      overridesByScope.putAll(azOverrides);
+    }
+    Map<String, String> result = new HashMap<>();
+    overridesByScope.forEach(
+        (scope, overridesYaml) -> {
+          Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+          for (String server : List.of("master", "tserver")) {
+            for (String gflag : YSQL_HBA_GFLAGS) {
+              String path = "gflags." + server + "." + gflag;
+              if (StringUtils.isNotBlank(flatOverrides.get(path))) {
+                result.put(scope + "/" + path, flatOverrides.get(path));
+              }
+            }
+          }
+        });
+    return result;
+  }
+
+  private static Map<String, String> flattenHelmOverrides(@Nullable String overridesYaml) {
+    try {
+      return HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+    } catch (Exception e) {
+      // Overrides that cannot be read cannot be checked, so they are not accepted either.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+    }
+  }
+
   /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.
@@ -1315,6 +1342,12 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
+
+    if (!userIntent.enableYSQLAuth
+        && !getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides)
+            .isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+    }
 
     if (userIntent.specificGFlags != null && userIntent.specificGFlags.isInheritFromPrimary()) {
       return;

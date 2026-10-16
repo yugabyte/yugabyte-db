@@ -111,10 +111,14 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
-      } else if (enableYSQL
+      } else if (isFirstTry
+          && enableYSQL
           && userIntent.enableYSQLAuth
           && !enableYSQLAuth
-          && GFlagsUtil.hasYsqlHbaGFlags(universe.getUniverseDetails().clusters)) {
+          && (GFlagsUtil.hasYsqlHbaGFlags(universe.getUniverseDetails().clusters)
+              || !GFlagsUtil.getYsqlHbaHelmOverrides(
+                      userIntent.universeOverrides, userIntent.azOverrides)
+                  .isEmpty())) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Cannot disable YSQL auth while ysql_hba_conf_csv or ysql_hba_conf is set.");
