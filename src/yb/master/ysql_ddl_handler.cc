@@ -760,6 +760,22 @@ void CatalogManager::UpdateDdlVerificationState(const TransactionId& txn,
   UpdateDdlVerificationStateUnlocked(txn, state);
 }
 
+void CatalogManager::HandleAlterTableTaskFailed(const TableInfo& table) {
+  const auto waiting_txns = table.GetDdlTxnsWaitingForSchemaVersion();
+  if (waiting_txns.empty()) {
+    return;
+  }
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  for (const auto& [schema_version, txn] : waiting_txns) {
+    auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
+    if (verifier_state && verifier_state->state == YsqlDdlVerificationState::kDdlPostProcessing) {
+      LOG(INFO) << "Alter of table " << table.id() << " to schema version " << schema_version
+                << " gave up, marking txn " << txn << " for re-verification";
+      verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessingFailed;
+    }
+  }
+}
+
 void CatalogManager::UpdateDdlRollbackToSubTxnStateUnlocked(
     const TransactionId& txn, const SubTransactionId sub_txn_id,
     YsqlDdlSubTransactionRollbackState state) {

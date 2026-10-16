@@ -101,6 +101,10 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       TabletInfo* tablet, uint32_t version, const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) = 0;
 
+  // Called when an AsyncAlterTable task for the table gives up without the tablet reporting the
+  // new schema version.
+  virtual void HandleAlterTableTaskFailed(const TableInfo& table) = 0;
+
   // A primary table is a non-colocated table or the dummy parent table created for a colocated
   // tablet. If you are calling GetTables to iterate over all tablets then PrimaryTablesOnly should
   // be kTrue to avoid unnecessarily iterating over colocated tables.

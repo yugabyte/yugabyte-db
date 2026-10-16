@@ -586,6 +586,12 @@ void AsyncAlterTable::Finished(const Status& status) {
   }
 }
 
+void AsyncAlterTable::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kFailed && table_) {
+    master_->catalog_manager()->HandleAlterTableTaskFailed(*table_);
+  }
+}
+
 bool AsyncAlterTable::SendRequest(int attempt) {
   ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
