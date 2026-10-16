@@ -71,6 +71,7 @@ void od_config_init(od_config_t *config)
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_wait_for_rfq_on_sync = true;
 	config->yb_backend_drain_timeout_ms = 100;
+	config->yb_data_directory = NULL;
 
 	od_list_init(&config->listen);
 }
@@ -127,6 +128,8 @@ void od_config_free(od_config_t *config)
 		if (config->hba_file)
 			free(config->hba_file);
 	}
+	if (config->yb_data_directory)
+		free(config->yb_data_directory);
 }
 
 od_config_listen_t *od_config_listen_add(od_config_t *config)

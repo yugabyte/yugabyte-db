@@ -20,6 +20,9 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.security.PrivateKey;
@@ -566,6 +569,22 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartWithSslGucs("");
 
     assertClientCertAccepted(REVOKED_CLIENT_CERT);
+  }
+
+  /*
+   * PostgreSQL opens a relative ssl_crl_file from its data directory, and conn mgr must load the
+   * same file. A tserver's pg_data is <base tmp dir>/<tserver dir>/pg_data, so the path climbs to
+   * the base tmp dir.
+   */
+  @Test
+  public void testRelativeSslCrlFile() throws Exception {
+    Files.copy(Paths.get(certsDir(), "ca.crl"),
+        Paths.get(TestUtils.getBaseTmpDir(), "relative_ca.crl"),
+        StandardCopyOption.REPLACE_EXISTING);
+    restartWithSslGucs("ssl_crl_file='../../relative_ca.crl'");
+
+    assertClientCertRejected(REVOKED_CLIENT_CERT);
+    assertClientCertAccepted(VALID_CLIENT_CERT);
   }
 
   /*
