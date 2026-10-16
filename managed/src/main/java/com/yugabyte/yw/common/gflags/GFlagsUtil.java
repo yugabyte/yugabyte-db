@@ -1703,6 +1703,28 @@ public class GFlagsUtil {
     }
   }
 
+  /**
+   * Whether the universe's servers run with its new install gflags. K8s universes created before
+   * {@link Universe#K8S_APPLY_NEW_INSTALL_GFLAGS} have them saved but never applied, and applying
+   * them later would change running workloads (read committed isolation, cost based optimizer).
+   */
+  public static boolean areNewInstallGFlagsApplied(Universe universe) {
+    return !Util.isKubernetesBasedUniverse(universe)
+        || Boolean.parseBoolean(
+            universe.getConfig().getOrDefault(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, "false"));
+  }
+
+  /**
+   * Adds the universe's new install gflags to the given gflags as defaults: values already in the
+   * map win, and ysql_pg_conf_csv entries are merged per key.
+   */
+  public static void mergeNewInstallGFlags(
+      Map<String, String> gflags, Universe universe, ServerType serverType) {
+    Map<String, String> newInstallGFlags = universe.getNewInstallGFlags(serverType);
+    mergeCSVs(gflags, newInstallGFlags, YSQL_PG_CONF_CSV, true);
+    newInstallGFlags.forEach(gflags::putIfAbsent);
+  }
+
   // Extract out the flag names from the undefok gflag.
   public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
     Set<String> undefokFlags = new HashSet<>();
