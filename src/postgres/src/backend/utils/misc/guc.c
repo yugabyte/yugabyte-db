@@ -5721,19 +5721,6 @@ define_custom_variable(struct config_generic *variable)
 
 	/* Check mapping between initial and default value */
 	Assert(check_GUC_init(variable));
-/* YB_TODO_PG19MERGE: verify ASAN workaround is still needed */
-#if 0
-#ifdef ADDRESS_SANITIZER		/* YB */
-	struct config_generic config_placeholder;
-
-	config_placeholder.name = name;
-	const char **nameAddr = &config_placeholder.name;
-#else
-	const char **nameAddr = &name;
-#endif
-	struct config_string *pHolder;
-	struct config_generic **res;
-#endif
 
 	/*
 	 * See if there's a placeholder by the same name.

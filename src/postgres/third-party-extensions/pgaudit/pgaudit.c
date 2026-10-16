@@ -1556,17 +1556,6 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls,
                                 bool ereport_on_violation)
 {
     /*
-     * YB_TODO_PG19MERGE: audit_executor_enabled() replaces the guard
-     * YB 04daa18c2d06 put on the get_role_oid() call below.
-     *   pg15:  auditRole set
-     *   pg19:  auditRole set || (auditLogBitmap & LOG_EXECUTOR) != 0
-     * The two differ when auditRole is unset and an executor class is enabled.
-     * pg15 skipped the lookup there, pg19 runs it, so the guard is weaker than
-     * before.  The lookup yields InvalidOid either way; only the syscache
-     * probe is new.
-     */
-
-    /*
      * Only do audit work when an executor-driven class is enabled or object
      * auditing via pgaudit.role might apply.  This short-circuits the role
      * lookup and per-statement DML processing for configurations such as
