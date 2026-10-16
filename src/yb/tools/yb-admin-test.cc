@@ -453,7 +453,7 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   }
   // Groups print in the docs page's order, Meta after them, ungrouped operations last.
   const std::vector<std::string> expected_groups = {
-      "Universe and cluster", "Backup and snapshot", "Meta", "Not yet grouped"};
+      "Universe", "Backup and snapshot", "Meta", "Not yet grouped"};
   ASSERT_EQ(groups, expected_groups);
   ASSERT_TRUE(std::find(names.begin(), names.end(), "help") != names.end());
   ASSERT_TRUE(
