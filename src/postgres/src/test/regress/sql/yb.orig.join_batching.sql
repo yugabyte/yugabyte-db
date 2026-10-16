@@ -980,9 +980,6 @@ on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
 
 RESET yb_bnl_enable_hashing;
 RESET join_collapse_limit;
-RESET enable_material;
-RESET enable_mergejoin;
-RESET enable_hashjoin;
 RESET yb_bnl_batch_size;
 
 drop table s1;
@@ -1159,7 +1156,6 @@ order by p1.c1, p1.c2;
 -- q2 is the outer relation.  Wrapped in a transaction so the row changes
 -- made by the actual UPDATE are rolled back.
 BEGIN;
--- YB_TODO_PG19MERGE: yb_enable_cbo is temporary off pending #34169
 /*+
   Set(enable_nestloop off)
   Set(enable_hashjoin off)
@@ -1167,7 +1163,7 @@ BEGIN;
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo off)
+  Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
 explain (costs off)
@@ -1182,7 +1178,7 @@ update q1
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo off)
+  Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
 update q1
@@ -1776,9 +1772,6 @@ select f2, count(ag2.f1) from
 
 RESET join_collapse_limit;
 RESET yb_prefer_bnl;
-RESET enable_material;
-RESET enable_mergejoin;
-RESET enable_hashjoin;
 RESET yb_bnl_batch_size;
 
 DROP TABLE ja0;
