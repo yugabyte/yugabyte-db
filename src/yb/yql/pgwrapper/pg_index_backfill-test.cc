@@ -2402,6 +2402,13 @@ TEST_P(PgIndexBackfillFastDefaultClientTimeout, LowerDefaultClientTimeout) {
 class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
  public:
   int GetNumMasters() const override { return 3; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFastClientTimeout::UpdateMiniClusterOptions(options);
+    // Leader failure detection after a master kill takes about 10 s in sanitizer builds.  The ysql
+    // lease must outlive it, or tservers kill the pg sessions running the CREATE INDEX.
+    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=30000");
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
