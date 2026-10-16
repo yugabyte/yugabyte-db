@@ -1486,7 +1486,7 @@ A prefetch past the limit is rejected. The client retries after backing off.
 
 {{% tags/wrap %}}
 
-Default: `-1`
+Default: `-1` (resolved at startup to max(8, 2 × cores))
 {{% /tags/wrap %}}
 
 Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`. v2025.2.8.0 and later only.
