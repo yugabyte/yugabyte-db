@@ -17,8 +17,8 @@ Env overrides:
                     sharing .git so fetches don't duplicate the object DB)
     YB_GH_REPO      upstream owner/name; default yugabyte/yugabyte-db
     YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
-                    Must be a fork of YB_GH_REPO; may be owned by the
-                    upstream org (e.g. yugabyte/yugabyte-db-backports).
+                    Must be a fork of YB_GH_REPO, with any owner, including
+                    the upstream org (e.g. yugabyte/yugabyte-db-backports).
     YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol.
                     Its path must name the YB_GH_FORK repo.
 """

@@ -28,7 +28,7 @@ $ARGUMENTS
 ## Prerequisites
 
 - `gh` CLI installed and authenticated (`gh auth status`).
-- A fork of `yugabyte/yugabyte-db` to push to: the authenticated `gh` user's personal fork by default, or `YB_GH_FORK=<owner>/<repo>`, which may be a fork owned by the `yugabyte` org (e.g. `yugabyte/yugabyte-db-backports`).
+- A fork of `yugabyte/yugabyte-db` to push to: the authenticated `gh` user's personal fork by default, or `YB_GH_FORK=<owner>/<repo>`, any fork of it, including one owned by the `yugabyte` org (e.g. `yugabyte/yugabyte-db-backports`).
 
 ## Workflow
 
