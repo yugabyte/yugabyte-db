@@ -38,7 +38,7 @@ The following types of row locks are supported:
 - FOR SHARE
 - FOR KEY SHARE
 
-The following example uses the FOR UPDATE row lock with the [fail-on-conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked.
+The following example uses the FOR UPDATE row lock with the [fail-on-conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. To run it, set the YB-TServer flag `enable_wait_queues=false`; with the default (`true`), YSQL uses [Wait-on-Conflict](../../../architecture/transactions/concurrency-control/#wait-on-conflict), and the `UPDATE` in the second session waits for the first transaction to finish instead of failing.
 
 {{% explore-setup-single-new %}}
 
@@ -72,9 +72,10 @@ yugabyte=# SELECT * from t WHERE k='k1' FOR UPDATE;
 (1 row)
 ```
 
-Before completing the transaction, try to update the same key in your other session using a basic update statement, as follows:
+Before completing the transaction, try to update the same key in your other session using a basic update statement. Run it in Repeatable Read: if [Read Committed](../../../architecture/transactions/read-committed/) is enabled (the default for new yugabyted universes from v2025.2), its statements get the highest priority, so the update would abort the first transaction instead.
 
 ```sql
+yugabyte=# SET default_transaction_isolation = 'repeatable read';
 yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
 ```
 
