@@ -65,12 +65,6 @@ To list all operations, run `yb-admin` with no arguments from the YugabyteDB hom
 ./bin/yb-admin
 ```
 
-In v2026.2 and later, you can also use the `help` operation:
-
-- `./bin/yb-admin help` lists all operations.
-- `./bin/yb-admin help delete_table` displays the usage of a single operation.
-- `./bin/yb-admin help snapshot` lists the operations whose name contains the given text, in this case all snapshot operations.
-
 ## Commands
 
 * [Universe and cluster](#universe-and-cluster-commands)
