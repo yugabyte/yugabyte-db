@@ -2043,9 +2043,12 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
 
     // Add yugabyte scrape config. Includes master, tserver, ysql, cql exports.
-    if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(
-        metricsExportConfig.getScrapeConfigTargets())) {
-      scrapeConfigs.add(createYugabyteScrapeConfig(nodeAddress, nodeDetails, metricsExportConfig));
+    Set<ScrapeConfigTargetType> yugabyteTargets =
+        getYugabyteScrapeTargetsForNode(nodeDetails, metricsExportConfig.getScrapeConfigTargets());
+    if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)) {
+      scrapeConfigs.add(
+          createYugabyteScrapeConfig(
+              nodeAddress, nodeDetails, metricsExportConfig, yugabyteTargets));
     }
 
     // Add node exporter scrape config if the scrape config target is enabled.
@@ -2225,15 +2228,40 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
-      String nodeAddress, NodeDetails nodeDetails, MetricsExportConfig metricsExportConfig) {
+      String nodeAddress,
+      NodeDetails nodeDetails,
+      MetricsExportConfig metricsExportConfig,
+      Set<ScrapeConfigTargetType> scrapeConfigTargets) {
     return createYugabyteScrapeConfig(
         nodeAddress,
         metricsExportConfig,
-        metricsExportConfig.getScrapeConfigTargets(),
+        scrapeConfigTargets,
         nodeDetails.masterHttpPort,
         nodeDetails.tserverHttpPort,
         nodeDetails.ysqlServerHttpPort,
         nodeDetails.yqlServerHttpPort);
+  }
+
+  /**
+   * Drops the requested targets that have no server on this node, so the collector does not scrape
+   * a closed port every interval (PLAT-21847). Same per-node rules as SwamperHelper. MASTER_EXPORT
+   * is not gated: a master can start on a tserver-only node (master failover, edit universe), and
+   * no task regenerates the collector config when that happens.
+   */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
+      NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    if (!nodeDetails.isTserver) {
+      targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
+    }
+    if (!nodeDetails.isTserver || !nodeDetails.isYsqlServer) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (!nodeDetails.isTserver || !nodeDetails.isYqlServer) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
