@@ -37,11 +37,15 @@ Switch between accounts using the **Account Switcher** menu in the top left corn
 
 Users can switch between accounts they have joined. Organization Super Admins can switch between all accounts and access organization settings.
 
-## Manage accounts
+## Manage your organization
 
 Only an organization Super Admin can access organization settings and manage accounts.
 
-To manage your organization and its accounts, in the **Account Switcher** menu, choose your organization.
+To access organization settings, in the **Account Switcher** menu, choose your organization.
+
+### Manage accounts
+
+Manage organization accounts on the organization **Accounts** page.
 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 
@@ -59,7 +63,7 @@ Keep in mind the following when using multiple accounts:
 
 To change your organization name, select the **Settings** page and enter a new name.
 
-### Add accounts
+#### Add accounts
 
 To add an account:
 
@@ -69,7 +73,7 @@ To add an account:
 
 The account is listed on the **Accounts** page.
 
-## Manage organization users and authentication
+### Manage organization users and authentication
 
 To view all users in your organization:
 
@@ -88,7 +92,7 @@ To change a user's role, in the **Organization Role** column, choose a role.
 - Your organization can have a maximum of 5 Super Admins.
 - Users who are promoted to Super Admin are added to _all_ your accounts as an [Admin](../managed-roles/#built-in-roles).
 
-### Social logins and federated authentication
+#### Social logins and federated authentication
 
 To configure social logins or federated authentication:
 
@@ -96,7 +100,7 @@ To configure social logins or federated authentication:
 
 For more information on configuring social logins or federated authentication, refer to [Manage account authentication](../managed-authentication/).
 
-## View organization activity
+### View organization activity
 
 To audit organization activity, navigate to **Organization > Security > Activity**.
 
@@ -117,7 +121,7 @@ For [cluster activity](../../cloud-monitor/monitor-activity/), navigate to the c
 For individual [account activity](../../cloud-secure-clusters/cloud-activity/), [switch to the account](#switch-accounts) and navigate to **Security > Activity**.
 
 
-## View organization billing
+### View organization billing
 
 Each account has its own [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
 

@@ -1,5 +1,5 @@
 ---
-title: Manage YugabyteDB Aeon Account
+title: Manage YugabyteDB Aeon Accounts
 headerTitle: Manage your Aeon organization, accounts, and users
 linkTitle: Account access
 description: Manage access to your YugabyteDB Aeon organization and accounts.
@@ -12,7 +12,7 @@ menu:
 type: indexpage
 ---
 
-Invite team members to your YugabyteDB Aeon accounts so that they can create, manage, authorize network access, and connect to clusters. Account access is managed using role based access control, which allows you to control exactly what YugabyteDB Aeon features users can access.
+Create and manage multiple Aeon accounts for your organization, then invite team members to accounts so that they can create, manage, authorize network access, and connect to clusters. Account access is managed using role based access control, which allows you to control exactly what YugabyteDB Aeon features users can access.
 
 {{<index/block>}}
 
