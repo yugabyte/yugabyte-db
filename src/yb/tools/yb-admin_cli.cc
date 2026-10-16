@@ -141,9 +141,10 @@ const char* GroupName(CommandGroup group) {
     case CommandGroup::kReadReplica: return "Read replica deployment";
     case CommandGroup::kSecurity: return "Security";
     case CommandGroup::kCdc: return "Change Data Capture (CDC)";
-    case CommandGroup::kXClusterAutomatic: return "xCluster replication, automatic mode";
+    case CommandGroup::kXClusterAutomatic:
+      return "xCluster replication, automatic and semi-automatic modes";
     case CommandGroup::kXClusterManual: return "xCluster replication, manual mode";
-    case CommandGroup::kXClusterGeneral: return "xCluster replication, either mode";
+    case CommandGroup::kXClusterGeneral: return "xCluster replication, all modes";
     case CommandGroup::kDecommissioning: return "Decommissioning";
     case CommandGroup::kClusterBalancing: return "Cluster balancing";
     case CommandGroup::kUpgrade: return "Upgrade";
@@ -3634,7 +3635,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(setup_redis_table);
   REGISTER_COMMAND(drop_redis_table);
   REGISTER_COMMAND(get_universe_config);
-  REGISTER_COMMAND(get_xcluster_info);
+  REGISTER_COMMAND(get_xcluster_info, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Show the universe's xCluster producer and consumer registries"});
   REGISTER_COMMAND(change_blacklist);
   REGISTER_COMMAND(change_leader_blacklist);
   REGISTER_COMMAND(master_leader_stepdown);
@@ -3717,8 +3720,12 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   REGISTER_COMMAND(get_table_hash);
-  REGISTER_COMMAND(verify_xcluster_slice);
-  REGISTER_COMMAND(verify_xcluster_group);
+  REGISTER_COMMAND(verify_xcluster_slice, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Compare a key range of a source and a target table at one time"});
+  REGISTER_COMMAND(verify_xcluster_group, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Check an inbound group's tables against the source (automatic mode only)"});
 
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
@@ -3730,36 +3737,88 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   REGISTER_COMMAND(cleanup_stale_cdc_streams);
   // xCluster Source commands
-  REGISTER_COMMAND(bootstrap_cdc_producer);
-  REGISTER_COMMAND(list_cdc_streams);
-  REGISTER_COMMAND(delete_cdc_stream);
-  REGISTER_COMMAND(pause_producer_xcluster_streams);
-  REGISTER_COMMAND(wait_for_replication_drain);
+  REGISTER_COMMAND(bootstrap_cdc_producer, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "Bootstrap source tables before setting up replication"});
+  REGISTER_COMMAND(list_cdc_streams, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "List xCluster outbound streams, optionally for one table"});
+  REGISTER_COMMAND(delete_cdc_stream, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "Delete an xCluster outbound stream"});
+  REGISTER_COMMAND(pause_producer_xcluster_streams, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Pause or resume xCluster outbound streams on the source"});
+  REGISTER_COMMAND(wait_for_replication_drain, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Wait until the target has caught up on the given streams"});
   // xCluster Target commands
-  REGISTER_COMMAND(setup_universe_replication);
-  REGISTER_COMMAND(delete_universe_replication);
-  REGISTER_COMMAND(alter_universe_replication);
-  REGISTER_COMMAND(set_universe_replication_enabled);
-  REGISTER_COMMAND(get_replication_status);
-  REGISTER_COMMAND(get_xcluster_safe_time);
-  REGISTER_COMMAND(list_universe_replications);
-  REGISTER_COMMAND(get_universe_replication_info);
+  REGISTER_COMMAND(setup_universe_replication, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "Set up replication of the specified tables from a source universe"});
+  REGISTER_COMMAND(delete_universe_replication, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Delete a replication group on the target universe"});
+  REGISTER_COMMAND(alter_universe_replication, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "Add or remove tables, or change source addresses, of a replication group"});
+  REGISTER_COMMAND(set_universe_replication_enabled, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Pause or resume a replication group on the target universe"});
+  REGISTER_COMMAND(get_replication_status, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Show replication status and errors for inbound replication groups"});
+  REGISTER_COMMAND(get_xcluster_safe_time, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Show the xCluster safe time per database, optionally with lag and skew"});
+  REGISTER_COMMAND(list_universe_replications, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "List inbound replication groups on the target, optionally for one database"});
+  REGISTER_COMMAND(get_universe_replication_info, {
+      .group = CommandGroup::kXClusterGeneral,
+      .description = "Show the details of an inbound replication group"});
   // xCluster common commands
-  REGISTER_COMMAND(change_xcluster_role);
+  REGISTER_COMMAND(change_xcluster_role, {
+      .group = CommandGroup::kXClusterManual,
+      .description = "Deprecated: does nothing, since xCluster roles no longer need to be set"});
 
   // xCluster V2 commands
-  REGISTER_COMMAND(create_xcluster_checkpoint);
-  REGISTER_COMMAND(is_xcluster_bootstrap_required);
-  REGISTER_COMMAND(setup_xcluster_replication);
-  REGISTER_COMMAND(drop_xcluster_replication);
-  REGISTER_COMMAND(add_namespace_to_xcluster_checkpoint);
-  REGISTER_COMMAND(add_namespace_to_xcluster_replication);
-  REGISTER_COMMAND(remove_namespace_from_xcluster_replication);
-  REGISTER_COMMAND(repair_xcluster_outbound_replication_add_table);
-  REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
-  REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
-  REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
-  REGISTER_COMMAND(xcluster_failover);
+  REGISTER_COMMAND(create_xcluster_checkpoint, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Checkpoint databases on the source before setting up replication"});
+  REGISTER_COMMAND(is_xcluster_bootstrap_required, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Check whether checkpointed databases need a backup and restore"});
+  REGISTER_COMMAND(setup_xcluster_replication, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Set up replication from a checkpointed outbound replication group"});
+  REGISTER_COMMAND(drop_xcluster_replication, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Drop an outbound replication group, and its target side if given"});
+  REGISTER_COMMAND(add_namespace_to_xcluster_checkpoint, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Add a database to an existing checkpoint"});
+  REGISTER_COMMAND(add_namespace_to_xcluster_replication, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Add a checkpointed database to an existing replication group"});
+  REGISTER_COMMAND(remove_namespace_from_xcluster_replication, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Remove a database from a replication group"});
+  REGISTER_COMMAND(repair_xcluster_outbound_replication_add_table, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Repair an outbound replication group by adding a table"});
+  REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Repair an outbound replication group by removing a table"});
+  REGISTER_COMMAND(list_xcluster_outbound_replication_groups, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "List outbound replication groups on the source"});
+  REGISTER_COMMAND(get_xcluster_outbound_replication_group_info, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Show the details of an outbound replication group"});
+  REGISTER_COMMAND(xcluster_failover, {
+      .group = CommandGroup::kXClusterAutomatic,
+      .description = "Fail over a replication group on the target (automatic mode only)"});
   REGISTER_COMMAND(stop_persisting);
   REGISTER_COMMAND(start_persisting);
   REGISTER_COMMAND(get_persistence_block_map);
