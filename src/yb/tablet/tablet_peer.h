@@ -673,6 +673,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
+  Status CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 

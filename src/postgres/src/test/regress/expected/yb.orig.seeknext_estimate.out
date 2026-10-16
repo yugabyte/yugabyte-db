@@ -39,11 +39,329 @@ from colocations c_colo,
      columns c
 where not (s.is_only_scan and c.col = 'pk');
 insert into queries (qid, query) select qid, query from query_gen;
+-- generate colocation x forward/backward distinct index scan combinations,
+-- each paired with the same query without DISTINCT (qid + 100: a plain index
+-- only scan over the same range) so the two estimates can be compared.  pk is
+-- unique, so it has no distinct path.  The range condition keeps 1000 groups
+-- (fewer for the coarser columns) and puts the group size on both sides of
+-- the seek-forward threshold: forward, f1..f3 skip with nexts and f4 onward
+-- with a seek per group; backward skips seek from two rows per group up, so
+-- only f1 avoids them.  The skewed columns exercise the MCV based group size
+-- profile.
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('', 10000),
+           ('C', 20000)
+),
+columns(col_id, col) as (
+    values (2, 'f1'), (3, 'f2'), (4, 'f3'), (5, 'f4'), (6, 'f5'),
+           (7, 'f10'), (8, 'f100'), (9, 'f1000'), (10, 'dv1'),
+           (11, 'skw1'), (12, 'skw2'), (13, 'skw3')
+),
+scans(qidbase, is_backward, is_distinct) as (
+    values (7000, false, true),  -- distinct index only scan
+           (8000, true,  true),  -- backward distinct index only scan
+           (7100, false, false), -- index only scan over the same range
+           (8100, true,  false)  -- backward index only scan over the same range
+)
+select
+    s.qidbase + c_colo.qidcolo + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
+    'select ' || case when s.is_distinct then 'distinct ' else '' end || c.col ||
+    ' from r' || c_colo.colo ||
+    ' where ' || c.col || ' <= 1000' ||
+    case when s.is_backward then ' order by ' || c.col || ' desc' else '' end as query
+from colocations c_colo,
+     scans s,
+     columns c;
+-- IN lists on f10, paired with the same query without DISTINCT (qid + 100)
+-- and ordered both ways.  The sparse list has three present values and
+-- twelve past the column's last value; the dense list has eight adjacent
+-- present values.  DocDB seeks once per present value and stops once the
+-- list is exhausted, so the rows fail when the estimate counts a group per
+-- listed value or charges a skip after the last one.
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('', 10000),
+           ('C', 20000)
+),
+in_lists(qidoff, items) as (
+    values (21, '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+           (22, '1, 2, 3, 4, 5, 6, 7, 8')
+),
+scans(qidbase, is_backward, is_distinct) as (
+    values (7000, false, true),  -- distinct index only scan
+           (8000, true,  true),  -- backward distinct index only scan
+           (7100, false, false), -- index only scan over the same list
+           (8100, true,  false)  -- backward index only scan over the same list
+)
+select
+    s.qidbase + c_colo.qidcolo + il.qidoff as qid,
+    'select ' || case when s.is_distinct then 'distinct ' else '' end || 'f10' ||
+    ' from r' || c_colo.colo ||
+    ' where f10 in (' || il.items || ')' ||
+    ' order by f10' || case when s.is_backward then ' desc' else '' end as query
+from colocations c_colo,
+     scans s,
+     in_lists il;
+-- distinct scans on the composite primary key's prefix read the base table
+-- itself (Distinct Index Scan rather than Distinct Index Only Scan).
+insert into queries values
+    (19601, $$select distinct g from rp$$),
+    (19602, $$select distinct g from rp where g <= 100$$),
+    (19603, $$select distinct g from rp where g between 100 and 200$$),
+    (19604, $$select distinct g from rp where g = 100$$),
+    (19605, $$select distinct g from rp order by g desc$$),
+    (19606, $$select distinct g from rp where g <= 100 order by g desc$$),
+    (29601, $$select distinct g from rpC$$),
+    (29602, $$select distinct g from rpC where g <= 100$$),
+    (29603, $$select distinct g from rpC where g between 100 and 200$$),
+    (29604, $$select distinct g from rpC where g = 100$$),
+    (29605, $$select distinct g from rpC order by g desc$$),
+    (29606, $$select distinct g from rpC where g <= 100 order by g desc$$);
+-- the same queries without DISTINCT (qid + 100): plain Index Scans on the
+-- primary key.  The unbounded ones keep the index's order, since without it
+-- they would be Seq Scans.
+insert into queries values
+    (19701, $$select g from rp order by g$$),
+    (19702, $$select g from rp where g <= 100$$),
+    (19703, $$select g from rp where g between 100 and 200$$),
+    (19704, $$select g from rp where g = 100$$),
+    (19705, $$select g from rp order by g desc$$),
+    (19706, $$select g from rp where g <= 100 order by g desc$$),
+    (29701, $$select g from rpC order by g$$),
+    (29702, $$select g from rpC where g <= 100$$),
+    (29703, $$select g from rpC where g between 100 and 200$$),
+    (29704, $$select g from rpC where g = 100$$),
+    (29705, $$select g from rpC order by g desc$$),
+    (29706, $$select g from rpC where g <= 100 order by g desc$$);
+-- a storage filter on the prefix column rejects whole groups, and DocDB still
+-- reads one row per group and skips from it, so the rows fail when the
+-- estimate charges a rejected group more than one row and one skip.  The
+-- modulus keeps one value in 200, the selectivity the planner assumes for an
+-- expression without statistics, so the result rows are estimated right.
+-- Paired with the forward query without DISTINCT (qid + 100) only: the
+-- backward plain scan's seek count moves between runs by one, across the
+-- tolerance.
+insert into queries values
+    (19607, $$select distinct g from rp where g % 200 = 0 order by g$$),
+    (19608, $$select distinct g from rp where g % 200 = 0 order by g desc$$),
+    (29607, $$select distinct g from rpC where g % 200 = 0 order by g$$),
+    (29608, $$select distinct g from rpC where g % 200 = 0 order by g desc$$);
+insert into queries values
+    (19707, $$select g from rp where g % 200 = 0 order by g$$),
+    (29707, $$select g from rpC where g % 200 = 0 order by g$$);
+-- a distinct scan whose prefix groups hold one row each, with an index
+-- condition on the second key column: nine groups in ten yield nothing, but
+-- every group is still stepped over, so the nexts do not scale with the
+-- condition's selectivity.  Paired with the same query without DISTINCT
+-- (qid + 100), which walks the same rows.
+insert into queries values
+    (19801, $$select distinct u from rq where k = 3$$),
+    (19802, $$select distinct u from rq where k = 3 order by u desc$$),
+    (29801, $$select distinct u from rqC where k = 3$$),
+    (29802, $$select distinct u from rqC where k = 3 order by u desc$$);
+insert into queries values
+    (19901, $$select u from rq where k = 3 order by u$$),
+    (19902, $$select u from rq where k = 3 order by u desc$$),
+    (29901, $$select u from rqC where k = 3 order by u$$),
+    (29902, $$select u from rqC where k = 3 order by u desc$$);
+-- distinct scans on a secondary index that read the base table: the hint
+-- keeps the index-only variant out, and the scan fetches one base-table row
+-- per result group, a seek and a next each on top of the index walk, so the
+-- rows fail when the estimate leaves the fetch out or charges it per row in
+-- range.  Paired with the same query without DISTINCT (qid + 100).
+insert into queries values
+    (19001, $$/*+IndexScan(r r_f10_idx)*/ select distinct f10 from r where f10 <= 1000 order by f10$$),
+    (19002, $$/*+IndexScan(r r_f10_idx)*/ select distinct f10 from r where f10 <= 1000 order by f10 desc$$),
+    (29001, $$/*+IndexScan(rc rc_f10_idx)*/ select distinct f10 from rC where f10 <= 1000 order by f10$$),
+    (29002, $$/*+IndexScan(rc rc_f10_idx)*/ select distinct f10 from rC where f10 <= 1000 order by f10 desc$$);
+insert into queries values
+    (19101, $$/*+IndexScan(r r_f10_idx)*/ select f10 from r where f10 <= 1000 order by f10$$),
+    (19102, $$/*+IndexScan(r r_f10_idx)*/ select f10 from r where f10 <= 1000 order by f10 desc$$),
+    (29101, $$/*+IndexScan(rc rc_f10_idx)*/ select f10 from rC where f10 <= 1000 order by f10$$),
+    (29102, $$/*+IndexScan(rc rc_f10_idx)*/ select f10 from rC where f10 <= 1000 order by f10 desc$$);
+-- distinct scans on a hash-sharded primary key: every skip seeks to the next
+-- hash group inside its tablet, and an IN list on h is one seek per listed
+-- value whatever the values, since hash order scatters them; one listed
+-- value is absent.  The unconditioned scan has no plain counterpart: without
+-- a condition a hash index offers no plain Index Scan path.
+insert into queries values
+    (19201, $$select distinct h from rh$$),
+    (19202, $$select distinct h from rh where h in (1, 2, 3, 500, 100000)$$);
+insert into queries values
+    (19302, $$select h from rh where h in (1, 2, 3, 500, 100000)$$);
+-- distinct scans with a condition on the key column after the prefix: the
+-- skip lands on each group's first row in scan direction, and the scan steps
+-- over the rows before the first match, with a seek once they pass the
+-- seek-forward threshold, so the rows fail when the estimate leaves that
+-- positioning out or charges it to a group whose landing row matches.
+-- Paired with the same query without DISTINCT (qid + 100).
+insert into queries values
+    (19401, $$select distinct g from ps where k = 0 order by g$$),
+    (19402, $$select distinct g from ps where k = 2 order by g$$),
+    (19403, $$select distinct g from ps where k >= 5 order by g$$),
+    (19404, $$select distinct g from ps where k = 0 order by g desc$$),
+    (19405, $$select distinct g from ps where k = 2 order by g desc$$),
+    (19406, $$select distinct g from ps where k >= 5 order by g desc$$),
+    (29401, $$select distinct g from psC where k = 0 order by g$$),
+    (29402, $$select distinct g from psC where k = 2 order by g$$),
+    (29403, $$select distinct g from psC where k >= 5 order by g$$),
+    (29404, $$select distinct g from psC where k = 0 order by g desc$$),
+    (29405, $$select distinct g from psC where k = 2 order by g desc$$),
+    (29406, $$select distinct g from psC where k >= 5 order by g desc$$);
+insert into queries values
+    (19501, $$select g from ps where k = 0 order by g$$),
+    (19502, $$select g from ps where k = 2 order by g$$),
+    (19503, $$select g from ps where k >= 5 order by g$$),
+    (19504, $$select g from ps where k = 0 order by g desc$$),
+    (19505, $$select g from ps where k = 2 order by g desc$$),
+    (19506, $$select g from ps where k >= 5 order by g desc$$),
+    (29501, $$select g from psC where k = 0 order by g$$),
+    (29502, $$select g from psC where k = 2 order by g$$),
+    (29503, $$select g from psC where k >= 5 order by g$$),
+    (29504, $$select g from psC where k = 0 order by g desc$$),
+    (29505, $$select g from psC where k = 2 order by g desc$$),
+    (29506, $$select g from psC where k >= 5 order by g desc$$);
+-- IN lists on ps, whose values sit 100 apart: the sparse list spans 0..190
+-- and hits two groups, the dense list spans 0..1900 and hits all twenty, so
+-- the rows fail when the estimate counts a group for an absent value inside
+-- the list's range.  Paired with the same query without DISTINCT (qid + 100).
+insert into queries values
+    (19411, $$select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g$$),
+    (19412, $$select distinct g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g$$),
+    (19413, $$select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc$$),
+    (19414, $$select distinct g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc$$),
+    (29411, $$select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g$$),
+    (29412, $$select distinct g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g$$),
+    (29413, $$select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc$$),
+    (29414, $$select distinct g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc$$);
+insert into queries values
+    (19511, $$select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g$$),
+    (19512, $$select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g$$),
+    (19513, $$select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc$$),
+    (19514, $$select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc$$),
+    (29511, $$select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g$$),
+    (29512, $$select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g$$),
+    (29513, $$select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc$$),
+    (29514, $$select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc$$);
+-- distinct scans whose first match sits at different depths in each group
+-- of ps.  Under a strict bound the scan steps over the bound value's own
+-- rows as well (19421, 19422), the tighter of two bounds decides in either
+-- order (19423, 19424), and under an IN list DocDB binds only the listed
+-- values the other conditions accept, so the first of those decides
+-- (19425-19427).  The rows fail when the estimate counts the rows before the
+-- wrong value across the seek-forward threshold.  29421-29427 are the
+-- colocated twins.
+insert into queries values
+    (19421, $$select distinct g from ps where k > 2 order by g$$),
+    (19422, $$select distinct g from ps where k < 9 order by g desc$$),
+    (19423, $$select distinct g from ps where k > 2 and k >= 1 order by g$$),
+    (19424, $$select distinct g from ps where k >= 1 and k > 2 order by g$$),
+    (19425, $$select distinct g from ps where k in (4, 9) and k >= 5 order by g$$),
+    (19426, $$select distinct g from ps where k in (4, 9) and k in (5, 9) order by g$$),
+    (19427, $$select distinct g from ps where k in (3, 7) and k > 3 order by g$$),
+    (29421, $$select distinct g from psC where k > 2 order by g$$),
+    (29422, $$select distinct g from psC where k < 9 order by g desc$$),
+    (29423, $$select distinct g from psC where k > 2 and k >= 1 order by g$$),
+    (29424, $$select distinct g from psC where k >= 1 and k > 2 order by g$$),
+    (29425, $$select distinct g from psC where k in (4, 9) and k >= 5 order by g$$),
+    (29426, $$select distinct g from psC where k in (4, 9) and k in (5, 9) order by g$$),
+    (29427, $$select distinct g from psC where k in (3, 7) and k > 3 order by g$$);
+-- the same on psd's descending k: a forward scan meets the rows an upper
+-- bound rejects first (19432) and an IN list's highest value first (19436),
+-- a backward scan the rows a lower bound rejects (19434) and an IN list's
+-- lowest value (19437), and the opposite bound matches the group's first
+-- row (19431, 19433, 19435).  29431-29437 are the colocated twins.
+insert into queries values
+    (19431, $$select distinct g from psd where k >= 5 order by g$$),
+    (19432, $$select distinct g from psd where k < 5 order by g$$),
+    (19433, $$select distinct g from psd where k > 5 order by g$$),
+    (19434, $$select distinct g from psd where k >= 5 order by g desc$$),
+    (19435, $$select distinct g from psd where k < 5 order by g desc$$),
+    (19436, $$select distinct g from psd where k in (3, 7) order by g$$),
+    (19437, $$select distinct g from psd where k in (0, 6) order by g desc$$),
+    (29431, $$select distinct g from psdC where k >= 5 order by g$$),
+    (29432, $$select distinct g from psdC where k < 5 order by g$$),
+    (29433, $$select distinct g from psdC where k > 5 order by g$$),
+    (29434, $$select distinct g from psdC where k >= 5 order by g desc$$),
+    (29435, $$select distinct g from psdC where k < 5 order by g desc$$),
+    (29436, $$select distinct g from psdC where k in (3, 7) order by g$$),
+    (29437, $$select distinct g from psdC where k in (0, 6) order by g desc$$);
+-- NULLs, which no bound accepts: the scan steps over them when it meets them
+-- first, going forward over pn's NULLS FIRST column and backward over pna's
+-- NULLS LAST column.  The NULLs alone precede the match under a bound the
+-- first value passes (19441, 19443, 19444) and under IS NOT NULL (19448);
+-- under k = 0 the nine values above 0 come before it as well (19447).  The
+-- scan does not step over them when it meets them last (19442, 19445), or on
+-- pnp's partial index, which leaves them out (19446).  29441-29448 are the
+-- colocated twins.
+insert into queries values
+    (19441, $$select distinct g from pn where k >= 5 order by g$$),
+    (19442, $$select distinct g from pn where k < 5 order by g desc$$),
+    (19443, $$select distinct g from pn where k <= 9 order by g$$),
+    (19444, $$select distinct g from pna where k <= 9 order by g desc$$),
+    (19445, $$select distinct g from pna where k >= 0 order by g$$),
+    (19446, $$select distinct g from pnp where k <= 9 order by g desc$$),
+    (19447, $$select distinct g from pn where k = 0 order by g$$),
+    (19448, $$select distinct g from pn where k is not null order by g$$),
+    (29441, $$select distinct g from pnC where k >= 5 order by g$$),
+    (29442, $$select distinct g from pnC where k < 5 order by g desc$$),
+    (29443, $$select distinct g from pnC where k <= 9 order by g$$),
+    (29444, $$select distinct g from pnaC where k <= 9 order by g desc$$),
+    (29445, $$select distinct g from pnaC where k >= 0 order by g$$),
+    (29446, $$select distinct g from pnpC where k <= 9 order by g desc$$),
+    (29447, $$select distinct g from pnC where k = 0 order by g$$),
+    (29448, $$select distinct g from pnC where k is not null order by g$$);
+-- an enum key column after the prefix, which the opfamily compares as
+-- anyenum rather than as the enum type: going backward the scan meets the
+-- labels above the bound first, under an equality (19451) and an IN list
+-- (19452), and the rows fail when the estimate leaves those labels out.
+-- 29451 and 29452 are the colocated twins.
+insert into queries values
+    (19451, $$select distinct g from pe where m = 'e5' order by g desc$$),
+    (19452, $$select distinct g from pe where m in ('e3', 'e5') order by g desc$$),
+    (29451, $$select distinct g from peC where m = 'e5' order by g desc$$),
+    (29452, $$select distinct g from peC where m in ('e3', 'e5') order by g desc$$);
+-- distinct scans over the two-column prefix (a, b).  A condition on b picks
+-- values inside each value of a.  The scan enters each value of a from the
+-- previous one's last group and steps over the rows the condition rejects
+-- before the first value it accepts: forward under a lower bound or an IN
+-- list that leaves out b's lowest values (19465, 19467), backward under an
+-- upper bound or an IN list that leaves out its highest (19464, 19468).  The
+-- same step positions the group it lands on for a condition on c (19471).
+-- The rows fail when the estimate leaves those steps out, or charges them
+-- where the rejected rows come last in scan order (19463, 19466), where an
+-- IN list on a makes DocDB seek to each value of a with b's lower bound
+-- (19469), or where an equality on a makes the condition on b bound the
+-- scan (19470).  29461-29471 are the colocated twins.
+insert into queries values
+    (19461, $$select distinct a, b from pt order by a, b$$),
+    (19462, $$select distinct a, b from pt order by a desc, b desc$$),
+    (19463, $$select distinct a, b from pt where b <= 5 order by a, b$$),
+    (19464, $$select distinct a, b from pt where b <= 5 order by a desc, b desc$$),
+    (19465, $$select distinct a, b from pt where b >= 46 order by a, b$$),
+    (19466, $$select distinct a, b from pt where b >= 46 order by a desc, b desc$$),
+    (19467, $$select distinct a, b from pt where b in (3, 17, 40) order by a, b$$),
+    (19468, $$select distinct a, b from pt where b in (3, 17, 40) order by a desc, b desc$$),
+    (19469, $$select distinct a, b from pt where a in (5, 50, 150) and b between 11 and 20 order by a, b$$),
+    (19470, $$select distinct a, b from pt where a = 5 and b >= 46 order by a, b$$),
+    (19471, $$select distinct a, b from pt where b >= 46 and c >= 3 order by a, b$$),
+    (29461, $$select distinct a, b from ptC order by a, b$$),
+    (29462, $$select distinct a, b from ptC order by a desc, b desc$$),
+    (29463, $$select distinct a, b from ptC where b <= 5 order by a, b$$),
+    (29464, $$select distinct a, b from ptC where b <= 5 order by a desc, b desc$$),
+    (29465, $$select distinct a, b from ptC where b >= 46 order by a, b$$),
+    (29466, $$select distinct a, b from ptC where b >= 46 order by a desc, b desc$$),
+    (29467, $$select distinct a, b from ptC where b in (3, 17, 40) order by a, b$$),
+    (29468, $$select distinct a, b from ptC where b in (3, 17, 40) order by a desc, b desc$$),
+    (29469, $$select distinct a, b from ptC where a in (5, 50, 150) and b between 11 and 20 order by a, b$$),
+    (29470, $$select distinct a, b from ptC where a = 5 and b >= 46 order by a, b$$),
+    (29471, $$select distinct a, b from ptC where b >= 46 and c >= 3 order by a, b$$);
 set enable_seqscan = off;
 set enable_sort = off;
 select * from queries;
-  qid  |                            query                             
--------+--------------------------------------------------------------
+  qid  |                                                                               query                                                                                
+-------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
  11001 | select v, pk from r where pk = 1
  11002 | select v, f1 from r where f1 = 1
  11003 | select v, f2 from r where f2 = 1
@@ -119,6 +437,143 @@ select * from queries;
  16010 | select skw1 from r where skw1 <= 1 order by skw1
  16011 | select skw2 from r where skw2 <= 1 order by skw2
  16012 | select skw3 from r where skw3 <= 1 order by skw3
+ 17001 | select distinct f1 from r where f1 <= 1000
+ 17002 | select distinct f2 from r where f2 <= 1000
+ 17003 | select distinct f3 from r where f3 <= 1000
+ 17004 | select distinct f4 from r where f4 <= 1000
+ 17005 | select distinct f5 from r where f5 <= 1000
+ 17006 | select distinct f10 from r where f10 <= 1000
+ 17007 | select distinct f100 from r where f100 <= 1000
+ 17008 | select distinct f1000 from r where f1000 <= 1000
+ 17009 | select distinct dv1 from r where dv1 <= 1000
+ 17010 | select distinct skw1 from r where skw1 <= 1000
+ 17011 | select distinct skw2 from r where skw2 <= 1000
+ 17012 | select distinct skw3 from r where skw3 <= 1000
+ 17021 | select distinct f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10
+ 17022 | select distinct f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10
+ 17101 | select f1 from r where f1 <= 1000
+ 17102 | select f2 from r where f2 <= 1000
+ 17103 | select f3 from r where f3 <= 1000
+ 17104 | select f4 from r where f4 <= 1000
+ 17105 | select f5 from r where f5 <= 1000
+ 17106 | select f10 from r where f10 <= 1000
+ 17107 | select f100 from r where f100 <= 1000
+ 17108 | select f1000 from r where f1000 <= 1000
+ 17109 | select dv1 from r where dv1 <= 1000
+ 17110 | select skw1 from r where skw1 <= 1000
+ 17111 | select skw2 from r where skw2 <= 1000
+ 17112 | select skw3 from r where skw3 <= 1000
+ 17121 | select f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10
+ 17122 | select f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10
+ 18001 | select distinct f1 from r where f1 <= 1000 order by f1 desc
+ 18002 | select distinct f2 from r where f2 <= 1000 order by f2 desc
+ 18003 | select distinct f3 from r where f3 <= 1000 order by f3 desc
+ 18004 | select distinct f4 from r where f4 <= 1000 order by f4 desc
+ 18005 | select distinct f5 from r where f5 <= 1000 order by f5 desc
+ 18006 | select distinct f10 from r where f10 <= 1000 order by f10 desc
+ 18007 | select distinct f100 from r where f100 <= 1000 order by f100 desc
+ 18008 | select distinct f1000 from r where f1000 <= 1000 order by f1000 desc
+ 18009 | select distinct dv1 from r where dv1 <= 1000 order by dv1 desc
+ 18010 | select distinct skw1 from r where skw1 <= 1000 order by skw1 desc
+ 18011 | select distinct skw2 from r where skw2 <= 1000 order by skw2 desc
+ 18012 | select distinct skw3 from r where skw3 <= 1000 order by skw3 desc
+ 18021 | select distinct f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc
+ 18022 | select distinct f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc
+ 18101 | select f1 from r where f1 <= 1000 order by f1 desc
+ 18102 | select f2 from r where f2 <= 1000 order by f2 desc
+ 18103 | select f3 from r where f3 <= 1000 order by f3 desc
+ 18104 | select f4 from r where f4 <= 1000 order by f4 desc
+ 18105 | select f5 from r where f5 <= 1000 order by f5 desc
+ 18106 | select f10 from r where f10 <= 1000 order by f10 desc
+ 18107 | select f100 from r where f100 <= 1000 order by f100 desc
+ 18108 | select f1000 from r where f1000 <= 1000 order by f1000 desc
+ 18109 | select dv1 from r where dv1 <= 1000 order by dv1 desc
+ 18110 | select skw1 from r where skw1 <= 1000 order by skw1 desc
+ 18111 | select skw2 from r where skw2 <= 1000 order by skw2 desc
+ 18112 | select skw3 from r where skw3 <= 1000 order by skw3 desc
+ 18121 | select f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc
+ 18122 | select f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc
+ 19001 | /*+IndexScan(r r_f10_idx)*/ select distinct f10 from r where f10 <= 1000 order by f10
+ 19002 | /*+IndexScan(r r_f10_idx)*/ select distinct f10 from r where f10 <= 1000 order by f10 desc
+ 19101 | /*+IndexScan(r r_f10_idx)*/ select f10 from r where f10 <= 1000 order by f10
+ 19102 | /*+IndexScan(r r_f10_idx)*/ select f10 from r where f10 <= 1000 order by f10 desc
+ 19201 | select distinct h from rh
+ 19202 | select distinct h from rh where h in (1, 2, 3, 500, 100000)
+ 19302 | select h from rh where h in (1, 2, 3, 500, 100000)
+ 19401 | select distinct g from ps where k = 0 order by g
+ 19402 | select distinct g from ps where k = 2 order by g
+ 19403 | select distinct g from ps where k >= 5 order by g
+ 19404 | select distinct g from ps where k = 0 order by g desc
+ 19405 | select distinct g from ps where k = 2 order by g desc
+ 19406 | select distinct g from ps where k >= 5 order by g desc
+ 19411 | select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g
+ 19412 | select distinct g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g
+ 19413 | select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc
+ 19414 | select distinct g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc
+ 19421 | select distinct g from ps where k > 2 order by g
+ 19422 | select distinct g from ps where k < 9 order by g desc
+ 19423 | select distinct g from ps where k > 2 and k >= 1 order by g
+ 19424 | select distinct g from ps where k >= 1 and k > 2 order by g
+ 19425 | select distinct g from ps where k in (4, 9) and k >= 5 order by g
+ 19426 | select distinct g from ps where k in (4, 9) and k in (5, 9) order by g
+ 19427 | select distinct g from ps where k in (3, 7) and k > 3 order by g
+ 19431 | select distinct g from psd where k >= 5 order by g
+ 19432 | select distinct g from psd where k < 5 order by g
+ 19433 | select distinct g from psd where k > 5 order by g
+ 19434 | select distinct g from psd where k >= 5 order by g desc
+ 19435 | select distinct g from psd where k < 5 order by g desc
+ 19436 | select distinct g from psd where k in (3, 7) order by g
+ 19437 | select distinct g from psd where k in (0, 6) order by g desc
+ 19441 | select distinct g from pn where k >= 5 order by g
+ 19442 | select distinct g from pn where k < 5 order by g desc
+ 19443 | select distinct g from pn where k <= 9 order by g
+ 19444 | select distinct g from pna where k <= 9 order by g desc
+ 19445 | select distinct g from pna where k >= 0 order by g
+ 19446 | select distinct g from pnp where k <= 9 order by g desc
+ 19447 | select distinct g from pn where k = 0 order by g
+ 19448 | select distinct g from pn where k is not null order by g
+ 19451 | select distinct g from pe where m = 'e5' order by g desc
+ 19452 | select distinct g from pe where m in ('e3', 'e5') order by g desc
+ 19461 | select distinct a, b from pt order by a, b
+ 19462 | select distinct a, b from pt order by a desc, b desc
+ 19463 | select distinct a, b from pt where b <= 5 order by a, b
+ 19464 | select distinct a, b from pt where b <= 5 order by a desc, b desc
+ 19465 | select distinct a, b from pt where b >= 46 order by a, b
+ 19466 | select distinct a, b from pt where b >= 46 order by a desc, b desc
+ 19467 | select distinct a, b from pt where b in (3, 17, 40) order by a, b
+ 19468 | select distinct a, b from pt where b in (3, 17, 40) order by a desc, b desc
+ 19469 | select distinct a, b from pt where a in (5, 50, 150) and b between 11 and 20 order by a, b
+ 19470 | select distinct a, b from pt where a = 5 and b >= 46 order by a, b
+ 19471 | select distinct a, b from pt where b >= 46 and c >= 3 order by a, b
+ 19501 | select g from ps where k = 0 order by g
+ 19502 | select g from ps where k = 2 order by g
+ 19503 | select g from ps where k >= 5 order by g
+ 19504 | select g from ps where k = 0 order by g desc
+ 19505 | select g from ps where k = 2 order by g desc
+ 19506 | select g from ps where k >= 5 order by g desc
+ 19511 | select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g
+ 19512 | select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g
+ 19513 | select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc
+ 19514 | select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc
+ 19601 | select distinct g from rp
+ 19602 | select distinct g from rp where g <= 100
+ 19603 | select distinct g from rp where g between 100 and 200
+ 19604 | select distinct g from rp where g = 100
+ 19605 | select distinct g from rp order by g desc
+ 19606 | select distinct g from rp where g <= 100 order by g desc
+ 19607 | select distinct g from rp where g % 200 = 0 order by g
+ 19608 | select distinct g from rp where g % 200 = 0 order by g desc
+ 19701 | select g from rp order by g
+ 19702 | select g from rp where g <= 100
+ 19703 | select g from rp where g between 100 and 200
+ 19704 | select g from rp where g = 100
+ 19705 | select g from rp order by g desc
+ 19706 | select g from rp where g <= 100 order by g desc
+ 19707 | select g from rp where g % 200 = 0 order by g
+ 19801 | select distinct u from rq where k = 3
+ 19802 | select distinct u from rq where k = 3 order by u desc
+ 19901 | select u from rq where k = 3 order by u
+ 19902 | select u from rq where k = 3 order by u desc
  21001 | select v, pk from rC where pk = 1
  21002 | select v, f1 from rC where f1 = 1
  21003 | select v, f2 from rC where f2 = 1
@@ -194,7 +649,141 @@ select * from queries;
  26010 | select skw1 from rC where skw1 <= 1 order by skw1
  26011 | select skw2 from rC where skw2 <= 1 order by skw2
  26012 | select skw3 from rC where skw3 <= 1 order by skw3
-(150 rows)
+ 27001 | select distinct f1 from rC where f1 <= 1000
+ 27002 | select distinct f2 from rC where f2 <= 1000
+ 27003 | select distinct f3 from rC where f3 <= 1000
+ 27004 | select distinct f4 from rC where f4 <= 1000
+ 27005 | select distinct f5 from rC where f5 <= 1000
+ 27006 | select distinct f10 from rC where f10 <= 1000
+ 27007 | select distinct f100 from rC where f100 <= 1000
+ 27008 | select distinct f1000 from rC where f1000 <= 1000
+ 27009 | select distinct dv1 from rC where dv1 <= 1000
+ 27010 | select distinct skw1 from rC where skw1 <= 1000
+ 27011 | select distinct skw2 from rC where skw2 <= 1000
+ 27012 | select distinct skw3 from rC where skw3 <= 1000
+ 27021 | select distinct f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10
+ 27022 | select distinct f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10
+ 27101 | select f1 from rC where f1 <= 1000
+ 27102 | select f2 from rC where f2 <= 1000
+ 27103 | select f3 from rC where f3 <= 1000
+ 27104 | select f4 from rC where f4 <= 1000
+ 27105 | select f5 from rC where f5 <= 1000
+ 27106 | select f10 from rC where f10 <= 1000
+ 27107 | select f100 from rC where f100 <= 1000
+ 27108 | select f1000 from rC where f1000 <= 1000
+ 27109 | select dv1 from rC where dv1 <= 1000
+ 27110 | select skw1 from rC where skw1 <= 1000
+ 27111 | select skw2 from rC where skw2 <= 1000
+ 27112 | select skw3 from rC where skw3 <= 1000
+ 27121 | select f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10
+ 27122 | select f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10
+ 28001 | select distinct f1 from rC where f1 <= 1000 order by f1 desc
+ 28002 | select distinct f2 from rC where f2 <= 1000 order by f2 desc
+ 28003 | select distinct f3 from rC where f3 <= 1000 order by f3 desc
+ 28004 | select distinct f4 from rC where f4 <= 1000 order by f4 desc
+ 28005 | select distinct f5 from rC where f5 <= 1000 order by f5 desc
+ 28006 | select distinct f10 from rC where f10 <= 1000 order by f10 desc
+ 28007 | select distinct f100 from rC where f100 <= 1000 order by f100 desc
+ 28008 | select distinct f1000 from rC where f1000 <= 1000 order by f1000 desc
+ 28009 | select distinct dv1 from rC where dv1 <= 1000 order by dv1 desc
+ 28010 | select distinct skw1 from rC where skw1 <= 1000 order by skw1 desc
+ 28011 | select distinct skw2 from rC where skw2 <= 1000 order by skw2 desc
+ 28012 | select distinct skw3 from rC where skw3 <= 1000 order by skw3 desc
+ 28021 | select distinct f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc
+ 28022 | select distinct f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc
+ 28101 | select f1 from rC where f1 <= 1000 order by f1 desc
+ 28102 | select f2 from rC where f2 <= 1000 order by f2 desc
+ 28103 | select f3 from rC where f3 <= 1000 order by f3 desc
+ 28104 | select f4 from rC where f4 <= 1000 order by f4 desc
+ 28105 | select f5 from rC where f5 <= 1000 order by f5 desc
+ 28106 | select f10 from rC where f10 <= 1000 order by f10 desc
+ 28107 | select f100 from rC where f100 <= 1000 order by f100 desc
+ 28108 | select f1000 from rC where f1000 <= 1000 order by f1000 desc
+ 28109 | select dv1 from rC where dv1 <= 1000 order by dv1 desc
+ 28110 | select skw1 from rC where skw1 <= 1000 order by skw1 desc
+ 28111 | select skw2 from rC where skw2 <= 1000 order by skw2 desc
+ 28112 | select skw3 from rC where skw3 <= 1000 order by skw3 desc
+ 28121 | select f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc
+ 28122 | select f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc
+ 29001 | /*+IndexScan(rc rc_f10_idx)*/ select distinct f10 from rC where f10 <= 1000 order by f10
+ 29002 | /*+IndexScan(rc rc_f10_idx)*/ select distinct f10 from rC where f10 <= 1000 order by f10 desc
+ 29101 | /*+IndexScan(rc rc_f10_idx)*/ select f10 from rC where f10 <= 1000 order by f10
+ 29102 | /*+IndexScan(rc rc_f10_idx)*/ select f10 from rC where f10 <= 1000 order by f10 desc
+ 29401 | select distinct g from psC where k = 0 order by g
+ 29402 | select distinct g from psC where k = 2 order by g
+ 29403 | select distinct g from psC where k >= 5 order by g
+ 29404 | select distinct g from psC where k = 0 order by g desc
+ 29405 | select distinct g from psC where k = 2 order by g desc
+ 29406 | select distinct g from psC where k >= 5 order by g desc
+ 29411 | select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g
+ 29412 | select distinct g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g
+ 29413 | select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc
+ 29414 | select distinct g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc
+ 29421 | select distinct g from psC where k > 2 order by g
+ 29422 | select distinct g from psC where k < 9 order by g desc
+ 29423 | select distinct g from psC where k > 2 and k >= 1 order by g
+ 29424 | select distinct g from psC where k >= 1 and k > 2 order by g
+ 29425 | select distinct g from psC where k in (4, 9) and k >= 5 order by g
+ 29426 | select distinct g from psC where k in (4, 9) and k in (5, 9) order by g
+ 29427 | select distinct g from psC where k in (3, 7) and k > 3 order by g
+ 29431 | select distinct g from psdC where k >= 5 order by g
+ 29432 | select distinct g from psdC where k < 5 order by g
+ 29433 | select distinct g from psdC where k > 5 order by g
+ 29434 | select distinct g from psdC where k >= 5 order by g desc
+ 29435 | select distinct g from psdC where k < 5 order by g desc
+ 29436 | select distinct g from psdC where k in (3, 7) order by g
+ 29437 | select distinct g from psdC where k in (0, 6) order by g desc
+ 29441 | select distinct g from pnC where k >= 5 order by g
+ 29442 | select distinct g from pnC where k < 5 order by g desc
+ 29443 | select distinct g from pnC where k <= 9 order by g
+ 29444 | select distinct g from pnaC where k <= 9 order by g desc
+ 29445 | select distinct g from pnaC where k >= 0 order by g
+ 29446 | select distinct g from pnpC where k <= 9 order by g desc
+ 29447 | select distinct g from pnC where k = 0 order by g
+ 29448 | select distinct g from pnC where k is not null order by g
+ 29451 | select distinct g from peC where m = 'e5' order by g desc
+ 29452 | select distinct g from peC where m in ('e3', 'e5') order by g desc
+ 29461 | select distinct a, b from ptC order by a, b
+ 29462 | select distinct a, b from ptC order by a desc, b desc
+ 29463 | select distinct a, b from ptC where b <= 5 order by a, b
+ 29464 | select distinct a, b from ptC where b <= 5 order by a desc, b desc
+ 29465 | select distinct a, b from ptC where b >= 46 order by a, b
+ 29466 | select distinct a, b from ptC where b >= 46 order by a desc, b desc
+ 29467 | select distinct a, b from ptC where b in (3, 17, 40) order by a, b
+ 29468 | select distinct a, b from ptC where b in (3, 17, 40) order by a desc, b desc
+ 29469 | select distinct a, b from ptC where a in (5, 50, 150) and b between 11 and 20 order by a, b
+ 29470 | select distinct a, b from ptC where a = 5 and b >= 46 order by a, b
+ 29471 | select distinct a, b from ptC where b >= 46 and c >= 3 order by a, b
+ 29501 | select g from psC where k = 0 order by g
+ 29502 | select g from psC where k = 2 order by g
+ 29503 | select g from psC where k >= 5 order by g
+ 29504 | select g from psC where k = 0 order by g desc
+ 29505 | select g from psC where k = 2 order by g desc
+ 29506 | select g from psC where k >= 5 order by g desc
+ 29511 | select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g
+ 29512 | select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g
+ 29513 | select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc
+ 29514 | select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc
+ 29601 | select distinct g from rpC
+ 29602 | select distinct g from rpC where g <= 100
+ 29603 | select distinct g from rpC where g between 100 and 200
+ 29604 | select distinct g from rpC where g = 100
+ 29605 | select distinct g from rpC order by g desc
+ 29606 | select distinct g from rpC where g <= 100 order by g desc
+ 29607 | select distinct g from rpC where g % 200 = 0 order by g
+ 29608 | select distinct g from rpC where g % 200 = 0 order by g desc
+ 29701 | select g from rpC order by g
+ 29702 | select g from rpC where g <= 100
+ 29703 | select g from rpC where g between 100 and 200
+ 29704 | select g from rpC where g = 100
+ 29705 | select g from rpC order by g desc
+ 29706 | select g from rpC where g <= 100 order by g desc
+ 29707 | select g from rpC where g % 200 = 0 order by g
+ 29801 | select distinct u from rqC where k = 3
+ 29802 | select distinct u from rqC where k = 3 order by u desc
+ 29901 | select u from rqC where k = 3 order by u
+ 29902 | select u from rqC where k = 3 order by u desc
+(421 rows)
 
 update explain_query_options set with_analyze = false;
 -- should not return any row.  mismatches indicate non-index scan nodes.
@@ -209,7 +798,7 @@ select count(*) from queries q full join check_seeknext_estimates x on x.qid = q
 where x.qid is not null and q.qid is not null;
  count 
 -------
-   150
+   421
 (1 row)
 
 -- should not return any row.  mismatches indicate the planner scanned in a
@@ -224,37 +813,199 @@ order by x.qid, x.nid;
 -----+-----+-----------+------------+-------------------
 (0 rows)
 
+-- the plans where a wrong estimate shows only as a plan change.  Going
+-- forward over f2's groups of two rows on r and rC (17002, 27002), the
+-- distinct scan does the plain scan's nexts and returns half the rows, so it
+-- must win.  On psd's descending k under k > 5 (19433, 29433), each group's
+-- first row matches, so the distinct scan seeks once per group and must win
+-- over Index Scan plus Unique; counting the rows below the bound instead
+-- prices it above that plan, whose estimates pass the checks.  The backward
+-- scans of the same 2-row groups, 18002 and 28002, are not pinned: a
+-- backward skip seeks on every group of more than one row, which costs about
+-- what returning half the rows saves, and the two plans ran about the same
+-- on a 2,000,000-row table of such groups.
+select qid, "Node Type" from check_seeknext_estimates
+where qid in (17002, 19433, 27002, 29433)
+order by qid;
+  qid  |        Node Type         
+-------+--------------------------
+ 17002 | Distinct Index Only Scan
+ 19433 | Distinct Index Scan
+ 27002 | Distinct Index Only Scan
+ 29433 | Distinct Index Scan
+(4 rows)
+
 update explain_query_options set with_analyze = true;
--- should not return any row.
+-- The first scan of enum labels through an IN list in a session reads the
+-- catalog while it runs, and the scan's storage metrics count those reads:
+-- 19452 measures extra seeks and nexts on its first execution.  Run one such
+-- scan first, so the checks below see only the scans' own reads.
+select count(*) from pe where m in ('e3', 'e5');
+ count 
+-------
+  2000
+(1 row)
+
+-- should return only the rows explained below.
 -- TODO(#34895) 24 queries fail until Next estimation issue is fixed.
+--
+-- A backward scan that skips between groups steps forward once, and back
+-- once more, for each row it returns that is the first of its group, unless
+-- that row is the tablet's first; the estimates leave those steps out.  The
+-- counts give this pattern; its mechanism is unknown.  skw3 has four groups
+-- of one row, its lowest value's among them, which starts the index:
+-- 17012/18012 (on r) measure 3 nexts and 27012/28012 (on rC) 4 against none.
+-- Under k = 0 on ps, each group's first row matches: 19404 measures 999
+-- nexts against none, 29404 1000, and the plain counterpart 19504 999.  rq's
+-- groups have one row each: 19802 (k = 3) measures 1235 nexts and 13582
+-- prevs against none and 12345, and its colocated twin and its plain
+-- counterpart 19902 measure the same.
+--
+-- 17010/18010 (skw1 backward on r) measure 18 seeks against 16, and
+-- 27010/28010 (on rC) 33 prevs and a next against 31 prevs: with 16 groups,
+-- two extra steps exceed the tolerance.  The next is skw1's one-row group,
+-- which on r starts the tablet.  On r the first backward seek, at the bound
+-- 1000, lands past the tablet's last key and PreparePrev falls back to
+-- SeekToLast; the cause of the other extra steps is unknown.  The plain
+-- backward scan of the same range (18110) measures the extra seek too,
+-- within its tolerance.
+--
+-- A condition on the key column after the prefix gives a group a match with
+-- probability 1 - (1 - s)^n, for n rows per group each passing with
+-- selectivity s, as if the passing rows fell into the groups independently.
+-- ps, psd and pe hold every value of that column in every group, so every
+-- group has a match where the estimate expects 65% (k = 0 or 2, m = 'e5'),
+-- 72% (19427) or 89% (19437) of them to, and charges the groups it takes as
+-- unmatched a cheaper exit: 19401 (k = 0) and 19402 (k = 2) estimate 2651
+-- and 4651 nexts against 3000 and 5000, 19405 (k = 2 backward) and 19451
+-- 2623 and 2651 prevs against 3000, 19427 4721 nexts against 5000, 19437
+-- 1893 prevs against 2000, and 19404 1651 prevs against 3000.  The colocated
+-- twins measure the same.
+--
+-- TODO(#34776): cap the IN-list groups by the values the column has, which
+-- takes the sparse-list rows below off this list.
+-- 17021/18021/27021/28021 (sparse IN list on f10) and 19411/19413/29411/29413
+-- (sparse IN list on ps) count a group per listed value: 15 against the 3
+-- present on f10, whose other 12 values lie past the column's last value, and
+-- 20 against the 2 present on ps, whose other 18 fall between groups.  19202
+-- (IN list on the hash column) estimates 13 nexts against 10: the absent
+-- value costs its seek but has no row to read or skip from.
+--
+-- The rest are plain scans under the regular model.  19704 and its colocated
+-- twin, an equality on the leading key column, estimate 12 nexts against 10.
+-- 19901 and its backward and colocated twins (k = 3 on rq) are charged 24691
+-- seeks, two per row of rq: 19901 measures 2, walking the range, and 19902
+-- 11113, about one for each of the 11110 rows that fail k = 3.  The IN lists
+-- on a range key column (17121/17122/18121/18122, 19511-19514 and their
+-- colocated twins) are charged a seek and a group's rows for every listed
+-- value, present or not: 15 seeks and 165 nexts against 3 and 35 for the
+-- sparse list on f10, 8 seeks against 1 for the dense one.  19302, the IN
+-- list on the hash column, expects rows for the absent value: 60 nexts
+-- against 46.  On ps, an equality on the second key column is charged two
+-- seeks per group whatever the position of the match: forward, 19501/29501
+-- (k = 0, the group's first row) and 19502/29502 (k = 2, reached with nexts)
+-- measure one seek per group, and 19502 5000 nexts against 4000; backward,
+-- 19504/29504 (k = 0) measure one seek per group, and 19505/29505 (k = 2)
+-- 3000 prevs against 4000.  A range on it, k >= 5, is charged about the rows
+-- it keeps: 19503/29503 estimate 6000 nexts against 7004, and backward
+-- 19506/29506 6000 prevs against 10008 prevs, every row of each group, and
+-- 4000 nexts.
 select * from check_seeknext_estimates
 where "Seek Estimates" <> 'passed' or "Next Estimates" <> 'passed' or "Prev Estimates" <> 'passed'
 order by qid, nid;
-  qid  |                        query                         | nid | Node Type  | Index Name  | Index Cond  | Storage Index Filter | Storage Filter | Filter | Seek Estimates | Next Estimates | Prev Estimates 
--------+------------------------------------------------------+-----+------------+-------------+-------------+----------------------+----------------+--------+----------------+----------------+----------------
- 11004 | select v, f3 from r where f3 = 1                     |   1 | Index Scan | r_f3_idx    | (f3 = 1)    |                      |                |        | passed         | failed         | passed
- 11005 | select v, f4 from r where f4 = 1                     |   1 | Index Scan | r_f4_idx    | (f4 = 1)    |                      |                |        | passed         | failed         | passed
- 11006 | select v, f5 from r where f5 = 1                     |   1 | Index Scan | r_f5_idx    | (f5 = 1)    |                      |                |        | passed         | failed         | passed
- 11007 | select v, f10 from r where f10 = 1                   |   1 | Index Scan | r_f10_idx   | (f10 = 1)   |                      |                |        | passed         | failed         | passed
- 11008 | select v, f100 from r where f100 = 1                 |   1 | Index Scan | r_f100_idx  | (f100 = 1)  |                      |                |        | passed         | failed         | passed
- 11012 | select v, skw2 from r where skw2 = 1                 |   1 | Index Scan | r_skw2_idx  | (skw2 = 1)  |                      |                |        | passed         | failed         | passed
- 15004 | select v, f3 from r where f3 <= 1 order by f3        |   1 | Index Scan | r_f3_idx    | (f3 <= 1)   |                      |                |        | passed         | failed         | passed
- 15005 | select v, f4 from r where f4 <= 1 order by f4        |   1 | Index Scan | r_f4_idx    | (f4 <= 1)   |                      |                |        | passed         | failed         | passed
- 15006 | select v, f5 from r where f5 <= 1 order by f5        |   1 | Index Scan | r_f5_idx    | (f5 <= 1)   |                      |                |        | passed         | failed         | passed
- 15007 | select v, f10 from r where f10 <= 1 order by f10     |   1 | Index Scan | r_f10_idx   | (f10 <= 1)  |                      |                |        | passed         | failed         | passed
- 15008 | select v, f100 from r where f100 <= 1 order by f100  |   1 | Index Scan | r_f100_idx  | (f100 <= 1) |                      |                |        | passed         | failed         | passed
- 15012 | select v, skw2 from r where skw2 <= 1 order by skw2  |   1 | Index Scan | r_skw2_idx  | (skw2 <= 1) |                      |                |        | passed         | failed         | passed
- 21004 | select v, f3 from rC where f3 = 1                    |   1 | Index Scan | rc_f3_idx   | (f3 = 1)    |                      |                |        | passed         | failed         | passed
- 21005 | select v, f4 from rC where f4 = 1                    |   1 | Index Scan | rc_f4_idx   | (f4 = 1)    |                      |                |        | passed         | failed         | passed
- 21006 | select v, f5 from rC where f5 = 1                    |   1 | Index Scan | rc_f5_idx   | (f5 = 1)    |                      |                |        | passed         | failed         | passed
- 21007 | select v, f10 from rC where f10 = 1                  |   1 | Index Scan | rc_f10_idx  | (f10 = 1)   |                      |                |        | passed         | failed         | passed
- 21008 | select v, f100 from rC where f100 = 1                |   1 | Index Scan | rc_f100_idx | (f100 = 1)  |                      |                |        | passed         | failed         | passed
- 21012 | select v, skw2 from rC where skw2 = 1                |   1 | Index Scan | rc_skw2_idx | (skw2 = 1)  |                      |                |        | passed         | failed         | passed
- 25004 | select v, f3 from rC where f3 <= 1 order by f3       |   1 | Index Scan | rc_f3_idx   | (f3 <= 1)   |                      |                |        | passed         | failed         | passed
- 25005 | select v, f4 from rC where f4 <= 1 order by f4       |   1 | Index Scan | rc_f4_idx   | (f4 <= 1)   |                      |                |        | passed         | failed         | passed
- 25006 | select v, f5 from rC where f5 <= 1 order by f5       |   1 | Index Scan | rc_f5_idx   | (f5 <= 1)   |                      |                |        | passed         | failed         | passed
- 25007 | select v, f10 from rC where f10 <= 1 order by f10    |   1 | Index Scan | rc_f10_idx  | (f10 <= 1)  |                      |                |        | passed         | failed         | passed
- 25008 | select v, f100 from rC where f100 <= 1 order by f100 |   1 | Index Scan | rc_f100_idx | (f100 <= 1) |                      |                |        | passed         | failed         | passed
- 25012 | select v, skw2 from rC where skw2 <= 1 order by skw2 |   1 | Index Scan | rc_skw2_idx | (skw2 <= 1) |                      |                |        | passed         | failed         | passed
-(24 rows)
+  qid  |                                                                           query                                                                           | nid |             Node Type             | Index Name  |                                                     Index Cond                                                     | Storage Index Filter | Storage Filter | Filter | Seek Estimates | Next Estimates | Prev Estimates 
+-------+-----------------------------------------------------------------------------------------------------------------------------------------------------------+-----+-----------------------------------+-------------+--------------------------------------------------------------------------------------------------------------------+----------------------+----------------+--------+----------------+----------------+----------------
+ 11004 | select v, f3 from r where f3 = 1                                                                                                                          |   1 | Index Scan                        | r_f3_idx    | (f3 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 11005 | select v, f4 from r where f4 = 1                                                                                                                          |   1 | Index Scan                        | r_f4_idx    | (f4 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 11006 | select v, f5 from r where f5 = 1                                                                                                                          |   1 | Index Scan                        | r_f5_idx    | (f5 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 11007 | select v, f10 from r where f10 = 1                                                                                                                        |   1 | Index Scan                        | r_f10_idx   | (f10 = 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 11008 | select v, f100 from r where f100 = 1                                                                                                                      |   1 | Index Scan                        | r_f100_idx  | (f100 = 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 11012 | select v, skw2 from r where skw2 = 1                                                                                                                      |   1 | Index Scan                        | r_skw2_idx  | (skw2 = 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 15004 | select v, f3 from r where f3 <= 1 order by f3                                                                                                             |   1 | Index Scan                        | r_f3_idx    | (f3 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 15005 | select v, f4 from r where f4 <= 1 order by f4                                                                                                             |   1 | Index Scan                        | r_f4_idx    | (f4 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 15006 | select v, f5 from r where f5 <= 1 order by f5                                                                                                             |   1 | Index Scan                        | r_f5_idx    | (f5 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 15007 | select v, f10 from r where f10 <= 1 order by f10                                                                                                          |   1 | Index Scan                        | r_f10_idx   | (f10 <= 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 15008 | select v, f100 from r where f100 <= 1 order by f100                                                                                                       |   1 | Index Scan                        | r_f100_idx  | (f100 <= 1)                                                                                                        |                      |                |        | passed         | failed         | passed
+ 15012 | select v, skw2 from r where skw2 <= 1 order by skw2                                                                                                       |   1 | Index Scan                        | r_skw2_idx  | (skw2 <= 1)                                                                                                        |                      |                |        | passed         | failed         | passed
+ 17010 | select distinct skw1 from r where skw1 <= 1000                                                                                                            |   1 | Distinct Index Only Scan Backward | r_skw1_idx  | (skw1 <= 1000)                                                                                                     |                      |                |        | failed         | passed         | passed
+ 17012 | select distinct skw3 from r where skw3 <= 1000                                                                                                            |   1 | Distinct Index Only Scan Backward | r_skw3_idx  | (skw3 <= 1000)                                                                                                     |                      |                |        | passed         | failed         | passed
+ 17021 | select distinct f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10           |   1 | Distinct Index Only Scan          | r_f10_idx   | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | failed         | passed
+ 17121 | select f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10                    |   1 | Index Only Scan                   | r_f10_idx   | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | failed         | passed
+ 17122 | select f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10                                                                                      |   1 | Index Only Scan                   | r_f10_idx   | (f10 = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                                       |                      |                |        | failed         | failed         | passed
+ 18010 | select distinct skw1 from r where skw1 <= 1000 order by skw1 desc                                                                                         |   1 | Distinct Index Only Scan Backward | r_skw1_idx  | (skw1 <= 1000)                                                                                                     |                      |                |        | failed         | passed         | passed
+ 18012 | select distinct skw3 from r where skw3 <= 1000 order by skw3 desc                                                                                         |   1 | Distinct Index Only Scan Backward | r_skw3_idx  | (skw3 <= 1000)                                                                                                     |                      |                |        | passed         | failed         | passed
+ 18021 | select distinct f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc      |   1 | Distinct Index Only Scan Backward | r_f10_idx   | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | passed         | failed
+ 18121 | select f10 from r where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc               |   1 | Index Only Scan Backward          | r_f10_idx   | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | passed         | failed
+ 18122 | select f10 from r where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc                                                                                 |   1 | Index Only Scan Backward          | r_f10_idx   | (f10 = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                                       |                      |                |        | failed         | passed         | failed
+ 19202 | select distinct h from rh where h in (1, 2, 3, 500, 100000)                                                                                               |   1 | Distinct Index Scan               | rh_pkey     | (h = ANY ('{1,2,3,500,100000}'::integer[]))                                                                        |                      |                |        | passed         | failed         | passed
+ 19302 | select h from rh where h in (1, 2, 3, 500, 100000)                                                                                                        |   1 | Index Scan                        | rh_pkey     | (h = ANY ('{1,2,3,500,100000}'::integer[]))                                                                        |                      |                |        | passed         | failed         | passed
+ 19401 | select distinct g from ps where k = 0 order by g                                                                                                          |   1 | Distinct Index Scan               | ps_pkey     | (k = 0)                                                                                                            |                      |                |        | passed         | failed         | passed
+ 19402 | select distinct g from ps where k = 2 order by g                                                                                                          |   1 | Distinct Index Scan               | ps_pkey     | (k = 2)                                                                                                            |                      |                |        | passed         | failed         | passed
+ 19404 | select distinct g from ps where k = 0 order by g desc                                                                                                     |   1 | Distinct Index Scan Backward      | ps_pkey     | (k = 0)                                                                                                            |                      |                |        | passed         | failed         | failed
+ 19405 | select distinct g from ps where k = 2 order by g desc                                                                                                     |   1 | Distinct Index Scan Backward      | ps_pkey     | (k = 2)                                                                                                            |                      |                |        | passed         | passed         | failed
+ 19411 | select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g                 |   1 | Distinct Index Scan               | ps_pkey     | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | failed         | passed
+ 19413 | select distinct g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc            |   1 | Distinct Index Scan Backward      | ps_pkey     | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | passed         | failed
+ 19427 | select distinct g from ps where k in (3, 7) and k > 3 order by g                                                                                          |   1 | Distinct Index Scan               | ps_pkey     | ((k = ANY ('{3,7}'::integer[])) AND (k > 3))                                                                       |                      |                |        | passed         | failed         | passed
+ 19437 | select distinct g from psd where k in (0, 6) order by g desc                                                                                              |   1 | Distinct Index Scan Backward      | psd_pkey    | (k = ANY ('{0,6}'::integer[]))                                                                                     |                      |                |        | passed         | passed         | failed
+ 19451 | select distinct g from pe where m = 'e5' order by g desc                                                                                                  |   1 | Distinct Index Scan Backward      | pe_pkey     | (m = 'e5'::pe_label)                                                                                               |                      |                |        | passed         | passed         | failed
+ 19501 | select g from ps where k = 0 order by g                                                                                                                   |   1 | Index Scan                        | ps_pkey     | (k = 0)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 19502 | select g from ps where k = 2 order by g                                                                                                                   |   1 | Index Scan                        | ps_pkey     | (k = 2)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 19503 | select g from ps where k >= 5 order by g                                                                                                                  |   1 | Index Scan                        | ps_pkey     | (k >= 5)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 19504 | select g from ps where k = 0 order by g desc                                                                                                              |   1 | Index Scan Backward               | ps_pkey     | (k = 0)                                                                                                            |                      |                |        | failed         | failed         | failed
+ 19505 | select g from ps where k = 2 order by g desc                                                                                                              |   1 | Index Scan Backward               | ps_pkey     | (k = 2)                                                                                                            |                      |                |        | passed         | passed         | failed
+ 19506 | select g from ps where k >= 5 order by g desc                                                                                                             |   1 | Index Scan Backward               | ps_pkey     | (k >= 5)                                                                                                           |                      |                |        | passed         | failed         | failed
+ 19511 | select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g                          |   1 | Index Scan                        | ps_pkey     | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | failed         | passed
+ 19512 | select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g       |   1 | Index Scan                        | ps_pkey     | (g = ANY ('{0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900}'::integer[])) |                      |                |        | failed         | failed         | passed
+ 19513 | select g from ps where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc                     |   1 | Index Scan Backward               | ps_pkey     | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | passed         | failed
+ 19514 | select g from ps where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc  |   1 | Index Scan Backward               | ps_pkey     | (g = ANY ('{0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900}'::integer[])) |                      |                |        | failed         | passed         | failed
+ 19704 | select g from rp where g = 100                                                                                                                            |   1 | Index Scan                        | rp_pkey     | (g = 100)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 19802 | select distinct u from rq where k = 3 order by u desc                                                                                                     |   1 | Distinct Index Scan Backward      | rq_pkey     | (k = 3)                                                                                                            |                      |                |        | passed         | failed         | failed
+ 19901 | select u from rq where k = 3 order by u                                                                                                                   |   1 | Index Scan                        | rq_pkey     | (k = 3)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 19902 | select u from rq where k = 3 order by u desc                                                                                                              |   1 | Index Scan Backward               | rq_pkey     | (k = 3)                                                                                                            |                      |                |        | failed         | failed         | failed
+ 21004 | select v, f3 from rC where f3 = 1                                                                                                                         |   1 | Index Scan                        | rc_f3_idx   | (f3 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 21005 | select v, f4 from rC where f4 = 1                                                                                                                         |   1 | Index Scan                        | rc_f4_idx   | (f4 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 21006 | select v, f5 from rC where f5 = 1                                                                                                                         |   1 | Index Scan                        | rc_f5_idx   | (f5 = 1)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 21007 | select v, f10 from rC where f10 = 1                                                                                                                       |   1 | Index Scan                        | rc_f10_idx  | (f10 = 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 21008 | select v, f100 from rC where f100 = 1                                                                                                                     |   1 | Index Scan                        | rc_f100_idx | (f100 = 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 21012 | select v, skw2 from rC where skw2 = 1                                                                                                                     |   1 | Index Scan                        | rc_skw2_idx | (skw2 = 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 25004 | select v, f3 from rC where f3 <= 1 order by f3                                                                                                            |   1 | Index Scan                        | rc_f3_idx   | (f3 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 25005 | select v, f4 from rC where f4 <= 1 order by f4                                                                                                            |   1 | Index Scan                        | rc_f4_idx   | (f4 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 25006 | select v, f5 from rC where f5 <= 1 order by f5                                                                                                            |   1 | Index Scan                        | rc_f5_idx   | (f5 <= 1)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 25007 | select v, f10 from rC where f10 <= 1 order by f10                                                                                                         |   1 | Index Scan                        | rc_f10_idx  | (f10 <= 1)                                                                                                         |                      |                |        | passed         | failed         | passed
+ 25008 | select v, f100 from rC where f100 <= 1 order by f100                                                                                                      |   1 | Index Scan                        | rc_f100_idx | (f100 <= 1)                                                                                                        |                      |                |        | passed         | failed         | passed
+ 25012 | select v, skw2 from rC where skw2 <= 1 order by skw2                                                                                                      |   1 | Index Scan                        | rc_skw2_idx | (skw2 <= 1)                                                                                                        |                      |                |        | passed         | failed         | passed
+ 27010 | select distinct skw1 from rC where skw1 <= 1000                                                                                                           |   1 | Distinct Index Only Scan Backward | rc_skw1_idx | (skw1 <= 1000)                                                                                                     |                      |                |        | passed         | passed         | failed
+ 27012 | select distinct skw3 from rC where skw3 <= 1000                                                                                                           |   1 | Distinct Index Only Scan Backward | rc_skw3_idx | (skw3 <= 1000)                                                                                                     |                      |                |        | passed         | failed         | passed
+ 27021 | select distinct f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10          |   1 | Distinct Index Only Scan          | rc_f10_idx  | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | failed         | passed
+ 27121 | select f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10                   |   1 | Index Only Scan                   | rc_f10_idx  | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | failed         | passed
+ 27122 | select f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10                                                                                     |   1 | Index Only Scan                   | rc_f10_idx  | (f10 = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                                       |                      |                |        | failed         | failed         | passed
+ 28010 | select distinct skw1 from rC where skw1 <= 1000 order by skw1 desc                                                                                        |   1 | Distinct Index Only Scan Backward | rc_skw1_idx | (skw1 <= 1000)                                                                                                     |                      |                |        | passed         | passed         | failed
+ 28012 | select distinct skw3 from rC where skw3 <= 1000 order by skw3 desc                                                                                        |   1 | Distinct Index Only Scan Backward | rc_skw3_idx | (skw3 <= 1000)                                                                                                     |                      |                |        | passed         | failed         | passed
+ 28021 | select distinct f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc     |   1 | Distinct Index Only Scan Backward | rc_f10_idx  | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | passed         | failed
+ 28121 | select f10 from rC where f10 in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345) order by f10 desc              |   1 | Index Only Scan Backward          | rc_f10_idx  | (f10 = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))            |                      |                |        | failed         | passed         | failed
+ 28122 | select f10 from rC where f10 in (1, 2, 3, 4, 5, 6, 7, 8) order by f10 desc                                                                                |   1 | Index Only Scan Backward          | rc_f10_idx  | (f10 = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                                       |                      |                |        | failed         | passed         | failed
+ 29401 | select distinct g from psC where k = 0 order by g                                                                                                         |   1 | Distinct Index Scan               | psc_pkey    | (k = 0)                                                                                                            |                      |                |        | passed         | failed         | passed
+ 29402 | select distinct g from psC where k = 2 order by g                                                                                                         |   1 | Distinct Index Scan               | psc_pkey    | (k = 2)                                                                                                            |                      |                |        | passed         | failed         | passed
+ 29404 | select distinct g from psC where k = 0 order by g desc                                                                                                    |   1 | Distinct Index Scan Backward      | psc_pkey    | (k = 0)                                                                                                            |                      |                |        | passed         | failed         | failed
+ 29405 | select distinct g from psC where k = 2 order by g desc                                                                                                    |   1 | Distinct Index Scan Backward      | psc_pkey    | (k = 2)                                                                                                            |                      |                |        | passed         | passed         | failed
+ 29411 | select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g                |   1 | Distinct Index Scan               | psc_pkey    | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | failed         | passed
+ 29413 | select distinct g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc           |   1 | Distinct Index Scan Backward      | psc_pkey    | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | passed         | failed
+ 29427 | select distinct g from psC where k in (3, 7) and k > 3 order by g                                                                                         |   1 | Distinct Index Scan               | psc_pkey    | ((k = ANY ('{3,7}'::integer[])) AND (k > 3))                                                                       |                      |                |        | passed         | failed         | passed
+ 29437 | select distinct g from psdC where k in (0, 6) order by g desc                                                                                             |   1 | Distinct Index Scan Backward      | psdc_pkey   | (k = ANY ('{0,6}'::integer[]))                                                                                     |                      |                |        | passed         | passed         | failed
+ 29451 | select distinct g from peC where m = 'e5' order by g desc                                                                                                 |   1 | Distinct Index Scan Backward      | pec_pkey    | (m = 'e5'::pe_label)                                                                                               |                      |                |        | passed         | passed         | failed
+ 29501 | select g from psC where k = 0 order by g                                                                                                                  |   1 | Index Scan                        | psc_pkey    | (k = 0)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 29502 | select g from psC where k = 2 order by g                                                                                                                  |   1 | Index Scan                        | psc_pkey    | (k = 2)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 29503 | select g from psC where k >= 5 order by g                                                                                                                 |   1 | Index Scan                        | psc_pkey    | (k >= 5)                                                                                                           |                      |                |        | passed         | failed         | passed
+ 29504 | select g from psC where k = 0 order by g desc                                                                                                             |   1 | Index Scan Backward               | psc_pkey    | (k = 0)                                                                                                            |                      |                |        | failed         | failed         | failed
+ 29505 | select g from psC where k = 2 order by g desc                                                                                                             |   1 | Index Scan Backward               | psc_pkey    | (k = 2)                                                                                                            |                      |                |        | passed         | passed         | failed
+ 29506 | select g from psC where k >= 5 order by g desc                                                                                                            |   1 | Index Scan Backward               | psc_pkey    | (k >= 5)                                                                                                           |                      |                |        | passed         | failed         | failed
+ 29511 | select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g                         |   1 | Index Scan                        | psc_pkey    | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | failed         | passed
+ 29512 | select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g      |   1 | Index Scan                        | psc_pkey    | (g = ANY ('{0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900}'::integer[])) |                      |                |        | failed         | failed         | passed
+ 29513 | select g from psC where g in (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190) order by g desc                    |   1 | Index Scan Backward               | psc_pkey    | (g = ANY ('{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190}'::integer[]))                    |                      |                |        | failed         | passed         | failed
+ 29514 | select g from psC where g in (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900) order by g desc |   1 | Index Scan Backward               | psc_pkey    | (g = ANY ('{0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900}'::integer[])) |                      |                |        | failed         | passed         | failed
+ 29704 | select g from rpC where g = 100                                                                                                                           |   1 | Index Scan                        | rpc_pkey    | (g = 100)                                                                                                          |                      |                |        | passed         | failed         | passed
+ 29802 | select distinct u from rqC where k = 3 order by u desc                                                                                                    |   1 | Distinct Index Scan Backward      | rqc_pkey    | (k = 3)                                                                                                            |                      |                |        | passed         | failed         | failed
+ 29901 | select u from rqC where k = 3 order by u                                                                                                                  |   1 | Index Scan                        | rqc_pkey    | (k = 3)                                                                                                            |                      |                |        | failed         | failed         | passed
+ 29902 | select u from rqC where k = 3 order by u desc                                                                                                             |   1 | Index Scan Backward               | rqc_pkey    | (k = 3)                                                                                                            |                      |                |        | failed         | failed         | failed
+(92 rows)
 

@@ -132,6 +132,7 @@ YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
@@ -368,6 +369,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode

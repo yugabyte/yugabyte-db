@@ -283,6 +283,10 @@ SET hnsw.ef_search = 100;
 - Vector indexes are not supported for [instant database cloning](../../../manage/backup-restore/point-in-time-recovery/clone/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported.
 
+### Notes
+
+- When [encryption at rest](../../../secure/encryption-at-rest/) is enabled, vector index files on tablet servers are not encrypted. These files hold the indexed vectors and the HNSW graph, but not the rows they belong to. Table data, including the vector column itself, is encrypted as usual.
+
 ## Upgrade vector indexes
 
 Vector indexes are generally available in v2026.1.1.0 and later; v2026.1.2.0 or later is recommended. Starting with v2026.1.1.0 and v2025.2.6.0, YugabyteDB stores the vector reverse mapping (which maps each vector back to its table row) once per indexed table, instead of once per vector index.

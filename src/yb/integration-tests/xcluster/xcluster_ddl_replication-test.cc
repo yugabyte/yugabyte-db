@@ -4531,6 +4531,9 @@ TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyze
   const auto stats_query = StatsCountQuery("tbl1");
   const auto replicated_ddls_query =
       "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls";
+  // replicated_ddls rows are written locally on the target at a commit time that can be past the
+  // xCluster safe time, so read them without the database level consistency.
+  ASSERT_OK(consumer_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
 
   // Without the infra there is no auto analyze service to report to, so the hint is dropped. With
   // the infra up but auto analyze off the count is reported and the service holds it. Either way

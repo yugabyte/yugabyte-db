@@ -57,6 +57,7 @@
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/dockv/doc_vector_id.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -127,6 +128,13 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 
 DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
                     "Use tablespace-local locality will be used instead of region-local locality.");
+
+// Postgres sends PgVectorReadOptionsPB.partition_key_prefixes only to its local tserver, and the
+// per-tablet copies drop them, so the field never reaches a process of another version. The
+// AutoFlag still keeps the routing off until the whole universe is upgraded.
+DEFINE_RUNTIME_AUTO_bool(vector_index_enable_pk_routing, kLocalVolatile, false, true,
+    "When a vector index query filters on the primary key (all hash columns, or a leading prefix "
+    "of the range columns), only search the tablets that can hold the matching rows.");
 
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
@@ -206,6 +214,9 @@ METRIC_DEFINE_event_stats(server, vector_index_collect_us,
 METRIC_DEFINE_event_stats(server, vector_index_reduce_us,
     "Time to reduce vector index results", yb::MetricUnit::kMicroseconds,
     "Time (microseconds) that query spent reducing list of vectors from tablets.");
+METRIC_DEFINE_event_stats(server, vector_index_partitions_queried,
+    "Tablets searched per vector index fetch", yb::MetricUnit::kRequests,
+    "Number of tablets a vector index query sent a search to in one fetch round.");
 
 namespace yb::tserver {
 namespace {
@@ -370,18 +381,31 @@ class VectorIndexQuery {
     auto prefetch_size = read_req.index_request().vector_idx_options().prefetch_size();
     prefetch_size_ = prefetch_size < 0 ? std::numeric_limits<size_t>::max() : prefetch_size;
 
+    const auto selected_partitions = SelectPartitions(
+        read_req.index_request().vector_idx_options(), *table, partitions->keys);
+
     sidecars_ = std::make_unique<rpc::Sidecars>();
+    const auto num_ops_before = ops.size();
     size_t partition_idx = 0;
     for (const auto& key : partitions->keys) {
-      const auto& partition_state = partitions_[partition_idx];
+      auto& partition_state = partitions_[partition_idx];
+      if (!selected_partitions[partition_idx]) {
+        // The partition can't hold rows matching the query. Marking it as fully fetched keeps
+        // CouldFetchMore() from waiting for it.
+        partition_state.whether_all_vectors_was_fetched = true;
+      }
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
           partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
               > partition_state.number_of_vectors_fetched_from_tablet) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
-        new_read_req->mutable_index_request()->mutable_vector_idx_options()
-            ->set_num_top_vectors_to_remove(partition_state.number_of_vectors_fetched_from_tablet);
+        auto& vector_idx_options = *new_read_req->mutable_index_request()
+            ->mutable_vector_idx_options();
+        vector_idx_options.set_num_top_vectors_to_remove(
+            partition_state.number_of_vectors_fetched_from_tablet);
+        // Tablets don't use the prefixes, they only select the partitions above.
+        vector_idx_options.mutable_partition_key_prefixes()->clear();
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(
             table, arena, *sidecars_, new_read_req);
         ops.push_back(PgClientSessionOperation {
@@ -392,6 +416,7 @@ class VectorIndexQuery {
       }
       ++partition_idx;
     }
+    metrics_.vector_index_partitions_queried->Increment(ops.size() - num_ops_before);
     return_paging_state_ = read_req.return_paging_state();
     fetch_start_ = MonoTime::Now();
 
@@ -495,6 +520,35 @@ class VectorIndexQuery {
   }
 
  private:
+  static boost::dynamic_bitset<> AllPartitions(size_t num_partitions) {
+    boost::dynamic_bitset<> result(num_partitions);
+    result.set();
+    return result;
+  }
+
+  // Returns one bit per partition, set for the partitions that have to be searched.
+  static boost::dynamic_bitset<> SelectPartitions(
+      const LWPgVectorReadOptionsPB& options, const client::YBTable& table,
+      const client::TablePartitionList& partitions) {
+    if (options.partition_key_prefixes().empty() ||
+        !FLAGS_vector_index_enable_pk_routing ||
+        partitions.size() <= 1) {
+      return AllPartitions(partitions.size());
+    }
+    boost::dynamic_bitset<> selected(partitions.size());
+    for (const auto& prefix : options.partition_key_prefixes()) {
+      auto status = client::SelectPartitionsForPartitionKeyPrefix(partitions, prefix, selected);
+      if (!status.ok()) {
+        // Searching all partitions is always correct, so don't fail the query.
+        LOG_WITH_FUNC(DFATAL) << "Failed to route vector index query of " << table.id() << ": "
+                              << status;
+        return AllPartitions(partitions.size());
+      }
+    }
+    VLOG_WITH_FUNC(2) << "Selected partitions: " << selected;
+    return selected;
+  }
+
   size_t CalculateNumVectorSentToPg() const {
     DCHECK(!partitions_.empty());
     return std::accumulate(
@@ -2900,8 +2954,20 @@ class PgClientSession::Impl {
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     data->TEST_mock_service = context_.TEST_mock_service;
     const auto& options = data->req.options();
-    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
-              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
+    // Don't promote local txns when requesting local locks on catalog relations.
+    const auto relation_oid = data->req.lock_oid().relation_oid();
+    // Promote txns with global locks to detect potential deadlock. txns for DDLs should
+    // probably be globally replicated anyways to avoid issues if one region goes down.
+    auto locality = IsTableLockTypeGlobal(lock_type) || options.force_global_transaction()
+        ? TransactionFullLocality::Global()
+        : TransactionFullLocality::RegionLocal();
+    if (!locality.IsGlobal() && relation_oid >= kPgFirstNormalObjectId) {
+      locality = GetTargetTransactionLocality(data->req);
+    }
+    VLOG_WITH_PREFIX(3)
+        << "Object lock for relation " << AsString(data->req.lock_oid())
+        << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
@@ -2930,7 +2996,8 @@ class PgClientSession::Impl {
       }
       active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
-      RETURN_NOT_OK(SetupSession(options, deadline, /* arena= */ nullptr));
+      RETURN_NOT_OK(SetupSession(
+          options, deadline, /* arena= */ nullptr, /* in_txn_limit */ {}, locality));
       active_subtxn_id = options.active_sub_transaction_id();
     }
 
@@ -2944,12 +3011,10 @@ class PgClientSession::Impl {
         primary_session_data->transaction || primary_session_kind == PgClientSessionKind::kPlain,
         IllegalState, Format("Expected valid transaction for $0", AsString(primary_session_kind)));
 
-    auto locality = GetTargetTransactionLocality(data->req);
     auto txn_meta_res = primary_session_data->transaction
         ? primary_session_data->transaction->GetMetadata(deadline).get()
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
-    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
@@ -4078,14 +4143,16 @@ class PgClientSession::Impl {
           txn->isolation(), isolation);
       }
 
-      return options.ddl_mode() && options.ddl_use_regular_transaction_block()
+      return locality.IsGlobal() ||
+             (options.ddl_mode() && options.ddl_use_regular_transaction_block())
                  ? txn->EnsureGlobal(deadline)
                  : Status::OK();
     }
 
     const bool global_required =
         options.force_global_transaction() ||
-        (options.ddl_mode() && options.ddl_use_regular_transaction_block());
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block()) ||
+        locality.IsGlobal();
     if (global_required) {
       locality = TransactionFullLocality::Global();
     }
@@ -4982,7 +5049,9 @@ PgClientSessionMetrics::PgClientSessionMetrics(MetricEntity* metric_entity)
     : exchange_response_size(METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
       vector_index_fetch_us(METRIC_vector_index_fetch_us.Instantiate(metric_entity)),
       vector_index_collect_us(METRIC_vector_index_collect_us.Instantiate(metric_entity)),
-      vector_index_reduce_us(METRIC_vector_index_reduce_us.Instantiate(metric_entity)) {
+      vector_index_reduce_us(METRIC_vector_index_reduce_us.Instantiate(metric_entity)),
+      vector_index_partitions_queried(
+          METRIC_vector_index_partitions_queried.Instantiate(metric_entity)) {
 }
 
 }  // namespace yb::tserver

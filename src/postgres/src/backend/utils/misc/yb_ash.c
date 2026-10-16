@@ -388,7 +388,6 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 	}
 }
 

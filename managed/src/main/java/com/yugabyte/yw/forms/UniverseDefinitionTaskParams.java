@@ -2822,6 +2822,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return null;
   }
 
+  /**
+   * Returns true if task {@code taskUuid} owns this universe, as the updating task or the placement
+   * modification task. Retry and rollback eligibility both require it.
+   */
+  @JsonIgnore
+  public boolean isOwnedByTask(UUID taskUuid) {
+    return taskUuid != null
+        && (taskUuid.equals(updatingTaskUUID) || taskUuid.equals(placementModificationTaskUuid));
+  }
+
   @JsonIgnore
   public boolean isUniverseBusyByTask() {
     return updateInProgress
