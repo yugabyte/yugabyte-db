@@ -257,6 +257,15 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SemiMode, XClusterOutboundReplicationGroupParameterized, ::testing::Values(false));
 
+// Automatic mode only, for tests where a semi-automatic run would add no coverage: the APIs they
+// check run the same code in both modes, and the parameterized tests in this file already create
+// and delete groups in semi-automatic mode.
+class XClusterOutboundReplicationGroupAutomaticModeTest
+    : public XClusterOutboundReplicationGroupTest {
+ public:
+  bool UseAutomaticMode() override { return true; }
+};
+
 TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
@@ -475,7 +484,7 @@ TEST_P(
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, Repair) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -571,7 +580,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
   }
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, RepairWithYbAdmin) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -607,7 +616,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
 
 // Validate the GetXClusterOutboundReplicationGroupInfo, and
 // GetXClusterOutboundReplicationGroups RPCs.
-TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, TestListAPIs) {
   // Create two DBs with different table counts.
   ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
 
