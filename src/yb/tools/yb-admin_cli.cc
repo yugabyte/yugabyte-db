@@ -68,6 +68,7 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/util/enum_parse.h"
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -96,8 +97,11 @@ DEFINE_NON_RUNTIME_string(xcluster_source_certs_dir_name, "",
     "xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the target's nodes. Since "
     "empty always means fall back, a TLS target cannot reach a plaintext source.");
 
-#define REGISTER_COMMAND(command_name) \
-  Register(#command_name, command_name##_args, command_name##_action)
+// The optional second argument is the operation's CommandMetadata, e.g.
+// REGISTER_COMMAND(delete_snapshot, {.group = ..., .description = "..."}).
+#define REGISTER_COMMAND(command_name, ...) \
+  Register(#command_name, command_name##_args, command_name##_action \
+           __VA_OPT__(, /* hidden= */ false, __VA_ARGS__))
 
 #define REGISTER_COMMAND_HIDDEN(command_name) \
   Register(#command_name, command_name##_args, command_name##_action, true)
@@ -127,6 +131,24 @@ std::string FlagDefault(const char* flag_name) {
 }
 
 constexpr auto kHelpOperation = "help";
+
+const char* GroupName(CommandGroup group) {
+  switch (group) {
+    case CommandGroup::kUniverseAndCluster: return "Universe and cluster";
+    case CommandGroup::kTable: return "Table";
+    case CommandGroup::kBackupAndSnapshot: return "Backup and snapshot";
+    case CommandGroup::kMultiRegion: return "Multi-zone and multi-region deployment";
+    case CommandGroup::kReadReplica: return "Read replica deployment";
+    case CommandGroup::kSecurity: return "Security";
+    case CommandGroup::kCdc: return "Change Data Capture (CDC)";
+    case CommandGroup::kXCluster: return "xCluster Replication";
+    case CommandGroup::kDecommissioning: return "Decommissioning";
+    case CommandGroup::kClusterBalancing: return "Cluster balancing";
+    case CommandGroup::kUpgrade: return "Upgrade";
+    case CommandGroup::kMeta: return "Meta";
+  }
+  FATAL_INVALID_ENUM_VALUE(CommandGroup, group);
+}
 
 constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
@@ -555,6 +577,23 @@ void ClusterAdminCli::PrintCommandUsage(const Command& command, std::ostream& ou
       << GetArgumentExpressions(command.usage_arguments_);
 }
 
+void ClusterAdminCli::PrintCommandHelp(const Command& command, std::ostream& out) {
+  const auto& metadata = command.metadata_;
+  if (!metadata.description.empty()) {
+    out << metadata.description << endl;
+  }
+  PrintCommandUsage(command, out);
+  if (!metadata.example.empty()) {
+    out << "Example: " << prog_name_ << " " << metadata.example << endl;
+  }
+  for (const auto& flag : metadata.flags) {
+    // The help text comes from the gflag definition, so the registry cannot drift from it.
+    google::CommandLineFlagInfo info;
+    google::GetCommandLineFlagInfo(flag.c_str(), &info);
+    out << "-" << flag << ": " << info.description << endl;
+  }
+}
+
 void ClusterAdminCli::PrintOverview(const std::string& prog_name, std::ostream& out) {
   out << prog_name << ": " << google::ProgramUsage();
 }
@@ -587,16 +626,16 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
   // Only the full list is numbered, so an operation never has two different numbers.
   const auto number_width = std::to_string(matches.size()).size();
   size_t number = 0;
-  for (const auto* command : matches) {
+  auto print_entry = [&](const Command& command) {
     std::string line = "  ";
     if (filter.empty()) {
       line += PadLeft(std::to_string(++number), number_width) + ". ";
     } else {
       line += "* ";
     }
-    line += command->name_;
-    if (!command->usage_arguments_.empty()) {
-      line += " " + command->usage_arguments_;
+    line += command.name_;
+    if (!command.usage_arguments_.empty()) {
+      line += " " + command.usage_arguments_;
     }
     if (line.size() > kMaxLineWidth) {
       // Usage strings write repetition as "]..." or ",...", so mark the cut with " ...", which
@@ -606,6 +645,34 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
       line += kCutMarker;
     }
     out << line << endl;
+  };
+
+  // A filtered list is already a selection, so it stays flat.
+  if (!filter.empty()) {
+    for (const auto* command : matches) {
+      print_entry(*command);
+    }
+    return matches.size();
+  }
+
+  // matches is alphabetical, so a stable sort by group keeps each group alphabetical. Operations
+  // without a group sort last; while no operation has one, the list prints exactly as it did
+  // before groups existed.
+  std::stable_sort(matches.begin(), matches.end(), [](const Command* lhs, const Command* rhs) {
+    const auto& lhs_group = lhs->metadata_.group;
+    const auto& rhs_group = rhs->metadata_.group;
+    return lhs_group && (!rhs_group || *lhs_group < *rhs_group);
+  });
+  const bool grouped = matches.front()->metadata_.group.has_value();
+  std::optional<CommandGroup> current_group;
+  for (const auto* command : matches) {
+    const auto& group = command->metadata_.group;
+    if (grouped && (number == 0 || group != current_group)) {
+      // Operations without a group trail the grouped ones until every operation has a group.
+      out << endl << (group ? GroupName(*group) : "Not yet grouped") << ":" << endl;
+      current_group = group;
+    }
+    print_entry(*command);
   }
   return matches.size();
 }
@@ -714,7 +781,7 @@ std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
 
 void ClusterAdminCli::PrintHelpRequest(const HelpRequest& request, std::ostream& out) {
   if (!request.operation.empty()) {
-    PrintCommandUsage(commands_[command_indexes_[request.operation]], out);
+    PrintCommandHelp(commands_[command_indexes_[request.operation]], out);
     return;
   }
   PrintOverview(prog_name_, out);
@@ -768,7 +835,7 @@ Status ClusterAdminCli::RunHelp(const CLIArguments& args) {
   const auto& topic = args[0];
   // Hidden operations are listed nowhere, but their usage is available by exact name.
   if (const auto cmd = command_indexes_.find(topic); cmd != command_indexes_.end()) {
-    PrintCommandUsage(commands_[cmd->second], std::cout);
+    PrintCommandHelp(commands_[cmd->second], std::cout);
     return Status::OK();
   }
   // An empty filter matches every operation, so treat "help ''" like "yb-admin ''".
@@ -859,9 +926,16 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 }
 
 void ClusterAdminCli::Register(
-    string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden) {
+    string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden,
+    CommandMetadata metadata) {
+  for (const auto& flag : metadata.flags) {
+    google::CommandLineFlagInfo info;
+    CHECK(google::GetCommandLineFlagInfo(flag.c_str(), &info))
+        << cmd_name << " lists unknown flag " << flag;
+  }
   command_indexes_[cmd_name] = commands_.size();
-  commands_.push_back({std::move(cmd_name), cmd_args, std::move(action), hidden});
+  commands_.push_back(
+      {std::move(cmd_name), cmd_args, std::move(action), hidden, std::move(metadata)});
 }
 
 void ClusterAdminCli::SetUsage() {
@@ -3507,9 +3581,11 @@ Status xcluster_failover_action(
 
 void ClusterAdminCli::RegisterCommandHandlers() {
   // Run() answers `help` before dispatch; registering it lists it and suggests it for typos.
-  Register(kHelpOperation, "[<operation>]", [this](const CLIArguments& args, ClusterAdminClient*) {
-    return RunHelp(args);
-  });
+  Register(
+      kHelpOperation, "[<operation>]",
+      [this](const CLIArguments& args, ClusterAdminClient*) { return RunHelp(args); },
+      /* hidden= */ false,
+      {.group = CommandGroup::kMeta, .description = "List operations, or show the usage of one"});
 
   REGISTER_COMMAND(change_config);
   REGISTER_COMMAND(list_tablet_servers);
@@ -3537,7 +3613,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(compact_table);
   REGISTER_COMMAND(compact_table_by_id);
   REGISTER_COMMAND(compaction_status);
-  REGISTER_COMMAND(list_all_tablet_servers);
+  REGISTER_COMMAND(list_all_tablet_servers, {
+      .group = CommandGroup::kUniverseAndCluster,
+      .description = "List all tablet servers",
+      .flags = {"exclude_dead"}});
   REGISTER_COMMAND(remove_tablet_server);
   REGISTER_COMMAND(list_all_masters);
   REGISTER_COMMAND(change_master_config);
@@ -3567,24 +3646,62 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(ddl_log);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
-  REGISTER_COMMAND(list_snapshots);
-  REGISTER_COMMAND(create_snapshot);
-  REGISTER_COMMAND(list_snapshot_restorations);
-  REGISTER_COMMAND(create_snapshot_schedule);
-  REGISTER_COMMAND(list_snapshot_schedules);
-  REGISTER_COMMAND(delete_snapshot_schedule);
-  REGISTER_COMMAND(restore_snapshot_schedule);
-  REGISTER_COMMAND(clone_namespace);
-  REGISTER_COMMAND(list_clones);
-  REGISTER_COMMAND(edit_snapshot_schedule);
-  REGISTER_COMMAND(create_keyspace_snapshot);
-  REGISTER_COMMAND(create_database_snapshot);
-  REGISTER_COMMAND(restore_snapshot);
-  REGISTER_COMMAND(export_snapshot);
-  REGISTER_COMMAND(import_snapshot);
-  REGISTER_COMMAND(import_snapshot_selective);
-  REGISTER_COMMAND(delete_snapshot);
-  REGISTER_COMMAND(abort_snapshot_restore);
+  REGISTER_COMMAND(list_snapshots, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "List all snapshot IDs, restoration IDs, and states"});
+  REGISTER_COMMAND(create_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Create a snapshot of the specified YCQL tables and their indexes"});
+  REGISTER_COMMAND(list_snapshot_restorations, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "List snapshot restorations"});
+  REGISTER_COMMAND(create_snapshot_schedule, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Create a snapshot schedule for a YSQL database or YCQL keyspace"});
+  REGISTER_COMMAND(list_snapshot_schedules, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "List all snapshot schedules, or one schedule, with their snapshots"});
+  REGISTER_COMMAND(delete_snapshot_schedule, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Delete a snapshot schedule and all of its snapshots"});
+  REGISTER_COMMAND(restore_snapshot_schedule, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Rewind a database or keyspace to a point in time using its schedule",
+      .example = "restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s"});
+  REGISTER_COMMAND(clone_namespace, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Clone a YSQL database or YCQL keyspace as of a point in time",
+      .example = "clone_namespace ysql.yugabyte cloned_db minus 5m"});
+  REGISTER_COMMAND(list_clones, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "List clone operations for a source YSQL database or YCQL keyspace"});
+  REGISTER_COMMAND(edit_snapshot_schedule, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Edit the interval or retention of a snapshot schedule"});
+  REGISTER_COMMAND(create_keyspace_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Create a snapshot of the specified YCQL keyspace"});
+  REGISTER_COMMAND(create_database_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Create a snapshot of the specified YSQL database"});
+  REGISTER_COMMAND(restore_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Restore the specified snapshot, optionally to a point in time"});
+  REGISTER_COMMAND(export_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Generate a metadata file for the specified snapshot"});
+  REGISTER_COMMAND(import_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Import the specified snapshot metadata file"});
+  REGISTER_COMMAND(import_snapshot_selective, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Import only the specified tables from a snapshot metadata file"});
+  REGISTER_COMMAND(delete_snapshot, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Delete the specified snapshot"});
+  REGISTER_COMMAND(abort_snapshot_restore, {
+      .group = CommandGroup::kBackupAndSnapshot,
+      .description = "Abort an in-progress snapshot restoration"});
   REGISTER_COMMAND(list_replica_type_counts);
   REGISTER_COMMAND(set_preferred_zones);
   REGISTER_COMMAND(rotate_universe_key);

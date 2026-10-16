@@ -32,6 +32,7 @@
 // Tests for the yb-admin command-line tool.
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <regex>
@@ -223,6 +224,16 @@ Status RemoteErrorWithCode(const std::string& message, rpc::ErrorStatusPB::RpcEr
   return STATUS(RemoteError, message).CloneAndAddErrorCode(rpc::RpcError(code));
 }
 
+// help <operation> may print a description above the usage line.
+std::string UsageLine(const std::string& help_output) {
+  for (const auto& line : StringSplit(help_output, '\n')) {
+    if (line.starts_with("Usage: ")) {
+      return line;
+    }
+  }
+  return "";
+}
+
 }  // namespace
 
 TEST_F(AdminCliTest, UnsupportedRpcErrorDetection) {
@@ -409,19 +420,41 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   ASSERT_STR_NOT_CONTAINS(output, "SetUsageMessage");
   ASSERT_STR_NOT_CONTAINS(error, "SetUsageMessage");
 
+  // Entries are numbered across the whole list, alphabetical within each group header.
   std::vector<int> numbers;
   std::vector<std::string> names;
-  std::regex entry_re(R"(\n\s*(\d+)\. (\S+))");
-  for (std::sregex_iterator it(output.begin(), output.end(), entry_re), end; it != end; ++it) {
-    numbers.push_back(std::stoi((*it)[1].str()));
-    names.push_back((*it)[2].str());
+  std::vector<std::string> groups;
+  std::vector<std::string> grouped_names;
+  std::vector<std::string> group_names;
+  const std::regex entry_re(R"(\s*(\d+)\. (\S+).*)");
+  const std::regex group_re(R"((\S.*):)");
+  for (const auto& line : StringSplit(output, '\n')) {
+    std::smatch m;
+    if (std::regex_match(line, m, entry_re)) {
+      numbers.push_back(std::stoi(m[1].str()));
+      names.push_back(m[2].str());
+      group_names.push_back(m[2].str());
+      if (!groups.empty() && groups.back() != "Not yet grouped") {
+        grouped_names.push_back(m[2].str());
+      }
+    } else if (std::regex_match(line, m, group_re) && !line.starts_with("Operations (")) {
+      ASSERT_TRUE(std::is_sorted(group_names.begin(), group_names.end()))
+          << "group '" << (groups.empty() ? "" : groups.back()) << "' is not alphabetical";
+      groups.push_back(m[1].str());
+      group_names.clear();
+    }
   }
+  ASSERT_TRUE(std::is_sorted(group_names.begin(), group_names.end()))
+      << "group '" << (groups.empty() ? "" : groups.back()) << "' is not alphabetical";
   ASSERT_GE(numbers.size(), 100);
   for (size_t idx = 0; idx < numbers.size(); ++idx) {
     ASSERT_EQ(numbers[idx], static_cast<int>(idx) + 1)
         << "gap or duplicate in operation numbering at position " << idx;
   }
-  ASSERT_TRUE(std::is_sorted(names.begin(), names.end())) << "operation list is not alphabetical";
+  // Groups print in the docs page's order, Meta after them, ungrouped operations last.
+  const std::vector<std::string> expected_groups = {
+      "Universe and cluster", "Backup and snapshot", "Meta", "Not yet grouped"};
+  ASSERT_EQ(groups, expected_groups);
   ASSERT_TRUE(std::find(names.begin(), names.end(), "help") != names.end());
   ASSERT_TRUE(
       std::find(names.begin(), names.end(), "unsafe_release_object_locks_global") == names.end());
@@ -443,7 +476,7 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
     }
     std::string usage;
     ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", m[1].str()), &usage, &error));
-    const auto full = StringSplit(usage, '\n').front();
+    const auto full = UsageLine(usage);
     const auto prefix = Format("Usage: yb-admin $0 ", m[1].str());
     ASSERT_TRUE(full.starts_with(prefix)) << full;
     const auto args = full.substr(prefix.size());
@@ -456,9 +489,59 @@ TEST_F(AdminCliTest, HelpListsAllOperations) {
   }
   ASSERT_OK(Subprocess::Call(
       ToStringVector(exe_path, "help", "alter_universe_replication"), &output, &error));
-  const auto usage_line = StringSplit(output, '\n').front();
+  const auto usage_line = UsageLine(output);
   ASSERT_STR_CONTAINS(usage_line, "Usage: yb-admin alter_universe_replication");
   ASSERT_GT(usage_line.size(), 100);
+
+  // Description style rules from #33449: one line of at most 80 characters, verb-first (so
+  // capitalized), no trailing period. help <operation> prints the description first.
+  ASSERT_FALSE(grouped_names.empty());
+  for (const auto& name : grouped_names) {
+    SCOPED_TRACE(name);
+    ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", name), &output, &error));
+    const auto description = StringSplit(output, '\n').front();
+    ASSERT_FALSE(description.starts_with("Usage:")) << "grouped operation has no description";
+    ASSERT_LE(description.size(), 80) << description;
+    ASSERT_TRUE(std::isupper(description.front())) << description;
+    ASSERT_FALSE(description.ends_with(".")) << description;
+  }
+}
+
+// help <operation> shows the registry's description, example, and flags around the usage.
+TEST_F(AdminCliTest, HelpShowsOperationMetadata) {
+  const auto exe_path = GetAdminToolPath();
+  std::string output;
+  std::string error;
+
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "list_all_tablet_servers"), &output, &error));
+  auto lines = StringSplit(output, '\n');
+  ASSERT_GE(lines.size(), 3) << output;
+  ASSERT_EQ(lines[0], "List all tablet servers");
+  ASSERT_EQ(lines[1], "Usage: yb-admin list_all_tablet_servers ");
+  // The flag's help text comes from its gflag definition.
+  ASSERT_EQ(lines[2], "-exclude_dead: Exclude dead tservers from output");
+
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "help", "restore_snapshot_schedule"), &output, &error));
+  ASSERT_STR_CONTAINS(
+      output, "\nExample: yb-admin restore_snapshot_schedule "
+              "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s\n");
+
+  // --help with an operation is the same surface as help <operation>.
+  ASSERT_OK(Subprocess::Call(
+      ToStringVector(exe_path, "delete_snapshot", "--help"), &output, &error));
+  ASSERT_TRUE(output.starts_with(
+      "Delete the specified snapshot\nUsage: yb-admin delete_snapshot <snapshot_id>\n"))
+      << output;
+
+  // An operation without metadata renders as before: the usage alone.
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", "delete_table"), &output, &error));
+  ASSERT_TRUE(output.starts_with("Usage: yb-admin delete_table ")) << output;
+
+  // A filtered list is a selection, so it stays flat: no group headers.
+  ASSERT_OK(Subprocess::Call(ToStringVector(exe_path, "help", "snapshot"), &output, &error));
+  ASSERT_STR_NOT_CONTAINS(output, "Backup and snapshot:");
 }
 
 // `help <arg>`: exact operation, then substring filter, then typo suggestions.
