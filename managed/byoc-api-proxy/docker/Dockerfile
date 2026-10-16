@@ -13,7 +13,10 @@ FROM ${BASE_IMAGE}
 ARG VERSION
 
 # The base carries no JRE and no unprivileged user. Group 0 lets OpenShift's arbitrary UIDs run it.
-RUN dnf --assumeyes --setopt=install_weak_deps=0 install java-17-openjdk-headless \
+# The base is Fedora, whose repositories have no Java 17; the Java 17 bytecode runs on 21. A package
+# name dnf doesn't know can resolve to something else without failing, hence the java -version check.
+RUN dnf --assumeyes --setopt=install_weak_deps=0 install java-21-openjdk-headless \
+    && java -version \
     && dnf clean all \
     && useradd --uid 10001 --gid 0 --no-create-home --home-dir /opt/yugabyte/byoc-api-proxy \
         byoc-api-proxy
