@@ -1913,7 +1913,7 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 Default: `60000` (60 seconds)
 {{% /tags/wrap %}}
 
-How far the follower's safe time may be behind now, in milliseconds, before the follower forwards the read to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
