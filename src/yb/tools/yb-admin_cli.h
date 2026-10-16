@@ -53,6 +53,37 @@ class YBTableName;
 
 namespace tools {
 
+// The groups `help` lists operations under, in the order it prints them. They follow the
+// sections of the yb-admin docs page, so help and docs group operations the same way.
+enum class CommandGroup {
+  kUniverseAndCluster,
+  kTable,
+  kBackupAndSnapshot,
+  kMultiRegion,
+  kReadReplica,
+  kSecurity,
+  kCdc,
+  kXCluster,
+  kDecommissioning,
+  kClusterBalancing,
+  kUpgrade,
+  kMeta,
+};
+
+// Help metadata for one operation (#33449). It is data, not text in a print function, so that
+// help --json and shell completion can be generated from the same registry help prints.
+struct CommandMetadata {
+  // Unset for operations not yet populated; they render as they did before groups existed.
+  std::optional<CommandGroup> group = std::nullopt;
+  // One line, at most 80 characters, verb-first, no trailing period.
+  std::string description = {};
+  // Global gflags that change this operation's behavior. Register() CHECKs that each exists, so
+  // a typo fails every test instead of silently dropping out of help.
+  std::vector<std::string> flags = {};
+  // A single invocation without the program name, only where the syntax line alone misleads.
+  std::string example = {};
+};
+
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
  public:
@@ -75,10 +106,12 @@ class ClusterAdminCli {
     std::string usage_arguments_;
     Action action_;
     bool hidden_;
+    CommandMetadata metadata_;
   };
 
   void Register(
-      std::string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden = false);
+      std::string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden = false,
+      CommandMetadata metadata = {});
   void SetUsage();
 
   virtual void RegisterCommandHandlers();
@@ -100,8 +133,10 @@ class ClusterAdminCli {
   void PrintHelpRequest(const HelpRequest& request, std::ostream& out);
   Status RunHelp(const CLIArguments& args);
   void PrintCommandUsage(const Command& command, std::ostream& out);
-  // Prints the visible operations whose name contains filter (case-insensitive), numbered when
-  // filter is empty. Returns the number printed.
+  // The usage plus the operation's description, example, and flags.
+  void PrintCommandHelp(const Command& command, std::ostream& out);
+  // Prints the visible operations whose name contains filter (case-insensitive), numbered and
+  // grouped when filter is empty. Returns the number printed.
   size_t PrintOperationNames(std::ostream& out, const std::string& filter = "") const;
   void ReportUnknownOperation(const std::string& op) const;
   Status RunCommand(const Command& command, const CLIArguments& command_args);
