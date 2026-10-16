@@ -74,6 +74,14 @@
  * exist in this PG backend, which means this PG backend does not have the
  * corresponding catalog cache so the application of the invalidation message
  * is a nop.
+ *
+ * Catcache messages of version 1 also carry hashes of the tuple's leading 1,
+ * 2 and 3 key columns, in bytes that are padding in version 0, so that a
+ * receiver can invalidate only the CatCLists whose lookup keys match.  Version
+ * 0 senders leave those bytes uninitialized, so for a version 0 message the
+ * receiver invalidates all of the cache's lists.  YbCanApplyMessage does not
+ * check the version of catcache messages, so both versions apply on both old
+ * and new releases; an old release ignores the extra fields.
  */
 
 typedef struct
@@ -85,8 +93,13 @@ typedef struct
 								 * must be third */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	uint32		hashValue;		/* hash value of key for this catcache */
+
+	/* YB fields */
+	uint32		yb_prefix1_hash;	/* hash of the first key */
+	uint16		yb_prefix2_hash;	/* low bits of hash of first 2 keys */
+	uint16		yb_prefix3_hash;	/* low bits of hash of first 3 keys */
 } SharedInvalCatcacheMsg;
-#define YbSharedInvalCatcacheMsgVersion 0
+#define YbSharedInvalCatcacheMsgVersion 1
 
 #define SHAREDINVALCATALOG_ID	(-1)
 
