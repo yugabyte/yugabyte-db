@@ -9269,9 +9269,8 @@ yb_index_params: index_elem
 
 index_elem_options:
 	/*
-	 * YB_TODO_PG19MERGE: PG commit
-	 * 7d158e8cb44b602ab76a3660b9f5f5c5c5992a1f renamed `opt_class` to
-	 * `opt_qualified_name`. See opt_class definition below.
+	 * YB: uses opt_class instead of upstream's opt_qualified_name. See the
+	 * opt_class definition below.
 	 */
 	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
@@ -9397,10 +9396,10 @@ yb_index_expr_list_hash_elems: '(' yb_hash_index_expr_list ')' opt_yb_hash
 		;
 
 /*
- * YB_TODO_PG19MERGE: PG commit 7d158e8cb44b602ab76a3660b9f5f5c5c5992a1f
- * dropped opt_class in favor of opt_qualified_name. Kept here because YB's
- * definition of opt_class is required break a shift/reduce conflict in
- * index_elem_options.
+ * YB: PG commit 7d158e8cb44 dropped opt_class in favor of opt_qualified_name.
+ * YB keeps it for index_elem_options: the %prec NO_OPCLASS on the empty
+ * alternative resolves shift/reduce conflicts on HASH and WITHOUT, which can
+ * start either an opclass name or the clause that follows it.
  */
 opt_class:	any_name								{ $$ = $1; }
 			| /*EMPTY*/	%prec NO_OPCLASS			{ $$ = NIL; }
