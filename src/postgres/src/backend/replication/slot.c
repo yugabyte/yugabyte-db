@@ -1256,6 +1256,8 @@ ReplicationSlotCleanup(bool synced_only)
 
 /*
  * Cleanup all temporary slots created in current session.
+ *
+ * YB: proc can be a dead backend; the postmaster cleans up after it.
  */
 void
 ReplicationSlotCleanupForProc(PGPROC *proc, bool synced_only)
@@ -1279,7 +1281,8 @@ restart:
 		found_valid_logicalslot |=
 			(SlotIsLogical(s) && s->data.invalidated == RS_INVAL_NONE);
 
-		if ((s->active_proc == proc->pid &&
+		/* YB: compare with the target proc, not MyProcNumber. */
+		if ((s->active_proc == GetNumberFromPGProc(proc) &&
 			 (!synced_only || s->data.synced)))
 		{
 			Assert(s->data.persistency == RS_TEMPORARY);

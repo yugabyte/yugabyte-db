@@ -846,6 +846,7 @@ static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe);
 static void ybSignalAllListeners(void);
+static void ybOnListenCommit(const char *channel);
 
 /* YB: common helper functions */
 static void ybListenNotifyPreChecks(void);
@@ -1841,29 +1842,6 @@ PrepareTableEntriesForListen(const char *channel)
 	pending->action = PENDING_LISTEN;
 
 	/*
-	 * YB_TODO_PG19MERGE: Exec_ListenCommit no longer exists - PG commit
-	 * 282b1cde9dedf456ecf02eb27caf086023a7bb71 replaced it with
-	 * PrepareTableEntriesForListen (this function). The YB block below used to
-	 * live at the end of Exec_ListenCommit.
-	 */
-#if 0
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-	listenChannels = lappend(listenChannels, pstrdup(channel));
-	MemoryContextSwitchTo(oldcontext);
-
-	/*
-	 * If connection manager is used, mark the connection as sticky. Not doing
-	 * so can cause the listening client to miss notifications, while
-	 * non-listening clients receive spurious notifications.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
-		increment_sticky_object_count();
-	}
-#endif
-
-	/*
 	 * Ensure that there is an entry for the channel in localChannelTable.
 	 * (Should this fail, we can just roll back.)  If the transaction fails
 	 * after this point, we will remove the entry if appropriate during
@@ -2089,6 +2067,8 @@ ApplyPendingListenActions(bool isCommit)
 						 * localChannelTable entry was created during
 						 * PreCommit and should be kept.
 						 */
+						if (!listeners[i].listening)
+							ybOnListenCommit(pending->channel);	/* YB */
 						listeners[i].listening = true;
 						removeLocal = false;
 					}
@@ -2724,14 +2704,42 @@ SignalBackends(void)
 
 	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 
-	/* Scan each channel name that we notified in this transaction */
-	foreach_ptr(char, channel, pendingNotifies->uniqueChannelNames)
+	/*
+	 * Scan each channel name that we notified in this transaction.
+	 *
+	 * YB: the notifications poller runs in yb_system and writes every
+	 * database's notifications, so it scans its pending queue entries and keys
+	 * on each entry's own dboid rather than MyDatabaseId.
+	 *
+	 * TODO: this does one dshash_find() per entry, not per distinct
+	 * (dboid, channel), under an exclusive NotifyQueueLock. Dedup with a local
+	 * hash if transactions with thousands of NOTIFYs make this hot.
+	 */
+	foreach_ptr(void, item, IsYugaByteEnabled() ?
+				ybNotifsPollerPendingEntries :
+				pendingNotifies->uniqueChannelNames)
 	{
 		GlobalChannelKey key;
 		GlobalChannelEntry *entry;
 		ListenerEntry *listeners;
 
-		GlobalChannelKeyInit(&key, MyDatabaseId, channel);
+		/* YB */
+		Oid			yb_dboid = MyDatabaseId;
+		char	   *channel;
+
+		if (IsYugaByteEnabled())
+		{
+			AsyncQueueEntry *qe = item;
+
+			if (!OidIsValid(qe->dboid))
+				continue;		/* txn BEGIN marker, no channel */
+			yb_dboid = qe->dboid;
+			channel = qe->data;
+		}
+		else
+			channel = item;
+
+		GlobalChannelKeyInit(&key, yb_dboid, channel);
 		entry = dshash_find(globalChannelTable, &key, false);
 		if (entry == NULL)
 			continue;			/* nobody is listening */
@@ -2800,21 +2808,13 @@ SignalBackends(void)
 		 * it miss some older messages), and we'd not be moving the pointer
 		 * backward.
 		 *
-		 * YB_TODO_PG19MERGE: PG commit 282b1cde9dedf456ecf02eb27caf086023a7bb71
-		 * rewrote SignalBackends. Port the YB logic.
+		 * YB: never directly advance a listener's queue position. Each listener
+		 * must read every entry so that its replay duplicate-detection counters
+		 * stay aligned (see YbListenerQueueScanCurrentXactState). Uninterested
+		 * listeners are instead woken once they are far behind, below.
 		 */
-		#if 0
-		/*
-		 * YB note: In vanilla PG, this function is called by the backend
-		 * process executing NOTIFY. Hence, only the listeners in the current db
-		 * are signaled (unless a listener is far behind, see below). But in YB,
-		 * the bg 'notifications poller' process executes this. Hence, always
-		 * signal all the listeners in all the dbs, unless they are already
-		 * caught up.
-		 */
-		if (QUEUE_BACKEND_DBOID(i) == MyDatabaseId || IsYugaByteEnabled())
-		#endif
-		if (!QUEUE_POS_PRECEDES(pos, queueHeadBeforeWrite) &&
+		if (!IsYugaByteEnabled() &&
+			!QUEUE_POS_PRECEDES(pos, queueHeadBeforeWrite) &&
 			QUEUE_POS_PRECEDES(pos, queueHeadAfterWrite))
 		{
 			/* We can directly advance its pointer past what we wrote */
@@ -4291,6 +4291,8 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+	/* A new txn means the duplicate copy ended; drop any unused skip budget. */
+	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 }
 
 /*
@@ -4342,7 +4344,8 @@ ybEvictSlowestListener(TimestampTz *sigtermTime)
 {
 	int32		pid = InvalidPid;
 
-	SignalBackends();
+	/* Wake every listener, not just the interested ones, so the tail can move. */
+	ybSignalAllListeners();
 	CHECK_FOR_INTERRUPTS();
 	pg_usleep(500000L);
 	asyncQueueAdvanceTail();
@@ -4414,6 +4417,18 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 	ListCell   *nextQueueEntry = list_head(ybNotifsPollerPendingEntries);
 	int32		sigtermPid = InvalidPid;
 	TimestampTz sigtermTime = 0;
+
+	/*
+	 * The poller never runs PreCommit_Notify, so set up what SignalBackends()
+	 * expects from it: the shared channel table and the signal work arrays.
+	 */
+	initGlobalChannelTable();
+	if (signalPids == NULL)
+		signalPids = MemoryContextAlloc(TopMemoryContext,
+										MaxBackends * sizeof(int32));
+	if (signalProcnos == NULL)
+		signalProcnos = MemoryContextAlloc(TopMemoryContext,
+										   MaxBackends * sizeof(ProcNumber));
 
 	while (nextQueueEntry != NULL)
 	{
@@ -4535,6 +4550,22 @@ ybSignalAllListeners(void)
 }
 
 /*
+ * Runs when a LISTEN commits for a channel this backend was not yet listening
+ * on (the point where pre-PG18 Exec_ListenCommit ran). With connection
+ * manager, pin the connection: otherwise the listening client can miss
+ * notifications while non-listening clients receive spurious ones.
+ */
+static void
+ybOnListenCommit(const char *channel)
+{
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
+		increment_sticky_object_count();
+	}
+}
+
+/*
  * SET LOCAL yb_read_time TO 0 within a transaction temporarily hides a
  * non-zero session value, letting LISTEN succeed here.  After COMMIT the
  * session value is restored, leaving the session in an inconsistent state
@@ -4573,7 +4604,6 @@ YbHasPendingListenAction(void)
 bool
 YbHasActiveOrPendingListen(void)
 {
-	/* YB_TODO_PG19MERGE: PG commit 282b1cde9dedf456ecf02eb27caf086023a7bb71 removed listenChannels */
 	return !LocalChannelTableIsEmpty() || YbHasPendingListenAction();
 }
 

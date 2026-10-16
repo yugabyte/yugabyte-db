@@ -1022,6 +1022,53 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A listener not subscribed to a replayed transaction must still receive later notifications
+   * on its own channel exactly once.
+   */
+  @Test
+  public void testUnsubscribedListenerAfterPollerReplay() throws Exception {
+    final String myChannel = "chan_mine";
+    final String otherChannel = "chan_other";
+    final int otherNotifies = 20;
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + myChannel);
+      }
+
+      try {
+        setFatalAfterNotifsQueueWriteFlag(true);
+        Thread.sleep(2000);
+
+        // Poller writes this txn, crashes before acking it, restarts and writes it again.
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("BEGIN");
+          for (int i = 0; i < otherNotifies; i++) {
+            stmt.execute("NOTIFY " + otherChannel + ", 'other_" + i + "'");
+          }
+          stmt.execute("COMMIT");
+        }
+        waitAndAssertNoNotifications(listenerConn,
+            "Listener is not subscribed to " + otherChannel);
+      } finally {
+        setFatalAfterNotifsQueueWriteFlag(false);
+      }
+      Thread.sleep(2000);
+
+      // Everything on the listener's own channel after the replay must arrive.
+      for (int i = 0; i < 3; i++) {
+        final String payload = "mine_" + i;
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("NOTIFY " + myChannel + ", '" + payload + "'");
+        }
+        List<PGNotification> received = waitForNotification(listenerConn, myChannel, payload);
+        assertEquals("Expected exactly one delivery of " + payload, 1, received.size());
+      }
+    }
+  }
+
+  /**
    * When the NOTIFY queue fills up, verify that the slow listener is terminated.
    */
   @Test
