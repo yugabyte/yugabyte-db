@@ -250,10 +250,14 @@ class XClusterSourceManager {
       bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback,
       const std::vector<TabletId>& op0_tablet_ids = {});
 
-  // Checkpoints the streams to OpId 0 and records the checkpointed tablets on INITIATED streams.
-  // By default the table's current tablets are checkpointed. tablet_ids overrides that with the
-  // tablets of an earlier checkpoint of the same table (which may since have been split); all
-  // table_streams must then belong to one table.
+  // Checkpoints the streams to OpId 0. Each stream is checkpointed on tablet_ids if given (the
+  // tablets of an earlier checkpoint of the same table, which may since have split; all
+  // table_streams must then belong to one table), else on its own recorded tablets if it has a
+  // record, else on the table's current tablets. The checkpointed tablets are recorded on
+  // INITIATED streams while
+  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is set. Failing to
+  // record only logs a warning, unless a stream was checkpointed on earlier tablets, which the
+  // target must start from.
   Status CheckpointStreamsToOp0(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
       const LeaderEpoch& epoch, StdStatusCallback user_callback,
@@ -262,19 +266,27 @@ class XClusterSourceManager {
   // Tablets recorded by RecordXClusterStreamBootstrapInfo, or empty if there are none.
   Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
 
+  // Locks the streams in StreamId order, applies mutate to each one's entry, and persists those
+  // for which it returns true. Streams that no longer exist are skipped.
+  Status UpdateXClusterStreamBootstrapInfo(
+      std::vector<xrepl::StreamId> stream_ids, const LeaderEpoch& epoch,
+      const std::function<bool(const xrepl::StreamId&, SysCDCStreamEntryPB&)>& mutate);
+
   // Writes the records without validating the tablets. Skips streams that are not INITIATED.
   Status WriteXClusterStreamBootstrapInfo(
       const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
 
   // Clears the records of the streams, so that their tables cannot split while they are
-  // checkpointed again to the end of their WAL.
-  Status ClearXClusterStreamBootstrapInfo(
+  // checkpointed again to the end of their WAL. Returns the streams that had a record.
+  Result<std::unordered_set<xrepl::StreamId>> ClearXClusterStreamBootstrapInfo(
       const std::vector<xrepl::StreamId>& stream_ids, const LeaderEpoch& epoch);
 
-  // After streams are checkpointed again, deletes their cdc_state rows on split tablets outside
-  // their new record.
+  // After streams are checkpointed again to the end of their WAL, deletes the cdc_state rows of
+  // the INITIATED ones among previously_recorded_streams on split tablets outside their new
+  // record, or on all split tablets if they could not be recorded again.
   Status DeleteSplitTabletRowsOutsideRecord(
-      const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams);
+      const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
+      const std::unordered_set<xrepl::StreamId>& previously_recorded_streams);
 
   // The end-of-WAL checkpoints of tablet_ids can be recorded: they cover the table exactly once,
   // and none of them has split.

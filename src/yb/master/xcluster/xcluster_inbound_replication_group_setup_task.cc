@@ -418,6 +418,12 @@ Status XClusterInboundReplicationGroupSetupTask::UpdateSourceStreamOptions() {
       }
       new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
       new_entry.set_transactional(data_.transactional);
+      // Makes the source reject the update if it has checkpointed the stream again since these
+      // tablets were read.
+      if (!table_info.bootstrap_tablet_ids.empty()) {
+        new_entry.mutable_xcluster_bootstrap_info()->mutable_checkpointed_tablet_ids()->Add(
+            table_info.bootstrap_tablet_ids.begin(), table_info.bootstrap_tablet_ids.end());
+      }
 
       update_bootstrap_ids.push_back(table_info.stream_id);
       update_entries.push_back(new_entry);
@@ -1227,7 +1233,8 @@ Status XClusterTableSetupTask::ProcessBootstrapTabletLocations(
     return StatusFromPB(resp.error().status()).CloneAndPrepend("Error from source universe");
   }
   // The source moves a stream's record past split parents before it drops the stream's rows on
-  // them, so recorded tablets always exist.
+  // them, and rejects marking the stream ACTIVE if the record changed after it was read here, so
+  // recorded tablets exist.
   if (resp.errors_size() > 0) {
     return StatusFromPB(resp.errors(0).status())
         .CloneAndPrepend(Format(

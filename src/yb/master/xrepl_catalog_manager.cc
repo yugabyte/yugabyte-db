@@ -4352,6 +4352,19 @@ Status CatalogManager::UpdateCDCStreams(
           MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     auto& pb = stream_lock.mutable_data()->pb;
+    // An xCluster target sends the bootstrap tablets it mapped when it marks the stream ACTIVE. If
+    // the source has checkpointed the stream again since the target read them, the rows of those
+    // tablets may be gone, so the target must read the new ones and retry.
+    if (entry.has_xcluster_bootstrap_info()) {
+      const auto& expected = entry.xcluster_bootstrap_info().checkpointed_tablet_ids();
+      const auto& current = pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
+      if (!std::equal(expected.begin(), expected.end(), current.begin(), current.end())) {
+        return STATUS_FORMAT(
+            TryAgain,
+            "xCluster bootstrap tablets of stream $0 changed from $1 to $2 after they were read",
+            stream_id, AsString(expected), AsString(current));
+      }
+    }
     const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
     const bool preserve_is_wal_anchor = pb.xcluster_is_wal_anchor();
     std::optional<XClusterStreamBootstrapInfoPB> bootstrap_info;

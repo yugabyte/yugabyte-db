@@ -139,25 +139,28 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   }
 
-  // The tablets recorded on the source stream of producer_table_ when it was checkpointed.
-  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
+  Result<xrepl::StreamId> GetProducerStreamId() {
     const auto streams =
         VERIFY_RESULT(GetAllXClusterStreams(VERIFY_RESULT(GetNamespaceId(producer_client()))));
     for (const auto& table_info : streams.table_infos()) {
-      if (table_info.table_id() != producer_table_->id()) {
-        continue;
+      if (table_info.table_id() == producer_table_->id()) {
+        return xrepl::StreamId::FromString(table_info.xrepl_stream_id());
       }
-      auto& catalog_manager =
-          VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-      auto stream = VERIFY_RESULT(catalog_manager.GetXReplStreamInfo(
-          VERIFY_RESULT(xrepl::StreamId::FromString(table_info.xrepl_stream_id()))));
-      const auto stream_lock = stream->LockForRead();
-      const auto& tablet_ids = stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
-      std::vector<TabletId> result(tablet_ids.begin(), tablet_ids.end());
-      std::sort(result.begin(), result.end());
-      return result;
     }
     return STATUS_FORMAT(NotFound, "No stream found for table $0", producer_table_->id());
+  }
+
+  // The tablets recorded on the source stream of producer_table_ when it was checkpointed.
+  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
+    auto& catalog_manager =
+        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto stream =
+        VERIFY_RESULT(catalog_manager.GetXReplStreamInfo(VERIFY_RESULT(GetProducerStreamId())));
+    const auto stream_lock = stream->LockForRead();
+    const auto& tablet_ids = stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
+    std::vector<TabletId> result(tablet_ids.begin(), tablet_ids.end());
+    std::sort(result.begin(), result.end());
+    return result;
   }
 
   std::vector<TabletId> ProducerActiveTabletIds() {
@@ -442,6 +445,20 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_NE(ProducerActiveTabletIds(), checkpointed_tablets);
   ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
 
+  {
+    // A target that mapped other bootstrap tablets than the recorded ones cannot mark the stream
+    // ACTIVE.
+    master::SysCDCStreamEntryPB entry;
+    entry.add_table_id(producer_table_->id());
+    entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+    entry.mutable_xcluster_bootstrap_info()->add_checkpointed_tablet_ids(checkpointed_tablets[0]);
+    auto& catalog_manager =
+        ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
+    auto status =
+        catalog_manager.UpdateCDCStreams({ASSERT_RESULT(GetProducerStreamId())}, {entry});
+    ASSERT_TRUE(status.IsTryAgain()) << status;
+  }
+
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
@@ -477,6 +494,7 @@ TEST_F(XClusterDBScopedTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(InsertRowsInProducer(0, 50));
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(VerifyWrittenRecords());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = false;
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on
