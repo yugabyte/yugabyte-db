@@ -56,6 +56,8 @@ DEFINE_UNKNOWN_int32(txn_max_apply_batch_records, 100000,
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
 
+DECLARE_bool(TEST_vector_index_skip_reverse_mapping_write);
+
 DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
@@ -206,6 +208,9 @@ void HandleRegularRecord(
 
 Status TombstoneVectorReverseMappingIds(
     rocksdb::DirectWriteHandler& handler, Slice ids, DocHybridTime write_ht) {
+  if (FLAGS_TEST_vector_index_skip_reverse_mapping_write) {
+    return Status::OK();
+  }
   RSTATUS_DCHECK_EQ(
       ids.size() % vector_index::VectorId::StaticSize(), 0, Corruption,
       Format("Wrong size of deleted vector ids: $0", ids.ToDebugHexString()));

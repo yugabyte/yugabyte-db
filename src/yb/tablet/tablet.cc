@@ -1918,7 +1918,8 @@ Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state) const {
+    AllowBootstrappingState allow_bootstrapping_state,
+    docdb::IncludeIntents include_intents) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -1934,15 +1935,19 @@ Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
 
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
-  auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
-      /* transaction_id */ std::nullopt,
-      table_info->schema().table_properties().is_ysql_catalog_table()));
+  TransactionOperationContext txn_op_ctx;
+  if (include_intents) {
+    txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
+        /* transaction_id */ std::nullopt,
+        table_info->schema().table_properties().is_ysql_catalog_table()));
+  }
 
   docdb::ReadOperationData read_operation_data;
   RETURN_NOT_OK(GetSafeTimeReadOperationData(read_hybrid_time, deadline, read_operation_data));
 
   return std::make_unique<DocRowwiseIterator>(
-      projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
+      projection, table_info->doc_read_context, txn_op_ctx,
+      include_intents ? doc_db() : doc_db().WithoutIntents(), read_operation_data,
       std::move(scoped_read_operation));
 }
 

@@ -450,7 +450,8 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const PgsqlReadOperationData& data,
     const PgsqlReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
-    std::reference_wrapper<const DocReadContext> doc_read_context) {
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    SkipSeek skip_seek = SkipSeek::kFalse) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << AsString(request);
 
   YQLRowwiseIteratorIf::UniPtr result;
@@ -490,7 +491,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     }
     RETURN_NOT_OK(data.ql_storage.GetIterator(
         request, projection, doc_read_context, data.txn_op_context, data.read_operation_data,
-        start_sub_doc_key.doc_key(), data.pending_op, &result));
+        start_sub_doc_key.doc_key(), data.pending_op, skip_seek, &result));
   }
 
   return std::move(result);
@@ -575,7 +576,9 @@ class FilteringIterator {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context) {
     RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
-    iterator_holder_ = VERIFY_RESULT(CreateIterator(data, request, projection, read_context));
+    // For an index request the table iterator is positioned by tuple id, see FetchTuple.
+    iterator_holder_ = VERIFY_RESULT(CreateIterator(
+        data, request, projection, read_context, SkipSeek(request.has_index_request())));
     return Status::OK();
   }
 
@@ -2427,8 +2430,7 @@ std::pair<Slice, Slice> GetSampleBlockBounds(const std::pair<KeyBuffer, KeyBuffe
   return {sample_block.first.AsSlice(), sample_block.second.AsSlice()};
 }
 
-// REQUIRES: table_iter is positioned to the first key for the table, sample_blocks are
-// non-overlapping and ordered consistently with Slice::compare order.
+// REQUIRES: sample_blocks are non-overlapping and ordered consistently with Slice::compare order.
 template <typename T>
 Status SampleRowsFromBlocks(
     YQLRowwiseIteratorIf* table_iter,
@@ -2436,51 +2438,37 @@ Status SampleRowsFromBlocks(
     Slice table_upperbound, const CoarseTimePoint& stop_scan_time,
     PgsqlSamplingStateMsg* sampling_state, YbgReservoirState rstate,
     std::vector<std::string>* reservoir) {
-  if (!VERIFY_RESULT(table_iter->PgFetchNext(nullptr))) {
-    LOG(INFO) << "Nothing to sample";
-    return Status::OK();
-  }
-
   const auto targrows = sampling_state->targrows();
   auto num_rows_collected = sampling_state->numrows();
   auto num_sample_rows = sampling_state->samplerows();
   auto rows_to_skip = sampling_state->rowstoskip();
-
-  auto row_key = table_iter->GetRowKey();
-  bool fetch_next_needed = false;
 
   size_t sample_block_idx = 0;
   size_t num_blocks_with_rows = 0;
   for (const auto& sample_block : sample_blocks) {
     const auto[lower_bound_key_inclusive, upper_bound_key_exclusive] =
         GetSampleBlockBounds(sample_block);
-    const auto is_seek_needed = row_key.compare(lower_bound_key_inclusive) < 0;
     VLOG(3) << "Sorted sample block #" << sample_block_idx
             << " lower_bound_key_inclusive: " << DebugKeySliceToString(lower_bound_key_inclusive)
-            << " upper_bound_key_exclusive: " << DebugKeySliceToString(upper_bound_key_exclusive)
-            << " row_key: " << DebugKeySliceToString(row_key)
-            << " is_seek_needed: " << is_seek_needed;
-    if (is_seek_needed) {
-      table_iter->SeekToDocKeyPrefix(lower_bound_key_inclusive);
-      fetch_next_needed = true;
-    }
+            << " upper_bound_key_exclusive: " << DebugKeySliceToString(upper_bound_key_exclusive);
+    // Limit the scan to the sample block. Otherwise each fetch would scan rows that are not
+    // visible (e.g. deleted ones that are not compacted yet) past the sample block end until it
+    // finds a visible row, which could take the rest of the tablet.
+    table_iter->SetUpperBound(upper_bound_key_exclusive);
+    table_iter->SeekToDocKeyPrefix(lower_bound_key_inclusive);
+    // The last sample block of the last tablet has no upper bound and ends with the table.
+    const auto effective_upper_bound =
+        !upper_bound_key_exclusive.empty() ? upper_bound_key_exclusive : table_upperbound;
 
-    bool reached_end_of_tablet = false;
     bool found_row = false;
-    for (;; ++num_sample_rows, fetch_next_needed = true) {
-      if (fetch_next_needed) {
-        if (!VERIFY_RESULT(table_iter->PgFetchNext(nullptr))) {
-          reached_end_of_tablet = true;
-          break;
-        }
-        row_key = table_iter->GetRowKey();
-      }
-      if (row_key.compare(
-              !upper_bound_key_exclusive.empty() ? upper_bound_key_exclusive
-                                                 : table_upperbound) >= 0) {
-        fetch_next_needed = false;
-        break;
-      }
+    for (; VERIFY_RESULT(table_iter->PgFetchNext(nullptr)); ++num_sample_rows) {
+      const auto row_key = table_iter->GetRowKey();
+      // The iterator upper bound keeps the fetches inside the sample block.
+      RSTATUS_DCHECK(
+          effective_upper_bound.empty() || row_key.compare(effective_upper_bound) < 0,
+          InternalError, "Sampled row $0 is past the sample block #$1 upper bound $2",
+          DebugKeySliceToString(row_key), sample_block_idx,
+          DebugKeySliceToString(effective_upper_bound));
 
       found_row = true;
       VLOG(4) << "ybctid: " << DebugKeySliceToString(table_iter->GetTupleId())
@@ -2519,14 +2507,10 @@ Status SampleRowsFromBlocks(
       ++num_blocks_with_rows;
     }
 
-    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows) << ", ybctid after the sample block #"
-            << sample_block_idx << ": " << DebugKeySliceToString(table_iter->GetTupleId())
-            << " row_key: " << DebugKeySliceToString(row_key)
+    VLOG(3) << "num_sample_rows: " << size_t(num_sample_rows) << " after the sample block #"
+            << sample_block_idx
             << " found_row: " << found_row
             << " num_blocks_with_rows: " << num_blocks_with_rows;
-    if (reached_end_of_tablet) {
-      break;
-    }
     ++sample_block_idx;
   }
 
@@ -2619,7 +2603,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::DEPRECATED_ExecuteSampleBlo
 
   auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
 
-  table_iter_ = VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
+  // SampleRowsFromBlocks seeks to each sample block itself.
+  table_iter_ = VERIFY_RESULT(CreateIterator(
+      data_, request_, projection, data_.doc_read_context, SkipSeek::kTrue));
 
   const auto stop_scan_time =
       data_.read_operation_data.deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
@@ -2702,8 +2688,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
 
     auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
 
-    table_iter_ =
-        VERIFY_RESULT(CreateIterator(data_, request_, projection, data_.doc_read_context));
+    // SampleRowsFromBlocks seeks to each sample block itself.
+    table_iter_ = VERIFY_RESULT(CreateIterator(
+        data_, request_, projection, data_.doc_read_context, SkipSeek::kTrue));
 
     const auto stop_scan_time =
         data_.read_operation_data.deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;

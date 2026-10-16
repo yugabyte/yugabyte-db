@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -303,6 +304,43 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     // az-2 must NOT have been added here; volume-override computation happens later.
     assertEquals(Set.of(az1.getUuid()), azOverrides.keySet());
     assertNull(azOverrides.get(az2.getUuid()));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_vmDoesNotSetK8sApplyKey() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2025.2.0.0", false, true);
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    assertNull(universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
+  }
+
+  @Test
+  public void maybeSetNewInstallGflags_k8sGetsYsqlFlagsAndAppliesThem() {
+    Universe universe = ModelFactory.createUniverse(customer.getId());
+    Cluster primaryCluster = newInstallGflagsCluster("2025.2.0.0", false, true);
+    primaryCluster.userIntent.providerType = Common.CloudType.kubernetes;
+
+    universeCRUDHandler.maybeSetNewInstallGflags(customer, universe, primaryCluster);
+
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Map<String, String> flags = universe.getNewInstallGFlags(serverType);
+      assertEquals("true", flags.get("yb_enable_read_committed_isolation"));
+      assertEquals("yb_enable_cbo=on", flags.get("ysql_pg_conf_csv"));
+      assertTrue(!flags.containsKey("use_memory_defaults_optimized_for_ysql"));
+    }
+    assertEquals("true", universe.getConfig().get(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS));
+  }
+
+  private Cluster newInstallGflagsCluster(
+      String ybSoftwareVersion, boolean dedicatedNodes, boolean enableYSQL) {
+    UserIntent userIntent = testIntent();
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.providerType = Common.CloudType.aws;
+    return new Cluster(ClusterType.PRIMARY, userIntent);
   }
 
   private UniverseConfigureTaskParams buildConfigureTaskParams(
