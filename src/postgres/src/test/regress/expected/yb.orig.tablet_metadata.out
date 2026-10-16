@@ -424,7 +424,6 @@ WHERE tablet_id = '00000000000000000000000000000000';
 -- PgTableSizeTest. An unknown oid errors without waiting.
 SELECT yb_tablegroup_size(0);
 ERROR:  tablegroup with OID 0 does not exist
-
 -- Cleanup
 \c yugabyte yugabyte
 DROP DATABASE colocated_db;
