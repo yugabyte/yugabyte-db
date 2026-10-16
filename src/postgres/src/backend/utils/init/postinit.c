@@ -759,12 +759,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 
-	/*
-	 * YB: default_locale may already be set up by YbPresetDatabaseCollation
-	 * for the same database.
-	 */
-	if (!(IsYugaByteEnabled() && yb_default_collation_resolved))
-		init_database_collation();
+	init_database_collation();
 
 	/*
 	 * Check collation version.  See similar code in
@@ -1885,11 +1880,11 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
 	/*
-	 * Set up default_locale now, otherwise
-	 * pg_newlocale_from_collation(DEFAULT_COLLATION_OID) returns NULL until
-	 * CheckMyDatabase runs, which is after relcache preloading.
+	 * Do not call init_database_collation here: its syscache lookup would
+	 * happen before the relcache is initialized and before the latest catalog
+	 * version is resolved. pg_newlocale_from_collation sets up default_locale
+	 * on first use instead.
 	 */
-	init_database_collation();
 	yb_default_collation_resolved = true;
 }
 

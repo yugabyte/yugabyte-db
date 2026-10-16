@@ -1258,6 +1258,14 @@ init_database_collation(void)
 	Form_pg_database dbform;
 	pg_locale_t result;
 
+	/*
+	 * YB: default_locale may already be set up on first use of the default
+	 * collation (see pg_newlocale_from_collation), e.g. during relcache
+	 * preloading.
+	 */
+	if (IsYugaByteEnabled() && default_locale != NULL)
+		return;
+
 	Assert(default_locale == NULL);
 
 	/* Fetch our pg_database row normally, via syscache */
@@ -1314,6 +1322,16 @@ pg_newlocale_from_collation(Oid collid)
 {
 	collation_cache_entry *cache_entry;
 	bool		found;
+
+	/*
+	 * YB: YbPresetDatabaseCollation runs before syscache lookups are safe, so
+	 * it cannot set up default_locale. Set it up on first use, which can be
+	 * before CheckMyDatabase, e.g. when relcache preloading builds the
+	 * partition descriptor of a table list-partitioned on a text column.
+	 */
+	if (IsYugaByteEnabled() && collid == DEFAULT_COLLATION_OID &&
+		default_locale == NULL && yb_default_collation_resolved)
+		init_database_collation();
 
 	if (collid == DEFAULT_COLLATION_OID)
 		return default_locale;
