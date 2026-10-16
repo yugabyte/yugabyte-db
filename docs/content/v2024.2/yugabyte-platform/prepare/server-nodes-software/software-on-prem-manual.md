@@ -454,7 +454,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Wants=yb-zip_purge_yb_logs.timer
 
     [Service]
     Type=oneshot
@@ -470,7 +469,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Requires=yb-zip_purge_yb_logs.service
 
     [Timer]
     Unit=yb-zip_purge_yb_logs.service
@@ -486,7 +484,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Wants=yb-clean_cores.timer
 
     [Service]
     Type=oneshot
@@ -540,7 +537,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Requires=yb-clean_cores.service
 
     [Timer]
     Unit=yb-clean_cores.service
@@ -556,7 +552,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Wants=yb-collect_metrics.timer
 
     [Service]
     Type=oneshot
@@ -564,7 +559,6 @@ You can install systemd-specific database service unit files, as follows:
     ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
 
     [Install]
-    WantedBy=multi-user.target
     ```
 
     `yb-collect_metrics.timer`
@@ -572,7 +566,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Requires=yb-collect_metrics.service
 
     [Timer]
     Unit=yb-collect_metrics.service
