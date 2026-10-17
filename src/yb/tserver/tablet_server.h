@@ -465,6 +465,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
+  // Forward the master's blacklisted_tservers_with_no_tablets heartbeat hint, and its list of
+  // live tservers, to the shared client's meta cache. A no-op while the shared client is still
+  // initializing; every heartbeat carries the full lists, so nothing is lost.
+  void UpdateDrainedTServers(
+      const std::vector<std::string>& drained, const std::vector<std::string>& live);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
