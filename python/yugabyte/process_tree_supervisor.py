@@ -62,6 +62,41 @@ def get_cmdline_for_log(process: Any) -> List[str]:
     return ['failed to get cmdline for pid %d' % process.pid]
 
 
+def get_direct_child_pids(pid: int) -> Optional[Set[int]]:
+    task_dir = '/proc/%d/task' % pid
+    try:
+        tids = os.listdir(task_dir)
+    except OSError:
+        return None
+
+    if str(pid) not in tids:
+        return None
+
+    child_pids: Set[int] = set()
+    for tid in tids:
+        try:
+            # Reading each thread's children avoids psutil's system-wide process scan.
+            with open('%s/%s/children' % (task_dir, tid)) as children_file:
+                child_pids.update(int(child_pid) for child_pid in children_file.read().split())
+        except OSError:
+            # A non-leader thread can disappear after os.listdir(). If the leader cannot be read,
+            # procfs is unavailable or the kernel might not support CONFIG_PROC_CHILDREN.
+            if tid == str(pid):
+                return None
+    return child_pids
+
+
+def get_child_pids(process: psutil.Process) -> Set[int]:
+    if not process.is_running():
+        raise psutil.NoSuchProcess(process.pid)
+    child_pids = get_direct_child_pids(process.pid)
+    if child_pids is None:
+        return set(child.pid for child in process.children(recursive=False))
+    if not process.is_running():
+        raise psutil.NoSuchProcess(process.pid)
+    return child_pids
+
+
 def get_process_by_pid(pid: int) -> Optional[psutil.Process]:
     try:
         process = psutil.Process(pid)
@@ -95,44 +130,44 @@ class ProcessTreeSupervisor():
                 break
             ancestor_terminated = False
 
-            changes_made = True
-            inner_loop_iterations = 0
-            while changes_made:
-                new_pids = set()
-                removed_pids = set()
-                changes_made = False
-                for existing_pid in self.pid_set:
-                    process = get_process_by_pid(existing_pid)
-                    if process is None:
-                        self.process_terminated(existing_pid)
-                        removed_pids.add(existing_pid)
-                        changes_made = True
-                        if existing_pid == self.ancestor_pid:
-                            ancestor_terminated = True
-                        continue
+            removed_pids = set()
+            to_visit = []
+            for existing_pid in self.pid_set:
+                process = get_process_by_pid(existing_pid)
+                if process is None:
+                    self.process_terminated(existing_pid)
+                    removed_pids.add(existing_pid)
+                    if existing_pid == self.ancestor_pid:
+                        ancestor_terminated = True
+                else:
+                    to_visit.append(process)
+            self.pid_set.difference_update(removed_pids)
 
-                    try:
-                        children = process.children(recursive=True)
-                    except psutil.NoSuchProcess as e:
-                        logging.warning(
-                            "Process %d disappeared when trying to list its children",
-                            existing_pid)
-                        continue
+            visited_pids = set()
+            while to_visit:
+                process = to_visit.pop()
+                if process.pid in visited_pids:
+                    continue
+                visited_pids.add(process.pid)
+                try:
+                    child_pids = get_child_pids(process)
+                except psutil.NoSuchProcess as e:
+                    logging.warning(
+                        "Process %d disappeared when trying to list its children",
+                        process.pid)
+                    continue
 
-                    for child_process in children:
-                        if (child_process.pid not in self.pid_set and
-                                child_process.pid not in new_pids and
-                                # If this script is a child of the monitored process, don't track
-                                # our own pid.
-                                child_process.pid != self.my_pid):
-                            if self.new_process_found(child_process):
-                                new_pids.add(child_process.pid)
-                                changes_made = True
-                self.pid_set = self.pid_set.union(new_pids).difference(removed_pids)
-                inner_loop_iterations += 1
-                if inner_loop_iterations >= 100:
-                    logging.warning("Inner loop spun for %d iterations, breaking")
-                    break
+                for child_pid in child_pids:
+                    # If this script is a child of the monitored process, don't track our own pid.
+                    if child_pid == self.my_pid or child_pid in visited_pids:
+                        continue
+                    child_process = get_process_by_pid(child_pid)
+                    if child_process is None:
+                        continue
+                    to_visit.append(child_process)
+                    if (child_pid not in self.pid_set and
+                            self.new_process_found(child_process)):
+                        self.pid_set.add(child_pid)
 
             if ancestor_terminated:
                 break
