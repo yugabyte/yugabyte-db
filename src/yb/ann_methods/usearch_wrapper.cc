@@ -190,7 +190,7 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
+  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v, Slice /* payload */) {
     // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();

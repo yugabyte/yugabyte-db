@@ -370,7 +370,7 @@ Result<vector_index::VectorIndexTraitsPtr<std::vector<float>, float>> GetVectorI
           block_cache, options, mem_tracker);
     case ANNMethodKind::kHnswlib:
       return CreateHnswlibIndexTraits<std::vector<float>, float>(
-          block_cache, options, mem_tracker);
+          block_cache, options, mem_tracker, /* tenant_extractor= */ nullptr);
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
