@@ -91,6 +91,12 @@ The recovery point objective (RPO) for each of these tablets is 0, meaning no da
 
 ![RPO vs RTO](/images/architecture/replication/rpo-vs-rto-zone-outage.png)
 
+## Partial failures
+
+A node can be unhealthy without being down. A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership, including when local storage writes are failing.
+
+Timelines for these cases are in [Handle gray failures](../../../explore/fault-tolerance/handling-gray-failures/).
+
 ## Follower reads
 
 Only the tablet leader can process user-facing write and read requests. Note that while this is the case for strongly consistent reads, YugabyteDB offers reading from followers with relaxed guarantees, which is desired in [some deployment models](/stable/develop/build-global-apps/follower-reads/). All other tablet peers are called followers and merely replicate data. They are available as hot standbys that can take over quickly in case the leader fails.
