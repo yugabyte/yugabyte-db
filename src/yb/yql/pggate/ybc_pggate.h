@@ -409,6 +409,13 @@ YbcStatus YBCPgGetColumnInfo(YbcPgTableDesc table_desc,
                              int16_t attr_number,
                              YbcPgColumnInfo *column_info);
 
+// Whether a search of the vector index keeps to the tenant that an equality on the column of the
+// indexed table selects, so the equality needs no check of the rows.
+YbcStatus YBCPgIsVectorIndexTenantColumn(YbcPgTableDesc index_desc,
+                                         YbcPgTableDesc table_desc,
+                                         int16_t attr_number,
+                                         bool *is_tenant_column);
+
 // Callers should probably use YbGetTableProperties instead.
 YbcStatus YBCPgGetTableProperties(YbcPgTableDesc table_desc,
                                   YbcTableProperties properties);

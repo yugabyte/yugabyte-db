@@ -381,6 +381,9 @@ class PgApiImpl {
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
+  Result<bool> IsVectorIndexTenantColumn(
+      YbcPgTableDesc index_desc, YbcPgTableDesc table_desc, int16_t attr_number);
+
   Result<bool> DmlModifiesRow(PgStatement* handle);
 
   Status SetIsSysCatalogVersionChange(PgStatement *handle);

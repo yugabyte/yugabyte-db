@@ -3401,12 +3401,15 @@ TEST_F(PgVectorIndexPkRoutingTest, Tenants) {
   auto check = [&conn](int rows_per_tenant) {
     for (const auto* table : {"th", "tr"}) {
       SCOPED_TRACE(table);
+      // Without deletions, rows of the searched tenant need no check.
+      docdb::TEST_vector_index_filter_allowed = false;
       for (int tenant = 0; tenant != kNumTenants; ++tenant) {
         SCOPED_TRACE(Format("tenant: $0", tenant));
         auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
             KnnQuery(table, Format("tenant = $0", tenant), 0, rows_per_tenant)));
         ASSERT_EQ(ids, Ids(0, rows_per_tenant));
       }
+      docdb::TEST_vector_index_filter_allowed = true;
 
       // Equalities on more key columns than the tenant has.
       auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
@@ -3439,6 +3442,14 @@ TEST_F(PgVectorIndexPkRoutingTest, Tenants) {
     ASSERT_OK(index->WaitForCompaction());
   }
   ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+
+  // The deleted vector and the vector replaced by the update are left in the index, so rows are
+  // checked again.
+  ASSERT_OK(conn.Execute("DELETE FROM th WHERE tenant = 4 AND id = 0"));
+  ASSERT_OK(conn.Execute("UPDATE th SET embedding = '[4, 100, 0]' WHERE tenant = 4 AND id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(KnnQuery("th", "tenant = 4", 0, 3)));
+  ASSERT_EQ(ids, Ids(2, 3));
 }
 
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
@@ -5989,6 +6000,14 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.Flush());
   ASSERT_OK(index.WaitForFlush());
 
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  // Before any deletion, the rows the stored ybctids point to need no check.
+  docdb::TEST_vector_index_filter_allowed = false;
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  docdb::TEST_vector_index_filter_allowed = true;
+  ASSERT_EQ(rows.size(), kNumRows);
+
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumDeletedRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
@@ -5998,9 +6017,7 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.WaitForCompaction());
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
 
-  const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
