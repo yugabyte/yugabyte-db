@@ -151,6 +151,9 @@ public class Audit extends Model {
     @EnumValue("PA Collector")
     PACollector,
 
+    @EnumValue("PA Export Config")
+    PerfAdvisorEndpoint,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -332,6 +335,15 @@ public class Audit extends Model {
 
     @EnumValue("Unregister Universe from PA Collector")
     PACollectorUnregister,
+
+    @EnumValue("Create PA Export Config")
+    CreatePerfAdvisorEndpoint,
+
+    @EnumValue("Edit PA Export Config")
+    EditPerfAdvisorEndpoint,
+
+    @EnumValue("Delete PA Export Config")
+    DeletePerfAdvisorEndpoint,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,

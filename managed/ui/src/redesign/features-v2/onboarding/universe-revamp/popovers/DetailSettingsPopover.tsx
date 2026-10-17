@@ -1,12 +1,12 @@
 import { FC, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { TourStep, dismissTourStep, isTourStepDismissed } from '../tour-progress';
 import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Distance below the Settings tab anchor. */
 const POPOVER_OFFSET: [number, number] = [0, 12];
 
-export const DETAIL_SETTINGS_POPOVER_DISMISS_KEY = 'yb_detail_settings_popover_dismissed';
 const DETAIL_SETTINGS_POPOVER_OPEN_EVENT = 'yb-detail-settings-popover-open';
 
 interface DetailSettingsPopoverProps {
@@ -14,15 +14,15 @@ interface DetailSettingsPopoverProps {
   anchorRef: RefObject<HTMLElement>;
   /** Permanent Hide Tip. */
   onClose: () => void;
-  /** Transient click-away close (no localStorage). */
+  /** Transient click-away close. */
   onClickAway: () => void;
 }
 
 export const isDetailSettingsPopoverDismissed = (): boolean =>
-  localStorage.getItem(DETAIL_SETTINGS_POPOVER_DISMISS_KEY) === 'true';
+  isTourStepDismissed(TourStep.DetailSettings);
 
 export const dismissDetailSettingsPopover = (): void => {
-  localStorage.setItem(DETAIL_SETTINGS_POPOVER_DISMISS_KEY, 'true');
+  dismissTourStep(TourStep.DetailSettings);
 };
 
 /** Opens the Settings tip when it has not been dismissed yet. */
@@ -87,10 +87,6 @@ export const SettingsTabTitleWithPopover: FC = () => {
     setOpen(false);
   }, []);
 
-  const handleClickAway = useCallback(() => {
-    setOpen(false);
-  }, []);
-
   return (
     <>
       <span ref={anchorRef}>Settings</span>
@@ -98,7 +94,7 @@ export const SettingsTabTitleWithPopover: FC = () => {
         open={open}
         anchorRef={anchorRef}
         onClose={handleClose}
-        onClickAway={handleClickAway}
+        onClickAway={handleClose}
       />
     </>
   );

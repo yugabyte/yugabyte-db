@@ -363,6 +363,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private UUID paCollectorUuid = null;
 
+  /**
+   * The Perf Advisor Endpoint this universe's collected data is forwarded to, set only for an
+   * ONLINE registration. Kept here rather than read back from the collector so the sync loop can
+   * work out what each collector needs without a round trip, and so an endpoint still in use cannot
+   * be deleted while its collector is unreachable.
+   */
+  @Getter
+  @Setter
+  @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paEndpointUuid = null;
+
   @Data
   public static class UniverseSettings {
     @ApiModelProperty public boolean expertMode = false;

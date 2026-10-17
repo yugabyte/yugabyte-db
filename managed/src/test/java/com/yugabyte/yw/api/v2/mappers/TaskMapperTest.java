@@ -47,6 +47,7 @@ public class TaskMapperTest {
     source.abortable = false;
     source.retryable = true;
     source.canRollback = false;
+    source.originalTaskUUID = UUID.fromString("046b6c7f-0b8a-43b9-b35d-6489e6daee91");
     source.userEmail = "admin@example.test";
 
     Task out = TaskMapper.INSTANCE.toTask(source);
@@ -68,12 +69,27 @@ public class TaskMapperTest {
     assertFalse(info.getAbortable());
     assertEquals(true, info.getRetryable());
     assertFalse(info.getCanRollback());
+    assertEquals(
+        UUID.fromString("046b6c7f-0b8a-43b9-b35d-6489e6daee91"), info.getOriginalTaskUuid());
     assertEquals("admin@example.test", info.getUserEmail());
     assertEquals(
         OffsetDateTime.ofInstant(createTime.toInstant(), ZoneOffset.UTC), info.getCreateTime());
     assertEquals(
         OffsetDateTime.ofInstant(completionTime.toInstant(), ZoneOffset.UTC),
         info.getCompletionTime());
+  }
+
+  @Test
+  public void toTask_omitsOriginalTaskUuidWhenAbsent() {
+    CustomerTaskFormData source = new CustomerTaskFormData();
+    source.id = UUID.randomUUID();
+    source.title = "task";
+    source.originalTaskUUID = null;
+
+    Task out = TaskMapper.INSTANCE.toTask(source);
+
+    assertNotNull(out.getInfo());
+    assertNull(out.getInfo().getOriginalTaskUuid());
   }
 
   @Test

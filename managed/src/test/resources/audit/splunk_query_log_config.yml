@@ -18,12 +18,21 @@ processors:
   attributes/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
-    - {action: upsert, key: yugabyte.node_name, value: test-node}
-    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: node_name, value: test-node}
+    - {action: upsert, key: node_address, value: 127.0.0.1}
+    - {action: upsert, key: node_prefix, value: yb-tc-test-universe}
+    - {action: upsert, key: node_region, value: ''}
+    - {action: upsert, key: node_az, value: ''}
+    - {action: upsert, key: node_cluster_type, value: PRIMARY}
+    - {action: upsert, key: node_cloud, value: ''}
+    - {action: upsert, key: export_purpose, value: SPLUNK_QUERY_LOG_EXPORT}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
-    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: SPLUNK_QUERY_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
@@ -64,7 +73,8 @@ receivers:
         \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
+      expr: 'body matches "^.*\\w+:  (?:[0-9A-Z]{5}: )?AUDIT:(.|\\n|\\r|\\s)*$"',
+      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
       expr: body matches "unable to find pgstat entry for abnormally terminated PID",
       type: filter}

@@ -74,8 +74,20 @@ export const PreferredInfoModal: FC<PreferredInfoProps> = ({ open, onClose }) =>
             style={{ fontSize: '11.5px', fontWeight: 400 }}
             i18nKey="links"
             components={{
-              a1: <Link />,
-              a2: <Link />
+              a1: (
+                <Link
+                  href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#preferred-region"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              ),
+              a2: (
+                <Link
+                  href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/create-universes-overview/#preferred-region"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              )
             }}
           />
         </Box>
@@ -87,7 +99,13 @@ export const PreferredInfoModal: FC<PreferredInfoProps> = ({ open, onClose }) =>
               i18nKey="note"
               components={{
                 b: <b />,
-                a: <Link />,
+                a: (
+                  <Link
+                    href="https://docs.yugabyte.com/stable/explore/going-beyond-sql/follower-reads-ysql/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                ),
                 li: <li />,
                 br: <br />
               }}

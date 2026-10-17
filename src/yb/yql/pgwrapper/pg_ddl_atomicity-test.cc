@@ -81,6 +81,9 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
+    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back(
+      Format("--ysql_yb_enable_ddl_savepoint_support=$0", TransactionalDdlEnabled()));
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
     // Concurrent DDL requires object locking, so when object locking is disabled, disable
@@ -1050,6 +1053,9 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
     }
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
+    // DDL savepoint requires transactional DDL to be enabled, so keep the flags in sync.
+    options->extra_tserver_flags.push_back(
+        yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", TableLocksEnabled()));
   }
 
   bool TransactionalDdlEnabled() const override { return true; }

@@ -1,5 +1,5 @@
 {{/*
-Renders a tabbed download section for a YugabyteDB release.
+Renders the per-release header (build, licenses, downloads) for a YugabyteDB or YBA release.
 
 Parameters:
   version  - full 4-part version, e.g. "2026.1.0.0"
@@ -20,6 +20,12 @@ Usage:
 {{- $bver     := printf "%s-b%s" $version $build -}}
 {{- $base     := printf "https://software.yugabyte.com/releases/%s" $version -}}
 {{- $ybaBase  := printf "https://downloads.yugabyte.com/releases/%s" $version -}}
+{{- $dlLabel  := "Downloads" -}}
+{{- if eq $type "yba" -}}{{- $dlLabel = "Download" -}}{{- end -}}
+{{- $ybdbLicense := printf "https://downloads.yugabyte.com/releases/%s/yugabytedb-%s-third-party-licenses.html" $version $bver -}}
+{{- $ybaLicense  := printf "https://downloads.yugabyte.com/releases/%s/yugabytedb-anywhere-%s-third-party-licenses.html" $version $bver -}}
+{{- $headerMd := printf "**Build:** `%s`\n\n**Third-party licenses:** [YugabyteDB](%s), [YugabyteDB Anywhere](%s)\n\n**%s**" $bver $ybdbLicense $ybaLicense $dlLabel -}}
+{{ $headerMd | .Page.RenderString }}
 
 {{- $tabs := slice -}}
 {{- if eq $type "ybdb" -}}

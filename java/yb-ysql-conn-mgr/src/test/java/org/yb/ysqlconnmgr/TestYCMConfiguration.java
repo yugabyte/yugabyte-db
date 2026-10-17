@@ -80,7 +80,7 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     // Decrease the size of query packet and restart the cluster.
     // The connection establishment should fail as startup guc's
     // won't be able to fit in that size.
-    reduceQuerySizePacketAndRestartCluster(141);
+    reduceQuerySizePacketAndRestartCluster(149);
 
     try (Connection conn = getConnectionBuilder()
                     .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)

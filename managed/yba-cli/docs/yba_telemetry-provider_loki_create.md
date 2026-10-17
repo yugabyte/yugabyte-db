@@ -22,7 +22,7 @@ yba telemetryprovider loki create --name <name> \
 ```
       --endpoint string          [Required] Loki endpoint URL. Provide the endpoint in the following format: http://<loki-url>:<loki-port>. Ensure loki is accessible through the mentioned port. YugbayteDB Anywhere will push logs to <endpoint>/loki/api/v1/push.
       --organization-id string   [Optional] Organization/Tenant ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud since the authentication reroutes requests according to scope.
-      --auth-type string         [Optional] Authentication type to be used for Loki telemetry provider. Allowed values: none, basic. (default "none")
+      --auth-type string         [Optional] Authentication type to be used for Loki telemetry provider. Allowed values (case insensitive): none, basic. (default "none")
       --username string          [Optional] Username for basic authentication. Required if auth-type is set to basic.
       --password string          [Optional] Password for basic authentication. Required if auth-type is set to basic.
       --tags stringToString      [Optional] Tags to be applied to the exporter config. Provide as key-value pairs per flag. Example "--tags name=test --tags owner=development" OR "--tags name=test,owner=development". (default [])

@@ -91,7 +91,8 @@ uint16_t GetSessionReplicationOriginId() {
   return 0;
 }
 
-void CheckForInterruptsNoOp() {
+bool HasProcessableAbortInterruptNoOp() {
+  return false;
 }
 
 bool IsInParallelModeNoOp() {
@@ -192,7 +193,8 @@ Status PggateTest::Init(
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
-  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
+  callbacks.HasProcessableAbortInterrupt =
+      &HasProcessableAbortInterruptNoOp;
   callbacks.IsInParallelMode = &IsInParallelModeNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =

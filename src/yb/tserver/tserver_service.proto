@@ -751,8 +751,21 @@ message PgRemoteExecRequestPB {
 
 message PgRemoteExecResponsePB {
   optional TabletServerErrorPB error = 1;
-  optional PgResultPB pg_result = 2;
+
+  // Deprecated pg_result (PgResultPB): rows now travel in the sidecar below.
+  reserved 2;
+
   optional bool reached_size_limit = 3;
+
+  // Error from executing the query on the remote PG.
+  optional string error_message = 4;
+
+  // Index of the sidecar with row data (format: yb/yql/pggate/pg_global_view_read.h).
+  optional uint32 rows_sidecar = 5;
+  // Set on every successful response, so an unset num_rows means the tserver
+  // predates the sidecar encoding.
+  optional int32 num_rows = 6;
+  optional int32 num_cols = 7;
 }
 
 message CollectYsqlCallHomeStatsRequestPB {

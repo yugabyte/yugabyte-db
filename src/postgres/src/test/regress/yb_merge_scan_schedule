@@ -29,6 +29,7 @@ test: yb.orig.merge_scan_hash
 test: yb.orig.merge_scan_partition
 test: yb.orig.merge_scan_colocated
 test: yb.orig.merge_scan_relabel
+test: yb.orig.merge_scan_cross_type
 
 # This test uses tv_tbl like the relabel test on an earlier line, adding an
 # index that it tears down.

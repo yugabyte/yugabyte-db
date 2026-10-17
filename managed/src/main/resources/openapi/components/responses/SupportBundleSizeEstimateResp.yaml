@@ -1,0 +1,6 @@
+x-yba-api-visibility: internal
+description: Support bundle size estimate
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/SupportBundleSizeEstimateResponse.yaml"

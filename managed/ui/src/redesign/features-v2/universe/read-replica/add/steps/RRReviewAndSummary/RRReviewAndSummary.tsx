@@ -10,7 +10,7 @@ import {
 } from '@yugabyte-ui-library/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
-import { ClusterSpecClusterType, NodeDetailsDedicatedTo } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, InstanceType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import type { UniverseResourceDetails, Universe, ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -23,8 +23,8 @@ import {
   AddReadReplicaSteps
 } from '../../AddReadReplicaContext';
 import {
-  countMasterAndTServerNodes,
-  getClusterByType
+  getClusterByType,
+  getDedicatedClusterDisplayNodeTotal
 } from '../../../../edit-universe/EditUniverseUtils';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import {
@@ -98,38 +98,6 @@ function readResourceMetric(
 
 function finiteHourlyPrice(d: UniverseResourceDetails | undefined): number | undefined {
   return readResourceMetric(d, 'price_per_hour');
-}
-
-/**
- * When dedicated masters are enabled, API/spec `num_nodes` is T-Server count only.
- * Match create-universe review: display total = tservers + masters (masters ≈ RF).
- */
-function getDedicatedPrimaryNodeTotal(
-  universeData: Universe | undefined,
-  primary: ClusterSpec | undefined,
-  apiNumNodes: number | undefined
-): number | undefined {
-  if (!primary?.node_spec?.dedicated_nodes) {
-    return undefined;
-  }
-
-  const fromDetails = universeData
-    ? countMasterAndTServerNodes(universeData, primary)
-    : undefined;
-  const tFromDetails = fromDetails?.[NodeDetailsDedicatedTo.TSERVER] ?? 0;
-  const mFromDetails = fromDetails?.[NodeDetailsDedicatedTo.MASTER] ?? 0;
-
-  const tserver =
-    tFromDetails > 0
-      ? tFromDetails
-      : apiNumNodes ?? finiteMetric(primary.num_nodes);
-  const master =
-    mFromDetails > 0 ? mFromDetails : finiteMetric(primary.replication_factor);
-
-  if (tserver === undefined || master === undefined) {
-    return undefined;
-  }
-  return tserver + master;
 }
 
 export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
@@ -437,7 +405,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       : undefined;
     const primaryNodesFromSpec = finiteMetric(primarySpecCluster?.num_nodes);
     const primaryNodesForScale = pNodes ?? primaryNodesFromSpec;
-    const dedicatedPrimaryNodes = getDedicatedPrimaryNodeTotal(
+    const dedicatedPrimaryNodes = getDedicatedClusterDisplayNodeTotal(
       universeData,
       primarySpecCluster as ClusterSpec | undefined,
       pNodes

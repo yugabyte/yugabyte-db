@@ -30,6 +30,8 @@ public class SupportBundleTaskParams extends AbstractTaskParams {
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
 
+  public SupportBundleTaskParams() {}
+
   public SupportBundleTaskParams(
       SupportBundle supportBundle,
       SupportBundleFormData bundleData,

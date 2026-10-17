@@ -2,16 +2,21 @@
 
 package api.v2.handlers;
 
-import static play.mvc.Http.Status.NOT_IMPLEMENTED;
-
+import api.v2.mappers.NodeAgentMapper;
 import api.v2.models.NodeAgentUpgradeSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.commissioner.tasks.UpgradeNodeAgent;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 
 public class NodeAgentHandler extends ApiControllerUtils {
 
@@ -25,7 +30,25 @@ public class NodeAgentHandler extends ApiControllerUtils {
 
   public YBATask upgradeNodeAgent(
       UUID cUUID, UUID uniUUID, NodeAgentUpgradeSpec nodeAgentUpgradeSpec) {
-    // TODO: Implement this method later.
-    throw new PlatformServiceException(NOT_IMPLEMENTED, "Not implemented");
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UpgradeNodeAgent.Params taskParams =
+        NodeAgentMapper.INSTANCE.toUpgradeNodeAgentParams(nodeAgentUpgradeSpec);
+    taskParams.setUniverseUUID(uniUUID);
+    if (StringUtils.isNotBlank(nodeAgentUpgradeSpec.getCertificateName())) {
+      // Verify that the certificate exists and it belongs to the customer.
+      taskParams.certificateUuid =
+          CertificateInfo.getOrBadRequest(cUUID, nodeAgentUpgradeSpec.getCertificateName())
+              .getUuid();
+    }
+    UUID taskUuid = commissioner.submit(TaskType.UpgradeNodeAgent, taskParams);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.NodeAgent,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    return new YBATask().taskUuid(taskUuid).resourceUuid(uniUUID);
   }
 }

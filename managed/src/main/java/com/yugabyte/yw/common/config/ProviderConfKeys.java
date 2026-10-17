@@ -590,6 +590,26 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use system-level systemd instead of user-level systemd for service management",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> ynpProvisionTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ynp_provision_timeout",
+          ScopeType.PROVIDER,
+          "YNP provisioning timeout",
+          "Maximum time the YNP provisioning command may run on a node before it is aborted."
+              + " Without a bound, a provisioning step that hangs on the node (a package manager"
+              + " waiting on a lock, an unanswered metadata request) holds the whole universe task"
+              + " open indefinitely. Raise it for slow images or air-gapped repositories.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ynpSetupTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ynp_setup_timeout",
+          ScopeType.PROVIDER,
+          "YNP setup timeout",
+          "Maximum time the YNP setup step (uploading and extracting the node-agent package) may"
+              + " run on a node before it is aborted.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
       new ConfKeyInfo<>(
           "yb.task.enable_capacity_reservation_gcp",
@@ -607,4 +627,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " purposes",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentUseUniverseCertificatesOnInstall =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_universe_certificates_on_install",
+          ScopeType.PROVIDER,
+          "Use Universe Certificates in Node Agent Installation",
+          "Use universe certificates in new node agent installation instead of the default"
+              + " certificates. Existing node agents will not be affected until they are"
+              + " reinstalled during tasks like OS Image Upgrade, Reprovisioning node etc",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

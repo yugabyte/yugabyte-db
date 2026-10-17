@@ -26,10 +26,28 @@
 #include "yb/util/metrics.h"
 #include "yb/util/unique_lock.h"
 
-METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_acquires,
-    "Number of object locking fast path lock acquires",
+METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_pg_acquires,
+    "Number of postgres-side object locking lock acquires performed via shared memory",
     yb::MetricUnit::kRequests,
-    "Number of object locking fast path lock acquires",
+    "Number of postgres-side object locking lock acquires performed via shared memory",
+    yb::EXPOSE_AS_COUNTER);
+
+METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_pg_releases,
+    "Number of transactions that used postgres-side object locking lock release via shared memory",
+    yb::MetricUnit::kTransactions,
+    "Number of transactions that used postgres-side object locking lock release via shared memory",
+    yb::EXPOSE_AS_COUNTER);
+
+METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_tserver_acquires,
+    "Number of TServer-side object locking lock acquires performed via shared memory",
+    yb::MetricUnit::kRequests,
+    "Number of TServer-side object locking lock acquires performed via shared memory",
+    yb::EXPOSE_AS_COUNTER);
+
+METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_tserver_releases,
+    "Number of transactions that used TServer-side object locking lock release via shared memory",
+    yb::MetricUnit::kTransactions,
+    "Number of transactions that used TServer-side object locking lock release via shared memory",
     yb::EXPOSE_AS_COUNTER);
 
 namespace yb::docdb {
@@ -63,6 +81,15 @@ class ObjectLockOwnerRegistry::Impl {
     DCHECK(i != owners_.end());
     (*i)->shared->Disable();
     owners_.erase(i);
+  }
+
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const {
+    std::lock_guard lock(mutex_);
+    const auto i = owners_.find(id);
+    if (PREDICT_TRUE(i != owners_.end())) {
+      return *i;
+    }
+    return {};
   }
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const {
@@ -107,6 +134,11 @@ ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
 }
 
 std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
+ObjectLockOwnerRegistry::GetOwnerInfo(TransactionId id) const {
+  return impl_->GetOwnerInfo(id);
+}
+
+std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
 ObjectLockOwnerRegistry::GetOwnerInfo(ObjectLockSharedState& state) const {
   return impl_->GetOwnerInfo(state);
 }
@@ -117,14 +149,42 @@ ObjectLockSharedStateHolder::~ObjectLockSharedStateHolder() {
   }
 }
 
+struct ObjectLockSharedStateManager::MetricInfo {
+  using AccumulatorFieldPtr = uint64_t ObjectLockSharedStateManager::*;
+  using SharedStateValueFunction = uint64_t (ObjectLockSharedState::*)() const;
+
+  GaugePrototype<uint64_t>& prototype;
+  AccumulatorFieldPtr accumulator_field;
+  SharedStateValueFunction shared_state_value;
+};
+
+struct ObjectLockSharedStateManager::MetricInfos {
+  constexpr static MetricInfo kMetricsInfos[] = {
+      { METRIC_object_locking_fastpath_pg_acquires,
+        &ObjectLockSharedStateManager::num_pg_acquires_,
+        &ObjectLockSharedState::PgLockRequestCount },
+      { METRIC_object_locking_fastpath_pg_releases,
+        &ObjectLockSharedStateManager::num_pg_releases_,
+        &ObjectLockSharedState::PgLockReleaseCount },
+      { METRIC_object_locking_fastpath_tserver_acquires,
+        &ObjectLockSharedStateManager::num_tserver_acquires_,
+        &ObjectLockSharedState::TServerLockRequestCount },
+      { METRIC_object_locking_fastpath_tserver_releases,
+        &ObjectLockSharedStateManager::num_tserver_releases_,
+        &ObjectLockSharedState::TServerLockReleaseCount },
+  };
+};
+
 ObjectLockSharedStateManager::ObjectLockSharedStateManager(
     std::shared_ptr<ObjectLockTracker> object_lock_tracker,
     const MetricEntityPtr& metric_entity)
     : object_lock_tracker_(std::move(object_lock_tracker)) {
-  METRIC_object_locking_fastpath_acquires.InstantiateFunctionGauge(
-      metric_entity,
-      Bind(&ObjectLockSharedStateManager::CumulativeLockRequestCount, Unretained(this)))
-    ->AutoDetachToLastValue(&metric_detacher_);
+  for (const auto& info : MetricInfos::kMetricsInfos) {
+    info.prototype.InstantiateFunctionGauge(
+        metric_entity,
+        Bind(&ObjectLockSharedStateManager::CalculateMetric, Unretained(this), info))
+      ->AutoDetachToLastValue(&metric_detacher_);
+  }
 }
 
 void ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
@@ -153,7 +213,9 @@ void ObjectLockSharedStateManager::ReleaseShared(ObjectLockSharedState& state) {
   ParentProcessGuard g;
 
   state.Disable();
-  num_lock_requests_ += state.CumulativeLockRequestCount();
+  for (const auto& info : MetricInfos::kMetricsInfos) {
+    std::invoke(info.accumulator_field, *this) += std::invoke(info.shared_state_value, state);
+  }
 
   // TODO: this could be shared_states_.erase(...) except our compilers currently don't support
   // heterogeneous erasure overloads for associative containers.
@@ -191,14 +253,25 @@ void ObjectLockSharedStateManager::Stop() {
 }
 
 void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
-    const LockRequestConsumer& consume) {
+    const LockRequestConsumer& consume, TransactionId txn_id) {
   std::lock_guard lock(mutex_);
-  ParentProcessGuard g;
-  for (auto& state : shared_states_) {
+
+  auto do_consume = [&](ObjectLockSharedState& state) REQUIRES(mutex_) PARENT_PROCESS_ONLY {
     CallWithRequestConsumer(
-        *state,
-        [&state](auto&& c) PARENT_PROCESS_ONLY { return state->ConsumePendingLockRequests(c); },
+        state,
+        [&state](auto&& c) PARENT_PROCESS_ONLY { state.ConsumePendingLockRequests(c); },
         consume);
+  };
+
+  ParentProcessGuard g;
+  if (txn_id) {
+    if (auto owner = registry_.GetOwnerInfo(txn_id)) {
+      do_consume(*owner->shared);
+    }
+  } else {
+    for (auto& state : shared_states_) {
+      do_consume(*state);
+    }
   }
 }
 
@@ -216,9 +289,17 @@ void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     CallWithRequestConsumer(
         *state,
         [&state, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
-          return state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
+          state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
         },
         consume);
+  }
+}
+
+void ObjectLockSharedStateManager::DropPendingSharedLockRequests(TransactionId txn_id) {
+  std::lock_guard lock(mutex_);
+  ParentProcessGuard g;
+  if (auto owner = registry_.GetOwnerInfo(txn_id)) {
+    owner->shared->ForceDropAll();
   }
 }
 
@@ -238,18 +319,20 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
   }
 }
 
-uint64_t ObjectLockSharedStateManager::CumulativeLockRequestCount() const {
-  std::lock_guard lock(mutex_);
-  uint64_t count = num_lock_requests_;
-  for (const auto& state : shared_states_) {
-    count += state->CumulativeLockRequestCount();
+void ObjectLockSharedStateManager::MarkTServerLoaded(TransactionId txn_id) {
+  if (auto owner_info = registry_.GetOwnerInfo(txn_id)) {
+    ParentProcessGuard g;
+    owner_info->shared->MarkTServerLoaded();
   }
-  return count;
 }
 
-TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
+uint64_t ObjectLockSharedStateManager::CalculateMetric(const MetricInfo& metric) const {
   std::lock_guard lock(mutex_);
-  return TEST_last_owner_;
+  uint64_t count = std::invoke(metric.accumulator_field, *this);
+  for (const auto& state : shared_states_) {
+    count += std::invoke(metric.shared_state_value, *state);
+  }
+  return count;
 }
 
 bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
@@ -290,9 +373,7 @@ void ObjectLockSharedStateManager::CallWithRequestConsumer(
   };
 
   ParentProcessGuard g;
-  if (method(make_lw_function(consume_fastpath_request))) {
-    TEST_last_owner_ = owner_info->txn_id;
-  }
+  method(make_lw_function(consume_fastpath_request));
 }
 
 } // namespace yb::docdb

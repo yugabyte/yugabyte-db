@@ -36,6 +36,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
@@ -876,7 +877,17 @@ void TestRedisService::TearDown() {
     } else {
       EXPECT_EQ(0, allocated_sessions);
     }
-    EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
+    // A block queues its responses to the client before it returns its session to the pool, so a
+    // client that has seen the last reply can reach here while the handler thread has not released
+    // the session yet. Wait for the pool to quiesce instead of sampling it once.
+    size_t available_sessions = 0;
+    auto status = WaitFor(
+        [this, &available_sessions, allocated_sessions] {
+          available_sessions = CountSessions(METRIC_redis_available_sessions);
+          return available_sessions == allocated_sessions;
+        },
+        MonoDelta::FromSeconds(30 * kTimeMultiplier), "All redis sessions returned to the pool");
+    EXPECT_EQ(allocated_sessions, available_sessions) << status;
   }
 
   CloseRedisClient();

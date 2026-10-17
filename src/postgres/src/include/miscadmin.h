@@ -119,7 +119,7 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
-extern void YBCheckForInterrupts(void);
+extern bool YBHasProcessableAbortInterrupt(void);
 
 /* Test whether an interrupt is pending */
 #ifndef WIN32

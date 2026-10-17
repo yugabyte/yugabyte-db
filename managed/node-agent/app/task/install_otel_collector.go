@@ -96,6 +96,15 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	// Runs ahead of the stop in 4) and the config swap in 5) so a rejected config leaves the
+	// running collector and its existing config.yml untouched.
+	if h.param.GetOtelColConfigFile() != "" {
+		if err = h.validateOtelCollectorConfig(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+	}
+
 	// 3) Place the otel-collector.service at desired location.
 	otelColMaxMemory := h.param.GetOtelColMaxMemory()
 	if otelColMaxMemory == 0 {
@@ -160,8 +169,32 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 			return nil, err
 		}
+		// start/enable both return 0 over a collector that died parsing its config.
+		if err = module.VerifySystemdServiceStarted(
+			ctx, h.username, OtelCollectorService, h.logOut,
+		); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
+}
+
+// Covers config unmarshalling and Validate() only - components are not constructed until the
+// service runs, so an exporter that fails to build still has to be caught after start.
+func (h *InstallOtelCollector) validateOtelCollectorConfig(
+	ctx context.Context,
+	ybHome string,
+) error {
+	cmd := fmt.Sprintf(
+		"%s validate --config=file:%s",
+		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
+		h.param.GetOtelColConfigFile(),
+	)
+	if _, err := module.RunShellCmd(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+		return fmt.Errorf("otel-collector config was rejected: %w", err)
+	}
+	return nil
 }
 
 // GetOtelCollectorSetupSteps returns the sequence of steps needed for configuring the otel collector.

@@ -1,4 +1,5 @@
-x-yba-api-visibility: internal
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.1.2.0
 title: TelemetryConfig
 type: object
 description: |
@@ -17,18 +18,24 @@ properties:
   master_logs:
     description: yb-master log export. null = disabled.
     $ref: "./MasterLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal
   tserver_logs:
     description: yb-tserver log export. null = disabled.
     $ref: "./TServerLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal
   ysql_conn_mgr_logs:
     description: YSQL Connection Manager log export. null = disabled.
     $ref: "./YsqlConnMgrLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal
   node_agent_logs:
     description: node-agent log export. null = disabled.
     $ref: "./NodeAgentLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal
   ynp_logs:
     description: YNP (node provisioning) log export. null = disabled.
     $ref: "./YnpLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal
   controller_logs:
     description: YB-Controller log export. null = disabled.
     $ref: "./ControllerLogsTelemetrySpec.yaml"
+    x-yba-api-visibility: internal

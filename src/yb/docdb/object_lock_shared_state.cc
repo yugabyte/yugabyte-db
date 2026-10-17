@@ -38,9 +38,10 @@ struct FastpathLockRequestEntry {
 
 class PendingLockRequests {
  public:
-  // One fastpath request can correspond to multiple actual locks (num_real_locks); we use this
-  // count for metrics accounting to match ObjectLockManager metrics.
-  bool AddLockRequest(const ObjectLockFastpathRequest& request, size_t num_real_locks) {
+  // `accounting_lock_count` is the number of postgres-side acquired locks to count this request as.
+  // One fastpath request can correspond to multiple actual locks, and we use this count for metrics
+  // accounting to match ObjectLockManager metrics.
+  bool AddLockRequest(const ObjectLockFastpathRequest& request, size_t accounting_lock_count) {
     size_t index = SHARED_MEMORY_LOAD(next_);
     if (index >= requests_.size()) {
       return false;
@@ -58,17 +59,33 @@ class PendingLockRequests {
 
     // This may not get updated in event of crash. This is for metrics only, so some inaccuracy
     // is acceptable, and we don't force update at same instruction as next_ for simplicity.
-    SHARED_MEMORY_STORE(num_real_locks_, SHARED_MEMORY_LOAD(num_real_locks_) + num_real_locks);
+    SHARED_MEMORY_STORE(pg_requests_, SHARED_MEMORY_LOAD(pg_requests_) + accounting_lock_count);
 
     return true;
   }
 
-  void Reset() {
+  bool Reset(bool accounted) {
+    auto requests_pending = SHARED_MEMORY_LOAD(next_);
+    if (requests_pending == 0) {
+      return false;
+    }
     SHARED_MEMORY_STORE(next_, 0);
+
+    // This may not get updated in event of crash. This is for metrics only, so some inaccuracy
+    // is acceptable, and we don't force update at same instruction as next_ for simplicity.
+    if (accounted) {
+      SHARED_MEMORY_STORE(pg_releases_, SHARED_MEMORY_LOAD(pg_releases_) + 1);
+    }
+
+    return true;
   }
 
-  size_t CumulativeLockRequestCount() const {
-    return SHARED_MEMORY_LOAD(num_real_locks_);
+  size_t PgLockRequestCount() const {
+    return SHARED_MEMORY_LOAD(pg_requests_);
+  }
+
+  size_t PgLockReleaseCount() const {
+    return SHARED_MEMORY_LOAD(pg_releases_);
   }
 
   bool ConsumeLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY {
@@ -85,8 +102,9 @@ class PendingLockRequests {
   std::array<FastpathLockRequestEntry, kMaxFastpathRequests> requests_;
   ChildProcessRW<size_t> next_ = 0;
 
-  // Counter for metrics. This may not be completely accurate in event of crash.
-  ChildProcessRW<size_t> num_real_locks_ = 0;
+  // Counters for metrics. These may not be completely accurate in event of crash.
+  ChildProcessRW<size_t> pg_requests_ = 0;
+  ChildProcessRW<size_t> pg_releases_ = 0;
 };
 
 constexpr size_t kSharedWriteLockStateBits = 2 * kIntentTypeBits;
@@ -192,6 +210,12 @@ std::span<const LockTypeEntry> GetEntriesForFastpathLockType(
 }
 
 class ObjectLockSharedState::Impl {
+  enum class UnlockResult {
+    kFastpathUnusable,
+    kNoLocks,
+    kDroppedLocks,
+  };
+
  public:
   explicit Impl(const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents) {
     for (const auto& [object_id, lock_state] : initial_intents) {
@@ -201,11 +225,132 @@ class ObjectLockSharedState::Impl {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
+    return DoLock(request, /*account_to_pg=*/true);
+  }
 
-    if (SHARED_MEMORY_LOAD(enabled_) != ActiveState::kEnabled) {
-      VLOG_WITH_FUNC(1)
-          << AsString(request) << ": Shared state disabled, cannot use fastpath";
+  [[nodiscard]] bool UnlockAll() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return DoUnlockAll(/*accounted_to_pg=*/true) != UnlockResult::kFastpathUnusable;
+  }
+
+  [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request)
+      PARENT_PROCESS_ONLY EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    if (auto num_locks = DoLock(request, /*account_to_pg=*/false)) {
+      tserver_lock_requests_.Get() += num_locks;
+      return true;
+    }
+    return false;
+  }
+
+  [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto result = DoUnlockAll(/*accounted_to_pg=*/false);
+    if (result == UnlockResult::kFastpathUnusable) {
       return false;
+    }
+    if (result == UnlockResult::kDroppedLocks) {
+      ++tserver_lock_releases_.Get();
+    }
+    return true;
+  }
+
+  void ForceDropAll() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    DoDropAll();
+    VLOG_WITH_FUNC(1) << "done";
+  }
+
+  void MarkTServerLoaded() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    SHARED_MEMORY_STORE(tserver_loaded_, true);
+    VLOG_WITH_FUNC(1) << "done";
+  }
+
+  void Enable() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kDisabled) {
+      SHARED_MEMORY_STORE(enabled_, ActiveState::kEnabled);
+      VLOG_WITH_FUNC(1) << "done";
+    }
+  }
+
+  void Disable() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled) {
+      DoDropAll();
+      SHARED_MEMORY_STORE(enabled_, ActiveState::kDisabled);
+      VLOG_WITH_FUNC(1) << "done";
+    }
+  }
+
+  void Shutdown() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    DoDropAll();
+    SHARED_MEMORY_STORE(enabled_, ActiveState::kShutdown);
+    VLOG_WITH_FUNC(1) << "done";
+  }
+
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
+      EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    ConsumePendingLockRequestsUnlocked(consume);
+    VLOG_WITH_FUNC(1) << "done";
+  }
+
+  void ConsumeAndAcquireExclusiveLockIntents(
+      const FastLockRequestConsumer& consume,
+      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    for (auto key_and_intent : lock_entries) {
+      AcquireExclusiveLockIntent(
+          key_and_intent->key, IntentTypeSetAdd(key_and_intent->intent_types));
+    }
+    ConsumePendingLockRequestsUnlocked(consume);
+    VLOG_WITH_FUNC(1) << "done";
+  }
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
+      PARENT_PROCESS_ONLY {
+    auto& group_entry = group(object_id);
+    VLOG_WITH_FUNC(1) << AsString(object_id) << ": " << LockStateDebugString(lock_state);
+    const auto sub = LockStateToSharedWriteLockState(lock_state);
+    [[maybe_unused]] auto value = group_entry.exclusive_intents.fetch_sub(sub);
+    DCHECK_GE(value, sub);
+  }
+
+  uint64_t PgLockRequestCount() const {
+    std::lock_guard lock(mutex_);
+    return shared_requests_.PgLockRequestCount();
+  }
+
+  uint64_t PgLockReleaseCount() const {
+    std::lock_guard lock(mutex_);
+    return shared_requests_.PgLockReleaseCount();
+  }
+
+  uint64_t TServerLockRequestCount() const {
+    std::lock_guard lock(mutex_);
+    return SHARED_MEMORY_LOAD(tserver_lock_requests_);
+  }
+
+  uint64_t TServerLockReleaseCount() const {
+    std::lock_guard lock(mutex_);
+    return SHARED_MEMORY_LOAD(tserver_lock_releases_);
+  }
+
+  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY {
+    return std::ranges::any_of(lock_states_.Get(), [](GroupLockState& lock_state) {
+      return lock_state.exclusive_intents > 0;
+    });
+  }
+
+ private:
+  [[nodiscard]] size_t DoLock(
+      const ObjectLockFastpathRequest& request, bool account_to_pg) REQUIRES(mutex_) {
+    if (SHARED_MEMORY_LOAD(enabled_) != ActiveState::kEnabled) {
+      VLOG_WITH_FUNC(1) << AsString(request) << ": Shared state disabled, cannot use fastpath";
+      return 0;
     }
 
     const auto& lock_states = SHARED_MEMORY_LOAD(lock_states_);
@@ -220,83 +365,42 @@ class ObjectLockSharedState::Impl {
             << AsString(request) << ": exclusive intents exist, fastpath unusable. "
             << "exclusive_intents: " << DebugSharedWriteLockStateStr(group_entry.exclusive_intents)
             << ", requested intent_type: " << AsString(intent_type);
-        return false;
+        return 0;
       }
     }
 
-    if (!shared_requests_.AddLockRequest(request, entries.size())) {
-      LOG(WARNING) << AsString(request) << ": too many active fastpath requests, "
-                   << "adjust object_locking_num_fastpath_requests";
-      return false;
+    if (!shared_requests_.AddLockRequest(request, account_to_pg ? entries.size() : 0)) {
+      LOG(WARNING) << AsString(request) << ": too many active fastpath requests";
+      return 0;
     }
 
     VLOG_WITH_FUNC(1) << AsString(request) << ": added request";
-    return true;
+    return entries.size();
   }
 
-  void Enable() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
-    std::lock_guard lock(mutex_);
-    if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kDisabled) {
-      SHARED_MEMORY_STORE(enabled_, ActiveState::kEnabled);
-      VLOG_WITH_FUNC(1) << "done";
+  [[nodiscard]] UnlockResult DoUnlockAll(bool accounted_to_pg) REQUIRES(mutex_) {
+    if (SHARED_MEMORY_LOAD(enabled_) != ActiveState::kEnabled) {
+      VLOG_WITH_FUNC(1) << "Shared state disabled, cannot use fastpath";
+      return UnlockResult::kFastpathUnusable;
     }
-  }
 
-  void Disable() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
-    std::lock_guard lock(mutex_);
-    if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled) {
-      shared_requests_.Reset();
-      SHARED_MEMORY_STORE(enabled_, ActiveState::kDisabled);
-      VLOG_WITH_FUNC(1) << "done";
+    if (SHARED_MEMORY_LOAD(tserver_loaded_)) {
+      VLOG_WITH_FUNC(1) << "TServer loaded locks, cannot use fastpath";
+      return UnlockResult::kFastpathUnusable;
     }
+
+    auto dropped = shared_requests_.Reset(accounted_to_pg);
+    VLOG_WITH_FUNC(1) << "Dropped all requests";
+    return dropped ? UnlockResult::kDroppedLocks : UnlockResult::kNoLocks;
   }
 
-  void Shutdown() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
-    std::lock_guard lock(mutex_);
-    shared_requests_.Reset();
-    SHARED_MEMORY_STORE(enabled_, ActiveState::kShutdown);
-    VLOG_WITH_FUNC(1) << "done";
-  }
-
-  bool ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
-      EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
-    std::lock_guard lock(mutex_);
-    return ConsumePendingLockRequestsUnlocked(consume);
-  }
-
-  bool ConsumeAndAcquireExclusiveLockIntents(
-      const FastLockRequestConsumer& consume,
-      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY {
-    std::lock_guard lock(mutex_);
-    size_t consumed = ConsumePendingLockRequestsUnlocked(consume);
-    for (auto key_and_intent : lock_entries) {
-      AcquireExclusiveLockIntent(
-          key_and_intent->key, IntentTypeSetAdd(key_and_intent->intent_types));
+  void DoDropAll() REQUIRES(mutex_) PARENT_PROCESS_ONLY {
+    if (shared_requests_.Reset(/*accounted=*/false)) {
+      ++tserver_lock_releases_.Get();
     }
-    return consumed;
+    SHARED_MEMORY_STORE(tserver_loaded_, false);
   }
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
-      PARENT_PROCESS_ONLY {
-    auto& group_entry = group(object_id);
-    VLOG_WITH_FUNC(1) << AsString(object_id) << ": " << LockStateDebugString(lock_state);
-    const auto sub = LockStateToSharedWriteLockState(lock_state);
-    [[maybe_unused]] auto value = group_entry.exclusive_intents.fetch_sub(sub);
-    DCHECK_GE(value, sub);
-  }
-
-  size_t CumulativeLockRequestCount() const {
-    std::lock_guard lock(mutex_);
-    return shared_requests_.CumulativeLockRequestCount();
-  }
-
-  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY {
-    return std::ranges::any_of(lock_states_.Get(), [](GroupLockState& lock_state) {
-      return lock_state.exclusive_intents > 0;
-    });
-  }
-
- private:
   void AcquireExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY {
     VLOG_WITH_FUNC(1) << AsString(object_id) << ": " << LockStateDebugString(lock_state);
@@ -310,9 +414,11 @@ class ObjectLockSharedState::Impl {
     group_entry.exclusive_intents.fetch_add(lock_state);
   }
 
-  bool ConsumePendingLockRequestsUnlocked(const FastLockRequestConsumer& consume)
+  void ConsumePendingLockRequestsUnlocked(const FastLockRequestConsumer& consume)
       REQUIRES(mutex_) PARENT_PROCESS_ONLY {
-    return shared_requests_.ConsumeLockRequests(consume);
+    if (shared_requests_.ConsumeLockRequests(consume)) {
+      SHARED_MEMORY_STORE(tserver_loaded_, true);
+    }
   }
 
   [[nodiscard]] static size_t GroupFor(const ObjectLockPrefix& object_id) {
@@ -326,8 +432,15 @@ class ObjectLockSharedState::Impl {
   mutable RobustMutexNoCleanup mutex_;
   PendingLockRequests shared_requests_ GUARDED_BY(mutex_);
   ChildProcessRO<std::array<GroupLockState, kNumGroups>> lock_states_;
-
   ChildProcessRO<ActiveState> enabled_ GUARDED_BY(mutex_) = ActiveState::kDisabled;
+
+  // Keep track of whether this session/transaction is registered with ObjectLockManager. If it is,
+  // we need to release via ObjectLockManager to release that state, and cannot use fastpath
+  // release.
+  ChildProcessRO<bool> tserver_loaded_ GUARDED_BY(mutex_) = false;
+
+  ChildProcessRO<size_t> tserver_lock_requests_ GUARDED_BY(mutex_) = 0;
+  ChildProcessRO<size_t> tserver_lock_releases_ GUARDED_BY(mutex_) = 0;
 };
 
 ObjectLockSharedState::ObjectLockSharedState(
@@ -339,6 +452,26 @@ ObjectLockSharedState::~ObjectLockSharedState() = default;
 
 bool ObjectLockSharedState::Lock(const ObjectLockFastpathRequest& request) {
   return impl_->Lock(request);
+}
+
+bool ObjectLockSharedState::UnlockAll() {
+  return impl_->UnlockAll();
+}
+
+bool ObjectLockSharedState::TServerLock(const ObjectLockFastpathRequest& request) {
+  return impl_->TServerLock(request);
+}
+
+bool ObjectLockSharedState::TServerUnlockAll() {
+  return impl_->TServerUnlockAll();
+}
+
+void ObjectLockSharedState::ForceDropAll() {
+  impl_->ForceDropAll();
+}
+
+void ObjectLockSharedState::MarkTServerLoaded() {
+  impl_->MarkTServerLoaded();
 }
 
 void ObjectLockSharedState::Enable() {
@@ -353,10 +486,10 @@ void ObjectLockSharedState::Shutdown() {
   impl_->Shutdown();
 }
 
-bool ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
+void ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
     const FastLockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
-  return impl_->ConsumeAndAcquireExclusiveLockIntents(consume, lock_entries);
+  impl_->ConsumeAndAcquireExclusiveLockIntents(consume, lock_entries);
 }
 
 void ObjectLockSharedState::ReleaseExclusiveLockIntent(
@@ -364,12 +497,24 @@ void ObjectLockSharedState::ReleaseExclusiveLockIntent(
   impl_->ReleaseExclusiveLockIntent(object_id, lock_state);
 }
 
-bool ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
-  return impl_->ConsumePendingLockRequests(consume);
+void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
+  impl_->ConsumePendingLockRequests(consume);
 }
 
-size_t ObjectLockSharedState::CumulativeLockRequestCount() const {
-  return impl_->CumulativeLockRequestCount();
+uint64_t ObjectLockSharedState::PgLockRequestCount() const {
+  return impl_->PgLockRequestCount();
+}
+
+uint64_t ObjectLockSharedState::PgLockReleaseCount() const {
+  return impl_->PgLockReleaseCount();
+}
+
+uint64_t ObjectLockSharedState::TServerLockRequestCount() const {
+  return impl_->TServerLockRequestCount();
+}
+
+uint64_t ObjectLockSharedState::TServerLockReleaseCount() const {
+  return impl_->TServerLockReleaseCount();
 }
 
 bool ObjectLockSharedState::TEST_has_exclusive_intents() {

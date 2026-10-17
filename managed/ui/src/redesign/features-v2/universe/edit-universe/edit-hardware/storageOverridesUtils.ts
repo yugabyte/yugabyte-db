@@ -120,15 +120,17 @@ const azNodeSpecEntryToRow = (
 });
 
 export const rowsToAzNodeSpec = (
-  rows: StorageOverrideRowFormValue[]
+  rows: StorageOverrideRowFormValue[],
+  options?: { includeMaster?: boolean }
 ): ClusterNodeSpecAllOfAzNodeSpec => {
+  const includeMaster = options?.includeMaster !== false;
   const result: ClusterNodeSpecAllOfAzNodeSpec = {};
 
   rows.forEach((row) => {
     if (!row.azUuid?.trim()) return;
 
     const tserverStorage = processValueToStorageSpec(row.tserver);
-    const masterStorage = processValueToStorageSpec(row.master);
+    const masterStorage = includeMaster ? processValueToStorageSpec(row.master) : null;
     const perAz: AvailabilityZoneNodeSpec = {};
 
     if (tserverStorage) {

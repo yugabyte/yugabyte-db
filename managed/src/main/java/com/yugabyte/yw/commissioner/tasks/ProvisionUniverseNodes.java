@@ -178,9 +178,13 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
 
             createSetupYNPTask(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-            boolean isYbPrebuiltImage = false;
-            boolean isReprovision = true;
-            createYNPProvisioningTask(universe, singleNode, isYbPrebuiltImage, isReprovision)
+            createYNPProvisioningTask(
+                    universe,
+                    singleNode,
+                    (n, p) -> {
+                      p.isSoftwarePresent = true;
+                      p.isDataPresent = true;
+                    })
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             createInstallNodeAgentTasks(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

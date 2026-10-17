@@ -26,6 +26,10 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
  public:
   MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
 
+  void Read(const tserver::ReadRequestMsg* req,
+            tserver::ReadResponseMsg* resp,
+            rpc::RpcContext context) override;
+
   void Write(const tserver::WriteRequestMsg* req,
              tserver::WriteResponseMsg* resp,
              rpc::RpcContext context) override;

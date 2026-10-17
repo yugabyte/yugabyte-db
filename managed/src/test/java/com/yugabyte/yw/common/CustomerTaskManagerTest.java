@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.inject.Injector;
@@ -616,6 +617,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     verify(mockCommissioner)
         .submit(eq(TaskType.SwitchoverDrConfigRollback), paramsCaptor.capture());
     assertEquals(failedTaskUUID, paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
     assertEquals(CustomerTask.TaskType.SwitchoverRollback, rollbackTask.getType());
     assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
   }
@@ -667,6 +669,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.RollbackUpgrade), paramsCaptor.capture());
     assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
     assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollbackTask.getType());
     assertEquals(universe.getUniverseUUID(), rollbackTask.getTargetUUID());
     assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
@@ -697,6 +700,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.RollbackKubernetesUpgrade), paramsCaptor.capture());
     assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
     assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollbackTask.getType());
     assertEquals(universe.getUniverseUUID(), rollbackTask.getTargetUUID());
     assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
@@ -748,6 +752,68 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRetryEditUniverseSetsPreviousAndOriginalTaskUUID() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    JsonNode taskParams = editUniverseTaskParams(universe);
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    // Retryability requires the failed task to own placement modification.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().placementModificationTaskUuid = failedTaskUUID;
+          u.getUniverseDetails().updateInProgress = false;
+        });
+    UUID retryTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(retryTaskUUID, TaskType.EditUniverse);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.EditUniverse), any())).thenReturn(retryTaskUUID);
+
+    CustomerTask retryTask = taskManager.retryCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), paramsCaptor.capture());
+    // First retry: failed task is the chain root.
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
+    assertEquals(CustomerTask.TaskType.Update, retryTask.getType());
+    assertEquals(retryTaskUUID, retryTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRetryEditUniverseCarriesRootOriginalTaskUUID() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    UUID rootTaskUUID = UUID.randomUUID();
+    ObjectNode taskParams = (ObjectNode) editUniverseTaskParams(universe);
+    // Simulate a prior retry: root is A, immediate predecessor for inherit is also A on this B.
+    taskParams.put("originalTaskUUID", rootTaskUUID.toString());
+    taskParams.put("previousTaskUUID", rootTaskUUID.toString());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().placementModificationTaskUuid = failedTaskUUID;
+          u.getUniverseDetails().updateInProgress = false;
+        });
+    UUID retryTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(retryTaskUUID, TaskType.EditUniverse);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.EditUniverse), any())).thenReturn(retryTaskUUID);
+
+    taskManager.retryCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), paramsCaptor.capture());
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(rootTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
+  }
+
+  @Test
   public void testRollbackEditUniverseSubmitsRollbackEditUniverseWhenEnabled() {
     mutableConfigFactory
         .globalRuntimeConf()
@@ -771,8 +837,40 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.RollbackEditUniverse), paramsCaptor.capture());
     assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    // First failure in chain: failed task is the root.
+    assertEquals(failedTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
     assertEquals(CustomerTask.TaskType.RollbackEditUniverse, rollbackTask.getType());
     assertEquals(rollbackTaskUUID, rollbackTask.getTaskUUID());
+  }
+
+  @Test
+  public void testRollbackEditUniverseCarriesRootOriginalTaskUUID() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "true");
+    universe = ModelFactory.createUniverse(customer.getId());
+    UUID rootTaskUUID = UUID.randomUUID();
+    ObjectNode taskParams = (ObjectNode) editUniverseTaskParams(universe);
+    // Failed retry C already carries root A from the chain.
+    taskParams.put("originalTaskUUID", rootTaskUUID.toString());
+    taskParams.put("previousTaskUUID", UUID.randomUUID().toString());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, taskParams);
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    UUID rollbackTaskUUID = UUID.randomUUID();
+    persistTaskInfoPlaceholder(rollbackTaskUUID, TaskType.RollbackEditUniverse);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(taskParams);
+    when(mockCommissioner.submit(eq(TaskType.RollbackEditUniverse), any()))
+        .thenReturn(rollbackTaskUUID);
+
+    taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID);
+
+    ArgumentCaptor<ITaskParams> paramsCaptor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.RollbackEditUniverse), paramsCaptor.capture());
+    assertNull(paramsCaptor.getValue().getPreviousTaskUUID());
+    assertEquals(rootTaskUUID, paramsCaptor.getValue().getOriginalTaskUUID());
   }
 
   @Test

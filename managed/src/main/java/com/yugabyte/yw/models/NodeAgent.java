@@ -59,9 +59,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -186,13 +189,29 @@ public class NodeAgent extends Model {
   @Setter
   public static class Config {
     private String certPath;
-    private String serverCert;
-    private String serverKey;
-    private String signerPublicKey;
-    private String signerPrivateKey;
-    private String compressor;
-    private boolean offloadable;
+    @Nullable private String serverCert;
+    @Nullable private String serverKey;
+    @Nullable private String serverCertLocalPath;
+    @Nullable private String serverKeyLocalPath;
+    @Nullable private String signerPublicKey;
+    @Nullable private String signerPrivateKey;
+    @Nullable private String compressor;
     private long serverCertExpirySecs;
+  }
+
+  @Builder(toBuilder = true)
+  @Getter
+  @ToString
+  /** DeploymentContext represent both new install and upgrade input params */
+  public static class DeployContext {
+    // UUID of the certificate info for custom certs.
+    private UUID certificateUuid;
+    private boolean certsOnly;
+
+    @JsonIgnore
+    public boolean isCustomCerts() {
+      return certificateUuid != null;
+    }
   }
 
   public static final Finder<UUID, NodeAgent> finder =
@@ -265,6 +284,13 @@ public class NodeAgent extends Model {
   @Column(columnDefinition = "TEXT")
   @DbJson
   private YBAError lastError;
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Custom certificate UUID.",
+      accessMode = READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.7")
+  @Column(nullable = true)
+  private UUID certificateUuid;
 
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
@@ -439,13 +465,15 @@ public class NodeAgent extends Model {
     }
   }
 
+  /**
+   * @deprecated This should not be used for reading.
+   */
   @JsonIgnore
-  public byte[] getServerCertContent() {
-    return getFileContent(SERVER_CERT_NAME);
-  }
-
-  @JsonIgnore
+  @Deprecated
   public byte[] getServerKeyContent() {
+    if (getCertificateUuid() != null) {
+      throw new IllegalStateException("Server key content is not available for custom certs");
+    }
     return getFileContent(SERVER_KEY_NAME);
   }
 
@@ -467,12 +495,22 @@ public class NodeAgent extends Model {
         });
   }
 
-  public void finalizeUpgrade(String nodeAgentHome, String version) {
+  public void finalizeRegistration(DeployContext deployContext) {
+    updateInTxn(
+        n -> {
+          n.setState(State.REGISTERED);
+          n.setCertificateUuid(deployContext.getCertificateUuid());
+          n.update();
+        });
+  }
+
+  public void finalizeUpgrade(String nodeAgentHome, String version, UUID certificateUuid) {
     updateInTxn(
         n -> {
           n.setHome(nodeAgentHome);
           n.setVersion(version);
           n.setState(State.READY);
+          n.setCertificateUuid(certificateUuid);
           n.update();
         });
   }
@@ -506,24 +544,22 @@ public class NodeAgent extends Model {
     delete();
   }
 
+  /**
+   * @deprecated This should not be used for reading.
+   */
   @JsonIgnore
+  @Deprecated
   public PublicKey getServerPublicKey() {
     try {
-      X509Certificate cert = getServerX509Cert();
-      return cert.getPublicKey();
-    } catch (RuntimeException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
-  }
-
-  @JsonIgnore
-  public X509Certificate getServerX509Cert() {
-    try {
+      if (getCertificateUuid() != null) {
+        throw new IllegalStateException("Server cert content is not available for custom certs");
+      }
       CertificateFactory factory = CertificateFactory.getInstance("X.509");
-      return (X509Certificate)
-          factory.generateCertificate(new ByteArrayInputStream(getServerCertContent()));
+      X509Certificate cert =
+          (X509Certificate)
+              factory.generateCertificate(
+                  new ByteArrayInputStream(getFileContent(SERVER_CERT_NAME)));
+      return cert.getPublicKey();
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
@@ -545,10 +581,10 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public PublicKey getSignerPublicKey() {
     Path signerPublicKeyPath = getCertDirPath().resolve(SIGNER_PUBLIC_KEY_NAME);
-    if (!Files.exists(signerPublicKeyPath) || getServerCertExpirySecs() <= 0) {
+    if (!Files.exists(signerPublicKeyPath) || getServerCertExpirySecs() <= 0L) {
       // Capability check to detect older version for backward compatibility.
       // Not a clean solution but this will go away.
-      return getServerX509Cert().getPublicKey();
+      return getServerPublicKey();
     }
     return CertificateHelper.getPublicKey(new String(getSignerPublicKeyContent()));
   }
@@ -563,18 +599,16 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public Path getServerCertFilePath() {
-    return getCertDirPath().resolve(SERVER_CERT_NAME);
-  }
-
-  @JsonIgnore
   public Path getServerKeyFilePath() {
     return getCertDirPath().resolve(SERVER_KEY_NAME);
   }
 
   @JsonIgnore
   public Path getCaCertFilePath() {
-    return getCertDirPath().resolve(ROOT_CA_CERT_NAME);
+    UUID certificateUuid = getCertificateUuid();
+    return certificateUuid == null
+        ? getCertDirPath().resolve(ROOT_CA_CERT_NAME)
+        : Path.of(CertificateInfo.getOrBadRequest(certificateUuid).getCertificate());
   }
 
   @JsonIgnore
@@ -608,12 +642,10 @@ public class NodeAgent extends Model {
   }
 
   public void updateServerInfo(ServerInfo serverInfo) {
-    if (getConfig().isOffloadable() != serverInfo.getOffloadable()
-        || getConfig().getServerCertExpirySecs() != serverInfo.getCertExpirySecs()
+    if (getConfig().getServerCertExpirySecs() != serverInfo.getCertExpirySecs()
         || !Objects.equals(getConfig().getCompressor(), serverInfo.getCompressor())) {
       updateInTxn(
           n -> {
-            n.getConfig().setOffloadable(serverInfo.getOffloadable());
             n.getConfig().setCompressor(serverInfo.getCompressor());
             n.getConfig().setServerCertExpirySecs(serverInfo.getCertExpirySecs());
             n.update();

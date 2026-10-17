@@ -789,6 +789,15 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_.outbound_address_v6()
         : messenger_.outbound_address_v4();
+#if defined(__APPLE__)
+    // macOS picks the destination as the source for unbound loopback sockets (src == dst);
+    // bind to the loopback address like Linux does.
+    if (outbound_address.is_unspecified() && conn_id.remote().address().is_loopback()) {
+      outbound_address = conn_id.remote().address().is_v6()
+          ? IpAddress(boost::asio::ip::address_v6::loopback())
+          : IpAddress(boost::asio::ip::address_v4::loopback());
+    }
+#endif
     if (!outbound_address.is_unspecified()) {
       auto status = sock.SetReuseAddr(true);
       if (status.ok()) {
