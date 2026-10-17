@@ -51,6 +51,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -272,8 +273,8 @@ Status BulkLoadTask::InsertRow(const string &row,
   CsvTokenizer tokenizer = Tokenize(row);
   size_t ncolumns = std::distance(tokenizer.begin(), tokenizer.end());
   if (ncolumns != schema.num_columns()) {
-    return STATUS_SUBSTITUTE(IllegalState, "row '$0' has $1 columns, need exactly $2", row,
-                             ncolumns, schema.num_columns());
+    return STATUS_FORMAT(IllegalState, "row '$0' has $1 columns, need exactly $2", row,
+                         ncolumns, schema.num_columns());
   }
 
   auto arena = SharedThreadSafeArena();
@@ -290,7 +291,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       continue;
     }
     if (IsNull(*it)) {
-      return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
+      return STATUS_FORMAT(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
     QLExpressionMsg *column_value = nullptr;
@@ -472,7 +473,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
     vector<string> tokens;
     boost::split(tokens, line, boost::is_any_of(","));
     if (tokens.size() != 2) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid line $0", line);
+      return STATUS_FORMAT(InvalidArgument, "Invalid line $0", line);
     }
     const string &replica_host = tokens[0];
     const string &directory = tokens[1];
@@ -552,7 +553,7 @@ Status BulkLoad::RunBulkLoad() {
     // Get the key and value.
     std::size_t index = line.find("\t");
     if (index == std::string::npos) {
-      return STATUS_SUBSTITUTE(IllegalState, "Invalid line: $0", line);
+      return STATUS_FORMAT(IllegalState, "Invalid line: $0", line);
     }
     const TabletId tablet_id = line.substr(0, index);
     const string row = line.substr(index + 1, line.size() - (index + 1));

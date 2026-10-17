@@ -30,9 +30,13 @@ enum DemangleStatus : int {
   kDemangleInvalidArgument = -3
 };
 
-// The %p field width for printf() functions is two characters per byte.
-// For some environments, add two extra bytes for the leading "0x".
-constexpr int kPrintfPointerFieldWidth = 2 + 2 * sizeof(void*);
+// Stack trace addresses are right-aligned to two characters per byte plus two for the leading
+// "0x".
+constexpr size_t kStackTraceAddressWidth = 2 + 2 * sizeof(void*);
+
+// Returns pc as "0x<hex>", left-padded with spaces to kStackTraceAddressWidth, the way
+// printf("%*p", kStackTraceAddressWidth, pc) does.
+std::string FormatStackTraceAddress(const void* pc);
 
 // A wrapper around glog's Symbolize function.
 // Source available e.g. at
@@ -55,6 +59,7 @@ std::string DemangleName(const char* name);
 
 constexpr const char* kUnknownSymbol = "(unknown)";
 
-constexpr const char* kStackTraceEntryFormat = "    @ %*p  %s";
+// Format() pattern for a stack trace entry; $0 is FormatStackTraceAddress(pc), $1 the symbol.
+constexpr const char* kStackTraceEntryFormat = "    @ $0  $1";
 
-}  // namespace
+}  // namespace yb

@@ -319,4 +319,11 @@ extern double compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel,
 								   Cost *cost_p, double *tuples_p);
 extern double compute_gather_rows(Path *path);
 
+/* YB declarations */
+extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
+								  PlannerInfo *root, RelOptInfo *joinrel,
+								  Path *outer_path, Path *inner_path,
+								  List *pathkeys, JoinType jointype,
+								  JoinPathExtraData *extra);
+
 #endif							/* COST_H */

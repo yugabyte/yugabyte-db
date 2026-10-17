@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -95,12 +94,20 @@ public class YbcHandler {
               + " states.");
     }
 
+    if (universeDetails.getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot upgrade YB-Controller on universe "
+              + universeUUID
+              + " as it uses YBDB inbuilt YB-Controller.");
+    }
+
     String targetYbcVersion = ybcManager.getStableYbcVersion();
     if (!StringUtils.isEmpty(ybcVersion)) {
       targetYbcVersion = ybcVersion;
     }
 
-    if (universeDetails.getYbcSoftwareVersion().equals(targetYbcVersion)) {
+    if (StringUtils.equals(universeDetails.getYbcSoftwareVersion(), targetYbcVersion)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Ybc version " + targetYbcVersion + " is already present on universe " + universeUUID);
@@ -179,13 +186,7 @@ public class YbcHandler {
     taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
     taskParams.verifyParams(universe, true /* isFirstTry */);
-    boolean isK8s =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes);
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     UUID taskUUID =
         commissioner.submit(
             isK8s ? TaskType.UpgradeKubernetesYbcGFlags : TaskType.UpgradeYbcGFlags, taskParams);
@@ -206,13 +207,7 @@ public class YbcHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     taskParams.verifyParams(universe, true /* isFirstTry */);
-    boolean isK8s =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes);
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     UUID taskUUID =
         commissioner.submit(
             isK8s ? TaskType.UpdateK8sYbcThrottleFlags : TaskType.UpdateYbcThrottleFlags,

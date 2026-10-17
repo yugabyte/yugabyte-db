@@ -1820,6 +1820,12 @@ setup_auth(FILE *cmdfd)
 	 */
 	PG_CMD_PUTS("REVOKE ALL ON pg_authid FROM public;\n\n");
 
+	/*
+	 * YB: The password history table stores password hashes
+	 * and must not be publicly readable.
+	 */
+	PG_CMD_PUTS("REVOKE ALL ON pg_yb_password_history FROM public;\n\n");
+
 	if (superuser_password)
 		PG_CMD_PRINTF("ALTER USER \"%s\" WITH PASSWORD E'%s';\n\n",
 					  username, escape_quotes(superuser_password));

@@ -3,12 +3,10 @@ exporters:
   otlphttp/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DynatraceExporter
     endpoint: https://test.live.dynatrace.com/api/v2/otlp
     headers: {Authorization: Api-Token dynatrace-api-token}
-    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
-      max_interval: 10m}
+    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m, max_interval: 10m}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
-    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
-      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true, rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
@@ -33,8 +31,7 @@ processors:
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: env, value: prod}
     - {action: upsert, key: region, value: us-west}
-  memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
-    check_interval: 10s, limit_mib: 2048}
+  memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {check_interval: 10s, limit_mib: 2048}
   metricstransform/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MetricTransformProcessor
     transforms:
     - action: update
@@ -43,8 +40,7 @@ processors:
       match_type: regexp
       new_name: ybdb.$${1}
   cumulativetodelta/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$CumulativeToDeltaProcessor {}
-  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
-    send_batch_max_size: 1000, send_batch_size: 500, timeout: 5s}
+  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {send_batch_max_size: 1000, send_batch_size: 500, timeout: 5s}
 receivers:
   prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
     config:
@@ -75,11 +71,9 @@ receivers:
         metrics_path: /prometheus-metrics
         scheme: http
         static_configs:
-        - labels: {export_type: master_export, __param_show_help: 'true', service: yb-master,
-            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure|docdb_keys_found|docdb_obsolete_keys_found_past_cutoff'}
+        - labels: {export_type: master_export, __param_show_help: 'true', service: yb-master, __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure|docdb_keys_found|docdb_obsolete_keys_found_past_cutoff'}
           targets: ['127.0.0.1:7000']
-        - labels: {export_type: tserver_export, __param_show_help: 'true', service: yb-tserver,
-            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure|docdb_keys_found|docdb_obsolete_keys_found_past_cutoff'}
+        - labels: {export_type: tserver_export, __param_show_help: 'true', service: yb-tserver, __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count|rpc_inbound_calls_rejected_because_memory_pressure|docdb_keys_found|docdb_obsolete_keys_found_past_cutoff'}
           targets: ['127.0.0.1:9000']
         - labels: {export_type: ysql_export, __param_show_help: 'true', service: yb-tserver}
           targets: ['127.0.0.1:13000']
@@ -193,9 +187,7 @@ service:
   pipelines:
     metrics/metrics_00000000-0000-0000-0000-000000000000:
       exporters: [otlphttp/metrics_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000,
-        metricstransform/metrics_00000000-0000-0000-0000-000000000000, cumulativetodelta/metrics_00000000-0000-0000-0000-000000000000,
-        batch/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000, metricstransform/metrics_00000000-0000-0000-0000-000000000000, cumulativetodelta/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000]
       receivers: [prometheus/yugabyte]
   telemetry:
     logs:
@@ -204,5 +196,4 @@ service:
       readers:
       - pull:
           exporter:
-            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true,
-              without_units: true}
+            prometheus: {host: 0.0.0.0, port: 8889, without_scope_info: true, without_type_suffix: true, without_units: true}

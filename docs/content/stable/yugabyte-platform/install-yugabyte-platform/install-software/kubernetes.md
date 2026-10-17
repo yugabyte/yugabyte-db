@@ -449,14 +449,33 @@ postgres:
 
 ### Run containers as non-root
 
-The PostgreSQL and Nginx containers always run as non-root. To run the rest of the containers as non-root, you can set the following values:
+Starting in YugabyteDB Anywhere v2026.1.2, YugabyteDB Anywhere Docker images are STIG-compliant and hardened. These images now ship with a non-root user (UID: 10001) as the default.
+
+{{< note title="OpenShift" >}}
+
+This section does not apply to OpenShift. OpenShift always runs YugabyteDB Anywhere containers as non-root and enforces that policy itself, not through `securityContext`. Do not set or modify `securityContext` on OpenShift; doing so can cause the containers to fail. For OpenShift, see [Install YugabyteDB Anywhere on OpenShift](../openshift/).
+
+{{< /note >}}
+
+The PostgreSQL containers always run as non-root. In versions earlier than v2026.1.2, set the following values to run the remaining containers as non-root:
 
 ```yaml
 securityContext:
   enabled: true
 ```
 
-This value is not supported on OpenShift, which runs all the containers of YugabyteDB Anywhere as non-root by default. Modifying securityContext on OpenShift could cause the containers to fail.
+This is the default starting in v2026.1.2.
+
+If you upgrade a non-OpenShift installation to v2026.1.2 or later and you haven't pinned a user in `securityContext`, the pods migrate to the non-root user from the image. Disabling `securityContext` is not enough to keep running as root, because the image itself no longer defaults to root.
+
+To keep running as root on a non-OpenShift installation, add the following to your values file before you upgrade:
+
+```yaml
+securityContext:
+  enabled: true
+  runAsNonRoot: false
+  runAsUser: 0
+```
 
 ### Set pod labels and annotations
 

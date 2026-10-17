@@ -59,6 +59,8 @@
 /* YB includes */
 #include "access/yb_cost.h"
 #include "access/yb_special_scans.h"
+#include "commands/yb_analyze.h"
+#include "optimizer/optimizer.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -77,6 +79,9 @@ typedef struct AnlIndexData
 
 /* Default statistics target (GUC parameter) */
 int			default_statistics_target = 100;
+
+/* YB: Hook fired at the end of analyze_rel(), see vacuum.h. */
+YbAnalyzeRelEnd_hook_type YbAnalyzeRelEnd_hook = NULL;
 
 /* A few variables that don't seem worth passing around as parameters */
 static MemoryContext anl_context = NULL;
@@ -108,6 +113,24 @@ static void update_attstats(Oid relid, bool inh,
 							int natts, VacAttrStats **vacattrstats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
+
+/* YB declarations */
+bool		yb_enable_analyze_width_skip = true;	/* GUC */
+
+static void yb_set_width_cap(VacAttrStatsP stats);
+static int *yb_analyze_width_caps(Relation rel);
+
+/* keep attribute info for data skipping */
+static VacAttrStats **yb_analyze_attr_stats = NULL;
+static int	yb_analyze_attr_cnt = 0;
+
+/* columns we know cannot be skipped */
+static Bitmapset *yb_analyze_full_value_cols = NULL;
+
+/* Width of a sampled value: a stand-in reports the size it stands in for. */
+#define YbAnalyzeVarsizeAny(PTR) \
+	(YbIsAnalyzeStandin(PTR) ? \
+	 toast_raw_datum_size(PointerGetDatum(PTR)) : VARSIZE_ANY(PTR))
 
 
 /*
@@ -307,6 +330,14 @@ analyze_rel(Oid relid, RangeVar *relation,
 	 */
 	relation_close(onerel, NoLock);
 
+	/*
+	 * YB: Notify any extension that this relation's statistics were refreshed.
+	 * Done while we still hold the ANALYZE lock and inside the same transaction
+	 * that wrote the new statistics.
+	 */
+	if (YbAnalyzeRelEnd_hook)
+		YbAnalyzeRelEnd_hook(relid);
+
 out:
 	pgstat_progress_end_command();
 }
@@ -353,8 +384,12 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 	PgStat_Counter startreadtime = 0;
 	PgStat_Counter startwritetime = 0;
 
+	/* YB declarations */
+	Bitmapset  *yb_full_value_cols = NULL;
+
 	verbose = (params->options & VACOPT_VERBOSE) != 0;
-	instrument = (verbose || (AmAutoVacuumWorkerProcess() &&
+	instrument = (verbose || ((AmAutoVacuumWorkerProcess() ||
+							   yb_use_internal_auto_analyze_service_conn) &&	/* YB */
 							  params->log_analyze_min_duration >= 0));
 	if (inh)
 		ereport(elevel,
@@ -482,6 +517,11 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 
 			thisdata->indexInfo = indexInfo = BuildIndexInfo(Irel[ind]);
 			thisdata->tupleFract = 1.0; /* fix later if partial */
+			/* YB: compute_index_stats() reads these columns' values in full. */
+			pull_varattnos((Node *) indexInfo->ii_Expressions, 1,
+						   &yb_full_value_cols);
+			pull_varattnos((Node *) indexInfo->ii_Predicate, 1,
+						   &yb_full_value_cols);
 			if (indexInfo->ii_Expressions != NIL && va_cols == NIL)
 			{
 				ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
@@ -542,7 +582,8 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 	 * statistics target. So we may need to sample more rows and then build
 	 * the statistics with enough detail.
 	 */
-	minrows = ComputeExtStatisticsRows(onerel, attr_cnt, vacattrstats);
+	minrows = ComputeExtStatisticsRows(onerel, attr_cnt, vacattrstats,
+									   &yb_full_value_cols);	/* YB */
 
 	if (targrows < minrows)
 		targrows = minrows;
@@ -554,6 +595,15 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 	pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
 								 inh ? PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS_INH :
 								 PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS);
+
+	/*
+	 * TODO(#31506): inherited analysis needs the caps mapped from
+	 * parent to child column positions; until then it skips nothing.
+	 */
+	yb_analyze_attr_stats = inh ? NULL : vacattrstats;
+	yb_analyze_attr_cnt = inh ? 0 : attr_cnt;
+	yb_analyze_full_value_cols = inh ? NULL : yb_full_value_cols;
+
 	if (inh)
 		numrows = acquire_inherited_sample_rows(onerel, elevel,
 												rows, targrows,
@@ -562,6 +612,9 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 		numrows = (*acquirefunc) (onerel, elevel,
 								  rows, targrows,
 								  &totalrows, &totaldeadrows);
+	yb_analyze_attr_stats = NULL;			/* YB */
+	yb_analyze_attr_cnt = 0;				/* YB */
+	yb_analyze_full_value_cols = NULL;		/* YB */
 
 	/*
 	 * Compute the statistics.  Temporary results during the calculations for
@@ -1173,6 +1226,7 @@ examine_attribute(Relation onerel, int attnum, Node *index_expr)
 	stats->attrtype = (Form_pg_type) GETSTRUCT(typtuple);
 	stats->anl_context = anl_context;
 	stats->tupattnum = attnum;
+	stats->yb_width_cap = YB_ANALYZE_WIDTH_SKIP_NONE;	/* YB */
 
 	/*
 	 * The fields describing the stats->stavalues[n] element types default to
@@ -1203,6 +1257,8 @@ examine_attribute(Relation onerel, int attnum, Node *index_expr)
 		pfree(stats);
 		return NULL;
 	}
+
+	yb_set_width_cap(stats);	/* YB */
 
 	return stats;
 }
@@ -1756,7 +1812,7 @@ yb_acquire_sample_rows(Relation onerel, int elevel,
 	Assert(targrows > 0);
 
 	/* Prepare to take sample */
-	ybSample = ybBeginSample(onerel, targrows);
+	ybSample = ybBeginSample(onerel, targrows, yb_analyze_width_caps(onerel));
 
 	/* Loop over the table blocks until sample is selected */
 	while (ybSampleNextBlock(ybSample))
@@ -2158,7 +2214,7 @@ compute_trivial_stats(VacAttrStatsP stats,
 		 */
 		if (is_varlena)
 		{
-			total_width += VARSIZE_ANY(DatumGetPointer(value));
+			total_width += YbAnalyzeVarsizeAny(DatumGetPointer(value));
 		}
 		else if (is_varwidth)
 		{
@@ -2274,7 +2330,7 @@ compute_distinct_stats(VacAttrStatsP stats,
 		 */
 		if (is_varlena)
 		{
-			total_width += VARSIZE_ANY(DatumGetPointer(value));
+			total_width += YbAnalyzeVarsizeAny(DatumGetPointer(value));
 
 			/*
 			 * If the value is toasted, we want to detoast it just once to
@@ -2621,7 +2677,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		 */
 		if (is_varlena)
 		{
-			total_width += VARSIZE_ANY(DatumGetPointer(value));
+			total_width += YbAnalyzeVarsizeAny(DatumGetPointer(value));
 
 			/*
 			 * If the value is toasted, we want to detoast it just once to
@@ -3240,4 +3296,67 @@ analyze_mcv_list(int *mcv_counts,
 		}
 	}
 	return num_mcv;
+}
+
+/*
+ * Set the width cap from the compute_stats chosen for the column.
+ */
+static void
+yb_set_width_cap(VacAttrStatsP stats)
+{
+	if (stats->compute_stats == compute_scalar_stats ||
+		stats->compute_stats == compute_distinct_stats)
+		stats->yb_width_cap = WIDTH_THRESHOLD;
+	else if (stats->compute_stats == compute_trivial_stats)
+		stats->yb_width_cap = YB_ANALYZE_WIDTH_SKIP_ALL;
+	else if (stats->compute_stats == yb_compute_array_stats)
+		stats->yb_width_cap = yb_array_width_cap;
+}
+
+/*
+ * Return the width cap of each column of the sampled relation, or NULL if no
+ * value can be skipped.
+ */
+static int *
+yb_analyze_width_caps(Relation rel)
+{
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+	int		   *caps;
+	bool		any = false;
+
+	/*
+	 * Skip nothing if skipping is turned off, on the inherited pass, or if a
+	 * whole-row reference reads every column.
+	 */
+	if (!yb_enable_analyze_width_skip || yb_analyze_attr_stats == NULL ||
+		bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
+					  yb_analyze_full_value_cols))
+		return NULL;
+
+	/* A column with no statistics is read by nothing. */
+	caps = palloc(tupdesc->natts * sizeof(int));
+	for (int i = 0; i < tupdesc->natts; i++)
+		caps[i] = YB_ANALYZE_WIDTH_SKIP_ALL;
+	for (int i = 0; i < yb_analyze_attr_cnt; i++)
+	{
+		VacAttrStats *stats = yb_analyze_attr_stats[i];
+
+		if (stats->tupattnum >= 1 && stats->tupattnum <= tupdesc->natts)
+			caps[stats->tupattnum - 1] = stats->yb_width_cap;
+	}
+
+	for (int i = 0; i < tupdesc->natts; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+
+		/* Only a varlena that nothing reads in full can be stood in for. */
+		if (att->attisdropped || att->attlen != -1 ||
+			bms_is_member(att->attnum - FirstLowInvalidHeapAttributeNumber,
+						  yb_analyze_full_value_cols))
+			caps[i] = YB_ANALYZE_WIDTH_SKIP_NONE;
+		else if (caps[i] != YB_ANALYZE_WIDTH_SKIP_NONE)
+			any = true;
+	}
+
+	return any ? caps : NULL;
 }

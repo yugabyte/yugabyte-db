@@ -8,6 +8,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import hashlib
 import json
 import logging
 import os
@@ -114,24 +115,45 @@ class AwsCloud(AbstractCloud):
         """
         Method to generate all possible fingerprints of the key_file to match with KeyPair in AWS.
         https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+
+        AWS reports a different fingerprint depending on how the key pair was created, and the
+        caller matches against the whole set: md5 of the public key for a pair imported by the
+        user - which is what YugabyteDB Anywhere does - and sha1 of the PKCS#8 private key for one
+        EC2 generated itself.
+
+        The digests are computed here rather than with `openssl md5`/`openssl sha1` because a host
+        whose OpenSSL is in FIPS mode has no md5 at all, which would leave an imported pair with
+        no fingerprint to match on. A key fingerprint is an identifier rather than a security
+        primitive, which is what usedforsecurity=False states to a FIPS-enforcing hashlib. Only
+        the digest moves: the DER encodings still come from openssl, and nothing there is
+        unapproved.
         """
-        try:
-            md5 = subprocess.check_output(
-                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
-                "| openssl md5 -c".format(key_file_path), shell=True
-            ).decode('utf-8').strip()
-            sha1 = subprocess.check_output(
-                "openssl pkcs8 -in {} -inform PEM -outform DER -topk8 -nocrypt "
-                "| openssl sha1 -c".format(key_file_path), shell=True
-            ).decode('utf-8').strip()
-            sha256 = subprocess.check_output(
-                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
-                "| openssl sha256 -c".format(key_file_path), shell=True
-            ).decode('utf-8').strip()
-        except subprocess.CalledProcessError as e:
-            raise YBOpsRuntimeError("Error generating fingerprints for {}. Shell Output {}"
-                                    .format(key_file_path, e.output))
-        return [md5, sha1, sha256]
+        # (name, command producing the DER bytes to digest, hashlib constructor)
+        forms = [
+            ("md5",
+             "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER",
+             hashlib.md5),
+            ("sha1",
+             "openssl pkcs8 -in {} -inform PEM -outform DER -topk8 -nocrypt",
+             hashlib.sha1),
+            ("sha256",
+             "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER",
+             hashlib.sha256),
+        ]
+        fingerprints = []
+        for name, command, hash_func in forms:
+            try:
+                der = subprocess.check_output(command.format(key_file_path), shell=True)
+            except subprocess.CalledProcessError as e:
+                logging.warning("Could not generate the {} fingerprint for {}: {}"
+                                .format(name, key_file_path, e.output))
+                continue
+            digest = hash_func(der, usedforsecurity=False).hexdigest()
+            # Colon-separated hex, which is the form AWS returns in KeyPair.key_fingerprint.
+            fingerprints.append(":".join(digest[i:i + 2] for i in range(0, len(digest), 2)))
+        if not fingerprints:
+            raise YBOpsRuntimeError("Error generating fingerprints for {}".format(key_file_path))
+        return fingerprints
 
     def list_key_pair(self, args):
         key_pair_name = args.key_pair_name if args.key_pair_name else '*'

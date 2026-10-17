@@ -161,6 +161,22 @@ func checkLine(t *testing.T, iniFile string, searchStrings []string) {
 	}
 }
 
+// Returns the set of section names in the generated config.ini file.
+func iniSections(t *testing.T, iniFile string) map[string]bool {
+	data, err := os.ReadFile(iniFile)
+	if err != nil {
+		t.Fatalf("unable to read file: %v", err)
+	}
+	sections := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			sections[strings.Trim(line, "[]")] = true
+		}
+	}
+	return sections
+}
+
 func configFilePath(t *testing.T, content string) string {
 	configPath := filepath.Join(os.TempDir(), "config_*.json")
 	err := os.WriteFile(configPath, []byte(content), 0644)
@@ -488,4 +504,61 @@ func TestYNPProvisionWithYbHomeDir(t *testing.T) {
 	getScriptPath(t, tmpDir, "_precheck")
 	// Verify the precheck script is present.
 	getScriptPath(t, tmpDir, "_run")
+}
+
+// TestCgroupModulesSplitByPrivilege verifies that in split provisioning the root-only cgroup
+// setup runs in the --root step and the yb user side in the --noroot step.
+func TestCgroupModulesSplitByPrivilege(t *testing.T) {
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+	rootOnly := []string{"ConfigureRootSystemd", "ConfigureRootCgroups"}
+	nonRootOnly := []string{"ConfigureRuntimeCgroups", "ConfigureSystemd"}
+	cases := []struct {
+		mode    string
+		present []string
+		absent  []string
+	}{
+		{mode: "--root", present: rootOnly, absent: nonRootOnly},
+		{mode: "--noroot", present: nonRootOnly, absent: rootOnly},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			configPath := configFilePath(t, ynpCloudConfig)
+			testRootCmd := testRootCmd()
+			testRootCmd.SetArgs([]string{
+				"--ynp_base_path",
+				ynpBasePath,
+				"--config_file",
+				yamlConfigPath,
+				"--extra_vars",
+				configPath,
+				"--dry_run",
+				tc.mode,
+				"--skip_module",
+				"InstallNodeAgent", /* This needs YBA */
+				"--skip_module",
+				// Skipping only stops script generation; config.ini still has the section.
+				"ConfigureSystemd", /* This requires some setup */
+				"--config_override",
+				"ynp.configure_cgroup=true",
+			})
+			setupCommand(testRootCmd)
+			if err := testRootCmd.Execute(); err != nil {
+				t.Fatalf("Error executing command: %v\n", err)
+			}
+			sections := iniSections(t, iniFile)
+			for _, name := range tc.present {
+				if !sections[name] {
+					t.Errorf("Expected section %s in %s config", name, tc.mode)
+				}
+			}
+			for _, name := range tc.absent {
+				if sections[name] {
+					t.Errorf("Unexpected section %s in %s config", name, tc.mode)
+				}
+			}
+		})
+	}
 }

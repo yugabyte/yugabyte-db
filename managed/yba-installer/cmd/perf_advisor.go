@@ -55,6 +55,22 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	}
 }
 
+// DB is the postgres Perf Advisor connects to, rendered into overrides.properties. Read when the
+// template renders, so it follows the config in effect for install, upgrade and reconfigure alike.
+func (perf PerfAdvisor) DB() common.PerfAdvisorDBConfig {
+	return common.PerfAdvisorDatabase()
+}
+
+// ensureDatabase makes sure Perf Advisor's database exists. The postgres yba-ctl installs gets it
+// in Postgres.Initialize; a postgres.useExisting server only has to come with yugaware, so the
+// database is created there here, with the configured user as its owner.
+func (perf PerfAdvisor) ensureDatabase() error {
+	if !viper.GetBool("postgres.useExisting.enabled") {
+		return nil
+	}
+	return common.EnsureExistingPostgresDatabase(common.PerfAdvisorDBName)
+}
+
 // NewPerfAdvisor creates and returns a new PerfAdvisor struct for the given version.
 func NewPerfAdvisor(version string) PerfAdvisor {
 	return PerfAdvisor{
@@ -327,6 +343,9 @@ func (perf PerfAdvisor) Install() error {
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)
 	}
+	if err := perf.ensureDatabase(); err != nil {
+		return err
+	}
 
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
@@ -380,9 +399,19 @@ func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
+	// Before the template, which renders this into overrides.properties: FixConfigValues does not
+	// run on upgrade, so a config predating the key would render empty and then disagree with the
+	// keystore ensurePerfAdvisorTLSKeystore builds below - "MAC calculation failed" on every start.
+	if _, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword"); err != nil {
+		return err
+	}
 	if err := template.GenerateTemplate(perf); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
+	// Perf Advisor may have been off when the install ran.
+	if err := perf.ensureDatabase(); err != nil {
+		return err
+	}
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
 	}
@@ -420,6 +449,10 @@ func (perf PerfAdvisor) Reconfigure() error {
 	}
 	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
 		return fmt.Errorf("set perf-advisor config ownership: %w", err)
+	}
+	// Reconfigure is how Perf Advisor gets switched on after the install.
+	if err := perf.ensureDatabase(); err != nil {
+		return err
 	}
 
 	// Reload systemd daemon to pick up the regenerated service file
@@ -465,9 +498,13 @@ func ensurePerfAdvisorTLSKeystore() error {
 	if _, err := os.Stat(keyPath); err != nil {
 		return fmt.Errorf("platform server key not found at %s: %w", keyPath, err)
 	}
-	// FixConfigValues() in common.Install() (and reconfigure) generates this password when empty
-	// and calls InitViper(), so it is already set by the time we run here.
-	password := viper.GetString("perfAdvisor.tls.keystorePassword")
+	// Generated here rather than relied upon: FixConfigValues() fills this in on install and
+	// reconfigure, but not on upgrade, so an install upgrading from a release that predates the
+	// key reaches this with an empty string - which keytool rejects outright.
+	password, err := common.EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword")
+	if err != nil {
+		return err
+	}
 	return common.GeneratePerfAdvisorTLSKeystore(certPath, keyPath, common.GetPerfAdvisorCertsDir(), password)
 }
 

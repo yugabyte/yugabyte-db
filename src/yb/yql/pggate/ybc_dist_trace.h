@@ -60,8 +60,8 @@ extern "C" {
   } while (0)
 
 bool YBCIsOtelScopeStackEmpty();
-void YBCInitDistTrace(int64_t process_pid, const char* node_uuid);
-void YBCCleanupDistTrace();
+void YBCInitDistTrace(const char* node_uuid);
+void YBCShutdownDistTrace();
 bool YBCIsDistTraceEnabled();
 bool YBCIsDistTraceActive();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);

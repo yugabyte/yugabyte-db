@@ -116,6 +116,7 @@
 #include "commands/explain.h"
 #include "commands/explain_state.h"
 #include "commands/variable.h"
+#include "commands/yb_analyze.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
@@ -447,6 +448,12 @@ static const struct config_enum_entry password_encryption_options[] = {
 	{NULL, 0, false}
 };
 
+/*
+ * YB: Conn Mgr mirrors these name to enum mappings in
+ * src/odyssey/third_party/machinarium/sources/yb_pg_tls_link_support.h
+ * (yb_mm_tls_protocol_to_pg_enum).  Keep that copy in sync if this table
+ * or enum ssl_protocol_versions in libpq.h changes.
+ */
 static const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"", PG_TLS_ANY, false},
 	{"TLSv1", PG_TLS1_VERSION, false},
@@ -780,7 +787,11 @@ static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
+static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
+static char *yb_test_catalog_preload_cache_list_string;
+static bool yb_conn_mgr_selective_deallocate;
+static bool yb_disable_ddl_transaction_block_for_read_committed;
 static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;

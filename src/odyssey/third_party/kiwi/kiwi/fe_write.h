@@ -179,6 +179,30 @@ kiwi_fe_write_parse_description(machine_msg_t *msg, char *operator_name,
 	return msg;
 }
 
+KIWI_API static inline machine_msg_t *
+kiwi_fe_write_yb_throw_error(machine_msg_t *msg, char *sqlstate, char *message)
+{
+	int sqlstate_len = strlen(sqlstate) + 1;
+	int message_len = strlen(message) + 1;
+	size_t payload_size = sqlstate_len + message_len;
+
+	uint32_t size = sizeof(kiwi_header_t) + payload_size;
+	int offset = 0;
+	if (msg)
+		offset = machine_msg_size(msg);
+	msg = machine_msg_create_or_advance(msg, size);
+	if (kiwi_unlikely(msg == NULL))
+		return NULL;
+	char *pos;
+	pos = (char *)machine_msg_data(msg) + offset;
+	kiwi_write8(&pos, YB_KIWI_FE_YB_THROW_ERROR);
+	kiwi_write32(&pos, sizeof(uint32_t) + payload_size);
+	kiwi_write(&pos, sqlstate, sqlstate_len);
+	kiwi_write(&pos, message, message_len);
+
+	return msg;
+}
+
 KIWI_API static inline machine_msg_t *kiwi_fe_write_close(machine_msg_t *msg,
 							  char type,
 							  char *operator_name,

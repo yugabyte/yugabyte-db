@@ -372,6 +372,23 @@ is_yugabyte_enabled()
 	return true;
 }
 
+/*
+ * The YB helpers below take fprintf-style formats, but pg_log_v() does not
+ * accept a format that ends in a newline, so drop one before logging.
+ */
+static void
+yb_log_v(eLogType type, const char *fmt, va_list ap)
+{
+	char		message[QUERY_ALLOC];
+	size_t		len;
+
+	vsnprintf(message, sizeof(message), fmt, ap);
+	len = strlen(message);
+	if (len > 0 && message[len - 1] == '\n')
+		message[len - 1] = '\0';
+	pg_log(type, "%s", message);
+}
+
 int
 yb_fprintf_and_log(FILE *stream, const char *fmt,...)
 {
@@ -380,12 +397,12 @@ yb_fprintf_and_log(FILE *stream, const char *fmt,...)
 
 	if (!yb_current_check_failed)
 	{
-		pg_log(PG_REPORT, "%s\n\n", "fatal");
+		pg_log(PG_REPORT, "%s", "fatal\n");
 		yb_current_check_failed = true;
 	}
 
 	va_start(args, fmt);
-	pg_log_v(PG_REPORT, fmt, args);
+	yb_log_v(PG_REPORT, fmt, args);
 	va_end(args);
 
 	va_start(args, fmt);
@@ -400,10 +417,10 @@ yb_fatal(const char *fmt,...)
 {
 	va_list		args;
 
-	pg_log(PG_REPORT, "\n");
+	pg_log(PG_REPORT, "%s", "");
 
 	va_start(args, fmt);
-	pg_log_v(user_opts.check ? PG_REPORT : PG_FATAL, fmt, args);
+	yb_log_v(user_opts.check ? PG_REPORT : PG_FATAL, fmt, args);
 	va_end(args);
 
 	yb_has_check_fatal = true;

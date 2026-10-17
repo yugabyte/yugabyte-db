@@ -54,6 +54,7 @@
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/pg_yb_logical_client_version.h"
+#include "catalog/pg_yb_password_history.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
@@ -351,6 +352,7 @@ IsSharedRelation(Oid relationId)
 		relationId == TableSpaceRelationId ||
 		relationId == YBCatalogVersionRelationId ||
 		relationId == YbInvalidationMessagesRelationId ||
+		relationId == YbPasswordHistoryRelationId ||
 		relationId == YbProfileRelationId ||
 		relationId == YbRoleProfileRelationId ||
 		relationId == YBLogicalClientVersionRelationId)
@@ -379,6 +381,7 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceOidIndexId ||
 		relationId == YBCatalogVersionDbOidIndexId ||
 		relationId == YbInvalidationMessagesIndexId ||
+		relationId == YbPasswordHistoryPwdhstrolePwdhstchangetimeIndexId ||
 		relationId == YbProfileOidIndexId ||
 		relationId == YbProfileRolnameIndexId ||
 		relationId == YbRoleProfileOidIndexId ||

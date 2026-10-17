@@ -52,11 +52,11 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
           universe.getUniverseUUID());
       return;
     }
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNodeOrThrow();
     String pgPassFileDir =
         (Util.isKubernetesBasedUniverse(universe)
             ? Util.getDataDirectoryPath(universe, masterLeaderNode, config) + "/yw-data"
-            : Util.getNodeHomeDir(universe.getUniverseUUID(), universe.getMasterLeaderNode()));
+            : Util.getNodeHomeDir(universe.getUniverseUUID(), masterLeaderNode));
     String pgPassFilePath = pgPassFileDir + "/.pgpass";
     if (taskParams().action == Action.CREATE_USER) {
       dropUser(universe, masterLeaderNode);

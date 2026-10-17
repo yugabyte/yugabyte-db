@@ -78,9 +78,11 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { UpdateNodeAgentModal } from '../../../redesign/features/universe/universe-actions/update-node-agent/UpdateNodeAgentModal';
 import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
+  EDIT_ROLLBACK_TASK_TYPES,
   PerfAdvisorModalIntention,
   PERF_ADVISOR_PATH,
   RuntimeConfigKey,
@@ -264,9 +266,14 @@ class UniverseDetail extends Component {
       universeTables
     } = this.props;
     // Always refresh universe info on Overview tab or when universe uuid in the route changes.
-    if (
-      (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') ||
-      prevProps.params.uuid !== this.props.params.uuid
+    if (prevProps.params.uuid !== this.props.params.uuid) {
+      // Clear stale universe so we never paint the previous universe under a new route.
+      this.props.resetUniverseInfo();
+      this.props.getUniverseInfo(this.props.params.uuid);
+      this.props.getUniverseLbState(this.props.params.uuid);
+    } else if (
+      prevProps.params.tab !== this.props.params.tab &&
+      this.props.params.tab === 'overview'
     ) {
       this.props.getUniverseInfo(this.props.params.uuid);
       const isUpdateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
@@ -442,6 +449,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showUpdateNodeAgentModal,
       showReprovisionNodesWithYnpModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
@@ -625,8 +633,7 @@ class UniverseDetail extends Component {
 
     const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
       runtimeConfigs?.data,
-      currentUser?.data?.role,
-      this.state.isOnboardingExperienceEnabled
+      currentUser?.data?.role
     );
 
     if (
@@ -638,6 +645,16 @@ class UniverseDetail extends Component {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
+    }
+
+    const routeUuid = this.props.params?.uuid ?? this.props.uuid;
+    if (
+      getPromiseState(currentUniverse).isSuccess() &&
+      currentUniverse.data?.universeUUID &&
+      routeUuid &&
+      currentUniverse.data.universeUUID !== routeUuid
+    ) {
+      return <YBLoading />;
     }
 
     if (getPromiseState(currentUniverse).isError()) {
@@ -735,6 +752,8 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isUpdateNodeAgentCertDisabled =
+      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPDATE_NODE_AGENT);
     const isReprovisionNodesWithYnpDisabled =
       isUniverseStatusPending ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
@@ -757,10 +776,28 @@ class UniverseDetail extends Component {
     const isSampleAppsDisabled = isUniverseStatusPending && !backupRestoreInProgress;
     const isSupportBundleDisabled =
       this.isUniverseDeleting() || isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES);
-    const isBackupsDisabled = isUniverseStatusPending || isK8ActionsDisabled;
+    // Disable Backup only flips a universe flag (update_backup_state). It is not a task, so
+    // allowedTasks cannot express it; mirror the failed-rollback lock here instead.
+    const isLockedByFailedRollback =
+      !!allowedTasks?.restricted &&
+      EDIT_ROLLBACK_TASK_TYPES.includes(universeInfo.universeDetails?.updatingTask);
+    const isBackupsDisabled =
+      isUniverseStatusPending || isLockedByFailedRollback || isK8ActionsDisabled;
     const isUniverseRegisteredToPa =
       universePaRegistrationStatus?.data?.success && isNonEmptyArray(ybaToPaServiceDetails?.data);
-    const isPerfAdvisorActionDisabled = isUniverseStatusPending;
+    // Enable Performance Monitoring registers the universe and Disable unregisters it. The
+    // Advanced Observability toggles re-register it in another mode.
+    const isPerfMonitoringDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(
+        allowedTasks,
+        isUniverseRegisteredToPa
+          ? UNIVERSE_TASKS.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+          : UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR
+      );
+    const isAdvancedObservabilityDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR);
     const isPauseUniverseDisabled =
       (universePaused && isUniverseStatusPending) ||
       this.isUniverseDeleting() ||
@@ -1830,6 +1867,27 @@ class UniverseDetail extends Component {
                     {!isReadOnlyUniverse &&
                       !universePaused &&
                       !isKubernetesUniverse &&
+                      !isNodeAgentMissing && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_NODE_AGENT
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isUpdateNodeAgentCertDisabled}
+                            onClick={showUpdateNodeAgentModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Update Node Agent Certificate
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
                       !onPremWithoutSudoAccess && (
                         <RbacValidator
                           isControl
@@ -1895,13 +1953,19 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isPerfMonitoringDisabled}
                             onClick={showEnablePerfAdvisorModal}
                           >
-                            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            <YBLabelWithIcon
+                              icon={
+                                isUniverseRegisteredToPa
+                                  ? 'fa fa-trash-o fa-fw'
+                                  : 'fa fa-plus fa-fw'
+                              }
+                            >
                               {isUniverseRegisteredToPa
-                                ? 'Disable Perf Advisor Collector'
-                                : 'Enable Perf Advisor Collector'}
+                                ? 'Disable Performance Monitoring'
+                                : 'Enable Performance Monitoring'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
@@ -1918,7 +1982,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showEnableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -1939,7 +2003,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showDisableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -2260,6 +2324,19 @@ class UniverseDetail extends Component {
           isReinstall={!isNodeAgentMissing}
         />
 
+        <UpdateNodeAgentModal
+          modalProps={{
+            open: showModal && visibleModal === 'updateNodeAgentModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
+          isUniverseAction={true}
+        />
+
         <ReprovisionNodesWithYnpModal
           modalProps={{
             open: showModal && visibleModal === 'reprovisionNodesWithYnpModal',
@@ -2272,11 +2349,12 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
         />
 
-        <UniverseSupportBundleModal
-          currentUniverse={currentUniverse.data}
-          modal={modal}
-          closeModal={closeModal}
-        />
+        {showModal && visibleModal === 'supportBundleModal' && (
+          <UniverseSupportBundleModal
+            currentUniverse={currentUniverse.data}
+            closeModal={closeModal}
+          />
+        )}
 
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel

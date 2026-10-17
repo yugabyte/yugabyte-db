@@ -53,6 +53,7 @@
 #endif
 #include <openssl/x509v3.h>
 
+#ifndef YB_CONN_MGR
 /*
  * Simplehash for tracking configured hostnames to guard against duplicate
  * entries.  Each list of hosts is traversed and added to the hash during
@@ -74,6 +75,110 @@ static uint32 host_cache_pointer(const char *key);
 #define SH_DECLARE
 #define SH_DEFINE
 #include "lib/simplehash.h"
+#endif							/* YB_CONN_MGR */
+
+/* YB includes */
+#include "common/base64.h"
+#ifndef YB_CONN_MGR
+#include "yb_ysql_conn_mgr_helper.h"
+#else
+#include <assert.h>
+#endif
+
+/*
+ * YB: This file gets compiled into two separate binaries: Postgres and
+ * Odyssey (Ysql Connection Manager). YB_CONN_MGR macro defines whether
+ * the file is getting compiled into the YSQL Connection Manager or Postgres.
+ * The main code which is shared with conn mgr is be_tls_init() required for
+ * creating the SSL context at TLS handshake, rest other code is not compiled
+ * into conn mgr with help of YB_CONN_MGR macro.
+ */
+#ifdef YB_CONN_MGR
+#undef ereport
+#undef errmsg
+#undef errmsg_internal
+#undef errcode
+#undef errdetail
+#undef errhint
+#undef errcode_for_file_access
+
+/* Must match YB_MAX_ERROR_MSG_LENGTH in machinarium io.h (cannot include that header). */
+#define YB_MAX_ERROR_MSG_LENGTH 1024
+
+extern void yb_pg_tls_report_error(const char *fmt,...) pg_attribute_printf(1, 2);
+
+static __thread char yb_pg_tls_last_msg[YB_MAX_ERROR_MSG_LENGTH];
+
+/* YB: Separate declaration, because pg_attribute_printf cannot appear on a definition */
+static int	yb_pg_tls_capture_msg(const char *fmt,...) pg_attribute_printf(1, 2);
+
+static int
+yb_pg_tls_capture_msg(const char *fmt,...)
+{
+	va_list		ap;
+	int			save_errno = errno;
+	size_t		used = strlen(yb_pg_tls_last_msg);
+
+	if (used > 0)
+	{
+		if (used + 2 < sizeof(yb_pg_tls_last_msg))
+		{
+			yb_pg_tls_last_msg[used++] = ':';
+			yb_pg_tls_last_msg[used++] = ' ';
+			yb_pg_tls_last_msg[used] = '\0';
+		}
+		else
+			return -1;
+	}
+
+	/*
+	 * Defensive: restore errno so %m (via pg_vsnprintf) still reflects the
+	 * value at entry, matching errmsg().  The bookkeeping above should not
+	 * change errno.
+	 */
+	errno = save_errno;
+	va_start(ap, fmt);
+	vsnprintf(yb_pg_tls_last_msg + used, sizeof(yb_pg_tls_last_msg) - used, fmt, ap);
+	va_end(ap);
+	return 0;
+}
+
+static int
+yb_pg_tls_ignore_errcode(int sqlerrcode)
+{
+	(void) sqlerrcode;
+	return 0;
+}
+
+#define errmsg				yb_pg_tls_capture_msg
+#define errmsg_internal		yb_pg_tls_capture_msg
+#define errdetail			yb_pg_tls_capture_msg
+#define errhint				yb_pg_tls_capture_msg
+#define errcode(sqlerrcode)	yb_pg_tls_ignore_errcode(sqlerrcode)
+#define errcode_for_file_access() yb_pg_tls_ignore_errcode(0)
+
+#define ereport(elevel, ...) \
+	do { \
+		int			_yb_elevel = (elevel); \
+		int			_yb_errno = errno; \
+\
+		yb_pg_tls_last_msg[0] = '\0'; \
+		errno = _yb_errno; \
+		(void) (__VA_ARGS__); \
+		if (_yb_elevel >= LOG) \
+			yb_pg_tls_report_error("%s", \
+				yb_pg_tls_last_msg[0] ? yb_pg_tls_last_msg : "SSL error"); \
+	} while (0)
+
+/*
+ * ConnMgr links this object into libmachinarium.a without the Postgres
+ * backend, so Assert() must not call ExceptionalCondition (undefined at
+ * odyssey_stress / odyssey_test link).  libc assert() keeps upstream's
+ * behaviour of compiling assertions out when NDEBUG is set.
+ */
+#undef Assert
+#define Assert(p) assert(p)
+#endif /* YB_CONN_MGR */
 
 /* default init hook can be overridden by a shared library */
 static void default_openssl_tls_init(SSL_CTX *context, bool isServerStart);
@@ -143,10 +248,340 @@ struct CallbackErr
 	char	   *cert_errdetail;
 };
 
+/* YB declarations */
+static int	yb_be_tls_set_peer_cert_info(Port *port);
+
 /* ------------------------------------------------------------ */
 /*						 Public interface						*/
 /* ------------------------------------------------------------ */
 
+/*
+ * YB: This function was originally written to create SSL context for postgres TLS connection.
+ * It is now called by conn mgr during the initial handshake.
+ * Conn mgr links to only be-secure-openssl.c to re-use context creation implementation.
+ * The functions which are out of this file check_ssl_key_file_permissions(),
+ * run_ssl_passphrase_command() and ssl_protocol_version_to_openssl() are manually copied
+ * into conn mgr.
+ */
+#ifdef YB_CONN_MGR
+/*
+ * YB: Conn mgr build of be_tls_init().  This function was originally written to create SSL context for postgres TLS connection.
+ * It is now called by conn mgr during the initial handshake.
+ * Conn mgr links to only be-secure-openssl.c to re-use context creation implementation.
+ * The functions which are out of this file check_ssl_key_file_permissions(),
+ * run_ssl_passphrase_command() and ssl_protocol_version_to_openssl() are manually copied
+ * into conn mgr.
+ */
+int
+be_tls_init(bool isServerStart)
+{
+	SSL_CTX    *context;
+	int			ssl_ver_min = -1;
+	int			ssl_ver_max = -1;
+
+	/*
+	 * Create a new SSL context into which we'll load all the configuration
+	 * settings.  If we fail partway through, we can avoid memory leakage by
+	 * freeing this context; we don't install it as active until the end.
+	 *
+	 * We use SSLv23_method() because it can negotiate use of the highest
+	 * mutually supported protocol version, while alternatives like
+	 * TLSv1_2_method() permit only one specific version.  Note that we don't
+	 * actually allow SSL v2 or v3, only TLS protocols (see below).
+	 */
+	context = SSL_CTX_new(SSLv23_method());
+	if (!context)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errmsg("could not create SSL context: %s",
+						SSLerrmessage(ERR_get_error()))));
+		goto error;
+	}
+
+	/*
+	 * Disable OpenSSL's moving-write-buffer sanity check, because it causes
+	 * unnecessary failures in nonblocking send cases.
+	 */
+	SSL_CTX_set_mode(context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
+	/*
+	 * Call init hook (usually to set password callback)
+	 */
+	(*openssl_tls_init_hook) (context, isServerStart);
+
+	/* used by the callback */
+	ssl_is_server_start = isServerStart;
+
+	/*
+	 * Load and verify server's certificate and private key
+	 */
+	if (SSL_CTX_use_certificate_chain_file(context, ssl_cert_file) != 1)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("could not load server certificate file \"%s\": %s",
+						ssl_cert_file, SSLerrmessage(ERR_get_error()))));
+		goto error;
+	}
+
+	if (!check_ssl_key_file_permissions(ssl_key_file, isServerStart))
+		goto error;
+
+	/*
+	 * OK, try to load the private key file.
+	 */
+	dummy_ssl_passwd_cb_called = false;
+
+	if (SSL_CTX_use_PrivateKey_file(context,
+									ssl_key_file,
+									SSL_FILETYPE_PEM) != 1)
+	{
+		if (dummy_ssl_passwd_cb_called)
+			ereport(isServerStart ? FATAL : LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("private key file \"%s\" cannot be reloaded because it requires a passphrase",
+							ssl_key_file)));
+		else
+			ereport(isServerStart ? FATAL : LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("could not load private key file \"%s\": %s",
+							ssl_key_file, SSLerrmessage(ERR_get_error()))));
+		goto error;
+	}
+
+	if (SSL_CTX_check_private_key(context) != 1)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("check of private key failed: %s",
+						SSLerrmessage(ERR_get_error()))));
+		goto error;
+	}
+
+	if (ssl_min_protocol_version)
+	{
+		ssl_ver_min = ssl_protocol_version_to_openssl(ssl_min_protocol_version);
+
+		if (ssl_ver_min == -1)
+		{
+			ereport(isServerStart ? FATAL : LOG,
+			/*- translator: first %s is a GUC option name, second %s is its value */
+					(errmsg("\"%s\" setting \"%s\" not supported by this build",
+							"ssl_min_protocol_version",
+							GetConfigOption("ssl_min_protocol_version",
+											false, false))));
+			goto error;
+		}
+
+		if (!SSL_CTX_set_min_proto_version(context, ssl_ver_min))
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errmsg("could not set minimum SSL protocol version")));
+			goto error;
+		}
+	}
+
+	if (ssl_max_protocol_version)
+	{
+		ssl_ver_max = ssl_protocol_version_to_openssl(ssl_max_protocol_version);
+
+		if (ssl_ver_max == -1)
+		{
+			ereport(isServerStart ? FATAL : LOG,
+			/*- translator: first %s is a GUC option name, second %s is its value */
+					(errmsg("\"%s\" setting \"%s\" not supported by this build",
+							"ssl_max_protocol_version",
+							GetConfigOption("ssl_max_protocol_version",
+											false, false))));
+			goto error;
+		}
+
+		if (!SSL_CTX_set_max_proto_version(context, ssl_ver_max))
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errmsg("could not set maximum SSL protocol version")));
+			goto error;
+		}
+	}
+
+	/* Check compatibility of min/max protocols */
+	if (ssl_min_protocol_version &&
+		ssl_max_protocol_version)
+	{
+		/*
+		 * No need to check for invalid values (-1) for each protocol number
+		 * as the code above would have already generated an error.
+		 */
+		if (ssl_ver_min > ssl_ver_max)
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errmsg("could not set SSL protocol version range"),
+					 errdetail("\"%s\" cannot be higher than \"%s\"",
+							   "ssl_min_protocol_version",
+							   "ssl_max_protocol_version")));
+			goto error;
+		}
+	}
+
+	/*
+	 * Disallow SSL session tickets. OpenSSL use both stateful and stateless
+	 * tickets for TLSv1.3, and stateless ticket for TLSv1.2. SSL_OP_NO_TICKET
+	 * is available since 0.9.8f but only turns off stateless tickets. In
+	 * order to turn off stateful tickets we need SSL_CTX_set_num_tickets,
+	 * which is available since OpenSSL 1.1.1. LibreSSL 3.5.4 (from OpenBSD
+	 * 7.1) introduced this API for compatibility, but doesn't support session
+	 * tickets at all so it's a no-op there.
+	 */
+#ifdef HAVE_SSL_CTX_SET_NUM_TICKETS
+	SSL_CTX_set_num_tickets(context, 0);
+#endif
+	SSL_CTX_set_options(context, SSL_OP_NO_TICKET);
+
+	/* disallow SSL session caching, too */
+	SSL_CTX_set_session_cache_mode(context, SSL_SESS_CACHE_OFF);
+
+	/* disallow SSL compression */
+	SSL_CTX_set_options(context, SSL_OP_NO_COMPRESSION);
+
+#ifdef SSL_OP_NO_RENEGOTIATION
+
+	/*
+	 * Disallow SSL renegotiation, option available since 1.1.0h.  This
+	 * concerns only TLSv1.2 and older protocol versions, as TLSv1.3 has no
+	 * support for renegotiation.
+	 */
+	SSL_CTX_set_options(context, SSL_OP_NO_RENEGOTIATION);
+#endif
+
+	/* set up ephemeral DH and ECDH keys */
+	if (!initialize_dh(context, isServerStart))
+		goto error;
+	if (!initialize_ecdh(context, isServerStart))
+		goto error;
+
+	/* set up the allowed cipher list */
+	if (SSL_CTX_set_cipher_list(context, SSLCipherSuites) != 1)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("could not set the cipher list (no valid ciphers available)")));
+		goto error;
+	}
+
+	/* Let server choose order */
+	if (SSLPreferServerCiphers)
+		SSL_CTX_set_options(context, SSL_OP_CIPHER_SERVER_PREFERENCE);
+
+	/*
+	 * Load CA store, so we can verify client certificates if needed.
+	 */
+	if (ssl_ca_file[0])
+	{
+		STACK_OF(X509_NAME) * root_cert_list;
+
+		if (SSL_CTX_load_verify_locations(context, ssl_ca_file, NULL) != 1 ||
+			(root_cert_list = SSL_load_client_CA_file(ssl_ca_file)) == NULL)
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("could not load root certificate file \"%s\": %s",
+							ssl_ca_file, SSLerrmessage(ERR_get_error()))));
+			goto error;
+		}
+
+		/*
+		 * Tell OpenSSL to send the list of root certs we trust to clients in
+		 * CertificateRequests.  This lets a client with a keystore select the
+		 * appropriate client certificate to send to us.  Also, this ensures
+		 * that the SSL context will "own" the root_cert_list and remember to
+		 * free it when no longer needed.
+		 */
+		SSL_CTX_set_client_CA_list(context, root_cert_list);
+
+		/*
+		 * Always ask for SSL client cert, but don't fail if it's not
+		 * presented.  We might fail such connections later, depending on what
+		 * we find in pg_hba.conf.
+		 */
+		SSL_CTX_set_verify(context,
+						   (SSL_VERIFY_PEER |
+							SSL_VERIFY_CLIENT_ONCE),
+						   verify_cb);
+	}
+
+	/*----------
+	 * Load the Certificate Revocation List (CRL).
+	 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160,00.html
+	 *----------
+	 */
+	if (ssl_crl_file[0] || ssl_crl_dir[0])
+	{
+		X509_STORE *cvstore = SSL_CTX_get_cert_store(context);
+
+		if (cvstore)
+		{
+			/* Set the flags to check against the complete CRL chain */
+			if (X509_STORE_load_locations(cvstore,
+										  ssl_crl_file[0] ? ssl_crl_file : NULL,
+										  ssl_crl_dir[0] ? ssl_crl_dir : NULL)
+				== 1)
+			{
+				X509_STORE_set_flags(cvstore,
+									 X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+			}
+			else if (ssl_crl_dir[0] == 0)
+			{
+				ereport(isServerStart ? FATAL : LOG,
+						(errcode(ERRCODE_CONFIG_FILE_ERROR),
+						 errmsg("could not load SSL certificate revocation list file \"%s\": %s",
+								ssl_crl_file, SSLerrmessage(ERR_get_error()))));
+				goto error;
+			}
+			else if (ssl_crl_file[0] == 0)
+			{
+				ereport(isServerStart ? FATAL : LOG,
+						(errcode(ERRCODE_CONFIG_FILE_ERROR),
+						 errmsg("could not load SSL certificate revocation list directory \"%s\": %s",
+								ssl_crl_dir, SSLerrmessage(ERR_get_error()))));
+				goto error;
+			}
+			else
+			{
+				ereport(isServerStart ? FATAL : LOG,
+						(errcode(ERRCODE_CONFIG_FILE_ERROR),
+						 errmsg("could not load SSL certificate revocation list file \"%s\" or directory \"%s\": %s",
+								ssl_crl_file, ssl_crl_dir,
+								SSLerrmessage(ERR_get_error()))));
+				goto error;
+			}
+		}
+	}
+
+	/*
+	 * Success!  Install the new SSL_context.  Conn mgr takes ownership via
+	 * yb_be_tls_take_context() and caches the context per worker thread, so
+	 * this global never owns one.  Never free one that a worker is serving
+	 * connections with.
+	 */
+	SSL_context = context;
+
+	/*
+	 * Set flag to remember whether CA store has been loaded into SSL_context.
+	 */
+	if (ssl_ca_file[0])
+		ssl_loaded_verify_locations = true;
+	else
+		ssl_loaded_verify_locations = false;
+
+	return 0;
+
+	/* Clean up by releasing working context. */
+error:
+	if (context)
+		SSL_CTX_free(context);
+	return -1;
+}
+#else							/* !YB_CONN_MGR */
 int
 be_tls_init(bool isServerStart)
 {
@@ -821,6 +1256,24 @@ error:
 	return false;
 }
 
+#endif							/* YB_CONN_MGR */
+
+#ifdef YB_CONN_MGR
+/*
+ * Detach the SSL_CTX installed by the last be_tls_init() so the caller can
+ * cache it.  The next be_tls_init() will not free that context.
+ */
+SSL_CTX *
+yb_be_tls_take_context(void)
+{
+	SSL_CTX    *ctx = SSL_context;
+
+	SSL_context = NULL;
+	return ctx;
+}
+#endif /* YB_CONN_MGR */
+
+#ifndef YB_CONN_MGR
 void
 be_tls_destroy(void)
 {
@@ -830,8 +1283,13 @@ be_tls_destroy(void)
 	ssl_loaded_verify_locations = false;
 }
 
+/*
+ * YB: If yb_b64_client_cert_of_logical_conn is set, then we came for validating/
+ * parsing the certificate of the logical connection created to conn mgr. Skip TLS
+ * handshake as it has already been established with connection manager.
+ */
 int
-be_tls_open_server(Port *port)
+be_tls_open_server(Port *port, const char *yb_b64_client_cert_of_logical_conn)
 {
 	int			r;
 	int			err;
@@ -840,8 +1298,89 @@ be_tls_open_server(Port *port)
 	bool		give_proto_hint;
 	static struct CallbackErr err_context;
 
-	Assert(!port->ssl);
+	Assert(yb_b64_client_cert_of_logical_conn || !port->ssl);
 	Assert(!port->peer);
+
+	/*
+	 * YB: Under Connection Manager the handshake happened at the conn mgr,
+	 * which forwarded the leaf certificate in the startup packet.
+	 */
+	if (yb_b64_client_cert_of_logical_conn != NULL)
+	{
+		int b64len;
+		int derlen;
+		int bufsize;
+		unsigned char *der;
+		const unsigned char *p;
+		X509	   *cert;
+
+		if (!port->yb_is_ssl_enabled_in_logical_conn)
+		{
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("could not accept SSL connection: logical connection is not encrypted")));
+			return -1;
+		}
+
+		b64len = strlen(yb_b64_client_cert_of_logical_conn);
+		bufsize = pg_b64_dec_len(b64len);
+		der = palloc(bufsize);
+		derlen = pg_b64_decode(yb_b64_client_cert_of_logical_conn, b64len, der, bufsize);
+		if (derlen < 0)
+		{
+			pfree(der);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("failed to decode peer certificate encoded in Base64 by Connection Manager")));
+			return -1;
+		}
+
+		p = der;
+		cert = d2i_X509(NULL, &p, derlen);
+		if (cert == NULL)
+		{
+			pfree(der);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("failed to parse peer certificate forwarded by Connection Manager")));
+			return -1;
+		}
+		if (p != der + derlen)
+		{
+			pfree(der);
+			X509_free(cert);
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("trailing bytes after peer certificate forwarded by Connection Manager")));
+			return -1;
+		}
+		pfree(der);
+
+		/*
+		 * Leave port->ssl and port->ssl_in_use unset: the TLS session
+		 * belongs to the connection manager, and this backend's own
+		 * connection to it is an unencrypted unix socket. pg_stat_ssl
+		 * therefore continues to report no SSL here (TODO: GH#20144).
+		 * Setting ssl_in_use on physical conn which is unix socket
+		 * would be incorrect and can cause pgstat_bestart() to do
+		 * segfaults.
+		 */
+		port->peer = cert;
+		if (yb_be_tls_set_peer_cert_info(port) < 0)
+		{
+			/*
+			 * Own the X509 we allocated on the error path so callers that
+			 * don't (or one day won't) invoke be_tls_close() on failure
+			 * don't leak it or observe stale peer state on the Port.
+			 */
+			X509_free(port->peer);
+			port->peer = NULL;
+			return -1;
+		}
+		return 0;
+	}
+
+	Assert(!port->ssl);
 
 	if (!SSL_context)
 	{
@@ -1064,12 +1603,20 @@ aloop:
 	/* Get client certificate, if available. */
 	port->peer = SSL_get_peer_certificate(port->ssl);
 
+	return yb_be_tls_set_peer_cert_info(port);
+}
+
+static int
+yb_be_tls_set_peer_cert_info(Port *port)
+{
 	/* and extract the Common Name and Distinguished Name from it. */
 	port->peer_cn = NULL;
 	port->peer_dn = NULL;
 	port->peer_cert_valid = false;
 	if (port->peer != NULL)
 	{
+		/* YB: outer int r stayed with be_tls_open_server; this block was factored out */
+		int			r;
 		int			len;
 		X509_NAME  *x509name = X509_get_subject_name(port->peer);
 		char	   *peer_dn;
@@ -1192,6 +1739,12 @@ be_tls_close(Port *port)
 		pfree(port->peer_dn);
 		port->peer_dn = NULL;
 	}
+	/*
+	 * YB: Auth pass through in conn mgr needs to reset it's
+	 * all states.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		port->peer_cert_valid = false;
 }
 
 ssize_t
@@ -1460,6 +2013,7 @@ ssl_set_port_bio(Port *port)
 	SSL_set_bio(port->ssl, bio, bio);
 	return 1;
 }
+#endif	/* YB_CONN_MGR */
 
 /*
  *	Load precomputed DH parameters.
@@ -1589,6 +2143,17 @@ dummy_ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 	return 0;
 }
 
+#ifdef YB_CONN_MGR
+/*
+ * YB: Conn mgr build: no certificate logging, which needs backend StringInfo
+ * and palloc.  Accept the default checks.
+ */
+static int
+verify_cb(int ok, X509_STORE_CTX *ctx)
+{
+	return ok;
+}
+#else							/* !YB_CONN_MGR */
 /*
  * Examines the provided certificate name, and if it's too long to log or
  * contains unprintable ASCII, escapes and truncates it. The return value is
@@ -1718,6 +2283,7 @@ verify_cb(int ok, X509_STORE_CTX *ctx)
 
 	return ok;
 }
+#endif							/* YB_CONN_MGR */
 
 /*
  *	This callback is used to copy SSL information messages
@@ -2198,6 +2764,7 @@ SSLerrmessage(unsigned long ecode)
 	return errbuf;
 }
 
+#ifndef YB_CONN_MGR
 int
 be_tls_get_cipher_bits(Port *port)
 {
@@ -2390,6 +2957,7 @@ X509_NAME_to_cstring(X509_NAME *name)
 
 	return result;
 }
+#endif	/* YB_CONN_MGR */
 
 /*
  * Convert TLS protocol version GUC enum to OpenSSL values
@@ -2460,6 +3028,7 @@ ssl_protocol_version_to_string(int v)
 	return "(unrecognized)";
 }
 
+#ifndef YB_CONN_MGR
 static uint32
 host_cache_pointer(const char *key)
 {
@@ -2474,6 +3043,7 @@ host_cache_pointer(const char *key)
 	pfree(lkey);
 	return hash;
 }
+#endif							/* YB_CONN_MGR */
 
 static void
 default_openssl_tls_init(SSL_CTX *context, bool isServerStart)

@@ -14,6 +14,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
@@ -205,11 +206,19 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 
 	/* Save old values and set new values to enable the call. */
 	bool		saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	bool		saved_xact_read_only = XactReadOnly;
 
 	yb_non_ddl_txn_for_sys_tables_allowed = true;
 	Oid			save_userid;
 	int			save_sec_context;
 
+	/*
+	 * See YbCallNewSQLIncrementCatalogVersionHelper. This is only defensive
+	 * here: this function is used for a global-impact DDL, and no command
+	 * known to be allowed in a read-only transaction (e.g. ANALYZE) is a
+	 * global-impact DDL.
+	 */
+	XactReadOnly = false;
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
@@ -241,6 +250,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
@@ -250,6 +260,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
@@ -340,6 +351,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 
 	/* Save old values and set new values to enable the call. */
 	bool		saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	bool		saved_xact_read_only = XactReadOnly;
 
 	yb_non_ddl_txn_for_sys_tables_allowed = true;
 	bool		saved_enable_seqscan = enable_seqscan;
@@ -353,6 +365,15 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	Oid			save_userid;
 	int			save_sec_context;
 
+	/*
+	 * Commands that are allowed in a read-only transaction, such as ANALYZE,
+	 * can also increment the catalog version. The SQL function used to do so
+	 * is an internal implementation detail that must not be rejected by the
+	 * executor's read-only transaction check. Only the PG-level XactReadOnly
+	 * is cleared: the pggate transaction state is left as is, and is the same
+	 * as for the catalog writes the command itself has already done.
+	 */
+	XactReadOnly = false;
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
@@ -370,6 +391,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -396,6 +418,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		XactReadOnly = saved_xact_read_only;
 		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);

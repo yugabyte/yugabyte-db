@@ -66,7 +66,6 @@
 
 using std::string;
 
-using strings::Substitute;
 
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -405,8 +404,8 @@ bool TabletInfo::colocated() const {
 }
 
 string TabletInfo::ToString() const {
-  return Substitute("$0 (table $1)", tablet_id_,
-                    (table_ != nullptr ? table_->ToString() : "MISSING"));
+  return Format("$0 (table $1)", tablet_id_,
+                (table_ != nullptr ? table_->ToString() : "MISSING"));
 }
 
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
@@ -488,12 +487,12 @@ bool TableInfo::IsPreparing() const {
 }
 
 string TableInfo::ToString() const {
-  return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
+  return Format("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
 
 string TableInfo::ToStringWithState() const {
   auto l = LockForRead();
-  return Substitute("$0 [id=$1, state=$2]",
+  return Format("$0 [id=$1, state=$2]",
       l->pb.name(), table_id_, SysTablesEntryPB::State_Name(l->pb.state()));
 }
 
@@ -777,6 +776,27 @@ Result<bool> TableInfo::RemoveTabletUnlocked(
     tablets_.erase(it);
   }
   return result;
+}
+
+bool TableInfo::RemoveInactiveTablet(const TabletInfoPtr& tablet) {
+  // Read before taking lock_. Taking a tablet's lock under lock_ would invert the order used by
+  // the PITR restore path, which holds tablet write locks across TableInfo::RemoveTablets. Reads
+  // committed state, not dirty state, so no write lock on the tablet is required.
+  const auto partition_key_start =
+      tablet->LockForRead()->pb.partition().partition_key_start();
+
+  std::lock_guard l(lock_);
+  // Never drop a tablet that still owns a partition. A split parent shares its start key with its
+  // first child, so finding an entry is not enough -- it has to be this tablet.
+  auto partitions_it = partitions_.find(partition_key_start);
+  if (partitions_it != partitions_.end()) {
+    auto partitions_tablet = partitions_it->second.lock();
+    if (partitions_tablet && partitions_tablet->tablet_id() == tablet->tablet_id()) {
+      return false;
+    }
+  }
+  tablets_.erase(tablet->tablet_id());
+  return true;
 }
 
 Result<TabletInfos> TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
@@ -1419,7 +1439,7 @@ bool NamespaceInfo::colocated() const {
 }
 
 string NamespaceInfo::ToString() const {
-  return Substitute("$0 [id=$1]", name(), namespace_id_);
+  return Format("$0 [id=$1]", name(), namespace_id_);
 }
 
 // ================================================================================================
@@ -1656,7 +1676,7 @@ bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
@@ -1771,7 +1791,7 @@ void PersistentUniverseReplicationBootstrapInfo::set_into_tables_data(
 // ================================================================================================
 std::string UniverseReplicationBootstrapInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+  return Format("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
 void UniverseReplicationBootstrapInfo::SetReplicationBootstrapErrorStatus(const Status& status) {

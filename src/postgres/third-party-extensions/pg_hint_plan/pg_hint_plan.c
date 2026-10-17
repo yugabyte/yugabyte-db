@@ -64,6 +64,7 @@
 
 /* YB includes */
 #include "catalog/namespace.h"
+#include "catalog/partition.h"
 #include "commands/explain.h"
 #include "common/hashfn.h"
 #include "pg_yb_utils.h"
@@ -565,10 +566,13 @@ static const char *parse_quoted_value(const char *str, char **word,
 									  bool truncate);
 
 static char *ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt);
+static bool ybHardParallelHintObeyed(PlannedStmt *plannedStmt,
+									 ParallelHint *phint);
 static void ybCheckBadOrUnusedHints(PlannedStmt *result);
 static void ybTraceLeadingHint(LeadingHint *leadingHint, char *msg);
 
-static bool ybCheckValidPathForRelExists(PlannerInfo * root, RelOptInfo *rel);
+static bool ybCheckValidPathForRelExists(PlannerInfo *root, RelOptInfo *rel,
+										 bool ybConsiderPartialPaths);
 static char *ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel);
 static ScanMethodHint *find_scan_hint(PlannerInfo *root, Index relid);
 extern void ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf);
@@ -2705,9 +2709,22 @@ ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt)
 			case T_MergeJoin:
 			case T_HashJoin:
 				{
+					/*
+					 * A join disabled by its own method used a method no hint
+					 * allowed, even when it follows the Leading order, e.g.
+					 * because the hinted method cannot be built for it.  A
+					 * join's count includes its inputs' counts, so its own
+					 * charge is the excess, as in EXPLAIN's plan_is_disabled().
+					 */
+					int			childDisabledNodes =
+						(plan->lefttree != NULL ? plan->lefttree->disabled_nodes : 0) +
+						(plan->righttree != NULL ? plan->righttree->disabled_nodes : 0);
+					bool		ownMethodDisabled =
+						plan->disabled_nodes > childDisabledNodes;
+
 					if (plan->disabled_nodes > 0)
 					{
-						if (!(plan->ybIsHinted))
+						if (!(plan->ybIsHinted) || ownMethodDisabled)
 						{
 							if (plan->ybUniqueId > 0)
 							{
@@ -2771,6 +2788,266 @@ ybCheckPlanForDisabledNodes(Plan *plan, PlannedStmt *plannedStmt)
 	}
 
 	return errorMsg;
+}
+
+static bool
+ybNameMatchesParallelHintRel(char *name, char *hintRelname)
+{
+	if (name == NULL || hintRelname == NULL)
+		return false;
+
+	return RelnameCmp(&name, &hintRelname) == 0;
+}
+
+/*
+ * True if this RTE is the hinted relation or a partition of it.
+ */
+static bool
+ybRteMatchesParallelHintRel(RangeTblEntry *rte, char *hintRelname)
+{
+	Oid			parent;
+
+	if (rte == NULL)
+		return false;
+
+	if (ybNameMatchesParallelHintRel(rte->ybHintAlias, hintRelname))
+		return true;
+
+	if (rte->eref != NULL &&
+		ybNameMatchesParallelHintRel(rte->eref->aliasname, hintRelname))
+		return true;
+
+	if (rte->rtekind != RTE_RELATION)
+		return false;
+
+	if (ybNameMatchesParallelHintRel(get_rel_name(rte->relid), hintRelname))
+		return true;
+
+	if (!get_rel_relispartition(rte->relid))
+		return false;
+
+	parent = get_partition_parent(rte->relid, true);
+	while (OidIsValid(parent))
+	{
+		if (ybNameMatchesParallelHintRel(get_rel_name(parent), hintRelname))
+			return true;
+
+		if (!get_rel_relispartition(parent))
+			break;
+
+		parent = get_partition_parent(parent, true);
+	}
+
+	return false;
+}
+
+static bool
+ybRtiMatchesParallelHintRel(PlannedStmt *pstmt, Index rti, char *hintRelname)
+{
+	RangeTblEntry *rte;
+
+	if (rti == 0 || pstmt == NULL || pstmt->rtable == NULL ||
+		rti > list_length(pstmt->rtable))
+		return false;
+
+	rte = rt_fetch(rti, pstmt->rtable);
+	return ybRteMatchesParallelHintRel(rte, hintRelname);
+}
+
+static Index
+ybPlanScanRelid(Plan *plan)
+{
+	switch (nodeTag(plan))
+	{
+		case T_SeqScan:
+		case T_YbSeqScan:
+		case T_SampleScan:
+		case T_IndexScan:
+		case T_IndexOnlyScan:
+		case T_BitmapIndexScan:
+		case T_YbBitmapIndexScan:
+		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
+		case T_TidScan:
+		case T_TidRangeScan:
+		case T_SubqueryScan:
+		case T_FunctionScan:
+		case T_TableFuncScan:
+		case T_ValuesScan:
+		case T_CteScan:
+		case T_NamedTuplestoreScan:
+		case T_WorkTableScan:
+		case T_ForeignScan:
+			return ((Scan *) plan)->scanrelid;
+		default:
+			return 0;
+	}
+}
+
+static bool
+ybPlanMatchesParallelHintRel(Plan *plan, PlannedStmt *pstmt, char *hintRelname)
+{
+	Index		scanrelid;
+	int			rti;
+
+	if (plan == NULL)
+		return false;
+
+	scanrelid = ybPlanScanRelid(plan);
+	if (scanrelid > 0 &&
+		ybRtiMatchesParallelHintRel(pstmt, scanrelid, hintRelname))
+		return true;
+
+	if (IsA(plan, Append) || IsA(plan, MergeAppend) ||
+		IsA(plan, Gather) || IsA(plan, GatherMerge))
+	{
+		if (ybNameMatchesParallelHintRel(plan->ybHintAlias, hintRelname))
+			return true;
+	}
+
+	if (IsA(plan, Append))
+	{
+		rti = -1;
+		while ((rti = bms_next_member(((Append *) plan)->apprelids, rti)) >= 0)
+		{
+			if (ybRtiMatchesParallelHintRel(pstmt, (Index) rti, hintRelname))
+				return true;
+		}
+	}
+	else if (IsA(plan, MergeAppend))
+	{
+		rti = -1;
+		while ((rti = bms_next_member(((MergeAppend *) plan)->apprelids,
+									  rti)) >= 0)
+		{
+			if (ybRtiMatchesParallelHintRel(pstmt, (Index) rti, hintRelname))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+static void
+ybWalkPlanForParallelHint(Plan *plan, PlannedStmt *pstmt, ParallelHint *phint,
+						  int gatherWorkers, bool *foundSerial,
+						  bool *foundParallel, int *parallelWorkers)
+{
+	ListCell   *lc;
+	int			nextGather = gatherWorkers;
+
+	if (plan == NULL)
+		return;
+
+	check_stack_depth();
+
+	if (IsA(plan, Gather))
+		nextGather = ((Gather *) plan)->num_workers;
+	else if (IsA(plan, GatherMerge))
+		nextGather = ((GatherMerge *) plan)->num_workers;
+
+	if (ybPlanMatchesParallelHintRel(plan, pstmt, phint->relname))
+	{
+		if (nextGather < 0)
+			*foundSerial = true;
+		else
+		{
+			*foundParallel = true;
+			*parallelWorkers = nextGather;
+		}
+	}
+
+	ybWalkPlanForParallelHint(outerPlan(plan), pstmt, phint, nextGather,
+							  foundSerial, foundParallel, parallelWorkers);
+	ybWalkPlanForParallelHint(innerPlan(plan), pstmt, phint, nextGather,
+							  foundSerial, foundParallel, parallelWorkers);
+
+	switch (nodeTag(plan))
+	{
+		case T_Append:
+			foreach(lc, ((Append *) plan)->appendplans)
+			{
+				ybWalkPlanForParallelHint((Plan *) lfirst(lc), pstmt, phint,
+										  nextGather, foundSerial,
+										  foundParallel, parallelWorkers);
+			}
+			break;
+		case T_MergeAppend:
+			foreach(lc, ((MergeAppend *) plan)->mergeplans)
+			{
+				ybWalkPlanForParallelHint((Plan *) lfirst(lc), pstmt, phint,
+										  nextGather, foundSerial,
+										  foundParallel, parallelWorkers);
+			}
+			break;
+		case T_BitmapAnd:
+			foreach(lc, ((BitmapAnd *) plan)->bitmapplans)
+			{
+				ybWalkPlanForParallelHint((Plan *) lfirst(lc), pstmt, phint,
+										  nextGather, foundSerial,
+										  foundParallel, parallelWorkers);
+			}
+			break;
+		case T_BitmapOr:
+			foreach(lc, ((BitmapOr *) plan)->bitmapplans)
+			{
+				ybWalkPlanForParallelHint((Plan *) lfirst(lc), pstmt, phint,
+										  nextGather, foundSerial,
+										  foundParallel, parallelWorkers);
+			}
+			break;
+		case T_SubqueryScan:
+			ybWalkPlanForParallelHint(((SubqueryScan *) plan)->subplan, pstmt,
+									  phint, nextGather, foundSerial,
+									  foundParallel, parallelWorkers);
+			break;
+		case T_CustomScan:
+			foreach(lc, ((CustomScan *) plan)->custom_plans)
+			{
+				ybWalkPlanForParallelHint((Plan *) lfirst(lc), pstmt, phint,
+										  nextGather, foundSerial,
+										  foundParallel, parallelWorkers);
+			}
+			break;
+		default:
+			break;
+	}
+
+	foreach(lc, plan->initPlan)
+	{
+		SubPlan    *initPlan = (SubPlan *) lfirst(lc);
+		Plan	   *subPlan;
+
+		subPlan = (Plan *) list_nth(pstmt->subplans, initPlan->plan_id - 1);
+		ybWalkPlanForParallelHint(subPlan, pstmt, phint, nextGather,
+								  foundSerial, foundParallel, parallelWorkers);
+	}
+}
+
+/*
+ * Hard Parallel(rel n) is obeyed only if the finished plan parallelizes
+ * that relation (or a partition of it) as requested.  Marking the hint
+ * USED at enforcement time is not enough: the selected path may still be
+ * a serial Append.
+ */
+static bool
+ybHardParallelHintObeyed(PlannedStmt *plannedStmt, ParallelHint *phint)
+{
+	bool		foundSerial = false;
+	bool		foundParallel = false;
+	int			parallelWorkers = -1;
+
+	if (plannedStmt == NULL || plannedStmt->planTree == NULL)
+		return false;
+
+	ybWalkPlanForParallelHint(plannedStmt->planTree, plannedStmt, phint, -1,
+							  &foundSerial, &foundParallel, &parallelWorkers);
+
+	if (phint->nworkers > 0)
+		return foundParallel && !foundSerial &&
+			parallelWorkers == phint->nworkers;
+
+	return !foundParallel;
 }
 
 static void
@@ -2897,6 +3174,22 @@ ybCheckBadOrUnusedHints(PlannedStmt *plannedStmt)
 									currentHint->type, buf.data)));
 				}
 			}
+			else if (currentHint->state == HINT_STATE_USED &&
+					 currentHint->type == HINT_TYPE_PARALLEL)
+			{
+				ParallelHint *parallelHint = (ParallelHint *) currentHint;
+
+				if (parallelHint->force_parallel &&
+					!ybHardParallelHintObeyed(plannedStmt, parallelHint))
+				{
+					currentHint->desc_func(currentHint, &buf, true);
+					current_hint_state->ybAnyHintFailed = true;
+
+					ereport(WARNING,
+							(errmsg("Parallel hint not used as intended: %s",
+									buf.data)));
+				}
+			}
 
 			resetStringInfo(&buf);
 		}
@@ -2955,8 +3248,23 @@ ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel)
 	return badIndexName;
 }
 
+/*
+ * Return whether hinting left this relation with at least one usable path.
+ *
+ * A path is usable if it has no disabled nodes, or it was produced to
+ * satisfy a hint (ybIsHinted / ybHasHintedUid).
+ *
+ * pathlist is the source of truth.  The only case where an all-disabled
+ * pathlist is a false failure is an inheritance parent with a hard
+ * Parallel hint: that branch disables every complete path and keeps
+ * the real plan in partial_pathlist.  ybConsiderPartialPaths is set only
+ * for that case.  On a non-inh relation, Parallel may zero partial
+ * seqscans (and mark them ybIsHinted) even when NoSeqScan penalised them;
+ * those partials must not count as success.
+ */
 static bool
-ybCheckValidPathForRelExists(PlannerInfo * root, RelOptInfo *rel)
+ybCheckValidPathForRelExists(PlannerInfo *root, RelOptInfo *rel,
+							 bool ybConsiderPartialPaths)
 {
 	bool 		relHintingFailedOnCost = false;
 	bool 		enabledPathFound = false;
@@ -2982,29 +3290,18 @@ ybCheckValidPathForRelExists(PlannerInfo * root, RelOptInfo *rel)
 		relHintingFailedOnCost = true;
 	}
 
-	if (!relHintingFailedOnCost)
+	if (relHintingFailedOnCost && ybConsiderPartialPaths)
 	{
-		enabledPathFound = false;
-		disabledPathFound = false;
 		foreach (lc, rel->partial_pathlist)
 		{
 			Path *path = (Path *) lfirst(lc);
 			if (path->disabled_nodes == 0 || path->ybIsHinted ||
 				path->ybHasHintedUid)
 			{
-				enabledPathFound = true;
+				relHintingFailedOnCost = false;
 				break;
 			}
-			else
-			{
-				disabledPathFound = true;
-			}
 		}
-	}
-
-	if (!enabledPathFound && disabledPathFound)
-	{
-		relHintingFailedOnCost = true;
 	}
 
 	return !relHintingFailedOnCost;
@@ -6351,6 +6648,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		find_scan_hint(root, rel->relid) != NULL)
 	{
 		char	   *badIndexName = ybCheckBadIndexHintExists(root, rel);
+		ParallelHint *phint = find_parallel_hint(root, rel->relid);
 
 		if (badIndexName != NULL)
 		{
@@ -6362,7 +6660,9 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								rel->ybHintAlias ? rel->ybHintAlias : "?")));
 		}
 
-		if (!ybCheckValidPathForRelExists(root, rel))
+		if (!ybCheckValidPathForRelExists(root, rel,
+				root->simple_rte_array[rel->relid]->inh &&
+				phint && phint->force_parallel && phint->nworkers > 0))
 		{
 			current_hint_state->ybAnyHintFailed = true;
 			if (yb_bad_hint_mode >= BAD_HINT_WARN)

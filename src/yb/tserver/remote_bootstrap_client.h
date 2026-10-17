@@ -32,8 +32,12 @@
 #pragma once
 
 #include <functional>
+#include <optional>
+#include <string>
 
 #include "yb/tserver/remote_client_base.h"
+
+#include "yb/util/disk_space_checker.h"
 
 namespace yb {
 
@@ -142,9 +146,16 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   uint64_t GetTotalDataSizeBytes(const tablet::RaftGroupReplicaSuperBlockPB& superblock) const;
 
-  // Check whether local disk has enough disk space for rocksdb files in superblock.
+  // Called at the beginning of RBS. It checks the data disk ("rocksdb_dir") have enough free space
+  // for the rocksdb files in superblock. It also call CheckFreeDiskSpace to check that both disks
+  // represented by 'rocksdb_dir' and 'wal_root_dir' have enough free space.
   Status CheckDiskSpace(
-      const tablet::RaftGroupReplicaSuperBlockPB& superblock, const std::string& rocksdb_dir);
+      const tablet::RaftGroupReplicaSuperBlockPB& superblock, const std::string& rocksdb_dir,
+      const std::string& wal_root_dir);
+
+  // Checks that the data disk and the WAL disks have sufficient free space, regardless of the
+  // amount of data to be written. Called at the start of RBS and repeatedly during the download.
+  Status CheckFreeDiskSpace();
 
   void SetInitialRbsProgressInfo();
 
@@ -181,6 +192,11 @@ class RemoteBootstrapClient : public RemoteClientBase {
   bool download_retryable_requests_;
 
   std::string bootstrap_source_uuid_;
+
+  // Track the free space on the data and the WAL disks. Initialized by CheckDiskSpace() once the
+  // tablet's directories are known.
+  std::optional<DiskSpaceChecker> data_disk_checker_;
+  std::optional<DiskSpaceChecker> wal_disk_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };

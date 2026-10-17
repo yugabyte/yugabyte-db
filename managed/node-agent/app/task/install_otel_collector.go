@@ -11,6 +11,7 @@ import (
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"path/filepath"
+	"strings"
 )
 
 const OtelCollectorService = "otel-collector.service"
@@ -340,7 +341,8 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	steps = append(steps, logCleanupEnvSteps(otelColLogCleanupEnv,
 		h.param.GetYcqlAuditLogLevel(),
 		h.param.GetYsqlAuditLogRetentionDays(),
-		h.param.GetYcqlAuditLogRetentionDays())...)
+		h.param.GetYcqlAuditLogRetentionDays(),
+		h.param.GetYsqlAuditLineStartRegex())...)
 
 	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
 		steps = append(steps, struct {
@@ -424,6 +426,7 @@ func (h *InstallOtelCollector) refreshLogPurgeScript(
 func logCleanupEnvSteps(
 	envPath, ycqlAuditLogLevel string,
 	ysqlAuditLogRetentionDays, ycqlAuditLogRetentionDays uint32,
+	ysqlAuditLineStartRegex string,
 ) []struct {
 	Desc string
 	Cmd  string
@@ -453,10 +456,28 @@ func logCleanupEnvSteps(
 			),
 		},
 		{
+			"write-otel-log-cleanup-line-start-regex",
+			// Single-quoted in the file so the sourcing shell treats the regex
+			// literally; the whole line is shell-quoted again so the writer shell
+			// emits it verbatim.
+			fmt.Sprintf(
+				"printf '%%s\\n' %s >> %s",
+				shellSingleQuote("ysql_audit_line_start_regex="+
+					shellSingleQuote(ysqlAuditLineStartRegex)),
+				envPath,
+			),
+		},
+		{
 			"set-permission-otel-log-cleanup-env",
 			fmt.Sprintf(`chmod 0440 %s`, envPath),
 		},
 	}
+}
+
+// shellSingleQuote wraps s in single quotes, escaping embedded single quotes,
+// so it survives one layer of shell word-splitting/expansion verbatim.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // writeLogCleanupEnv (re)generates <yb_home>/otel-collector/log_cleanup_env
@@ -480,6 +501,7 @@ func (h *InstallOtelCollector) writeLogCleanupEnv(ctx context.Context, ybHome st
 	steps = append(steps, logCleanupEnvSteps(envPath,
 		h.param.GetYcqlAuditLogLevel(),
 		h.param.GetYsqlAuditLogRetentionDays(),
-		h.param.GetYcqlAuditLogRetentionDays())...)
+		h.param.GetYcqlAuditLogRetentionDays(),
+		h.param.GetYsqlAuditLineStartRegex())...)
 	return module.RunShellSteps(ctx, h.username, steps, h.logOut)
 }

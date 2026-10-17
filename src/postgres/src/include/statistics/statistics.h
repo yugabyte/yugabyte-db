@@ -103,7 +103,8 @@ extern void BuildRelationExtStatistics(Relation onerel, bool inh, double totalro
 									   int natts, VacAttrStats **vacattrstats);
 extern bool HasRelationExtStatistics(Relation onerel);
 extern int	ComputeExtStatisticsRows(Relation onerel,
-									 int natts, VacAttrStats **vacattrstats);
+									 int natts, VacAttrStats **vacattrstats,
+									 Bitmapset **yb_full_value_cols);
 extern bool statext_is_kind_built(HeapTuple htup, char type);
 extern Selectivity dependencies_clauselist_selectivity(PlannerInfo *root,
 													   List *clauses,

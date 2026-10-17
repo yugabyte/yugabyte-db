@@ -67,6 +67,8 @@
       Role name       |                         Attributes                         |      Member of      
 ----------------------+------------------------------------------------------------+---------------------
  postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ r1                  +| Cannot login                                               | {}
+ x                    |                                                            |
  regress_rls_alice    | Cannot login                                               | {}
  rls_user             | Cannot login                                               | {}
  tablegroup_test_user | Superuser                                                  | {}

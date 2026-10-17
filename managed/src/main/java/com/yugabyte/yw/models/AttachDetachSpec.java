@@ -440,12 +440,14 @@ public class AttachDetachSpec {
       UniverseDefinitionTaskParams universeDetails = this.universe.getUniverseDetails();
 
       for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
-        if (cluster.userIntent.imageBundleUUID != null) {
-          ImageBundle matchingBundle = this.imageBundles.get(cluster.userIntent.imageBundleUUID);
-
-          if (matchingBundle != null) {
-            // Ensure the cluster references the correct ImageBundle
-            cluster.userIntent.imageBundleUUID = matchingBundle.getUuid();
+        for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+          UUID imageBundleUUID = cluster.userIntent.getImageBundleUUIDForProvider(providerUUID);
+          if (imageBundleUUID != null) {
+            ImageBundle matchingBundle = this.imageBundles.get(imageBundleUUID);
+            if (matchingBundle != null) {
+              // Ensure the cluster references the correct ImageBundle
+              cluster.userIntent.setProviderImageBundleUUID(providerUUID, matchingBundle.getUuid());
+            }
           }
         }
       }

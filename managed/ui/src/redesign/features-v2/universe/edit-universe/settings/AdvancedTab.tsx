@@ -13,9 +13,11 @@ import {
 import {
   getClusterByType,
   useEditUniverseContext,
-  useIsUniverseReady,
+  useIsUniverseEditActionDisabled,
   withUniverseResource
 } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import {
   getAccessiblePorts,
   mapAPIPortsKeys
@@ -27,7 +29,10 @@ import {
   EditNodeAcessModal,
   EditUserTagsModal
 } from '../edit-advanced';
-import { K8sHelmOverridesModal } from '../../create-universe/fields/k8s-helmoverrides/K8sHelmOverridesModal';
+import {
+  K8sHelmOverridesModal,
+  HelmOverridesSubmitOptions
+} from '../../create-universe/fields/k8s-helmoverrides/K8sHelmOverridesModal';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -152,7 +157,7 @@ const EditK8sHelmOverrides = () => {
   });
   const editOverrides = useEditKubernetesOverrides();
   const { universeData } = useEditUniverseContext();
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const uniUUID = universeData?.info?.universe_uuid ?? '';
   const dbVersion = universeData?.spec?.yb_software_version;
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(uniUUID);
@@ -166,11 +171,22 @@ const EditK8sHelmOverrides = () => {
     setHelmOverridesModal(false);
   };
 
-  const handleSubmit = (universeOverrides: string, azOverrides: Record<string, string>) => {
+  const handleSubmit = (
+    universeOverrides: string,
+    azOverrides: Record<string, string>,
+    options?: HelmOverridesSubmitOptions
+  ) => {
     editOverrides.mutate(
       {
         uniUUID,
-        data: { overrides: universeOverrides, az_overrides: azOverrides }
+        data: {
+          overrides: universeOverrides,
+          az_overrides: azOverrides,
+          rolling_upgrade: options?.rollingUpgrade,
+          roll_max_batch_size: options?.rollMaxBatchSize,
+          sleep_after_master_restart_millis: options?.sleepAfterMasterRestartMillis,
+          sleep_after_tserver_restart_millis: options?.sleepAfterTserverRestartMillis
+        }
       },
       {
         onSuccess: (resp) => {
@@ -197,15 +213,15 @@ const EditK8sHelmOverrides = () => {
             )}
             isControl
           >
-            <YBButton
+            <K8OperatorEditBlockedTooltip><YBButton
               dataTestId="edit-kubernetes-overrides-button"
               variant="ghost"
               startIcon={<EditIcon />}
               onClick={() => setHelmOverridesModal(true)}
-              disabled={!isUniverseReady}
+              disabled={isEditActionDisabled}
             >
               {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            </YBButton></K8OperatorEditBlockedTooltip>
           </RbacValidator>
         )}
       </StyledHeader>
@@ -222,16 +238,16 @@ const EditK8sHelmOverrides = () => {
               )}
               isControl
             >
-              <YBButton
+              <K8OperatorEditBlockedTooltip><YBButton
                 variant="secondary"
                 dataTestId="add-gflags-button"
                 startIcon={<AddCircleIcon />}
                 sx={{ mt: 2 }}
-                disabled={!isUniverseReady}
+                disabled={isEditActionDisabled}
                 onClick={() => setHelmOverridesModal(true)}
               >
                 {t('addHelmOverrides')}
-              </YBButton>
+              </YBButton></K8OperatorEditBlockedTooltip>
             </RbacValidator>
           </StyledEmptyState>
         ) : (
@@ -262,6 +278,8 @@ const EditK8sHelmOverrides = () => {
           onSubmit={handleSubmit}
           dbVersion={dbVersion}
           open={openHelmOverridesModal}
+          showRollingUpgradeOptions
+          maxBatchSize={universeData?.info?.roll_max_batch_size}
         />
       )}
     </StyledPanel>
@@ -282,7 +300,7 @@ export const AdvancedTab = () => {
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const networking_spec = primaryCluster?.networking_spec;
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const accessKeyValue = primaryCluster?.provider_spec?.access_key_code;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
   const userTags = transformInstanceTags(primaryCluster?.instance_tags);
@@ -297,25 +315,27 @@ export const AdvancedTab = () => {
     return (
       <>
         {networking_spec?.proxy_config?.no_proxy_list?.[0]}
-        <YBTag size="small" variant="light">
-          <YBTooltip
-            title={
-              <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
-                <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
-                  {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
-                    <li>
-                      <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
-                        {nl}
-                      </Typography>
-                    </li>
-                  ))}
-                </ul>
-              </Box>
-            }
-          >
-            <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
-          </YBTooltip>
-        </YBTag>
+        {networking_spec?.proxy_config?.no_proxy_list?.length > 1 && (
+          <YBTag size="small" variant="light">
+            <YBTooltip
+              title={
+                <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
+                  <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
+                    {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
+                      <li>
+                        <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
+                          {nl}
+                        </Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Box>
+              }
+            >
+              <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
+            </YBTooltip>
+          </YBTag>
+        )}
       </>
     );
   };
@@ -339,17 +359,17 @@ export const AdvancedTab = () => {
                 )}
                 isControl
               >
-                <YBButton
+                <K8OperatorEditBlockedTooltip><YBButton
                   dataTestId="edit-security-transit-button"
                   variant="ghost"
                   startIcon={<EditIcon />}
                   onClick={() => {
                     setEditAdvancedSettingsModalVisible(true);
                   }}
-                  disabled={!isUniverseReady}
+                  disabled={isEditActionDisabled}
                 >
                   {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
+                </YBButton></K8OperatorEditBlockedTooltip>
               </RbacValidator>
             )}
           </StyledHeader>
@@ -372,13 +392,17 @@ export const AdvancedTab = () => {
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('secureWebProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.https_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.https_proxy)
+                          ? networking_spec?.proxy_config?.https_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
                       <span className="header">{t('webProxy')}</span>
                       <span className="value ">
-                        {networking_spec?.proxy_config?.http_proxy ?? '-'}
+                        {!isEmpty(networking_spec?.proxy_config?.http_proxy)
+                          ? networking_spec?.proxy_config?.http_proxy
+                          : '-'}
                       </span>
                     </div>
                     <div style={{ width: '300px' }}>
@@ -399,17 +423,17 @@ export const AdvancedTab = () => {
                     )}
                     isControl
                   >
-                    <YBButton
+                    <K8OperatorEditBlockedTooltip><YBButton
                       variant="secondary"
                       dataTestId="add-gflags-button"
                       sx={{ mt: 2 }}
-                      disabled={!isUniverseReady}
+                      disabled={isEditActionDisabled}
                       onClick={() => {
                         setEditAdvancedSettingsModalVisible(true);
                       }}
                     >
                       {t('enableProxyServer')}
-                    </YBButton>
+                    </YBButton></K8OperatorEditBlockedTooltip>
                   </RbacValidator>
                 </StyledEmptyState>
               )}
@@ -437,15 +461,15 @@ export const AdvancedTab = () => {
                     )}
                     isControl
                   >
-                    <YBButton
+                    <K8OperatorEditBlockedTooltip><YBButton
                       dataTestId="edit-security-transit-button"
                       variant="ghost"
                       startIcon={<EditIcon />}
                       onClick={() => setNodeModalOpen(true)}
-                      disabled={!isUniverseReady}
+                      disabled={isEditActionDisabled}
                     >
                       {t('edit', { keyPrefix: 'common' })}
-                    </YBButton>
+                    </YBButton></K8OperatorEditBlockedTooltip>
                   </RbacValidator>
                 )}
               </StyledHeader>
@@ -474,15 +498,15 @@ export const AdvancedTab = () => {
                   )}
                   isControl
                 >
-                  <YBButton
+                  <K8OperatorEditBlockedTooltip><YBButton
                     dataTestId="edit-security-transit-button"
                     variant="ghost"
                     startIcon={<EditIcon />}
                     onClick={() => setNetworkPortsModalOpen(true)}
-                    disabled={!isUniverseReady}
+                    disabled={isEditActionDisabled}
                   >
                     {t('edit', { keyPrefix: 'common' })}
-                  </YBButton>
+                  </YBButton></K8OperatorEditBlockedTooltip>
                 </RbacValidator>
               </StyledHeader>
               <StyledContent>
@@ -505,17 +529,17 @@ export const AdvancedTab = () => {
                     )}
                     isControl
                   >
-                    <YBButton
+                    <K8OperatorEditBlockedTooltip><YBButton
                       dataTestId="edit-user-tags-button"
                       variant="ghost"
                       startIcon={<EditIcon />}
                       onClick={() => {
                         setUserTagsModalOpen(true);
                       }}
-                      disabled={!isUniverseReady || providerCode === CloudType.azu}
+                      disabled={isEditActionDisabled || providerCode === CloudType.azu}
                     >
                       {t('edit', { keyPrefix: 'common' })}
-                    </YBButton>
+                    </YBButton></K8OperatorEditBlockedTooltip>
                   </RbacValidator>
                 )}
               </StyledHeader>
@@ -532,18 +556,18 @@ export const AdvancedTab = () => {
                       )}
                       isControl
                     >
-                      <YBButton
+                      <K8OperatorEditBlockedTooltip><YBButton
                         variant="secondary"
                         dataTestId="add-gflags-button"
                         startIcon={<AddCircleIcon />}
                         sx={{ mt: 2 }}
-                        disabled={!isUniverseReady || providerCode === CloudType.azu}
+                        disabled={isEditActionDisabled || providerCode === CloudType.azu}
                         onClick={() => {
                           setUserTagsModalOpen(true);
                         }}
                       >
                         {t('addTags')}
-                      </YBButton>
+                      </YBButton></K8OperatorEditBlockedTooltip>
                     </RbacValidator>
                   </StyledEmptyState>
                 ) : (

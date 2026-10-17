@@ -108,6 +108,14 @@ static bool is_var_in_aggref_only(PlannerInfo *root, Var *var);
 static bool is_var_needed_by_join(PlannerInfo *root, Var *var, RelOptInfo *rel);
 static Index get_expression_sortgroupref(PlannerInfo *root, Expr *expr);
 
+/* YB declarations */
+static List *yb_add_batched_groups(List *groups, List *more,
+								   Relids batchedrelids);
+static List *yb_groups_within(List *groups, Relids relids);
+static ParamPathInfo *yb_ppi_add_batched_groups(ParamPathInfo *ppi,
+											   List *groups,
+											   Relids batchedrelids);
+
 
 /*
  * setup_simple_rel_arrays
@@ -1897,6 +1905,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	double		rows;
 	ListCell   *lc;
 	Relids		batchedrelids = root->yb_cur_batched_relids;
+	List	   *yb_relegated_clauses = NIL;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(baserel->lateral_relids, required_outer));
@@ -1913,7 +1922,12 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 			 yb_find_batched_param_path_info(baserel,
 											 required_outer,
 											 batchedrelids)))
-			return ppi;
+		{
+			List	   *groups = yb_groups_within(root->yb_cur_batched_groups,
+											  required_outer);
+
+			return yb_ppi_add_batched_groups(ppi, groups, batchedrelids);
+		}
 	}
 	else
 	{
@@ -1971,11 +1985,14 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 
 	/*
 	 * YB: When this parameterized path batches one or more outer relations,
-	 * drop any movable clause that references a batched relation but cannot be
-	 * batched.  Pushing it into this scan would reference the batched relation
-	 * with a scalar parameter while the same relation is referenced with a
-	 * batched array elsewhere in the scan (#20495); the dropped clauses are
-	 * re-applied as a join filter instead. (#31760)
+	 * withhold any movable clause that references a batched relation but cannot
+	 * be batched.  Pushing it into this scan would reference the batched
+	 * relation with a scalar parameter while the same relation is referenced
+	 * with a batched array elsewhere in the scan.  The withheld clauses are
+	 * recorded in the ParamPathInfo so that the join directly above re-applies
+	 * them as a join filter (get_joinrel_parampathinfo); a clause that the
+	 * stock movability rules consider enforced here would otherwise be
+	 * enforced nowhere.
 	 */
 	if (yb_enable_base_scans_cost_model && !bms_is_empty(batchedrelids))
 	{
@@ -1988,7 +2005,10 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 			if (bms_overlap(rinfo->clause_relids, batchedrelids) &&
 				!yb_get_batched_restrictinfo(rinfo, batchedrelids,
 											 baserel->relids))
+			{
+				yb_relegated_clauses = lappend(yb_relegated_clauses, rinfo);
 				continue;
+			}
 
 			kept_clauses = lappend(kept_clauses, rinfo);
 		}
@@ -2026,6 +2046,29 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	ppi->ppi_clauses = pclauses;
 	ppi->ppi_serials = pserials;
 	ppi->yb_ppi_req_outer_batched = batchedrelids;
+	ppi->yb_ppi_relegated_clauses = yb_relegated_clauses;
+
+	/*
+	 * Two sources, because neither sees every batched clause.  pclauses covers
+	 * clauses that never become an index condition, but it can miss one that
+	 * does: generate_join_implied_equalities emits one clause per equivalence
+	 * class and scores a plain Var above an expression, while the index path
+	 * may batch on the expression.  yb_cur_batched_groups carries what the path
+	 * being built does batch: the index clauses indxpath.c batched, or the
+	 * children's groups when create_append_path builds a partitioned rel's
+	 * Append.  Those can span more than this parameterization, so keep only the
+	 * ones it supplies.
+	 * What remains over-approximates in the same direction as the ppi_clauses
+	 * rule in yb_has_non_evaluable_bnl_clauses: a path may carry a group it
+	 * does not need, which costs that join order its batching, never
+	 * correctness.
+	 */
+	ppi->yb_ppi_batched_groups =
+		yb_add_batched_groups(yb_clause_batched_groups(pclauses, batchedrelids,
+													   baserel->relids),
+							  yb_groups_within(root->yb_cur_batched_groups,
+											   required_outer),
+							  batchedrelids);
 
 	baserel->ppilist = lappend(baserel->ppilist, ppi);
 
@@ -2077,6 +2120,8 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	List	   *dropped_ecs;
 	double		rows;
 	ListCell   *lc;
+
+	List	   *yb_groups = NIL;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(joinrel->lateral_relids, required_outer));
@@ -2134,6 +2179,30 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 										 inner_path->parent->relids,
 										 inner_and_req))
 			pclauses = lappend(pclauses, rinfo);
+	}
+
+	/*
+	 * YB: The inner path may have withheld clauses that are movable into it
+	 * but reference a batched outer relation without a batched form
+	 * (get_baserel_parampathinfo).  The stock rule above treats any clause
+	 * movable into the inner path as enforced there, so it would skip them
+	 * here as well and they would be enforced nowhere.  Re-add them so this
+	 * join applies them: it is the nearest join at which the batched relation's
+	 * values are available per tuple.  A withheld clause whose relids lie
+	 * within this join already arrives through restrict_clauses.
+	 */
+	if (IsYugaByteEnabled() && inner_path->param_info)
+	{
+		foreach(lc, inner_path->param_info->yb_ppi_relegated_clauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			if (list_member_ptr(pclauses, rinfo) ||
+				list_member_ptr(*restrict_clauses, rinfo))
+				continue;
+
+			pclauses = lappend(pclauses, rinfo);
+		}
 	}
 
 	/* Consider joinclauses generated by EquivalenceClasses, too */
@@ -2325,11 +2394,31 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	 */
 	*restrict_clauses = list_concat(pclauses, *restrict_clauses);
 
+	/*
+	 * YB: Carry the batched groups of both inputs, trimmed to the relations
+	 * this join still needs batched.  The outer input matters as much as the
+	 * inner one: the scan carrying such a group can sit on either side of an
+	 * intervening join, and on the outer side nothing else records it.  A
+	 * group that loses a member here is satisfied -- either the member is
+	 * supplied by this join, which had to supply the whole group to pass
+	 * yb_batched_clause_final_check, or it became unbatched and now
+	 * contributes a scalar parameter.
+	 */
+	if (IsYugaByteEnabled() && !bms_is_empty(req_batchedids))
+	{
+		yb_groups = yb_add_batched_groups(yb_groups,
+										  YB_PATH_BATCHED_GROUPS(outer_path),
+										  req_batchedids);
+		yb_groups = yb_add_batched_groups(yb_groups,
+										  YB_PATH_BATCHED_GROUPS(inner_path),
+										  req_batchedids);
+	}
+
 	/* If we already have a PPI for this parameterization, just return it */
 	if ((ppi = yb_find_batched_param_path_info(joinrel,
 											   required_outer,
 											   req_batchedids)))
-		return ppi;
+		return yb_ppi_add_batched_groups(ppi, yb_groups, req_batchedids);
 
 	/* Estimate the number of rows returned by the parameterized join */
 	rows = get_parameterized_joinrel_size(root, joinrel,
@@ -2351,6 +2440,7 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	ppi->ppi_clauses = NIL;
 	ppi->ppi_serials = NULL;
 	ppi->yb_ppi_req_outer_batched = req_batchedids;
+	ppi->yb_ppi_batched_groups = yb_groups;
 
 	joinrel->ppilist = lappend(joinrel->ppilist, ppi);
 
@@ -3613,4 +3703,126 @@ get_expression_sortgroupref(PlannerInfo *root, Expr *expr)
 
 	/* no match is found */
 	return 0;
+}
+
+/*
+ * yb_clause_batched_groups
+ *	  Sets of batched outer relations that a single batched clause of a base
+ *	  relation scan references together.
+ *
+ * Only relations that are batched here take part.  An unbatched relation in
+ * the same expression supplies a scalar nestloop param that stays fixed for a
+ * whole rescan of this scan, and the array is rebuilt on each rescan, so its
+ * owner may sit at any level without breaking the cross product.  Two batched
+ * relations cannot: each advances on its own batch loop.
+ */
+List *
+yb_clause_batched_groups(List *pclauses, Relids batchedrelids,
+						 Relids inner_relids)
+{
+	List	   *candidates = NIL;
+	ListCell   *lc;
+
+	if (bms_is_empty(batchedrelids))
+		return NIL;
+
+	foreach(lc, pclauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo *batched = yb_get_batched_restrictinfo(rinfo,
+														   batchedrelids,
+														   inner_relids);
+
+		if (batched != NULL)
+			candidates = lappend(candidates, batched->right_relids);
+	}
+
+	return yb_add_batched_groups(NIL, candidates, batchedrelids);
+}
+
+/*
+ * yb_ppi_add_batched_groups
+ *	  Add groups to a cached ParamPathInfo and return it.
+ *
+ * The groups depend on which input paths a path is built from, while the
+ * ParamPathInfo is shared by every path of its parameterization, so they are
+ * accumulated rather than left to whichever path came first.  That is the safe
+ * direction -- a path carrying a group it does not need only loses batching, a
+ * missing one loses rows -- and it keeps the groups out of the cache identity,
+ * where a second ParamPathInfo per parameterization would break the shared
+ * ppi_rows the cache exists for.
+ */
+static ParamPathInfo *
+yb_ppi_add_batched_groups(ParamPathInfo *ppi, List *groups,
+						  Relids batchedrelids)
+{
+	ppi->yb_ppi_batched_groups =
+		yb_add_batched_groups(ppi->yb_ppi_batched_groups, groups,
+							  batchedrelids);
+	return ppi;
+}
+
+/*
+ * yb_groups_within
+ *	  The groups in groups whose relations all lie in relids.
+ *
+ * A group names every batched relation one batched expression reads, so a
+ * path that is not parameterized by all of them cannot be evaluating that
+ * expression, and the group does not constrain it.
+ */
+static List *
+yb_groups_within(List *groups, Relids relids)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, groups)
+	{
+		if (bms_is_subset((Relids) lfirst(lc), relids))
+			result = lappend(result, lfirst(lc));
+	}
+
+	return result;
+}
+
+/*
+ * yb_add_batched_groups
+ *	  Append each group in more to groups, trimmed to batchedrelids, skipping
+ *	  the ones that no longer constrain anything or are already listed.
+ *
+ * De-duplicating keeps the list from growing once per join level per input.
+ */
+static List *
+yb_add_batched_groups(List *groups, List *more, Relids batchedrelids)
+{
+	ListCell   *lc;
+
+	foreach(lc, more)
+	{
+		Relids		group = bms_intersect((Relids) lfirst(lc), batchedrelids);
+		ListCell   *lc2;
+		bool		found = false;
+
+		if (bms_membership(group) != BMS_MULTIPLE)
+		{
+			bms_free(group);
+			continue;
+		}
+
+		foreach(lc2, groups)
+		{
+			if (bms_equal((Relids) lfirst(lc2), group))
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (found)
+			bms_free(group);
+		else
+			groups = lappend(groups, group);
+	}
+
+	return groups;
 }

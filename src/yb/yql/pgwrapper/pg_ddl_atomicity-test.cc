@@ -27,6 +27,7 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
@@ -79,33 +80,17 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back(
-      Format("--ysql_yb_enable_ddl_savepoint_support=$0", TransactionalDdlEnabled()));
-    options->extra_tserver_flags.push_back(
-        Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
-    // Concurrent DDL requires object locking, so when object locking is disabled, disable
-    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
-    // on. When object locking is enabled, leave concurrent DDL at its default.
-    if (!TableLocksEnabled()) {
-      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(
-          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    }
-
+    ToggleDDLMode(options->extra_tserver_flags, LegacyDDLMode());
+    ToggleDDLMode(options->extra_master_flags, LegacyDDLMode());
   }
 
-  virtual bool TransactionalDdlEnabled() const {
-    return true;
-  }
-
-  virtual bool TableLocksEnabled() const {
+  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+  // cross-flag validators in common_flags.cc, so a single knob drives all three.
+  virtual bool LegacyDDLMode() const {
     // The tests assert for transaction verification errors in case of concurrent/conflicting DDLs.
     // But with object locks, conflicting DDLs get serialized, and the latter one times out with
     // various potential errors. Hence disabling table locking for this test.
-    return false;
+    return true;
   }
 
   void CreateTable(const string& tablename) {
@@ -342,9 +327,9 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
   }
 
-  bool TransactionalDdlEnabled() const override {
+  bool LegacyDDLMode() const override {
     // Tests toggle ddl atomicity flag, which transactional ddl depends on.
-    return false;
+    return true;
   }
 };
 
@@ -1041,25 +1026,11 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
-    // Concurrent DDL requires object locking, so when object locking is disabled, disable
-    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
-    // on. When object locking is enabled, leave concurrent DDL at its default.
-    if (!TableLocksEnabled()) {
-      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-      AppendFlagToAllowedPreviewFlagsCsv(
-          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    }
-    options->extra_tserver_flags.push_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
-    // DDL savepoint requires transactional DDL to be enabled, so keep the flags in sync.
-    options->extra_tserver_flags.push_back(
-        yb::Format("--ysql_yb_enable_ddl_savepoint_support=$0", TableLocksEnabled()));
+    ToggleDDLMode(options->extra_tserver_flags, LegacyDDLMode());
+    ToggleDDLMode(options->extra_master_flags, LegacyDDLMode());
   }
 
-  bool TransactionalDdlEnabled() const override { return true; }
-  bool TableLocksEnabled() const override { return GetParam(); }
+  bool LegacyDDLMode() const override { return !GetParam(); }
 };
 
 TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
@@ -1082,7 +1053,7 @@ TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   ASSERT_OK(conn2.Execute("SET statement_timeout = '" + std::to_string(kTimeoutSec) + "s'"));
 
-  if (TableLocksEnabled()) {
+  if (!LegacyDDLMode()) {
     // Conn2 will have to fail because it cannot get the table locks held by conn1.
     ASSERT_NOK(conn2.TestFailDdl(AddColumnStmt(table)));
     ASSERT_OK(conn1.Execute("ABORT"));
@@ -1597,10 +1568,6 @@ class PgLibPqTableRewrite:
     } else {
       options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     }
-  }
-
-  bool TransactionalDdlEnabled() const override {
-    return GetParam();
   }
 
  protected:
@@ -2150,8 +2117,9 @@ TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponseAndLeaderChange) {
   SleepFor(2s * kTimeMultiplier);
 
   // Step down transaction status tablet leaders to force retries to reach a new leader.
-  // Some step-downs may fail transiently (e.g. a peer still in PRE_VOTER state during
-  // bootstrap), which is fine: we just need at least one leadership change.
+  // Some step-downs may fail transiently (e.g. a live PRE_VOTER still bootstrapping, or the
+  // nominated peer is not caught up yet), which is fine: we just need at least one leadership
+  // change.
   int stepped_down = 0;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     auto tablets = ASSERT_RESULT(cluster_->GetTablets(cluster_->tablet_server(i)));

@@ -35,9 +35,9 @@
 #include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/rolling_log.h"
@@ -46,7 +46,6 @@
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 
@@ -72,7 +71,7 @@ class RollingLogTest : public YBTest {
       ASSERT_TRUE(HasPrefixString(child, "rolling_log-test."));
       ASSERT_STR_CONTAINS(child, ".mylog.");
 
-      string pid_suffix = Substitute("$0", getpid());
+      string pid_suffix = Format("$0", getpid());
       ASSERT_TRUE(HasSuffixString(child, pid_suffix) ||
                   HasSuffixString(child, pid_suffix + ".gz")) << "bad child: " << child;
     }

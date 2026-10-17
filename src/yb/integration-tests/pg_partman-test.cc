@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/util/env_util.h"
@@ -34,13 +35,8 @@ class PgPartmanTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     // (Auto Analyze #28389)
     opts.extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     // TODO(#28726): Reenable once pg_partman supports transactional ddl.
-    opts.extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint requires transactional DDL, so keep the two flags consistent.
-    opts.extra_tserver_flags.push_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    opts.extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    opts.extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(opts.extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(opts.extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(opts.extra_master_flags, /* use_legacy = */ true);
 
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());

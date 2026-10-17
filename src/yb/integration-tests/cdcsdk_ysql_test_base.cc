@@ -41,6 +41,14 @@ DECLARE_bool(cdc_write_post_apply_metadata);
 
 namespace yb {
 namespace cdc {
+
+namespace {
+
+const auto kGetAllPendingChangesTimeout = MonoDelta::FromSeconds(300);
+const auto kGetAllPendingChangesRetryInterval = MonoDelta::FromMilliseconds(100);
+
+}  // namespace
+
 Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   yb::master::GetMasterClusterConfigRequestPB req;
   yb::master::GetMasterClusterConfigResponsePB resp;
@@ -1829,7 +1837,7 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
     const xrepl::StreamId& stream_id,
     const YBTableName& table,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-    std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+    std::map<TabletId, CDCSDKCheckpointPB>& tablet_to_checkpoint,
     const int64 expected_total_records,
     bool explicit_checkpointing_enabled,
     std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records) {
@@ -2158,17 +2166,18 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     const CDCSDKCheckpointPB* cp,
     int tablet_idx,
     int64 safe_hybrid_time,
-    int wal_segment_index) {
+    int wal_segment_index,
+    int expected_records_count) {
   GetAllPendingChangesResponse resp;
 
-  int prev_records = 0;
   CDCSDKCheckpointPB prev_checkpoint;
   int64 prev_safetime = safe_hybrid_time;
   int prev_index = wal_segment_index;
   const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
   int count[8] = {};
+  const auto deadline = CoarseMonoClock::now() + kGetAllPendingChangesTimeout;
 
-  do {
+  for (;;) {
     GetChangesResponsePB change_resp;
     auto get_changes_result = GetChangesFromCDC(
         stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
@@ -2191,8 +2200,16 @@ CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChange
     prev_checkpoint_ptr = &prev_checkpoint;
     prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
     prev_index = change_resp.wal_segment_index();
-    prev_records = change_resp.cdc_sdk_proto_records_size();
-  } while (prev_records != 0);
+
+    if (change_resp.cdc_sdk_proto_records_size() != 0) {
+      continue;
+    }
+    if (std::cmp_greater_equal(resp.records.size(), expected_records_count) ||
+        CoarseMonoClock::now() >= deadline) {
+      break;
+    }
+    SleepFor(kGetAllPendingChangesRetryInterval);
+  }
 
 
   resp.checkpoint = prev_checkpoint;
@@ -3044,7 +3061,15 @@ void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
     const int expected_num_tablets) {
   ASSERT_OK(WaitFor(
       [this, tablet_id, &table, &expected_num_tablets]() -> Result<bool> {
-        auto status = SplitTablet(tablet_id, &test_cluster_);
+        // Split needs an SST in the regular DB. Transactional writes are applied to it
+        // asynchronously, so an earlier flush may have left the rows in the memtable.
+        auto status = WaitForFlushTables(
+            {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+            /* is_compaction = */ false);
+        if (!status.ok()) {
+          return false;
+        }
+        status = SplitTablet(tablet_id, &test_cluster_);
         if (!status.ok()) {
           return false;
         }
@@ -3559,8 +3584,10 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);
@@ -3678,7 +3705,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
       kValue2ColumnName, kValue3ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
-  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // The txn is streamed only after its APPLY is replicated, which may lag behind commit.
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 9, /* is_explicit_checkpoint = */ true));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   // Number of columns for the above insert records should be 3.
   for (uint32_t idx = 0; idx < record_size; idx++) {
@@ -3700,8 +3729,9 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  const auto checkpoint = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 10, /* is_explicit_checkpoint = */ true, &checkpoint));
   record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t idx = 0; idx < record_size; idx++) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(idx);

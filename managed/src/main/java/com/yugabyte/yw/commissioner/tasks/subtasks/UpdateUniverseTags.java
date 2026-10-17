@@ -32,6 +32,7 @@ public class UpdateUniverseTags extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public UUID clusterUUID;
+    public UUID providerUUID;
     public Map<String, String> instanceTags;
   }
 
@@ -64,7 +65,8 @@ public class UpdateUniverseTags extends UniverseTaskBase {
             // Update the tags.
             UserIntent userIntent =
                 universeDetails.getClusterByUuid(taskParams().clusterUUID).userIntent;
-            userIntent.instanceTags = taskParams().instanceTags;
+            userIntent.setProviderInstanceTags(
+                taskParams().providerUUID, taskParams().instanceTags);
             universe.setUniverseDetails(universeDetails);
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

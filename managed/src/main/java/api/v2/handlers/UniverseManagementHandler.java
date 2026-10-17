@@ -34,6 +34,7 @@ import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
@@ -51,8 +52,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.ManageCrossCloudFederationUniverse;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -112,6 +113,7 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -305,7 +307,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         continue;
       }
       ClusterEditSpec merged = new ClusterEditSpec();
-      ClusterMapper.INSTANCE.deepCopyClusterEditSpecWithoutPlacementSpec(primaryCluster, merged);
+      ClusterMapper.INSTANCE.deepCopyInheritableClusterEditSpec(primaryCluster, merged);
       ClusterMapper.INSTANCE.deepCopyClusterEditSpec(cluster, merged);
       clusters.add(merged);
     }
@@ -318,7 +320,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
-    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
+    JsonNode dbUniverseDetailsJson = Json.toJson(dbUniverse.getUniverseDetails());
     // Must be captured here, before the edit spec is mapped below: that mapping uses
     // dbUniverse.getUniverseDetails() as its @MappingTarget, i.e. it overwrites the in-memory
     // persisted placement with the requested one. Anything read from dbUniverse after that point
@@ -326,7 +328,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
-    // inherit RR cluster properties from primary cluster in given edit spec
+    // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
@@ -357,7 +359,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
-      clearMasterFieldsIfNotDedicated(cluster.userIntent);
+      clearNonDedicatedFields(cluster.userIntent);
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -429,7 +431,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             Audit.ActionType.Update,
             Json.toJson(v1Params),
             taskUUID,
-            dbUniverseJson);
+            dbUniverseDetailsJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
@@ -579,8 +581,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             || clusterAddSpec.getNodeSpec().getDedicatedNodes() == null)) {
       newReadReplica.userIntent.dedicatedNodes = false;
     }
-    // Copied from a dedicated primary; clear master fields for non-dedicated RR.
-    clearMasterFieldsIfNotDedicated(newReadReplica.userIntent);
+    // Copied from a dedicated primary; clear fields for non-dedicated RR.
+    clearNonDedicatedFields(newReadReplica.userIntent);
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
@@ -599,16 +601,28 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
   }
 
-  // Drop master settings cloned from a dedicated primary onto a non-dedicated cluster.
-  private static void clearMasterFieldsIfNotDedicated(UserIntent userIntent) {
+  // Drop settings cloned from a dedicated primary onto a non-dedicated cluster.
+  private static void clearNonDedicatedFields(UserIntent userIntent) {
     if (userIntent == null || userIntent.dedicatedNodes) {
       return;
     }
+    // Legacy fields are what configure() rejects. The specification initializer only updates
+    // provider specs, and there is no provider UUID to iterate before one is chosen.
     userIntent.masterInstanceType = null;
     userIntent.masterDeviceInfo = null;
+    userIntent
+        .getAllProviderUUIDs()
+        .forEach(
+            providerUUID -> {
+              Util.providerInitializerForExistingIntent(userIntent, providerUUID)
+                  .setMasterInstanceType(null)
+                  .setMasterDeviceInfo(null);
+            });
     UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
     if (overrides != null && overrides.getPerProcess() != null) {
-      overrides.getPerProcess().remove(ServerType.MASTER);
+      // Otherwise after dedicated->non-dedicated switch, any tserver overrides that remain will
+      // take precedence over the main field (which the UI uses for non-dedicated configuration).
+      overrides.getPerProcess().clear();
     }
   }
 
@@ -702,8 +716,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       Map<UUID, ImageBundle> imageBundles = new HashMap<>();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
-        UUID imageBundleUUID = cluster.userIntent.imageBundleUUID;
-        if (imageBundleUUID != null) {
+        for (UUID imageBundleUUID : cluster.userIntent.getAllImageBundles()) {
           ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
           if (imageBundle != null && !imageBundles.containsKey(imageBundleUUID)) {
             imageBundles.put(imageBundleUUID, imageBundle);
@@ -711,11 +724,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
       if (imageBundles.isEmpty()) {
-        UUID providerUUID =
-            UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider);
-        List<ImageBundle> defaultBundles = ImageBundle.getDefaultForProvider(providerUUID);
-        for (ImageBundle defaultBundle : defaultBundles) {
-          imageBundles.put(defaultBundle.getUuid(), defaultBundle);
+        for (UUID providerUUID :
+            universeDetails.getPrimaryCluster().userIntent.getAllProviderUUIDs()) {
+          List<ImageBundle> defaultBundles = ImageBundle.getDefaultForProvider(providerUUID);
+          for (ImageBundle defaultBundle : defaultBundles) {
+            imageBundles.put(defaultBundle.getUuid(), defaultBundle);
+          }
         }
       }
 
@@ -1232,6 +1246,50 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
+  }
+
+  /**
+   * Enables (or disables) cross-cloud federated IAM on an existing universe, retroactively
+   * configuring all current nodes. On enable, prechecks that the universe's provider has federated
+   * IAM enabled with an audience set.
+   */
+  public YBATask manageCrossCloudFederation(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCrossCloudFederationSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    boolean enabled = spec != null && Boolean.TRUE.equals(spec.getEnabled());
+    if (enabled) {
+      UniverseDefinitionTaskParams.Cluster primary =
+          universe.getUniverseDetails().getPrimaryCluster();
+      Provider provider =
+          (primary != null && primary.userIntent != null)
+              ? Provider.getOrBadRequest(UUID.fromString(primary.userIntent.provider))
+              : null;
+      if (provider == null
+          || CloudInfoInterface.getCrossCloudFederationTargets(provider).isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Enable federated IAM and set the audience on this universe's provider before enabling"
+                + " it on the universe.");
+      }
+      if (primary.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
+      }
+    }
+    ManageCrossCloudFederationUniverse.Params params =
+        new ManageCrossCloudFederationUniverse.Params();
+    params.setUniverseUUID(uniUUID);
+    params.enabled = enabled;
+    UUID taskUuid = commissioner.submit(TaskType.ManageCrossCloudFederationUniverse, params);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ManageCrossCloudFederation,
+        universe.getName());
+    return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
   }
 
   /**

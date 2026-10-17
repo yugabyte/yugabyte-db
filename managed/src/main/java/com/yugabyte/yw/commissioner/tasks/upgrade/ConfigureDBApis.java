@@ -76,7 +76,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                     node -> {
                       Cluster cluster =
                           universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-                      return cluster != null && cluster.userIntent.providerType == CloudType.onprem;
+                      return cluster != null
+                          && cluster.getProviderCloudType(node) == CloudType.onprem;
                     })
                 .collect(Collectors.toList());
         if (!onpremNodes.isEmpty()) {
@@ -120,7 +121,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
-
           // update password from default to new custom password.
           createUpdateAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
@@ -165,6 +165,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 taskParams().isYbcInstalled());
             createPersistMultiTenancyTask(mtConfig).setSubTaskGroupType(getTaskSubGroupType());
           }
+
+          // The load balancers forward the API ports, which these subtasks read when they run.
+          // Last,
+          // so a load balancer error can't leave auth on with the default password.
+          createEnsureManagedLoadBalancerTasks(universe.getUniverseDetails().getPrimaryCluster());
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
         });
   }
 

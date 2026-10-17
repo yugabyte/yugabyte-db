@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
@@ -318,7 +319,9 @@ public class DRDbScopedLocalTest extends DRDbScopedLocalTestBase {
     // Perform full move on source universe.
     UniverseDefinitionTaskParams.Cluster sourceCluster =
         sourceUniverse.getUniverseDetails().getPrimaryCluster();
-    sourceCluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(sourceCluster.userIntent)
+        .setInstanceType(INSTANCE_TYPE_CODE_2);
+
     PlacementInfoUtil.updateUniverseDefinition(
         sourceUniverse.getUniverseDetails(),
         customer.getId(),
@@ -343,7 +346,9 @@ public class DRDbScopedLocalTest extends DRDbScopedLocalTestBase {
     // Perform full move on target universe.
     UniverseDefinitionTaskParams.Cluster targetCluster =
         targetUniverse.getUniverseDetails().getPrimaryCluster();
-    targetCluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(targetCluster.userIntent)
+        .setInstanceType(INSTANCE_TYPE_CODE_2);
+
     PlacementInfoUtil.updateUniverseDefinition(
         targetUniverse.getUniverseDetails(),
         customer.getId(),

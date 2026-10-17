@@ -37,7 +37,7 @@ Use the `REASSIGN OWNED` statement to change the ownership of database objects o
 
 ## See also
 
-- [`DROP OWNED`](../dcl_drop_owned)
-- [`CREATE ROLE`](../dcl_create_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [DROP OWNED](../dcl_drop_owned)
+- [CREATE ROLE](../dcl_create_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

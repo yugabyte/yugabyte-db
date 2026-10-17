@@ -224,7 +224,12 @@ TEST(SliceTest, OrderConsistency) {
   LOG(INFO) << "made_checks: " << made_checks;
 }
 
-TEST(SliceTest, DebugStringLength) {
+TEST(SliceTest, DebugStringLengthAndLocale) {
+  // On macOS in a UTF-8 locale isgraph() accepts bytes >= 0xA1, so ToDebugString leaked them
+  // into logs unescaped. Run under a UTF-8 locale to verify rendering is locale-independent.
+  const std::string saved_locale = setlocale(LC_ALL, nullptr);
+  setlocale(LC_ALL, "en_US.UTF-8");
+
   constexpr auto kNumIters = 1000;
   constexpr auto kSize = 1024;
   for (auto i = 0; i < kNumIters; ++i) {
@@ -236,10 +241,24 @@ TEST(SliceTest, DebugStringLength) {
     ASSERT_LE(debug_str.size(), max_len * 2 + 40)
         << " max_len: " << max_len << " debug_str: " << debug_str;
 
+    // Mostly-graph data stays under the hex-rendering threshold, so non-graph bytes are
+    // escaped individually.
+    std::string mixed(kSize, 'a');
+    for (auto j = 0; j < kSize / 20; ++j) {
+      mixed[RandomUniformInt(0, kSize - 1)] = static_cast<char>(RandomUniformInt(0, 255));
+    }
+    for (const auto& str : {debug_str, Slice(mixed).ToDebugString(0)}) {
+      for (const char c : str) {
+        ASSERT_TRUE(c >= ' ' && c < 0x7f) << "garbage in: " << str;
+      }
+    }
+
     if (max_len < 100) {
       YB_LOG_EVERY_N(INFO, 10) << debug_str;
     }
   }
+
+  setlocale(LC_ALL, saved_locale.c_str());
 }
 
 } // namespace yb

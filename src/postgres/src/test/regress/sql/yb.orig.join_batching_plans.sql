@@ -164,19 +164,23 @@ create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));
 create table s3(a int, primary key (a asc));
 
-insert into s1 select generate_series(1,10);
-insert into s2 select generate_series(1,10);
-insert into s3 select generate_series(1,10);
+-- s1 and s2 hold every tenth value of s3's range, so the rows the lower join
+-- produces are spread over the whole of s3 rather than over a prefix of it.
+insert into s1 select i * 10 from generate_series(1, 2048) i;
+insert into s2 select i * 10 from generate_series(1, 2048) i;
+insert into s3 select generate_series(1, 10240);
 ANALYZE s1;
 ANALYZE s2;
 ANALYZE s3;
 
+-- The unhinted top leg should be a batched nested loop join.
 explain (costs off) /*+Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
-on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a <= 10240;
 
 drop table s1;
 drop table s2;
 drop table s3;
+
 
 create table test2 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
 insert into test2 values (1,0, 2,0,1), (2,0, 3,0,3), (2,0,3,0,5);
@@ -217,11 +221,13 @@ insert into q2 select i, i / 2 from generate_series(0, 999) i;
 analyze q1;
 analyze q2;
 
--- Make sure a sort node is inserted above a batched NL join when appropriate
+-- Make sure a sort node is inserted above a batched NL join when appropriate.
+-- The LIMIT must ask for enough rows to pay for a BNL's first batch: a BNL
+-- completes it before returning a row, so a small LIMIT favors a plain NL.
 
-explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
 
-explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 100;
 
 
 delete from q1;

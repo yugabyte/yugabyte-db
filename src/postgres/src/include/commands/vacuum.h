@@ -173,6 +173,10 @@ typedef struct VacAttrStats
 	Datum	   *exprvals;		/* access info for index fetch function */
 	bool	   *exprnulls;
 	int			rowstride;
+
+	/* YB fields */
+
+	int			yb_width_cap;	/* see commands/yb_analyze.h */
 } VacAttrStats;
 
 /* flag bits for VacuumParams->options */
@@ -433,6 +437,14 @@ extern void analyze_rel(Oid relid, RangeVar *relation,
 extern bool attribute_is_analyzable(Relation onerel, int attnum, Form_pg_attribute attr,
 									int *p_attstattarget);
 extern bool std_typanalyze(VacAttrStats *stats);
+
+/*
+ * YB: Hook fired after ANALYZE refreshes each relation's statistics, while its
+ * locks are still held. xCluster uses it to tell the target to refresh its own
+ * statistics because ANALYZE does not fire ddl_command_end.
+ */
+typedef void (*YbAnalyzeRelEnd_hook_type) (Oid relid);
+extern PGDLLIMPORT YbAnalyzeRelEnd_hook_type YbAnalyzeRelEnd_hook;
 
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */
 extern double anl_random_fract(void);

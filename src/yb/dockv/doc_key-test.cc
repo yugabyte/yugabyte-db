@@ -22,7 +22,6 @@
 
 #include "yb/rocksdb/table.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"

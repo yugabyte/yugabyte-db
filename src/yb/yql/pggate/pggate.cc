@@ -767,8 +767,8 @@ PgApiImpl::PgApiImpl(
       pg_callbacks_(callbacks),
       wait_event_watcher_(
           [starter = pg_callbacks_.PgstatReportWaitStart](
-              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
-            return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
+              ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc, uint32_t aux) {
+            return PgWaitEventWatcher{starter, wait_event, pggate_rpc, aux};
       }),
       is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
       pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
@@ -811,6 +811,10 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
     }
   }
 #endif
+}
+
+void PgApiImpl::SetConnectedDatabaseOid(YbcPgOid dboid) {
+  pg_txn_manager_->SetConnectedDatabaseOid(dboid);
 }
 
 void PgApiImpl::Interrupt() {
@@ -1436,6 +1440,7 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  req.set_origination_ht(pg_txn_manager_->GetOriginationHt());
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
@@ -2049,6 +2054,10 @@ void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
   };
 }
 
+uint32_t PgApiImpl::GetSharedYsqlCatalogPrefetchLoad() const {
+  return tserver_shared_object_.ysql_catalog_prefetch_load();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
     return tserver_shared_object_.ysql_catalog_version();
@@ -2154,9 +2163,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction(int64_t start_time) {
+Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time) {
   fk_reference_cache_.Clear();
-  return pg_txn_manager_->BeginTransaction(start_time);
+  return pg_txn_manager_->BeginTransaction(start_time, origination_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
@@ -2337,12 +2346,25 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+}
+
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
   return pg_session_->CurrentTransactionUsesFastPath();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+void PgApiImpl::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, const char* transaction_id) {
+  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+}
+
+void PgApiImpl::ResetHistoricalReadContext() {
+  pg_session_->ResetHistoricalReadContext();
 }
 
 ReadHybridTime PgApiImpl::GetCatalogReadTime() const {

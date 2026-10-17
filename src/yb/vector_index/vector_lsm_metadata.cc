@@ -13,6 +13,8 @@
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
+#include "yb/vector_index/vector_payload_map.h"
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -143,10 +145,19 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
   result.next_free_file_no = raw.next_free_file_no;
 
   // All chunks loaded, apply add/remove updates to get the current version.
+  // A chunk that holds no vector has no file and so gets no serial no, and an index accumulates
+  // one such chunk per frontier update, so they cannot share the serial no keyed map: it would
+  // keep one of them and drop the frontiers of all the others. They are never named by a removal
+  // either, since only a chunk that has a file can be removed, so keep them in a separate list.
   std::unordered_map<uint64_t, VectorLSMChunkPB*> chunks_map;
+  std::vector<VectorLSMChunkPB*> chunks_without_serial_no;
   for (auto& update : raw.updates) {
     for (auto& chunk : *update.mutable_add_chunks()) {
-      chunks_map.emplace(chunk.serial_no(), &chunk);
+      if (chunk.serial_no()) {
+        chunks_map.emplace(chunk.serial_no(), &chunk);
+      } else {
+        chunks_without_serial_no.push_back(&chunk);
+      }
     }
     for (const auto chunk_no : update.remove_chunks()) {
       if (!chunks_map.erase(chunk_no)) {
@@ -155,8 +166,11 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::s
     }
   }
 
-  result.chunks.reserve(chunks_map.size());
+  result.chunks.reserve(chunks_map.size() + chunks_without_serial_no.size());
   for (auto& [_, chunk] : chunks_map) {
+    result.chunks.push_back(std::move(*chunk));
+  }
+  for (auto* chunk : chunks_without_serial_no) {
     result.chunks.push_back(std::move(*chunk));
   }
 
@@ -200,6 +214,33 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 
 std::string VectorLSMMetadataLoadResult::ToString() const {
   return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
+}
+
+Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir) {
+  auto files = VERIFY_RESULT(env->GetChildren(dir));
+  std::erase_if(files, [](const auto& file) {
+    return !file.ends_with(".meta") && !file.contains("vectorindex");
+  });
+  VectorLSMFiles result;
+  const auto payload_file_suffix = VectorIndexPayloadFilePath(std::string());
+  for (const auto& file : files) {
+    if (!file.ends_with(payload_file_suffix)) {
+      continue;
+    }
+    result.has_payload_files = true;
+    auto chunk_file = file.substr(0, file.size() - payload_file_suffix.size());
+    SCHECK(std::find(files.begin(), files.end(), chunk_file) != files.end(), IllegalState,
+           "Payload file without the chunk file: $0", file);
+  }
+  std::erase_if(files, [&payload_file_suffix](const auto& file) {
+    return file.ends_with(payload_file_suffix);
+  });
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs) {
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
+  result.manifest_and_chunk_files = std::move(files);
+  return result;
 }
 
 }  // namespace yb::vector_index

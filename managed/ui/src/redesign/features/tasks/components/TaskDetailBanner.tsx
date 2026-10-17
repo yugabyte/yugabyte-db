@@ -15,6 +15,7 @@ import { useLocalStorage } from 'react-use';
 import { noop, values } from 'lodash';
 import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { OperationBannerVariant, YBOperationBanner } from '@yugabyte-ui-library/core';
 
 import { TASK_SHORT_TIMEOUT } from '@app/components/tasks/constants';
 import { DbUpgradeManagementSidePanel } from '@app/redesign/features/universe/universe-actions/software-upgrade/upgrade-management/DbUpgradeManagementSidePanel';
@@ -35,6 +36,10 @@ import {
   getIsDbUpgradePrecheckTask,
   getIsDbUpgradeRollbackTask,
   getIsDbUpgradeTask,
+  getIsEditUniverseRollbackTask,
+  getIsEditUniverseTask,
+  getIsSoftwareUpgradeLockingTask,
+  getLatestSoftwareUpgradeLockingTaskForUniverse,
   isSoftwareUpgradeFailed,
   useIsTaskNewUIEnabled
 } from '../TaskUtils';
@@ -48,10 +53,9 @@ import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTa
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
 import { DbUpgradeTaskBanner } from './clusterBanner/DbUpgradeTaskBanner';
-import {
-  ClusterOperationBanner,
-  ClusterOperationBannerType
-} from './clusterBanner/ClusterOperationBanner';
+import { EditUniverseRollbackTaskBanner } from './clusterBanner/EditUniverseRollbackTaskBanner';
+import { EditUniverseTaskBanner } from './clusterBanner/EditUniverseTaskBanner';
+import { OperationBannerWaveIcon } from './clusterBanner/operationBannerIcons';
 import { YBButton } from '@app/redesign/components';
 import {
   getUniverseStatus,
@@ -104,17 +108,13 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
 
   // This query is used to update the redux store with the latest task list.
-  useQuery(
-    taskQueryKey.universe(universeUUID),
-    () => api.fetchCustomerTasks(universeUUID),
-    {
-      enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
-      refetchInterval: TASK_SHORT_TIMEOUT,
-      onSuccess(data) {
-        dispatch(patchTasksForCustomer(universeUUID, data));
-      }
+  useQuery(taskQueryKey.universe(universeUUID), () => api.fetchCustomerTasks(universeUUID), {
+    enabled: !!universeUUID && isNewTaskDetailsUIEnabled && isCanaryUpgradeEnabled,
+    refetchInterval: TASK_SHORT_TIMEOUT,
+    onSuccess(data) {
+      dispatch(patchTasksForCustomer(universeUUID, data));
     }
-  );
+  });
 
   const universeDetailsQuery = useQuery(
     universeQueryKey.detailsV2(universeUUID),
@@ -129,14 +129,14 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   // Old task components use redux store. We want to make sure we display the same progress across the ui.
   const taskList = useSelector((data: any) => data.tasks);
 
-  const tasksInUniverse = taskList.customerTaskList;
+  const customerTaskList: Task[] = taskList.customerTaskList ?? [];
 
-  // always display the last task in the banner
-  const task = values(tasksInUniverse)
+  // Primary slot: most recent task for this universe (may stack with software upgrade banner below).
+  const lastCreatedTask = values(customerTaskList)
     .filter((t) => t.targetUUID === universeUUID)
     .sort((a, b) => (moment(b.createTime).isBefore(a.createTime) ? -1 : 1))[0];
 
-  const taskUUID = task?.id;
+  const taskUUID = lastCreatedTask?.id;
 
   const queryClient = useQueryClient();
   const lastInvalidatedForTaskIdRef = useRef<string | undefined>(undefined);
@@ -150,138 +150,206 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   // Refetch v2 universe (useGetUniverse) when the banner's newest task for this universe reaches a
   // terminal state. Semantics: follows the latest customerTaskList row for universeUUID, not a specific edit.
   useEffect(() => {
-    if (!isNewTaskDetailsUIEnabled || !universeUUID || !task?.id) return;
+    if (!isNewTaskDetailsUIEnabled || !universeUUID || !lastCreatedTask?.id) return;
 
     const isTerminal =
-      task.status === TaskState.SUCCESS ||
-      task.status === TaskState.FAILURE ||
-      task.status === TaskState.ABORTED;
+      lastCreatedTask.status === TaskState.SUCCESS ||
+      lastCreatedTask.status === TaskState.FAILURE ||
+      lastCreatedTask.status === TaskState.ABORTED;
 
     if (!isTerminal) return;
-    if (lastInvalidatedForTaskIdRef.current === task.id) return;
+    if (lastInvalidatedForTaskIdRef.current === lastCreatedTask.id) return;
 
-    lastInvalidatedForTaskIdRef.current = task.id;
+    lastInvalidatedForTaskIdRef.current = lastCreatedTask.id;
     void refreshUniverse();
     void queryClient.invalidateQueries(getGetUniverseQueryKey(universeUUID));
     void queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUUID));
   }, [
     isNewTaskDetailsUIEnabled,
     universeUUID,
-    task?.id,
-    task?.status,
+    lastCreatedTask?.id,
+    lastCreatedTask?.status,
     queryClient,
     refreshUniverse
   ]);
 
-  const toggleTaskDetailsDrawer = (flag: boolean) => {
+  const toggleTaskDetailsDrawer = (flag: boolean, drawerTaskUUID?: string) => {
+    const drawerTaskId = drawerTaskUUID ?? taskUUID;
     if (flag) {
-      dispatch(showTaskInDrawer(taskUUID));
+      dispatch(showTaskInDrawer(drawerTaskId));
     } else {
       dispatch(hideTaskInDrawer());
     }
   };
 
-  const hideBanner = () => {
-    setAcknowlegedTasks({ ...acknowlegedTasks, [universeUUID!]: taskUUID });
+  const hideBanner = (dismissedTaskId: string) => {
+    setAcknowlegedTasks({ ...acknowlegedTasks, [universeUUID!]: dismissedTaskId });
   };
 
-  // display banner based on type
-  const bannerComp = useCallback(
-    (task: Task) => {
-      switch (task.status) {
-        case TaskState.RUNNING:
-          return (
-            <TaskInProgressBanner
-              currentTask={task}
-              viewDetails={() => {
-                toggleTaskDetailsDrawer(true);
-              }}
-              onClose={noop}
-            />
-          );
-        case TaskState.SUCCESS:
-          return (
-            <TaskSuccessBanner
-              currentTask={task}
-              viewDetails={() => {
-                toggleTaskDetailsDrawer(true);
-              }}
-              onClose={() => hideBanner()}
-            />
-          );
-        case TaskState.FAILURE:
-          if (isSoftwareUpgradeFailed(task, universeData)) {
-            return (
-              <TaskFailedSoftwareUpgradeBanner
-                currentTask={task}
-                viewDetails={() => {
-                  toggleTaskDetailsDrawer(true);
-                }}
-                onClose={() => hideBanner()}
-              />
-            );
-          }
-          return (
-            <TaskFailedBanner
-              currentTask={task}
-              viewDetails={() => {
-                toggleTaskDetailsDrawer(true);
-              }}
-              onClose={() => hideBanner()}
-            />
-          );
-        default:
+  const isBannerDismissedForTask = (bannerTaskId: string) =>
+    !!(universeUUID && acknowlegedTasks?.[universeUUID] === bannerTaskId);
+
+  // Status-only banners for tasks without a dedicated banner component.
+  const renderGenericTaskBanner = (bannerTask: Task) => {
+    switch (bannerTask.status) {
+      case TaskState.RUNNING:
+        return (
+          <TaskInProgressBanner
+            currentTask={bannerTask}
+            viewDetails={() => {
+              toggleTaskDetailsDrawer(true, bannerTask.id);
+            }}
+            onClose={noop}
+          />
+        );
+      case TaskState.SUCCESS:
+        return (
+          <TaskSuccessBanner
+            currentTask={bannerTask}
+            viewDetails={() => {
+              toggleTaskDetailsDrawer(true, bannerTask.id);
+            }}
+            onClose={() => hideBanner(bannerTask.id)}
+          />
+        );
+      case TaskState.FAILURE:
+        return (
+          <TaskFailedBanner
+            currentTask={bannerTask}
+            viewDetails={() => {
+              toggleTaskDetailsDrawer(true, bannerTask.id);
+            }}
+            onClose={() => hideBanner(bannerTask.id)}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderBannerForTask = (bannerTask: Task): JSX.Element | null => {
+    if (isCanaryUpgradeEnabled) {
+      if (getIsDbUpgradePrecheckTask(bannerTask)) {
+        if (isBannerDismissedForTask(bannerTask.id)) {
           return null;
+        }
+        return (
+          <div className={classes.bannerContainer}>
+            <DbUpgradePrecheckTaskBanner
+              task={bannerTask}
+              universeUuid={universeUUID}
+              onDismiss={() => hideBanner(bannerTask.id)}
+            />
+          </div>
+        );
       }
-    },
-    [taskUUID]
-  );
+
+      if (getIsDbUpgradeRollbackTask(bannerTask)) {
+        return (
+          <div className={classes.bannerContainer}>
+            <DbUpgradeRollbackTaskBanner task={bannerTask} universeUuid={universeUUID} />
+          </div>
+        );
+      }
+
+      if (getIsDbUpgradeFinalizeTask(bannerTask)) {
+        return (
+          <div className={classes.bannerContainer}>
+            <DbUpgradeFinalizeTaskBanner task={bannerTask} universeUuid={universeUUID} />
+          </div>
+        );
+      }
+
+      if (getIsDbUpgradeTask(bannerTask)) {
+        return (
+          <div className={classes.bannerContainer}>
+            <DbUpgradeTaskBanner
+              task={bannerTask}
+              universeUuid={universeUUID}
+              isUpgradeCompletedBannerDismissed={isBannerDismissedForTask(bannerTask.id)}
+              onDismissUpgradeCompletedBanner={() => hideBanner(bannerTask.id)}
+            />
+          </div>
+        );
+      }
+    }
+
+    if (isBannerDismissedForTask(bannerTask.id)) {
+      return null;
+    }
+
+    if (getIsEditUniverseRollbackTask(bannerTask)) {
+      return (
+        <div className={classes.bannerContainer}>
+          <EditUniverseRollbackTaskBanner task={bannerTask} universeUuid={universeUUID} />
+        </div>
+      );
+    }
+
+    if (getIsEditUniverseTask(bannerTask)) {
+      return (
+        <div className={classes.bannerContainer}>
+          <EditUniverseTaskBanner
+            task={bannerTask}
+            universeUuid={universeUUID}
+            onDismiss={() => hideBanner(bannerTask.id)}
+          />
+        </div>
+      );
+    }
+
+    if (
+      bannerTask.status === TaskState.FAILURE &&
+      isSoftwareUpgradeFailed(bannerTask, universeData)
+    ) {
+      return (
+        <TaskFailedSoftwareUpgradeBanner
+          currentTask={bannerTask}
+          viewDetails={() => {
+            toggleTaskDetailsDrawer(true, bannerTask.id);
+          }}
+          onClose={() => hideBanner(bannerTask.id)}
+        />
+      );
+    }
+
+    return renderGenericTaskBanner(bannerTask);
+  };
 
   if (!isNewTaskDetailsUIEnabled) return null;
 
-  if (universeUUID && task?.targetUUID !== universeUUID) return null;
+  if (universeUUID && lastCreatedTask?.targetUUID !== universeUUID) return null;
 
-  if (!task) return null;
+  if (!lastCreatedTask) return null;
 
   if (universeRuntimeConfigsQuery.isLoading) {
     return null;
   }
 
   if (isCanaryUpgradeEnabled) {
-    if (getIsDbUpgradePrecheckTask(task)) {
+    const softwareUpgradeLockingTask = getLatestSoftwareUpgradeLockingTaskForUniverse(
+      customerTaskList,
+      universeUUID
+    );
+
+    // A newer non-locking task on the universe (support bundle, etc.) is latest.
+    // In this case, we intentionally render task banners for both the latest task and
+    // the software upgrade task.
+    if (softwareUpgradeLockingTask && softwareUpgradeLockingTask.id !== lastCreatedTask.id) {
       return (
-        <div className={classes.bannerContainer}>
-          <DbUpgradePrecheckTaskBanner
-            task={task}
-            universeUuid={universeUUID}
-            onDismiss={hideBanner}
-          />
+        <div className={classes.bannersContainer}>
+          {renderBannerForTask(lastCreatedTask)}
+          {renderBannerForTask(softwareUpgradeLockingTask)}
         </div>
       );
     }
 
-    if (getIsDbUpgradeRollbackTask(task)) {
-      return (
-        <div className={classes.bannerContainer}>
-          <DbUpgradeRollbackTaskBanner task={task} universeUuid={universeUUID} />
-        </div>
-      );
-    }
-
-    if (getIsDbUpgradeFinalizeTask(task)) {
-      return (
-        <div className={classes.bannerContainer}>
-          <DbUpgradeFinalizeTaskBanner task={task} universeUuid={universeUUID} />
-        </div>
-      );
-    }
-
-    if (getIsDbUpgradeTask(task)) {
-      return (
-        <div className={classes.bannerContainer}>
-          <DbUpgradeTaskBanner task={task} universeUuid={universeUUID} />
-        </div>
-      );
+    // Software upgrade and software upgrade pre-check tasks have their own banner components.
+    if (
+      getIsDbUpgradePrecheckTask(lastCreatedTask) ||
+      getIsSoftwareUpgradeLockingTask(lastCreatedTask)
+    ) {
+      return renderBannerForTask(lastCreatedTask);
     }
 
     if (universeData?.universeDetails?.softwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE) {
@@ -301,14 +369,21 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
       );
       return (
         <div className={classes.bannersContainer}>
-          {universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID ? null : bannerComp(task)}
+          {isBannerDismissedForTask(lastCreatedTask.id)
+            ? null
+            : renderGenericTaskBanner(lastCreatedTask)}
           {universeStatus.state === UniverseState.GOOD && (
             <>
               <div className={classes.bannerContainer}>
-                <ClusterOperationBanner
-                  type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
+                <YBOperationBanner
+                  variant={OperationBannerVariant.Warning}
+                  dense
+                  minHeight={46}
+                  showDivider={false}
+                  iconCircle={false}
+                  icon={<OperationBannerWaveIcon />}
                   title={t('universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.title')}
-                  actions={
+                  action={
                     <YBButton
                       variant="secondary"
                       size="medium"
@@ -322,7 +397,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
                       )}
                     </YBButton>
                   }
-                  description={t(
+                  message={t(
                     'universeActions.dbUpgrade.clusterBanner.finalizeOrRollBack.description'
                   )}
                 />
@@ -343,9 +418,5 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
     }
   }
 
-  if (universeUUID && acknowlegedTasks?.[universeUUID] === taskUUID) {
-    return null;
-  }
-
-  return <>{bannerComp(task)}</>;
+  return renderBannerForTask(lastCreatedTask);
 };

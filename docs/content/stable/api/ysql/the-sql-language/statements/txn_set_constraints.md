@@ -53,4 +53,4 @@ Set constraints to take effect retroactively.
 
 See also
 
-- [`ALTER TABLE`](../ddl_alter_table)
+- [ALTER TABLE](../ddl_alter_table)

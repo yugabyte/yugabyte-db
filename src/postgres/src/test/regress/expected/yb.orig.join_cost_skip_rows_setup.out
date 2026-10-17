@@ -1,0 +1,305 @@
+-- Create database objects used by the join skip-rows cost tests.
+--
+-- These tests check how a range bound on one join input's key changes the cost
+-- of reading the other input, for both join methods that model it: the merge
+-- join's scan clamp (mergejoinscansel) and the batched nested loop's
+-- leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both build a
+-- comparison against the other side's boundary key and condition it on the
+-- scanned side's own restrictions, so the same mechanisms decide whether a
+-- bound is usable: its collation, extended statistics over the conditioning
+-- clauses, a binary-compatible relabeling of the join key, and whether the
+-- bound falls on a value the boundary group includes.
+--
+-- Every group joins an outer aliased `o` to an inner aliased `i`, and the
+-- outer's key range extends BELOW the inner's.  That one layout carries both
+-- directions of the bound:
+--   * a bound on the inner lowers where the merge stops reading the outer;
+--   * a bound on the outer decides how many leading outer rows sort before the
+--     inner's first key -- rows read and discarded before the join emits
+--     anything, which both methods charge to startup cost.
+-- Only the second direction reaches the batched nested loop, which takes the
+-- inner's boundary from its full-column histogram and so cannot see an inner
+-- bound at all.  Every inner carries an index on its join key so the batched
+-- nested loop can probe it.
+set client_min_messages to 'warning';
+drop database if exists join_cost_skip_rows_test with (force);
+create database join_cost_skip_rows_test;
+-- Turn the non-deterministic-field guard OFF so EXPLAIN (DEBUG, DIST) emits
+-- the storage read-request and rows-scanned counters the reports rank by.
+-- Those counters are deterministic; wall-clock timings are not and are never
+-- printed.
+alter database join_cost_skip_rows_test set yb_explain_hide_non_deterministic_fields = off;
+alter database join_cost_skip_rows_test set yb_enable_cbo = on;
+-- 78ab6ade00d68e0919866b52292c1cd65b9b2d58 (#19494) moved BNL preference to
+-- the hints; off so they pin.
+alter database join_cost_skip_rows_test set yb_prefer_bnl = false;
+-- Keep plan shapes stable across a group's variants: no parallelism, and let
+-- the hints pick the join method.
+alter database join_cost_skip_rows_test set max_parallel_workers_per_gather = 0;
+-- Small response pages.  These tables hold a few hundred rows, so at the
+-- default page size every scan is a single read request and stopping early
+-- scans the same rows as reading to the end: the run-time work would not move
+-- with the bound at all.  At 16 rows a page the work a bound saves shows up in
+-- the counters without growing the tables.
+alter database join_cost_skip_rows_test set yb_fetch_row_limit = 16;
+\c join_cost_skip_rows_test
+set client_min_messages to 'warning';
+------------------------------------------------------------------------------
+-- Collation.  Both keys are declared collate "C".  "C" and "POSIX" are
+-- distinct collation OIDs with identical semantics, so a bound written in
+-- either selects the same rows and only the one matching the join's own
+-- collation is usable for the estimate.  The inner holds the lower-case half
+-- only, so the outer's 26 upper-case rows sort before the inner's first key.
+-- The "c" and "posix" variants select the same rows, so their inner scans cost
+-- the same and the outer fraction is the only difference between them.
+------------------------------------------------------------------------------
+create table cln_o (k text collate "C", primary key (k asc));
+create table cln_i (id int, k text collate "C", primary key (id asc));
+insert into cln_o select chr(g) from generate_series(ascii('A'), ascii('Z')) g;
+insert into cln_o select chr(g) from generate_series(ascii('a'), ascii('z')) g;
+insert into cln_i select g, chr(g) from generate_series(ascii('a'), ascii('z')) g;
+create index nonconcurrently on cln_i (k asc);
+analyze cln_o;
+analyze cln_i;
+------------------------------------------------------------------------------
+-- Extended statistics.  The estimate is a conditional fraction -- P(the
+-- scanned key is within the other side's bound | the scanned side's own
+-- restrictions) -- and a ratio of two estimates only means that if both come
+-- from the same model.  Extended statistics apply to a list of two or more
+-- RestrictInfos, which the two sides of the ratio are not both guaranteed to
+-- be.  ext_o.g groups the key 52 rows at a time, so a restriction on g is a
+-- restriction on the key; the statistics object created by the test covers g
+-- and k together.  The inner starts at 131.
+------------------------------------------------------------------------------
+create table ext_o (k int, g int, primary key (k asc));
+create table ext_i (id int, k int, primary key (id asc));
+insert into ext_o select i, ((i - 1) / 52) + 1 from generate_series(1, 520) i;
+insert into ext_i select i, i + 130 from generate_series(1, 390) i;
+create index nonconcurrently on ext_i (k asc);
+analyze ext_o;
+analyze ext_i;
+------------------------------------------------------------------------------
+-- Relabeling.  A varchar join key reaches the comparison through a
+-- binary-compatible relabeling.  clauselist_selectivity() pairs a range clause
+-- with a restriction on the same column by comparing the two operands, and a
+-- bare Var does not match the restriction's relabeled one, so the comparison
+-- the estimate builds has to carry the relabeling too.  The two pairs hold
+-- identical values and differ only in the key's declared type, so they must be
+-- costed identically.  Both inners start at '0251'.
+------------------------------------------------------------------------------
+create table rlbt_o (k text, primary key (k asc));
+create table rlbt_i (id int, k text, primary key (id asc));
+create table rlbv_o (k varchar(20), primary key (k asc));
+create table rlbv_i (id int, k varchar(20), primary key (id asc));
+insert into rlbt_o select to_char(i, 'FM0000') from generate_series(1, 500) i;
+insert into rlbt_i select i, to_char(i + 250, 'FM0000') from generate_series(1, 250) i;
+insert into rlbv_o select to_char(i, 'FM0000') from generate_series(1, 500) i;
+insert into rlbv_i select i, to_char(i + 250, 'FM0000') from generate_series(1, 250) i;
+create index nonconcurrently on rlbt_i (k asc);
+create index nonconcurrently on rlbv_i (k asc);
+analyze rlbt_o;
+analyze rlbt_i;
+analyze rlbv_o;
+analyze rlbv_i;
+------------------------------------------------------------------------------
+-- Boundary group.  bnd_o.k repeats each value 26 times and the inner starts at
+-- 11, so the outer's 260 rows below 11 sort before the inner's first key.  A
+-- bound landing on 11 includes or excludes that whole boundary group depending
+-- on whether it is strict, and "> 10" and ">= 11" must come out the same on an
+-- integer key.
+------------------------------------------------------------------------------
+create table bnd_o (k int, id int, primary key (k asc, id asc));
+create table bnd_i (id int, k int, primary key (id asc));
+insert into bnd_o select ((i - 1) / 26) + 1, i from generate_series(1, 520) i;
+insert into bnd_i select i, ((i - 1) / 26) + 11 from generate_series(1, 260) i;
+create index nonconcurrently on bnd_i (k asc);
+analyze bnd_o;
+analyze bnd_i;
+------------------------------------------------------------------------------
+-- Driver framework.  Mirrors yb.orig.bnl_cost_parity_setup.sql with the
+-- comparison axis turned around: there, one query runs under several join
+-- methods and the METHODS are ranked; here, several predicate variants of one
+-- query run under one join method and the VARIANTS are ranked.  A group's
+-- variants produce the same plan shape (asserted up front), so their costs are
+-- directly comparable.
+--
+-- variants : one row per (group, variant).  `query` is complete, including the
+--            ORDER BY that gives the outer a sorted path -- the batched nested
+--            loop skips leading outer rows only when the outer is sorted on
+--            the join key.  Every query aliases its outer `o` and its inner
+--            `i`, so one Leading() hint pins the sides for all of them.
+-- methods  : the two join methods that model the bound.
+------------------------------------------------------------------------------
+drop table if exists variants cascade;
+create table variants (
+    gid int,
+    grp text,
+    vid int,
+    label text,
+    query text,
+    primary key (gid asc, vid asc)
+);
+drop table if exists methods cascade;
+create table methods (mid int primary key, label text, hint text);
+insert into methods values
+    (1, 'MJ',  'Leading((o i)) MergeJoin(o i)'),
+    (2, 'BNL', 'Leading((o i)) YbBatchedNL(o i)');
+-- Run one variant with the supplied hint comment under EXPLAIN (FORMAT JSON)
+-- and return the plan tree.  With exec (the default) the query is executed
+-- (ANALYZE, DEBUG, DIST, SUMMARY ON): DEBUG+DIST add the per-node storage
+-- counters, SUMMARY ON the query-level aggregates.  With exec = false the
+-- query is only planned.  The hint MUST precede EXPLAIN so pg_hint_plan reads
+-- it.
+drop function if exists explain_join_json cascade;
+create function explain_join_json(hint text, query_sql text,
+                                  exec boolean default true)
+returns jsonb
+language plpgsql as
+$$
+declare
+    j jsonb;
+begin
+    execute '/*+ ' || hint || ' */ '
+        || 'explain (format json'
+        || case when exec then ', analyze, debug, dist, summary on' else '' end
+        || ') '
+        || query_sql
+    into j;
+    return j;
+end;
+$$;
+-- Map a join node type to its method family label.
+drop function if exists join_family cascade;
+create function join_family(node_type text) returns text
+language sql immutable as
+$$
+    select case
+        when node_type like '%Batched Nested Loop%' then 'BNL'
+        when node_type like 'Merge%'                 then 'MJ'
+        when node_type like 'Hash%'                  then 'HJ'
+        when node_type like '%Nested Loop%'          then 'NL'
+        else 'other'
+    end;
+$$;
+-- Alias of the first scanned relation under a sub-plan (outer/inner side).
+drop function if exists side_alias cascade;
+create function side_alias(node jsonb) returns text
+language sql immutable as
+$$
+    select jsonb_path_query_first(
+        node, 'strict $.**{0 to last} ? (exists(@."Alias"))'
+    )->>'Alias';
+$$;
+-- Join ranked variant labels into one string, with labels that TIE on the
+-- ranking keys joined by '=' instead of ' ' (e.g. 'gt10=ge11 ge10 none').  The
+-- tie marker is what makes an equality assertion readable: without it tied
+-- labels order alphabetically and read as if the first one won.  Both arrays
+-- must be ordered by (rank, label).
+drop function if exists rank_labels cascade;
+create function rank_labels(labels text[], ranks bigint[]) returns text
+language plpgsql immutable as
+$$
+declare
+    s text := labels[1];
+    i int;
+begin
+    for i in 2 .. coalesce(array_length(labels, 1), 0) loop
+        s := s || case when ranks[i] = ranks[i - 1] then '=' else ' ' end ||
+             labels[i];
+    end loop;
+    return s;
+end;
+$$;
+-- skip_plans: plan shape and costs from a plain EXPLAIN -- nothing is
+-- executed.  Feeds the up-front validation, so a hint failure surfaces without
+-- paying a run of every (variant, method) pair.  `shape` is the node types top
+-- to bottom: a group's variants must all share one shape, or their costs are
+-- not comparable and the ranking means nothing.
+drop view if exists skip_plans cascade;
+create view skip_plans as
+select
+    v.gid,
+    v.grp,
+    v.vid,
+    v.label,
+    m.label                                              method,
+    join_node->>'Node Type'                              join_node_type,
+    side_alias(join_node->'Plans'->0)                    outer_alias,
+    side_alias(join_node->'Plans'->1)                    inner_alias,
+    shape.shape,
+    join_family(join_node->>'Node Type') = m.label       method_ok,
+    side_alias(join_node->'Plans'->0) = 'o'
+        and side_alias(join_node->'Plans'->1) = 'i'      leading_ok
+from
+    variants v,
+    methods m,
+    lateral explain_join_json(m.hint, v.query, false) plan,
+    lateral (
+        select jsonb_path_query_first(
+            plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
+    ) jn(join_node),
+    lateral (
+        select string_agg(n->>'Node Type', ' > ') shape
+        from jsonb_path_query(plan,
+            'strict $.**{0 to last} ? (exists(@."Node Type"))') n
+    ) shape;
+-- skip_costs: for every (variant, method) pair, run the hinted EXPLAIN ANALYZE
+-- and surface the root-node costs next to the deterministic run-time work the
+-- plan did:
+--   read_reqs    query-level "Storage Read Requests" (DocDB round trips)
+--   rows_scanned query-level "Storage Rows Scanned"
+-- Wall-clock timings are intentionally not surfaced: they are
+-- non-deterministic and must not enter the golden output.  The rocksdb
+-- seek/next counters are left out for the reason the BNL parity test does not
+-- print them either: they depend on the memtable/SST layout at execution time.
+drop view if exists skip_costs cascade;
+create view skip_costs as
+select
+    v.gid,
+    v.grp,
+    v.vid,
+    v.label,
+    m.label                                              method,
+    (root->>'Startup Cost')::float8                      startup_cost,
+    (root->>'Total Cost')::float8                        total_cost,
+    (root->>'Plan Rows')::float8                         plan_rows,
+    (root->>'Actual Rows')::float8                       actual_rows,
+    coalesce((summary->>'Storage Read Requests')::float8, 0)     read_reqs,
+    coalesce((summary->>'Storage Rows Scanned')::float8, 0)      rows_scanned
+from
+    variants v,
+    methods m,
+    lateral explain_join_json(m.hint, v.query) plan,
+    lateral (select plan->0)         s0(summary),
+    lateral (select plan->0->'Plan') r0(root);
+-- costs: the snapshot the reports read.  Selecting skip_costs runs an EXPLAIN
+-- ANALYZE per (variant, method), so the test fills this once and every report
+-- reads it, instead of re-running the whole query set per section.
+drop table if exists costs cascade;
+create table costs as select * from skip_costs with no data;
+-- skip_report: collapse a group to one row per (group, method), with the
+-- variants ordered two ways -- by what the planner charges, and by the work
+-- the plan actually did.  Both orderings list every variant, tied labels
+-- joined by '=', so the row states the whole relationship without printing a
+-- single cost value.  cost_order <> work_order is the finding; which one is
+-- expected is documented per group in the test.
+drop view if exists skip_report cascade;
+create view skip_report as
+with m as (
+    select gid, grp, label, method, actual_rows,
+           rank() over (partition by gid, method
+                        order by startup_cost, total_cost) cost_rank,
+           rank() over (partition by gid, method
+                        order by rows_scanned, read_reqs)  work_rank
+    from costs
+)
+select
+    gid,
+    grp,
+    method,
+    rank_labels(array_agg(label order by cost_rank, label),
+                array_agg(cost_rank order by cost_rank, label)) cost_order,
+    rank_labels(array_agg(label order by work_rank, label),
+                array_agg(work_rank order by work_rank, label)) work_order
+from m
+group by gid, grp, method;

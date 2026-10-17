@@ -723,6 +723,25 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Connection Pooling logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> systemLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.system_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "System logs regex pattern",
+          "System logs under /var/log to collect in the support bundle, with their rotations."
+              + " Defaults to messages (RHEL-family) and syslog (Debian/Ubuntu). Group 1 must"
+              + " capture the base log name.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> collectJournaldLogs =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.collect_journald_logs",
+          ScopeType.UNIVERSE,
+          "Collect journald logs",
+          "Collect the systemd journal for the requested time window in the support bundle, in"
+              + " addition to (never instead of) the /var/log system log files.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
@@ -731,6 +750,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
               + "subtask rpc calls.",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeCloudDetectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.node_cloud_detection.timeout",
+          ScopeType.UNIVERSE,
+          "Node cloud detection timeout",
+          "Bounds the instance-metadata probe that detects which cloud an on-prem node physically"
+              + " runs on. Each endpoint inside the probe is given 2 seconds, so lowering this"
+              + " below the total can cut the probe short and leave the node's cloud unknown.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> underReplicatedTabletsTimeout =
       new ConfKeyInfo<>(

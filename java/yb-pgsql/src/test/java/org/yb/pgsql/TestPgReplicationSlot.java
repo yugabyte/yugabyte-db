@@ -33,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -63,9 +64,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReplicationSlot.class);
 
   private static int kMultiplier = BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
-  private static int kPublicationRefreshIntervalSec = 5;
+  private static int kPublicationRefreshIntervalSec =
+      PgReplicationSlotTestUtil.PUBLICATION_REFRESH_INTERVAL_SEC;
 
-  private static final String YB_OUTPUT_PLUGIN_NAME = "yboutput";
+  protected static final String YB_OUTPUT_PLUGIN_NAME =
+      PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
 
   private static final String PG_OUTPUT_PLUGIN_NAME = "pgoutput";
 
@@ -75,20 +78,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Override
   protected int getInitialNumTServers() {
-    return 3;
+    return PgReplicationSlotTestUtil.NUM_TSERVERS;
   }
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager()) {
-      flagMap.put("ysql_conn_mgr_stats_interval", "1");
-    }
-    flagMap.put(
-        "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
-    flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
-    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
-    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    PgReplicationSlotTestUtil.addCommonTServerFlags(flagMap);
     return flagMap;
   }
 
@@ -104,7 +100,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
+    PgReplicationSlotTestUtil.addCommonMasterFlags(flagMap);
     return flagMap;
   }
 
@@ -121,11 +117,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
       throws Exception {
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName(slotName)
-        .withOutputPlugin(pluginName)
-        .make();
+    PgReplicationSlotTestUtil.createSlot(replConnection, slotName, pluginName);
   }
 
   @Test
@@ -252,16 +244,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertTrue("Expected an exception but wasn't thrown", exceptionThrown);
   }
 
-  private List<PgOutputMessage> receiveMessage(PGReplicationStream stream, int count)
+  protected List<PgOutputMessage> receiveMessage(PGReplicationStream stream, int count)
       throws Exception {
-    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>(count);
-    for (int index = 0; index < count; index++) {
-      PgOutputMessage message = PgOutputMessageDecoder.DecodeBytes(stream.read());
-      result.add(message);
-      LOG.info("Row = {}", message);
-    }
-
-    return result;
+    return PgReplicationSlotTestUtil.receiveMessage(stream, count);
   }
 
   private List<PgOutputMessage> CreateMessages(PgOutputMessage... messages) {
@@ -4488,9 +4473,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count); // ceil(spill_bytes / (ysql_yb_reorderbuffer_max_memory_kb KB))
-      assertEquals(5920000, spill_bytes); // 148*40000
+      assertEquals(8160000, spill_bytes); // 204*40000
       assertEquals(1, total_txns);
-      assertEquals(5920000, total_bytes);
+      assertEquals(8160000, total_bytes);
 
       stmt.execute("INSERT INTO xyz values (40001)");
       Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
@@ -4504,9 +4489,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       total_bytes = r1.getLong("total_bytes");
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count);
-      assertEquals(5920000, spill_bytes);
+      assertEquals(8160000, spill_bytes);
       assertEquals(2, total_txns);
-      assertEquals(5920148, total_bytes);
+      assertEquals(8160204, total_bytes); // 204*40000 + 204
 
       // Reset the stat values
       stmt.executeQuery(String.format("SELECT pg_stat_reset_replication_slot(NULL)"));
@@ -4591,9 +4576,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(2, spill_txns);
       assertEquals(4, spill_count);
-      assertEquals(11840000, spill_bytes);
+      assertEquals(16320000, spill_bytes); // 2 * 204*40000
       assertEquals(2, total_txns);
-      assertEquals(11840000, total_bytes);
+      assertEquals(16320000, total_bytes);
 
       ResultSet r2 = stmt.executeQuery(
         String.format("SELECT * FROM pg_stat_replication_slots WHERE slot_name='%s'", slotName2)
@@ -4607,9 +4592,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       assertEquals(1, spill_txns);
       assertEquals(2, spill_count);
-      assertEquals(5920000, spill_bytes);
+      assertEquals(8160000, spill_bytes); // 204*40000
       assertEquals(1, total_txns);
-      assertEquals(5920000, total_bytes);
+      assertEquals(8160000, total_bytes);
     }
     for (PGReplicationStream stream : streams) {
       stream.close();
@@ -7185,5 +7170,82 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
         + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
+  }
+
+  private void addConcurrentDdlFlags(Map<String, String> flags) {
+    toggleDDLMode(flags, /* useLegacy */ false);
+    flags.put("ysql_enable_object_locking_infra", "true");
+  }
+
+  @Test
+  public void testOrdinarySqlOnReplicationConnectionSeesConcurrentDdl() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    addConcurrentDdlFlags(tserverFlags);
+    Map<String, String> masterFlags = getMasterFlags();
+    addConcurrentDdlFlags(masterFlags);
+
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE live_ctx_control (a int primary key, b text)");
+      stmt.execute("CREATE TABLE live_ctx_repl (a int primary key, b text)");
+    }
+
+    // Control: a regular backend must see the concurrently added column.
+    try (Connection regularConn = getConnectionBuilder().withTServer(0).connect()) {
+      assertSeesConcurrentlyAddedColumn(regularConn, "live_ctx_control", "regular connection");
+    }
+
+    // The same sequence on a replication connection must behave identically.
+    // With the am_walsender-only guard the refresh is skipped here, so the
+    // session either does not see newcol or fails with a catalog version
+    // mismatch.
+    try (Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect()) {
+      assertSeesConcurrentlyAddedColumn(replConn, "live_ctx_repl", "replication connection");
+    }
+  }
+
+  private void assertSeesConcurrentlyAddedColumn(Connection conn, String table, String what)
+      throws Exception {
+    try (Statement stmt = conn.createStatement()) {
+      // Warm this session's relcache/catcache entry for `table` at the current
+      // catalog version, outside any transaction.
+      stmt.execute("SELECT * FROM " + table);
+
+      // Open a transaction WITHOUT touching `table`, so the DDL below is not
+      // blocked waiting on an AccessShareLock held by this session.
+      stmt.execute("BEGIN");
+      stmt.execute("SELECT 1");
+
+      // Concurrent DDL from a separate session; commits while the transaction
+      // above is still open.
+      try (Statement ddl = connection.createStatement()) {
+        ddl.execute("ALTER TABLE " + table + " ADD COLUMN newcol int");
+      }
+
+      // First touch of `table` inside the open transaction.
+      boolean found = false;
+      try {
+        ResultSetMetaData md = stmt.executeQuery("SELECT * FROM " + table).getMetaData();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+          if ("newcol".equalsIgnoreCase(md.getColumnName(i))) {
+            found = true;
+            break;
+          }
+        }
+      } catch (PSQLException e) {
+        fail(String.format(
+            "%s: reading %s after a concurrent ALTER TABLE failed instead of picking up the "
+            + "new schema. This is the catalog cache refresh being skipped. Error: %s",
+            what, table, e.getMessage()));
+      }
+
+      assertTrue(String.format(
+          "%s: column newcol added by a concurrent ALTER TABLE was not visible on the first "
+          + "access to %s inside an open transaction; the session is running on a stale "
+          + "catalog cache.", what, table), found);
+
+      stmt.execute("COMMIT");
+    }
   }
 }

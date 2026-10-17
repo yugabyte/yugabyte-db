@@ -3,9 +3,11 @@ import { gte } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 import { Box, Typography } from '@material-ui/core';
+
+import { handleServerError } from '@app/utils/errorHandlingUtils';
+import { retryTask } from '@app/v2/api/task/task';
 import { YBButton } from '../../../../../components';
 import { DBRollbackModal } from '../DBRollbackModal';
-import { api } from '../../../../../utils/api';
 import { SoftwareUpgradeState } from '../../../../../../components/universes/helpers/universeHelpers';
 import { Universe } from '../../../universe-form/utils/dto';
 import { TaskObject } from '../utils/types';
@@ -34,12 +36,12 @@ export const FailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail
 
   const retryCurrentTask = async (taskUUID: string, universeUUID: string) => {
     try {
-      const response = await api.retryCurrentTask(taskUUID);
-      if ([200, 201].includes(response?.status)) {
-        browserHistory.push(`/universes/${universeUUID}/tasks`);
+      await retryTask(taskUUID, {});
+      browserHistory.push(`/universes/${universeUUID}/tasks`);
+    } catch (error) {
+      if (error instanceof Error) {
+        handleServerError(error, { customErrorLabel: 'Retry Task Failed' });
       }
-    } catch (e) {
-      console.log(e);
     }
   };
 

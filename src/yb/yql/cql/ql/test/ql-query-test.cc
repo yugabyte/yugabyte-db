@@ -26,8 +26,6 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
@@ -35,6 +33,7 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/decimal.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
@@ -43,7 +42,6 @@
 
 using std::string;
 using std::shared_ptr;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {
@@ -193,8 +191,8 @@ class TestQLQuery : public QLTestBase {
       int64_t cql_hash = func_name == "token" ? YBPartition::YBToCqlHashCode(hash_code) : hash_code;
       std::tuple<int64_t, int, string, int, int> values(cql_hash, i, i_str, i, i);
       rows.push_back(values);
-      string stmt = Substitute("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
-                                   "($0, '$1', $2, $3);", i, i, i, i);
+      string stmt = Format("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
+                               "($0, '$1', $2, $3);", i, i, i, i);
       CHECK_OK(processor->Run(stmt));
     }
 
@@ -222,34 +220,34 @@ class TestQLQuery : public QLTestBase {
 
     // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows,
+        Format(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows,
         0, 10);
     // Partial range: hashes 4, 5, 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[3])), processor, rows,
+        Format(select_stmt_template, func_name, std::get<0>(rows[3])), processor, rows,
         4, 10);
     // Empty range: no hashes.
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows,
+        Format(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows,
         0, 0);
     // Empty range: no hashes (checking overflow for max Cql hash)
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, max_hash), processor, rows,
+        Format(select_stmt_template, func_name, max_hash), processor, rows,
         0, 0);
 
     //---------------------------------- Inclusive Lower Bound -------------------------------------
     select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) >= $1";
     // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
+        Format(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
         processor, rows, 0, 10);
     // Partial range: hashes 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[6]) + bucket_size - 1),
+        Format(select_stmt_template, func_name, std::get<0>(rows[6]) + bucket_size - 1),
         processor, rows, 6, 10);
     // Empty range: no hashes
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        Format(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
         rows, 0, 0);
 
     //----------------------------------------------------------------------------------------------
@@ -260,28 +258,28 @@ class TestQLQuery : public QLTestBase {
     select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) < $1";
     // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        Format(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
         rows, 0, 10);
     // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[7]) + bucket_size - 1),
+        Format(select_stmt_template, func_name, std::get<0>(rows[7]) + bucket_size - 1),
         processor, rows, 0, 7);
     // Empty range: no hashes
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
+        Format(select_stmt_template, func_name, std::get<0>(rows[0]) + bucket_size - 1),
         processor, rows, 0, 0);
 
     //---------------------------------- Inclusive Upper Bound -------------------------------------
     select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) <= $1";
     // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows, 0, 10);
+        Format(select_stmt_template, func_name, std::get<0>(rows[9])), processor, rows, 0, 10);
     // Partial range: hashes 0, 1, 2
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows, 0, 3);
+        Format(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows, 0, 3);
     // Empty range: no hashes
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows, 0,
+        Format(select_stmt_template, func_name, std::get<0>(rows[0]) - 1), processor, rows, 0,
         0);
 
     //----------------------------------------------------------------------------------------------
@@ -291,28 +289,28 @@ class TestQLQuery : public QLTestBase {
         "$4 $5";
     // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[0]) + bucket_size - 1,
-                   func_name, "<=", std::get<0>(rows[9])), processor, rows, 0, 10);
+        Format(select_stmt_template, func_name, ">=", std::get<0>(rows[0]) + bucket_size - 1,
+               func_name, "<=", std::get<0>(rows[9])), processor, rows, 0, 10);
     // Partial Range: hashes 2, 3, 4, 5, 6, 7, 8
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">", std::get<0>(rows[1]),
-                   func_name, "<=", std::get<0>(rows[8])), processor, rows, 2, 9);
+        Format(select_stmt_template, func_name, ">", std::get<0>(rows[1]),
+               func_name, "<=", std::get<0>(rows[8])), processor, rows, 2, 9);
     // Partial Range: hashes 4, 5, 6
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[4]) + bucket_size - 1,
-                   func_name, "<", std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
+        Format(select_stmt_template, func_name, ">=", std::get<0>(rows[4]) + bucket_size - 1,
+               func_name, "<", std::get<0>(rows[7]) + bucket_size - 1), processor, rows,
         4, 7);
     // Empty Range (inclusive lower bound): no hashes
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", std::get<0>(rows[2]) + bucket_size - 1,
-                   func_name, "<", std::get<0>(rows[2]) + bucket_size - 1), processor, rows, 0, 0);
+        Format(select_stmt_template, func_name, ">=", std::get<0>(rows[2]) + bucket_size - 1,
+               func_name, "<", std::get<0>(rows[2]) + bucket_size - 1), processor, rows, 0, 0);
     // Empty Range (inclusive upper bound): no hashes
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">", std::get<0>(rows[2]),
-                   func_name, "<=", std::get<0>(rows[2])), processor, rows, 0, 0);
+        Format(select_stmt_template, func_name, ">", std::get<0>(rows[2]),
+               func_name, "<=", std::get<0>(rows[2])), processor, rows, 0, 0);
     // Empty range: no hashes (checking overflow for max Cql hash)
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, "<=", std::get<0>(rows[9]), func_name, ">",
+        Format(select_stmt_template, func_name, "<=", std::get<0>(rows[9]), func_name, ">",
         max_hash), processor, rows, 0, 0);
 
     //----------------------------------------------------------------------------------------------
@@ -320,27 +318,27 @@ class TestQLQuery : public QLTestBase {
     //----------------------------------------------------------------------------------------------
     // Entire range: [min, max].
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name, "<=", max_hash),
+        Format(select_stmt_template, func_name, ">=", min_hash, func_name, "<=", max_hash),
         processor, rows, 0, 10);
 
     // Entire range: [min, min] (upper bound min is treated as a special case in Cassandra).
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name,  "<=", min_hash),
+        Format(select_stmt_template, func_name, ">=", min_hash, func_name,  "<=", min_hash),
         processor, rows, 0, func_name == "token" ? 10 : 0);
 
     // Entire range: [min, min). (upper bound min is treated as a special case in Cassandra).
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">=", min_hash, func_name, "<", min_hash),
+        Format(select_stmt_template, func_name, ">=", min_hash, func_name, "<", min_hash),
         processor, rows, 0, func_name == "token" ? 10 : 0);
 
     // Empty range: (max, max].
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">", max_hash, func_name, "<=", max_hash),
+        Format(select_stmt_template, func_name, ">", max_hash, func_name, "<=", max_hash),
         processor, rows, 0, 0);
 
     // Empty range: (max, min] (max as strict lower bound already excludes all hashes).
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, ">", max_hash, func_name, "<=", min_hash),
+        Format(select_stmt_template, func_name, ">", max_hash, func_name, "<=", min_hash),
         processor, rows, 0, 0);
 
     //----------------------------------------------------------------------------------------------
@@ -349,17 +347,17 @@ class TestQLQuery : public QLTestBase {
     select_stmt_template = "SELECT * FROM scan_bounds_test WHERE $0(h1, h2) = $1";
     // testing existing hash: 2
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
+        Format(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
         2, 3);
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
+        Format(select_stmt_template, func_name, std::get<0>(rows[2])), processor, rows,
         2, 3);
     // testing non-existing hash: empty
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        Format(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
         rows, 0, 0);
     TestSelectWithoutOrderBy(
-        Substitute(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
+        Format(select_stmt_template, func_name, std::get<0>(rows[9]) + bucket_size), processor,
         rows, 0, 0);
 
     //----------------------------------------------------------------------------------------------
@@ -373,58 +371,58 @@ class TestQLQuery : public QLTestBase {
 
     // checking existing row with exact partition key: 6
     TestSelectWithOrderBy(
-        Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]), func_name,
-                   "=", std::get<0>(rows[6])), processor, rows, 6, 7);
+        Format(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]), func_name,
+               "=", std::get<0>(rows[6])), processor, rows, 6, 7);
     // checking existing row with partition key bound: 3 with partition upper bound 7 (to include 3)
     TestSelectWithOrderBy(
-        Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]), func_name,
-                   "<=", std::get<0>(rows[7])), processor, rows, 3, 4);
+        Format(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]), func_name,
+               "<=", std::get<0>(rows[7])), processor, rows, 3, 4);
     // checking existing row with partition key bound: 4 with partition lower bound 5 (to exclude 4)
     TestSelectWithOrderBy(
-        Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]), func_name,
-                   ">=", std::get<0>(rows[5])), processor, rows, 0, 0);
+        Format(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]), func_name,
+               ">=", std::get<0>(rows[5])), processor, rows, 0, 0);
     // checking existing row with partition key bound: 7 with partition upper bound 6 (to exclude 7)
     TestSelectWithOrderBy(
-        Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]), func_name,
-                   "<=", std::get<0>(rows[6])), processor, rows, 0, 0);
+        Format(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]), func_name,
+               "<=", std::get<0>(rows[6])), processor, rows, 0, 0);
 
     //----------------------------------------------------------------------------------------------
     // Testing Invalid Statements
     //----------------------------------------------------------------------------------------------
 
     // Invalid number of arguments.
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0() > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1) > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2,h1) > 0",
-                                  func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0() > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(h1) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2,h1) > 0",
+                              func_name));
 
     // Invalid argument values.
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h2,h1) > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h1) > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(h2,h2) > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(r1,h2) > 0", func_name));
-    CHECK_INVALID_STMT(Substitute("SELECT * FROM scan_bounds_test WHERE $0(r1,v1) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(h2,h1) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h1) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(h2,h2) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(r1,h2) > 0", func_name));
+    CHECK_INVALID_STMT(Format("SELECT * FROM scan_bounds_test WHERE $0(r1,v1) > 0", func_name));
 
     // Illogical conditions.
     // Two "greater-than" bounds
     CHECK_INVALID_STMT(
-        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) > 0 AND $1(h1,h2) >= 0",
+        Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) > 0 AND $1(h1,h2) >= 0",
         func_name, func_name));
     // Two "less-than" bounds
     CHECK_INVALID_STMT(
-        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) <= 0 AND $1(h1,h2) < 0",
+        Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) <= 0 AND $1(h1,h2) < 0",
         func_name, func_name));
     // Two "equal" conditions
     CHECK_INVALID_STMT(
-        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) = 0",
+        Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) = 0",
         func_name, func_name));
     // Both "equal" and "less than" conditions
     CHECK_INVALID_STMT(
-        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) <= 0",
+        Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) <= 0",
         func_name, func_name));
     // Both "equal" and "greater than" conditions
     CHECK_INVALID_STMT(
-        Substitute("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) >= 0",
+        Format("SELECT * FROM scan_bounds_test WHERE $0(h1,h2) = 0 AND $1(h1,h2) >= 0",
         func_name, func_name));
   }
 
@@ -456,9 +454,9 @@ class TestQLQuery : public QLTestBase {
     string insert_stmt = "INSERT INTO partition_hash_bcall_simple_test (h1, h2, h3, h4, h5, h6, "
         "h7, h8, h9, h10, h11, r, v) VALUES ($0, 1, 1);";
 
-    CHECK_OK(processor->Run(Substitute(insert_stmt, key_values)));
+    CHECK_OK(processor->Run(Format(insert_stmt, key_values)));
 
-    string select_stmt = Substitute(
+    string select_stmt = Format(
         "SELECT * FROM partition_hash_bcall_simple_test WHERE "
             "$0(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11) = $1($2)", func_name,
         func_name, key_values);
@@ -481,12 +479,12 @@ class TestQLQuery : public QLTestBase {
     // Sample values to check hash value computation
     key_values = "{a : 1, b : 'foo'}";
 
-    insert_stmt = Substitute("INSERT INTO partition_hash_bcall_udt_test "
-                             "(h, r, v) VALUES ($0, 1, 1);", key_values);
+    insert_stmt = Format("INSERT INTO partition_hash_bcall_udt_test "
+                         "(h, r, v) VALUES ($0, 1, 1);", key_values);
     CHECK_OK(processor->Run(insert_stmt));
 
-    select_stmt = Substitute("SELECT * FROM partition_hash_bcall_udt_test WHERE "
-                                 "$0(h) = $1($2)", func_name, func_name, key_values);
+    select_stmt = Format("SELECT * FROM partition_hash_bcall_udt_test WHERE "
+                             "$0(h) = $1($2)", func_name, func_name, key_values);
     CHECK_OK(processor->Run(select_stmt));
 
     // Checking result.
@@ -504,12 +502,12 @@ class TestQLQuery : public QLTestBase {
     // Sample values to check hash value computation
     key_values = "{1 : 'a', 2 : 'b'}, {'x', 'y'}, [3, 1, 2], {a : 1, b : 'foo'}";
 
-    insert_stmt = Substitute("INSERT INTO partition_hash_bcall_frozen_test "
-                                 "(h1, h2, h3, h4, r, v) VALUES ($0, 1, 1);", key_values);
+    insert_stmt = Format("INSERT INTO partition_hash_bcall_frozen_test "
+                             "(h1, h2, h3, h4, r, v) VALUES ($0, 1, 1);", key_values);
     CHECK_OK(processor->Run(insert_stmt));
 
-    select_stmt = Substitute("SELECT * FROM partition_hash_bcall_frozen_test WHERE "
-                                 "$0(h1, h2, h3, h4) = $1($2)", func_name, func_name, key_values);
+    select_stmt = Format("SELECT * FROM partition_hash_bcall_frozen_test WHERE "
+                             "$0(h1, h2, h3, h4) = $1($2)", func_name, func_name, key_values);
     CHECK_OK(processor->Run(select_stmt));
 
     // Checking result.
@@ -574,9 +572,9 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   static const int kNumRows = 100;
   for (int idx = 0; idx < kNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
-                             "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
-                             idx, idx, idx+100, idx+100, idx+1000, idx+1000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
+                         "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
+                         idx, idx, idx+100, idx+100, idx+1000, idx+1000);
     CHECK_VALID_STMT(stmt);
   }
   LOG(INFO) << kNumRows << " rows inserted";
@@ -613,20 +611,20 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   // Test single row query for the whole table.
   for (int idx = 0; idx < kNumRows; idx++) {
     // SELECT: Valid statement with column list.
-    string stmt = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                             "WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
-                             idx, idx, idx+100, idx+100);
+    string stmt = Format("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                         "WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
+                         idx, idx, idx+100, idx+100);
     CHECK_VALID_STMT(stmt);
 
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
     const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), idx);
-    CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
+    CHECK_EQ(row.column(1).string_value(), Format("h$0", idx));
     CHECK_EQ(row.column(2).int32_value(), idx + 100);
-    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(3).string_value(), Format("r$0", idx + 100));
     CHECK_EQ(row.column(4).int32_value(), idx + 1000);
-    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
+    CHECK_EQ(row.column(5).string_value(), Format("v$0", idx + 1000));
   }
 
   // Test multi row query for the whole table.
@@ -636,16 +634,16 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   const string h2_shared = "h2_shared_key";
   for (int idx = 0; idx < kHashNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
-                             "VALUES($0, '$1', $2, 'r$3', $4, 'v$5');",
-                             h1_shared, h2_shared, idx+100, idx+100, idx+1000, idx+1000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
+                         "VALUES($0, '$1', $2, 'r$3', $4, 'v$5');",
+                         h1_shared, h2_shared, idx+100, idx+100, idx+1000, idx+1000);
     CHECK_VALID_STMT(stmt);
   }
 
   // Select all 20 rows and check the values.
-  const string multi_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                                         "WHERE h1 = $0 AND h2 = '$1';",
-                                         h1_shared, h2_shared);
+  const string multi_select = Format("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                                     "WHERE h1 = $0 AND h2 = '$1';",
+                                     h1_shared, h2_shared);
   CHECK_VALID_STMT(multi_select);
   row_block = processor->row_block();
 
@@ -656,16 +654,16 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
     CHECK_EQ(row.column(0).int32_value(), h1_shared);
     CHECK_EQ(row.column(1).string_value(), h2_shared);
     CHECK_EQ(row.column(2).int32_value(), idx + 100);
-    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(3).string_value(), Format("r$0", idx + 100));
     CHECK_EQ(row.column(4).int32_value(), idx + 1000);
-    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
+    CHECK_EQ(row.column(5).string_value(), Format("v$0", idx + 1000));
   }
 
   // Select only 2 rows and check the values.
   int limit = 2;
-  string limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                                   "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
-                                   h1_shared, h2_shared, limit);
+  string limit_select = Format("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                               "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
+                               h1_shared, h2_shared, limit);
   CHECK_VALID_STMT(limit_select);
   row_block = processor->row_block();
 
@@ -678,18 +676,18 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
     CHECK_EQ(row.column(0).int32_value(), h1_shared);
     CHECK_EQ(row.column(1).string_value(), h2_shared);
     CHECK_EQ(row.column(2).int32_value(), idx + 100);
-    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(3).string_value(), Format("r$0", idx + 100));
     CHECK_EQ(row.column(4).int32_value(), idx + 1000);
-    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
+    CHECK_EQ(row.column(5).string_value(), Format("v$0", idx + 1000));
     CHECK_GT(row.column(2).int32_value(), prev_r1);
     CHECK_GT(row.column(3).string_value(), prev_r2);
     prev_r1 = row.column(2).int32_value();
     prev_r2 = row.column(3).string_value();
   }
 
-  limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                            "WHERE h1 = $0 AND h2 = '$1' LIMIT $2 ALLOW FILTERING;",
-                            h1_shared, h2_shared, limit);
+  limit_select = Format("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                        "WHERE h1 = $0 AND h2 = '$1' LIMIT $2 ALLOW FILTERING;",
+                        h1_shared, h2_shared, limit);
   CHECK_VALID_STMT(limit_select);
 
   const string drop_stmt = "DROP TABLE test_table;";
@@ -713,7 +711,7 @@ TEST_F(TestQLQuery, TestPagingState) {
   {
     for (int i = 1; i <= kNumRows; i++) {
       // INSERT: Valid statement with column list.
-      string stmt = Substitute("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", 1, i, 100 + i);
+      string stmt = Format("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", 1, i, 100 + i);
       CHECK_VALID_STMT(stmt);
     }
     LOG(INFO) << kNumRows << " rows inserted";
@@ -764,7 +762,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     params.set_page_size(kPageSize);
     int page_count = 0;
     int i = 0;
-    string select_stmt = Substitute("SELECT h, r, v FROM t WHERE h = 1 LIMIT $0;", kLimit);
+    string select_stmt = Format("SELECT h, r, v FROM t WHERE h = 1 LIMIT $0;", kLimit);
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       auto row_block = processor->row_block();
@@ -791,7 +789,7 @@ TEST_F(TestQLQuery, TestPagingState) {
   {
     for (int i = 1; i <= kNumRows; i++) {
       // INSERT: Valid statement with column list.
-      string stmt = Substitute("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", i, 100 + i, 200 + i);
+      string stmt = Format("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", i, 100 + i, 200 + i);
       CHECK_VALID_STMT(stmt);
     }
     LOG(INFO) << kNumRows << " rows inserted";
@@ -838,7 +836,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     int page_count = 0;
     int row_count = 0;
     int sum = 0;
-    string select_stmt = Substitute("SELECT h, r, v FROM t WHERE r > 100 LIMIT $0;", kLimit);
+    string select_stmt = Format("SELECT h, r, v FROM t WHERE r > 100 LIMIT $0;", kLimit);
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       auto row_block = processor->row_block();
@@ -893,13 +891,13 @@ void RunPaginationWithDescTest(
     TestQLProcessor *processor, const char* type, const std::vector<T>& values,
     std::vector<QLRow>* rows) {
   /* Creating the table. */
-  string create_stmt = Substitute("CREATE TABLE t_$0 (h int, r1 $1, r2 $2, v int, "
+  string create_stmt = Format("CREATE TABLE t_$0 (h int, r1 $1, r2 $2, v int, "
       "primary key((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC);", type, type, type);
   CHECK_VALID_STMT(create_stmt);
 
   /* Inserting the values. */
   for (auto& value : values) {
-    string stmt = Substitute("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",
+    string stmt = Format("INSERT INTO t_$0 (h, r1, r2, v) VALUES (1, $1, $2, $3);",
         type, value, value, 0);
     CHECK_VALID_STMT(stmt);
   }
@@ -911,8 +909,8 @@ void RunPaginationWithDescTest(
   auto min_val = values.front();
   auto max_val = values.back();
   int page_count = 0;
-  string select_stmt = Substitute("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "
-    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val );
+  string select_stmt = Format("SELECT h, r1, r2, v FROM t_$0 WHERE h = 1 AND "
+    "r1 > $1 AND r2 > $2 AND r1 < $3 AND r2 < $4;", type, min_val, min_val, max_val, max_val);
   /* Reading rows, loading the rows vector to be checked later for each case */
   do {
     CHECK_OK(processor->Run(select_stmt, params));
@@ -1190,9 +1188,9 @@ TEST_F(TestQLQuery, TestQLQueryPartialHash) {
   static const int kNumRows = 100;
   for (int idx = 0; idx < kNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
-                             "VALUES($0, 'h$1', $2, 'h$3', $4, 'r$5', $6, 'v$7');",
-                             idx, idx, idx+100, idx+100, idx+1000, idx+1000, idx+10000, idx+10000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
+                         "VALUES($0, 'h$1', $2, 'h$3', $4, 'r$5', $6, 'v$7');",
+                         idx, idx, idx+100, idx+100, idx+1000, idx+1000, idx+10000, idx+10000);
     CHECK_VALID_STMT(stmt);
   }
   LOG(INFO) << kNumRows << " rows inserted";
@@ -1336,10 +1334,10 @@ TEST_F(TestQLQuery, TestQLQueryPartialHash) {
   const string h4_shared = "h4_shared_key";
   for (int idx = 0; idx < kHashNumRows; idx++) {
     // INSERT: Valid statement with column list.
-    string stmt = Substitute("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
-                             "VALUES($0, '$1', $2, '$3', $4, 'r$5', $6, 'v$7');",
-                             h1_shared, h2_shared, h3_shared, h4_shared,
-                             idx+100, idx+100, idx+1000, idx+1000);
+    string stmt = Format("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
+                         "VALUES($0, '$1', $2, '$3', $4, 'r$5', $6, 'v$7');",
+                         h1_shared, h2_shared, h3_shared, h4_shared,
+                         idx+100, idx+100, idx+1000, idx+1000);
     CHECK_VALID_STMT(stmt);
   }
 
@@ -1347,9 +1345,9 @@ TEST_F(TestQLQuery, TestQLQueryPartialHash) {
   // This test scans multiple tservers. Query result tested in java.
   // TODO: Make QL understand paging states and continue.
   LOG(INFO) << "Testing filter with partial hash keys.";
-  const string multi_select = Substitute("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
-                                         "WHERE h1 = $0 AND h2 = '$1' AND r1 > $2;",
-                                         h1_shared, h2_shared, kNumFilterRows + 100);
+  const string multi_select = Format("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                                     "WHERE h1 = $0 AND h2 = '$1' AND r1 > $2;",
+                                     h1_shared, h2_shared, kNumFilterRows + 100);
   CHECK_VALID_STMT(multi_select);
 
   const string drop_stmt = "DROP TABLE test_table;";
@@ -1634,7 +1632,7 @@ TEST_F(TestQLQuery, TestPagination) {
 
   // Insert 10 different hash keys. They should go to different tablets.
   for (int i = 1; i <= 10; i++) {
-    string stmt = Substitute("INSERT INTO page_test (c) VALUES ($0);", i);
+    string stmt = Format("INSERT INTO page_test (c) VALUES ($0);", i);
     CHECK_OK(processor->Run(stmt));
   }
 
@@ -1721,8 +1719,8 @@ TEST_F(TestQLQuery, TestDeleteColumn) {
   client::YBTableName name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "delete_column");
 
   for (int i = 0; i < 2; i++) {
-    string stmt = Substitute("INSERT INTO delete_column (h, v1, v2) VALUES "
-                               "($0, $1, $2);", i, i, i);
+    string stmt = Format("INSERT INTO delete_column (h, v1, v2) VALUES "
+                           "($0, $1, $2);", i, i, i);
     CHECK_OK(processor->Run(stmt));
   }
 
@@ -1732,14 +1730,14 @@ TEST_F(TestQLQuery, TestDeleteColumn) {
 
   string select_stmt_template = "SELECT $0 FROM delete_column WHERE h = 0";
   // Check that v1 is null
-  CHECK_OK(processor->Run(Substitute(select_stmt_template, "v1")));
+  CHECK_OK(processor->Run(Format(select_stmt_template, "v1")));
   auto row_block = processor->row_block();
   ASSERT_EQ(1, row_block->row_count());
   const QLRow &row1 = row_block->row(0);
   EXPECT_TRUE(row1.column(0).IsNull());
 
   // Check that v2 is 0
-  CHECK_OK(processor->Run(Substitute(select_stmt_template, "v2")));
+  CHECK_OK(processor->Run(Format(select_stmt_template, "v2")));
   row_block = processor->row_block();
   ASSERT_EQ(1, row_block->row_count());
   const QLRow &row2 = row_block->row(0);
@@ -1775,8 +1773,8 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
     CHECK_OK(row.SetInt32(2, i));
     std::tuple<int, int, int> values(i, i, i);
     rows.push_back(values);
-    string stmt = Substitute("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
-                               "($0, $1, $2) using ttl 100;", i, i, i);
+    string stmt = Format("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
+                           "($0, $1, $2) using ttl 100;", i, i, i);
     CHECK_OK(processor->Run(stmt));
   }
 
@@ -1788,8 +1786,8 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
     CHECK_OK(row.SetInt32(2, i));
     std::tuple<int, int, int> values(i, i, i);
     rows.push_back(values);
-    string stmt = Substitute("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
-                               "($0, $1, $2) using ttl 200;", i, i, i);
+    string stmt = Format("INSERT INTO ttl_writetime_test (h, v1, v2) VALUES "
+                           "($0, $1, $2) using ttl 200;", i, i, i);
     CHECK_OK(processor->Run(stmt));
   }
 
@@ -1803,7 +1801,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
   // test that for ttl > 150, there are 5 elements that match what we expect
   string select_stmt_template = "SELECT * FROM ttl_writetime_test WHERE ttl($0) $1 $2";
 
-  string select_stmt = Substitute(select_stmt_template, "v1", "<", 150);
+  string select_stmt = Format(select_stmt_template, "v1", "<", 150);
   CHECK_OK(processor->Run(select_stmt));
   auto row_block = processor->row_block();
   std::vector<QLRow>& returned_rows_1 = row_block->rows();
@@ -1827,7 +1825,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
   CHECK_OK(processor->Run(update_stmt));
   update_stmt = "UPDATE ttl_writetime_test using ttl 300 set v1 = 8 where h = 8;";
   CHECK_OK(processor->Run(update_stmt));
-  select_stmt = Substitute(select_stmt_template, "v1", ">", 250);
+  select_stmt = Format(select_stmt_template, "v1", ">", 250);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   std::vector<QLRow>& returned_rows_2 = row_block->rows();
@@ -1845,7 +1843,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
     EXPECT_EQ(std::get<2>(rows[i]), row.column(2).int32_value());
   }
 
-  select_stmt = Substitute(select_stmt_template, "v2", ">", 250);
+  select_stmt = Format(select_stmt_template, "v2", ">", 250);
   CHECK_OK(processor->Run(select_stmt));
   row_block = processor->row_block();
   // checking result
@@ -1868,12 +1866,12 @@ TEST_F(TestQLQuery, TestFloatPrimaryKey) {
   CHECK_OK(processor->Run(create_stmt));
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Inserting " << my_keys[i];
-    CHECK_OK(processor->Run(Substitute(insert_template, my_keys[i], i)));
+    CHECK_OK(processor->Run(Format(insert_template, my_keys[i], i)));
   }
 
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Selecting " << my_keys[i];
-    CHECK_OK(processor->Run(Substitute(select_template, "*", my_keys[i])));
+    CHECK_OK(processor->Run(Format(select_template, "*", my_keys[i])));
     auto row_block = processor->row_block();
     ASSERT_EQ(1, row_block->row_count());
     std::vector<QLRow> &returned_rows = row_block->rows();
@@ -1902,12 +1900,12 @@ TEST_F(TestQLQuery, TestDoublePrimaryKey) {
   CHECK_OK(processor->Run(create_stmt));
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Inserting " << my_keys[i];
-    CHECK_OK(processor->Run(Substitute(insert_template, my_keys[i], i)));
+    CHECK_OK(processor->Run(Format(insert_template, my_keys[i], i)));
   }
 
   for (int i = 0; i < 5; i++) {
     LOG(INFO) << "Selecting " << my_keys[i];
-    CHECK_OK(processor->Run(Substitute(select_template, "*", my_keys[i])));
+    CHECK_OK(processor->Run(Format(select_template, "*", my_keys[i])));
     auto row_block = processor->row_block();
     ASSERT_EQ(1, row_block->row_count());
     std::vector<QLRow> &returned_rows = row_block->rows();

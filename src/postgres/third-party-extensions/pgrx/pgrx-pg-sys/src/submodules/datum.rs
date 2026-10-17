@@ -62,7 +62,7 @@ impl Datum {
     /// the memory address, interpreting them as an integer.
     #[inline]
     pub fn value(self) -> usize {
-        sptr::Strict::addr(self.0)
+        self.0.addr()
     }
 
     #[inline]
@@ -87,14 +87,14 @@ impl Datum {
 impl From<usize> for Datum {
     #[inline]
     fn from(val: usize) -> Datum {
-        Datum(sptr::Strict::with_addr(NonNull::<DatumBlob>::dangling().as_ptr(), val))
+        Datum(NonNull::<DatumBlob>::dangling().as_ptr().with_addr(val))
     }
 }
 
 impl From<Datum> for usize {
     #[inline]
     fn from(val: Datum) -> usize {
-        sptr::Strict::addr(val.0)
+        val.0.addr()
     }
 }
 
@@ -218,11 +218,7 @@ impl TryFrom<NullableDatum> for Datum {
     #[inline]
     fn try_from(nd: NullableDatum) -> Result<Datum, ()> {
         let NullableDatum { value, isnull } = nd;
-        if isnull {
-            Err(())
-        } else {
-            Ok(value)
-        }
+        if isnull { Err(()) } else { Ok(value) }
     }
 }
 

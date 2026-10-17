@@ -3,6 +3,7 @@ import { Region } from '@app/redesign/helpers/dtos';
 import {
   assignRegionsAZNodeByReplicationFactor,
   getExpertAvailabilityZonesOrEmpty,
+  getExpertRfOptions,
   getFaultToleranceNeeded,
   getGuidedNodesStepReplicationFactor
 } from '../../create-universe/CreateUniverseUtils';
@@ -65,23 +66,25 @@ function regionCodesMatchAvailabilityZones(
 }
 
 /**
- * Expert RF buttons: 1, 3, 5, 7. An option is disabled when it is below region
- * count (see ExpertNodesReplicationSection).
+ * Expert RF buttons: 1, 3, 5, 7 (, 9 when flag on). An option is disabled when
+ * it is below region count (see ExpertNodesReplicationSection).
  */
-const EXPERT_RF_OPTIONS = [1, 3, 5, 7] as const;
-
-export function minExpertRfForRegionCount(regionCount: number): number | undefined {
-  return EXPERT_RF_OPTIONS.find((rf) => rf >= regionCount);
+export function minExpertRfForRegionCount(
+  regionCount: number,
+  enablePrimaryRf9 = false
+): number | undefined {
+  return getExpertRfOptions(enablePrimaryRf9).find((rf) => rf >= regionCount);
 }
 
 function resolveExpertEditReplicationFactor(
   regionCount: number,
   currentRf: number | undefined,
   expertDefaultRf: number | undefined,
-  resilienceFactor: number | undefined
+  resilienceFactor: number | undefined,
+  enablePrimaryRf9 = false
 ): number {
   const seeded = currentRf ?? expertDefaultRf ?? resilienceFactor ?? 1;
-  const minRf = minExpertRfForRegionCount(regionCount);
+  const minRf = minExpertRfForRegionCount(regionCount, enablePrimaryRf9);
   if (minRf !== undefined && seeded < minRf) {
     return minRf;
   }
@@ -95,14 +98,15 @@ function resolveExpertEditReplicationFactor(
  */
 function recalculateExpertNodesAvailability(
   resilience: ResilienceAndRegionsProps,
-  nodesAndAvailability: NodeAvailabilityProps
+  nodesAndAvailability: NodeAvailabilityProps,
+  enablePrimaryRf9 = false
 ): NodeAvailabilityProps {
   const selectedCodes = selectedRegionCodes(resilience);
   const keptExisting = filterToSelectedRegions(
     nodesAndAvailability.availabilityZones ?? {},
     selectedCodes
   );
-  const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilience);
+  const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilience, enablePrimaryRf9);
   const defaultZones = expertPlacement.availabilityZones;
 
   const mergedZones: NodeAvailabilityProps['availabilityZones'] = {};
@@ -126,7 +130,8 @@ function recalculateExpertNodesAvailability(
       (resilience.regions ?? []).length,
       nodesAndAvailability[REPLICATION_FACTOR],
       expertPlacement.replicationFactor,
-      resilience.resilienceFactor
+      resilience.resilienceFactor,
+      enablePrimaryRf9
     )
   };
 }
@@ -346,7 +351,8 @@ export function needsEditPlacementNodesNormalization(
 }
 
 export function normalizeEditPlacementNodesAvailability(
-  context: Pick<EditPlacementContextProps, 'resilience' | 'nodesAndAvailability'>
+  context: Pick<EditPlacementContextProps, 'resilience' | 'nodesAndAvailability'>,
+  enablePrimaryRf9 = false
 ): NodeAvailabilityProps | undefined {
   const { resilience, nodesAndAvailability } = context;
   if (!resilience || !nodesAndAvailability) {
@@ -362,7 +368,11 @@ export function normalizeEditPlacementNodesAvailability(
     ) {
       return nodesAndAvailability;
     }
-    return recalculateExpertNodesAvailability(resilience, nodesAndAvailability);
+    return recalculateExpertNodesAvailability(
+      resilience,
+      nodesAndAvailability,
+      enablePrimaryRf9
+    );
   }
 
   const { availabilityZones, ...rest } = nodesAndAvailability;

@@ -239,8 +239,10 @@ void FullCompactionManager::DoScheduleFullCompactions(
           << ": tablet not found.";
       continue;
     }
+    // Scheduled and stat-based compactions target RocksDB only.
     Status s = tablet->TriggerManualCompactionIfNeeded(
-        rocksdb::CompactionReason::kScheduledFullCompaction);
+        rocksdb::CompactionReason::kScheduledFullCompaction,
+        tablet::IncludeVectorIndexes::kFalse);
     if (s.ok()) {
       // Remove tablet from compaction times on successful schedule.
       next_compact_time_per_tablet_.erase(peer->tablet_id());

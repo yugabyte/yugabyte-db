@@ -14,7 +14,7 @@ use crate as pg_sys;
 use crate::BuiltinOid;
 use crate::Datum;
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable, TypeOrigin,
 };
 
 /// An [object identifier][pg_docs_oid] in Postgres.
@@ -133,12 +133,11 @@ impl From<BuiltinOid> for Oid {
 }
 
 unsafe impl SqlTranslatable for Oid {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("oid"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("oid")))
-    }
+    const TYPE_IDENT: &'static str = pgrx_sql_entity_graph::pgrx_resolved_type!(Oid);
+    const TYPE_ORIGIN: TypeOrigin = TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = Ok(SqlMappingRef::literal("oid"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("oid")));
 }
 
 // Actually implemented inside pgXX_oids.rs

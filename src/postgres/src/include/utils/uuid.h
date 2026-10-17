@@ -39,6 +39,4 @@ DatumGetUUIDP(Datum X)
 
 #define PG_GETARG_UUID_P(X)		DatumGetUUIDP(PG_GETARG_DATUM(X))
 
-extern char *yb_convert_uuid_to_yb_uuid_string_repr(const pg_uuid_t *uuid);
-
 #endif							/* UUID_H */

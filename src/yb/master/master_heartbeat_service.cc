@@ -17,7 +17,7 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
 #include "yb/consensus/metadata.pb.h"
@@ -28,27 +28,28 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_util.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
+#include "yb/master/master_tablet_service.h"
 #include "yb/master/master_service_base.h"
-#include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
-#include "yb/rpc/rpc_context.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -75,6 +76,10 @@ DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile,
 
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
+
+DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
+    "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
+TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
@@ -134,11 +139,12 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
-DECLARE_bool(enable_register_ts_from_raft);
-DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_int32(heartbeat_rpc_timeout_ms);
-DECLARE_bool(skip_tserver_version_checks);
 DECLARE_bool(enable_db_history_retention_pins);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_bool(enable_register_ts_from_raft);
+DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
+DECLARE_bool(skip_tserver_version_checks);
+DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 namespace yb::master {
 
@@ -310,6 +316,9 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
 void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB& resp) {
+  // Travels with the catalog version because it is consumed at the same moment: a backend about
+  // to bump the version needs to know what its last bump is still costing the leader.
+  resp.set_ysql_catalog_prefetch_load(GetYsqlCatalogPrefetchLoad());
   // When YSQL is disabled fall back to a single shared catalog version so that we still send
   // something back to legacy tservers.
   if (!FLAGS_enable_ysql) {
@@ -333,9 +342,10 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
 
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint; // can only be used when versions is not empty.
+  HybridTime read_ht;
   auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
       FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-      &versions, &fingerprint);
+      &versions, &fingerprint, &read_ht);
   if (!s.ok() || versions.empty()) {
     LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
                  << s.ToUserMessage();
@@ -356,6 +366,9 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
   }
 
   auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  if (read_ht.is_valid()) {
+    mutable_version_data->set_catalog_versions_read_time(read_ht.ToUint64());
+  }
   for (const auto& it : versions) {
     auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
     catalog_version->set_db_oid(it.first);
@@ -408,15 +421,14 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << tserver::CatalogInvalMessagesDataDebugString(resp);
 }
 
-// TODO: On master failover, the new master can temporarily return incomplete pins until every
-// tserver heartbeats master once. Need to add guard against master failover in follow-up.
 void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
   if (!FLAGS_enable_db_history_retention_pins) {
     return;
   }
-  DbOidToHybridTimeMap cluster_pins =
-    server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes();
-  for (const auto& [db_oid, pin] : cluster_pins) {
+  auto cluster_pins = server_->ts_manager()->GetClusterYsqlDbPinsForPublishing(
+      catalog_manager_->TimeSinceElectedLeader());
+  resp.set_cluster_ysql_db_pins_ready(cluster_pins.ready);
+  for (const auto& [db_oid, pin] : cluster_pins.pins) {
     (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
       .set_db_level_oldest_read_time(pin.ToPB());
   }
@@ -483,7 +495,17 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
     TSDescriptorPtr& ts_desc = *desc_result;
 
+    // Correctness requires that this occur after UpdateAndReturnTSDescriptorOrRespond.
+    auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
+        leader_term, *resp->mutable_xcluster_guarded_info());
+    if (!fill_status.ok()) {
+      rpc.RespondFailure(fill_status.CloneAndPrepend("Failed to fill xCluster-guarded info"));
+      return;
+    }
+
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+
+    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {
@@ -549,7 +571,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     auto cluster_config = server_->catalog_manager()->GetClusterConfig();
     if (cluster_config) {
-      resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+      if (!FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
+        resp->set_deprecated_oid_cache_invalidations_count(
+            cluster_config->oid_cache_invalidations_count());
+      }
 
       uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
       if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
@@ -569,7 +594,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+      LOG(WARNING) << "Could not get cluster config for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
     }
 
@@ -1067,7 +1092,19 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
 
   // Update the table state if all its tablets are now running.
   for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+    const auto& table_info = table_info_map[table_id];
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info, epoch, tablets);
+
+    // If this is a transaction status tablet, we need to bump the transaction table versions so
+    // that tservers update their cache of usable status tablets to include this tablet.
+    // We do one incrment per status tablet here for easier testing even though one increment total
+    // is sufficient. Transaction status creations are rare, so this should not be an issue.
+    if (table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+      WARN_NOT_OK(
+          catalog_manager_->IncrementTransactionTablesVersion(),
+          "Failed to increment transaction status version, transaction status tablet may not be "
+          "usable until next increment");
+    }
   }
 
   // Update the relevant tablet entries in system.partitions.
@@ -1621,9 +1658,12 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   }
   auto tserver_universe_uuid = *tserver_universe_uuid_res;
 
+  // Read a locked copy: tests may change this string flag concurrently.
+  std::string test_master_universe_uuid;
+  CHECK(google::GetCommandLineOption("TEST_master_universe_uuid", &test_master_universe_uuid));
   auto master_universe_uuid_res = UniverseUuid::FromString(
-      FLAGS_TEST_master_universe_uuid.empty() ? cluster_config.universe_uuid()
-                                              : FLAGS_TEST_master_universe_uuid);
+      test_master_universe_uuid.empty() ? cluster_config.universe_uuid()
+                                        : test_master_universe_uuid);
   if (!master_universe_uuid_res) {
     LOG(WARNING) << "Could not decode cluster config universe_uuid: "
                  << master_universe_uuid_res.status().ToString();

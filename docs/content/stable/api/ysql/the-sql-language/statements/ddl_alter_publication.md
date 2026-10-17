@@ -87,5 +87,5 @@ yugabyte=# ALTER PUBLICATION my_publication RENAME TO renamed_publication;
 
 ## See also
 
-- [`CREATE PUBLICATION`](../ddl_create_publication)
-- [`DROP PUBLICATION`](../ddl_drop_publication)
+- [CREATE PUBLICATION](../ddl_create_publication)
+- [DROP PUBLICATION](../ddl_drop_publication)

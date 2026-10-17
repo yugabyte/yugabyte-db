@@ -4,6 +4,7 @@ package module
 
 import (
 	"context"
+	"encoding/base64"
 	"io/fs"
 	"node-agent/util"
 	"os"
@@ -20,8 +21,9 @@ import (
 
 // Custom filters for Gonja templating engine.
 var customFilterFunctions = map[string]exec.FilterFunction{
-	"split_string": splitString,
-	"bool":         convertBool,
+	"split_string":  splitString,
+	"bool":          convertBool,
+	"base64_encode": base64Encode,
 }
 
 // Custom tests for Gonja templating engine.
@@ -82,6 +84,14 @@ func convertBool(e *exec.Evaluator, in *exec.Value, params *exec.VarArgs) *exec.
 	}
 	// Let the template engine handle the error.
 	return exec.AsValue(in.Bool())
+}
+
+// base64Encode safely embeds arbitrary strings in generated shell scripts.
+func base64Encode(e *exec.Evaluator, in *exec.Value, params *exec.VarArgs) *exec.Value {
+	if in.IsError() {
+		return in
+	}
+	return exec.AsValue(base64.StdEncoding.EncodeToString([]byte(in.String())))
 }
 
 // Custom test to match boolean values with type coercion.

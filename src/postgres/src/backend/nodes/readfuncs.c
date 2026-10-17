@@ -653,6 +653,7 @@ _readYbBatchedNestLoop(void)
 	READ_BOOL_FIELD(nl.join.inner_unique);
 	READ_NODE_FIELD(nl.join.joinqual);
 	READ_NODE_FIELD(nl.nestParams);
+	READ_INT_FIELD(first_batch_size);
 	READ_INT_FIELD(num_hashClauseInfos);
 	local_node->hashClauseInfos =
 		palloc0(local_node->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
@@ -672,6 +673,11 @@ _readYbBatchedNestLoop(void)
 		token = pg_strtok(&length);
 		local_node->hashClauseInfos[i].innerHashAttNo = atoi(token);
 	}
+
+	/* Ignore :innerHashExprs */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].innerHashExpr = nodeRead(NULL, 0);
 
 	/* Ignore :outerParamExprs */
 	pg_strtok(&length);

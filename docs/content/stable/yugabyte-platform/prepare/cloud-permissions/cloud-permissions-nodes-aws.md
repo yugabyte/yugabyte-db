@@ -39,6 +39,12 @@ type: docs
     </a>
   </li>
   <li>
+    <a href="../cloud-permissions-nodes-oci/" class="nav-link">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
+  <li>
     <a href="../cloud-permissions-nodes-k8s" class="nav-link">
       <i class="fa-regular fa-dharmachakra"></i>
       Kubernetes

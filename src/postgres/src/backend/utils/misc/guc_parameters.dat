@@ -3850,7 +3850,7 @@
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
 # client attach.
 { name => 'yb_conn_mgr_selective_deallocate', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
-  short_desc => 'Enables connection-manager-aware DEALLOCATE behavior.',
+  short_desc => 'DEPRECATED: no-op.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_conn_mgr_selective_deallocate',
   boot_val => 'true',
@@ -3876,6 +3876,16 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_ddl_transaction_block_enabled',
   boot_val => 'kEnableDdlTransactionBlocks',
+},
+
+{ name => 'yb_ddl_wait_for_master_prefetch_drain_ms', type => 'int', context => 'PGC_SUSET', group => 'CLIENT_CONN_STATEMENT',
+  short_desc => 'Maximum time a DDL waits for the master to work through the catalog prefetches caused by the previous catalog version bump, before bumping the version again.',
+  long_desc => 'Each bump sends every tserver to the master leader for a fresh catalog prefetch, and a bump before the previous wave drains adds to it rather than replacing it. Spacing bumps out trades latency in this session for load on the leader. The wait runs up to twice this long while the leader is turning away prefetches that are already under way, since adding to that discards work it has started. This is a deadline, not an expected wait: a leader that is keeping up reports no load and nothing waits at all. A leader that stays loaded is the other end: every transaction pays the full deadline, so a long migration runs at one catalog version bump per deadline. The wait counts against statement_timeout. On a leader that is already loaded, the DDL itself would often reach that timeout anyway. 0 disables the wait. The DDL proceeds when the time is up whether or not the leader has drained.',
+  flags => 'GUC_UNIT_MS',
+  variable => 'yb_ddl_wait_for_master_prefetch_drain_ms',
+  boot_val => '30000',
+  min => '0',
+  max => '86400000',
 },
 
 { name => 'yb_debug_log_catcache_events', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
@@ -3960,7 +3970,7 @@
 },
 
 { name => 'yb_disable_ddl_transaction_block_for_read_committed', type => 'bool', context => 'PGC_POSTMASTER', group => 'DEVELOPER_OPTIONS',
-  short_desc => 'If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction instead of the as part of the enclosing transaction block even if ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back to the mode when ysql_yb_ddl_transaction_block_enabled is false.',
+  short_desc => 'DEPRECATED: no-op.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_disable_ddl_transaction_block_for_read_committed',
   boot_val => 'false',
@@ -4042,6 +4052,14 @@
 { name => 'yb_enable_alter_table_rewrite', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enable ALTER TABLE rewrite operations',
   variable => 'yb_enable_alter_table_rewrite',
+  boot_val => 'true',
+},
+
+{ name => 'yb_enable_analyze_width_skip', type => 'bool', context => 'PGC_USERSET', group => 'RESOURCES_MEM',
+  short_desc => 'Do not materialize sampled values ANALYZE will not read.',
+  long_desc => 'The statistics code ignores varlena values wider than its per-type width threshold, so ANALYZE keeps only their size.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_analyze_width_skip',
   boot_val => 'true',
 },
 
@@ -4265,9 +4283,10 @@
 
 { name => 'yb_enable_new_relation_fastpath_write_in_txn_blocks', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too.',
+  long_desc => 'Requires yb_ddl_transaction_block_enabled to be on.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_new_relation_fastpath_write_in_txn_blocks',
-  boot_val => 'false',
+  boot_val => 'kEnableDdlTransactionBlocks',
   check_hook => 'check_yb_enable_new_relation_fastpath_write_in_txn_blocks',
 },
 
@@ -4452,6 +4471,13 @@
   long_desc => 'When the target table has secondary indexes, triggers, or foreign key constraints, upsert mode is automatically disabled to prevent correctness issues. Consider using INSERT ... ON CONFLICT for true upsert semantics instead.',
   variable => 'yb_enable_upsert_mode',
   boot_val => 'false',
+},
+
+{ name => 'yb_enable_xcluster_analyze_replication', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Autoflag to enable capturing ANALYZE for xCluster DDL replication. Not to be touched by users.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_xcluster_analyze_replication',
+  boot_val => 'true',
 },
 
 { name => 'yb_explain_hide_non_deterministic_fields', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
@@ -4805,6 +4831,16 @@
   max => 'INT_MAX',
 },
 
+{ name => 'yb_origination_time_override', type => 'string', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Origination time to stamp on this session\'s writes and commits instead of the time each transaction originated. Takes a Unix timestamp in microseconds; 0 means unset.',
+  long_desc => 'Set by the tablet server on internal connections that do work on behalf of an earlier statement, such as index backfill.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  variable => 'yb_origination_time_override_string',
+  boot_val => '"0"',
+  check_hook => 'yb_check_origination_time_override',
+  assign_hook => 'yb_assign_origination_time_override',
+},
+
 { name => 'yb_parallel_range_rows', type => 'int', context => 'PGC_USERSET', group => 'QUERY_TUNING_OTHER',
   short_desc => 'The number of rows to plan per parallel worker',
   flags => 'GUC_EXPLAIN',
@@ -4821,6 +4857,17 @@
   boot_val => '16 * 1024 * 1024',
   min => '1',
   max => 'INT_MAX',
+},
+
+{ name => 'yb_password_validity', type => 'int', context => 'PGC_SUSET', group => 'CONN_AUTH_AUTH',
+  short_desc => 'Sets how long a newly set or changed password remains valid.',
+  long_desc => 'A value of zero implies no password expiration. When a CREATE ROLE or ALTER ROLE specifies the VALID UNTIL clause, the VALID UNTIL clause takes precedence over this setting.',
+  flags => 'GUC_UNIT_MIN',
+  variable => 'yb_password_validity',
+  boot_val => '0',
+  min => '0',
+  max => 'INT_MAX',
+  check_hook => 'yb_check_password_validity_source',
 },
 
 { name => 'yb_pg_batch_detection_mechanism', type => 'enum', context => 'PGC_USERSET', group => 'COMPAT_OPTIONS_OTHER',
@@ -5055,6 +5102,16 @@
   boot_val => 'false',
 },
 
+{ name => 'yb_startup_free_memory_release_threshold', type => 'int', context => 'PGC_SIGHUP', group => 'RESOURCES_MEM',
+  short_desc => 'When a backend finishes connection startup, return the free memory held by TCMalloc to the operating system if it is at least this amount.',
+  long_desc => '0 (the default) always releases. -1 disables the release.',
+  flags => 'GUC_UNIT_KB',
+  variable => 'yb_startup_free_memory_release_threshold',
+  boot_val => '0',
+  min => '-1',
+  max => 'INT_MAX',
+},
+
 { name => 'yb_tcmalloc_sample_period', type => 'int', context => 'PGC_SUSET', group => 'STATS_MONITORING',
   short_desc => 'TCMalloc sample interval in bytes, i.e. approximately how many bytes between sampling allocation call stacks',
   flags => 'GUC_UNIT_BYTE',
@@ -5079,6 +5136,16 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_test_block_index_phase',
   boot_val => '""',
+},
+
+{ name => 'yb_test_catalog_preload_cache_list', type => 'string', context => 'PGC_SIGHUP', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Catalog caches to fill when preloading the catalog.',
+  long_desc => 'A comma separated list of catalogs, catalog caches, or indexes of catalog caches. If set, ysql_catalog_preload_additional_tables and ysql_catalog_preload_additional_table_list are ignored for prefetch and prefill.',
+  flags => 'GUC_LIST_INPUT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_catalog_preload_cache_list_string',
+  boot_val => '""',
+  check_hook => 'yb_check_test_catalog_preload_cache_list',
+  assign_hook => 'yb_assign_test_catalog_preload_cache_list',
 },
 
 { name => 'yb_test_collation', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',

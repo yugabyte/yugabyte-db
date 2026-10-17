@@ -9022,11 +9022,79 @@ bool
 check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
 														  GucSource source)
 {
-	if (*newval && !yb_enable_new_relation_fastpath_write)
+	/*
+	 * yb_enable_new_relation_fastpath_write gates the optimization as a whole,
+	 * and this GUC only widens it to transaction blocks, so a value of on while
+	 * the parent is off is inert rather than unsafe.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * rejected, as in the yb_ddl_transaction_block_enabled check below.
+	 * pg_wrapper generates ysql_pg.conf in the data directory, writing the
+	 * ysql_pg_conf_csv entries ahead of the block it derives from the PG gflags,
+	 * and postgres assigns the parameters in the order they appear in that file.
+	 * A cluster that turns the parent off - through ysql_pg_conf_csv, or through
+	 * the ysql_yb_enable_new_relation_fastpath_write gflag, which is the kill
+	 * switch for the optimization as a whole - therefore has the parent assigned
+	 * off before this GUC is assigned on, and rejecting that pair here would
+	 * leave the postmaster refusing to start.
+	 */
+	if (*newval && !yb_enable_new_relation_fastpath_write && source >= PGC_S_CLIENT)
 	{
 		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
 							"when yb_enable_new_relation_fastpath_write is disabled.");
 		return false;
 	}
+
+	/*
+	 * A DDL inside a transaction block can only use the fastpath if it runs in
+	 * the enclosing transaction, which requires transactional DDL. Otherwise
+	 * this GUC would be silently ineffective.
+	 *
+	 * Only values supplied once the postmaster has read its configuration are
+	 * checked: SET, the validation pass of ALTER ROLE/DATABASE ... SET, and
+	 * connection request options. The configuration file is applied in file
+	 * order, and yb_ddl_transaction_block_enabled may be assigned after this
+	 * GUC - pg_wrapper writes ysql_pg_conf_csv entries ahead of the block it
+	 * generates from the PG gflags - so checking there would reject a
+	 * configuration whose final values are valid. The validator on the
+	 * ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks gflag rejects the
+	 * cluster-level combination instead, order-independently; a GUC enabled only
+	 * through ysql_pg_conf_csv is left to no-op silently.
+	 */
+	if (*newval && !yb_ddl_transaction_block_enabled && source >= PGC_S_CLIENT)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_ddl_transaction_block_enabled is disabled.");
+		return false;
+	}
+
 	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
+}
+
+/*
+ * Password validity is a policy that may be overridden for a specific role
+ * (ALTER ROLE ... SET) or for all roles (ALTER ROLE ALL SET, applied via
+ * PGC_S_GLOBAL), but never per-session, per-connection, or per-database.
+ * PGC_S_TEST is used internally to validate if the current user has sufficient
+ * privileges to execute the ALTER ROLE command. Thus, PGC_S_TEST is also
+ * whitelisted.
+ */
+bool
+yb_check_password_validity_source(int *newVal, void **extra, GucSource source)
+{
+	switch (source)
+	{
+		case PGC_S_DEFAULT:
+		case PGC_S_FILE:
+		case PGC_S_ARGV:
+		case PGC_S_TEST:
+		case PGC_S_USER:
+		case PGC_S_GLOBAL:
+			return true;
+		default:
+			GUC_check_errdetail("yb_password_validity can only be set via "
+								"ysql_pg_conf_csv (config file), or for a "
+								"specific role via ALTER ROLE ... SET.");
+			return false;
+	}
 }

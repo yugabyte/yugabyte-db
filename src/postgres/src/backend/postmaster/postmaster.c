@@ -3490,7 +3490,13 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(PgArchPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() && !take_action)
+	/*
+	 * YB: during shutdown fall through so pmState advances; otherwise a child
+	 * killed after the shutdown signal (e.g. the checkpointer after the
+	 * SIGKILL timeout) leaves the postmaster stuck in PM_SHUTDOWN.
+	 */
+	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() &&
+		!take_action && Shutdown == NoShutdown)
 		return;
 
 	/* We do NOT restart the syslogger */

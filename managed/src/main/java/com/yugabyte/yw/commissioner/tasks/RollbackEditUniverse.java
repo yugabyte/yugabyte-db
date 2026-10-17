@@ -7,10 +7,13 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -150,6 +153,15 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
 
       // Master should only report Live-before (plus transient destroyed ADD IPs).
       createConfirmBeforeLiveMembershipTasks(before, nodesToDestroy);
+
+      // Delete before restore: the restore drops the state of load balancers that the failed edit
+      // created, for example for a new region.
+      List<ManagedLoadBalancer> plannedLbs =
+          before.clusters.stream()
+              .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c).stream())
+              .collect(Collectors.toList());
+      createDeleteManagedLoadBalancerTasks(
+          lb -> plannedLbs.stream().noneMatch(lb::matches), false /* ignoreErrors */);
 
       // Force-release before restore: DeleteCapacityReservation reads current details; restore
       // would drop failed-edit CapacityReservationState while cloud reservations may remain.

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { ROOT_URL } from '@app/config';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '@app/actions/customers';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const TOUR_SETTINGS_KEY = 'universe_revamp_popups';
 export const ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT = 'yb-onboarding-new-experience-change';
@@ -28,7 +30,9 @@ const ALL_MASK = ((1 << TourStep.WhatChanged) - 1) | (1 << TourStep.WhatNewPlace
 type UserRef = { uuid: string; role: string };
 
 let mask = 0;
-let newUiEnabled = false;
+/** null until hydrated from runtime config — "unknown", not "off". */
+let newUiEnabled: boolean | null = null;
+let togglePersistInFlight = false;
 let userRef: UserRef | null = null;
 let onUserUpdate: ((user: unknown) => void) | null = null;
 let persistChain: Promise<void> = Promise.resolve();
@@ -49,14 +53,29 @@ export function subscribeTourProgressReady(onReady: () => void): () => void {
 
 export const isTourStepDismissed = (step: TourStepBit): boolean => (mask & bit(step)) !== 0;
 
-export const isOnboardingNewExperienceEnabled = (): boolean => newUiEnabled;
+export const isOnboardingNewExperienceEnabled = (): boolean => newUiEnabled === true;
+
+export const isOnboardingNewExperienceHydrated = (): boolean => newUiEnabled !== null;
+
+/**
+ * Sync in-memory feature-flag mirror from runtime config (no write).
+ * Call when global runtime config loads or changes.
+ * Skipped while a banner toggle PUT is in flight so stale cache cannot clobber it.
+ */
+export function syncOnboardingNewExperienceEnabled(enabled: boolean): void {
+  if (togglePersistInFlight) return;
+  if (newUiEnabled === enabled) return;
+  newUiEnabled = enabled;
+  window.dispatchEvent(
+    new CustomEvent(ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT, { detail: { enabled } })
+  );
+}
 
 export function bindTourProgress(
   user: {
     uuid?: string;
     role?: string;
     settings?: Record<string, unknown> | null;
-    newUniverseUiEnabled?: boolean;
     newUniverseUiTourCompleted?: boolean;
   } | null,
   onUpdate?: (user: unknown) => void
@@ -68,16 +87,8 @@ export function bindTourProgress(
   }
   const wasReady = userRef !== null;
   userRef = { uuid: user.uuid, role: user.role };
-  const enabled = !!user.newUniverseUiEnabled;
-  const prev = newUiEnabled;
-  newUiEnabled = enabled;
   const raw = user.settings?.[TOUR_SETTINGS_KEY];
   mask = typeof raw === 'number' ? raw : 0;
-  if (enabled !== prev) {
-    window.dispatchEvent(
-      new CustomEvent(ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT, { detail: { enabled } })
-    );
-  }
   if (!wasReady) {
     window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_READY_EVENT));
   }
@@ -86,7 +97,7 @@ export function bindTourProgress(
 /** Call on logout so the next session does not reuse in-memory progress. */
 export function resetTourProgress(): void {
   mask = 0;
-  newUiEnabled = false;
+  newUiEnabled = null;
   userRef = null;
 }
 
@@ -116,21 +127,35 @@ export function dismissTourStep(step: TourStepBit): void {
   persist();
 }
 
-export function setOnboardingNewExperienceEnabled(enabled: boolean): void {
-  if (newUiEnabled === enabled) return;
+/**
+ * SuperAdmin banner toggle: set yb.ui.feature_flags.enable_new_universe_experience.
+ * Updates in-memory state immediately; persists via runtime-config PUT.
+ */
+export function setOnboardingNewExperienceEnabled(enabled: boolean): Promise<void> {
+  if (newUiEnabled === enabled) return Promise.resolve();
   newUiEnabled = enabled;
+  togglePersistInFlight = true;
   window.dispatchEvent(
     new CustomEvent(ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT, { detail: { enabled } })
   );
-  persistChain = persistChain
-    .then(async () => {
-      if (!userRef) return;
-      const cUUID = localStorage.getItem('customerId');
-      const { data } = await axios.put(
-        `${ROOT_URL}/customers/${cUUID}/users/${userRef.uuid}/update_profile`,
-        { role: userRef.role, newUniverseUiEnabled: enabled }
+  const cUUID = localStorage.getItem('customerId');
+  const key = RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI;
+  return axios
+    .put(
+      `${ROOT_URL}/customers/${cUUID}/runtime_config/${DEFAULT_RUNTIME_GLOBAL_SCOPE}/key/${key}`,
+      String(enabled),
+      { headers: { 'Content-Type': 'text/plain' } }
+    )
+    .then(() => undefined)
+    .catch(() => {
+      newUiEnabled = !enabled;
+      window.dispatchEvent(
+        new CustomEvent(ONBOARDING_NEW_EXPERIENCE_CHANGE_EVENT, {
+          detail: { enabled: !enabled }
+        })
       );
-      onUserUpdate?.(data);
     })
-    .catch(() => undefined);
+    .finally(() => {
+      togglePersistInFlight = false;
+    });
 }

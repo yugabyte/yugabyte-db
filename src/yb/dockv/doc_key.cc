@@ -26,10 +26,9 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -39,7 +38,6 @@
 using std::ostringstream;
 using std::string;
 
-using strings::Substitute;
 
 using yb::util::CompareVectors;
 using yb::util::CompareUsingLessThan;
@@ -82,8 +80,8 @@ Status ConsumePrimitiveValuesFromKey(
     }
 
     RETURN_NOT_OK_PREPEND(callback(),
-        Substitute("while consuming primitive values from $0",
-                   initial_slice.ToDebugHexString()));
+        Format("while consuming primitive values from $0",
+               initial_slice.ToDebugHexString()));
   }
   return Status::OK();
 }
@@ -594,7 +592,7 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   rocksdb::Slice mutable_slice = slice;
   Status status = DecodeFrom(&mutable_slice);
   if (!mutable_slice.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes",
         mutable_slice.size());
   }
@@ -643,7 +641,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   }
 
   if (hash_present_) {
-    result += StringPrintf("0x%04x", hash_);
+    result += Format("0x$0", HexString(hash_, 4));
     result += ", ";
   }
 
@@ -858,7 +856,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
     auto decode_result = DecodeSubkey(slice, callback);
     RETURN_NOT_OK_PREPEND(
         decode_result,
-        Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
+        Format("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
     if (!decode_result.get()) {
       break;
     }
@@ -868,7 +866,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
       callback.doc_hybrid_time() = DocHybridTime::kInvalid;
       return Status::OK();
     }
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         Corruption,
         "Found too few bytes in the end of a SubDocKey for a type-prefixed hybrid_time: $0",
         ToShortDebugStr(*slice));
@@ -891,7 +889,7 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
   rocksdb::Slice mutable_slice = slice;
   RETURN_NOT_OK(DecodeFrom(&mutable_slice, require_hybrid_time));
   if (!mutable_slice.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "Expected all bytes of the slice to be decoded into SubDocKey, found $0 extra bytes: $1",
         mutable_slice.size(), mutable_slice.ToDebugHexString());
   }

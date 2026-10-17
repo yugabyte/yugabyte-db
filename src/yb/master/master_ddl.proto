@@ -662,6 +662,8 @@ message GetNamespaceInfoResponsePB {
   optional bool colocated = 3;
   // This denotes if a colocated database is a legacy colocated database.
   optional bool legacy_colocated_database = 4;
+  optional SysNamespaceEntryPB.State state = 5;
+  optional SysNamespaceEntryPB.YsqlNextMajorVersionState ysql_next_major_version_state = 6;
 }
 
 // ============================================================================
@@ -880,6 +882,7 @@ message WaitForLockersMultipleGlobalRequestPB {
   repeated docdb.ObjectLockPB object_locks = 3;
   optional fixed64 propagated_hybrid_time = 4;
   optional bytes background_transaction_id = 5;
+  optional bytes background_transaction_status_tablet = 6;
 }
 
 message WaitForLockersMultipleGlobalResponsePB {

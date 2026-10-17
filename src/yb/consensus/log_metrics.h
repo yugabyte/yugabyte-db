@@ -41,6 +41,8 @@ template<class T>
 class AtomicGauge;
 class Counter;
 class EventStats;
+template<class T>
+class FunctionGauge;
 class MetricEntity;
 
 namespace log {
@@ -52,6 +54,10 @@ struct LogMetrics {
   // Global stats
   scoped_refptr<Counter> bytes_logged;
   scoped_refptr<AtomicGauge<uint64_t>> wal_size;
+
+  // Computed from the Log's periodic-sync state at read time, so it is instantiated by the Log
+  // itself rather than by this constructor.
+  scoped_refptr<FunctionGauge<int64_t>> wal_sync_overdue_ms;
 
   // Per-group group commit stats
   scoped_refptr<EventStats> sync_latency;

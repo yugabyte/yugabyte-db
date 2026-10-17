@@ -22,6 +22,7 @@ import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageException;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
@@ -46,6 +47,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
+import org.yb.ybc.CloudStoreSpec;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -750,5 +752,69 @@ public class GCPUtilTest extends FakeDBApplication {
                               .equals(
                                   "backup/cloudPath/test-backup-dir/backup_2025-03-26_12-00-00.tgz")));
     }
+  }
+
+  // useGcpIam with no resolvable audience: every YBA-side bucket call short-circuits before
+  // touching GCS, deferring real access to the node via YBC.
+
+  @Test
+  public void testCanCredentialListObjectsSkipsForFederationConfig() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.backupLocation = "gs://test-bucket/backup";
+    gcsData.useGcpIam = true;
+    // Non-empty locations, yet no storage client is stubbed: returning true proves the skip.
+    assertTrue(
+        mockGCPUtil.canCredentialListObjects(
+            gcsData,
+            Collections.singletonMap(
+                YbcBackupUtil.DEFAULT_REGION_STRING, "gs://test-bucket/backup")));
+  }
+
+  @Test
+  public void testCheckFileExistsSkipsForFederationConfig() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.backupLocation = "gs://test-bucket/backup";
+    gcsData.useGcpIam = true;
+    // A federation backup is always a YB-Controller backup, so report the marker as present.
+    assertTrue(
+        mockGCPUtil.checkFileExists(
+            gcsData, Collections.singleton("gs://test-bucket/backup"), "success", true));
+  }
+
+  @Test
+  public void testCheckListObjectsWithYbcSuccessMarkerSkipsForFederationConfig() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.backupLocation = "gs://test-bucket/backup";
+    gcsData.useGcpIam = true;
+    // null csSpec proves the skip short-circuits before any dereference.
+    mockGCPUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(gcsData, null);
+  }
+
+  @Test
+  public void testCreateCloudStoreSpecUsesGoogleIamForFederationConfig() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.backupLocation = "gs://test-bucket/backup";
+    gcsData.useGcpIam = true;
+    // useGcpIam config (no json) must resolve to the IAM path (USE_GOOGLE_IAM).
+    CloudStoreSpec spec =
+        mockGCPUtil.createCloudStoreSpec(
+            YbcBackupUtil.DEFAULT_REGION_STRING, "commonDir", null, gcsData, null);
+    assertEquals("test-bucket", spec.getBucket());
+    assertTrue(spec.getCredsMap().containsKey(GCPUtil.YBC_GOOGLE_IAM_FIELDNAME));
+    assertEquals("true", spec.getCredsMap().get(GCPUtil.YBC_GOOGLE_IAM_FIELDNAME));
+  }
+
+  @Test
+  public void testBuildExternalAccountJsonLoadsSharedTemplate() {
+    String aud =
+        "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/a";
+    String json = GCPUtil.buildExternalAccountJson(aud);
+    // The template is loaded from the classpath and {{ audience }} is fully substituted.
+    assertTrue(json.contains("\"audience\": \"" + aud + "\""));
+    assertTrue(json.contains("\"type\": \"external_account\""));
+    assertTrue(json.contains("\"environment_id\": \"aws1\""));
+    assertFalse(json.contains("{{ audience }}"));
+    // {region} stays literal for the GCP auth library to fill at runtime.
+    assertTrue(json.contains("sts.{region}.amazonaws.com"));
   }
 }

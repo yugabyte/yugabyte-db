@@ -130,5 +130,5 @@ yugabyte=# SELECT a.k1, a.k2, a.v as av, b.v as bv FROM sample1 a LEFT JOIN samp
 
 ## See also
 
-- [`CREATE TABLE`](../ddl_create_table)
-- [`INSERT`](../dml_insert)
+- [CREATE TABLE](../ddl_create_table)
+- [INSERT](../dml_insert)

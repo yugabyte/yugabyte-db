@@ -52,6 +52,7 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
     uint16_t global_pool_size = 10;
     uint16_t control_connection_pool_size;
     int ysql_max_connections = 0;
+    std::map<std::string, std::string> ssl_config_map = {};
   };
   std::optional<CachedConf> conf_;
 
@@ -62,8 +63,9 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   bool log_stats_ = false;
 
   Status UpdateConfigFromGFlags();
+  Status UpdateSSLConfigFromYsqlPgConf();
   std::string GetBindAddress();
-  void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
+  Status AddSslConfig(std::map<std::string, std::string>& ysql_conn_mgr_configs);
   void UpdateLogSettings(const std::string& log_settings_str);
 };
 

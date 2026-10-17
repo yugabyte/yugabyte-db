@@ -5,13 +5,14 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.spy;
@@ -47,13 +48,22 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.DeployContext;
+import com.yugabyte.yw.models.NodeAgent.DeployType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.nodeagent.PingResponse;
 import com.yugabyte.yw.nodeagent.ServerInfo;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.Labels;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.UUID;
@@ -64,6 +74,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -197,6 +208,54 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     return restartNeeded;
   }
 
+  private void setCertExpiringSoon(NodeAgent nodeAgent) {
+    nodeAgent
+        .getConfig()
+        .setServerCertExpirySecs(Instant.now().plus(Duration.ofHours(1)).getEpochSecond());
+    nodeAgent.update();
+  }
+
+  // MainModule clears defaultRegistry after static gauge registration, so scrape-based helpers
+  // miss these series. Collect from the Gauge instance instead.
+  private Double getNodeAgentGaugeValue(String gaugeFieldName, NodeAgent nodeAgent)
+      throws Exception {
+    Field field = NodeAgentPoller.class.getDeclaredField(gaugeFieldName);
+    field.setAccessible(true);
+    Gauge gauge = (Gauge) field.get(null);
+    Labels expected =
+        Labels.of(
+            KnownAlertLabels.CUSTOMER_UUID.labelName(),
+            nodeAgent.getCustomerUuid().toString(),
+            KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+            nodeAgent.getUuid().toString(),
+            KnownAlertLabels.NODE_ADDRESS.labelName(),
+            String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()));
+    for (GaugeDataPointSnapshot dataPoint : ((GaugeSnapshot) gauge.collect()).getDataPoints()) {
+      if (dataPoint.getLabels().equals(expected)) {
+        return dataPoint.getValue();
+      }
+    }
+    return null;
+  }
+
+  private DeployType captureDeployType(NodeAgent nodeAgent) throws Exception {
+    mockUpgradeClientResponses();
+    ExecutorService upgrader = Executors.newSingleThreadExecutor();
+    nodeAgentPoller.setUpgradeExecutor(upgrader);
+    PollerTaskParam param =
+        PollerTaskParam.builder()
+            .nodeAgentUuid(nodeAgent.getUuid())
+            .lifetime(Duration.ofMinutes(5))
+            .build();
+    PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
+    pollerTask.run();
+    pollerTask.waitForUpgrade();
+    ArgumentCaptor<DeployContext> captor = ArgumentCaptor.forClass(DeployContext.class);
+    verify(nodeAgentManager, atLeastOnce()).getInstallerFiles(any(), captor.capture());
+    return captor.getValue().getDeployType();
+  }
+
   private NodeAgent runUpgradeToReady(NodeAgent nodeAgent) throws Exception {
     AtomicBoolean restartNeeded = mockUpgradeClientResponses();
     ExecutorService upgrader = Executors.newSingleThreadExecutor();
@@ -215,7 +274,10 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     Path newCertDirPath = nodeAgent.getCertDirPath();
     Path mergedCertFile = nodeAgent.getMergedCaCertFilePath();
     assertEquals(State.UPGRADED, nodeAgent.getState());
-    assertTrue("Merged cert file does not exist", mergedCertFile.toFile().exists());
+    boolean certsRolledOver = !certDir.equals(newCertDirPath);
+    if (certsRolledOver) {
+      assertTrue("Merged cert file does not exist", mergedCertFile.toFile().exists());
+    }
     restartNeeded.set(false);
     pollerTask.setState(PollerTaskState.SCHEDULED);
     pollerTask.run();
@@ -223,7 +285,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     assertEquals(State.READY, nodeAgent.getState());
     assertFalse("Merged cert file still exists", mergedCertFile.toFile().exists());
-    assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
+    if (certsRolledOver) {
+      assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
+    }
     return nodeAgent;
   }
 
@@ -262,6 +326,39 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testMetricsRemovedWhenNodeAgentDeleted() throws Exception {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deadNodeAgentRetention)))
+        .thenReturn(Duration.ofDays(7));
+
+    Util.setYbaVersion("2.13.0.0");
+    NodeAgent nodeAgent = register(newPayload("2.13.0.0"));
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    long expiresAt = Instant.now().plus(Duration.ofDays(100)).getEpochSecond();
+    nodeAgent.getConfig().setServerCertExpirySecs(expiresAt);
+    nodeAgent.update();
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+
+    // Publishes version-mismatch and server-cert gauges without starting an upgrade.
+    assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgentUuid));
+    assertEquals(0.0, getNodeAgentGaugeValue("NODE_AGENT_VERSION_MISMATCH_GAUGE", nodeAgent), 0.0);
+    assertEquals(
+        (double) expiresAt,
+        getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent),
+        0.0);
+
+    // Inserts a poller task for this agent so delete cleanup can find it.
+    assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgentUuid, false, n -> null));
+
+    NodeAgent.delete(nodeAgentUuid);
+    nodeAgentPoller.pollerService();
+
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_VERSION_MISMATCH_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE", nodeAgent));
+    assertNull(getNodeAgentGaugeValue("NODE_AGENT_CONNECTION_GAUGE", nodeAgent));
+    verify(mockSwamperHelper).removeNodeAgentTargetJson(eq(nodeAgentUuid));
+  }
+
+  @Test
   public void testHeartbeat() throws Exception {
     NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
     UUID nodeAgentUuid = nodeAgent.getUuid();
@@ -288,11 +385,41 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   public void testUpgrade() throws Exception {
     NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
     runUpgradeToReady(nodeAgent);
-    // Package(1), installer script(2), server cert(3), server key(4), signer public(5), signer
-    // private(6).
+    // Version mismatch only: package and installer script.
+    verify(mockNodeAgentClient, times(2)).uploadFile(any(), any(), any(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
+    verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
+  }
+
+  @Test
+  public void testUpgradeFull() throws Exception {
+    NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
+    setCertExpiringSoon(nodeAgent);
+    runUpgradeToReady(nodeAgent);
+    // Package, installer, server cert, server key, signer public, signer private.
     verify(mockNodeAgentClient, times(6)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
+  }
+
+  @Test
+  public void testDeployTypeBinaryOnly() throws Exception {
+    NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
+    assertEquals(DeployType.BINARY_ONLY, captureDeployType(nodeAgent));
+  }
+
+  @Test
+  public void testDeployTypeCertsOnly() throws Exception {
+    NodeAgent nodeAgent = register(newPayload("2.13.0.0"));
+    setCertExpiringSoon(nodeAgent);
+    assertEquals(DeployType.CERTS_ONLY, captureDeployType(nodeAgent));
+  }
+
+  @Test
+  public void testDeployTypeFull() throws Exception {
+    NodeAgent nodeAgent = register(newPayload("2.12.0.0"));
+    setCertExpiringSoon(nodeAgent);
+    assertEquals(DeployType.FULL, captureDeployType(nodeAgent));
   }
 
   @Test
@@ -317,8 +444,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
 
     nodeAgent = runUpgradeToReady(nodeAgent);
     assertEquals(certificateInfo.getUuid(), nodeAgent.getCertificateUuid());
-    // Same upload set as the default path for SelfSigned custom certs.
-    verify(mockNodeAgentClient, times(6)).uploadFile(any(), any(), any(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, times(2)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
   }
@@ -346,11 +472,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
 
     nodeAgent = runUpgradeToReady(nodeAgent);
     assertEquals(certificateInfo.getUuid(), nodeAgent.getCertificateUuid());
-    // Package, installer, signer public, signer private are uploaded; node cert/key are remote
-    // copied.
-    verify(mockNodeAgentClient, times(4)).uploadFile(any(), any(), any(), any(), anyInt(), any());
-    // mkdir for cert dirs + remote cp of node cert and key.
-    verify(mockNodeAgentClient, atLeast(3)).executeCommand(any(), any());
+    verify(mockNodeAgentClient, times(2)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
   }

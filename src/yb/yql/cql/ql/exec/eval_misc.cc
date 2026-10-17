@@ -18,6 +18,7 @@
 #include "yb/common/table_properties_constants.h"
 #include "yb/common/typedefs.h"
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 
@@ -71,9 +72,9 @@ Status Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
 
     if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
       return exec_context_->Error(tnode->ttl_seconds(),
-                                  strings::Substitute("Valid ttl range : [$0, $1]",
-                                                      yb::common::kCassandraMinTtlSeconds,
-                                                      yb::common::kCassandraMaxTtlSeconds).c_str(),
+                                  Format("Valid ttl range : [$0, $1]",
+                                         yb::common::kCassandraMinTtlSeconds,
+                                         yb::common::kCassandraMaxTtlSeconds).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));
