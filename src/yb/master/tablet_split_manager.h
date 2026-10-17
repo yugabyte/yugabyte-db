@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <optional>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "yb/master/leader_epoch.h"
@@ -30,6 +32,18 @@ YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
+
+// These tablet-local checks must precede lazy placement resolution.
+Status CheckSplitCandidateDriveInfo(
+    const TabletId& tablet_id, const TabletReplicaDriveInfo& drive_info);
+
+// The inputs to CatalogManager::ShouldSplitValidCandidate that depend on the table and on cluster
+// membership, but not on the tablet.
+struct SplitTableEligibility {
+  // Live, non-blacklisted tservers that the table's placement policy allows replicas on.
+  size_t num_eligible_tservers = 0;
+  size_t replication_factor = 0;
+};
 
 using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>>;
 

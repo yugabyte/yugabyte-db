@@ -1375,8 +1375,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
 
+  Result<SplitTableEligibility> ComputeSplitTableEligibility(
+      const scoped_refptr<const TableInfo>& table,
+      const TSDescriptorVector& ts_descs) const override;
+
+  using CatalogManagerIf::ShouldSplitValidCandidate;
   Result<SplitPhase> ShouldSplitValidCandidate(
-      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
+      const SplitTableEligibility* table_eligibility) const override;
 
   Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
