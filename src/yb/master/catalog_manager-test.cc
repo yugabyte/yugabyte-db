@@ -602,6 +602,75 @@ TEST(TestCatalogManagerEnterprise, TestLoadBalancedReadOnlySameAz) {
   ASSERT_NOK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
 }
 
+namespace {
+
+std::vector<TabletServerId> SortedUuids(const CMPerTableLoadState& state) {
+  std::vector<TabletServerId> result;
+  for (size_t idx : state.sorted_by_load()) {
+    result.push_back(state.uuid(idx));
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(TestCatalogManager, PerTableLoadStateOrder) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 5}, {"1111", 3}, {"2222", 3}, {"3333", 9}};
+  CMPerTableLoadState state(&global_state);
+  state.per_ts_replica_load_ = {{"0000", 2}, {"1111", 2}, {"2222", 2}, {"3333", 0}};
+  ASSERT_OK(state.Init(ts_descs));
+
+  // Table load first, then global load, then uuid.
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"3333", "1111", "2222", "0000"}));
+}
+
+TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}};
+  CMPerTableLoadState state(&global_state);
+  state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}};
+  ASSERT_OK(state.Init(ts_descs));
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"0000", "1111", "2222", "3333"}));
+
+  // The tserver that gained a replica moves behind every tserver with equal load.
+  state.AddReplica("0000");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "2222", "3333", "0000"}));
+  state.AddReplica("2222");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica("2222");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica("1111");
+  state.AddReplica("3333");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"0000", "1111", "3333", "2222"}));
+
+  // The global load follows the picks.
+  ASSERT_EQ(2, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("2222")));
+  ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
+}
+
+TEST(TestCatalogManager, PerTableLoadStateInitRequiresEveryTs) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
+  {
+    CMPerTableLoadState state(&global_state);
+    state.per_ts_replica_load_ = {{"0000", 0}};
+    ASSERT_NOK(state.Init(ts_descs));
+  }
+  {
+    CMGlobalLoadState partial_global_state;
+    partial_global_state.per_ts_replica_load_ = {{"0000", 0}};
+    CMPerTableLoadState state(&partial_global_state);
+    state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
+    ASSERT_NOK(state.Init(ts_descs));
+  }
+}
+
 TEST(TestCatalogManager, ValidateVectorIndexBackend) {
   SysTablesEntryPB table;
   table.set_name("vi");

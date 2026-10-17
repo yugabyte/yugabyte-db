@@ -14,6 +14,7 @@
 #include "yb/master/catalog_manager_util.h"
 
 #include <algorithm>
+#include <numeric>
 
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
@@ -599,31 +600,61 @@ size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replica
   return FLAGS_replication_factor;
 }
 
-Result<bool> CMPerTableLoadState::CompareReplicaLoads(
-    const TabletServerId &ts1, const TabletServerId &ts2) {
-  auto ts1_load = per_ts_replica_load_.find(ts1);
-  auto ts2_load = per_ts_replica_load_.find(ts2);
-  SCHECK(ts1_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts1));
-  SCHECK(ts2_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts2));
-
-  if (ts1_load->second != ts2_load->second) {
-    return ts1_load->second < ts2_load->second;
+Status CMPerTableLoadState::Init(const TSDescriptorVector& ts_descs) {
+  const size_t n = ts_descs.size();
+  uuids_.reserve(n);
+  table_load_.reserve(n);
+  global_load_.reserve(n);
+  for (const auto& ts : ts_descs) {
+    const auto& uuid = ts->permanent_uuid();
+    auto it = per_ts_replica_load_.find(uuid);
+    SCHECK(it != per_ts_replica_load_.end(), IllegalState,
+           Format("per_ts_replica_load_ does not contain $0", uuid));
+    index_[uuid] = uuids_.size();
+    uuids_.push_back(uuid);
+    table_load_.push_back(it->second);
+    global_load_.push_back(VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(uuid)));
   }
-
-  auto ts1_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts1));
-  auto ts2_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts2));
-
-  if (ts1_global_load == ts2_global_load) {
-    return ts1 < ts2;
+  sorted_.resize(n);
+  std::iota(sorted_.begin(), sorted_.end(), 0);
+  std::sort(sorted_.begin(), sorted_.end(),
+            [this](size_t a, size_t b) { return LessLoaded(a, b); });
+  pos_.resize(n);
+  for (size_t p = 0; p < n; ++p) {
+    pos_[sorted_[p]] = p;
   }
-  return ts1_global_load < ts2_global_load;
+  return Status::OK();
 }
 
-void CMPerTableLoadState::SortLoad() {
-  Comparator comp(this);
-  std::sort(sorted_replica_load_.begin(), sorted_replica_load_.end(), comp);
+bool CMPerTableLoadState::LessLoaded(size_t a, size_t b) const {
+  if (table_load_[a] != table_load_[b]) {
+    return table_load_[a] < table_load_[b];
+  }
+  if (global_load_[a] != global_load_[b]) {
+    return global_load_[a] < global_load_[b];
+  }
+  return uuids_[a] < uuids_[b];
+}
+
+void CMPerTableLoadState::AddReplica(const TabletServerId& uuid) {
+  auto it = index_.find(uuid);
+  if (it == index_.end()) {
+    LOG(DFATAL) << "Unknown tablet server " << uuid;
+    return;
+  }
+  size_t idx = it->second;
+  ++table_load_[idx];
+  ++global_load_[idx];
+  ++global_load_state_->per_ts_replica_load_[uuid];
+  // The key only grew, so the entry can only move towards the loaded end.
+  size_t p = pos_[idx];
+  while (p + 1 < sorted_.size() && LessLoaded(sorted_[p + 1], idx)) {
+    sorted_[p] = sorted_[p + 1];
+    pos_[sorted_[p]] = p;
+    ++p;
+  }
+  sorted_[p] = idx;
+  pos_[idx] = p;
 }
 
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info) {

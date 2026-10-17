@@ -12342,7 +12342,6 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // Initialize this table load state.
   CMPerTableLoadState table_load_state(global_load_state);
   RETURN_NOT_OK(InitializeTableLoadState(table_id, ts_descs, &table_load_state));
-  table_load_state.SortLoad();
 
   // Replacements for tablets that timed out in CREATING state are created before any write lock
   // is taken, so old and new tablets can all be locked in tablet id order, the order
@@ -12665,7 +12664,8 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // under-replicated rather than violating a maximum.
     size_t replicas_left = nreplicas - min_replica_count_sum;
     TSDescriptorVector candidates;
-    for (const auto& ts_uuid : per_table_state->sorted_replica_load_) {
+    for (size_t idx : per_table_state->sorted_by_load()) {
+      const auto& ts_uuid = per_table_state->uuid(idx);
       if (candidates.size() == replicas_left) {
         break;
       }
@@ -12898,7 +12898,8 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     set<TabletServerId>* excluded,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   shared_ptr<TSDescriptor> found_ts;
-  for (const auto& sorted_load : per_table_state->sorted_replica_load_) {
+  for (size_t idx : per_table_state->sorted_by_load()) {
+    const auto& sorted_load = per_table_state->uuid(idx);
     // Don't consider a tserver that has already been considered for this tablet.
     if (excluded->count(sorted_load)) {
       continue;
@@ -12936,9 +12937,7 @@ void CatalogManager::AddReplicaToConfig(
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   InsertOrDie(already_selected_ts, ts->permanent_uuid());
   // Update the load state at global and table level.
-  per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-  global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
-  per_table_state->SortLoad();
+  per_table_state->AddReplica(ts->permanent_uuid());
 
   // Increment the number of pending replicas so that we take this selection into
   // account when assigning replicas for other tablets of the same table. This
@@ -14171,16 +14170,14 @@ Status CatalogManager::InitializeTableLoadState(
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
     state->per_ts_replica_load_[ts->permanent_uuid()];
-    // Insert into the sorted list.
-    state->sorted_replica_load_.emplace_back(ts->permanent_uuid());
   }
 
   auto table_info = GetTableInfo(table_id);
 
-  if (!table_info) {
-    return Status::OK();
+  if (table_info) {
+    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(table_info, state));
   }
-  return CatalogManagerUtil::FillTableLoadState(table_info, state);
+  return state->Init(ts_descs);
 }
 
 // TODO: consider unifying this code with the cluster balancer.
