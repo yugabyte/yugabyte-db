@@ -3381,6 +3381,66 @@ TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   ASSERT_EQ(stats.partitions, kNumTablets);
 }
 
+// With vector_index_tenant_key_components the vectors of each tenant are only linked to each other,
+// and a search visits only the tenant its key equalities select. The query vector is closest to
+// the vectors of tenant 0, so other tenants are found only through their own entry points.
+TEST_F(PgVectorIndexPkRoutingTest, Tenants) {
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "th", "tenant INT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  ASSERT_OK(CreateAndFill(
+      conn, "tr", "tenant INT, id INT", "tenant ASC, id ASC",
+      "SPLIT AT VALUES ((5), (10, 5), (15))"));
+
+  auto check = [&conn](int rows_per_tenant) {
+    for (const auto* table : {"th", "tr"}) {
+      SCOPED_TRACE(table);
+      for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+        SCOPED_TRACE(Format("tenant: $0", tenant));
+        auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
+            KnnQuery(table, Format("tenant = $0", tenant), 0, rows_per_tenant)));
+        ASSERT_EQ(ids, Ids(0, rows_per_tenant));
+      }
+
+      // Equalities on more key columns than the tenant has.
+      auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
+          KnnQuery(table, "tenant = 10 AND id IN (7, 8)", 0, 3)));
+      ASSERT_EQ(ids, (std::vector<int32_t>{7, 8}));
+
+      for (const auto* where : {"id < 3", "tenant IN (3, 12)"}) {
+        SCOPED_TRACE(where);
+        auto result = conn.FetchRows<int32_t>(KnnQuery(table, where, 0, 3));
+        ASSERT_NOK_STR_CONTAINS(result, "equality conditions with a single value");
+      }
+    }
+  };
+
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+
+  // A second chunk, then both chunks merged.
+  for (const auto* table : {"th", "tr"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+        "FROM generate_series(0, $1) t, generate_series($2, $3) i",
+        table, kNumTenants - 1, kRowsPerTenant, 2 * kRowsPerTenant - 1));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+  }
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+}
+
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
 // leave that time invalid on the target tablet, so rows written transactionally into the clone
 // never reached its vector index (#34767).

@@ -245,32 +245,48 @@ TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
 
 TEST(DocVectorIdTest, TenantPrefixSize) {
   const auto tenant = KeyEntryValue::Create("tenant");
+  auto tenant_prefix_size = [](const KeyBytes& key, size_t num_key_components) {
+    return CHECK_RESULT(DocVectorTenantPrefixSize(key.AsSlice(), num_key_components));
+  };
+  // Drops the group end that closes the range group, as pggate does for a ybctid prefix.
+  auto query_prefix = [](const DocKey& doc_key) {
+    auto result = doc_key.Encode();
+    result.RemoveLastByte();
+    return result;
+  };
+
   // PRIMARY KEY ((tenant) HASH, r1, r2).
   auto ybctid = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1), KeyEntryValue::Int32(2)})
       .Encode();
   auto hash_part_size = ASSERT_RESULT(
       DocKey::EncodedSize(ybctid.AsSlice(), DocKeyPart::kUpToHash));
-  // Size of the key up to r1, without the group end that follows it in the encoded key.
-  auto r1_end = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)}).Encode().size() - 1;
-  ASSERT_EQ(ASSERT_RESULT(DocVectorTenantPrefixSize(ybctid.AsSlice(), 0)), 0U);
-  ASSERT_EQ(ASSERT_RESULT(DocVectorTenantPrefixSize(ybctid.AsSlice(), 1)), hash_part_size);
-  ASSERT_EQ(ASSERT_RESULT(DocVectorTenantPrefixSize(ybctid.AsSlice(), 2)), r1_end);
-  ASSERT_EQ(ASSERT_RESULT(DocVectorTenantPrefixSize(ybctid.AsSlice(), 3)), ybctid.size());
-  ASSERT_EQ(ASSERT_RESULT(DocVectorTenantPrefixSize(ybctid.AsSlice(), 10)), ybctid.size());
+  auto r1_end = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)})).size();
+  ASSERT_EQ(tenant_prefix_size(ybctid, 0), 0U);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 2), r1_end);
+  // The closing range group end is not covered.
+  ASSERT_EQ(tenant_prefix_size(ybctid, 3), ybctid.size() - 1);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 4), std::nullopt);
 
-  // Another row of the same tenant has the same tenant prefix.
-  auto same_tenant = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(3), KeyEntryValue::Int32(4)})
-      .Encode();
-  ASSERT_EQ(
-      same_tenant.AsSlice().Prefix(
-          ASSERT_RESULT(DocVectorTenantPrefixSize(same_tenant.AsSlice(), 1))),
-      ybctid.AsSlice().Prefix(hash_part_size));
+  // A query prefix with the hash group gives the tenant of its rows.
+  auto prefix = query_prefix(DocKey(0x1234, {tenant}, {}));
+  ASSERT_EQ(prefix.AsSlice(), ybctid.AsSlice().Prefix(hash_part_size));
+  ASSERT_EQ(tenant_prefix_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(prefix, 2), std::nullopt);
+  prefix = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)}));
+  ASSERT_EQ(tenant_prefix_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(prefix, 2), r1_end);
+
+  // PRIMARY KEY ((tenant) HASH): the tenant is the whole key without the range group end.
+  auto hash_ybctid = DocKey(0x1234, {tenant}, {}).Encode();
+  ASSERT_EQ(tenant_prefix_size(hash_ybctid, 1), hash_part_size);
 
   // PRIMARY KEY (r1 ASC, r2 ASC).
   auto range_ybctid = DocKey({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)}).Encode();
-  ASSERT_EQ(
-      ASSERT_RESULT(DocVectorTenantPrefixSize(range_ybctid.AsSlice(), 1)),
-      DocKey({KeyEntryValue::Int32(7)}).Encode().size() - 1);
+  auto range_prefix = query_prefix(DocKey({KeyEntryValue::Int32(7)}));
+  ASSERT_EQ(tenant_prefix_size(range_ybctid, 1), range_prefix.size());
+  ASSERT_EQ(tenant_prefix_size(range_prefix, 1), range_prefix.size());
+  ASSERT_EQ(tenant_prefix_size(range_prefix, 2), std::nullopt);
 }
 
 } // namespace yb::dockv

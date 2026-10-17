@@ -212,6 +212,12 @@ class VectorIndexTraitsIf {
   virtual bool StoresPayloadInSeparateFile() const {
     return false;
   }
+
+  // Returns the tenant extractor of the created indexes, null when vectors have no tenants.
+  virtual const VectorTenantExtractor& tenant_extractor() const {
+    static const VectorTenantExtractor kNoTenants;
+    return kNoTenants;
+  }
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

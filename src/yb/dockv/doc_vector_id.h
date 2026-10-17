@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "yb/common/column_id.h"
 #include "yb/common/value.messages.h"
 
@@ -157,9 +159,9 @@ Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload);
 // Ignores the fields after the ybctid, including ones this release does not know.
 Result<Slice> DocVectorIndexPayloadYbctid(Slice payload);
 
-// Returns the size of the first num_key_components key components of ybctid, as split by
-// SubDocKey::DecodePrefixLengths (all hash columns form one component), or the ybctid size when it
-// has fewer components.
-Result<size_t> DocVectorTenantPrefixSize(Slice ybctid, size_t num_key_components);
+// Returns the size of the first num_key_components key components of key, which is a ybctid or its
+// prefix without the closing range group end. All hash columns form one component, and the size
+// never covers the closing range group end. Returns nullopt when key has fewer components.
+Result<std::optional<size_t>> DocVectorTenantPrefixSize(Slice key, size_t num_key_components);
 
 } // namespace yb::dockv

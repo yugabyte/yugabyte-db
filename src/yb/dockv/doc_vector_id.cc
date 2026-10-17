@@ -443,16 +443,21 @@ Result<Slice> DocVectorIndexPayloadYbctid(Slice payload) {
   return ConsumeDocVectorIndexPayloadYbctid(&payload, &flags);
 }
 
-Result<size_t> DocVectorTenantPrefixSize(Slice ybctid, size_t num_key_components) {
-  if (num_key_components == 0) {
-    return 0;
+Result<std::optional<size_t>> DocVectorTenantPrefixSize(Slice key, size_t num_key_components) {
+  const auto* begin = key.data();
+  size_t num_components = 0;
+  if (num_key_components) {
+    auto hash_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
+    key.remove_prefix(hash_part_size);
+    num_components = hash_part_size ? 1 : 0;
   }
-  boost::container::small_vector<size_t, 8> prefix_lengths;
-  RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(ybctid, &prefix_lengths));
-  if (prefix_lengths.size() < num_key_components) {
-    return ybctid.size();
+  for (; num_components < num_key_components; ++num_components) {
+    if (key.empty() || key[0] == KeyEntryTypeAsChar::kGroupEnd) {
+      return std::nullopt;
+    }
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(&key, /* out= */ nullptr));
   }
-  return prefix_lengths[num_key_components - 1];
+  return key.data() - begin;
 }
 
 } // namespace yb::dockv

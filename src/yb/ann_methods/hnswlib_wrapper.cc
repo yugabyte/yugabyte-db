@@ -495,6 +495,10 @@ class HnswlibIndexTraits :
         options_.dimensions * sizeof(Scalar));
   }
 
+  const vector_index::VectorTenantExtractor& tenant_extractor() const override {
+    return tenant_extractor_;
+  }
+
  private:
   // Only CreateHnswlibIndexTraits is allowed to instantiate this class, since Init must be
   // called after construction.
