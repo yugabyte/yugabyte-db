@@ -214,13 +214,11 @@ class CMPerTableLoadState {
   // Call once after per_ts_replica_load_ is filled; sorts by (table load, global load, uuid).
   Status Init(const TSDescriptorVector& ts_descs);
 
-  // Adds one replica on tserver 'uuid' and keeps the sorted order.
-  void AddReplica(const TabletServerId& uuid);
+  // Adds one replica on tserver 'idx' and keeps the sorted order.
+  void AddReplica(size_t idx);
 
   // Tserver indexes, least loaded first.
   const std::vector<size_t>& sorted_by_load() const { return sorted_; }
-
-  const TabletServerId& uuid(size_t idx) const { return uuids_[idx]; }
 
   // Filled by CatalogManagerUtil::FillTableLoadState before Init().
   std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
@@ -230,7 +228,6 @@ class CMPerTableLoadState {
 
   CMGlobalLoadState* global_load_state_;
   std::vector<TabletServerId> uuids_;
-  std::unordered_map<TabletServerId, size_t> index_;
   std::vector<uint32_t> table_load_;
   // Mirror of global_load_state_->per_ts_replica_load_ for the tservers in uuids_.
   std::vector<uint32_t> global_load_;
