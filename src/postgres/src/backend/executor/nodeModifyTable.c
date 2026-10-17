@@ -252,6 +252,9 @@ static Bitmapset *YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
 												ResultRelInfo *resultRelInfo);
 static bool ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable,
 										 Relation targetRel);
+static TupleTableSlot *YbMapDeletePlanSlotToChild(ResultRelInfo *resultRelInfo,
+												  TupleTableSlot *planSlot,
+												  EState *estate);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -1985,6 +1988,8 @@ ldelete:;
 		else if (IsYBRelation(resultRelationDesc))
 		{
 			slot = context->planSlot;
+			if (!context->mtstate->yb_skip_fetch_target_tuple)
+				slot = YbMapDeletePlanSlotToChild(resultRelInfo, slot, estate);
 		}
 		else
 		{
@@ -6010,4 +6015,46 @@ ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable, Relation targetRel)
 		return false;
 
 	return true;
+}
+
+/*
+ * For a YB DELETE with RETURNING that fetches the target rows, the plan's
+ * output holds the columns of the relation named in the query, in that
+ * relation's attribute order (see expand_delete_targetlist()).  RETURNING is
+ * evaluated against the child result relation, whose attribute numbers differ
+ * when its columns are ordered differently or it has dropped columns.  In that
+ * case, return a slot in the child's layout; otherwise return planSlot as is.
+ */
+static TupleTableSlot *
+YbMapDeletePlanSlotToChild(ResultRelInfo *resultRelInfo,
+						   TupleTableSlot *planSlot, EState *estate)
+{
+	TupleConversionMap *map = ExecGetChildToRootMap(resultRelInfo);
+	AttrMap    *attrMap;
+	TupleTableSlot *childSlot;
+
+	if (map == NULL)
+		return planSlot;
+
+	/* attrMap has, for each root attribute, the matching child attribute */
+	attrMap = map->attrMap;
+	childSlot = ExecGetReturningSlot(estate, resultRelInfo);
+	ExecClearTuple(childSlot);
+	memset(childSlot->tts_isnull, true,
+		   childSlot->tts_tupleDescriptor->natts * sizeof(bool));
+
+	slot_getsomeattrs(planSlot, attrMap->maplen);
+	for (int i = 0; i < attrMap->maplen; i++)
+	{
+		AttrNumber	childAttno = attrMap->attnums[i];
+
+		if (childAttno == InvalidAttrNumber)
+			continue;
+		childSlot->tts_values[childAttno - 1] = planSlot->tts_values[i];
+		childSlot->tts_isnull[childAttno - 1] = planSlot->tts_isnull[i];
+	}
+	ExecStoreVirtualTuple(childSlot);
+	TABLETUPLE_YBCTID(childSlot) = TABLETUPLE_YBCTID(planSlot);
+
+	return childSlot;
 }
