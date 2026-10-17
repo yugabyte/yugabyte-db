@@ -34,19 +34,32 @@ With the YugabyteDB MCP Server, developers can:
 
 Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
 
+| Skill | Description |
+| :--- | :--- |
+| [ysql](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ysql) | YSQL development, including schema design, indexes, geo-distribution, smart drivers, transaction retries, batching, and PostgreSQL migration. See [Use YSQL with an AI coding agent](../../best-practices-develop/#use-ysql-with-an-ai-coding-agent). |
+| [ycql](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ycql) | YCQL development, including partition keys, clustering columns, global secondary indexes, prepared statements, batching, and TTL. See [Use YCQL with an AI coding agent](../../best-practices-develop/best-practices-ycql/#use-ycql-with-an-ai-coding-agent). |
+| [yb-k8s-operator](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) | YugabyteDB Anywhere Kubernetes Operator custom resources. See [Use the operator with an AI coding agent](../../../yugabyte-platform/anywhere-automation/yb-kubernetes-operator/#use-the-operator-with-an-ai-coding-agent). |
+| [yba-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-api) | YugabyteDB Anywhere REST API for creating and managing universes across supported clouds and topologies. See [Use the REST API with an AI coding agent](../../../yugabyte-platform/anywhere-automation/anywhere-api/#use-the-rest-api-with-an-ai-coding-agent). |
+| [yba-terraform](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-terraform) | YugabyteDB Anywhere Terraform provider for installing YugabyteDB Anywhere and creating providers, universes, and backups. See [Use the Terraform provider with an AI coding agent](../../../yugabyte-platform/anywhere-automation/anywhere-terraform/#use-the-terraform-provider-with-an-ai-coding-agent). |
+| [yb-rag-langchain](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-rag-langchain) | RAG and semantic search with LangChain, including vector indexes, hybrid search, and metadata filtering. See [Build RAG with an AI coding agent](../hello-rag/#build-rag-with-an-ai-coding-agent). |
+| [aeon-api](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/aeon-api) | YugabyteDB Aeon REST API for cluster lifecycle, database users, network access, backups, and metrics. See [Use the Aeon API with an AI coding agent](../../../yugabyte-cloud/managed-automation/managed-api/#use-the-aeon-api-with-an-ai-coding-agent). |
+| [yb-metrics-analysis](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-metrics-analysis) | Universe metrics analysis with Prometheus for hotspots, CPU, memory, I/O, latency, and throughput. See [Analyze metrics with an AI coding agent](../../../launch-and-manage/monitor-and-alert/metrics/#analyze-metrics-with-an-ai-coding-agent). |
+| [yb-performance-assessment](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-performance-assessment) | Whole-universe performance assessment. Runs cross-cutting checks, then hands off to the specialist skills. See [Assess performance with an AI coding agent](../../../launch-and-manage/monitor-and-alert/#assess-performance-with-an-ai-coding-agent). |
+| [yb-query-analysis](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-query-analysis) | YSQL query performance, session activity, and lock contention, including `pg_stat_statements` and Active Session History. See [Tune queries with an AI coding agent](../../../launch-and-manage/monitor-and-alert/query-tuning/#tune-queries-with-an-ai-coding-agent). |
+
 Install all skills at once:
 
 ```sh
 npx skills add yugabyte/yugabytedb-skills
 ```
 
-Or install individual skills (`ysql`, `ycql`, `yb-k8s-operator`, `yba-api`, `yb-rag-langchain`):
+Or install one skill. For example, `ysql`:
 
 ```sh
 npx skills add yugabyte/yugabytedb-skills -s ysql
 ```
 
-See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for the full skill list and descriptions.
+See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for other install options and the latest skill set.
 
 ## MCP tools
 

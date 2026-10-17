@@ -23,6 +23,18 @@ The YugabyteDB Anywhere REST API allows you to deploy and manage universes progr
 
 If you use Python, check out the Jupyter notebooks in the [yugabyte-db GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/managed/api-examples) for examples of performing various tasks using the API.
 
+## Use the REST API with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) calls this API for you, install the official [yba-api skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yba-api) first. The skill supplies request shapes and universe workflows, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yba-api
+```
+
+The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+
 ## Change placement and replication factor
 
 Use one of the following patterns. For **v1**, the request body is the same shape as the `universeDetails` object on a universe **GET** response: you copy it, change the **primary** cluster’s `userIntent` (for example `replicationFactor` and `regionList`) and `placementInfo` as needed, and submit the updated JSON. For **v2**, the body is a smaller [UniverseEditSpec](https://github.com/yugabyte/yugabyte-db/blob/master/managed/src/main/resources/openapi/components/schemas/UniverseEditSpec.yaml) (snake_case field names in JSON), not a full GET payload.
