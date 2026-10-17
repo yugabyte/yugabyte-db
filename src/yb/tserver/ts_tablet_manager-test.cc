@@ -195,7 +195,8 @@ class TsTabletManagerTest : public YBTest {
     RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(
           MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
 
-    return VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection();
+    return VERIFY_RESULT(tablet_peer->GetConsensus())->WaitUntilLeaderForTests(
+        MonoDelta::FromMilliseconds(kConsensusRunningWaitMs));
   }
 
   void Reload() {
@@ -1425,7 +1426,8 @@ class ComputeDbHistoryRetentionPinCutoffTest : public TsTabletManagerTest {
     RETURN_NOT_OK(peer->tablet_metadata()->set_namespace_id(GetPgsqlNamespaceId(kDbOid)));
     RETURN_NOT_OK(peer->WaitUntilConsensusRunning(
         MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
-    RETURN_NOT_OK(VERIFY_RESULT(peer->GetConsensus())->EmulateElection());
+    RETURN_NOT_OK(VERIFY_RESULT(peer->GetConsensus())->WaitUntilLeaderForTests(
+        MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
     return peer;
   }
 
