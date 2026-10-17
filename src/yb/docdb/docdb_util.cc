@@ -649,14 +649,15 @@ std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
 
 std::string HnswBackendExtension(HnswBackend backend) {
   switch (backend) {
-    case USEARCH:
-      return "usearch"s;
     case YB_HNSW_USEARCH: [[fallthrough]];
     case YB_HNSW_HNSWLIB:
       // Block based representation does not depend on source index, so could use the same
       // extension because on disk format is compatible.
       return "yb_hnsw"s;
-    case HNSWLIB:
+    // Deprecated backends can still be present in persisted metadata, so keep their extensions.
+    case DEPRECATED_USEARCH:
+      return "usearch"s;
+    case DEPRECATED_HNSWLIB:
       return "hnswlib"s;
   }
   FATAL_INVALID_ENUM_VALUE(HnswBackend, backend);

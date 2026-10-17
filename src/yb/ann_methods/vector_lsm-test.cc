@@ -69,20 +69,14 @@ namespace yb::ann_methods {
 
 namespace {
 
-using ParamType = std::tuple<ANNMethodKind, bool>;
+using ParamType = std::tuple<ANNMethodKind>;
 
 ANNMethodKind GetANNMethodKind(const ParamType& param) {
   return std::get<0>(param);
 }
 
-bool UseYbHnsw(const ParamType& param) {
-  return std::get<1>(param);
-}
-
 std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
-  return "k"s +
-         (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
-         AsString(GetANNMethodKind(param_info.param)).substr(1);
+  return "kYbHnsw"s + AsString(GetANNMethodKind(param_info.param)).substr(1);
 }
 
 // Loads the manifest from disk, replays add/remove updates, and returns alive chunks sorted by
@@ -351,34 +345,29 @@ class VectorLSMUsearchTest : public VectorLSMTestBase {
  public:
   VectorLSMUsearchTest()
       : VectorLSMTestBase({
-            ANNMethodKind::kUsearch, /* use_yb_hnsw = */ false,
+            ANNMethodKind::kUsearch,
         }) {}
 };
 
 auto GetVectorIndexFactory(
     const ParamType& param, const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker = {}) {
-  bool use_yb_hnsw = UseYbHnsw(param);
   switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
       return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
           vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [use_yb_hnsw, block_cache, mem_tracker](
+          [block_cache, mem_tracker](
               vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
             return UsearchIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options,
-                use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH,
-                mem_tracker);
+                mode, block_cache, options, mem_tracker);
           });
     case ANNMethodKind::kHnswlib:
       return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
           vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
-          [use_yb_hnsw, block_cache, mem_tracker](
+          [block_cache, mem_tracker](
               vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
             return HnswlibIndexFactory<std::vector<float>, float>::Create(
-                mode, block_cache, options,
-                use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB,
-                mem_tracker);
+                mode, block_cache, options, mem_tracker);
           });
   }
   FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
@@ -1655,14 +1644,13 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
-  // exact ratio depends on the backend layout and on whether the chunk is rewritten through
-  // the YbHnsw saver, which packs less data than the native usearch/hnswlib formats.
+  // exact ratio depends on the in-memory layout of the backend the chunk was built with.
   const auto on_disk_lower_bound_ratio = [&]() -> double {
     switch (GetANNMethodKind(GetParam())) {
       case ANNMethodKind::kUsearch:
-        return UseYbHnsw(GetParam()) ? 0.80 : 0.90;
+        return 0.80;
       case ANNMethodKind::kHnswlib:
-        return UseYbHnsw(GetParam()) ? 0.65 : 0.70;
+        return 0.65;
     }
     FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
   }();
@@ -1692,9 +1680,7 @@ TEST_F(VectorLSMUsearchTest, MergeChunkResults) {
 INSTANTIATE_TEST_SUITE_P(
     ,
     VectorLSMTest,
-    testing::Combine(
-        testing::ValuesIn(kANNMethodKindArray),
-        testing::Bool()),
+    testing::Combine(testing::ValuesIn(kANNMethodKindArray)),
     ParamToString);
 
 }  // namespace yb::ann_methods
