@@ -10356,6 +10356,14 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	if (indexTotalCost > bitmap_exceeded_work_mem_disable_cost)
 	{
 		yb_cost_seqscan(path, root, baserel, param_info);
+
+		/*
+		 * yb_cost_seqscan sets disabled_nodes from the sequential scan's
+		 * mask, but the plan node is still a bitmap table scan, so the
+		 * bitmap scan's mask decides.
+		 */
+		path->disabled_nodes =
+			(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 		path->startup_cost += startup_cost;
 		path->total_cost += startup_cost;
 		return;
