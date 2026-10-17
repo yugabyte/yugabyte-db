@@ -1431,7 +1431,7 @@ public class TestYbQpm extends BasePgSQLTest {
     List<QueryInfo> list = Arrays.asList(queryInfo);
     Collections.shuffle(list, randLocal);
 
-    QueryInfo[] shuffledQueryInfo = (QueryInfo[]) list.toArray();
+    QueryInfo[] shuffledQueryInfo = list.toArray(new QueryInfo[0]);
 
     return shuffledQueryInfo;
   }
@@ -1484,6 +1484,7 @@ public class TestYbQpm extends BasePgSQLTest {
                 executeStmts(shuffledQueryInfo, false, debug, null);
 
             } catch (Exception e) {
+                LOG.error("Stress thread " + threadId + " failed", e);
                 hitException = true;
             }
 
