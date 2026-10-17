@@ -24,6 +24,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/storage_tier.h"
 
 using std::string;
 using std::vector;
@@ -623,6 +624,15 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   // We do not add load to blacklisted servers.
   if (global_state_->blacklisted_servers_.count(to_ts)) {
     VLOG(4) << "TS " << to_ts << " is blacklisted, so cannot add tablet " << tablet_id;
+    return false;
+  }
+
+  // We do not add load to servers without a disk on the table's storage tier.
+  const std::string storage_tier =
+      placement_.has_storage_tier() ? placement_.storage_tier() : kDefaultStorageTier;
+  if (!ts_meta.descriptor->HasStorageTier(storage_tier)) {
+    VLOG(4) << "TS " << to_ts << " has no " << storage_tier << " disk, so cannot add tablet "
+            << tablet_id;
     return false;
   }
 

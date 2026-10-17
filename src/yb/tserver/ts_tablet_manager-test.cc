@@ -68,6 +68,7 @@
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/format.h"
@@ -975,14 +976,18 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierPicksCorrectTier) {
   ASSERT_EQ(tier_by_path_id.at(ssd_pid), "ssd")
       << "path_id " << ssd_pid << " is not an ssd disk";
 
-  // A bogus tier must return NotFound.
+  // A tier with no disks returns NotFound tagged STORAGE_TIER_NOT_AVAILABLE, so a caller can tell
+  // this node cannot host a tier from a transient failure.
   auto bad = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
   ASSERT_NOK(bad);
   ASSERT_TRUE(bad.status().IsNotFound()) << bad.status();
+  auto error = TabletServerError::FromStatus(bad.status());
+  ASSERT_TRUE(error) << bad.status();
+  ASSERT_EQ(error->value(), TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE);
 }
 
 // Confirm that SelectPathIdForTier balances across disks within a tier: loading
-// one hdd disk more than the other causes the picker to prefer the lighter disk.
+// one hdd disk more than the other causes the p√icker to prefer the lighter disk.
 TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   std::shared_ptr<tablet::TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
