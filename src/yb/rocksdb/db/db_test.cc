@@ -37,6 +37,7 @@
 #endif
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/db/write_callback.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -734,6 +735,68 @@ TEST_F(DBTest, EmptyFlush) {
     // FIFO and universal compaction do not apply to the test case.
     // Skip MergePut because merges cannot be combined with single deletions.
   } while (ChangeOptions(kSkipFIFOCompaction | kSkipUniversalCompaction | kSkipMergePut));
+}
+
+namespace {
+
+// Holds the write thread: the write-group leader blocks in the callback, which runs with the DB
+// mutex released, until the test releases it.
+class BlockingWriteCallback : public WriteCallback {
+ public:
+  Status Callback(DB* db) override {
+    entered.CountDown();
+    release.Wait();
+    return Status::OK();
+  }
+
+  bool AllowWriteBatching() override { return false; }
+
+  yb::CountDownLatch entered{1};
+  yb::CountDownLatch release{1};
+};
+
+}  // namespace
+
+// A flush with wait_for_writers = false must not wait for the writer holding the write thread. It
+// leaves the memtable switch to the next write leader.
+TEST_F(DBTest, FlushWithoutWaitingForWriters) {
+  Options options = CurrentOptions();
+  options.disable_auto_compactions = true;
+  DestroyAndReopen(options);
+  ASSERT_OK(Put("a", "1"));
+
+  BlockingWriteCallback callback;
+  std::thread writer([this, &callback] {
+    WriteBatch batch;
+    batch.Put("b", "2");
+    CHECK_OK(dbfull()->WriteWithCallback(WriteOptions(), &batch, &callback));
+  });
+  callback.entered.Wait();
+
+  FlushOptions flush_options(FlushReason::kTestOnly);
+  flush_options.wait = false;
+  flush_options.wait_for_writers = false;
+  ASSERT_OK(db_->Flush(flush_options));
+  uint64_t num_immutable = 0;
+  ASSERT_TRUE(db_->GetIntProperty("rocksdb.num-immutable-mem-table", &num_immutable));
+  ASSERT_EQ(0, num_immutable);
+  ASSERT_EQ(0, NumTableFilesAtLevel(0));
+
+  // Waiting for the flush needs the write thread.
+  flush_options.wait = true;
+  ASSERT_TRUE(db_->Flush(flush_options).IsInvalidArgument());
+
+  callback.release.CountDown();
+  writer.join();
+
+  // The next write performs the requested switch before it writes: "a" and "b" reach a file, "c"
+  // starts the new memtable.
+  ASSERT_OK(Put("c", "3"));
+  ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+  ASSERT_EQ(1, NumTableFilesAtLevel(0));
+  ASSERT_EQ("1", Get("a"));
+  ASSERT_EQ("2", Get("b"));
+  ASSERT_EQ("3", Get("c"));
 }
 
 // Disable because not all platform can run it.

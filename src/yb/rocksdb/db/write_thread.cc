@@ -455,6 +455,20 @@ void WriteThread::EnterUnbatched(Writer* w, InstrumentedMutex* mu) {
   }
 }
 
+bool WriteThread::TryEnterUnbatched(Writer* w) {
+  assert(w->batch == nullptr);
+  assert(w->state == STATE_INIT);
+
+  // Same link as LinkOne, but only onto an empty list, so w is the leader or not linked at all.
+  Writer* expected = nullptr;
+  w->link_older = nullptr;
+  if (!newest_writer_.compare_exchange_strong(expected, w)) {
+    return false;
+  }
+  w->state.store(STATE_GROUP_LEADER, std::memory_order_relaxed);
+  return true;
+}
+
 void WriteThread::ExitUnbatched(Writer* w) {
   Status dummy_status;
   ExitAsBatchGroupLeader(w, w, dummy_status);

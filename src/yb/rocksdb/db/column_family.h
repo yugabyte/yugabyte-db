@@ -330,6 +330,16 @@ class ColumnFamilyData {
   void mark_pending_flush(FlushReason reason) { pending_flush_ = reason; }
   void clear_pending_flush() { pending_flush_.reset(); }
 
+  // Protected by DB mutex. Set by DBImpl::FlushMemTable when a flush that must not wait for writers
+  // found the write thread busy. The next write leader performs the switch
+  // (DBImpl::PerformRequestedSwitches); any switch of this CF's memtable clears it.
+  bool switch_requested() const { return switch_requested_.has_value(); }
+  FlushReason switch_requested_reason() const {
+    return switch_requested_.value_or(FlushReason::kUnknown);
+  }
+  void request_switch(FlushReason reason) { switch_requested_ = reason; }
+  void clear_switch_request() { switch_requested_.reset(); }
+
   void PendingCompactionAdded(CompactionSizeKind compaction_size_kind);
   void PendingCompactionRemoved(CompactionSizeKind compaction_size_kind);
   void PendingCompactionSizeKindUpdated(CompactionSizeKind from, CompactionSizeKind to);
@@ -430,6 +440,8 @@ class ColumnFamilyData {
 
   // Engaged while a flush is scheduled / in flight for this CF (DB mutex). Value is best-effort.
   std::optional<FlushReason> pending_flush_;
+
+  std::optional<FlushReason> switch_requested_;
 
   // How many times this ColumnFamily is currently present in DBImpl::compaction_queue_.
   // Note: in general it might be not effective to use such nearly aligned atomics. This is not a
