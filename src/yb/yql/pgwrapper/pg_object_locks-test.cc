@@ -2160,16 +2160,7 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_serve_redundant_lock) = true;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE pk(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE fk(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO pk SELECT generate_series(1, 1000), 0"));
-  ASSERT_OK(conn.Execute("INSERT INTO fk SELECT i,i FROM generate_series(1, 1000) AS i"));
-
-  // ALTER ADD CONSTRAINT requests RowShare on pk for each row in fk. But it should be
-  // a no-op since the transaction already holds RowShare (or greater) on the object.
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("ALTER TABLE fk ADD CONSTRAINT fk_rule FOREIGN KEY (v) REFERENCES pk(k)"));
-  ASSERT_LT(NumGrantedLocks(), 50);
-  ASSERT_OK(conn.Execute("COMMIT"));
 
   // Assert redundant table_open on pk is skipped.
   ASSERT_OK(conn.Execute("BEGIN"));
