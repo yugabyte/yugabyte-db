@@ -136,6 +136,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint32(vector_index_tenant_key_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
@@ -3380,6 +3381,77 @@ TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   ASSERT_EQ(stats.partitions, kNumTablets);
 }
 
+// With vector_index_tenant_key_components the vectors of each tenant are only linked to each other,
+// and a search visits only the tenant its key equalities select. The query vector is closest to
+// the vectors of tenant 0, so other tenants are found only through their own entry points.
+TEST_F(PgVectorIndexPkRoutingTest, Tenants) {
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(CreateAndFill(
+      conn, "th", "tenant INT, id INT", "(tenant) HASH, id",
+      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+  ASSERT_OK(CreateAndFill(
+      conn, "tr", "tenant INT, id INT", "tenant ASC, id ASC",
+      "SPLIT AT VALUES ((5), (10, 5), (15))"));
+
+  auto check = [&conn](int rows_per_tenant) {
+    for (const auto* table : {"th", "tr"}) {
+      SCOPED_TRACE(table);
+      // Without deletions, rows of the searched tenant need no check.
+      docdb::TEST_vector_index_filter_allowed = false;
+      for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+        SCOPED_TRACE(Format("tenant: $0", tenant));
+        auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
+            KnnQuery(table, Format("tenant = $0", tenant), 0, rows_per_tenant)));
+        ASSERT_EQ(ids, Ids(0, rows_per_tenant));
+      }
+      docdb::TEST_vector_index_filter_allowed = true;
+
+      // Equalities on more key columns than the tenant has.
+      auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(
+          KnnQuery(table, "tenant = 10 AND id IN (7, 8)", 0, 3)));
+      ASSERT_EQ(ids, (std::vector<int32_t>{7, 8}));
+
+      for (const auto* where : {"id < 3", "tenant IN (3, 12)"}) {
+        SCOPED_TRACE(where);
+        auto result = conn.FetchRows<int32_t>(KnnQuery(table, where, 0, 3));
+        ASSERT_NOK_STR_CONTAINS(result, "equality conditions with a single value");
+      }
+    }
+  };
+
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+
+  // A second chunk, then both chunks merged.
+  for (const auto* table : {"th", "tr"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+        "FROM generate_series(0, $1) t, generate_series($2, $3) i",
+        table, kNumTenants - 1, kRowsPerTenant, 2 * kRowsPerTenant - 1));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+  }
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+
+  // The deleted vector and the vector replaced by the update are left in the index, so rows are
+  // checked again.
+  ASSERT_OK(conn.Execute("DELETE FROM th WHERE tenant = 4 AND id = 0"));
+  ASSERT_OK(conn.Execute("UPDATE th SET embedding = '[4, 100, 0]' WHERE tenant = 4 AND id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>(KnnQuery("th", "tenant = 4", 0, 3)));
+  ASSERT_EQ(ids, Ids(2, 3));
+}
+
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
 // leave that time invalid on the target tablet, so rows written transactionally into the clone
 // never reached its vector index (#34767).
@@ -5928,6 +6000,14 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.Flush());
   ASSERT_OK(index.WaitForFlush());
 
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  // Before any deletion, the rows the stored ybctids point to need no check.
+  docdb::TEST_vector_index_filter_allowed = false;
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  docdb::TEST_vector_index_filter_allowed = true;
+  ASSERT_EQ(rows.size(), kNumRows);
+
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumDeletedRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
@@ -5937,9 +6017,7 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.WaitForCompaction());
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
 
-  const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
@@ -6076,9 +6154,9 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
-// CREATE INDEX on restore takes the backend and store_payload from the restore cluster's flags,
-// but the restored chunk files were written with the source's. Restore has to apply the source
-// options.
+// CREATE INDEX on restore takes the backend, store_payload and tenant_key_components from the
+// restore cluster's flags, but the restored chunk files were written with the source's. Restore
+// has to apply the source options.
 TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
@@ -6092,6 +6170,7 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   constexpr int kNumRows = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 1;
   {
     auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
     ASSERT_OK(admin.ExecuteFormat(
@@ -6112,16 +6191,19 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
       ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
   const auto source_options = source_index->index_info().vector_idx_options();
   ASSERT_TRUE(source_options.store_payload());
+  ASSERT_EQ(source_options.tenant_key_components(), 1U);
   ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
 
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
     ASSERT_EQ(options.store_payload(), source_options.store_payload());
+    ASSERT_EQ(options.tenant_key_components(), source_options.tenant_key_components());
     ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
     ASSERT_EQ(options.id(), source_options.id());
   };

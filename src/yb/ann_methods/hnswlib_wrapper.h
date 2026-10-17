@@ -29,8 +29,9 @@ namespace yb::ann_methods {
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
+// tenant_extractor is null when vectors do not belong to tenants, see VectorTenantExtractor.
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlibIndexTraits(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-    const MemTrackerPtr& mem_tracker);
+    const MemTrackerPtr& mem_tracker, vector_index::VectorTenantExtractor tenant_extractor);
 
 }  // namespace yb::ann_methods

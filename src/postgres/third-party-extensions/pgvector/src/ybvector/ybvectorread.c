@@ -349,6 +349,81 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 }
 
 /*
+ * A search of an index that keeps the vectors of each tenant apart returns
+ * only rows of the tenant that the equalities on the key columns select, see
+ * bindKeyFilter.  Such an equality needs no check of the rows, so it is left
+ * out of the quals pushed down to the table.  A column with several equalities
+ * keeps them all, since the search follows only one of them.
+ */
+static YbPushdownExprs *
+pushdownWithoutTenantQuals(IndexScanDesc scan)
+{
+	YbPushdownExprs *pushdown = scan->yb_rel_pushdown;
+	Relation	rel = scan->heapRelation;
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+	YbcPgTableDesc table_desc = NULL;
+	YbcPgTableDesc index_desc = NULL;
+	YbPushdownExprs *result;
+	AttrNumber *attnums;
+	List	   *quals = NIL;
+	ListCell   *lc;
+	int			nquals;
+	int			i;
+
+	if (!pushdown || pushdown->quals == NIL)
+		return pushdown;
+
+	/* The column of every qual which compares it with a single value. */
+	nquals = list_length(pushdown->quals);
+	attnums = palloc(sizeof(AttrNumber) * nquals);
+	i = 0;
+	foreach(lc, pushdown->quals)
+	{
+		Datum	   *values;
+		int			nvalues;
+		AttrNumber	attnum = extractKeyColumnValues(lfirst(lc), tupdesc,
+													&values, &nvalues);
+
+		attnums[i++] = (attnum != InvalidAttrNumber && nvalues == 1) ?
+			attnum : InvalidAttrNumber;
+	}
+
+	HandleYBStatus(YBCPgGetTableDesc(YBCGetDatabaseOid(rel),
+									 YbGetRelfileNodeId(rel), &table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(YBCGetDatabaseOid(scan->indexRelation),
+									 YbGetRelfileNodeId(scan->indexRelation),
+									 &index_desc));
+	i = 0;
+	foreach(lc, pushdown->quals)
+	{
+		AttrNumber	attnum = attnums[i++];
+		bool		is_tenant_column = false;
+		int			nsame = 0;
+
+		if (attnum != InvalidAttrNumber)
+		{
+			for (int j = 0; j < nquals; ++j)
+				nsame += attnums[j] == attnum;
+			if (nsame == 1)
+				HandleYBTableDescStatus(YBCPgIsVectorIndexTenantColumn(index_desc,
+																		table_desc,
+																		attnum,
+																		&is_tenant_column),
+										table_desc);
+		}
+		if (!is_tenant_column)
+			quals = lappend(quals, lfirst(lc));
+	}
+
+	if (list_length(quals) == nquals)
+		return pushdown;
+	result = palloc(sizeof(YbPushdownExprs));
+	result->quals = quals;
+	result->colrefs = pushdown->colrefs;
+	return result;
+}
+
+/*
  * Bind search keys to the ANN scan. These include
  * - the query vector
  * - the prefetch size (how many nearest neighbours we expect to return)
@@ -418,7 +493,7 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 									 nscankeys,
 									 scankeys,
 									 scan->yb_scan_plan,
-									 scan->yb_rel_pushdown,
+									 pushdownWithoutTenantQuals(scan),
 									 scan->yb_idx_pushdown,
 									 scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,

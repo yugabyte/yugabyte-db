@@ -645,6 +645,19 @@ ColumnId Schema::first_column_id() {
   return kFirstColumnId;
 }
 
+size_t Schema::NumKeyComponents(const SchemaPB& schema) {
+  size_t result = 0;
+  bool has_hash_component = false;
+  for (const auto& column : schema.columns()) {
+    if (column.is_hash_key()) {
+      has_hash_component = true;
+    } else if (column.is_key()) {
+      ++result;
+    }
+  }
+  return result + (has_hash_component ? 1 : 0);
+}
+
 Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
   int idx = find_column_by_id(id);
   if (idx < 0) {

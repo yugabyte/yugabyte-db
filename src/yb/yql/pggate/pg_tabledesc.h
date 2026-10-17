@@ -108,6 +108,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsIndex() const;
 
+  // Whether the vectors of this vector index keep to the tenant that an equality on the column of
+  // the indexed table selects, see PgVectorIdxOptionsPB::tenant_key_components.
+  Result<bool> IsVectorTenantColumn(const PgTableDesc& indexed_table, int attr_num) const;
+
  private:
   PgObjectId relfilenode_id_;
   YbcPgOid pg_table_id_{kInvalidOid};

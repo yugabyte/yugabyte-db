@@ -68,10 +68,17 @@ struct VectorIndexIteratorEntry {
   }
 };
 
+// Returns the tenant of a vector from its payload. An index with a tenant extractor never links
+// vectors of different tenants, see SearchOptions::tenant.
+using VectorTenantExtractor = std::function<Result<Slice>(Slice payload)>;
+
 struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
+  // Tenant to search in an index whose vectors belong to tenants, see VectorTenantExtractor.
+  // Must be empty for other indexes.
+  Slice tenant = Slice();
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(max_num_results, ef);
@@ -204,6 +211,12 @@ class VectorIndexTraitsIf {
   // to the index file, because its own format cannot store them. See VectorPayloadMap.
   virtual bool StoresPayloadInSeparateFile() const {
     return false;
+  }
+
+  // Returns the tenant extractor of the created indexes, null when vectors have no tenants.
+  virtual const VectorTenantExtractor& tenant_extractor() const {
+    static const VectorTenantExtractor kNoTenants;
+    return kNoTenants;
   }
 };
 

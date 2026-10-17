@@ -1240,6 +1240,14 @@ YbcStatus YBCPgGetColumnInfo(YbcPgTableDesc table_desc,
   return ExtractValueFromResult(pgapi->GetColumnInfo(table_desc, attr_number), column_info);
 }
 
+YbcStatus YBCPgIsVectorIndexTenantColumn(YbcPgTableDesc index_desc,
+                                         YbcPgTableDesc table_desc,
+                                         int16_t attr_number,
+                                         bool *is_tenant_column) {
+  return ExtractValueFromResult(
+      pgapi->IsVectorIndexTenantColumn(index_desc, table_desc, attr_number), is_tenant_column);
+}
+
 YbcStatus YBCPgSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version) {
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version));
 }

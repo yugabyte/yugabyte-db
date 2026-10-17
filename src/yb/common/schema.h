@@ -672,6 +672,9 @@ class Schema : public MissingValueProvider {
     return num_key_columns_ - num_hash_key_columns_;
   }
 
+  // Returns the number of key components of the schema, all hash columns forming one component.
+  static size_t NumKeyComponents(const SchemaPB& schema);
+
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());

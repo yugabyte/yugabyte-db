@@ -48,7 +48,16 @@ class VectorPayloadMap {
   void Reserve(size_t capacity);
 
   // Attaches payload to the vector at the specified slot. The payload must not be empty.
-  void Insert(size_t slot, Slice payload);
+  void Insert(size_t slot, Slice payload) {
+    Assign(slot, Store(payload));
+  }
+
+  // Copies payload into the map storage. The returned slice remains valid until the map is
+  // destroyed, so it can be referenced before the slot of the vector is known, see Assign.
+  Slice Store(Slice payload);
+
+  // Attaches payload returned by Store to the vector at the specified slot.
+  void Assign(size_t slot, Slice stored_payload);
 
   // Returns the payload attached to the vector at the specified slot, or Corruption when the slot
   // has no payload, see the class comment.
