@@ -161,6 +161,41 @@ For example:
 
 Note that a high parallelism could result in failures if system resources are overused.
 
+### Profile-guided optimization for microbenchmarks
+
+Release binaries are built with profile-guided optimization (PGO) from a sysbench workload, so their code layout and inlining differ from a plain `release` build.
+You can build a microbenchmark the same way, with a profile you collect yourself.
+It is opt-in and takes two builds, both with `--full-lto`, since PGO is only used together with LTO.
+
+First, build and run the benchmark instrumented for profiling (`prof_gen` is a release build with profile counters; the benchmark's own timings in this run are meaningless):
+
+```sh
+./yb_build.sh prof_gen --full-lto --pgo-instrument-type=ir --cxx-benchmark mutex-benchmark
+```
+
+The raw profiles are written to `<build_root>/pgo-profiles/ir/` (one file per instrumented executable or shared library; each run replaces the benchmark's previous ones), and the command prints the `llvm-profdata merge` invocation that turns them into one `.profdata` file.
+Then build and run the benchmark with that profile:
+
+```sh
+YB_USE_EXTERNAL_BUILD_ROOT=1 ./yb_build.sh release --full-lto --no-ccache \
+    --pgo-data-path <build_root>/pgo-profiles/ir/mutex-benchmark.profdata --cxx-benchmark mutex-benchmark
+```
+
+`--no-ccache` matters with an old ccache such as the AlmaLinux 8 package (3.7): it can serve objects that ignore the profile ([ccache issue 582](https://github.com/ccache/ccache/issues/582)).
+A build root remembers its profile: later builds in it without `--pgo-data-path` keep using it, and only a different profile, a different build root, or `--clean` changes that.
+`YB_USE_EXTERNAL_BUILD_ROOT=1` puts this build under `<source root>__build/`, so your regular `release` build root stays a plain release build.
+Release binaries add a second, context-sensitive pass (`--pgo-instrument-type=csir` with the first profile as `--pgo-data-path`); one pass is enough for a benchmark.
+
+When to use it: to check whether a change behaves the same way in a PGO-optimized build, or whether a result is fragile under a different code layout.
+It is not a substitute for a plain `release` or `--full-lto` number, and it has downsides:
+
+- A profile collected from the benchmark itself optimizes the benchmark's loop, so it overstates gains that a production profile, collected from a server workload, would not see.
+  In an A/B comparison, a profile collected on one side favors that side; use the same profile for both, or profile each side the same way and say so.
+- Only code the profiling run executed gets profile data; everything else is laid out as cold.
+- A stale profile is accepted silently: the build disables the profile-mismatch warnings, and functions whose code changed simply get no data.
+  Collect a new profile after changing the measured code.
+- It needs Clang and a second full build of the benchmark's dependencies.
+
 ### Test frameworks
 
 #### C++ (external) mini cluster
