@@ -21,6 +21,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
@@ -82,6 +83,19 @@ void ConvertField(const Value& value, Writer& writer) {
 template <class Converter, class Type>
 using RefForConverter = std::conditional_t<HasRead<uint64_t, Converter>, Type, const Type>&;
 
+template <class Writer>
+requires(HasAppend<uint64_t, uint64_t, Writer>)
+void Convert(size_t version, const std::string& value, Writer& writer) {
+  writer.template Append<uint64_t>(value.size());
+  writer.AppendBytes(value);
+}
+
+template <class Reader>
+requires(HasRead<uint64_t, Reader>)
+void Convert(size_t version, std::string& value, Reader& reader) {
+  value = reader.ReadBytes(reader.template Read<uint64_t>()).ToBuffer();
+}
+
 template <class Converter>
 void Convert(size_t version, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
   ConvertField<uint64_t>(entry.size, serializer);
@@ -133,6 +147,11 @@ void Convert(size_t version, RefForConverter<Converter, Header> header, Converte
   ConvertField<uint64_t>(header.vector_data_block, serializer);
   ConvertField<uint64_t>(header.vector_data_amount_per_block, serializer);
   ConvertVector(version, header.layers, serializer);
+  if (version >= 2) {
+    ConvertField<uint64_t>(header.tenant_directory_block, serializer);
+    ConvertField<uint64_t>(header.num_tenant_directory_blocks, serializer);
+    ConvertVector(version, header.tenant_directory_boundaries, serializer);
+  }
 }
 
 class WriteCounter {
@@ -146,16 +165,16 @@ class WriteCounter {
     value_ += sizeof(Value);
   }
 
+  void AppendBytes(const std::string& value) {
+    value_ += value.size();
+  }
+
  private:
   size_t value_ = 0;
 };
 
-constexpr size_t kSerializationVersion = 1;
-
-template <class Out, class... Args>
-void Serialize(const Out& out, Args&&... args) {
-  Convert(kSerializationVersion, out, std::forward<Args&&>(args)...);
-}
+// 2 - adds the tenant directory.
+constexpr size_t kSerializationVersion = 2;
 
 size_t SerializedSize(const Header& header) {
   WriteCounter counter;
@@ -176,6 +195,12 @@ class SliceReader {
     Value result;
     memcpy(&result, input_.data(), sizeof(result));
     input_.RemovePrefix(sizeof(Value));
+    return result;
+  }
+
+  Slice ReadBytes(size_t size) {
+    auto result = input_.Prefix(size);
+    input_.RemovePrefix(size);
     return result;
   }
  private:
@@ -340,7 +365,7 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
   writer.Append<uint8_t>(kSerializationVersion);
-  Serialize(header, writer);
+  Convert(kSerializationVersion, header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
     sum += block.size;
@@ -410,6 +435,7 @@ Result<Header> FileBlockCache::Load() {
   Header header;
   SliceReader reader(footer_data);
   size_t version = reader.Read<uint8_t>();
+  SCHECK_LE(version, kSerializationVersion, Corruption, "Unsupported vector index file version");
   Deserialize(version, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;

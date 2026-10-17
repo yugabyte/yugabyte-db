@@ -1416,15 +1416,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return searchKnnFrom(query_data, k, isIdAllowed, ef, entry);
     }
 
-    // Returns the entry points of all tenants, see addTenantPoint.
-    std::vector<tableint> getTenantEntries() const {
+    // Returns tenants with their entry points, see addTenantPoint.
+    std::vector<std::pair<std::string_view, tableint>> getTenantEntries() const {
         std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
-        std::vector<tableint> result;
-        result.reserve(tenant_entries_.size());
-        for (const auto& [tenant, entry] : tenant_entries_) {
-            result.push_back(entry);
-        }
-        return result;
+        return {tenant_entries_.begin(), tenant_entries_.end()};
     }
 
     // Searches starting from entry_node at its level. Results are (distance, label, internal id)

@@ -139,6 +139,9 @@ KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId colum
 //   0x02: size of the ybctid prefix that identifies the tenant of the vector (varint).
 // The ybctid goes first, so it is extractable whatever fields follow. Older releases read only
 // payloads with the ybctid flag alone, which tenant_prefix_size 0 produces.
+// TODO(vector_index): decide whether the payload keeps the tenant prefix size, or the tenant
+// extractor recomputes it from the ybctid with PgVectorIdxOptionsPB::tenant_key_components.
+// A tenant made of arbitrary columns would need the tenant bytes in the payload instead.
 ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size);
 
 struct DocVectorIndexPayloadContent {
