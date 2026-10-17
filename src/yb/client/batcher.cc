@@ -830,12 +830,20 @@ void Batcher::Flushed(
     // which outranks the original failure. Restore the original failure for such operations.
     const auto flush_abort_cause =
         transaction ? transaction->batcher_if().FlushAbortCause() : Status::OK();
+    const auto is_aborted_by_flush = [&flush_abort_cause](const InFlightOp& op) {
+      return !flush_abort_cause.ok() &&
+             TransactionError(op.error).value() == TransactionErrorCode::kAborted;
+    };
+    // Restored errors go last, so the first error with the abort cause belongs to the op that
+    // actually failed: the tserver reports the relation of the first kConflict error to YSQL.
     for (auto& op : ops_queue_) {
-      if (!op.error.ok()) {
-        if (!flush_abort_cause.ok() &&
-            TransactionError(op.error).value() == TransactionErrorCode::kAborted) {
-          op.error = flush_abort_cause;
-        }
+      if (!op.error.ok() && !is_aborted_by_flush(op)) {
+        CombineError(op);
+      }
+    }
+    for (auto& op : ops_queue_) {
+      if (!op.error.ok() && is_aborted_by_flush(op)) {
+        op.error = flush_abort_cause;
         CombineError(op);
       }
     }
