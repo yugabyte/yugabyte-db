@@ -6,6 +6,7 @@ import (
 	"os"
 
 	srv "node-agent/app/server"
+	"node-agent/cli/federation"
 	"node-agent/cli/node"
 	"node-agent/cli/server"
 	"node-agent/util"
@@ -32,6 +33,7 @@ var (
 func Execute() {
 	node.SetupNodeCommand(rootCmd)
 	server.SetupServerCommand(rootCmd)
+	federation.SetupFederationCommand(rootCmd)
 	rootCmd.AddCommand(versionCmd)
 	if err := rootCmd.Execute(); err != nil {
 		util.ConsoleLogger().Error(srv.Context(), err.Error())

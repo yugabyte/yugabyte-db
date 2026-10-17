@@ -74,8 +74,11 @@ const (
 )
 
 // ConfigureCloudFederation sets up (or tears down) cross-cloud federated IAM on
-// a DB node. It deploys only static config; short-lived credentials are minted
-// in-process by YBC's client libraries, so there is no refresher daemon.
+// a DB node. For an AWS or GCP source it deploys only static config; short-lived
+// credentials are minted in-process by YBC's client libraries, so there is no refresher
+// daemon. An OCI source is the exception, because OCI offers no endpoint those
+// libraries can call; a systemd timer keeps an identity token file fresh instead (see
+// configure_cloud_federation_oci.go).
 type ConfigureCloudFederation struct {
 	param    *pb.ConfigureCloudFederationInput
 	username string
@@ -185,6 +188,9 @@ func (h *ConfigureCloudFederation) restartYbc(ctx context.Context) error {
 // Templates are deterministic, so identical inputs render identical files; comparing the hash to
 // the applied stamp is equivalent to comparing rendered content, without re-rendering here.
 func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, error) {
+	if err := validateFederationDirection(h.param.GetSourceCloud(), h.param.GetTargetCloud()); err != nil {
+		return "", err
+	}
 	var canonical string
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:
@@ -192,7 +198,17 @@ func (h *ConfigureCloudFederation) desiredStateHash(ybHome string) (string, erro
 		if err := validateGcsInputs(cfg); err != nil {
 			return "", err
 		}
-		canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
+		if h.isOciSource() {
+			oci := h.param.GetOciSource()
+			if err := validateOciSourceInputs(oci); err != nil {
+				return "", err
+			}
+			canonical = fmt.Sprintf(
+				"v2|gcs-oci|%s|%s|%s", ybHome, cfg.GetAudience(), oci.GetIdentityDomainUrl())
+		} else {
+			// Unchanged from before OCI support, so existing nodes are not re-applied.
+			canonical = fmt.Sprintf("v1|gcs|%s|%s", ybHome, cfg.GetAudience())
+		}
 	case pb.ConfigureCloudFederationInput_AWS:
 		cfg := h.param.GetS3()
 		if err := validateS3Inputs(cfg); err != nil {
@@ -230,6 +246,14 @@ func (h *ConfigureCloudFederation) inSync(ybHome, desiredHash string) bool {
 	}
 	switch h.param.GetTargetCloud() {
 	case pb.ConfigureCloudFederationInput_GCP:
+		if h.isOciSource() {
+			// The credential reads the token file and the timer keeps it fresh; losing either
+			// leaves YBC with a credential that works now and fails within the hour. A token that
+			// has stopped being refreshed is drift too, so re-applying repairs a dead timer.
+			return federationPathExists(filepath.Join(fedDir, gcpFedCredsFileName)) &&
+				ociTokenFresh(filepath.Join(fedDir, ociTokenFileName)) &&
+				h.ociRefresherComplete()
+		}
 		return federationPathExists(filepath.Join(fedDir, gcpFedCredsFileName))
 	case pb.ConfigureCloudFederationInput_AWS:
 		// The credential_process script and the managed ~/.aws/config block are the artifacts YBC
@@ -251,6 +275,10 @@ func (h *ConfigureCloudFederation) federationArtifactsPresent(ybHome string) boo
 	// The S3-on-GCP managed block lives in ~/.aws/config, outside the federation dir, so a leftover
 	// block still counts as an artifact that needs tearing down.
 	if awsManagedBlockPresent(filepath.Join(ybHome, ".aws", "config")) {
+		return true
+	}
+	// The OCI token refresher's units live in the systemd unit directory, outside the federation dir.
+	if h.ociRefresherPresent() {
 		return true
 	}
 	if dropInDir, _, err := h.dropInDir(); err == nil {
@@ -312,16 +340,24 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 		if err := validateGcsInputs(cfg); err != nil {
 			return err
 		}
-		credsFile := filepath.Join(fedDir, gcpFedCredsFileName)
-		if _, err := module.CopyFile(
-			ctx,
-			map[string]any{"audience": cfg.GetAudience()},
-			filepath.Join(module.ServerTemplateSubpath, gcpFedCredsTemplate),
-			credsFile,
-			fs.FileMode(0600),
-			h.username,
-		); err != nil {
-			return err
+		var credsFile string
+		if h.isOciSource() {
+			var err error
+			if credsFile, err = h.setupOciSource(ctx, fedDir, cfg.GetAudience()); err != nil {
+				return err
+			}
+		} else {
+			credsFile = filepath.Join(fedDir, gcpFedCredsFileName)
+			if _, err := module.CopyFile(
+				ctx,
+				map[string]any{"audience": cfg.GetAudience()},
+				filepath.Join(module.ServerTemplateSubpath, gcpFedCredsTemplate),
+				credsFile,
+				fs.FileMode(0600),
+				h.username,
+			); err != nil {
+				return err
+			}
 		}
 		envCtx = map[string]any{"flow": "gcs", "gcp_creds_path": credsFile}
 
@@ -361,66 +397,73 @@ func (h *ConfigureCloudFederation) setup(ctx context.Context, ybHome string) err
 // unit. It handles both user-level (~/.config/systemd/user) and system-level
 // (/etc/systemd/system, via sudo) systemd.
 func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile string) error {
-	dropInCtx := map[string]any{"env_file": envFile}
 	dropInDir, isUser, err := h.dropInDir()
 	if err != nil {
 		return err
 	}
-	dropInDest := filepath.Join(dropInDir, federationDropInFileName)
+	return h.installSystemdFile(
+		ctx,
+		map[string]any{"env_file": envFile},
+		federationDropInTemplate,
+		dropInDir,
+		federationDropInFileName,
+		isUser,
+		"federation-dropin",
+	)
+}
+
+// installSystemdFile renders a server template to dir/name, which is a systemd unit or drop-in in
+// the active systemd mode. A user-level directory is writable by the node user. A system-level one
+// is not, so the file is rendered into the YBA-provided writable temp dir (some nodes have a
+// non-writable /tmp) and sudo-installed; the temp copy is removed at the end. what names the file in
+// the step log.
+func (h *ConfigureCloudFederation) installSystemdFile(
+	ctx context.Context,
+	values map[string]any,
+	template, dir, name string,
+	isUser bool,
+	what string,
+) error {
+	templatePath := filepath.Join(module.ServerTemplateSubpath, template)
+	dest := filepath.Join(dir, name)
 
 	if isUser {
 		if err := module.RunShellSteps(ctx, h.username, []struct {
 			Desc string
 			Cmd  string
 		}{
-			{"create-federation-dropin-dir", fmt.Sprintf("mkdir -p %s", dropInDir)},
+			{"create-" + what + "-dir", fmt.Sprintf("mkdir -p %s", shellSingleQuote(dir))},
 		}, h.logOut); err != nil {
 			return err
 		}
-		_, err := module.CopyFile(
-			ctx,
-			dropInCtx,
-			filepath.Join(module.ServerTemplateSubpath, federationDropInTemplate),
-			dropInDest,
-			fs.FileMode(0644),
-			h.username,
-		)
+		_, err := module.CopyFile(ctx, values, templatePath, dest, fs.FileMode(0644), h.username)
 		return err
 	}
 
-	// System-level systemd: render to a YBA-provided writable temp dir (some nodes have a
-	// non-writable /tmp), then sudo-install it under /etc/systemd/system where the user cannot write
-	// directly. The temp copy is removed at the end of this step.
 	remoteTmp := h.param.GetRemoteTmp()
 	if remoteTmp == "" {
 		remoteTmp = "/tmp"
 	}
-	tmpDropIn := filepath.Join(remoteTmp, federationDropInFileName)
+	tmp := filepath.Join(remoteTmp, name)
 	if _, err := module.CopyFile(
-		ctx,
-		dropInCtx,
-		filepath.Join(module.ServerTemplateSubpath, federationDropInTemplate),
-		tmpDropIn,
-		fs.FileMode(0644),
-		h.username,
-	); err != nil {
+		ctx, values, templatePath, tmp, fs.FileMode(0644), h.username); err != nil {
 		return err
 	}
 	return module.RunShellSteps(ctx, h.username, []struct {
 		Desc string
 		Cmd  string
 	}{
-		{"create-federation-dropin-dir", fmt.Sprintf("sudo mkdir -p %s", dropInDir)},
+		{"create-" + what + "-dir", fmt.Sprintf("sudo mkdir -p %s", shellSingleQuote(dir))},
 		{
-			"install-federation-dropin",
+			"install-" + what,
 			fmt.Sprintf(
 				"sudo cp %s %s && sudo chmod 0644 %s",
-				tmpDropIn,
-				dropInDest,
-				dropInDest,
+				shellSingleQuote(tmp),
+				shellSingleQuote(dest),
+				shellSingleQuote(dest),
 			),
 		},
-		{"cleanup-tmp-federation-dropin", fmt.Sprintf("rm -f %s", tmpDropIn)},
+		{"cleanup-tmp-" + what, fmt.Sprintf("rm -f %s", shellSingleQuote(tmp))},
 	}, h.logOut)
 }
 
@@ -428,6 +471,10 @@ func (h *ConfigureCloudFederation) writeDropIn(ctx context.Context, envFile stri
 // managed block lives in ~/.aws/config, outside that directory, so it is stripped separately.
 func (h *ConfigureCloudFederation) teardown(ctx context.Context, ybHome string) error {
 	if err := h.removeDropIn(ctx); err != nil {
+		return err
+	}
+	// Before the federation dir goes: the refresher writes into it.
+	if err := h.removeOciRefresher(ctx); err != nil {
 		return err
 	}
 	// The systemd drop-in must live under yb-controller.service.d and is removed above; every other
@@ -461,9 +508,9 @@ func (h *ConfigureCloudFederation) removeDropIn(ctx context.Context) error {
 	}, h.logOut)
 }
 
-// dropInDir returns the yb-controller.service.d directory for the active systemd
-// mode and whether it is user-level.
-func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
+// systemdUnitDir returns the directory holding unit files for the active systemd mode, which is the
+// mode of the YBC unit the federation artifacts are installed beside, and whether it is user-level.
+func (h *ConfigureCloudFederation) systemdUnitDir() (string, bool, error) {
 	isUser, _, err := module.IsUserSystemd(h.username, YbControllerService)
 	if err != nil {
 		return "", false, err
@@ -473,16 +520,22 @@ func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		return filepath.Join(
-			info.User.HomeDir,
-			module.UserSystemdUnitPath,
-			ybcServiceDropInDirName,
-		), true, nil
+		return filepath.Join(info.User.HomeDir, module.UserSystemdUnitPath), true, nil
 	}
-	return filepath.Join(systemSystemdUnitDir, ybcServiceDropInDirName), false, nil
+	return systemSystemdUnitDir, false, nil
 }
 
-// Audience allowlist for GCS-on-AWS: interpolated into the external_account JSON
+// dropInDir returns the yb-controller.service.d directory for the active systemd
+// mode and whether it is user-level.
+func (h *ConfigureCloudFederation) dropInDir() (string, bool, error) {
+	unitDir, isUser, err := h.systemdUnitDir()
+	if err != nil {
+		return "", false, err
+	}
+	return filepath.Join(unitDir, ybcServiceDropInDirName), isUser, nil
+}
+
+// Audience allowlist for GCS federation: interpolated into the external_account JSON
 // template, so the charset excludes quotes/backslashes/whitespace (JSON-safe).
 var gcpAudienceRegex = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,512}$`)
 
@@ -493,7 +546,7 @@ func validateGcsInputs(cfg *pb.GcsConfig) error {
 		return errors.New("gcs config is required when the target cloud is GCP")
 	}
 	if !gcpAudienceRegex.MatchString(cfg.GetAudience()) {
-		return errors.New("invalid or empty audience for GCS-on-AWS federation")
+		return errors.New("invalid or empty audience for GCS federation")
 	}
 	return nil
 }
