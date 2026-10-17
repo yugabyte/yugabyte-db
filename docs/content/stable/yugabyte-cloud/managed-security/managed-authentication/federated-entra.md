@@ -92,7 +92,8 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 
 To configure federated authentication in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose the Microsoft Entra ID identity provider.
 1. Enter your Entra application client ID and secret.
 1. Click **Enable**.

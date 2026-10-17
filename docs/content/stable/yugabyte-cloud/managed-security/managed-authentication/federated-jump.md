@@ -102,7 +102,8 @@ For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso
 
 To configure federated authentication in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose JumpCloud identity provider.
 1. Enter the client ID and secret of the JumpCloud application you created.
 1. Click **Enable**.
