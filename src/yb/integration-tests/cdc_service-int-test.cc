@@ -36,6 +36,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -637,6 +638,22 @@ TEST_F(CDCServiceTest, TestDeleteXClusterStream) {
   for (const auto& tablet_id : tablet_ids) {
     VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
   }
+}
+
+TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsWithoutCDCStateTable) {
+  master::MasterReplicationProxy master_proxy(
+      &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+
+  master::CleanupStaleCDCStreamsRequestPB req;
+  req.set_dry_run(true);
+  master::CleanupStaleCDCStreamsResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(10));
+
+  ASSERT_OK(master_proxy.CleanupStaleCDCStreams(req, &resp, &rpc));
+  ASSERT_TRUE(resp.has_error());
+  EXPECT_EQ(resp.error().code(), master::MasterErrorPB::OBJECT_NOT_FOUND);
+  ASSERT_STR_CONTAINS(resp.error().status().message(), "cdc_state table does not exist");
 }
 
 TEST_F(CDCServiceTest, TestSafeTime) {
