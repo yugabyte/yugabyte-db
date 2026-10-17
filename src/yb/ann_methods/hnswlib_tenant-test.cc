@@ -20,13 +20,23 @@
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 
+#include "yb/gutil/endian.h"
+
+#include "yb/hnsw/vector_index_test_base.h"
+
+#include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 
 #include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/vector_index_if.h"
+
+DECLARE_uint64(yb_hnsw_max_block_size);
+
+using namespace yb::size_literals;
 
 namespace yb::ann_methods {
 
@@ -37,8 +47,10 @@ using vector_index::SearchOptions;
 using vector_index::StoreVectorPayload;
 using vector_index::VectorId;
 using vector_index::VectorIndexIfPtr;
+using vector_index::VectorIndexTraitsPtr;
 
-class HnswlibTenantTest : public YBTest {
+// Checks hnswlib chunks and the YbHnsw chunks they are saved to.
+class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
  protected:
   static constexpr size_t kDimensions = 16;
   static constexpr size_t kNumTenants = 8;
@@ -47,39 +59,32 @@ class HnswlibTenantTest : public YBTest {
   static constexpr size_t kMaxResults = 10;
   static constexpr size_t kEf = 64;
 
-  struct Entry {
-    VectorId id;
-    FloatVector vector;
-    std::string tenant;
-  };
-
-  // The payload of a vector in this test is its tenant.
-  static Result<Slice> TenantFromPayload(Slice payload) {
-    return payload;
-  }
-
-  static Result<VectorIndexIfPtr<FloatVector, float>> CreateIndex(
-      vector_index::VectorTenantExtractor tenant_extractor, size_t capacity) {
-    const HNSWOptions options = {
+  static HNSWOptions Options() {
+    return {
         .dimensions = kDimensions,
         .num_neighbors_per_vertex = 8,
         .num_neighbors_per_vertex_base = 16,
         .ef_construction = 64,
         .distance_kind = DistanceKind::kL2Squared,
     };
-    auto traits = VERIFY_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
-        /* block_cache= */ nullptr, options, /* mem_tracker= */ nullptr,
-        std::move(tenant_extractor))));
-    auto index = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
-    RETURN_NOT_OK(index->Reserve(
-        capacity, /* max_concurrent_inserts= */ 8, /* max_concurrent_reads= */ 8,
-        rocksdb::Cache::ReservationMode::kAlways));
-    return index;
   }
 
+  struct Entry {
+    VectorId id;
+    FloatVector vector;
+    std::string tenant;
+  };
+
   void SetUp() override {
-    YBTest::SetUp();
-    index_ = ASSERT_RESULT(CreateIndex(TenantFromPayload, kNumVectors));
+    VectorIndexTestBase::SetUp();
+    // The payload of a vector in this test is its tenant.
+    traits_ = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
+        block_cache_, Options(), /* mem_tracker= */ nullptr,
+        [](Slice payload) -> Result<Slice> { return payload; })));
+    index_ = traits_->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
+    ASSERT_OK(index_->Reserve(
+        kNumVectors, /* max_concurrent_inserts= */ 8, /* max_concurrent_reads= */ 8,
+        rocksdb::Cache::ReservationMode::kAlways));
 
     // All tenants share the same distribution, so their vectors are close to each other.
     std::uniform_real_distribution<float> distribution(0, 1);
@@ -91,9 +96,13 @@ class HnswlibTenantTest : public YBTest {
       entries_.push_back(Entry {
         .id = VectorId::GenerateRandom(),
         .vector = std::move(vector),
-        .tenant = Format("tenant_$0", i / kVectorsPerTenant),
+        .tenant = TenantName(i / kVectorsPerTenant),
       });
     }
+  }
+
+  std::string TenantName(size_t tenant_idx) const {
+    return Format("tenant_$0", tenant_idx) + tenant_suffix_;
   }
 
   Status Insert(const Entry& entry) {
@@ -128,19 +137,19 @@ class HnswlibTenantTest : public YBTest {
   // Checks that a tenant search returns only vectors of the tenant with high recall, that vectors
   // are reachable from their tenant entry points, and that a search without a tenant covers all
   // tenants.
-  void CheckSearches() {
+  void CheckSearches(const vector_index::VectorIndexIf<FloatVector, float>& index) {
     std::uniform_real_distribution<float> distribution(0, 1);
     size_t found = 0;
     size_t found_all_tenants = 0;
     constexpr size_t kQueriesPerTenant = 10;
     for (size_t tenant_idx = 0; tenant_idx != kNumTenants; ++tenant_idx) {
-      const auto tenant = Format("tenant_$0", tenant_idx);
+      const auto tenant = TenantName(tenant_idx);
       for (size_t i = 0; i != kQueriesPerTenant; ++i) {
         FloatVector query(kDimensions);
         for (auto& coordinate : query) {
           coordinate = distribution(ThreadLocalRandom());
         }
-        auto results = ASSERT_RESULT(index_->Search(query, SearchOptions {
+        auto results = ASSERT_RESULT(index.Search(query, SearchOptions {
           .max_num_results = kMaxResults,
           .ef = kEf,
           .tenant = Slice(tenant),
@@ -152,7 +161,7 @@ class HnswlibTenantTest : public YBTest {
           found += expected.contains(result.vector_id);
         }
 
-        results = ASSERT_RESULT(index_->Search(query, SearchOptions {
+        results = ASSERT_RESULT(index.Search(query, SearchOptions {
           .max_num_results = kMaxResults,
           .ef = kEf,
         }));
@@ -173,7 +182,7 @@ class HnswlibTenantTest : public YBTest {
     // its entry point would leave many.
     size_t num_unreachable = 0;
     for (const auto& entry : entries_) {
-      auto results = ASSERT_RESULT(index_->Search(entry.vector, SearchOptions {
+      auto results = ASSERT_RESULT(index.Search(entry.vector, SearchOptions {
         .max_num_results = 1,
         .ef = kEf,
         .tenant = Slice(entry.tenant),
@@ -183,7 +192,7 @@ class HnswlibTenantTest : public YBTest {
     }
     ASSERT_LE(num_unreachable, kNumVectors / 100);
 
-    auto results = ASSERT_RESULT(index_->Search(entries_.front().vector, SearchOptions {
+    auto results = ASSERT_RESULT(index.Search(entries_.front().vector, SearchOptions {
       .max_num_results = kMaxResults,
       .ef = kEf,
       .tenant = Slice("missing_tenant"),
@@ -191,8 +200,32 @@ class HnswlibTenantTest : public YBTest {
     ASSERT_TRUE(results.empty());
   }
 
+  // The first byte of the footer of a YbHnsw chunk file: the flags of the fields it holds.
+  static uint8_t FooterFlags(const std::string& path) {
+    faststring data;
+    CHECK_OK(ReadFileToString(Env::Default(), path, &data));
+    auto footer_size = LittleEndian::Load64(data.data() + data.size() - sizeof(uint64_t));
+    return data[data.size() - footer_size];
+  }
+
+  // Checks the inserted index, the chunk it is saved to, and the chunk loaded from the file.
+  void CheckIndexAndChunks() {
+    ASSERT_NO_FATALS(CheckSearches(*index_));
+    const auto path = GetTestPath("chunk");
+    auto saved = ASSERT_RESULT(index_->SaveToFile(path));
+    ASSERT_NE(saved, nullptr);
+    // Base fields and the tenant directory.
+    ASSERT_EQ(FooterFlags(path), 0x05);
+    ASSERT_NO_FATALS(CheckSearches(*saved));
+    auto loaded = traits_->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
+    ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
+    ASSERT_NO_FATALS(CheckSearches(*loaded));
+  }
+
+  VectorIndexTraitsPtr<FloatVector, float> traits_;
   VectorIndexIfPtr<FloatVector, float> index_;
   std::vector<Entry> entries_;
+  std::string tenant_suffix_;
 };
 
 // Vectors of a tenant are inserted back to back, as by a backfill of a table whose primary key
@@ -201,7 +234,7 @@ TEST_F(HnswlibTenantTest, GroupedByTenant) {
   for (const auto& entry : entries_) {
     ASSERT_OK(Insert(entry));
   }
-  ASSERT_NO_FATALS(CheckSearches());
+  ASSERT_NO_FATALS(CheckIndexAndChunks());
 }
 
 TEST_F(HnswlibTenantTest, RandomOrder) {
@@ -209,7 +242,21 @@ TEST_F(HnswlibTenantTest, RandomOrder) {
   for (const auto& entry : entries_) {
     ASSERT_OK(Insert(entry));
   }
-  ASSERT_NO_FATALS(CheckSearches());
+  ASSERT_NO_FATALS(CheckIndexAndChunks());
+}
+
+// Long tenants with small blocks spread the YbHnsw tenant directory over several blocks.
+TEST_F(HnswlibTenantTest, ManyTenantDirectoryBlocks) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_max_block_size) = 1_KB;
+  tenant_suffix_ = std::string(300, 'x');
+  for (size_t i = 0; i != entries_.size(); ++i) {
+    entries_[i].tenant = TenantName(i / kVectorsPerTenant);
+  }
+  std::shuffle(entries_.begin(), entries_.end(), ThreadLocalRandom());
+  for (const auto& entry : entries_) {
+    ASSERT_OK(Insert(entry));
+  }
+  ASSERT_NO_FATALS(CheckIndexAndChunks());
 }
 
 // Vectors of all tenants are inserted concurrently, round robin over the tenants.
@@ -222,7 +269,7 @@ TEST_F(HnswlibTenantTest, ConcurrentInserts) {
   ASSERT_OK(ProcessInParallel(
       /* num_threads= */ 8, static_cast<size_t>(0), kNumVectors,
       [this, &order](size_t i) { return Insert(entries_[order[i]]); }));
-  ASSERT_NO_FATALS(CheckSearches());
+  ASSERT_NO_FATALS(CheckIndexAndChunks());
 }
 
 // Inserts of a tenant above the level of its entry point replace the entry point. Concurrent ones
@@ -279,21 +326,35 @@ TEST_F(HnswlibTenantTest, ConcurrentTenantEntryPromotions) {
   }
 }
 
-// A search of a tenant needs an index whose vectors belong to tenants.
-TEST_F(HnswlibTenantTest, TenantSearchWithoutTenants) {
-  auto index = ASSERT_RESULT(CreateIndex(/* tenant_extractor= */ nullptr, /* capacity= */ 1));
-  const auto& entry = entries_.front();
-  ASSERT_OK(index->Insert(entry.id, entry.vector, Slice(entry.tenant)));
-  ASSERT_NOK(index->Search(entry.vector, SearchOptions {
-    .max_num_results = 1,
-    .ef = kEf,
-    .tenant = Slice(entry.tenant),
-  }));
-  auto results = ASSERT_RESULT(index->Search(entry.vector, SearchOptions {
-    .max_num_results = 1,
-    .ef = kEf,
-  }));
-  ASSERT_EQ(results.size(), 1U);
+// An index without tenants rejects tenant searches, and its chunks have the footer of older
+// releases, so they can still read them.
+TEST_F(HnswlibTenantTest, NoTenants) {
+  auto traits = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
+      block_cache_, Options(), /* mem_tracker= */ nullptr, /* tenant_extractor= */ nullptr)));
+  auto index = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
+  ASSERT_OK(index->Reserve(
+      kNumVectors, /* max_concurrent_inserts= */ 1, /* max_concurrent_reads= */ 1,
+      rocksdb::Cache::ReservationMode::kAlways));
+  for (const auto& entry : entries_) {
+    ASSERT_OK(index->Insert(entry.id, entry.vector, Slice(entry.tenant)));
+  }
+  const auto path = GetTestPath("chunk");
+  auto saved = ASSERT_RESULT(index->SaveToFile(path));
+  ASSERT_NE(saved, nullptr);
+  ASSERT_EQ(FooterFlags(path), 0x01);
+  auto loaded = traits->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
+  ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
+  for (const auto* chunk : {index.get(), saved.get(), loaded.get()}) {
+    ASSERT_NOK(chunk->Search(entries_.front().vector, SearchOptions {
+      .max_num_results = kMaxResults,
+      .ef = kEf,
+      .tenant = Slice(entries_.front().tenant),
+    }));
+    auto results = ASSERT_RESULT(chunk->Search(
+        entries_.front().vector, SearchOptions{.max_num_results = kMaxResults, .ef = kEf}));
+    ASSERT_EQ(results.size(), kMaxResults);
+    ASSERT_EQ(results.front().vector_id, entries_.front().id);
+  }
 }
 
 } // namespace yb::ann_methods

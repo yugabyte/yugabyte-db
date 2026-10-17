@@ -147,9 +147,8 @@ class YbHnswIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
-    // TODO(#36086): search from the entry point of the tenant.
-    SCHECK(options.tenant.empty(), NotSupported,
-           "YbHnsw vector index chunks keep no tenant entry points yet");
+    SCHECK(options.tenant.empty() || index_.header().num_tenant_directory_blocks, InvalidArgument,
+           "Tenant search of a vector index without tenants");
     auto* context = search_contexts_.Pop();
     if (!context) {
       context = new SearchContextHolder;
