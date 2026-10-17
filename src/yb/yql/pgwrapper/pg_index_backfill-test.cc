@@ -2525,6 +2525,14 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
         LOG(INFO) << "Killing the master leader while blocked at " << phase.name;
         ASSERT_NE(request_leader, nullptr);
         request_leader->Shutdown();
+        // Waiting for failure detection can take over 10 s in sanitizer builds, which expires the
+        // tservers' YSQL leases and eats into the 30 s BackfillIndex client timeout.
+        for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+          if (cluster_->master(i) != request_leader) {
+            WARN_NOT_OK(cluster_->StartElection(cluster_->master(i)), "start election");
+            break;
+          }
+        }
         ASSERT_OK(WaitFor(
             [this]() -> Result<bool> { return cluster_->GetLeaderMasterIndex().ok(); },
             60s * kTimeMultiplier, "Wait for a new master leader"));
