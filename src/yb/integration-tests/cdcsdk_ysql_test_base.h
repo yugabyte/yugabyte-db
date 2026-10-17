@@ -933,6 +933,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
       bool use_consistent_snapshot_stream);
 
+  Result<std::string> CleanupStaleCDCStreams(bool dry_run);
+
   void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 
   void TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
