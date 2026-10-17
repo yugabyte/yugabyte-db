@@ -5,11 +5,15 @@ package api.v2.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 
+import api.v2.models.ApiTokenSpec;
 import api.v2.models.CustomerRegistration;
 import api.v2.models.CustomerRegistrationSpec;
+import api.v2.models.UserApiToken;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -23,6 +27,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
 import io.ebean.Transaction;
+import java.util.UUID;
 import org.apache.commons.validator.routines.EmailValidator;
 import play.mvc.Http;
 
@@ -31,7 +36,9 @@ public class CustomerManagementHandler {
 
   private final Config config;
   private final RuntimeConfGetter confGetter;
-  private final TokenAuthenticator tokenAuthenticator;
+  // TokenAuthenticator caches token lookups for 10 minutes. Play creates one per request; a
+  // singleton holding one would keep accepting a token for up to 10 minutes after it is rotated.
+  private final Provider<TokenAuthenticator> tokenAuthenticatorProvider;
   private final CustomerRegistrationHandler customerRegistrationHandler;
   private final UserService userService;
 
@@ -39,12 +46,12 @@ public class CustomerManagementHandler {
   public CustomerManagementHandler(
       Config config,
       RuntimeConfGetter confGetter,
-      TokenAuthenticator tokenAuthenticator,
+      Provider<TokenAuthenticator> tokenAuthenticatorProvider,
       CustomerRegistrationHandler customerRegistrationHandler,
       UserService userService) {
     this.config = config;
     this.confGetter = confGetter;
-    this.tokenAuthenticator = tokenAuthenticator;
+    this.tokenAuthenticatorProvider = tokenAuthenticatorProvider;
     this.customerRegistrationHandler = customerRegistrationHandler;
     this.userService = userService;
   }
@@ -68,6 +75,7 @@ public class CustomerManagementHandler {
           throw new PlatformServiceException(
               CONFLICT, "A customer is already registered on this SSO-enabled YBA instance");
         }
+        TokenAuthenticator tokenAuthenticator = tokenAuthenticatorProvider.get();
         if (!tokenAuthenticator.superAdminAuthentication(request)) {
           if (tokenAuthenticator.getCurrentAuthenticatedUser(request) == null) {
             throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
@@ -98,5 +106,33 @@ public class CustomerManagementHandler {
           .apiToken(apiToken)
           .apiTokenVersion(user.getApiTokenVersion());
     }
+  }
+
+  public UserApiToken generateApiToken(Http.Request request, UUID cUUID, ApiTokenSpec spec) {
+    // The operation is noAuthz so that any user, whatever its role, can rotate its own token; the
+    // caller is authenticated here.
+    Users user = tokenAuthenticatorProvider.get().getCurrentAuthenticatedUser(request);
+    if (user == null) {
+      throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
+    }
+    Customer customer = Customer.get(cUUID);
+    if (customer == null) {
+      throw new PlatformServiceException(NOT_FOUND, "Customer not found: " + cUUID);
+    }
+    if (!customer.getUuid().equals(user.getCustomerUUID())) {
+      throw new PlatformServiceException(FORBIDDEN, "User does not belong to customer " + cUUID);
+    }
+
+    // Before the rotation, so that a failure here can't kill the old token without returning a new
+    // one.
+    RequestContext.putIfAbsent(
+        TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
+    String apiToken = user.rotateApiToken(spec == null ? null : spec.getApiTokenVersion());
+
+    return new UserApiToken()
+        .customerUuid(customer.getUuid())
+        .userUuid(user.getUuid())
+        .apiToken(apiToken)
+        .apiTokenVersion(user.getApiTokenVersion());
   }
 }
