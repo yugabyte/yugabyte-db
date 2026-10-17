@@ -214,7 +214,7 @@ void VectorToYSQL(const Vector& vector, ValueBuffer* out) {
 
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const DocVectorIndexInsertEntry& entry, bool store_payload) {
+    const DocVectorIndexInsertEntry& entry, bool store_payload, size_t tenant_key_components) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
   RSTATUS_DCHECK(
@@ -227,12 +227,14 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   }
   ValueBuffer payload;
   if (store_payload) {
+    auto tenant_prefix_size = VERIFY_RESULT(dockv::DocVectorTenantPrefixSize(
+        entry.ybctid.AsSlice(), tenant_key_components));
     if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
       // Sorts after every key of the row.
       dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
-      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), tenant_prefix_size);
     } else {
-      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), tenant_prefix_size);
     }
   }
   return vector_index::VectorLSMInsertEntry<Vector> {
@@ -458,7 +460,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     if (!FLAGS_TEST_vector_index_skip_insert) {
       lsm_entries.reserve(entries.size());
       for (const auto& entry : entries) {
-        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, StoresPayload())));
+        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(
+            entry, StoresPayload(), options_.tenant_key_components())));
       }
     }
     vector_index::VectorLSMInsertContext context {

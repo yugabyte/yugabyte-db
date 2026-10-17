@@ -660,6 +660,13 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
     "index yet, see #33912.");
 
+DEFINE_RUNTIME_uint32(vector_index_tenant_key_components, 0,
+    "Number of leading primary key components that identify the tenant of a vector in newly "
+    "created vector indexes that store the payload, see vector_index_store_payload. All hash "
+    "columns form one component, followed by one component per range column. 0 means vectors "
+    "have no tenant. The value is fixed for an index when it is created. Older releases cannot "
+    "read the chunks of an index created with a nonzero value.");
+
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
@@ -4746,6 +4753,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.set_store_payload(
           FLAGS_vector_index_store_payload ||
           indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
+      if (vector_index_options.store_payload()) {
+        vector_index_options.set_tenant_key_components(FLAGS_vector_index_tenant_key_components);
+      }
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
