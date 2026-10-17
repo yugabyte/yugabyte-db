@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
+import org.yb.util.SkipOnYbController;
 import org.yb.util.TestFilterUtil;
 
 import java.util.Collections;
@@ -66,6 +67,18 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
         TestUtils.reportCollectedTest(specifiedClassName, methodName);
       });
     }
+  }
+
+  /**
+   * A @SkipOnYbController method is skipped by reporting it as ignored, not by leaving it out of
+   * getChildren(): YB_TEST_YB_CONTROLLER is a test-stage setting, so a method that was listed when
+   * the Java test list was collected must still produce a (skipped) result when run on its own, or
+   * surefire fails the run with "No tests were executed".
+   */
+  @Override
+  protected boolean isIgnored(FrameworkMethod child) {
+    return super.isIgnored(child) ||
+        (child.getAnnotation(SkipOnYbController.class) != null && TestUtils.useYbController());
   }
 
   @Override
