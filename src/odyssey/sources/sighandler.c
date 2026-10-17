@@ -5,6 +5,7 @@
 
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <unistd.h>
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 static inline od_retcode_t
@@ -118,7 +119,7 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	/* stop machinaruim and free */
 	od_instance_free(instance);
 #endif
-	exit(0);
+	_exit(0);
 }
 
 void od_system_signal_handler(void *arg)
