@@ -65,6 +65,7 @@ from __future__ import print_function
 
 import atexit
 import argparse
+import contextlib
 import errno
 import glob
 import hashlib
@@ -105,7 +106,7 @@ YEDIS_DEFAULT_PORT = 6379
 
 LOCALHOST_IP = '127.0.0.1'
 
-SLEEP_TIME_IN_SEC = 1
+SLEEP_TIME_IN_SEC = 0.2
 MAX_YB_ADMIN_WAIT_SEC = 45
 MAX_WAIT_FOR_PROCESSES_RUNNING_SEC = 10
 DEFAULT_REPLICATION_FACTOR = 1
@@ -144,7 +145,7 @@ def call_get_output_maybe_error(cmd_list, should_get_error=False):
         return output
 
 
-def retry_call_with_timeout(fn, timeout_sec=MAX_YB_ADMIN_WAIT_SEC):
+def retry_call_with_timeout(fn, timeout_sec=MAX_YB_ADMIN_WAIT_SEC, sleep_sec=SLEEP_TIME_IN_SEC):
     """
     This will retry a given function that is supposed to be doing subprocess callouts. Based on
     the passed in function behavior, this function will behave accordingly:
@@ -161,7 +162,7 @@ def retry_call_with_timeout(fn, timeout_sec=MAX_YB_ADMIN_WAIT_SEC):
         time_elapsed = time.time() - start_time
         if time_elapsed > timeout_sec:
             return
-        is_last_iteration = time_elapsed + SLEEP_TIME_IN_SEC > timeout_sec
+        is_last_iteration = time_elapsed + sleep_sec > timeout_sec
         try:
             ret = fn(is_last_iteration)
             if ret:
@@ -170,7 +171,7 @@ def retry_call_with_timeout(fn, timeout_sec=MAX_YB_ADMIN_WAIT_SEC):
             if is_last_iteration:
                 logging.error("Failed too many times. CMDLINE={} RETCODE={} OUTPUT={}".format(
                     e.cmd, e.returncode, e.output))
-        time.sleep(SLEEP_TIME_IN_SEC)
+        time.sleep(sleep_sec)
 
 
 def wait_for_proc_report_progress(proc):
@@ -930,6 +931,8 @@ class ClusterControl:
         self.setup_parsing()
         self.log_file = None
         self.already_running_daemons = set()
+        # Command lines of running yb-master/yb-tserver processes, if a snapshot is in effect.
+        self.process_snapshot = None
 
     def setup_base_parser(self, command, help=None):
         subparser = self.subparsers.add_parser(command, help=help, parents=[self.parent_parser])
@@ -1287,53 +1290,29 @@ class ClusterControl:
             get_binary_name_for_daemon_type(daemon_id.daemon_type),
             self.options.get_ip_address(daemon_id))
 
-    def get_pid(self, daemon_id):
+    def list_yb_processes(self):
+        """
+        Returns the command lines of all running yb-master and yb-tserver processes. A single pgrep
+        is much cheaper than one per daemon on a host with many processes.
+        """
+        if self.process_snapshot is not None:
+            return self.process_snapshot
+        if sys.platform == 'darwin':
+            # -l: Long output.  For pgrep, print the process name in addition to the process ID
+            # for each matching process.  If used in conjunction with -f, print the process ID
+            # and the full argument list for each matching process.  For pkill, display the kill
+            # command used for each process killed.
+            pgrep_full_command_output_arg = '-l'
+        else:
+            # -a, --list-full
+            # List the full command line as well as the process ID.  (pgrep only.)
+            pgrep_full_command_output_arg = '--list-full'
         try:
-            if sys.platform == 'darwin':
-                # -l: Long output.  For pgrep, print the process name in addition to the process ID
-                # for each matching process.  If used in conjunction with -f, print the process ID
-                # and the full argument list for each matching process.  For pkill, display the kill
-                # command used for each process killed.
-                pgrep_full_command_output_arg = '-l'
-            else:
-                # -a, --list-full
-                # List the full command line as well as the process ID.  (pgrep only.)
-                pgrep_full_command_output_arg = '--list-full'
-            pgrep_regex_str = self.get_pgrep_regex(daemon_id)
             pgrep_output = subprocess.check_output(
-                ["pgrep", pgrep_full_command_output_arg, "-f", pgrep_regex_str],
+                ["pgrep", pgrep_full_command_output_arg, "-f",
+                 "(yb-master|yb-tserver) .* --rpc_bind_addresses "],
                 env={"LC_ALL": "C.UTF-8"}
             ).strip().decode('utf-8')
-
-            data_dirs_re_match = FS_DATA_DIRS_ARG_RE.search(pgrep_output)
-            if data_dirs_re_match:
-                data_dirs_of_process = data_dirs_re_match.group(1)
-                expected_data_dirs = ','.join(self.get_base_node_dirs(daemon_id.index))
-                if self.args.verbose:
-                    logging.info(
-                            "Data dirs of the running process with daemon id %s: %s",
-                            daemon_id, data_dirs_of_process)
-                data_dirs_of_process = remove_surrounding_quotes(data_dirs_of_process)
-                if data_dirs_of_process != expected_data_dirs:
-                    error_msg = (
-                        "When looking for process with daemon id %s, we found the following "
-                        "running process with data dirs %s but expected data dirs to be %s: %s" % (
-                            daemon_id, data_dirs_of_process, expected_data_dirs, pgrep_output))
-                    raise ExitWithError(error_msg)
-
-            if self.args.verbose:
-                logging.info(
-                        "pgrep output when looking for daemon id %s: %s",
-                        daemon_id, pgrep_output)
-            pgrep_output_lines = [line.strip() for line in pgrep_output.split("\n")]
-            pgrep_output_lines = [line for line in pgrep_output_lines]
-            if len(pgrep_output_lines) > 1:
-                raise ExitWithError(
-                    'Found multiple processes when looking for the %s process with pgrep based on '
-                    'regular expression %s:\n%s' % (daemon_id, pgrep_regex_str, pgrep_output))
-
-            pid = pgrep_output_lines[0].split()[0]
-            return int(pid)
         except subprocess.CalledProcessError as e:
             # From man pgrep
             #
@@ -1344,7 +1323,56 @@ class ClusterControl:
             # 3      Fatal error: out of memory etc.
             if e.returncode != 1:
                 raise RuntimeError("Error during pgrep: {}".format(e.output))
+            return []
+        return [line.strip() for line in pgrep_output.split("\n") if line.strip()]
+
+    @contextlib.contextmanager
+    def single_process_listing(self):
+        """
+        Makes get_pid calls within the block use one process listing instead of a pgrep each.
+        """
+        self.process_snapshot = self.list_yb_processes()
+        try:
+            yield
+        finally:
+            self.process_snapshot = None
+
+    def get_pid(self, daemon_id):
+        pgrep_regex_str = self.get_pgrep_regex(daemon_id)
+        pgrep_regex = re.compile(pgrep_regex_str)
+        pgrep_output_lines = [
+            line for line in self.list_yb_processes() if pgrep_regex.search(line)]
+        if not pgrep_output_lines:
             return None
+        pgrep_output = "\n".join(pgrep_output_lines)
+
+        data_dirs_re_match = FS_DATA_DIRS_ARG_RE.search(pgrep_output)
+        if data_dirs_re_match:
+            data_dirs_of_process = data_dirs_re_match.group(1)
+            expected_data_dirs = ','.join(self.get_base_node_dirs(daemon_id.index))
+            if self.args.verbose:
+                logging.info(
+                        "Data dirs of the running process with daemon id %s: %s",
+                        daemon_id, data_dirs_of_process)
+            data_dirs_of_process = remove_surrounding_quotes(data_dirs_of_process)
+            if data_dirs_of_process != expected_data_dirs:
+                error_msg = (
+                    "When looking for process with daemon id %s, we found the following "
+                    "running process with data dirs %s but expected data dirs to be %s: %s" % (
+                        daemon_id, data_dirs_of_process, expected_data_dirs, pgrep_output))
+                raise ExitWithError(error_msg)
+
+        if self.args.verbose:
+            logging.info(
+                    "pgrep output when looking for daemon id %s: %s",
+                    daemon_id, pgrep_output)
+        if len(pgrep_output_lines) > 1:
+            raise ExitWithError(
+                'Found multiple processes when looking for the %s process with pgrep based on '
+                'regular expression %s:\n%s' % (daemon_id, pgrep_regex_str, pgrep_output))
+
+        pid = pgrep_output_lines[0].split()[0]
+        return int(pid)
 
     def build_command(self, daemon_id, specific_arg_list):
         node_base_dirs = self.get_base_node_dirs(daemon_id.index)
@@ -1455,11 +1483,11 @@ class ClusterControl:
              for i in range(1, num_servers + 1)
              if not running_only or self.get_pid(DaemonId(DAEMON_TYPE_MASTER, i)) is not None])
 
-    def start_daemon(self, daemon_id):
+    def start_daemon(self, daemon_id, check_running=True):
         self.options.validate_daemon_type(daemon_id.daemon_type)
         self.options.validate_daemon_index(daemon_id.index)
 
-        if self.get_pid(daemon_id) is not None:
+        if check_running and self.get_pid(daemon_id) is not None:
             logging.info("Server {} already running".format(daemon_id))
             self.already_running_daemons.add(daemon_id)
             return
@@ -1581,7 +1609,8 @@ class ClusterControl:
                     self.options.cluster_base_dir))
 
         # Make sure that there are no master or tserver processes before the `create`.
-        pids = self.for_all_daemons(self.get_pid)
+        with self.single_process_listing():
+            pids = self.for_all_daemons(self.get_pid)
         if any(sum(pids.values(), [])):
             logging.info("PIDs found: {}".format(pids))
             raise ExitWithError("Processes are still up. Make sure to destroy old state.")
@@ -1637,7 +1666,8 @@ class ClusterControl:
         """
         # Wait for master and tserver processes to be ready.
         def call_check_for_processes(should_get_error):
-            pids = self.for_all_daemons(self.get_pid)
+            with self.single_process_listing():
+                pids = self.for_all_daemons(self.get_pid)
             return all(sum(pids.values(), []))
 
         logging.info("Waiting for master and tserver processes to come up.")
@@ -1662,8 +1692,9 @@ class ClusterControl:
                 raise ExitWithError("At least one master or tserver process is down.")
 
             max_num_tservers = self.get_number_of_servers(DAEMON_TYPE_TSERVER)
-            num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) is not None
-                                for i in range(1, max_num_tservers + 1)])
+            with self.single_process_listing():
+                num_alive_ts = sum([self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) is not None
+                                    for i in range(1, max_num_tservers + 1)])
             # TODO: enhance this to tell us live vs dead.
             # Tablet Server UUID                      RPC Host/Port
             # 5d6cd15e0a6e48aba1c5128869f51328        127.0.0.5:9100
@@ -1696,11 +1727,51 @@ class ClusterControl:
                 logging.info("Waiting for all tablet servers to register: {}/{}".format(
                     num_yb_admin_ts, num_alive_ts))
 
+        # A tserver starts PostgreSQL only after registering with the master leader, so waiting
+        # for YSQL first, which is cheap to poll, makes the yb-admin check below pass right away.
+        if self.is_ysql_enabled() and not self.wait_for_ysql():
+            return False
+
         logging.info("Waiting for master leader election and tablet server registration.")
         if not retry_call_with_timeout(call_check_for_ts, self.options.timeout_yb_admin_sec):
             logging.error("Failed waiting for {} tservers, got {}".format(
                 num_alive_ts, num_yb_admin_ts))
             return False
+
+        # A newly added tserver is only counted once it has created its data directory, which
+        # can be after the first YSQL wait above.
+        return not self.is_ysql_enabled() or self.wait_for_ysql()
+
+    def wait_for_ysql(self):
+        """
+        Wait until PostgreSQL on every running tserver accepts connections.
+        """
+        try:
+            pg_isready_path = self.options.get_binary_path("pg_isready")
+        except RuntimeError as ex:
+            logging.info("Not waiting for YSQL: {}".format(ex))
+            return True
+
+        ysql_port = str(self.options.get_client_protocol_port(PROTOCOL_TYPE_YSQL))
+        with self.single_process_listing():
+            running_tservers = [
+                DaemonId(DAEMON_TYPE_TSERVER, i)
+                for i in range(1, self.get_number_of_servers(DAEMON_TYPE_TSERVER) + 1)
+                if self.get_pid(DaemonId(DAEMON_TYPE_TSERVER, i)) is not None]
+        for daemon_id in running_tservers:
+            host = self.options.get_client_advertise_host_port(daemon_id)
+            cmd_list = [pg_isready_path, "--quiet", "--host", host, "--port", ysql_port]
+
+            def call_pg_isready(should_get_error):
+                with SetAndRestoreEnv():
+                    adjust_env_for_ysql()
+                    return subprocess.call(cmd_list) == 0
+
+            logging.info("Waiting for YSQL at {}:{}".format(host, ysql_port))
+            if not retry_call_with_timeout(
+                    call_pg_isready, self.options.timeout_yb_admin_sec, sleep_sec=0.02):
+                logging.error("Failed waiting for YSQL at {}:{}".format(host, ysql_port))
+                return False
 
         return True
 
@@ -1892,7 +1963,8 @@ class ClusterControl:
 
         self.pre_create_checks()
         os.makedirs(self.options.cluster_base_dir)
-        self.for_all_daemons(self.start_daemon)
+        # pre_create_checks has just verified that none of the daemons are running.
+        self.for_all_daemons(lambda daemon_id: self.start_daemon(daemon_id, check_running=False))
         self.wait_for_cluster_or_raise()
         self.modify_placement_info()
 
