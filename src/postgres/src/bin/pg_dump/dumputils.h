@@ -43,13 +43,15 @@ extern bool buildACLCommands(PGconn *yb_conn,
 							 const char *name, const char *subname, const char *nspname,
 							 const char *type, const char *acls, const char *baseacls,
 							 const char *owner, const char *prefix, int remoteVersion,
-							 bool yb_dump_role_checks, PQExpBuffer sql);
+							 bool yb_dump_role_checks,
+							 const char *yb_restrict_key, PQExpBuffer sql);
 extern bool buildDefaultACLCommands(PGconn *yb_conn,
 									const char *type, const char *nspname,
 									const char *acls, const char *acldefault,
 									const char *owner,
 									int remoteVersion,
 									bool yb_dump_role_checks,
+									const char *yb_restrict_key,
 									PQExpBuffer sql);
 
 extern void quoteAclUserName(PQExpBuffer output, const char *input);
@@ -68,24 +70,24 @@ extern bool SplitGUCList(char *rawstring, char separator,
 extern void makeAlterConfigCommand(PGconn *conn, const char *configitem,
 								   const char *type, const char *name,
 								   const char *type2, const char *name2,
-								   bool yb_dump_role_checks, PQExpBuffer buf);
+								   bool yb_dump_role_checks,
+								   const char *yb_restrict_key, PQExpBuffer buf);
 extern void create_or_open_dir(const char *dirname);
 
 extern char *generate_restrict_key(void);
 extern bool valid_restrict_key(const char *restrict_key);
 
-/*
- * YB: append psql \unrestrict / \restrict meta-commands (CVE-2025-8714) to
- * bracket a YB-generated control-flow meta-command block (\if/\set/\gset/
- * \echo) so it runs outside restricted mode. Shared by pg_dump and pg_dumpall.
- * No-op when restrict_key is NULL.
- */
-extern void ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key);
-extern void ybAppendRestrict(PQExpBuffer buf, const char *restrict_key);
-
 extern void YBWwrapInRoleChecks(PGconn *conn,
 								PQExpBuffer sql, const char *op_name,
 								const char *role_name1, const char *role_name2,
-								const char *role_name3, PQExpBuffer result);
+								const char *role_name3, PQExpBuffer result,
+								const char *yb_restrict_key);
+
+/* YB declarations */
+extern void ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key);
+extern void ybAppendRestrict(PQExpBuffer buf, const char *restrict_key);
+extern void ybAppendBracketedBlock(PQExpBuffer buf, const char *block,
+								   const char *restrict_key);
+extern void ybAppendPsqlMetaLiteral(PQExpBuffer buf, const char *str);
 
 #endif							/* DUMPUTILS_H */
