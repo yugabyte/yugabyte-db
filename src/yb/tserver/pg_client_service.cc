@@ -924,8 +924,11 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()] {
-      constexpr auto kCheckTimeout = 1000ms * kTimeMultiplier;
-      ScheduleCheckSessionShutdown(pid, session_id, CoarseMonoClock::Now() + kCheckTimeout);
+      // pggate closes the connection on interrupt, but the process could exit only after its
+      // in-flight request completes. So keep checking until the session would expire anyway.
+      ScheduleCheckSessionShutdown(
+          pid, session_id,
+          CoarseMonoClock::Now() + FLAGS_pg_client_session_expiration_ms * 1ms);
     });
 
     return session_registry_.Insert(std::move(session_info));
@@ -942,7 +945,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   void CheckSessionShutdown(pid_t pid, int64_t session_id, CoarseTimePoint deadline) {
     if (!IsPIDExists(pid)) {
       session_registry_.Expire(session_id);
-    } else if (deadline > CoarseMonoClock::Now()) {
+    } else if (deadline > CoarseMonoClock::Now() &&
+               session_registry_.Get(session_id, TouchSession::kFalse).ok()) {
       ScheduleCheckSessionShutdown(pid, session_id, deadline);
     }
   }
