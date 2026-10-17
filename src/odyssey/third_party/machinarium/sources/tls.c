@@ -852,3 +852,26 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 	mm_tls_error(io, rc, "SSL_read()");
 	return -1;
 }
+
+/*
+ * YB: build the server context once at startup, as the postmaster does, so
+ * settings be_tls_init() rejects stop conn mgr from starting rather than fail
+ * every client handshake. Worker threads still build their own lazily.
+ */
+MACHINE_API int yb_machine_tls_validate_server_context(machine_tls_t *obj,
+						       char *err, int err_len)
+{
+	mm_io_t io;
+
+	/* The machinarium-managed path's errors need an SSL object; skip it. */
+	if (!yb_full_tls_handshake())
+		return 0;
+
+	memset(&io, 0, sizeof(io));
+	io.tls = mm_cast(mm_tls_t *, obj);
+	if (mm_tls_get_context(&io, 0) == NULL) {
+		mm_snprintf(err, err_len, "%s", io.tls_error_msg);
+		return -1;
+	}
+	return 0;
+}

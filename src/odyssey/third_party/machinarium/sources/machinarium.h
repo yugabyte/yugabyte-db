@@ -193,6 +193,9 @@ MACHINE_API int yb_machine_tls_set_dh_params_file(machine_tls_t *, char *);
 
 MACHINE_API int yb_machine_tls_set_passphrase_command(machine_tls_t *, char *);
 
+MACHINE_API int yb_machine_tls_validate_server_context(machine_tls_t *, char *,
+						     int);
+
 /* io control */
 
 MACHINE_API machine_io_t *machine_io_create(void);
