@@ -999,36 +999,45 @@ explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=
 (19 rows)
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
--- YB_TODO_PG19MERGE: Join method choice is not working
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                              
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
    Sort Key: t1.a
-   ->  Append
-         ->  Hash Join
-               Hash Cond: (t1_1.a = t2_1.b)
+   ->  Merge Join
+         Merge Cond: (t1_1.a = t2_1.b)
+         ->  Sort
+               Sort Key: t1_1.a
                ->  Seq Scan on prt1_p1 t1_1
                      Storage Filter: (b = 0)
-               ->  Hash
-                     ->  Seq Scan on prt2_p1 t2_1
-         ->  Hash Join
-               Hash Cond: (t1_2.a = t2_2.b)
+         ->  Sort
+               Sort Key: t2_1.b
+               ->  Seq Scan on prt2_p1 t2_1
+   ->  Merge Join
+         Merge Cond: (t1_2.a = t2_2.b)
+         ->  Sort
+               Sort Key: t1_2.a
                ->  Seq Scan on prt1_p2 t1_2
                      Storage Filter: (b = 0)
-               ->  Hash
-                     ->  Seq Scan on prt2_p2 t2_2
-         ->  Nested Loop
-               ->  Seq Scan on prt2_p3 t2_3
-               ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
-                     Index Cond: (a = t2_3.b)
+         ->  Sort
+               Sort Key: t2_2.b
+               ->  Seq Scan on prt2_p2 t2_2
+   ->  Merge Join
+         Merge Cond: (t1_3.a = t2_3.b)
+         ->  Sort
+               Sort Key: t1_3.a
+               ->  Seq Scan on prt1_p3 t1_3
                      Storage Filter: (b = 0)
- Generated hints: /*+  Leading((t1_1 t2_1)) SeqScan(t1_1) SeqScan(t2_1) HashJoin(t1_1 t2_1)  Leading((t1_2 t2_2)) SeqScan(t1_2) SeqScan(t2_2) HashJoin(t1_2 t2_2)  Leading((t2_3 t1_3)) SeqScan(t2_3) IndexScan(t1_3 iprt1_p3_a) NestLoop(t1_3 t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
-(21 rows)
+         ->  Sort
+               Sort Key: t2_3.b
+               ->  Seq Scan on prt2_p3 t2_3
+ Generated hints: /*+  Leading((t1_1 t2_1)) SeqScan(t1_1) SeqScan(t2_1) MergeJoin(t1_1 t2_1)  Leading((t1_2 t2_2)) SeqScan(t1_2) SeqScan(t2_2) MergeJoin(t1_2 t2_2)  Leading((t1_3 t2_3)) SeqScan(t1_3) SeqScan(t2_3) MergeJoin(t1_3 t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(30 rows)
 
--- Leading on partitioned tables with partitionwise joins enabled. The hint cannot name
--- the partition joins, so they stay denied and the hinted order is planned at the parent level.
+-- Leading on partitioned tables with partitionwise joins enabled. The partition joins follow
+-- the hinted order too, but the Leading hint registers only the join at the parent level,
+-- which ranks ahead of any partitionwise plan, so the hinted order is planned there.
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
