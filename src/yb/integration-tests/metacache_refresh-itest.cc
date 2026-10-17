@@ -30,16 +30,21 @@
 // under the License.
 //
 
+#include <future>
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
 
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_info.h"
 #include "yb/client/session.h"
@@ -49,6 +54,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -64,6 +70,9 @@
 #include "yb/master/master_admin.proxy.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/json_document.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/util/sync_point.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -76,6 +85,8 @@ using yb::client::YBTableName;
 using yb::client::YBTableType;
 // DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 DECLARE_bool(enable_metacache_partial_refresh);
+DECLARE_int32(TEST_delay_connect_ms);
+DECLARE_uint64(rpc_connecting_call_timeout_as_connect_failure_ms);
 
 namespace yb {
 
@@ -257,6 +268,109 @@ TEST_F(MetacacheRefreshITest, TestMetacacheNoRefreshFromWrite) {
   FlushSessionOrDie(session);
   ASSERT_OK(sync.Wait());
   ASSERT_FALSE(refresh_succeeded);
+}
+
+// The test process is the client and the cluster runs in separate processes, so
+// TEST_delay_connect_ms only holds the client's own new connections in the connecting state. That
+// is the situation of a client whose first RPC to a tserver finds the address black-holed.
+class ConnectTimeoutMetacacheITest : public MiniClusterTestWithClient<ExternalMiniCluster> {
+ public:
+  static constexpr int kNumTablets = 4;
+
+  void SetUp() override {
+    YBMiniClusterTestBase<ExternalMiniCluster>::SetUp();
+    opts_.num_tablet_servers = 1;
+    opts_.num_masters = 1;
+    opts_.extra_master_flags.push_back("--replication_factor=1");
+    cluster_.reset(new ExternalMiniCluster(opts_));
+    ASSERT_OK(cluster_->Start());
+    ASSERT_OK(CreateClient());
+    ASSERT_OK(client_->CreateNamespace(kTableName.namespace_name()));
+    client::YBSchemaBuilder builder;
+    builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
+    ASSERT_OK(table_.Create(kTableName, kNumTablets, client_.get(), &builder));
+  }
+
+  // Caches every tablet of the table through the master alone, without contacting the tserver.
+  Status WarmMetaCache() {
+    std::promise<Result<std::vector<client::internal::RemoteTabletPtr>>> promise;
+    client_->LookupAllTablets(
+        table_.table(), CoarseMonoClock::Now() + 30s,
+        [&promise](const auto& result) { promise.set_value(result); });
+    auto tablets = VERIFY_RESULT(promise.get_future().get());
+    SCHECK_EQ(tablets.size(), kNumTablets, IllegalState, "Unexpected number of tablets");
+    return Status::OK();
+  }
+
+  // Number of cached tablets whose (only) replica is marked failed.
+  Result<int> NumTabletsWithFailedReplica() {
+    std::stringstream stream;
+    JsonWriter writer(&stream, JsonWriter::COMPACT);
+    client_->AddMetaCacheInfo(&writer);
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(stream.str()));
+    int failed = 0;
+    int total = 0;
+    for (const auto& tablet : VERIFY_RESULT(root["tablets"].GetArray())) {
+      ++total;
+      for (const auto& replica : VERIFY_RESULT(tablet["replicas"].GetArray())) {
+        if (VERIFY_RESULT(replica["failure_status"].GetString()) == "FAILED") {
+          ++failed;
+        }
+      }
+    }
+    SCHECK_EQ(total, kNumTablets, IllegalState, "Unexpected number of cached tablets");
+    return failed;
+  }
+
+  // A write with a 1s deadline while new connections take 10s to connect: it times out while the
+  // connection is still connecting.
+  Status WriteWithPendingConnect() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 10000;
+    auto session = client_->NewSession(1s);
+    auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
+    QLAddInt32HashValue(op->mutable_request(), 1);
+    table_.AddInt32ColumnValue(op->mutable_request(), "value", 1);
+    session->Apply(op);
+    auto status = session->TEST_Flush();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 0;
+    SCHECK(!status.ok(), IllegalState, "Write unexpectedly succeeded");
+    SCHECK(
+        status.IsIOError() || status.IsTimedOut(), IllegalState, "Unexpected status: $0", status);
+    return Status::OK();
+  }
+
+ protected:
+  const client::YBTableName kTableName{YQL_DATABASE_CQL, "my_keyspace", "connect_timeout"};
+  ExternalMiniClusterOptions opts_;
+  client::TableHandle table_;
+};
+
+// A call that times out while its connection is still connecting marks the tserver failed on every
+// cached tablet, like a connect timeout would, instead of only the tablet that was written to.
+TEST_F(ConnectTimeoutMetacacheITest, TimeoutWhileConnectingMarksTServerFailed) {
+  auto cleanup = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 0;
+  });
+  ASSERT_OK(WarmMetaCache());
+  ASSERT_EQ(ASSERT_RESULT(NumTabletsWithFailedReplica()), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms) = 200;
+  ASSERT_OK(WriteWithPendingConnect());
+  ASSERT_EQ(ASSERT_RESULT(NumTabletsWithFailedReplica()), kNumTablets);
+}
+
+// With the tagging disabled only the written tablet's replica is marked, as before.
+TEST_F(ConnectTimeoutMetacacheITest, TimeoutWhileConnectingDisabled) {
+  auto cleanup = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 0;
+  });
+  ASSERT_OK(WarmMetaCache());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms) = 0;
+  ASSERT_OK(WriteWithPendingConnect());
+  ASSERT_EQ(ASSERT_RESULT(NumTabletsWithFailedReplica()), 1);
 }
 
 }  // namespace yb

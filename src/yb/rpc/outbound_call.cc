@@ -47,6 +47,7 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -781,17 +782,25 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
   }
 }
 
-void OutboundCall::SetTimedOut() {
+void OutboundCall::SetTimedOut(TimedOutWhileConnecting while_connecting) {
   TRACE_TO(trace_, "Call TimedOut.");
   bool invoke_callback;
   {
-    auto status = STATUS_FORMAT(
-        TimedOut,
-        "$0 RPC (request call id $3) to $1 timed out after $2",
-        remote_method_.method_name(),
-        conn_id_.remote(),
-        controller_->timeout(),
-        call_id_);
+    auto status = while_connecting
+        ? STATUS_EC_FORMAT(
+              TimedOut, NetworkError(NetworkErrorCode::kConnectFailed),
+              "$0 RPC (request call id $3) to $1 timed out after $2 while connecting",
+              remote_method_.method_name(),
+              conn_id_.remote(),
+              controller_->timeout(),
+              call_id_)
+        : STATUS_FORMAT(
+              TimedOut,
+              "$0 RPC (request call id $3) to $1 timed out after $2",
+              remote_method_.method_name(),
+              conn_id_.remote(),
+              controller_->timeout(),
+              call_id_);
     std::lock_guard l(mtx_);
     status_ = std::move(status);
     invoke_callback = SetState(RpcCallState::TIMED_OUT, status_);

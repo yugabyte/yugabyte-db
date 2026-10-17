@@ -79,6 +79,13 @@ DEFINE_test_flag(double, simulated_failure_to_send_call_probability, 0.0,
 DEFINE_test_flag(bool, disable_connection_timeout, false,
     "If true, disable connection timeout handling.");
 
+DEFINE_RUNTIME_uint64(rpc_connecting_call_timeout_as_connect_failure_ms, 5000,
+    "When a call times out on a connection that has been trying to connect for at least this many "
+    "milliseconds, fail it as a connect failure (NetworkErrorCode::kConnectFailed) rather than a "
+    "plain timeout, so the caller can treat the server as unreachable. 0 disables this, in which "
+    "case only the connection's own rpc_connection_timeout_ms produces a connect failure.");
+TAG_FLAG(rpc_connecting_call_timeout_as_connect_failure_ms, advanced);
+
 namespace yb::rpc {
 
 namespace {
@@ -88,7 +95,8 @@ void ActiveCallExpired(
     ContainerIndex& index,
     typename ContainerIndex::iterator iter,
     Reactor* reactor,
-    Stream* stream) ON_REACTOR_THREAD {
+    Stream* stream,
+    TimedOutWhileConnecting while_connecting = TimedOutWhileConnecting::kFalse) ON_REACTOR_THREAD {
   auto call = iter->call;
   if (!call) {
     LOG(DFATAL) << __func__ << ": call is null in " << iter->ToString();
@@ -97,7 +105,7 @@ void ActiveCallExpired(
   auto handle = iter->handle;
   auto erase = false;
   if (!call->IsFinished()) {
-    call->SetTimedOut();
+    call->SetTimedOut(while_connecting);
     if (handle != kUnknownCallHandle) {
       erase = stream->Cancelled(handle);
     }
@@ -283,8 +291,21 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
 void Connection::CleanupExpirationQueue(CoarseTimePoint now) {
   auto& index = active_calls_.get<ExpirationTag>();
+  if (index.empty() || index.begin()->expires_at > now) {
+    return;
+  }
+  // A call that expires before the connect deadline would otherwise look like an ordinary slow
+  // server to the caller, even though nothing has been sent yet. While the stream is not connected
+  // last_activity_time_ is the connection's creation time, so this is how long the connect has
+  // been pending. The floor keeps a single SYN retransmit from being reported as a connect failure.
+  auto while_connecting = TimedOutWhileConnecting::kFalse;
+  const auto threshold_ms = FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms;
+  if (threshold_ms > 0 && !stream_->IsConnected() &&
+      now - last_activity_time() >= threshold_ms * 1ms) {
+    while_connecting = TimedOutWhileConnecting::kTrue;
+  }
   while (!index.empty() && index.begin()->expires_at <= now) {
-    ActiveCallExpired(index, index.begin(), reactor_, stream_.get());
+    ActiveCallExpired(index, index.begin(), reactor_, stream_.get(), while_connecting);
   }
 }
 

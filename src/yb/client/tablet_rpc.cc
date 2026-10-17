@@ -418,6 +418,20 @@ bool TabletInvoker::Done(Status* status) {
     return !FailToNewReplica(*status).ok();
   }
 
+  // A call that timed out while its connection was still connecting never reached the server; the
+  // RPC layer tags it with kConnectFailed (see rpc_connecting_call_timeout_as_connect_failure_ms).
+  // Treat the tserver as unreachable for every cached tablet, as a connect timeout would, instead
+  // of marking just this tablet's replica below. The operation itself still follows the timeout
+  // path: retry if there is time left, fail otherwise.
+  if (status->IsTimedOut() && current_ts_ != nullptr &&
+      FLAGS_update_all_tablets_upon_network_failure &&
+      rpc::NetworkError(*status) == rpc::NetworkErrorCode::kConnectFailed) {
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << "Marking TServer " << current_ts_->ToString()
+        << " as unreachable: call timed out while connecting: " << *status;
+    client_->data_->meta_cache_->MarkTSFailed(current_ts_, *status);
+  }
+
   // Prefer controller failures over response failures.
   auto rsp_err = status->ok() ? rpc_->response_error() : nullptr;
   auto error_code = ErrorCode(rsp_err);

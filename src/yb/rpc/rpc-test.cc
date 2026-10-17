@@ -62,6 +62,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -88,6 +89,8 @@ DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_string(vmodule);
+DECLARE_int32(TEST_delay_connect_ms);
+DECLARE_uint64(rpc_connecting_call_timeout_as_connect_failure_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(rpc_read_buffer_size);
 DECLARE_uint64(rpc_max_message_size);
@@ -501,6 +504,52 @@ TEST_F(TestRpc, TestCallTimeout) {
     ASSERT_NO_FATALS(DoTestExpectTimeout(&p, MonoDelta::FromNanoseconds(delay_ns)));
     delay_ns *= 2;
   }
+}
+
+// A call that times out while its connection is still connecting is reported as a connect failure
+// (TimedOut tagged with kConnectFailed) once the connect has been pending for at least
+// rpc_connecting_call_timeout_as_connect_failure_ms, and as a plain timeout otherwise.
+TEST_F(TestRpc, TestCallTimeoutWhileConnecting) {
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  // Hold every new connection in the connecting state for longer than any call below waits.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 10000;
+  auto cleanup = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_connect_ms) = 0;
+  });
+
+  auto call_with_timeout = [&](MonoDelta timeout) {
+    // A fresh messenger per call so each call creates a new, still-connecting connection.
+    auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+    Proxy p(client_messenger.get(), server_addr);
+    rpc_test::AddRequestPB req;
+    req.set_x(1);
+    req.set_y(2);
+    rpc_test::AddResponsePB resp;
+    RpcController c;
+    c.set_timeout(timeout);
+    return p.SyncRequest(
+        CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp, &c);
+  };
+
+  // Pending long enough: a connect failure.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms) = 100;
+  auto status = call_with_timeout(500ms);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_EQ(NetworkError(status), NetworkErrorCode::kConnectFailed) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "while connecting");
+
+  // Timed out before the floor: a plain timeout.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms) = 5000;
+  status = call_with_timeout(500ms);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_EQ(NetworkError(status), NetworkErrorCode::kNone) << status;
+
+  // Disabled: a plain timeout.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connecting_call_timeout_as_connect_failure_ms) = 0;
+  status = call_with_timeout(500ms);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_EQ(NetworkError(status), NetworkErrorCode::kNone) << status;
 }
 
 static void AcceptAndReadForever(Socket* listen_sock) {
