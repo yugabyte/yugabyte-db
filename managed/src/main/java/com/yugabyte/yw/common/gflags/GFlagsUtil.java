@@ -140,6 +140,7 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_HBA_CONF = "ysql_hba_conf";
   public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
   public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
@@ -217,6 +218,12 @@ public class GFlagsUtil {
 
   public static final Set<String> GFLAGS_ALLOWED_ONLY_IN_NON_ROLLING_UPGRADE =
       ImmutableSet.of("emergency_repair_mode");
+
+  public static final Set<String> YSQL_HBA_GFLAGS =
+      ImmutableSet.of(YSQL_HBA_CONF_CSV, YSQL_HBA_CONF);
+
+  public static final String YSQL_HBA_REQUIRES_AUTH_ERROR =
+      "Cannot set ysql_hba_conf_csv or ysql_hba_conf while YSQL auth is disabled";
 
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
@@ -1278,14 +1285,7 @@ public class GFlagsUtil {
       overrides.addAll(azOverrides.values());
     }
     for (String overridesYaml : overrides) {
-      Map<String, String> flatOverrides;
-      try {
-        flatOverrides = HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
-      } catch (Exception e) {
-        // Overrides that cannot be read cannot be checked, so they are not accepted either.
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
-      }
+      Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
       for (String server : List.of("master", "tserver")) {
         String value = flatOverrides.get("gflags." + server + "." + OPENSSL_REQUIRE_FIPS);
         if (value != null && !value.equals("true")) {
@@ -1300,6 +1300,40 @@ public class GFlagsUtil {
     }
   }
 
+  /** Returns the HBA gflags set in kubernetes helm overrides, keyed by AZ and override path. */
+  public static Map<String, String> getYsqlHbaHelmOverrides(
+      @Nullable String universeOverrides, @Nullable Map<String, String> azOverrides) {
+    Map<String, String> overridesByScope = new HashMap<>();
+    overridesByScope.put("", universeOverrides);
+    if (azOverrides != null) {
+      overridesByScope.putAll(azOverrides);
+    }
+    Map<String, String> result = new HashMap<>();
+    overridesByScope.forEach(
+        (scope, overridesYaml) -> {
+          Map<String, String> flatOverrides = flattenHelmOverrides(overridesYaml);
+          for (String server : List.of("master", "tserver")) {
+            for (String gflag : YSQL_HBA_GFLAGS) {
+              String path = "gflags." + server + "." + gflag;
+              if (StringUtils.isNotBlank(flatOverrides.get(path))) {
+                result.put(scope + "/" + path, flatOverrides.get(path));
+              }
+            }
+          }
+        });
+    return result;
+  }
+
+  private static Map<String, String> flattenHelmOverrides(@Nullable String overridesYaml) {
+    try {
+      return HelmUtils.flattenMap(HelmUtils.convertYamlToMap(overridesYaml));
+    } catch (Exception e) {
+      // Overrides that cannot be read cannot be checked, so they are not accepted either.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes overrides are not valid YAML: " + e.getMessage());
+    }
+  }
+
   /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.
@@ -1308,6 +1342,12 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
+
+    if (!userIntent.enableYSQLAuth
+        && !getYsqlHbaHelmOverrides(userIntent.universeOverrides, userIntent.azOverrides)
+            .isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+    }
 
     if (userIntent.specificGFlags != null && userIntent.specificGFlags.isInheritFromPrimary()) {
       return;
@@ -1336,6 +1376,19 @@ public class GFlagsUtil {
         masterGFlags, MASTER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Master");
     validateGflagsAgainstIntent(
         tserverGFlags, TSERVER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Tserver");
+
+    if (!userIntent.enableYSQLAuth) {
+      List<Map<String, String>> allGFlags =
+          new ArrayList<>(Arrays.asList(masterGFlags, tserverGFlags));
+      if (userIntent.specificGFlags != null && userIntent.specificGFlags.getPerAZ() != null) {
+        userIntent.specificGFlags.getPerAZ().values().stream()
+            .filter(Objects::nonNull)
+            .forEach(azFlags -> allGFlags.addAll(azFlags.value.values()));
+      }
+      if (allGFlags.stream().anyMatch(GFlagsUtil::containsYsqlHbaGFlags)) {
+        throw new PlatformServiceException(BAD_REQUEST, YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
   }
 
   private static void validateGflagsAgainstIntent(
@@ -1625,6 +1678,27 @@ public class GFlagsUtil {
       }
     }
     return changedGFlags;
+  }
+
+  public static boolean hasYsqlHbaGFlags(Collection<Cluster> clusters) {
+    for (Cluster cluster : clusters) {
+      Set<UUID> azUuids = new HashSet<>();
+      azUuids.add(null);
+      addPerAZGFlagUuids(azUuids, cluster);
+      for (UUID azUuid : azUuids) {
+        for (ServerType serverType : EnumSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+          if (containsYsqlHbaGFlags(getGFlagsForAZ(azUuid, serverType, cluster, clusters))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean containsYsqlHbaGFlags(@Nullable Map<String, String> gflags) {
+    return gflags != null
+        && YSQL_HBA_GFLAGS.stream().anyMatch(gflag -> StringUtils.isNotBlank(gflags.get(gflag)));
   }
 
   private static void addPerAZGFlagUuids(Set<UUID> azUuids, @Nullable Cluster cluster) {
