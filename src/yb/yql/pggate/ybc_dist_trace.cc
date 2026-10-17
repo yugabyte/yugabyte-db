@@ -128,7 +128,7 @@ class OtelNodeSpan : public PgMemctx::Registrable {
 extern "C" {
 
 bool YBCIsDistTraceEnabled() {
-  return dist_trace::IsDistTraceEnabled();
+  return dist_trace::DistTrace::IsEnabled();
 }
 
 bool YBCIsDistTraceActive() {
@@ -136,16 +136,16 @@ bool YBCIsDistTraceActive() {
 }
 
 bool YBCIsTraceParentValidAndRemote(const char* traceparent) {
-  auto span_context = dist_trace::GetTraceparentSpanContext(traceparent);
-  return dist_trace::IsSpanContextValidAndRemote(span_context);
+  auto span_context = dist_trace::DistTrace::GetTraceparentSpanContext(traceparent);
+  return dist_trace::DistTrace::IsSpanContextValidAndRemote(span_context);
 }
 
 // Validates that the traceparent is in w3c format and
 // returns a valid and remote SpanContext registered in the current memory context.
 // returns nullptr if the traceparent is invalid or not remote.
 YbcOtelSpanContext YBCGetValidSpanContext(const char* traceparent) {
-  auto span_ctx = dist_trace::GetTraceparentSpanContext(traceparent);
-  if (!dist_trace::IsSpanContextValidAndRemote(span_ctx)) {
+  auto span_ctx = dist_trace::DistTrace::GetTraceparentSpanContext(traceparent);
+  if (!dist_trace::DistTrace::IsSpanContextValidAndRemote(span_ctx)) {
     return nullptr;
   }
   // Type conversion from opentelemetry::trace::SpanContext to OtelSpanContext.
@@ -161,12 +161,12 @@ void YBCDestroySpanContext(YbcOtelSpanContext span_ctx) {
 }
 
 void YBCInitDistTrace(const char* node_uuid) {
-  dist_trace::InitDistTrace(dist_trace::kYsqlServiceName, DCHECK_NOTNULL(node_uuid));
+  dist_trace::DistTrace::Init(dist_trace::kYsqlServiceName, DCHECK_NOTNULL(node_uuid));
 }
 
 void YBCShutdownDistTrace() {
   YBCDistTraceClearStack();
-  dist_trace::ShutdownDistTrace();
+  dist_trace::DistTrace::Shutdown();
 }
 
 void YBCDistTraceClearStack() {
@@ -192,7 +192,7 @@ void YBCDistTraceStartRootSpan(
   // Safe to use a string_view into query instead of copying because:
   // StartSpan makes a deep copy of all attributes into a separate buffer before returning,
   // so query only needs to remain valid through this call.
-  auto span = dist_trace::GetDistTracer()->StartSpan(
+  auto span = dist_trace::DistTrace::GetTracer()->StartSpan(
       "query",
       {{"db.id", db_oid},
        {"user.id", user_id},
@@ -203,7 +203,7 @@ void YBCDistTraceStartRootSpan(
 }
 
 void YBCDistTraceStartSpan(const char* op_name) {
-  auto span = dist_trace::StartSpan(op_name);
+  auto span = dist_trace::DistTrace::StartSpan(op_name);
 
   OtelScopeStack().emplace(trace::Scope(span), std::move(span));
 }
@@ -248,7 +248,7 @@ YbcOtelNodeSpan YBCDistTraceCreateNodeSpan(const char* op_name) {
   // StartSpan inherits the implicit context (the parent node's span, or the
   // enclosing execute span for the root node). Ownership lives in the current
   // YB memctx (es_query_cxt); the End functions destroy it early.
-  auto node_span = std::make_unique<OtelNodeSpan>(dist_trace::StartSpan(op_name));
+  auto node_span = std::make_unique<OtelNodeSpan>(dist_trace::DistTrace::StartSpan(op_name));
   auto* raw = node_span.get();
   YBCGetPgCallbacks()->GetCurrentYbMemctx()->Register(node_span.release());
   return raw;

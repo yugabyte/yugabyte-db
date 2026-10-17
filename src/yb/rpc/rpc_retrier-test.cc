@@ -39,14 +39,14 @@ class TraceObservingRpcCommand : public RpcCommand {
   explicit TraceObservingRpcCommand(CoarseTimePoint deadline) : deadline_(deadline) {}
 
   void SendRpc() override {
-    observed_ = dist_trace::GetActiveSpanContext();
+    observed_ = dist_trace::DistTrace::GetActiveSpanContext();
     sent_.CountDown();
   }
 
   std::string ToString() const override { return "TraceObservingRpcCommand"; }
 
   void Finished(const Status& status) override {
-    finished_observed_ = dist_trace::GetActiveSpanContext();
+    finished_observed_ = dist_trace::DistTrace::GetActiveSpanContext();
     finished_status_ = status;
     sent_.CountDown();
   }
@@ -110,7 +110,7 @@ TEST_F(RpcRetrierTraceTest, TraceContextCarriedAcrossRetry) {
   std::unique_ptr<RpcRetrier> retrier;
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     retrier = std::make_unique<RpcRetrier>(deadline, messenger_.get(), proxy_cache_.get());
   }
 

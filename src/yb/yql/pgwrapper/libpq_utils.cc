@@ -941,7 +941,7 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   auto conn_str_for_log = conn_str_for_log_;
   // Capture the traceparent at connect time, not at builder-construction time: a stored
   // builder can outlive the trace that was active when it was built.
-  const auto traceparent = dist_trace::GetActiveTraceparent();
+  const auto traceparent = dist_trace::DistTrace::GetActiveTraceparent();
   if (!traceparent.empty()) {
     const auto param = Format(" yb_dist_traceparent=$0", PqEscapeStringConn(traceparent));
     conn_str += param;

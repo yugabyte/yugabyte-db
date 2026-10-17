@@ -45,7 +45,7 @@ class TraceObservingRpcTask : public RetryingRpcTask {
   }
 
   bool SendRequest(int attempt) override {
-    observed_ = dist_trace::GetActiveSpanContext();
+    observed_ = dist_trace::DistTrace::GetActiveSpanContext();
     return true;
   }
 
@@ -76,7 +76,7 @@ TEST_F(RetryingRpcTaskTraceTest, TraceContextCarriedToRun) {
   std::shared_ptr<TraceObservingRpcTask> task;
   {
     dist_trace::ScopedAdoptSpan scope(expected);
-    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(dist_trace::DistTrace::HasActiveContext());
     task = std::make_shared<TraceObservingRpcTask>();
   }
 
