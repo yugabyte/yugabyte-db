@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -65,6 +66,7 @@ import com.yugabyte.yw.nodeagent.GcsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.OciSourceConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -668,8 +670,8 @@ public class NodeAgentRpcPayload {
 
   /**
    * Builds the node-agent input for cross-cloud federated IAM on a node, filling the audience (and,
-   * for S3-on-GCP, the role ARN) for the given direction. Only static config is passed; credentials
-   * are minted in-process on the node.
+   * for S3-on-GCP, the role ARN) for the given direction, plus the identity domain when the node
+   * runs on OCI. Only static config is passed; credentials are minted on the node.
    *
    * <p>The direction is decided by the caller rather than derived from the provider type here: an
    * on-prem provider serves both, and only the node's detected physical cloud says which one this
@@ -704,8 +706,40 @@ public class NodeAgentRpcPayload {
       throw new RuntimeException(
           "Source and target cloud are required to configure cross-cloud federation");
     }
+    applyFederationDirection(builder, provider, sourceCloud, target);
+    return builder.build();
+  }
+
+  /**
+   * Fills the parts of the input that depend on the direction: the two clouds, the settings of the
+   * storage cloud being reached, and - for a node on OCI - the identity domain it proves itself at.
+   * Kept separate, and static, so the direction rules can be tested without a universe.
+   */
+  static void applyFederationDirection(
+      ConfigureCloudFederationInput.Builder builder,
+      Provider provider,
+      CloudType sourceCloud,
+      CrossCloudFederationTarget target) {
+    if (!CrossCloudFederationDirections.isSupported(sourceCloud, target.targetCloud)) {
+      throw new RuntimeException(
+          String.format(
+              "Cross-cloud federation from %s to %s is not supported",
+              sourceCloud, target.targetCloud));
+    }
     builder.setSourceCloud(toProto(sourceCloud));
     builder.setTargetCloud(toProto(target.targetCloud));
+    if (sourceCloud == CloudType.oci) {
+      // A node on OCI has no token another cloud can verify, so it proves its identity by
+      // exchanging its instance principal at the identity domain named on the provider.
+      String identityDomainUrl = CloudInfoInterface.getOciIdentityDomainUrl(provider);
+      if (identityDomainUrl == null) {
+        throw new RuntimeException(
+            "An OCI identity domain URL must be set on the provider to configure federated IAM on a"
+                + " node running on OCI");
+      }
+      builder.setOciSource(
+          OciSourceConfig.newBuilder().setIdentityDomainUrl(identityDomainUrl).build());
+    }
 
     // Provider-audience mode: YBA passes only static config, never a minted credential. Reaching
     // GCS renders the external_account JSON from the audience; reaching S3 renders the
@@ -733,7 +767,6 @@ public class NodeAgentRpcPayload {
         throw new RuntimeException(
             "Cross-cloud federation does not support storage cloud " + target.targetCloud);
     }
-    return builder.build();
   }
 
   private static ConfigureCloudFederationInput.CloudProvider toProto(CloudType cloud) {
@@ -742,6 +775,8 @@ public class NodeAgentRpcPayload {
         return ConfigureCloudFederationInput.CloudProvider.AWS;
       case gcp:
         return ConfigureCloudFederationInput.CloudProvider.GCP;
+      case oci:
+        return ConfigureCloudFederationInput.CloudProvider.OCI;
       default:
         throw new RuntimeException("Cross-cloud federation does not support cloud " + cloud);
     }

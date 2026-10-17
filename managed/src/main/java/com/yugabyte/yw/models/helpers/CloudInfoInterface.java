@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -107,6 +108,46 @@ public interface CloudInfoInterface {
         .filter(t -> targetCloud == t.targetCloud)
         .findFirst()
         .orElse(null);
+  }
+
+  /**
+   * Whether nodes of this provider will be configured for federated IAM: it has a usable target
+   * and, for OCI, the source is enabled. ManageCloudFederation skips an OCI provider's nodes while
+   * it is not, so a universe must not be marked federated on the targets alone.
+   */
+  public static boolean canFederateNodes(Provider provider, boolean ociSourceEnabled) {
+    if (provider.getCloudCode() == CloudType.oci && !ociSourceEnabled) {
+      return false;
+    }
+    return !getCrossCloudFederationTargets(provider).isEmpty();
+  }
+
+  /**
+   * The OCI identity domain URL set on an OCI or on-prem provider, or null when none is set. It is
+   * source-side configuration (how a node on OCI proves its identity), not a storage-cloud target.
+   */
+  @Nullable
+  public static String getOciIdentityDomainUrl(Provider provider) {
+    CloudInfoInterface info = get(provider);
+    if (info instanceof OCICloudInfo) {
+      return StringUtils.trimToNull(((OCICloudInfo) info).ociIdentityDomainUrl);
+    }
+    if (info instanceof OnPremCloudInfo) {
+      return StringUtils.trimToNull(((OnPremCloudInfo) info).ociIdentityDomainUrl);
+    }
+    return null;
+  }
+
+  /**
+   * Whether the provider's {@code gcp} target is for nodes on OCI: an OCI provider, or an on-prem
+   * one with an identity domain URL (once OCI is enabled). One audience cannot serve OCI and AWS
+   * nodes, because their workload identity providers are of different types.
+   */
+  public static boolean isGcpTargetForOciNodes(Provider provider, boolean ociSourceEnabled) {
+    return provider.getCloudCode() == CloudType.oci
+        || (provider.getCloudCode() == CloudType.onprem
+            && ociSourceEnabled
+            && getOciIdentityDomainUrl(provider) != null);
   }
 
   public static <T extends CloudInfoInterface> T get(Region region) {
