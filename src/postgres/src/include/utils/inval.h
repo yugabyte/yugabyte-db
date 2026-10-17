@@ -70,5 +70,6 @@ extern void LogLogicalInvalidations(void);
 extern void CallSystemCacheCallbacks(void);
 extern int	YbGetNumInvalMessagesInTxn(int subgroup);
 extern void YbAddNumInvalMessagesInTxn(int subgroup, int nmsgs);
+extern void YbMaybeRefreshCache(void);
 
 #endif							/* INVAL_H */
