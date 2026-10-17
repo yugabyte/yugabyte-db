@@ -1110,10 +1110,10 @@ type ConfUpdater struct {
 
 func (cu ConfUpdater) updateLine(line *string) {
 	// Check if the line contains a key-value pair
-	for _, entry := range cu.Entries {
-		if strings.HasPrefix(*line, entry.Key+" =") {
-			entry.Found = true
-			*line = entry.String()
+	for i := range cu.Entries {
+		if strings.HasPrefix(*line, cu.Entries[i].Key+" =") {
+			cu.Entries[i].Found = true
+			*line = cu.Entries[i].String()
 		}
 	}
 }
