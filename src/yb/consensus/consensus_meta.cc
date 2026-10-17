@@ -112,9 +112,7 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->encrypted_env(),
       VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
       &cmeta->pb_));
-  cmeta->committed_consensus_state_cache_.set_config(cmeta->committed_config());
-  cmeta->committed_consensus_state_cache_.set_leader_uuid(cmeta->leader_uuid());
-  cmeta->committed_consensus_state_cache_.set_current_term(cmeta->current_term());
+  cmeta->UpdateConsensusStateCache();
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
   RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
@@ -144,7 +142,7 @@ int64_t ConsensusMetadata::current_term() const {
 void ConsensusMetadata::set_current_term(int64_t term) {
   DCHECK_GE(term, kMinimumTerm);
   pb_.set_current_term(term);
-  committed_consensus_state_cache_.set_current_term(term);
+  UpdateConsensusStateCache();
   UpdateRoleAndTermCache();
 }
 
@@ -207,7 +205,7 @@ void ConsensusMetadata::set_committed_config(const RaftConfigPB& config) {
   if (!has_pending_config_) {
     UpdateActiveRole();
   }
-  committed_consensus_state_cache_.set_config(committed_config());
+  UpdateConsensusStateCache();
 }
 
 bool ConsensusMetadata::has_pending_config() const {
@@ -273,7 +271,7 @@ const string& ConsensusMetadata::leader_uuid() const {
 void ConsensusMetadata::set_leader_uuid(const string& uuid) {
   leader_uuid_ = uuid;
   UpdateActiveRole();
-  committed_consensus_state_cache_.set_leader_uuid(uuid);
+  UpdateConsensusStateCache();
 }
 
 void ConsensusMetadata::clear_leader_uuid() {
@@ -303,18 +301,28 @@ ConsensusStatePB ConsensusMetadata::ToConsensusStatePB(ConsensusConfigType type)
   return cstate;
 }
 
-ConsensusStatePB ConsensusMetadata::GetConsensusStateFromCache() const {
-  ConsensusStatePB consensus_state_cache;
-  *consensus_state_cache.mutable_config() = committed_consensus_state_cache_.config();
-  consensus_state_cache.set_current_term(committed_consensus_state_cache_.current_term());
-  auto outgoing_leader_uuid = committed_consensus_state_cache_.leader_uuid();
-  // It's possible, though unlikely, that a new node from a pending configuration
-  // could be elected leader. Do not indicate a leader in this case.
-  if (PREDICT_TRUE(IsRaftConfigVoter(
-          outgoing_leader_uuid, consensus_state_cache.config()))) {
-    consensus_state_cache.set_leader_uuid(outgoing_leader_uuid);
+void ConsensusStateCache::Update(
+    int64_t term, const std::string& leader_uuid, const RaftConfigPB& config) {
+  auto state = std::make_shared<ConsensusStatePB>();
+  state->set_current_term(term);
+  *state->mutable_config() = config;
+  // A node from a pending config could be elected; don't report a leader that isn't a voter.
+  if (IsRaftConfigVoter(leader_uuid, config)) {
+    state->set_leader_uuid(leader_uuid);
   }
-  return consensus_state_cache;
+  std::atomic_store_explicit(
+      &state_, std::shared_ptr<const ConsensusStatePB>(std::move(state)),
+      std::memory_order_release);
+}
+
+void ConsensusMetadata::UpdateConsensusStateCache() {
+  // Read pb_ directly: Create() sets the config before the term and current_term() DCHECKs it.
+  committed_consensus_state_cache_.Update(
+      pb_.current_term(), leader_uuid_, pb_.committed_config());
+}
+
+ConsensusStatePB ConsensusMetadata::GetConsensusStateFromCache() const {
+  return *committed_consensus_state_cache_.Get();
 }
 
 void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& committed_cstate) {
