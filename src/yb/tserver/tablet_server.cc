@@ -715,8 +715,8 @@ std::map<std::string, std::string> TabletServer::ValidateConfCsvViaPg(
 
   // Generate expected postgres conf files from gflags
   auto it = conf_flags.find(kYsqlPgConfCsvFlag);
-  const std::string& ysql_pg_conf_csv =
-      it != conf_flags.end() ? it->second : FLAGS_ysql_pg_conf_csv;
+  const std::string ysql_pg_conf_csv =
+      it != conf_flags.end() ? it->second : GET_STRING_FLAG(ysql_pg_conf_csv);
   it = conf_flags.find(kYsqlHbaConfCsvFlag);
   const std::string& hba_conf_csv = it != conf_flags.end() ? it->second : FLAGS_ysql_hba_conf_csv;
   it = conf_flags.find(kYsqlIdentConfCsvFlag);
