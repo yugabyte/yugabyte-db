@@ -80,12 +80,13 @@ yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
 ```
 
 ```output
-ERROR:  All transparent retries exhausted. Operation failed. Try again: bb3aace4-5de2-41f9-981e-d9ca06671419 Conflicts with higher priority transaction: d4dadbf8-ca81-4bbd-b68c-067023f8ee6b
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 60 are exhausted)
+DETAIL:  76b24e3f-0c02-4327-aa2b-03d0131a4324 conflicts with higher priority transaction (our pri: 16630872171744615563, their pri: 18446744069445049097): 2069d5c1-4651-4bcb-a29e-da5e047d181e [repeatable read]
 ```
 
 This operation fails because it conflicts with the row-level lock and as per Fail-on-Conflict concurrency control policy, the transaction aborts itself because it has a lower priority.
 
-Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted.
+Note that the error message appears after all [best-effort statement retries](../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction) have been exhausted. The number of retries is set by the `yb_max_query_layer_retries` YSQL configuration parameter (60 by default).
 
 Finally, in the first session, update the row and commit the transaction, as follows:
 
