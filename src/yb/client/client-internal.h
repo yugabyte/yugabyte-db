@@ -365,7 +365,8 @@ class YBClient::Data {
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       CoarseTimePoint deadline,
       StdStatusCallback callback,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr,
+      std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids = nullptr);
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
@@ -387,6 +388,11 @@ class YBClient::Data {
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
       CoarseTimePoint deadline, GetTableLocationsCallback callback);
+
+  void GetTabletLocations(
+      YBClient* client, const std::vector<TabletId>& tablet_ids,
+      master::IncludeHidden include_hidden, CoarseTimePoint deadline,
+      GetTabletLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 

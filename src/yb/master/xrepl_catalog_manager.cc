@@ -4081,6 +4081,10 @@ Status CatalogManager::GetCDCStream(
 
   stream_info->set_xcluster_is_wal_anchor(stream_lock->pb.xcluster_is_wal_anchor());
 
+  if (stream_lock->pb.has_xcluster_bootstrap_info()) {
+    *stream_info->mutable_xcluster_bootstrap_info() = stream_lock->pb.xcluster_bootstrap_info();
+  }
+
   return Status::OK();
 }
 
@@ -4265,6 +4269,10 @@ Status CatalogManager::ListCDCStreams(
     stream->set_xcluster_use_target_applied_filter(ltm->pb.xcluster_use_target_applied_filter());
 
     stream->set_xcluster_is_wal_anchor(ltm->pb.xcluster_is_wal_anchor());
+
+    if (ltm->pb.has_xcluster_bootstrap_info()) {
+      *stream->mutable_xcluster_bootstrap_info() = ltm->pb.xcluster_bootstrap_info();
+    }
   }
   return Status::OK();
 }
@@ -4344,11 +4352,33 @@ Status CatalogManager::UpdateCDCStreams(
           MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     auto& pb = stream_lock.mutable_data()->pb;
+    // An xCluster target sends the bootstrap tablets it mapped when it marks the stream ACTIVE. If
+    // the source has checkpointed the stream again since the target read them, the rows of those
+    // tablets may be gone, so the target must read the new ones and retry.
+    if (entry.has_xcluster_bootstrap_info()) {
+      const auto& expected = entry.xcluster_bootstrap_info().checkpointed_tablet_ids();
+      const auto& current = pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
+      if (!std::equal(expected.begin(), expected.end(), current.begin(), current.end())) {
+        return STATUS_FORMAT(
+            TryAgain,
+            "xCluster bootstrap tablets of stream $0 changed from $1 to $2 after they were read",
+            stream_id, AsString(expected), AsString(current));
+      }
+    }
     const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
     const bool preserve_is_wal_anchor = pb.xcluster_is_wal_anchor();
+    std::optional<XClusterStreamBootstrapInfoPB> bootstrap_info;
+    if (pb.has_xcluster_bootstrap_info()) {
+      bootstrap_info = pb.xcluster_bootstrap_info();
+    }
     pb.CopyFrom(entry);
     pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
     pb.set_xcluster_is_wal_anchor(preserve_is_wal_anchor);
+    // Kept after the stream turns ACTIVE: the target marks the stream ACTIVE before it persists its
+    // tablet mapping, so a setup that fails after that must still find the record when retried.
+    if (bootstrap_info) {
+      *pb.mutable_xcluster_bootstrap_info() = std::move(*bootstrap_info);
+    }
 
     for (auto it = pb.mutable_options()->begin(); it != pb.mutable_options()->end(); ++it) {
       if (it->key() == cdc::kStreamState) {
