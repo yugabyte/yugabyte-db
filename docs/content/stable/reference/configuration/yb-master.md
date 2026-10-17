@@ -1212,7 +1212,7 @@ Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user 
 Default: `false`
 {{% /tags/wrap %}}
 
-By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
+By default, TRUNCATE on a table with an active CDC stream is subject to the same checks as a DDL that causes a table rewrite: it always fails with a gRPC stream, and with a logical replication stream it is allowed only when a table rewrite would be. Set to `true` to allow TRUNCATE regardless of those checks. For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
