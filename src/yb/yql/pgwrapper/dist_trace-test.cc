@@ -2293,6 +2293,14 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
 
   ASSERT_EQ(backend_span.trace_id, tp.trace_id);
   ASSERT_EQ(backend_span.op_name, "query");
+
+  // BackfillIndex is a plain-protobuf RPC; its stub drains req.tablet_id without lightweight types.
+  const auto tablet_ids = ASSERT_RESULT(FetchTabletIds("backfill_trace_test"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.TabletServerAdminService.BackfillIndex", "req.tablet_id",
+      [&tablet_ids](const std::string& tablet_id) {
+        return std::find(tablet_ids.begin(), tablet_ids.end(), tablet_id) != tablet_ids.end();
+      }));
 }
 
 // Every global object-lock release is followed by a second one at the acquire deadline, in case an
