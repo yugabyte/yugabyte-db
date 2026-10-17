@@ -276,7 +276,8 @@ struct catclist;
 extern struct catclist *SearchSysCacheList(int cacheId, int nkeys,
 										   Datum key1, Datum key2, Datum key3);
 
-extern void SysCacheInvalidate(int cacheId, uint32 hashValue);
+extern void SysCacheInvalidate(int cacheId, uint32 hashValue,
+							   const uint32 *yb_prefix_hashes);
 
 extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);

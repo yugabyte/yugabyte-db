@@ -2188,7 +2188,8 @@ SearchSysCacheList(int cacheId, int nkeys,
  *	This routine is only quasi-public: it should only be used by inval.c.
  */
 void
-SysCacheInvalidate(int cacheId, uint32 hashValue)
+SysCacheInvalidate(int cacheId, uint32 hashValue,
+				   const uint32 *yb_prefix_hashes)
 {
 	if (cacheId < 0 || cacheId >= SysCacheSize)
 		elog(ERROR, "invalid cache ID: %d", cacheId);
@@ -2197,7 +2198,7 @@ SysCacheInvalidate(int cacheId, uint32 hashValue)
 	if (!PointerIsValid(SysCache[cacheId]))
 		return;
 
-	CatCacheInvalidate(SysCache[cacheId], hashValue);
+	CatCacheInvalidate(SysCache[cacheId], hashValue, yb_prefix_hashes);
 }
 
 /*

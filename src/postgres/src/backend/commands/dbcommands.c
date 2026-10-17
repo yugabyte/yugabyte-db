@@ -3162,7 +3162,8 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
 			SysCacheInvalidate(DATABASEOID,
 							   GetSysCacheHashValue1(DATABASEOID,
-													 ObjectIdGetDatum(dbOid)));
+													 ObjectIdGetDatum(dbOid)),
+							   NULL);
 
 		/*
 		 * And now, re-fetch the tuple by OID.  If it's still there and still

@@ -138,6 +138,12 @@ static void CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, int *attnos,
 static void CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, int *attnos,
 							 Datum *srckeys, Datum *dstkeys);
 
+/* YB declarations */
+static bool YbCatCListMatchesPrefixHashes(const CatCList *cl,
+										  const uint32 *prefix_hashes);
+static void YbComputeTuplePrefixHashes(CatCache *cache, HeapTuple tuple,
+									   uint32 *prefix_hashes);
+
 
 /*
  *					internal support functions
@@ -669,7 +675,8 @@ CatCacheRemoveCList(CatCache *cache, CatCList *cl)
  *	This routine is only quasi-public: it should only be used by inval.c.
  */
 void
-CatCacheInvalidate(CatCache *cache, uint32 hashValue)
+CatCacheInvalidate(CatCache *cache, uint32 hashValue,
+				   const uint32 *yb_prefix_hashes)
 {
 	Index		hashIndex;
 	dlist_mutable_iter iter;
@@ -687,10 +694,18 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 	/*
 	 * Invalidate *all* CatCLists in this cache; it's too hard to tell which
 	 * searches might still be correct, so just zap 'em all.
+	 *
+	 * YB: when the invalidated tuple's prefix hashes are known, zap only the
+	 * lists whose lookup keys may match the tuple, plus any already dead ones.
 	 */
 	dlist_foreach_modify(iter, &cache->cc_lists)
 	{
 		CatCList   *cl = dlist_container(CatCList, cache_elem, iter.cur);
+
+		/* YB */
+		if (yb_prefix_hashes && !cl->dead &&
+			!YbCatCListMatchesPrefixHashes(cl, yb_prefix_hashes))
+			continue;
 
 		if (cl->refcount > 0)
 			cl->dead = true;
@@ -755,6 +770,14 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 				(ct->c_list && ct->c_list->refcount > 0))
 			{
 				ct->dead = true;
+
+				/*
+				 * YB: with targeted list invalidation, a full-key hash
+				 * collision can match a member of a list that was not zapped.
+				 */
+				if (ct->c_list)
+					ct->c_list->dead = true;
+
 				/* list, if any, was marked dead above */
 				Assert(ct->c_list == NULL || ct->c_list->dead);
 			}
@@ -3104,7 +3127,8 @@ void
 PrepareToInvalidateCacheTuple(Relation relation,
 							  HeapTuple tuple,
 							  HeapTuple newtuple,
-							  void (*function) (int, uint32, Oid))
+							  void (*function) (int, uint32, Oid,
+												const uint32 *yb_prefix_hashes))
 {
 	slist_iter	iter;
 	Oid			reloid;
@@ -3135,6 +3159,9 @@ PrepareToInvalidateCacheTuple(Relation relation,
 		uint32		hashvalue;
 		Oid			dbid;
 
+		uint32		yb_prefix_hashes[YB_CATCLIST_NUM_PREFIX_HASHES];
+		uint32		yb_new_prefix_hashes[YB_CATCLIST_NUM_PREFIX_HASHES];
+
 		if (ccp->cc_reloid != reloid)
 			continue;
 
@@ -3144,17 +3171,26 @@ PrepareToInvalidateCacheTuple(Relation relation,
 
 		hashvalue = CatalogCacheComputeTupleHashValue(ccp, ccp->cc_nkeys, tuple);
 		dbid = ccp->cc_relisshared ? (Oid) 0 : MyDatabaseId;
+		YbComputeTuplePrefixHashes(ccp, tuple, yb_prefix_hashes);
 
-		(*function) (ccp->id, hashvalue, dbid);
+		(*function) (ccp->id, hashvalue, dbid, yb_prefix_hashes);
 
 		if (newtuple)
 		{
 			uint32		newhashvalue;
 
 			newhashvalue = CatalogCacheComputeTupleHashValue(ccp, ccp->cc_nkeys, newtuple);
+			YbComputeTuplePrefixHashes(ccp, newtuple, yb_new_prefix_hashes);
 
-			if (newhashvalue != hashvalue)
-				(*function) (ccp->id, newhashvalue, dbid);
+			/*
+			 * YB: equal full-key hashes do not imply equal keys, so also
+			 * compare the prefix hashes that drive list invalidation.
+			 */
+			if (newhashvalue != hashvalue ||
+				memcmp(yb_new_prefix_hashes, yb_prefix_hashes,
+					   sizeof(yb_prefix_hashes)) != 0)
+				(*function) (ccp->id, newhashvalue, dbid,
+							 yb_new_prefix_hashes);
 		}
 	}
 }
@@ -3452,4 +3488,31 @@ yb_log_catcache_stats(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Can the given list contain a tuple whose prefix hashes are prefix_hashes?
+ */
+static bool
+YbCatCListMatchesPrefixHashes(const CatCList *cl, const uint32 *prefix_hashes)
+{
+	uint32		mask = YB_CATCLIST_PREFIX_HASH_MASK(cl->nkeys);
+
+	Assert(cl->nkeys >= 1 && cl->nkeys <= YB_CATCLIST_NUM_PREFIX_HASHES);
+	return (cl->hash_value & mask) == (prefix_hashes[cl->nkeys - 1] & mask);
+}
+
+/*
+ * Compute the hashes of the tuple's first 1, 2, ... keys, as used for the
+ * lookup keys of CatCLists.  Only lists with fewer keys than the cache exist,
+ * so the remaining entries are zeroed.
+ */
+static void
+YbComputeTuplePrefixHashes(CatCache *cache, HeapTuple tuple,
+						   uint32 *prefix_hashes)
+{
+	for (int nkeys = 1; nkeys <= YB_CATCLIST_NUM_PREFIX_HASHES; nkeys++)
+		prefix_hashes[nkeys - 1] =
+			nkeys < cache->cc_nkeys ?
+			CatalogCacheComputeTupleHashValue(cache, nkeys, tuple) : 0;
 }

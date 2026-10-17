@@ -187,6 +187,18 @@ typedef struct
 	int			index;
 } YbCatCListIterator;
 
+/*
+ * Targeted CatCList invalidation is driven by an array of
+ * YB_CATCLIST_NUM_PREFIX_HASHES hashes of the invalidated tuple, the i-th
+ * being the hash of its first i + 1 keys.  Invalidation messages carry only
+ * the low 16 bits of the hashes of 2 or more keys (see
+ * SharedInvalCatcacheMsg), so hashes are compared under
+ * YB_CATCLIST_PREFIX_HASH_MASK.
+ */
+#define YB_CATCLIST_NUM_PREFIX_HASHES (CATCACHE_MAXKEYS - 1)
+#define YB_CATCLIST_PREFIX_HASH_MASK(nkeys) \
+	((nkeys) == 1 ? (uint32) 0xFFFFFFFF : (uint32) 0xFFFF)
+
 
 typedef struct catcacheheader
 {
@@ -229,11 +241,13 @@ extern void ReleaseCatCacheList(CatCList *list);
 extern void ResetCatalogCaches(void);
 extern void ResetCatalogCachesExt(bool debug_discard);
 extern void CatalogCacheFlushCatalog(Oid catId);
-extern void CatCacheInvalidate(CatCache *cache, uint32 hashValue);
+extern void CatCacheInvalidate(CatCache *cache, uint32 hashValue,
+							   const uint32 *yb_prefix_hashes);
 extern void PrepareToInvalidateCacheTuple(Relation relation,
 										  HeapTuple tuple,
 										  HeapTuple newtuple,
-										  void (*function) (int, uint32, Oid));
+										  void (*function) (int, uint32, Oid,
+															const uint32 *yb_prefix_hashes));
 
 extern void PrintCatCacheLeakWarning(HeapTuple tuple);
 extern void PrintCatCacheListLeakWarning(CatCList *list);

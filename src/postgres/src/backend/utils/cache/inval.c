@@ -295,6 +295,10 @@ static int	relcache_callback_count = 0;
 
 bool yb_refresh_cache_in_progress = false;
 
+/* YB declarations */
+static const uint32 *YbGetCatcacheMsgPrefixHashes(const SharedInvalCatcacheMsg *msg,
+												  uint32 *prefix_hashes);
+
 /* ----------------------------------------------------------------
  *				Invalidation subgroup support functions
  * ----------------------------------------------------------------
@@ -431,15 +435,22 @@ AppendInvalidationMessageSubGroup(InvalidationMsgsGroup *dest,
  */
 static void
 AddCatcacheInvalidationMessage(InvalidationMsgsGroup *group,
-							   int id, uint32 hashValue, Oid dbId)
+							   int id, uint32 hashValue, Oid dbId,
+							   const uint32 *yb_prefix_hashes)
 {
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
 		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
-	if (IsYugaByteEnabled())
-		msg.cc.yb_version = (int8) YbSharedInvalCatcacheMsgVersion;
+	/*
+	 * YB: set the version even outside YB mode, since it tells a receiver
+	 * whether the prefix hashes are valid.
+	 */
+	msg.cc.yb_version = (int8) YbSharedInvalCatcacheMsgVersion;
+	msg.cc.yb_prefix1_hash = yb_prefix_hashes[0];
+	msg.cc.yb_prefix2_hash = (uint16) yb_prefix_hashes[1];
+	msg.cc.yb_prefix3_hash = (uint16) yb_prefix_hashes[2];
 
 	Assert(id < CHAR_MAX);
 	msg.cc.id = (int8) id;
@@ -605,10 +616,12 @@ ProcessInvalidationMessagesMulti(InvalidationMsgsGroup *group,
 static void
 RegisterCatcacheInvalidation(int cacheId,
 							 uint32 hashValue,
-							 Oid dbId)
+							 Oid dbId,
+							 const uint32 *yb_prefix_hashes)
 {
 	AddCatcacheInvalidationMessage(&transInvalInfo->CurrentCmdInvalidMsgs,
-								   cacheId, hashValue, dbId);
+								   cacheId, hashValue, dbId,
+								   yb_prefix_hashes);
 }
 
 /*
@@ -690,6 +703,8 @@ RegisterSnapshotInvalidation(Oid dbId, Oid relId)
 void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
+	uint32		yb_prefix_hashes[YB_CATCLIST_NUM_PREFIX_HASHES];
+
 	/*
 	 * In YB mode all messages originated by other processes are silently
 	 * ignored
@@ -703,7 +718,9 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 		{
 			InvalidateCatalogSnapshot();
 
-			SysCacheInvalidate(msg->cc.id, msg->cc.hashValue);
+			SysCacheInvalidate(msg->cc.id, msg->cc.hashValue,
+							   YbGetCatcacheMsgPrefixHashes(&msg->cc,
+															yb_prefix_hashes));
 
 			CallSyscacheCallbacks(msg->cc.id, msg->cc.hashValue);
 		}
@@ -1286,13 +1303,17 @@ YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs)
 	for (int i = 0; i < nmsgs; ++i)
 		if (msgs[i].id >= 0)
 		{
-			elog(DEBUG1, "msgs[%d]: id=%d yb_version=%d yb_sender_pid=%d dbId=%u hashValue=%u\n",
+			elog(DEBUG1, "msgs[%d]: id=%d yb_version=%d yb_sender_pid=%d dbId=%u hashValue=%u "
+				 "yb_prefix_hashes=%u/%u/%u\n",
 				 i,
 				 msgs[i].id,
 				 msgs[i].cc.yb_version,
 				 msgs[i].cc.yb_sender_pid,
 				 msgs[i].cc.dbId,
-				 msgs[i].cc.hashValue);
+				 msgs[i].cc.hashValue,
+				 msgs[i].cc.yb_prefix1_hash,
+				 msgs[i].cc.yb_prefix2_hash,
+				 msgs[i].cc.yb_prefix3_hash);
 		}
 		else
 		{
@@ -2118,7 +2139,7 @@ YbCheckSharedInvalMessages()
 	static_assert(RelCacheMsgs == YB_RELCACHE_MSGS, "subgroup id mismatch");
 	static_assert(YB_SUBGROUP_COUNT == 2, "subgroup # mismatch");
 
-	static_assert(sizeof(SharedInvalCatcacheMsg) == 16, "size mismatch");
+	static_assert(sizeof(SharedInvalCatcacheMsg) == 24, "size mismatch");
 	static_assert(sizeof(((SharedInvalCatcacheMsg *) 0)->id) == 1, "size mismatch");
 	static_assert(sizeof(((SharedInvalCatcacheMsg *) 0)->yb_version) == 1, "size mismatch");
 	static_assert(sizeof(((SharedInvalCatcacheMsg *) 0)->yb_sender_pid) == 4, "size mismatch");
@@ -2129,6 +2150,10 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalCatcacheMsg, yb_sender_pid) == 4, "offset mismatch");
 	static_assert(offsetof(SharedInvalCatcacheMsg, dbId) == 8, "offset mismatch");
 	static_assert(offsetof(SharedInvalCatcacheMsg, hashValue) == 12, "offset mismatch");
+	static_assert(offsetof(SharedInvalCatcacheMsg, yb_prefix1_hash) == 16, "offset mismatch");
+	static_assert(offsetof(SharedInvalCatcacheMsg, yb_prefix2_hash) == 20, "offset mismatch");
+	static_assert(offsetof(SharedInvalCatcacheMsg, yb_prefix3_hash) == 22, "offset mismatch");
+	static_assert(YB_CATCLIST_NUM_PREFIX_HASHES == 3, "prefix hash count mismatch");
 
 	static_assert(sizeof(SharedInvalCatalogMsg) == 16, "size mismatch");
 	static_assert(sizeof(((SharedInvalCatalogMsg *) 0)->id) == 1, "size mismatch");
@@ -2201,7 +2226,7 @@ YbCheckSharedInvalMessages()
 	static_assert(sizeof(SharedInvalidationMessage) == 24, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->id) == 1, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->yb_header) == 8, "size mismatch");
-	static_assert(sizeof(((SharedInvalidationMessage *) 0)->cc) == 16, "size mismatch");
+	static_assert(sizeof(((SharedInvalidationMessage *) 0)->cc) == 24, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->cat) == 16, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->rc) == 16, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->sm) == 24, "size mismatch");
@@ -2213,4 +2238,20 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalidationMessage, rc) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sm) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sn) == 0, "offset mismatch");
+}
+
+/*
+ * Return the prefix hashes carried by the catcache message, stored into
+ * prefix_hashes, or NULL if the message predates them.
+ */
+static const uint32 *
+YbGetCatcacheMsgPrefixHashes(const SharedInvalCatcacheMsg *msg,
+							 uint32 *prefix_hashes)
+{
+	if (msg->yb_version != YbSharedInvalCatcacheMsgVersion)
+		return NULL;
+	prefix_hashes[0] = msg->yb_prefix1_hash;
+	prefix_hashes[1] = msg->yb_prefix2_hash;
+	prefix_hashes[2] = msg->yb_prefix3_hash;
+	return prefix_hashes;
 }
