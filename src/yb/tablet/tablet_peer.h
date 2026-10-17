@@ -526,7 +526,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushBootstrapState();
   Result<OpId> CopyBootstrapStateTo(const std::string& dest_path);
-  Status CopyBootstrapStateForTabletSplit(const std::string& child_wal_dir);
+  // Persists this (parent) tablet's bootstrap state as of the split into every child WAL dir. Must
+  // be called from the SPLIT_OP apply, i.e. while the Raft replica state lock is held.
+  Status FlushBootstrapStateForTabletSplit(
+      const std::vector<std::string>& child_wal_dirs, HybridTime split_op_hybrid_time);
   Status SubmitFlushBootstrapStateTask();
 
   void EnableFlushBootstrapState();
