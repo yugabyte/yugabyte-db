@@ -18,7 +18,7 @@ Env overrides:
     YB_GH_REPO      upstream owner/name; default yugabyte/yugabyte-db
     YB_GH_FORK      <owner>/<repo> of the fork; default <gh-user>/<repo>.
                     Must be a fork of YB_GH_REPO, with any owner, including
-                    the upstream org (e.g. yugabyte/yugabyte-db-backports).
+                    the upstream org (e.g. yugabyte/yugabyte-db-dev).
     YB_FORK_URL     full URL of the fork; defaults to mirror upstream protocol.
                     Its path must name the YB_GH_FORK repo.
 """
@@ -278,7 +278,7 @@ def detect_auto_reviewers(gh_repo: str, prnum: int, self_login: str) -> str:
 
 
 def is_same_owner_fork(gh_repo: str, gh_fork: str) -> bool:
-    """True iff gh_fork is owned by gh_repo's owner (e.g. yugabyte/yugabyte-db-backports).
+    """True iff gh_fork is owned by gh_repo's owner (e.g. yugabyte/yugabyte-db-dev).
 
     "<owner>:<branch>" can't name such a fork -- GitHub reads it as the
     upstream repo itself -- so its PRs need the REST head_repo field.
