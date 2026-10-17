@@ -373,6 +373,8 @@ def existing_pr_url(gh_repo: str, gh_fork: str, task: str) -> Optional[str]:
     Looks PRs up by branch name and matches the head repo, rather than
     using the REST "head=<owner>:<branch>" filter: for a fork owned by the
     upstream's owner, that label is ambiguous with the upstream repo itself.
+    Aborts if the lookup fails: reading that as "no PR" would push and try
+    to open a PR that may already exist.
     """
     # gh before 2.89 returns headRepository as {id, name} only, without
     # nameWithOwner, so the owner comes from headRepositoryOwner.
@@ -380,7 +382,10 @@ def existing_pr_url(gh_repo: str, gh_fork: str, task: str) -> Optional[str]:
                        "--state", "all",
                        "--json", "url,headRepository,headRepositoryOwner"],
                       check=False)
-    for pr in prs if isinstance(prs, list) else []:
+    if not isinstance(prs, list):
+        fail(f"could not look up existing PRs for {task} on {gh_repo}. "
+             f"Check 'gh auth status' and the network, then re-run.")
+    for pr in prs:
         pr = pr or {}
         owner = (pr.get("headRepositoryOwner") or {}).get("login") or ""
         name = (pr.get("headRepository") or {}).get("name") or ""
@@ -562,12 +567,16 @@ def push_and_create_pr(*, gh_repo: str, gh_fork: str, push_url: str, pr_head: st
     if is_same_owner_fork(gh_repo, gh_fork):
         # head_repo must be the full "<owner>/<repo>": GitHub's docs call it
         # the repository's name, but the bare name gets 422 "field head is
-        # invalid".
+        # invalid". maintainer_can_modify defaults to true, which only an
+        # actor with push access to the fork may grant (else 422
+        # "fork_collab"), e.g. not a bot token that can only read the fork;
+        # the org owns the fork, so the grant adds nothing.
         proc = run(
             ["gh", "api", "-X", "POST", f"repos/{gh_repo}/pulls",
              "--jq", ".html_url", "--input", "-"],
             input_=json.dumps({"title": title, "body": body, "base": base,
-                               "head": task, "head_repo": gh_fork}),
+                               "head": task, "head_repo": gh_fork,
+                               "maintainer_can_modify": False}),
         )
     else:
         proc = run(
@@ -832,10 +841,7 @@ def main(argv: list[str]) -> int:
         pr_head = f"{fork_owner}:{task}" if fork_owner else task
 
         # Skip if a backport PR for this head already exists.
-        try:
-            existing = existing_pr_url(gh_repo, gh_fork, task)
-        except Exception:
-            existing = None
+        existing = existing_pr_url(gh_repo, gh_fork, task)
         if existing:
             info(f"Existing backport PR found: {existing} -- skipping")
             published_tasks.append(task)
@@ -916,7 +922,7 @@ def main(argv: list[str]) -> int:
             print(f"  git push -u {push_url} {task}")
             if is_same_owner_fork(gh_repo, gh_fork):
                 print(f"  gh api -X POST repos/{gh_repo}/pulls  (head={task}, "
-                      f"head_repo={gh_fork}, base={branch}, "
+                      f"head_repo={gh_fork}, maintainer_can_modify=false, base={branch}, "
                       f"title={shlex.quote(new_subject)}, body:)")
             else:
                 print(f"  gh pr create -R {gh_repo} -B {branch} -H {pr_head} "
