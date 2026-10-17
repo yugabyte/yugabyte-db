@@ -320,7 +320,7 @@ bindKeyFilter(IndexScanDesc scan, YbScanDesc yb_scan)
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(table_desc, attnum,
 												   &column_info),
 								table_desc);
-		if (!column_info.is_key)
+		if (!column_info.is_primary)
 			continue;
 
 		/*

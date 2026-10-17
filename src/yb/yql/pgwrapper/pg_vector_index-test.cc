@@ -2546,7 +2546,7 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
     ASSERT_EQ(stats.ids, Ids(0, 3));
     ASSERT_EQ(stats.partitions, 1);
 
-    // PG filters these rows itself, but 2026.1 (without #33573) still sizes the vector prefetch by
+    // PG filters these rows itself, but 2025.2 (without #33573) still sizes the vector prefetch by
     // the LIMIT, so a small LIMIT pages through several rounds. A LIMIT covering every row keeps it
     // to one round.
     stats = ASSERT_RESULT(Query(
