@@ -105,10 +105,14 @@ class TabletSnapshots : public TabletComponent {
   // than RPC timeouts.
   // In case of failure, the caller is responsible for cleanup.
   YB_STRONGLY_TYPED_BOOL(UseTryLock);
+  // With flush_vector_indexes, the vector indexes are flushed after the regular DB checkpoint, so
+  // that their checkpoints hold every vector of the rows in it.
+  YB_STRONGLY_TYPED_BOOL(FlushVectorIndexes);
   Status CreateCheckpoint(
       const std::string& dir,
       CreateCheckpointIn create_checkpoint_in = CreateCheckpointIn::kSubDir,
-      UseTryLock use_try_lock = UseTryLock::kFalse);
+      UseTryLock use_try_lock = UseTryLock::kFalse,
+      FlushVectorIndexes flush_vector_indexes = FlushVectorIndexes::kFalse);
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
@@ -198,7 +202,9 @@ class TabletSnapshots : public TabletComponent {
   void UpdatePendingMetricsUnlocked() REQUIRES(cleanup_mutex_);
   uint64_t OldestPendingDeletionAgeMs();
 
-  Status DoCreateCheckpoint(const std::string& dir, CreateCheckpointIn create_checkpoint_in);
+  Status DoCreateCheckpoint(
+      const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+      FlushVectorIndexes flush_vector_indexes);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
   std::unique_ptr<Metrics> metrics_;
