@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <deque>
 #include <sstream>
 
 #include "yb/util/logging.h"
@@ -366,6 +367,110 @@ TEST_F(MvccTest, WaitForSafeTime) {
 
   HybridTime ht3 = manager_.AddLeaderPending(OpId(1, 3));
   ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, FixedHybridTimeLease()).ok());
+}
+
+TEST_F(MvccTest, WaitForFollowerSafeTime) {
+  HybridTime ht1 = clock_->Now();
+  HybridTime ht2 = clock_->Now();
+  manager_.AddFollowerPending(ht1, OpId(1, 1));
+  manager_.AddFollowerPending(ht2, OpId(1, 2));
+  manager_.SetPropagatedSafeTimeOnFollower(ht2);
+  std::atomic<bool> t1_done(false);
+  std::thread t1([this, ht1, &t1_done] {
+    ASSERT_OK(manager_.SafeTimeForFollower(ht1, CoarseTimePoint::max()));
+    t1_done = true;
+  });
+  std::atomic<bool> t2_done(false);
+  std::thread t2([this, ht2, &t2_done] {
+    ASSERT_OK(manager_.SafeTimeForFollower(AddLogical(ht2, 1), CoarseMonoClock::now() + 60s));
+    t2_done = true;
+  });
+  std::this_thread::sleep_for(100ms);
+  ASSERT_FALSE(t1_done.load());
+  ASSERT_FALSE(t2_done.load());
+
+  manager_.Replicated(ht1, OpId(1, 1));
+  std::this_thread::sleep_for(100ms);
+  ASSERT_TRUE(t1_done.load());
+  ASSERT_FALSE(t2_done.load());
+
+  manager_.Replicated(ht2, OpId(1, 2));
+  std::this_thread::sleep_for(100ms);
+  ASSERT_FALSE(t2_done.load());
+
+  manager_.SetPropagatedSafeTimeOnFollower(AddLogical(ht2, 1));
+  std::this_thread::sleep_for(100ms);
+  ASSERT_TRUE(t2_done.load());
+
+  t1.join();
+  t2.join();
+
+  ASSERT_NOK(manager_.SafeTimeForFollower(AddLogical(ht2, 2), CoarseMonoClock::now() + 100ms));
+}
+
+TEST_F(MvccTest, ShutdownReleasesSafeTimeWaiters) {
+  HybridTime ht = manager_.AddLeaderPending(OpId(1, 1));
+  manager_.SetPropagatedSafeTimeOnFollower(ht.Decremented());
+  std::thread leader_waiter([this, ht] {
+    auto result = manager_.SafeTime(ht, CoarseTimePoint::max(), FixedHybridTimeLease());
+    ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
+  });
+  std::thread follower_waiter([this, ht] {
+    auto result = manager_.SafeTimeForFollower(ht, CoarseMonoClock::now() + 60s);
+    ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
+  });
+  std::this_thread::sleep_for(100ms);
+  manager_.StartShutdown();
+  leader_waiter.join();
+  follower_waiter.join();
+}
+
+// Replicates operations with a fixed number in flight, as on a busy tablet leader, while readers
+// wait for safe time to reach the current time.
+TEST_F(MvccTest, ReplicateWithManySafeTimeWaiters) {
+  constexpr int kOpsInFlight = 100;
+  constexpr int kTotalOps = 20000;
+  int op_index = 0;
+  for (size_t num_readers : {0, 32, 256, 600}) {
+    std::atomic<bool> stop{false};
+    std::atomic<size_t> num_reads{0};
+    vector<std::thread> readers;
+    for (size_t i = 0; i != num_readers; ++i) {
+      readers.emplace_back([this, &stop, &num_reads] {
+        while (!stop.load(std::memory_order_acquire)) {
+          ASSERT_OK(manager_.SafeTime(
+              clock_->Now(), CoarseMonoClock::now() + 60s, FixedHybridTimeLease()));
+          num_reads.fetch_add(1, std::memory_order_relaxed);
+        }
+      });
+    }
+
+    std::deque<std::pair<HybridTime, OpId>> in_flight;
+    auto replicate_front = [this, &in_flight] {
+      manager_.Replicated(in_flight.front().first, in_flight.front().second);
+      in_flight.pop_front();
+    };
+    auto start = CoarseMonoClock::now();
+    for (int i = 0; i != kTotalOps; ++i) {
+      OpId op_id(1, ++op_index);
+      in_flight.emplace_back(manager_.AddLeaderPending(op_id), op_id);
+      if (in_flight.size() > kOpsInFlight) {
+        replicate_front();
+      }
+    }
+    auto elapsed = CoarseMonoClock::now() - start;
+    stop.store(true, std::memory_order_release);
+    while (!in_flight.empty()) {
+      replicate_front();
+    }
+    for (auto& reader : readers) {
+      reader.join();
+    }
+    LOG(INFO) << "Readers: " << num_readers << ", replicated " << kTotalOps << " ops in "
+              << MonoDelta(elapsed) << ", "
+              << static_cast<int64_t>(kTotalOps / ToSeconds(elapsed)) << " ops/s, reads: "
+              << num_reads.load();
+  }
 }
 
 } // namespace tablet

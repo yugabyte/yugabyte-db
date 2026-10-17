@@ -253,6 +253,11 @@ std::string SafeTimeWithSource::ToString() const {
 // MvccManager
 // ------------------------------------------------------------------------------------------------
 
+struct MvccManager::SafeTimeWaiter {
+  std::condition_variable cond;
+  bool released = false;
+};
+
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
     : prefix_(std::move(prefix)),
       clock_(std::move(clock)) {
@@ -263,6 +268,55 @@ MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
 }
 
 MvccManager::~MvccManager() {
+  std::lock_guard lock(mutex_);
+  DCHECK(safe_time_waiters_.empty());
+  DCHECK(follower_safe_time_waiters_.empty());
+}
+
+// Returns false if the deadline passes before the predicate holds.
+template <class Predicate>
+bool MvccManager::WaitForSafeTime(
+    SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
+    const Predicate& predicate, std::unique_lock<std::mutex>* lock) const {
+  while (!predicate()) {
+    SafeTimeWaiter waiter;
+    auto it = waiters->emplace(min_allowed, &waiter);
+    auto released = [&waiter] { return waiter.released; };
+    if (deadline == CoarseTimePoint::max()) {
+      waiter.cond.wait(*lock, released);
+    } else if (!waiter.cond.wait_until(*lock, deadline, released)) {
+      waiters->erase(it);
+      return predicate();
+    }
+  }
+  return true;
+}
+
+void MvccManager::ReleaseSafeTimeWaiters() {
+  auto release = [](SafeTimeWaiters& waiters, HybridTime safe_time) {
+    const auto end = waiters.upper_bound(safe_time);
+    for (auto it = waiters.begin(); it != end; ++it) {
+      it->second->released = true;
+      // Notify under mutex_, since a waiter that times out destroys its SafeTimeWaiter as soon as
+      // it reacquires mutex_.
+      YB_PROFILE(it->second->cond.notify_one());
+    }
+    waiters.erase(waiters.begin(), end);
+  };
+
+  if (closing_) {
+    release(safe_time_waiters_, HybridTime::kMax);
+    release(follower_safe_time_waiters_, HybridTime::kMax);
+    return;
+  }
+  // Only the queue front and last_replicated_ hold back a DoGetSafeTime waiter: min_allowed does
+  // not exceed the lease, and Tablet::DoGetSafeTime makes sure that it does not exceed the lease
+  // time or the current time either. A woken waiter checks its full predicate again.
+  release(safe_time_waiters_,
+          queue_.empty()
+              ? HybridTime::kMax
+              : std::max(queue_.front().hybrid_time.Decremented(), last_replicated_));
+  release(follower_safe_time_waiters_, FollowerSafeTime().safe_time);
 }
 
 void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
@@ -279,16 +333,16 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
              (QueueItem{ .hybrid_time = ht, .op_id = op_id })) << InvariantViolationLogPrefix();
     queue_.pop_front();
     last_replicated_ = ht;
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::StartShutdown() {
   {
     std::lock_guard lock(mutex_);
     closing_ = true;
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
@@ -304,8 +358,8 @@ void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
              (QueueItem{ .hybrid_time = ht, .op_id = op_id }))
         << InvariantViolationLogPrefix() << "It is allowed to abort only last operation";
     queue_.pop_back();
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 bool BadNextOpId(const OpId& prev, const OpId& next) {
@@ -430,8 +484,8 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
       op_trace_->Add(SetLastReplicatedTraceItem { .ht = ht });
     }
     last_replicated_ = ht;
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
@@ -450,8 +504,8 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
           << propagated_safe_time_ << ". This could happen on followers when a new leader "
           << "is elected.";
     }
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
@@ -495,8 +549,8 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
         .safe_time = safe_time
       });
     }
+    ReleaseSafeTimeWaiters();
   }
-  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::SetLeaderOnlyMode(bool leader_only) {
@@ -507,6 +561,18 @@ void MvccManager::SetLeaderOnlyMode(bool leader_only) {
     });
   }
   leader_only_mode_ = leader_only;
+}
+
+SafeTimeWithSource MvccManager::FollowerSafeTime() const {
+  // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
+  // could be greater than propagated_safe_time_.
+  if (propagated_safe_time_ <= last_replicated_) {
+    return { last_replicated_, SafeTimeSource::kLastReplicated };
+  }
+  if (queue_.empty() || propagated_safe_time_ < queue_.front().hybrid_time) {
+    return { propagated_safe_time_, SafeTimeSource::kPropagated };
+  }
+  return { queue_.front().hybrid_time.Decremented(), SafeTimeSource::kNextInQueue };
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
@@ -521,32 +587,17 @@ Result<HybridTime> MvccManager::SafeTimeForFollower(
   }
 
   SafeTimeWithSource result;
-  auto predicate = [this, &result, min_allowed] {
+  auto predicate = [this, &result, min_allowed]() NO_THREAD_SAFETY_ANALYSIS {
     if (closing_) {
       return true;
     }
-    // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
-    // could be greater than propagated_safe_time_.
-    if (propagated_safe_time_ > last_replicated_) {
-      if (queue_.empty() || propagated_safe_time_ < queue_.front().hybrid_time) {
-        result.safe_time = propagated_safe_time_;
-        result.source = SafeTimeSource::kPropagated;
-      } else {
-        result.safe_time = queue_.front().hybrid_time.Decremented();
-        result.source = SafeTimeSource::kNextInQueue;
-      }
-    } else {
-      result.safe_time = last_replicated_;
-      result.source = SafeTimeSource::kLastReplicated;
-    }
+    result = FollowerSafeTime();
     VTRACE(3, "Current safe time $0. Source $1", yb::ToString(result.safe_time),
            yb::ToString(result.source));
     return result.safe_time >= min_allowed;
   };
   SCOPED_WAIT_STATUS(MVCC_WaitForSafeTime);
-  if (deadline == CoarseTimePoint::max()) {
-    cond_.wait(lock, predicate);
-  } else if (!cond_.wait_until(lock, deadline, predicate)) {
+  if (!WaitForSafeTime(&follower_safe_time_waiters_, min_allowed, deadline, predicate, &lock)) {
     return STATUS_FORMAT(TimedOut, "Timed out waiting for follower safe time $0", min_allowed);
   }
   if (closing_) {
@@ -645,9 +696,7 @@ Result<HybridTime> MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   // In the case of an empty queue, the safe hybrid time to read at is only limited by hybrid time
   // ht_lease, which is by definition higher than min_allowed, so we would not get blocked.
   SCOPED_WAIT_STATUS(MVCC_WaitForSafeTime);
-  if (deadline == CoarseTimePoint::max()) {
-    cond_.wait(*lock, predicate);
-  } else if (!cond_.wait_until(*lock, deadline, predicate)) {
+  if (!WaitForSafeTime(&safe_time_waiters_, min_allowed, deadline, predicate, lock)) {
     return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
   }
   if (closing_) {
