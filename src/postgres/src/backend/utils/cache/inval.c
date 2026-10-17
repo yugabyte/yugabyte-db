@@ -130,6 +130,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "replication/walsender.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
 #include <inttypes.h>
@@ -891,6 +892,101 @@ void
 CallSystemCacheCallbacks(void)
 {
 	InvalidateSystemCachesExtended(true, true /* yb_callback */ );
+}
+
+void
+YbMaybeRefreshCache(void)
+{
+	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
+	const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
+
+	elog(DEBUG5,
+		 "YbMaybeRefreshCache: shared = %" PRIu64 " local=%" PRIu64 " in_progress=%d",
+		 shared_catalog_version, local_catalog_version,
+		 yb_refresh_cache_in_progress);
+
+	/*
+	 * YB: We only want to update the catalog cache version at a "safe
+	 * point". It is not a "safe point" if prefetching is started because we
+	 * want to ensure reading a consistent set of catalog tables. If we
+	 * refreshed here we may see some catalog tuples removed which can cause
+	 * a PANIC error if such tuples are considered critical (e.g. when this
+	 * runs from load_critical_index during backend init). Also we do not
+	 * want the local catalog version to change as a result of applying
+	 * invalidation messages because that can become inconsistent with the
+	 * set of catalog tables just read. The refresh is deferred to the next
+	 * safe point (after prefetching stops). Note we must still run
+	 * ReceiveSharedInvalidMessages() below regardless.
+	 */
+	if (YBCIsSysTablePrefetchingStarted() || yb_refresh_cache_in_progress ||
+		local_catalog_version >= shared_catalog_version)
+	{
+		elog(DEBUG2,
+			 "YbMaybeRefreshCache: prefetch_started=%d, shared = %" PRIu64 " local=%" PRIu64 " in_progress=%d",
+			 YBCIsSysTablePrefetchingStarted(), shared_catalog_version, local_catalog_version,
+			 yb_refresh_cache_in_progress);
+		return;
+	}
+
+	/*
+	 * As part of processing inval msgs, we may rebuild relcache entries.
+	 * These rebuilds may acquire further locks and trigger this code again.
+	 * In PG, this would be ok as inval msgs are processed one by one and
+	 * reentrant calls do not reprocess msgs that are already being processed.
+	 * However, in YB, we are not able to handle this situation currently.
+	 * TODO: One possible way to avoid this in YB is to add inval msgs to
+	 * the PG shared queue instead.
+	 */
+	yb_refresh_cache_in_progress = true;
+	PG_TRY();
+	{
+		if (YBCIsLegacyModeForCatalogOps())
+			YBCPgResetCatalogReadTime();
+
+		if (YBRefreshCacheUsingInvalMsgs())
+		{
+			elog(DEBUG1,
+				 "AcceptInvalidationMessages: updated via inval msgs to %" PRIu64,
+				 YbGetCatalogCacheVersion());
+		}
+		else if (!am_walsender)
+		{
+			/*
+			 * YB: We could not update to this version via inval msgs.
+			 * This can happen when there are no invalidation messages
+			 * for a catalog version bump (for example, when there are too
+			 * many inval msgs for a partition DDL).
+			 *
+			 * Perform a full PG-style cache invalidation: blow away
+			 * all catcache entries and relcache entries so they are
+			 * refilled from the master on next access. This mirrors
+			 * what PG does in ReceiveSharedInvalidMessages when the
+			 * SI queue overflows (the resetFunction callback). PG's
+			 * RelationCacheInvalidate handles positive-refcount
+			 * entries by rebuilding them and catcache entries are marked
+			 * dead if in use, so this should be safe mid-statement.
+			 *
+			 * Skip this for walsender. TODO: #31335 to investigate further.
+			 * PG logical decoding monitors relcache invalidations to output
+			 * a special relation entry when the corresponding relcache is
+			 * invalidated, which doesn't work well with this full update.
+			 */
+			elog(LOG,
+				 "YbMaybeRefreshCache: full invalidation for "
+				 "version %" PRIu64 " -> %" PRIu64
+				 ", subsequent execution may be slow until caches are re-warmed",
+				 local_catalog_version, shared_catalog_version);
+			InvalidateSystemCachesExtended(false, false);
+			YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
+			/* invalidate all docdb table caches */
+			HandleYBStatus(YBCPgInvalidateCache(shared_catalog_version));
+		}
+	}
+	PG_FINALLY();
+	{
+		yb_refresh_cache_in_progress = false;
+	}
+	PG_END_TRY();
 }
 
 /* ----------------------------------------------------------------
