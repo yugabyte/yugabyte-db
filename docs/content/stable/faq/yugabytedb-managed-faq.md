@@ -250,7 +250,7 @@ Connect to clusters
 
 Sandbox clusters are paused after 10 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-{{<lead link="../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters">}}
+{{<lead link="../../yugabyte-cloud/serverless/#sandbox-clusters">}}
 Inactive Sandbox clusters
 {{</lead>}}
 

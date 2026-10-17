@@ -14,10 +14,10 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="Sandbox"
-    body="Create your free single-node Sandbox cluster."
-    href="create-clusters-free/"
-    icon="fa-thin fa-box">}}
+    title="Serverless Postgres"
+    body="Create an AMP Managed cluster for agents and tenants."
+    href="/stable/yugabyte-cloud/serverless/"
+    icon="fa-thin fa-bolt">}}
 
   {{<index/item
     title="Single region"
