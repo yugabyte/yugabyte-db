@@ -1,0 +1,97 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_validate s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk') ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+
+conname  |convalidated
+---------+------------
+child_fk |t           
+orphan_fk|f           
+(2 rows)
+
+id|pid
+--+---
+ 1|  1
+(1 row)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rr s1_validate s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk') ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+
+conname  |convalidated
+---------+------------
+child_fk |t           
+orphan_fk|f           
+(2 rows)
+
+id|pid
+--+---
+ 1|  1
+(1 row)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_validate s2_rollback s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_rollback: ROLLBACK;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk') ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+
+conname  |convalidated
+---------+------------
+child_fk |t           
+orphan_fk|f           
+(2 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+
+starting permutation: s1_begin_rc s1_validate_orphan s1_commit s1_check
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate_orphan: ALTER TABLE orphan VALIDATE CONSTRAINT orphan_fk;
+ERROR:  insert or update on table "orphan" violates foreign key constraint "orphan_fk"
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk') ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+
+conname  |convalidated
+---------+------------
+child_fk |f           
+orphan_fk|f           
+(2 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+

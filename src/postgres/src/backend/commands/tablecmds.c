@@ -13039,13 +13039,14 @@ validateForeignKeyConstraint(char *conname,
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
-	 * YB Note: YB handles LEFT JOIN inefficiently. So skip this approach and
-	 * call trigger on each row instead. As triggers can buffer the FK check.
-	 * We skip this approach by adding the condition !IsYBRelation(rel).
-	 * The original condition in vanilla postgres is only
-	 *   if (RI_Initial_Check(&trig, rel, pkrel))
+	 *
+	 * YB: this query takes no row locks, so it is safe only if table locks
+	 * stop writers. Without concurrent DDL, YB table locks stop nothing:
+	 * ADD FOREIGN KEY could pass while a concurrent DELETE removes the
+	 * parent of a child row it checked, and leave that child orphaned.
 	 */
-	if (!IsYBRelation(rel) && RI_Initial_Check(&trig, rel, pkrel))
+	if ((!IsYBRelation(rel) || !YBCIsLegacyModeForCatalogOps()) &&
+		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*
