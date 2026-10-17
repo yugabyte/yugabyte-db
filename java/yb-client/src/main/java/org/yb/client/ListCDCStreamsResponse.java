@@ -24,7 +24,8 @@ public class ListCDCStreamsResponse extends YRpcResponse {
           stream.getTableIdList(),
           stream.getOptionsList(),
           stream.getNamespaceId(),
-          stream.getCdcsdkYsqlReplicationSlotName()));
+          stream.getCdcsdkYsqlReplicationSlotName(),
+          stream.getXclusterIsWalAnchor()));
     }
   }
 
