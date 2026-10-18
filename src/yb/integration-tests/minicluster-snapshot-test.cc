@@ -1941,6 +1941,52 @@ TEST_F(PgCloneTest, CloneWithBackslashInDbName) {
   ASSERT_EQ(count, 0);
 }
 
+// Clones from source databases whose names contain characters that need quoting when passed to
+// ysql_dump.
+class PgCloneOddSourceDbNameTest : public PgCloneTest {
+ protected:
+  // Creates `source_db_name` with its own snapshot schedule and a table only it has, clones it
+  // into kTargetNamespaceName1 and checks the clone has that table but not the fixture source's
+  // kSourceTableName.
+  void TestCloneFromSourceDbNamed(const std::string& source_db_name) {
+    const std::string kOddSourceTableName = "odd_source_t";
+    ASSERT_OK(CreateDatabase(pgwrapper::PqEscapeIdentifier(source_db_name)));
+    auto schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+        master_backup_proxy_.get(), YQL_DATABASE_PGSQL, source_db_name,
+        snapshot_schedule_interval(), kRetention, kTimeout));
+    ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+    auto odd_source_conn = ASSERT_RESULT(ConnectToDB(source_db_name));
+    ASSERT_OK(odd_source_conn.ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kOddSourceTableName));
+    ASSERT_OK(odd_source_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kOddSourceTableName));
+
+    ASSERT_OK(odd_source_conn.ExecuteFormat(
+        "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1,
+        pgwrapper::PqEscapeIdentifier(source_db_name)));
+
+    auto clone_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto value = ASSERT_RESULT(clone_conn.FetchRow<int32_t>(
+        Format("SELECT value FROM $0 WHERE key = 1", kOddSourceTableName)));
+    ASSERT_EQ(value, 10);
+    auto fixture_table_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(Format(
+        "SELECT count(*) FROM pg_class WHERE relname = $0 AND relkind = 'r'",
+        pgwrapper::PqEscapeLiteral(kSourceTableName))));
+    ASSERT_EQ(fixture_table_count, 0);
+  }
+};
+
+TEST_F(PgCloneOddSourceDbNameTest, EqualsSign) {
+  TestCloneFromSourceDbNamed("src=db");
+}
+
+TEST_F(PgCloneOddSourceDbNameTest, LeadingDash) {
+  TestCloneFromSourceDbNamed("-d" + kSourceNamespaceName);
+}
+
+TEST_F(PgCloneOddSourceDbNameTest, ConnStrSpecialChars) {
+  TestCloneFromSourceDbNamed("-d src='db' = \\ x");
+}
+
 TEST_F(PgCloneTest, CloneWithQuotedSourceOwner) {
   const std::string kSourceOwner = "src-owner";
   const std::string kTargetOwner = "clone_owner";
