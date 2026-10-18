@@ -4731,6 +4731,7 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
+               First Fetch Limit: 10
          ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=10.00 loops=1)
                Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
                Storage Table Read Requests: #
@@ -4741,7 +4742,7 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(26 rows)
 
 SELECT explain_first_batch('EXECUTE fb_offset(20)');
                                  explain_first_batch                                  
@@ -4761,6 +4762,7 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
+               First Fetch Limit: 30
          ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=30.00 loops=1)
                Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
                Storage Table Read Requests: #
@@ -4771,7 +4773,7 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(26 rows)
 
 SET plan_cache_mode = force_generic_plan;
 SELECT explain_first_batch('EXECUTE fb_limit(10)');
