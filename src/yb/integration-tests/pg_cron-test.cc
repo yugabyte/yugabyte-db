@@ -1009,7 +1009,7 @@ TEST_F(PgCronTest, UngracefulLeaderChangeMarksJobFailed) {
   cluster_->tablet_server(a_idx)->Shutdown();
 
   const auto sample = ASSERT_RESULT(SampleNodesRunningQuery(
-      long_query, a_idx, t0 + std::chrono::seconds(kInterval) + 15s, pid));
+      long_query, a_idx, t0 + std::chrono::seconds(kInterval) + 15s * kTimeMultiplier, pid));
   ASSERT_NO_FATALS(CheckHandOver(sample, t0));
 
   ASSERT_OK(WaitForRunStatus(runid, kFailedJobStatus));
