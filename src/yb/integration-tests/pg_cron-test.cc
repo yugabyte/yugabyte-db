@@ -1008,8 +1008,12 @@ TEST_F(PgCronTest, UngracefulLeaderChangeMarksJobFailed) {
   const auto t0 = CoarseMonoClock::Now();
   cluster_->tablet_server(a_idx)->Shutdown();
 
+  // The new leader waits a full lease after its election, which can take over 10s in TSAN.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return cluster_->GetTabletLeaderIndex(tablet_id_).ok(); },
+      kTimeout, "Wait for new leader"));
   const auto sample = ASSERT_RESULT(SampleNodesRunningQuery(
-      long_query, a_idx, t0 + std::chrono::seconds(kInterval) + 15s, pid));
+      long_query, a_idx, CoarseMonoClock::Now() + std::chrono::seconds(kInterval) + 15s, pid));
   ASSERT_NO_FATALS(CheckHandOver(sample, t0));
 
   ASSERT_OK(WaitForRunStatus(runid, kFailedJobStatus));
