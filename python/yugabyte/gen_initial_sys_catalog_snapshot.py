@@ -39,8 +39,12 @@ def main() -> None:
     snapshot_dest_path = os.path.join(build_root, 'share', 'initial_sys_catalog_snapshot')
 
     file_to_check = os.path.join(snapshot_dest_path, 'exported_tablet_metadata_changes')
+    # The snapshot is stale if the catalog definition (postgres.bki) changed after it was made.
+    bki_path = os.path.join(build_root, 'postgres', 'share', 'postgres.bki')
     if (os.path.exists(file_to_check) and
-            os.environ.get('YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT', '') != '1'):
+            os.environ.get('YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT', '') != '1' and
+            not (os.path.exists(bki_path) and
+                 os.path.getmtime(bki_path) > os.path.getmtime(file_to_check))):
         logging.info(
             "Initial sys catalog snapshot already exists, not re-creating: %s",
             snapshot_dest_path)
