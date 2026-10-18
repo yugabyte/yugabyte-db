@@ -205,7 +205,9 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
     waitForLoadBalancer(expectedTServers);
   }
 
-  void waitForLoadBalancer() {
+  void waitForLoadBalancer() throws InterruptedException {
+    // Let the master refresh tablespace info so the LB sees placement changes from recent DDLs.
+    Thread.sleep(2 * 1000 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
     LOG.info("Waiting for the loadbalancer to become active...");
     assertTrue(
         miniCluster.getClient().waitForLoadBalancerActive(MASTER_LOAD_BALANCER_WAIT_TIME_MS));
