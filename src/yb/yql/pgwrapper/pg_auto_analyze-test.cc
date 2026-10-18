@@ -1607,11 +1607,14 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
                                schema_name, table_name, num_rows));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 2 * num_rows));
+  // The service records analyze history only after ANALYZE has updated reltuples.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    last_analyze_info = VERIFY_RESULT((conn.FetchRow<std::optional<std::string>>(
+        Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
+               "WHERE relid = '$0'", table_oid))));
+    return last_analyze_info.has_value();
+  }, 30s * kTimeMultiplier, "Wait for last_analyze_info"));
   // Parse Json and Verify
-  last_analyze_info =
-    ASSERT_RESULT((conn.FetchRow<std::optional<std::string>>(
-      Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
-             "WHERE relid = '$0'", table_oid))));
   common::Jsonb jsonb;
   ASSERT_OK(jsonb.FromString(*last_analyze_info));
   rapidjson::Document doc;
