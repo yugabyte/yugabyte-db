@@ -41,7 +41,11 @@ Horizontal scaling adds or removes nodes (or pods, for Kubernetes) and can inclu
 
 In on-premises universes, ensure your provider has enough free nodes to accommodate any increase in size of your cluster.
 
+If you are increasing replication factor (or resilience, in Guided mode), the universe needs at least as many nodes/pods as the new replication factor. YugabyteDB Anywhere adds YB-Master pods until the master count matches the new replication factor. Add any nodes, pods, or availability zones the new replication factor requires in that same edit. That edit changes placement only: regions, availability zones, and the number of nodes (pods on Kubernetes), including replication factor. You cannot decrease replication factor or resilience of a universe.
+
 To change the number of nodes of universes created with an on-premises provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
+
+Currently, you cannot change `replicationFactor` after creation on a universe managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#limitations).
 
 {{< tabpane text=true >}}
 
