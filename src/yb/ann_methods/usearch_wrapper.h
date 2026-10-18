@@ -16,8 +16,6 @@
 #include <cstddef>
 #include <memory>
 
-#include "yb/common/common.pb.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
 
 #include "yb/util/result.h"
@@ -37,7 +35,7 @@ class UsearchIndexFactory {
  public:
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-      const vector_index::HNSWOptions& options, HnswBackend backend,
+      const vector_index::HNSWOptions& options,
       const std::shared_ptr<MemTracker>& mem_tracker);
 };
 
@@ -47,8 +45,7 @@ class SimplifiedUsearchIndexFactory {
  public:
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
-    return UsearchIndexFactory<Vector, DistanceResult>::Create(
-        mode, nullptr, options, HnswBackend::USEARCH, nullptr);
+    return UsearchIndexFactory<Vector, DistanceResult>::Create(mode, nullptr, options, nullptr);
   }
 };
 

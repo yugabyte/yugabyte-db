@@ -165,6 +165,20 @@ namespace {
 Status PrepareVectorIndexesIfNecessary(
     CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
     const LeaderEpoch& epoch);
+
+// Import keeps the snapshot's vector index options, so reject a snapshot with a deprecated backend
+// before the import creates its objects, instead of restoring tablets that fail to open. For YSQL
+// restore and clone, the schema dump has already created the database and its tables by then.
+Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::TABLE) {
+      RETURN_NOT_OK(ValidateVectorIndexBackend(
+          entry.id(), VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()))));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
@@ -957,6 +971,8 @@ Status CatalogManager::DoImportSnapshotMeta(
         InternalError, "Expected snapshot data prepared for backup", snapshot_pb.ShortDebugString(),
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
+
+  RETURN_NOT_OK(ValidateSnapshotVectorIndexBackends(snapshot_pb));
 
   bool is_clone = clone_target_namespace_name.has_value();
   bool use_relfilenode =

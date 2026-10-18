@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include "yb/common/common.pb.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
 
 #include "yb/util/result.h"
@@ -34,7 +32,7 @@ class HnswlibIndexFactory {
  public:
     static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
         vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-        const vector_index::HNSWOptions& options, HnswBackend backend,
+        const vector_index::HNSWOptions& options,
         const std::shared_ptr<MemTracker>& mem_tracker);
 };
 
@@ -45,8 +43,7 @@ class SimplifiedHnswlibIndexFactory {
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
     return HnswlibIndexFactory<Vector, DistanceResult>::Create(
-        mode, /* block_cache= */ nullptr, options, HnswBackend::HNSWLIB,
-        /* mem_tracker= */ nullptr);
+        mode, /* block_cache= */ nullptr, options, /* mem_tracker= */ nullptr);
   }
 };
 
