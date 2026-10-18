@@ -324,6 +324,13 @@ class DocWriteBatch {
 
   void DeleteVectorId(const vector_index::VectorId& id) {
     delete_vector_ids_.Append(id.AsSlice());
+    has_vector_deletion_ = true;
+  }
+
+  // Records a deleted or replaced vector of a table which writes no reverse mapping, so there is no
+  // id to tombstone, but the tablet still learns that its vector indexes keep deleted vectors.
+  void MarkVectorDeletion() {
+    has_vector_deletion_ = true;
   }
 
   void SetIncludesPk(bool pk_is_known) {
@@ -401,6 +408,7 @@ class DocWriteBatch {
 
   MonoDelta ttl_;
   ValueBuffer delete_vector_ids_;
+  bool has_vector_deletion_ = false;
   boost::tribool pk_is_known_ = boost::indeterminate;
 };
 

@@ -5944,6 +5944,58 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
+// A table which writes no reverse mapping still marks its tablets as having vector deletions when
+// a row is deleted or its vector is replaced. Until then a search does not fetch the rows of its
+// candidates, after that it does, so the vector left behind by an update is not returned.
+TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto has_vector_deletion = [this]() -> Result<bool> {
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet with vector indexes");
+    return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
+  };
+  const auto query_text = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto query = [&conn, &query_text]() -> Result<std::string> {
+    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(query_text)));
+  };
+
+  ASSERT_FALSE(ASSERT_RESULT(has_vector_deletion()));
+  docdb::TEST_vector_index_filter_allowed = false;
+  ASSERT_EQ(ASSERT_RESULT(query()), "[1, 2, 3, 4, 5]");
+  docdb::TEST_vector_index_filter_allowed = true;
+
+  // The old vector of row 1 stays in the index next to the new one.
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 200, 300]' WHERE id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_TRUE(ASSERT_RESULT(has_vector_deletion()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 3"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 4, 5, 1]");
+
+  // The tablet keeps knowing about the deletions after a restart, whether it replays them from the
+  // log or reads them from the flushed frontier.
+  for (auto flush : {false, true}) {
+    SCOPED_TRACE(Format("flush: $0", flush));
+    if (flush) {
+      ASSERT_OK(cluster_->FlushTablets());
+    }
+    DisableFlushOnShutdown(*cluster_, !flush);
+    ASSERT_OK(RestartCluster());
+    conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(query()), "[2, 4, 5, 1]");
+    ASSERT_TRUE(ASSERT_RESULT(has_vector_deletion()));
+  }
+}
+
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
 TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
