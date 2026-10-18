@@ -64,6 +64,12 @@ namespace {
 // correct identifier escaping.
 constexpr const char* kConnectLinePrefix = "\\connect ";
 
+// Passes the database name as a quoted conninfo value so that ysql_dump/ysqlsh and libpq read it
+// literally whatever characters it contains.
+std::string DbNameArg(const std::string& db_name) {
+  return "--dbname=dbname=" + pgwrapper::PqEscapeStringConn(db_name);
+}
+
 std::string MakeAllowConnectionsString(const std::string& new_db, bool allow_connections) {
   return Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
@@ -80,7 +86,7 @@ Result<std::string> YsqlDumpRunner::DumpSchemaAsOfTime(
     const std::optional<HybridTime>& read_time) {
   std::vector<std::string> args = {
       "--schema-only", "--serializable-deferrable", "--create", "--include-yb-metadata",
-      "--dump-role-checks", db_name};
+      "--dump-role-checks", DbNameArg(db_name)};
   if (read_time.has_value()) {
     args.push_back("--read-time=" + std::to_string(read_time->GetPhysicalValueMicros()));
   }
@@ -158,7 +164,7 @@ Result<std::string> YsqlshRunner::ExecuteSqlScript(
     args.push_back("--username=" + connect_as_user);
   }
   if (!connect_to_database.empty()) {
-    args.push_back("--dbname=" + connect_to_database);
+    args.push_back(DbNameArg(connect_to_database));
   }
   return this->Run(args);
 }
