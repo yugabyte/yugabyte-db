@@ -123,7 +123,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
           }
           Provider provider = Util.getSingleProvider(cluster);
           String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
-          // JWKS is a tserver gflag; master pods neither need the files nor have a place for them.
+          // Only the tserver flags reference the JWKS files.
           List<NodeDetails> tserverNodes =
               universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
                   .filter(n -> n.isActive() && n.isTserver)

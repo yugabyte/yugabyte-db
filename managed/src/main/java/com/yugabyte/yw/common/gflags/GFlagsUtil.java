@@ -692,7 +692,7 @@ public class GFlagsUtil {
 
   private static String getRemoteGFlagFilesPath(@Nullable String providerUUID) {
     if (providerUUID == null) {
-      return CommonUtils.DEFAULT_YB_HOME_DIR + GFLAG_REMOTE_FILES_PATH;
+      return getYbHomeDir(null) + GFLAG_REMOTE_FILES_PATH;
     }
     return getRemoteGFlagFilesPath(Provider.getOrBadRequest(UUID.fromString(providerUUID)));
   }
