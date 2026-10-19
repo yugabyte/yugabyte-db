@@ -43,6 +43,12 @@ describe('getDevUserTags', () => {
     ]);
   });
 
+  it('accepts the escaped value the API returns for an overridden key', () => {
+    expect(getDevUserTags(config('true', '[\\"test:test\\"]'))).toEqual([
+      { name: 'test', value: 'test' }
+    ]);
+  });
+
   it('ignores malformed values', () => {
     expect(getDevUserTags(config('true', 'not json'))).toEqual([]);
     expect(getDevUserTags(config('true', '{"name":"a","value":"b"}'))).toEqual([]);

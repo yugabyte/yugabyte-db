@@ -15,11 +15,17 @@ export const getDevUserTags = (runtimeConfigs?: RunTimeConfig): InstanceTag[] =>
   const getValue = (key: string) =>
     runtimeConfigs?.configEntries?.find((c: RunTimeConfigEntry) => c.key === key)?.value;
   if (getValue(RuntimeConfigKey.IS_TAGS_ENFORCED) !== 'true') return [];
+  const raw = getValue(RuntimeConfigKey.DEFAULT_DEV_TAGS) ?? '[]';
   let parsed: unknown;
   try {
-    parsed = JSON.parse(getValue(RuntimeConfigKey.DEFAULT_DEV_TAGS) ?? '[]');
+    parsed = JSON.parse(raw);
   } catch {
-    return [];
+    try {
+      // Values set through the API come back with their quotes escaped: [\"k:v\"].
+      parsed = JSON.parse(JSON.parse(`"${raw}"`));
+    } catch {
+      return [];
+    }
   }
   if (!Array.isArray(parsed)) return [];
   return parsed
