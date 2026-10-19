@@ -68,6 +68,7 @@ class CountingVectorIndex : public DocVectorIndex {
   Result<DocVectorIndexViewPtr> CreateImmutableView() override {
     LOG(FATAL) << "Unexpected call";
   }
+  size_t DefaultChunkCapacity() const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
       Slice, const vector_index::SearchOptions&, bool, DocVectorIndexReverseMappingReader&)
       override {

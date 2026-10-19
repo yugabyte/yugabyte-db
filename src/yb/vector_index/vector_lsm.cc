@@ -72,6 +72,20 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
 DEFINE_RUNTIME_uint64(vector_index_compaction_always_include_size_threshold, 64_MB,
     "Always include chunks of smaller or equal size in a compaction by size ratio.");
 
+DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
+    "Number of vectors in a vector index mutable chunk, the in-memory chunk new vectors are "
+    "inserted into. The chunk takes the smaller of this and the number of vectors that fit into "
+    "`vector_index_initial_chunk_memstore_size_mb`; 0 means no limit by the number of vectors, "
+    "and with both at 0 a chunk is sized to the batch inserted into it. An insert that "
+    "specifies its own chunk size, as backfill does, uses that instead. A single insert batch "
+    "with more vectors gets a chunk of its own size.");
+
+DEFINE_RUNTIME_uint64(vector_index_initial_chunk_memstore_size_mb, 256,
+    "In-memory size in megabytes of a vector index mutable chunk, converted to a number of "
+    "vectors from the index's per-vector memory estimate. 0 means no limit. An insert that "
+    "specifies its own chunk size, as backfill does, uses that instead. A single insert batch "
+    "that does not fit gets a chunk of its own size.");
+
 DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_mem_store_size_mb, 0,
     "Maximum in-memory size in megabytes for a single output chunk built during Vector LSM "
     "compaction. 0 means no limit (single output chunk). When non-zero, this flag takes priority "
@@ -1513,12 +1527,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     std::lock_guard lock(mutex_);
     RETURN_NOT_OK(failed_status_);
 
-    size_t chunk_size = std::max(entries.size(), context.chunk_size);
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk(chunk_size, context.reservation_mode));
+      RETURN_NOT_OK(CreateNewMutableChunk(entries.size(), context));
     }
     if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
-      RETURN_NOT_OK(RollChunk(chunk_size, context.reservation_mode));
+      RETURN_NOT_OK(RollChunk(entries.size(), context));
       RSTATUS_DCHECK(
           mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
           RuntimeError, "Failed to register insert into a new mutable chunk");
@@ -2059,10 +2072,11 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::RollChunk(
-    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
-  VLOG_WITH_PREFIX_AND_FUNC(2) << "min_vectors: " << min_vectors;
+    size_t num_entries, const VectorLSMInsertContext& context) {
+  VLOG_WITH_PREFIX_AND_FUNC(2)
+      << "num_entries: " << num_entries << ", chunk_size: " << context.chunk_size;
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk(min_vectors, reservation_mode);
+  return CreateNewMutableChunk(num_entries, context);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2079,10 +2093,19 @@ size_t VectorLSM<Vector, DistanceResult>::EstimateNumVectorsForBytes(size_t byte
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::DefaultChunkCapacity() const {
+  const size_t max_vectors = FLAGS_vector_index_initial_chunk_size;
+  const size_t max_vectors_for_memory =
+      EstimateNumVectorsForBytes(FLAGS_vector_index_initial_chunk_memstore_size_mb * 1_MB);
+  return max_vectors && max_vectors_for_memory
+      ? std::min(max_vectors, max_vectors_for_memory)
+      : std::max(max_vectors, max_vectors_for_memory);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr>
 VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
-    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const {
-  auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
+    size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
   auto index = options_.vector_index_traits->Create(FactoryMode::kCreate);
@@ -2096,15 +2119,22 @@ VectorLSM<Vector, DistanceResult>::CreateVectorIndex(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(
-    size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << "min_vectors: " << min_vectors;
+    size_t num_entries, const VectorLSMInsertContext& context) {
+  const auto capacity = std::max(
+      num_entries, context.chunk_size ? context.chunk_size : DefaultChunkCapacity());
+  VLOG_WITH_PREFIX_AND_FUNC(1)
+      << "num_entries: " << num_entries << ", chunk_size: " << context.chunk_size
+      << ", capacity: " << capacity;
   VectorIndexPtr index;
+  // Only an empty chunk's index can be reused: DoFlush hands a chunk's index over to the
+  // immutable chunk being saved when the chunk has entries (see MutableChunk::Immutate).
   if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
-      mutable_chunk_->index->Capacity() >= min_vectors) {
+      mutable_chunk_->index->Capacity() >= capacity) {
+    // Not reachable with the current code.
     VLOG_WITH_PREFIX_AND_FUNC(2) << "reusing index of " << AsString(*mutable_chunk_);
     index = std::move(mutable_chunk_->index);
   } else {
-    index = VERIFY_RESULT(CreateVectorIndex(min_vectors, reservation_mode));
+    index = VERIFY_RESULT(CreateVectorIndex(capacity, context.reservation_mode));
   }
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
@@ -2801,8 +2831,11 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     while (input_it.Valid()) {
       VectorIndexPtr merged_index;
       if (num_vectors_per_chunk == 0) {
-        // Frontiers-only input: walk all chunks to accumulate frontiers, no index to merge.
-        while (input_it.Next()) {}
+        // input_size is 0, so no input chunk holds a vector. Next() walks all remaining
+        // chunks to accumulate their frontiers and must find nothing.
+        const bool has_vectors = input_it.Next();
+        RSTATUS_DCHECK(
+            !has_vectors, IllegalState, "Merge input has vectors, but none were counted");
       } else {
         merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
             num_vectors_per_chunk, rocksdb::Cache::ReservationMode::kAlways));
@@ -2813,8 +2846,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         }
       }
 
-      const auto num_vectors_merged = merged_index ? merged_index->Size() : 0;
-      LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << num_vectors_merged << "]";
+      LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: "
+                            << (merged_index ? merged_index->Size() : 0) << "]";
 
       // If nothing got merged into the index, probably all vectors are read or are outdated.
       // But the chunk may still be required to not lose the merged frontiers.
@@ -2822,6 +2855,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
       if (!merged_index || merged_index->Size() == 0) {
         // The expectation here is that input iterator is already at the end.
         RSTATUS_DCHECK(!input_it.Valid(), IllegalState, "Input iterator must be at the end");
+        // A frontiers-only output chunk needs no index, and an empty one would keep its
+        // reservation for as long as the chunk lives.
+        merged_index.reset();
       } else {
         // Check shutting down in progress before saving new vector index on disk.
         RETURN_NOT_OK(lsm_.RUNNING_STATUS());

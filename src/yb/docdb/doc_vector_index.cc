@@ -47,9 +47,6 @@
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
 
-DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
-    "Number of vector in initial vector index chunk");
-
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
     "Time (microseconds) that operations spent converting list of vector ids to ybctids.");
@@ -389,7 +386,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .storage_dir = storage_dir,
       .vector_index_traits = VERIFY_RESULT((GetVectorLSMTraits<Vector, DistanceResult>(
           block_cache_, options_, mem_tracker_))),
-      .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
@@ -434,6 +430,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     return lsm_.EstimateNumVectorsForBytes(bytes_limit);
+  }
+
+  size_t DefaultChunkCapacity() const override {
+    return lsm_.DefaultChunkCapacity();
   }
 
   Result<DocVectorIndexSearchResult> Search(

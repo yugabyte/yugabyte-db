@@ -54,6 +54,8 @@ DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
+DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_task_size);
 
 METRIC_DEFINE_entity(table);
@@ -222,6 +224,8 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+    // Mutable chunks are sized by the vector count each test opens its LSM with.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
     ANNOTATE_UNPROTECTED_WRITE(
         FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
@@ -479,6 +483,8 @@ Status VectorLSMTestBase::OpenVectorLSM(
         test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
   }
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = vectors_per_chunk;
+
   vector_index::HNSWOptions hnsw_options = {
     .dimensions = dimensions,
     .distance_kind = distance_kind,
@@ -488,7 +494,6 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .storage_dir = dir,
     .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
         block_cache_, hnsw_options, mem_tracker))),
-    .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
@@ -1660,6 +1665,187 @@ TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
   ASSERT_GT(expected_output_chunks, 1);
 }
 
+// Runs `action` and returns the capacity of every vector index it asked a backend to reserve,
+// before any rounding by the backend.
+Result<std::vector<size_t>> CollectReservedCapacities(const std::function<Status()>& action) {
+  std::mutex capacities_mutex;
+  std::vector<size_t> capacities;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorIndex::Reserve:NumVectors",
+      [&capacities_mutex, &capacities](void* arg) {
+        std::lock_guard lock(capacities_mutex);
+        capacities.push_back(*static_cast<size_t*>(arg));
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  RETURN_NOT_OK(action());
+
+  std::lock_guard lock(capacities_mutex);
+  return capacities;
+}
+
+// Compacts `lsm` and returns the capacity of every index the compaction reserved. When the input
+// runs out exactly at a chunk boundary this includes one index that receives no vectors and is
+// discarded.
+Result<std::vector<size_t>> CompactAndCollectReservedCapacities(FloatVectorLSM& lsm) {
+  return CollectReservedCapacities([&lsm] { return lsm.Compact(/* wait = */ true); });
+}
+
+// Chunked compaction sizes every output chunk from its mem-store budget, but VectorLSM raised
+// that number to vector_index_initial_chunk_size when it created the index. The output chunk
+// *count* stays correct either way, which is why the other chunked compaction tests do not catch
+// it.
+TEST_P(VectorLSMTest, CompactionChunkCapacityRespectsMemStoreLimit) {
+  constexpr size_t kDimensions = 1024;
+  // Must allow more vectors than the mem-store budget does, otherwise the test is vacuous.
+  constexpr size_t kVectorsPerChunk = 2048;
+  constexpr size_t kMemStoreLimitMb = 1;
+  constexpr size_t kNumInputChunks = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
+
+  const size_t max_vectors_per_output_chunk =
+      lsm.EstimateNumVectorsForBytes(kMemStoreLimitMb * 1_MB);
+  ASSERT_GT(max_vectors_per_output_chunk, 0);
+  ASSERT_LT(max_vectors_per_output_chunk, kVectorsPerChunk);
+
+  const size_t vectors_per_input_chunk =
+      max_vectors_per_output_chunk + std::max<size_t>(max_vectors_per_output_chunk / 4, 1);
+  for (size_t i = 0; i < kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, vectors_per_input_chunk));
+  }
+  ASSERT_EQ(kNumInputChunks, lsm.NumImmutableChunks());
+
+  auto capacities = ASSERT_RESULT(CompactAndCollectReservedCapacities(lsm));
+  ASSERT_FALSE(capacities.empty()) << "Compaction created no output chunk";
+  LOG(INFO) << "Compaction output chunk capacities: " << AsString(capacities)
+            << ", mem-store budget allows " << max_vectors_per_output_chunk << " vectors";
+  // Every index is sized by the budget, not raised to vector_index_initial_chunk_size.
+  for (auto capacity : capacities) {
+    ASSERT_EQ(capacity, max_vectors_per_output_chunk);
+  }
+}
+
+// Without a mem-store budget the single output chunk takes the whole input, so it must be sized
+// for exactly the input rather than raised to vector_index_initial_chunk_size.
+TEST_P(VectorLSMTest, CompactionChunkCapacityWithoutMemStoreLimit) {
+  constexpr size_t kDimensions = 8;
+  // Larger than the compaction input, otherwise raising to it would change nothing.
+  constexpr size_t kVectorsPerChunk = 2048;
+  constexpr size_t kVectorsPerInputChunk = 100;
+  constexpr size_t kNumInputChunks = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
+  for (size_t i = 0; i < kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kVectorsPerInputChunk));
+  }
+  ASSERT_EQ(kNumInputChunks, lsm.NumImmutableChunks());
+
+  auto capacities = ASSERT_RESULT(CompactAndCollectReservedCapacities(lsm));
+  ASSERT_FALSE(capacities.empty()) << "Compaction created no output chunk";
+  for (auto capacity : capacities) {
+    ASSERT_EQ(capacity, kNumInputChunks * kVectorsPerInputChunk);
+  }
+}
+
+// When the merge filter drops every vector, compaction outputs a single chunk that only carries
+// the frontiers. It must not keep the empty index it merged into, which holds its full capacity
+// for as long as the chunk lives.
+TEST_P(VectorLSMTest, CompactionToNoVectorsKeepsNoIndex) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumEntries = 1000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  SetMergeFilter(storage::FilterDecision::kDiscard);
+
+  auto mem_tracker = MemTracker::CreateTracker("vector_lsm_compaction_to_no_vectors");
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kNumEntries, vector_index::DistanceKind::kL2Squared, mem_tracker));
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntries));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_EQ(0, mem_tracker->consumption());
+}
+
+// A new mutable chunk takes the insert's own chunk size when it has one, as backfill does, and
+// otherwise the smaller of vector_index_initial_chunk_size and the vectors that fit into
+// vector_index_initial_chunk_memstore_size_mb, either of which 0 disables. A batch larger than
+// that gets a chunk of its own size.
+TEST_P(VectorLSMTest, MutableChunkCapacity) {
+  constexpr size_t kDimensions = 1024;
+  constexpr size_t kMemLimitMb = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  // Vectors that fit into kMemLimitMb. It depends on the backend's per-vector estimate, not on the
+  // flags, so any LSM of these dimensions gives it.
+  size_t vectors_for_mem_limit;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk = */ 0));
+    vectors_for_mem_limit = lsm.EstimateNumVectorsForBytes(kMemLimitMb * 1_MB);
+  }
+  // The cases below assume the memory limit falls between their batch and chunk sizes.
+  ASSERT_GT(vectors_for_mem_limit, 100);
+  ASSERT_LT(vectors_for_mem_limit, 300);
+
+  struct Case {
+    std::string name;
+    size_t max_vectors;
+    size_t mem_limit_mb;
+    size_t chunk_size;
+    size_t batch_size;
+    size_t expected_capacity;
+  };
+  const std::vector<Case> cases = {
+    {"memory limit below count limit", 100000, kMemLimitMb, 0, 10, vectors_for_mem_limit},
+    {"count limit below memory limit", 100, kMemLimitMb, 0, 10, 100},
+    {"no count limit", 0, kMemLimitMb, 0, 10, vectors_for_mem_limit},
+    {"no memory limit", 1000, 0, 0, 10, 1000},
+    {"no limits", 0, 0, 0, 10, 10},
+    {"insert chunk size below the default", 100000, kMemLimitMb, 50, 10, 50},
+    {"batch above the default", 100000, kMemLimitMb, 0, 300, 300},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = c.mem_limit_mb;
+
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, c.max_vectors));
+
+    auto entries = RandomEntries(kDimensions, c.batch_size);
+    TestFrontiers frontiers(entries);
+    auto capacities = ASSERT_RESULT(CollectReservedCapacities([&] {
+      return lsm.Insert(entries, { .frontiers = &frontiers, .chunk_size = c.chunk_size });
+    }));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+    ASSERT_EQ(capacities, std::vector<size_t>{c.expected_capacity});
+  }
+}
+
 TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
   constexpr size_t kCacheCapacity = 8_MB;
   const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
@@ -1822,7 +2008,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   auto mem_tracker = MemTracker::CreateTracker("vector_lsm_num_vectors_for_bytes");
 
   FloatVectorLSM lsm;
-  // The InsertContext below sizes the mutable chunk; the default chunk capacity is just a floor.
+  // The InsertContext below sizes the mutable chunk.
   ASSERT_OK(OpenVectorLSM(
       lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared, mem_tracker));
 

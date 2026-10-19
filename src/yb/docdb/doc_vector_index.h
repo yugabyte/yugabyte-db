@@ -176,6 +176,9 @@ class DocVectorIndex {
   // rather than vector count.
   virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
 
+  // Capacity of a new mutable chunk when the insert does not specify one.
+  virtual size_t DefaultChunkCapacity() const = 0;
+
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;

@@ -28,6 +28,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -142,6 +143,8 @@ class UsearchIndex :
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads,
       rocksdb::Cache::ReservationMode reservation_mode) override {
+    TEST_SYNC_POINT_CALLBACK("VectorIndex::Reserve:NumVectors", &num_vectors);
+
     // Reserve block cache space before allocating the index to reject the operation in
     // strict mode without first allocating the memory it is intended to control.
     RETURN_NOT_OK(this->ReserveBlockCacheSpace(
