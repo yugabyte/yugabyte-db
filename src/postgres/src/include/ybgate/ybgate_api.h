@@ -278,6 +278,17 @@ extern YbgStatus YbgCheckUsermap(const char *usermap_name, const char *pg_role,
 								 const char *auth_user, bool case_insensitive,
 								 bool *matched);
 
+/*-----------------------------------------------------------------------------
+ * GUC Conf
+ *-----------------------------------------------------------------------------
+ */
+
+extern YbgStatus YbgResolveGucValue(const char *name, const char *value,
+									const char **canonical);
+
+extern YbgStatus YbGetConfigFileValues(const char *config_file, const char **names,
+										int nnames, const char **values);
+
 #ifdef __cplusplus
 }
 #endif
