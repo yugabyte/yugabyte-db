@@ -67,14 +67,18 @@ bool YBCIsDistTraceActive();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);
 YbcOtelSpanContext YBCGetValidSpanContext(const char* traceparent);
 void YBCDestroySpanContext(YbcOtelSpanContext span_context);
+YbcOtelSpanContext YBCCopySpanContext(YbcOtelSpanContext span_context);
+bool YBCIsSpanContextSampled(YbcOtelSpanContext span_context);
 void YBCDistTraceStartRootSpan(
-    const char* query_string, YbcOtelSpanContext span_ctx, YbcPgOid db_oid, YbcPgOid user_id);
+    const char* query_string, YbcOtelSpanContext parent_span_ctx, YbcPgOid db_oid,
+    YbcPgOid user_id);
 void YBCDistTraceStartSpan(const char* op_name);
 void YBCDistTraceSetCurrSpanAttrUint64(const char* key, uint64_t value);
 void YBCDistTraceSetCurrSpanAttrStr(const char* key, const char* value);
 void YBCDistTraceEndSpan();
 bool YBCDistTraceIsRootSpan();
 void YBCDistTraceClearStack();
+bool YBCDistTraceClaimSampleDraw();
 
 YbcOtelNodeSpan YBCDistTraceCreateNodeSpan(const char* op_name);
 void YBCDistTraceNodeSpanPushScope(YbcOtelNodeSpan node_span);
