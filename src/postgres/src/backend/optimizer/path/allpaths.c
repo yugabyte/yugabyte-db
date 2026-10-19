@@ -149,7 +149,8 @@ static void generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 										 List *all_child_pathkeys);
 static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
 												   RelOptInfo *rel,
-												   Relids required_outer);
+												   Relids required_outer,
+												   Relids yb_batched_outer);
 static void accumulate_append_subpath(Path *path,
 									  List **subpaths,
 									  List **special_subpaths);
@@ -192,6 +193,8 @@ static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
 
 /* YB declarations */
 static int	ybCmpRelOptInfo(const void *p1, const void *p2);
+static bool yb_path_batches_exactly(Path *path, Relids batched_outer);
+static List *yb_add_batched_ppi(List *ppis, ParamPathInfo *ppi);
 
 
 /*
@@ -1433,6 +1436,12 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	ListCell   *l;
 	double		partial_rows = -1;
 
+	/* YB */
+	bool		yb_batched_appends = (yb_enable_base_scans_cost_model &&
+									  IS_SIMPLE_REL(rel) &&
+									  IS_PARTITIONED_REL(rel));
+	List	   *yb_all_child_batched_ppis = NIL;
+
 	/* If appropriate, consider parallel append */
 	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
 
@@ -1581,6 +1590,15 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 											   childouter);
 				}
 			}
+
+			/*
+			 * YB: A path that batches outer rels has a parameterization of
+			 * its own; see the batched Append paths below.
+			 */
+			if (yb_batched_appends && YB_PATH_NEEDS_BATCHED_RELS(childpath))
+				yb_all_child_batched_ppis =
+					yb_add_batched_ppi(yb_all_child_batched_ppis,
+									   childpath->param_info);
 		}
 	}
 
@@ -1697,6 +1715,56 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 									 all_child_pathkeys);
 
 	/*
+	 * YB: Under the cost-based optimizer the Append paths below take no
+	 * batched child path, and a batched nested loop needs an inner Append
+	 * whose children all batch the same outer rels.  So build Append paths
+	 * for each batched parameterization seen among the child rels here, the
+	 * same way.  Build them first, so that they precede unbatched ones of
+	 * equal cost in the path queue, as batched index paths do (see
+	 * get_join_index_paths).  Only a partitioned table or partition gets
+	 * them, because create_append_path records the batching only for one of
+	 * those.
+	 *
+	 * Legacy costing keeps the single Append: there a batched path costs the
+	 * same as its unbatched equivalent and comes first, so the loop below
+	 * takes it.  Building the unbatched Append as well would let a classic
+	 * nested loop with Memoize replace other joins in legacy plans.
+	 */
+	foreach(l, yb_all_child_batched_ppis)
+	{
+		ParamPathInfo *ppi = (ParamPathInfo *) lfirst(l);
+		Relids		required_outer = ppi->ppi_req_outer;
+		Relids		batched_outer = ppi->yb_ppi_req_outer_batched;
+		ListCell   *lcr;
+
+		subpaths = NIL;
+		subpaths_valid = true;
+		foreach(lcr, live_childrels)
+		{
+			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
+			Path	   *subpath = NULL;
+
+			if (childrel->pathlist != NIL)
+				subpath = get_cheapest_parameterized_child_path(root,
+																childrel,
+																required_outer,
+																batched_outer);
+			if (subpath == NULL)
+			{
+				subpaths_valid = false;
+				break;
+			}
+			accumulate_append_subpath(subpath, &subpaths, NULL);
+		}
+
+		if (subpaths_valid)
+			add_path(rel, (Path *)
+					 create_append_path(root, rel, subpaths, NIL,
+										NIL, required_outer, 0, false,
+										-1));
+	}
+
+	/*
 	 * Build Append paths for each parameterization seen among the child rels.
 	 * (This may look pretty expensive, but in most cases of practical
 	 * interest, the child rels will expose mostly the same parameterizations,
@@ -1731,7 +1799,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 
 			subpath = get_cheapest_parameterized_child_path(root,
 															childrel,
-															required_outer);
+															required_outer,
+															NULL);	/* YB */
 			if (subpath == NULL)
 			{
 				/* failed to make a suitable path for this child */
@@ -2082,10 +2151,16 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
  *		parameterization.
  *
  * Returns NULL if unable to create such a path.
+ *
+ * YB: Under the cost-based optimizer, the path must also batch exactly the
+ * outer rels in yb_batched_outer, none if it is NULL.  A batched path is never
+ * reparameterized: reparameterize_path would give it an unbatched
+ * ParamPathInfo.
  */
 static Path *
 get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
-									  Relids required_outer)
+									  Relids required_outer,
+									  Relids yb_batched_outer)
 {
 	Path	   *cheapest;
 	ListCell   *lc;
@@ -2101,7 +2176,8 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
 											  TOTAL_COST,
 											  false);
 	Assert(cheapest != NULL);
-	if (bms_equal(PATH_REQ_OUTER(cheapest), required_outer))
+	if (bms_equal(PATH_REQ_OUTER(cheapest), required_outer) &&
+		yb_path_batches_exactly(cheapest, yb_batched_outer))
 		return cheapest;
 
 	/*
@@ -2119,6 +2195,12 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
 
 		/* Can't use it if it needs more than requested parameterization */
 		if (!bms_is_subset(PATH_REQ_OUTER(path), required_outer))
+			continue;
+
+		/* YB: Nor if its batching differs, or if batched and not exact */
+		if (!yb_path_batches_exactly(path, yb_batched_outer) ||
+			(yb_batched_outer != NULL &&
+			 !bms_equal(PATH_REQ_OUTER(path), required_outer)))
 			continue;
 
 		/*
@@ -5368,6 +5450,42 @@ ybTraceCheapestPaths(RelOptInfo *rel, char *msg)
 
 #undef YB_UID_STR_WRITE
 #undef YB_UID_STR
+
+/*
+ * yb_path_batches_exactly
+ *		Whether path batches exactly the outer rels in batched_outer, none if
+ *		batched_outer is NULL.  Always true under legacy costing, where an
+ *		Append takes a child path regardless of its batching.
+ */
+static bool
+yb_path_batches_exactly(Path *path, Relids batched_outer)
+{
+	return (!yb_enable_base_scans_cost_model ||
+			bms_equal(YB_PATH_REQ_OUTER_BATCHED(path), batched_outer));
+}
+
+/*
+ * yb_add_batched_ppi
+ *		Add ppi to ppis unless ppis already has one with the same outer rels
+ *		and batched outer rels.
+ */
+static List *
+yb_add_batched_ppi(List *ppis, ParamPathInfo *ppi)
+{
+	ListCell   *lc;
+
+	foreach(lc, ppis)
+	{
+		ParamPathInfo *existing = (ParamPathInfo *) lfirst(lc);
+
+		if (bms_equal(existing->ppi_req_outer, ppi->ppi_req_outer) &&
+			bms_equal(existing->yb_ppi_req_outer_batched,
+					  ppi->yb_ppi_req_outer_batched))
+			return ppis;
+	}
+
+	return lappend(ppis, ppi);
+}
 
 /*****************************************************************************
  *			DEBUG SUPPORT
