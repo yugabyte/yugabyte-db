@@ -91,7 +91,8 @@ Result<ReplicationInfoPB> CatalogManagerUtil::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table,
     const std::shared_ptr<const YsqlTablespaceManager>
         tablespace_manager,
-    const ReplicationInfoPB& cluster_replication_info) {
+    const ReplicationInfoPB& cluster_replication_info,
+    IncludeInvalidTablespaces include_invalid) {
   {
     auto table_lock = table->LockForRead();
     // Check that the replication info is present and is valid (could be set to invalid null value
@@ -106,7 +107,8 @@ Result<ReplicationInfoPB> CatalogManagerUtil::GetTableReplicationInfo(
 
   // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
-    auto repl_info_opt = VERIFY_RESULT(tablespace_manager->GetTableReplicationInfo(table));
+    auto repl_info_opt =
+        VERIFY_RESULT(tablespace_manager->GetTableReplicationInfo(table, include_invalid));
     if (repl_info_opt) {
       VLOG(3) << "Returning table replication info obtained from pg_tablespace: "
               << repl_info_opt->ShortDebugString() << " for table " << table->id();

@@ -62,7 +62,8 @@ class CatalogManagerUtil {
       const scoped_refptr<const TableInfo>& table,
       const std::shared_ptr<const YsqlTablespaceManager>
           tablespace_manager,
-      const ReplicationInfoPB& cluster_replication_info);
+      const ReplicationInfoPB& cluster_replication_info,
+      IncludeInvalidTablespaces include_invalid = IncludeInvalidTablespaces::kFalse);
 
   // For the given set of descriptors, checks if every tserver does not have an excess tablet leader
   // load given the preferred zones.

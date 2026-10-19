@@ -148,9 +148,13 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) = 0;
 
+  // For callers that act on the placement (create, move, split): fails if the table's tablespace
+  // info is unavailable or failed validation.
   virtual Result<ReplicationInfoPB> GetTableReplicationInfoNoDefault(
       const TableInfoPtr& table) const = 0;
 
+  // For callers that report the placement: returns the tablespace's declared placement even if it
+  // failed validation, and the cluster placement if the lookup fails.
   virtual ReplicationInfoPB GetTableReplicationInfoWithDefault(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;

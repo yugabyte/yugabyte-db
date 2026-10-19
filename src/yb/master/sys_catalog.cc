@@ -81,6 +81,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -1210,7 +1211,9 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
       continue;
     }
     auto& [tablespace_id, replication_info] = *result;
-    const auto& ret = tablespace_map->emplace(tablespace_id, replication_info);
+    const auto& ret = tablespace_map->emplace(
+        tablespace_id,
+        TablespaceReplicationInfo{std::move(replication_info), Status::OK()});
     // This map should not have already had an element associated with this
     // tablespace.
     DCHECK(ret.second);

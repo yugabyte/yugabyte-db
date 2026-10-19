@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <optional>
 #include <unordered_map>
 
 #include "yb/common/common_net.pb.h"
@@ -20,11 +21,23 @@
 
 #include "yb/master/master_fwd.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 namespace master {
+
+// What the master knows about one pg_tablespace row.
+struct TablespaceReplicationInfo {
+  // The tablespace's replica_placement / read_replica_placement, with placement_uuids filled in
+  // from the cluster config. nullopt if the tablespace has no placement options, in which case its
+  // tables use the cluster placement.
+  std::optional<ReplicationInfoPB> replication_info;
+  // Non-OK if replication_info failed master-side validation (e.g. its read-replica
+  // placement_uuid no longer matches a cluster). Tables must not be placed or moved by it, but it
+  // still describes what the tablespace's existing tablets were placed with.
+  Status validation_status;
+};
 
 // Number of default tablespaces created by PG upon startup. Postgres creates 'pg_default'
 // which is the default tablespace associated with tables/indexes unless the user explicitly
@@ -54,8 +67,12 @@ class YsqlTablespaceManager {
   Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<const TableInfo>& table) const;
 
+  // Same result semantics as GetTablespaceReplicationInfo, except that with
+  // IncludeInvalidTablespaces::kTrue an invalid tablespace yields its declared placement instead
+  // of its validation error.
   Result<std::optional<ReplicationInfoPB>> GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const;
+      const scoped_refptr<const TableInfo>& table,
+      IncludeInvalidTablespaces include_invalid = IncludeInvalidTablespaces::kFalse) const;
 
   // Indicates whether we need to wait for the next run of the tablespace background task to know
   // the tablespace information for a table.
@@ -65,6 +82,9 @@ class YsqlTablespaceManager {
   // By default we have 2 tablespaces in the system, pg_default and pg_global. Indicates whether
   // there are any other user created custom tablespaces in the database.
   bool ContainsCustomTablespaces() const;
+
+  static Result<std::optional<ReplicationInfoPB>> ToResult(
+      const TablespaceReplicationInfo& info, IncludeInvalidTablespaces include_invalid);
 
  private:
   // Map to provide the replication info associated with a tablespace.

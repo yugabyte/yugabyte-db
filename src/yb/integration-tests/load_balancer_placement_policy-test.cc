@@ -20,6 +20,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -130,8 +131,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     return count;
   }
 
-  Result<uint32_t> GetLoadOnTserverByTableId(
-      ExternalTabletServer* server, const TableId& table_id) {
+  Result<master::GetTableLocationsResponsePB> GetTableLocations(const TableId& table_id) {
     auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
     master::GetTableLocationsRequestPB req;
     req.mutable_table()->set_table_id(table_id);
@@ -140,6 +140,24 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
     RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
+  // (expected_live_replicas, expected_read_replicas) as advertised in the table's tablet
+  // locations.
+  Result<std::pair<int, int>> GetExpectedReplicas(const TableId& table_id) {
+    auto resp = VERIFY_RESULT(GetTableLocations(table_id));
+    SCHECK_GT(resp.tablet_locations_size(), 0, IllegalState, "No tablet locations");
+    const auto& loc = resp.tablet_locations(0);
+    return std::make_pair(loc.expected_live_replicas(), loc.expected_read_replicas());
+  }
+
+  Result<uint32_t> GetLoadOnTserverByTableId(
+      ExternalTabletServer* server, const TableId& table_id) {
+    auto resp = VERIFY_RESULT(GetTableLocations(table_id));
 
     uint32_t count = 0;
     std::vector<string> replicas;
@@ -1743,6 +1761,12 @@ TEST_F(TablespaceInvalidationTest, TablesInInvalidatedTablespaceAreNotRebalanced
   ASSERT_VECTORS_EQ(
       (vector<int>{1, 1, 1, 1, 0, 0}),
       ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers)));
+
+  // Tablet locations keep advertising the tablespace's declared replica counts (3 live, 1 read
+  // replica), which is what t actually has, rather than the cluster's (3 live, 2 read replicas);
+  // otherwise clients would see the replica set as inconsistent and keep refreshing it.
+  ASSERT_EQ(ASSERT_RESULT(GetExpectedReplicas(table_id)), (std::pair<int, int>{3, 1}));
+  ASSERT_EQ(ASSERT_RESULT(GetExpectedReplicas(table_id_ok)), (std::pair<int, int>{3, 0}));
 
   // Fix the tablespace by naming its read-replica cluster. The balancer resumes and moves t's
   // replica off the blacklisted tserver.
