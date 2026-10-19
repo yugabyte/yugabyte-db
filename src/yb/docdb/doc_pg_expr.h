@@ -15,12 +15,15 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "yb/common/pgsql_protocol.fwd.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/qlexpr/ql_expr.h"
+
+#include "yb/util/dynamic_bitset.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -68,6 +71,9 @@ class DocPgExprExecutor {
   // caller's responsibility to track target expressions added to the executor.
   Result<bool> Exec(
       const dockv::PgTableRow& row, ThreadSafeArena* arena = nullptr, Results* results = nullptr);
+
+  // Returns the columns read by Exec, a bit per projection column, or nullopt if they are unknown.
+  std::optional<DynamicBitSet> ReferencedColumns() const;
 
  private:
   class State;
