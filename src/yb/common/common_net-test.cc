@@ -522,4 +522,21 @@ TEST(TestCloudInfoMatchesPlacementInfo, HandlesSpecificAndWildcardPlacements) {
           { .min_replicas = 1, .placement = "c2.r1.z1" }} }));
 }
 
+TEST(TestPlacementInfoHelpers, MaxNumReplicasAndWildcards) {
+  PlacementInfo no_max{ .replicas = 3, .blocks = {
+      { .min_replicas = 1, .placement = "c1.r1.z1" },
+      { .min_replicas = 1, .placement = "c1.r1.*" }} };
+  ASSERT_FALSE(PlacementInfoHasMaxNumReplicas(no_max.ToPB()));
+
+  PlacementInfo with_max{ .replicas = 3, .blocks = {
+      { .min_replicas = 1, .placement = "c1.r1.z1", .max_replicas = 2 },
+      { .min_replicas = 1, .placement = "c1.r1.z2" }} };
+  ASSERT_TRUE(PlacementInfoHasMaxNumReplicas(with_max.ToPB()));
+
+  ASSERT_FALSE(IsWildcardCloudInfo(MakeCloudInfoPB("c1", "r1", "z1")));
+  ASSERT_TRUE(IsWildcardCloudInfo(MakeCloudInfoPB("c1", "r1", "*")));
+  ASSERT_TRUE(IsWildcardCloudInfo(MakeCloudInfoPB("c1", "*", "*")));
+  ASSERT_TRUE(IsWildcardCloudInfo(CloudInfoPB()));
+}
+
 } // namespace yb
