@@ -763,10 +763,16 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         break;
       }
       // When detecting DDL from catalog DML, eligible pg_class/pg_attribute records fall through
-      // so they can be converted into synthetic DDL records below. All other sys-catalog records
-      // are skipped as before.
-      if (!IsDmlOnPgCatalogTableForDetectingDDL(record) ||
-          !VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record))) {
+      // so they can be converted into synthetic DDL records below. We also allow BEGIN/COMMIT
+      // from sys-catalog tables to fall through too otherwise in some cases, the synthetic DDL
+      // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
+      // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
+      // sent to the walsender.
+      if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+          !(record->row_message().op() == RowMessage_Op_BEGIN ||
+            record->row_message().op() == RowMessage_Op_COMMIT ||
+            (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
+             VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record))))) {
         continue;
       }
     }
