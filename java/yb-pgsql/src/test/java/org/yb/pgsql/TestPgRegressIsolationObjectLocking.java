@@ -44,11 +44,23 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     return 600;
   }
 
-  @Test
-  public void testPgRegress() throws Exception {
+  private void runSchedule(boolean useAllHosts) throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
       "yb_isolation_object_locking_schedule",
-      0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+      0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
+      useAllHosts);
+  }
+
+  @Test
+  public void testPgRegress() throws Exception {
+    runSchedule(false /* useAllHosts */);
+  }
+
+  // Sessions are spread round-robin across tservers, so conflicting sessions acquire object locks
+  // and receive invalidation messages on different nodes.
+  @Test
+  public void testPgRegressAcrossTServers() throws Exception {
+    runSchedule(true /* useAllHosts */);
   }
 }

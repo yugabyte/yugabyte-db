@@ -718,6 +718,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) override;
 
+  void HandleAlterTableTaskFailed(const TableInfo& table) override
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
   // For a table that is currently in PREPARING state, if all its tablets have transitioned to
   // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
   // advanced to the RUNNING state after all of these tasks complete successfully.
@@ -3290,9 +3293,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
-
-  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
-      client::internal::RemoteTabletPtr tablet);
 
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(

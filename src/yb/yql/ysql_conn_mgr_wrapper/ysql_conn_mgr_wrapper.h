@@ -42,6 +42,8 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
   std::string data_dir_;
   std::string pid_file_;
+  std::string pg_data_dir_;
+  std::string log_dir_;
   std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;

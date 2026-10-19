@@ -470,6 +470,21 @@ static inline od_retcode_t od_system_server_start(od_system_t *system,
 			free(server);
 			return NOT_OK_RESPONSE;
 		}
+
+		/*
+		 * YB: like the postmaster, refuse to start conn mgr if be_tls_init()
+		 * rejects the TLS settings.
+		 * od_error() only queues to the logger thread; sleep so it can write
+		 * the error before exit().
+		 */
+		char yb_err[512];
+		if (yb_machine_tls_validate_server_context(
+			    server->tls, yb_err, sizeof(yb_err)) == -1) {
+			od_error(&instance->logger, "server", NULL, NULL,
+				 "could not create SSL context: %s", yb_err);
+			machine_sleep(1000);
+			exit(1);
+		}
 	}
 
 	/* create server io */

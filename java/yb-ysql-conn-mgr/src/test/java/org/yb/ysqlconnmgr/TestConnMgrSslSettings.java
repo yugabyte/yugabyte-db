@@ -20,6 +20,9 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.security.PrivateKey;
@@ -35,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
@@ -380,59 +384,78 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
    * yb_mm_tls_protocol_to_pg_enum() maps to PG_TLS_ANY, and be_tls_init() reads that as "impose no
    * minimum" without reporting anything. ValidatePgSslMinProtocolVersion() in ysql_conn_mgr_conf.cc
    * is what keeps conn mgr from coming up in that state.
-   *
-   * The tserver outlives both children failing, so the restart itself may or may not surface an
-   * error; what has to hold either way is that neither the postmaster nor odyssey is running.
    */
   @Test
   public void testEmptySslMinProtocolVersionBlocksStartup() throws Exception {
+    assertRestartBlocksStartup("ssl_min_protocol_version=''");
+  }
+
+  /*
+   * Each value is valid on its own; be_tls_init() rejects the combination. Conn mgr validates its
+   * SSL context at startup as the postmaster does, so it must refuse to start too.
+   */
+  @Test
+  public void testMinAboveMaxProtocolVersionBlocksStartup() throws Exception {
+    assertRestartBlocksStartup(
+        "ssl_min_protocol_version='TLSv1.3',ssl_max_protocol_version='TLSv1.2'");
+  }
+
+  /* be_tls_init() fails to load a missing CRL file, so neither process may come up. */
+  @Test
+  public void testMissingSslCrlFileBlocksStartup() throws Exception {
+    assertRestartBlocksStartup("ssl_crl_file='" + certsDir() + "/no_such.crl'");
+  }
+
+  /*
+   * Restarts with pgConfCsv and asserts that neither the postmaster nor odyssey stays up. The
+   * tserver outlives both children failing, so the restart itself may or may not surface an
+   * error; what has to hold either way is that neither process is stably running.
+   */
+  private void assertRestartBlocksStartup(String pgConfCsv) throws Exception {
     // Check that the processes are running before the restart.
-    int odysseyPid = getOdysseyPid();
-    int postmasterPid = getPostmasterPid();
+    getOdysseyPid();
+    getPostmasterPid();
     try {
       try {
-        restartWithSslGucs("ssl_min_protocol_version=''");
+        restartWithSslGucs(pgConfCsv);
       } catch (Exception e) {
         // Restart may or may not surface the child failure; the process checks below are the
         // real assertion. Swallow so we always get to them.
         LOG.info("Restart reported failure: {}", e.getMessage());
       }
 
-      // Odyssey: ValidatePgSslMinProtocolVersion() rejects the value at config-generation time
-      // in the wrapper, so the odyssey binary is never exec'd -- getOdysseyPid() must throw.
-      try {
-        getOdysseyPid();
-        fail("Expected Odyssey to be not running");
-      } catch (Exception e) {
-        LOG.info("Odyssey is not running as expected: {}", e.getMessage());
-      }
-
-      // Postmaster: PgWrapper's supervisor re-forks postgres every ~100ms after each FATAL, so
-      // "process exists right now" is racy against the retry cycle. The invariant to assert is
-      // that no single postmaster survives -- sample twice with a gap and require the pid to
-      // either be absent, or differ across samples (churn = not stably up).
-      Integer firstPid = null;
-      try {
-        firstPid = getPostmasterPid();
-      } catch (Exception e) {
-        LOG.info("Postmaster not running on first sample: {}", e.getMessage());
-      }
-      Thread.sleep(2000);
-      Integer secondPid = null;
-      try {
-        secondPid = getPostmasterPid();
-      } catch (Exception e) {
-        LOG.info("Postmaster not running on second sample: {}", e.getMessage());
-      }
-      if (firstPid != null && firstPid.equals(secondPid)) {
-        fail("Expected Postmaster to not stay running, but pid " + firstPid
-            + " persisted across 2s");
-      }
-      LOG.info("Postmaster is not stably running as expected (first={}, second={})",
-          firstPid, secondPid);
+      assertNotStablyRunning("Odyssey", BaseYsqlConnMgr::getOdysseyPid);
+      assertNotStablyRunning("Postmaster", BaseYsqlConnMgr::getPostmasterPid);
     } finally {
       restartWithSslGucs("");
     }
+  }
+
+  /*
+   * The supervisors re-fork a child that exits at startup, so "process exists right now" is racy
+   * against the retry cycle. Sample twice with a gap and require the pid to be absent or to differ
+   * (churn = not stably up).
+   */
+  private void assertNotStablyRunning(String name, Callable<Integer> getPid) throws Exception {
+    Integer firstPid = null;
+    try {
+      firstPid = getPid.call();
+    } catch (Exception e) {
+      LOG.info("{} not running on first sample: {}", name, e.getMessage());
+    }
+    Thread.sleep(2000);
+    Integer secondPid = null;
+    try {
+      secondPid = getPid.call();
+    } catch (Exception e) {
+      LOG.info("{} not running on second sample: {}", name, e.getMessage());
+    }
+    if (firstPid != null && firstPid.equals(secondPid)) {
+      fail("Expected " + name + " to not stay running, but pid " + firstPid
+          + " persisted across 2s");
+    }
+    LOG.info("{} is not stably running as expected (first={}, second={})",
+        name, firstPid, secondPid);
   }
 
   /*
@@ -566,6 +589,22 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartWithSslGucs("");
 
     assertClientCertAccepted(REVOKED_CLIENT_CERT);
+  }
+
+  /*
+   * PostgreSQL opens a relative ssl_crl_file from its data directory, and conn mgr must load the
+   * same file. A tserver's pg_data is <base tmp dir>/<tserver dir>/pg_data, so the path climbs to
+   * the base tmp dir.
+   */
+  @Test
+  public void testRelativeSslCrlFile() throws Exception {
+    Files.copy(Paths.get(certsDir(), "ca.crl"),
+        Paths.get(TestUtils.getBaseTmpDir(), "relative_ca.crl"),
+        StandardCopyOption.REPLACE_EXISTING);
+    restartWithSslGucs("ssl_crl_file='../../relative_ca.crl'");
+
+    assertClientCertRejected(REVOKED_CLIENT_CERT);
+    assertClientCertAccepted(VALID_CLIENT_CERT);
   }
 
   /*

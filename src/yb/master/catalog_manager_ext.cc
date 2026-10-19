@@ -158,7 +158,6 @@ using google::protobuf::RepeatedPtrField;
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
-using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
@@ -167,6 +166,20 @@ namespace {
 Status PrepareVectorIndexesIfNecessary(
     CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
     const LeaderEpoch& epoch);
+
+// Import keeps the snapshot's vector index options, so reject a snapshot with a deprecated backend
+// before the import creates its objects, instead of restoring tablets that fail to open. For YSQL
+// restore and clone, the schema dump has already created the database and its tables by then.
+Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::TABLE) {
+      RETURN_NOT_OK(ValidateVectorIndexBackend(
+          entry.id(), VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()))));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
@@ -960,6 +973,8 @@ Status CatalogManager::DoImportSnapshotMeta(
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
 
+  RETURN_NOT_OK(ValidateSnapshotVectorIndexBackends(snapshot_pb));
+
   bool is_clone = clone_target_namespace_name.has_value();
   bool use_relfilenode =
       UseRelfilenodeForTableMatch(snapshot_pb) && !FLAGS_import_snapshot_using_table_name;
@@ -1085,6 +1100,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -3443,12 +3459,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
       continue;
     }
 
-    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+    LOG(INFO) << "Removing hidden table " << table->name() << " from tablet "
+              << tablet_info->tablet_id();
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-    table->ClearTabletMaps();
+    // Only drop this tablet from the table. A vector index is hosted by every tablet of its indexed
+    // table, and the others may still be retained by a snapshot schedule.
+    auto tablet_lock = tablet_info->LockForWrite();
+    WARN_NOT_OK(
+        table->RemoveTablet(tablet_info->tablet_id()),
+        Format("Failed to remove tablet $0 from $1", tablet_info->tablet_id(), AsString(*table)));
   }
 }
 
@@ -3823,16 +3845,6 @@ Status CatalogManager::GetUDTypeMetadata(
     }
   }
   return Status::OK();
-}
-
-
-Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
-    client::internal::RemoteTabletPtr tablet) {
-  auto ts = tablet->LeaderTServer();
-  if (ts == nullptr) {
-    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
-  }
-  return ts;
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {

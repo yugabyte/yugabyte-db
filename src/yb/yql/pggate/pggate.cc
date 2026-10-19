@@ -32,8 +32,10 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -1315,6 +1317,15 @@ Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& tabl
   return pg_client_.GetTableDiskSize(table_oid);
 }
 
+Result<client::TableSizeInfo> PgApiImpl::GetTablegroupDiskSize(
+    PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated) {
+  const auto tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
+  const auto parent_table_id = is_database_colocated
+      ? GetColocationParentTableId(tablegroup_id)
+      : GetTablegroupParentTableId(tablegroup_id);
+  return pg_client_.GetTableDiskSizeByYbTableId(parent_table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateIndex(const char* database_name,
@@ -1843,6 +1854,11 @@ Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement* handle, int prefetch_size) 
 
 Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).HnswSetReadOptions(ef_search);
+}
+
+Status PgApiImpl::DmlANNBindKeyFilter(
+    PgStatement* handle, std::span<const YbcPgVectorKeyColumn> columns) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindKeyFilter(columns);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
@@ -2724,7 +2740,9 @@ SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
   return pg_session_->ClearState();
 }
 
-bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
+bool PgApiImpl::HasCronLease() const { return tserver_shared_object_.HasCronLease(); }
+
+bool PgApiImpl::CanCronStartJobs() const { return tserver_shared_object_.CanCronStartJobs(); }
 
 Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
   return pg_client_.SetCronLastMinute(last_minute);

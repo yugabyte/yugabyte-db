@@ -39,8 +39,12 @@ delete from variants;
 ------------------------------------------------------------------------------
 -- 100: the bound's collation.  The inner bound (100) and the outer bound
 -- (110) are the two directions; only the outer one reaches the batched nested
--- loop.  "c" and "posix" select the same rows, so any cost difference between
--- them is the estimate's alone.
+-- loop.  120 and 130 read the inner bound descending, where the bounds swap
+-- roles: 120's lower bound stops the merge and 130's upper bound moves its
+-- start.  Their bounds sit where both collations estimate the same inner
+-- rows (12 and 15), inside one 16-row page, so the inner scans cost the same
+-- and the merge rows differ by the clamp alone.  "c" and "posix" select the
+-- same rows, so any cost difference between them is the estimate's alone.
 ------------------------------------------------------------------------------
 insert into variants values
     (100, 'collation, inner bound', 1, 'none',
@@ -59,7 +63,25 @@ insert into variants values
       where o.k >= ''a'' collate "C" order by o.k'),
     (110, 'collation, outer bound', 3, 'posix',
      'select o.k from cln_o o join cln_i i on o.k = i.k
-      where o.k >= ''a'' collate "POSIX" order by o.k');
+      where o.k >= ''a'' collate "POSIX" order by o.k'),
+
+    (120, 'collation, inner bound, desc end', 1, 'none',
+     'select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc'),
+    (120, 'collation, inner bound, desc end', 2, 'c',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k > ''n'' collate "C" order by o.k desc'),
+    (120, 'collation, inner bound, desc end', 3, 'posix',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k > ''n'' collate "POSIX" order by o.k desc'),
+
+    (130, 'collation, inner bound, desc start', 1, 'none',
+     'select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc'),
+    (130, 'collation, inner bound, desc start', 2, 'c',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k < ''p'' collate "C" order by o.k desc'),
+    (130, 'collation, inner bound, desc start', 3, 'posix',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k < ''p'' collate "POSIX" order by o.k desc');
 
 ------------------------------------------------------------------------------
 -- 200: the conditioning ratio.  o.g groups the key 52 rows at a time, so a
@@ -180,10 +202,30 @@ order by gid, vid;
 -- the inner's first key.  Both methods charge those rows to startup, and both
 -- orderings agree: "posix" lands between "c" and no bound, costed without the
 -- clamp and scanning accordingly.
+--
+-- MJ, inner bound read descending, lower bound (120): the merge stops at the
+-- inner's lower bound instead of its upper one, and the clamp follows the
+-- direction, so the row reads as 100's does; a "c=posix" cost tie would mean
+-- the end clamp went back to ascending orders only (#34905).
+--
+-- MJ, inner bound read descending, upper bound (130): the bound moves the
+-- merge's start instead.  The 11 outer rows above it are read and discarded
+-- before the first match by "c" and "posix" alike; the clamp charges them to
+-- startup for "c", while "posix" falls back to the unclamped start as at 100
+-- and carries less startup cost for the same work.  That disagreement is the
+-- expected fallback; a "c=posix" cost tie would mean the start clamp went
+-- back to ascending orders only (#34905).
+--
+-- BNL, inner bound read descending (120, 130): the two bounds are costed
+-- identically and "c" scans the fewest rows, both for 100's reason.  Unlike
+-- 100, "posix" also does less work than no bound: its filter still scans all
+-- 26 inner rows but leaves 12 or 15, which fit in one 16-row page, where
+-- 100's leaves 16, which fill the page, so a second request follows.  The
+-- planner's credit to "posix" over no bound, unearned at 100, is earned here.
 ------------------------------------------------------------------------------
 select gid, grp, method, cost_order, work_order
 from skip_report
-where gid in (100, 110)
+where gid in (100, 110, 120, 130)
 order by gid, method;
 
 ------------------------------------------------------------------------------

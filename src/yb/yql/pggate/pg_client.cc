@@ -1524,20 +1524,28 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Result<client::TableSizeInfo> GetTableDiskSize(
-      const PgObjectId& table_oid) {
+  Result<client::TableSizeInfo> GetTableDiskSizeFromRequest(
+      tserver::PgGetTableDiskSizeRequestPB& req) {
     tserver::PgGetTableDiskSizeResponsePB resp;
-
-    tserver::PgGetTableDiskSizeRequestPB req;
-    table_oid.ToPB(req.mutable_table_id());
-
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableDiskSize,
         req, resp, PggateRPC::kGetTableDiskSize));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
-
     return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSize(
+      const PgObjectId& table_oid) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    table_oid.ToPB(req.mutable_table_id());
+    return GetTableDiskSizeFromRequest(req);
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    req.set_yb_table_id(yb_table_id);
+    return GetTableDiskSizeFromRequest(req);
   }
 
   Result<bool> CheckIfPitrActive() {
@@ -2361,6 +2369,11 @@ Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {
 Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
     const PgObjectId& table_oid) {
   return impl_->GetTableDiskSize(table_oid);
+}
+
+Result<client::TableSizeInfo> PgClient::GetTableDiskSizeByYbTableId(
+    const TableId& yb_table_id) {
+  return impl_->GetTableDiskSizeByYbTableId(yb_table_id);
 }
 
 Status PgClient::InsertSequenceTuple(int64_t db_oid,

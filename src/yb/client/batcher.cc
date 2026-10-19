@@ -830,12 +830,21 @@ void Batcher::Flushed(
     // which outranks the original failure. Restore the original failure for such operations.
     const auto flush_abort_cause =
         transaction ? transaction->batcher_if().FlushAbortCause() : Status::OK();
+    const auto is_aborted_by_flush = [flush_aborted = !flush_abort_cause.ok()](
+        const InFlightOp& op) {
+      return flush_aborted && TransactionError(op.error).value() == TransactionErrorCode::kAborted;
+    };
+    // Restored errors go last, so the first error with the abort cause comes from an RPC that
+    // actually failed: the tserver reports the relation of the first kConflict error to YSQL.
+    // Ops sharing that RPC (e.g. colocated tables) all get its error and can't be told apart here.
     for (auto& op : ops_queue_) {
-      if (!op.error.ok()) {
-        if (!flush_abort_cause.ok() &&
-            TransactionError(op.error).value() == TransactionErrorCode::kAborted) {
-          op.error = flush_abort_cause;
-        }
+      if (!op.error.ok() && !is_aborted_by_flush(op)) {
+        CombineError(op);
+      }
+    }
+    for (auto& op : ops_queue_) {
+      if (!op.error.ok() && is_aborted_by_flush(op)) {
+        op.error = flush_abort_cause;
         CombineError(op);
       }
     }
@@ -897,6 +906,10 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     }
   }
 
+  if (!rpc.HasResponse()) {
+    return;
+  }
+
   // Check individual row errors.
   for (const auto& err_pb : rpc.resp().per_row_errors()) {
     // TODO: handle case where we get one of the more specific TS errors
@@ -945,6 +958,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
                                     const CollectedErrors& errors) {
   SetDeadline(failed_batcher->deadline());
   SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
+  SetBuffersHolder(failed_batcher->buffers_holder_);
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();

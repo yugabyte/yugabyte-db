@@ -32,6 +32,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -798,5 +799,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         TaskType.AddNodeToUniverse,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testAddNodeIsAbortable() {
+    // The task list reports abortable from the @Abortable annotation, which gates the Abort button.
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.AddNodeToUniverse));
+    assertTrue(Commissioner.isTaskTypeAbortable(TaskType.RollbackAddNodeToUniverse));
   }
 }

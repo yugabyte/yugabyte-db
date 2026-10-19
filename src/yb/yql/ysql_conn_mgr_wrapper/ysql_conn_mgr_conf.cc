@@ -359,10 +359,11 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
-    {"{%log_dir%}", FLAGS_log_dir},
+    {"{%log_dir%}", log_dir_},
     {"{%log_max_size%}", std::to_string(FLAGS_ysql_conn_mgr_log_max_size)},
     {"{%log_rotate_interval%}", std::to_string(FLAGS_ysql_conn_mgr_log_rotate_interval)},
     {"{%pid_file%}", pid_file_},
+    {"{%yb_data_directory%}", pg_data_dir_},
     {"{%quantiles%}", quantiles_},
     {"{%postgres_host%}", postgres_address_.host()},
     {"{%control_connection_pool_size%}", std::to_string(conf_->control_connection_pool_size)},
@@ -595,12 +596,20 @@ Status YsqlConnMgrConf::UpdateSSLConfigFromYsqlPgConf() {
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
-  ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
+  pg_data_dir_ = JoinPathSegments(data_path, "pg_data");
+  ysql_pgconf_file_ = JoinPathSegments(pg_data_dir_, "ysql_pg.conf");
 
   // Create the log directory if it is not present.
   // This is to handle the case while running the java tests,
   // in which log directory is not created.
   CHECK_OK(env_util::CreateDirIfMissing(Env::Default(), FLAGS_log_dir.c_str()));
+
+  // YB: Connection manager runs in pg_data_dir_, so paths outside it must be absolute.
+  // data_path is already absolute (FsManager rejects relative roots); a relative --log_dir is not.
+  log_dir_ = FLAGS_log_dir;
+  if (!log_dir_.empty() && !log_dir_.starts_with('/')) {
+    CHECK_OK(Env::Default()->Canonicalize(FLAGS_log_dir, &log_dir_));
+  }
 }
 
 void YsqlConnMgrConf::set_yb_tserver_key(uint64_t tserver_key) {

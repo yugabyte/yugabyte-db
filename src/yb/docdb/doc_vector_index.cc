@@ -19,6 +19,8 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -137,16 +139,21 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
   auto hnsw_options = ConvertToHnswOptions(options);
   auto backend = options.hnsw().backend();
   switch (backend) {
-    case HnswBackend::USEARCH: [[fallthrough]];
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, backend, mem_tracker);
-    case HnswBackend::HNSWLIB: [[fallthrough]];
+          block_cache, hnsw_options, mem_tracker);
     case HnswBackend::YB_HNSW_HNSWLIB:
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, backend, mem_tracker);
+          block_cache, hnsw_options, mem_tracker);
+    case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
+    case HnswBackend::DEPRECATED_HNSWLIB:
+      break;
   }
-  FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, backend);
+  return STATUS_FORMAT(
+      NotSupported,
+      "Vector index backend $0 is no longer supported. Roll back to the previous release and drop "
+      "the index before upgrading",
+      HnswBackend_Name(backend));
 }
 
 template<vector_index::IndexableVectorType Vector,
@@ -458,6 +465,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
       .reservation_mode = insert_options.reservation_mode,
+      .chunk_holds = insert_options.chunk_holds,
     };
     RETURN_NOT_OK(lsm_.Insert(lsm_entries, context));
     if (FLAGS_TEST_vector_index_duplicate_inserted_vectors && !lsm_entries.empty()) {
@@ -573,7 +581,14 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.GetFrontiers(kinds);
   }
 
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) override {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) override {
+    if (mode == rocksdb::FrontierModificationMode::kForce) {
+      RETURN_NOT_OK(lsm_.ModifyChunkFrontiers([&frontier](storage::UserFrontiers& frontiers) {
+        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(frontier.op_id());
+        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(frontier.op_id());
+      }));
+    }
     // An empty insert only carries the frontier into the mutable chunk, the following flush
     // persists it. Same shape as the split generation update above.
     ConsensusFrontiers frontiers;
