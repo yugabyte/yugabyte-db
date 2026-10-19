@@ -171,7 +171,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   void set_has_tablet_report_unlocked(bool has_report) REQUIRES(mutex_);
 
   std::optional<int32_t> receiving_full_report_seq_no() const;
-  void set_receiving_full_report_seq_no(int32_t value);
+
+  bool PreCheckTabletReport(const TabletReportPB& report) const;
+
+  void CompleteFullReport(const NodeInstancePB& ts_instance);
 
   bool has_faulty_drive() const;
 

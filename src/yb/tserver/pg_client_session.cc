@@ -973,28 +973,6 @@ using QueryDataPtr = std::shared_ptr<QueryData<Traits>>;
 using ObjectLockQueryDataPtr = QueryDataPtr<ObjectLockQueryTraits>;
 using PerformQueryDataPtr = QueryDataPtr<PerformQueryTraits>;
 
-class AsyncPgTablesQueryResultProvider : public PgTablesQueryListener {
- public:
-  [[nodiscard]] std::future<PgTablesQueryResult> GetTables() {
-    return promise_.get_future();
-  }
-
- private:
-  void Ready(const PgTablesQueryResult& result) override {
-    promise_.set_value(result);
-  }
-
-  std::promise<PgTablesQueryResult> promise_;
-};
-
-[[nodiscard]] std::future<PgTablesQueryResult> GetTablesAsync(
-  PgTableCache& table_cache, std::span<const TableId> table_ids,
-  const PgTableCacheGetOptions& options = {}) {
-  auto provider = std::make_shared<AsyncPgTablesQueryResultProvider>();
-  table_cache.GetTables(table_ids, provider);
-  return provider->GetTables();
-}
-
 template <QueryTraitsType T>
 class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQuery<T>> {
   class PrivateTag {};
@@ -1261,9 +1239,12 @@ class TransactionProvider {
 
   TransactionProvider(
       PgClientSession::TransactionBuilder&& builder,
+      tserver::TSLocalLockManager* ts_lock_manager,
       docdb::ObjectLockOwnerRegistry* lock_owner_registry,
       docdb::ObjectLockSharedState* object_lock_shared_state)
-      : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry),
+      : builder_(std::move(builder)),
+        ts_lock_manager_(ts_lock_manager),
+        lock_owner_registry_(lock_owner_registry),
         object_lock_shared_state_(object_lock_shared_state),
         object_lock_registration_(std::make_shared<ObjectLockRegistration>()) {}
 
@@ -1319,6 +1300,7 @@ class TransactionProvider {
   Result<TransactionMetadata> NextTxnMetaForPlain(
       TransactionFullLocality locality, CoarseTimePoint deadline) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
+    bool new_txn = false;
     if (!next_plain_) {
       VLOG_WITH_FUNC(1) << "requesting new transaction of locality " << locality;
       auto txn = Build(locality, deadline, {});
@@ -1332,6 +1314,7 @@ class TransactionProvider {
       }
       RETURN_NOT_OK(synchronizer.Wait());
       next_plain_.swap(txn);
+      new_txn = true;
     } else {
       VLOG_WITH_FUNC(1) << "trying to reuse existing transaction " << next_plain_->id();
     }
@@ -1339,24 +1322,43 @@ class TransactionProvider {
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
 
-    std::lock_guard lock(object_lock_registration_->mutex);
-    if (object_lock_shared_state_ &&
-        (!object_lock_registration_->guard ||
-         object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
-      object_lock_registration_->guard.reset();
-      object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
-          *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
+    if (new_txn) {
+      std::lock_guard lock(object_lock_registration_->mutex);
+      if (object_lock_shared_state_ &&
+          (!object_lock_registration_->guard ||
+           object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
+        object_lock_registration_->guard.reset();
+        object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+            *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
 
-      next_plain_->RemoteAbortCallback([
+        next_plain_->RemoteAbortCallback([
+            registration_ptr = std::weak_ptr{object_lock_registration_},
+            transaction_id = metadata.transaction_id] {
+          if (auto registration = registration_ptr.lock()) {
+            std::lock_guard lock(registration->mutex);
+            if (registration->guard && registration->guard->txn_id() == transaction_id) {
+              VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
+                                << transaction_id;
+              registration->guard.reset();
+            }
+          }
+        });
+      }
+
+      next_plain_->PromotionCallback([
+          ts_lock_manager = ts_lock_manager_,
+          lock_owner_registry = lock_owner_registry_,
           registration_ptr = std::weak_ptr{object_lock_registration_},
-          transaction_id = metadata.transaction_id] {
+          transaction_id = metadata.transaction_id](TabletId status_tablet) {
         if (auto registration = registration_ptr.lock()) {
           std::lock_guard lock(registration->mutex);
           if (registration->guard && registration->guard->txn_id() == transaction_id) {
-            VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
-                              << transaction_id;
-            registration->guard.reset();
+            lock_owner_registry->UpdateRegistrationStatusTablet(
+                *registration->guard, status_tablet);
           }
+        }
+        if (ts_lock_manager) {
+          ts_lock_manager->UpdateStatusTablet(transaction_id, std::move(status_tablet));
         }
       });
     }
@@ -1403,6 +1405,7 @@ class TransactionProvider {
   }
 
   const PgClientSession::TransactionBuilder builder_;
+  tserver::TSLocalLockManager* ts_lock_manager_ = nullptr;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
   docdb::ObjectLockSharedState* object_lock_shared_state_;
   std::shared_ptr<ObjectLockRegistration> object_lock_registration_;
@@ -1740,7 +1743,7 @@ class PgClientSession::Impl {
         ts_lock_manager_(std::move(lock_manager)),
         object_lock_shared_state_(std::move(object_lock_shared_state)),
         transaction_provider_(
-            std::move(transaction_builder), context_.lock_owner_registry,
+            std::move(transaction_builder), ts_lock_manager_.get(), context_.lock_owner_registry,
             object_lock_shared_state_ ? object_lock_shared_state_->get() : nullptr),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_, pid_)) {}
@@ -2745,10 +2748,15 @@ class PgClientSession::Impl {
       CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    auto tables_future = GetTablesAsync(table_cache(), table_ids);
-    RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
-    RETURN_NOT_OK(precondition_waiter(data->req.sequence_num(), deadline));
-    return DoPerform(tables_future.get(), data, deadline);
+    auto tables_res = table_cache().GetTables(table_ids, deadline);
+    // To avoid waiting by further requests for predecessor make sure request is registered.
+    // In case of table lookup failure request is not going to be processed, so no reasons to wait
+    // for appropriate preconditions till request's deadline.
+    const auto status = precondition_waiter(
+        data->req.sequence_num(), tables_res.ok() ? deadline : CoarseMonoClock::Now());
+    RETURN_NOT_OK(tables_res);
+    RETURN_NOT_OK(status);
+    return DoPerform(*tables_res, data, deadline);
   }
 
   Status DoHandleSharedExchangeQuery(
@@ -2954,8 +2962,20 @@ class PgClientSession::Impl {
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     data->TEST_mock_service = context_.TEST_mock_service;
     const auto& options = data->req.options();
-    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
-              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
+    // Don't promote local txns when requesting local locks on catalog relations.
+    const auto relation_oid = data->req.lock_oid().relation_oid();
+    // Promote txns with global locks to detect potential deadlock. txns for DDLs should
+    // probably be globally replicated anyways to avoid issues if one region goes down.
+    auto locality = IsTableLockTypeGlobal(lock_type) || options.force_global_transaction()
+        ? TransactionFullLocality::Global()
+        : TransactionFullLocality::RegionLocal();
+    if (!locality.IsGlobal() && relation_oid >= kPgFirstNormalObjectId) {
+      locality = GetTargetTransactionLocality(data->req);
+    }
+    VLOG_WITH_PREFIX(3)
+        << "Object lock for relation " << AsString(data->req.lock_oid())
+        << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
@@ -2984,7 +3004,8 @@ class PgClientSession::Impl {
       }
       active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
-      RETURN_NOT_OK(SetupSession(options, deadline, /* arena= */ nullptr));
+      RETURN_NOT_OK(SetupSession(
+          options, deadline, /* arena= */ nullptr, /* in_txn_limit */ {}, locality));
       active_subtxn_id = options.active_sub_transaction_id();
     }
 
@@ -2998,12 +3019,10 @@ class PgClientSession::Impl {
         primary_session_data->transaction || primary_session_kind == PgClientSessionKind::kPlain,
         IllegalState, Format("Expected valid transaction for $0", AsString(primary_session_kind)));
 
-    auto locality = GetTargetTransactionLocality(data->req);
     auto txn_meta_res = primary_session_data->transaction
         ? primary_session_data->transaction->GetMetadata(deadline).get()
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
-    const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
@@ -3705,7 +3724,7 @@ class PgClientSession::Impl {
             ToSteady(CoarseMonoClock::now()) - start_time >= FLAGS_txn_slow_op_threshold_ms * 1ms;
         Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
       }
-    });
+    }, /* buffers_holder= */ data);
     RefreshHistoryRetentionPinFromSharedMemory();
     return Status::OK();
   }
@@ -4132,14 +4151,16 @@ class PgClientSession::Impl {
           txn->isolation(), isolation);
       }
 
-      return options.ddl_mode() && options.ddl_use_regular_transaction_block()
+      return locality.IsGlobal() ||
+             (options.ddl_mode() && options.ddl_use_regular_transaction_block())
                  ? txn->EnsureGlobal(deadline)
                  : Status::OK();
     }
 
     const bool global_required =
         options.force_global_transaction() ||
-        (options.ddl_mode() && options.ddl_use_regular_transaction_block());
+        (options.ddl_mode() && options.ddl_use_regular_transaction_block()) ||
+        locality.IsGlobal();
     if (global_required) {
       locality = TransactionFullLocality::Global();
     }

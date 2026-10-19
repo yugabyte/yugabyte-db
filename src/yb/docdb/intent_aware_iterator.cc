@@ -428,10 +428,32 @@ void IntentAwareIterator::SeekBeforeSubKey(Slice key) {
 
   SeekTriggered();
 
-  SkipFutureRecords<Direction::kBackward>(iter_.SeekBackward(key));
+  // Called after a forward Seek, which may leave either iterator invalid. SeekBackward() treats
+  // an invalid iterator as positioned before the key and would lose records.
+  if (iter_->Valid()) {
+    SkipFutureRecords<Direction::kBackward>(iter_.SeekBackward(key));
+  } else {
+    // Regular bounds are fixed, so an invalid iterator means no records at or after the key.
+    HandleStatus(iter_->status());
+    if (!status_.ok()) {
+      return;
+    }
+    SkipFutureRecords<Direction::kBackward>(iter_->SeekToLast());
+  }
+
   if (intent_iter_->Initialized()) {
+    // The forward Seek may have capped the intent upper bound, so reposition explicitly.
     ResetIntentUpperbound();
-    SeekToSuitableIntent<Direction::kBackward>(intent_iter_.SeekBackward(key));
+    ROCKSDB_SEEK(intent_iter_, key);
+    if (intent_iter_->Valid()) {
+      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
+    } else {
+      HandleStatus(intent_iter_->status());
+      if (!status_.ok()) {
+        return;
+      }
+      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+    }
   }
 
   FillEntry</* kDescending */ true>();

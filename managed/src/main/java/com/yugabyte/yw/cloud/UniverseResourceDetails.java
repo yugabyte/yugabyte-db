@@ -338,6 +338,18 @@ public class UniverseResourceDetails {
     result.instancePricePerHour =
         ocpus * ocpuRate.getPriceDetails().pricePerHour + memGb * memPricePerHour;
 
+    // NVMe is a compute meter (stops with the instance). Families without the meter include the
+    // drives in the OCPU rate.
+    double nvmeTb = OCIPriceUtil.nvmeTerabytes(instanceType);
+    if (nvmeTb > 0) {
+      PriceComponent nvmeRate =
+          context.getPriceComponent(
+              provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode(family));
+      if (nvmeRate != null) {
+        result.instancePricePerHour += nvmeTb * nvmeRate.getPriceDetails().pricePerHour;
+      }
+    }
+
     DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(nodeDetails);
     if (deviceInfo != null
         && deviceInfo.storageType != null

@@ -209,6 +209,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestPackedRow();
   void TestDeleteMarkerWithPackedRow();
   void TestUpdatePackedRow();
+  void TestUpperBoundExcludesIntentAtBound();
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
@@ -1848,6 +1849,65 @@ void DocRowwiseIteratorTest::TestDeleteMarkerWithPackedRow() {
       HybridTime::FromMicros(1100));
 }
 
+// An intent for a whole row has the row's doc key as its key prefix, with no hybrid time suffix,
+// and IntentAwareIterator::SatisfyBounds lets it pass when the upper bound is equal to that doc
+// key. Checks that the bound set by SetUpperBound still excludes such a row and that each row is
+// returned for exactly one range.
+void DocRowwiseIteratorTest::TestUpperBoundExcludesIntentAtBound() {
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  TransactionStatusManagerMock txn_status_manager;
+  const auto txn = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+
+  // Row 1 is written by a transaction which is committed but not applied, so it is present only
+  // as an intent for the whole row.
+  SetCurrentTransactionId(txn);
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(500),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
+  ResetCurrentTransactionId();
+  txn_status_manager.Commit(txn, HybridTime::FromMicros(600));
+
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey2, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row2_c")},
+      });
+
+  DocDBDebugDumpToConsole();
+
+  const auto txn_context =
+      TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection(), doc_read_context(), txn_context, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(2000)), pending_op);
+  ASSERT_OK(iter->InitForTableType(YQL_TABLE_TYPE, Slice(), SkipSeek::kTrue));
+
+  auto fetch_range = [&](Slice lower_bound, Slice upper_bound) -> Result<std::string> {
+    iter->SetUpperBound(upper_bound);
+    iter->SeekToDocKeyPrefix(lower_bound);
+    return ConvertIteratorRowsToString(iter.get(), IteratorMode::kGeneric, projection());
+  };
+
+  const std::string kRow1 =
+      R"#({string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"})#" "\n";
+  const std::string kRow2 = R"#({string:"row2",int64:22222,string:"row2_c",null,null})#" "\n";
+
+  // Row 1 belongs to the range which starts at its doc key, and only to it.
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), kEncodedDocKey1)), "");
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey1, kEncodedDocKey2)), kRow1);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey2, Slice())), kRow2);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), Slice())), kRow1 + kRow2);
+}
+
 void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
@@ -2504,6 +2564,10 @@ TEST_F(DocRowwiseIteratorTest, DeleteMarkerWithPackedRow) {
 
 TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
   TestUpdatePackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, UpperBoundExcludesIntentAtBound) {
+  TestUpperBoundExcludesIntentAtBound();
 }
 
 TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {

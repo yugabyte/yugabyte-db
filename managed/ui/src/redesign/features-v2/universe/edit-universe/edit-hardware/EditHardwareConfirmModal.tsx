@@ -48,6 +48,7 @@ import {
 } from './ReviewHardwareChangesModal';
 import {
   NormalizedStorage,
+  effectiveMasterDeviceInfo,
   getK8sResizeOptions,
   normalizeClusterStorage,
   normalizeDeviceInfo,
@@ -282,11 +283,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       const currentMasterStorage = toComparableSpecStorage(
         targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
       );
-      const nextMasterStorage = toComparableStorage(
-        settings.keepMasterTserverSame
-          ? settings.deviceInfo
-          : (settings.masterDeviceInfo ?? settings.deviceInfo)
-      );
+      const nextMasterStorage = toComparableStorage(effectiveMasterDeviceInfo(settings));
       const tserverStorageChanged = !isEqual(currentTserverStorage, nextTserverStorage);
       const masterStorageChanged = !isEqual(currentMasterStorage, nextMasterStorage);
 
@@ -330,7 +327,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     const currentMasterStorage = toComparableSpecStorage(
       targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
     );
-    const nextMasterStorage = toComparableStorage(settings.masterDeviceInfo ?? settings.deviceInfo);
+    const nextMasterStorage = toComparableStorage(effectiveMasterDeviceInfo(settings));
     const nextMasterInstance = settings.masterInstanceType ?? settings.instanceType ?? null;
 
     const masterChanged =
@@ -403,7 +400,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
             pending.keepMasterTserverSame
               ? pending.tserverK8SNodeResourceSpec
               : (pending.masterK8SNodeResourceSpec ?? pending.tserverK8SNodeResourceSpec),
-            pending.masterDeviceInfo ?? pending.deviceInfo
+            effectiveMasterDeviceInfo(pending)
           )
         : mCurrent;
 
@@ -455,8 +452,10 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     );
     const mNext = pending
       ? summaryFromDeviceInfo(
-          pending.masterInstanceType ?? pending.instanceType,
-          pending.masterDeviceInfo ?? pending.deviceInfo,
+          pending.keepMasterTserverSame
+            ? pending.instanceType
+            : (pending.masterInstanceType ?? pending.instanceType),
+          effectiveMasterDeviceInfo(pending),
           formatInstanceTypeLabel
         )
       : mCurrent;
@@ -515,9 +514,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterDeviceInfo = settings.keepMasterTserverSame
-      ? settings.deviceInfo
-      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
     const masterStorageSpec = toResizeStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
     const masterChanged =
       masterInstanceType !== currentMasterInstance ||
@@ -584,9 +581,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       if (dedicatedNodes) {
         const currentMasterStorageSpec =
           targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-        const masterDeviceInfo = settings.keepMasterTserverSame
-          ? settings.deviceInfo
-          : (settings.masterDeviceInfo ?? settings.deviceInfo);
+        const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
         const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
         const masterInstanceType = settings.keepMasterTserverSame
           ? tserverInstanceType
@@ -619,9 +614,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterDeviceInfo = settings.keepMasterTserverSame
-      ? settings.deviceInfo
-      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
     const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
 
     const dedicatedNodeSpec: ClusterNodeSpec = {
