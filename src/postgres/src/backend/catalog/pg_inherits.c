@@ -33,7 +33,9 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "access/xact.h"
 #include "pg_yb_utils.h"
+#include "storage/proc.h"
 #include "utils/catcache.h"
 
 /*
@@ -153,7 +155,15 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 				xmin = HeapTupleHeaderGetXmin(inheritsTuple->t_data);
 				snap = GetActiveSnapshot();
 
-				if (!XidInMVCCSnapshot(xmin, snap))
+				/*
+				 * YB: any valid xmin works as the cache tag for
+				 * rd_partdesc_nodetached; see YbDetachPendingInProgress().
+				 */
+				if (IsYugaByteEnabled())
+					xmin = FrozenTransactionId;
+
+				if (IsYugaByteEnabled() ? !YbDetachPendingInProgress(parentrelId) :
+					!XidInMVCCSnapshot(xmin, snap))
 				{
 					if (detached_xmin)
 					{
@@ -658,4 +668,58 @@ PartitionHasPendingDetach(Oid partoid)
 
 	elog(ERROR, "relation %u is not a partition", partoid);
 	return false;				/* keep compiler quiet */
+}
+
+/* Set while running an RI check that upstream runs on a latest snapshot */
+bool		yb_detach_pending_use_latest_snapshot = false;
+
+/*
+ * Parents whose partition list this transaction obtained while none of
+ * their partitions was pending detach. Lives in TopTransactionContext and is
+ * reset lazily when the local transaction id changes.
+ */
+static List *yb_partlist_memo = NIL;
+static LocalTransactionId yb_partlist_memo_lxid = InvalidLocalTransactionId;
+
+static List *
+YbPartListMemo(void)
+{
+	if (yb_partlist_memo_lxid != MyProc->lxid)
+	{
+		yb_partlist_memo = NIL;
+		yb_partlist_memo_lxid = MyProc->lxid;
+	}
+	return yb_partlist_memo;
+}
+
+void
+YbRememberPartitionList(Oid parentrelid)
+{
+	MemoryContext oldcxt;
+
+	if (!IsolationUsesXactSnapshot() || !IsTransactionState() ||
+		list_member_oid(YbPartListMemo(), parentrelid))
+		return;
+	oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	yb_partlist_memo = lappend_oid(yb_partlist_memo, parentrelid);
+	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * Substitute for upstream's XidInMVCCSnapshot(pg_inherits.xmin, active
+ * snapshot), which YB can't evaluate because catalog tuples carry no xmin.
+ *
+ * Upstream keeps a pending-detach partition visible to snapshots older than
+ * the detach's first phase. YB approximates "older snapshot" by "this
+ * transaction already read the parent's partition list before the partition
+ * went pending". Such a transaction locked the parent before the first phase
+ * committed, so the second phase waits for it and the partition cannot
+ * disappear under it. Every other reader, RI checks included, treats the
+ * first phase as committed and omits the partition.
+ */
+bool
+YbDetachPendingInProgress(Oid parentrelid)
+{
+	return IsolationUsesXactSnapshot() && !yb_detach_pending_use_latest_snapshot &&
+		list_member_oid(YbPartListMemo(), parentrelid);
 }

@@ -33,6 +33,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 typedef struct PartitionDirectoryData
 {
 	MemoryContext pdir_mcxt;
@@ -69,6 +72,11 @@ RelationGetPartitionDesc(Relation rel, bool omit_detached)
 {
 	Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 
+	/* YB: see YbDetachPendingInProgress() */
+	if (IsYugaByteEnabled() && rel->rd_partdesc &&
+		!rel->rd_partdesc->detached_exist)
+		YbRememberPartitionList(RelationGetRelid(rel));
+
 	/*
 	 * If relcache has a partition descriptor, use that.  However, we can only
 	 * do so when we are asked to include all partitions including detached;
@@ -99,8 +107,27 @@ RelationGetPartitionDesc(Relation rel, bool omit_detached)
 		Assert(TransactionIdIsValid(rel->rd_partdesc_nodetached_xmin));
 		activesnap = GetActiveSnapshot();
 
-		if (!XidInMVCCSnapshot(rel->rd_partdesc_nodetached_xmin, activesnap))
-			return rel->rd_partdesc_nodetached;
+		/* YB: catalog tuples carry no xmin; see YbDetachPendingInProgress() */
+		if (IsYugaByteEnabled())
+		{
+			if (!YbDetachPendingInProgress(RelationGetRelid(rel)))
+				return rel->rd_partdesc_nodetached;
+		}
+		else
+		{
+			if (!XidInMVCCSnapshot(rel->rd_partdesc_nodetached_xmin, activesnap))
+				return rel->rd_partdesc_nodetached;
+		}
+	}
+
+	/* YB: see YbDetachPendingInProgress() */
+	if (IsYugaByteEnabled())
+	{
+		PartitionDesc partdesc = RelationBuildPartitionDesc(rel, omit_detached);
+
+		if (!partdesc->detached_exist)
+			YbRememberPartitionList(RelationGetRelid(rel));
+		return partdesc;
 	}
 
 	return RelationBuildPartitionDesc(rel, omit_detached);
