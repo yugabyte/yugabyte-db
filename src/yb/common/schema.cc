@@ -646,16 +646,16 @@ ColumnId Schema::first_column_id() {
 }
 
 size_t Schema::NumKeyComponents(const SchemaPB& schema) {
-  size_t result = 0;
-  bool has_hash_component = false;
+  size_t num_hash_key_columns = 0;
+  size_t num_range_key_columns = 0;
   for (const auto& column : schema.columns()) {
     if (column.is_hash_key()) {
-      has_hash_component = true;
+      ++num_hash_key_columns;
     } else if (column.is_key()) {
-      ++result;
+      ++num_range_key_columns;
     }
   }
-  return result + (has_hash_component ? 1 : 0);
+  return KeyComponentIndex(num_hash_key_columns + num_range_key_columns, num_hash_key_columns);
 }
 
 Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {

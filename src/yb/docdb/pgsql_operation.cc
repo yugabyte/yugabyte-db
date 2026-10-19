@@ -887,12 +887,13 @@ class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
       DocVectorIndexSearchResult& search_result, PgsqlResponseMsg& response,
-      DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
-      size_t max_results, WriteBuffer& result_buffer)
+      DocVectorIndex& vector_index, Slice vector_slice, Slice tenant,
+      size_t num_top_vectors_to_remove, size_t max_results, WriteBuffer& result_buffer)
       : could_have_more_data_(search_result.could_have_more_data),
         result_entries_(search_result.entries), response_(response), vector_index_(vector_index),
-        vector_slice_(vector_slice), num_top_vectors_to_remove_(num_top_vectors_to_remove),
-        max_results_(max_results), result_buffer_(result_buffer) {}
+        vector_slice_(vector_slice), tenant_(tenant),
+        num_top_vectors_to_remove_(num_top_vectors_to_remove), max_results_(max_results),
+        result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
     if (index_ >= result_entries_.size()) {
@@ -924,6 +925,11 @@ class VectorIndexKeyProvider {
     dockv::PgTableRow table_row(projection);
     size_t old_size = result_entries_.size();
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
+      // Postgres does not push the tenant equalities of an index with tenants down, see
+      // PgVectorReadOptionsPB::tenant, so the rows of other tenants are not filtered out above.
+      if (!iterator.impl().GetTupleId().starts_with(tenant_)) {
+        continue;
+      }
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
@@ -1000,6 +1006,8 @@ class VectorIndexKeyProvider {
   PgsqlResponseMsg& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
+  // Prefix of the ybctids of the rows the query can return, see PgVectorReadOptionsPB::tenant.
+  Slice tenant_;
   const size_t num_top_vectors_to_remove_;
   // Please note that max_results_ includes vectors that should be removed.
   const size_t max_results_;
@@ -2815,7 +2823,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   auto dump_stats = FLAGS_vector_index_dump_stats;
   auto read_start_time = MonoTime::Now();
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice,
+      result, response_, *data_.vector_index, vector_slice, options.tenant(),
       options.num_top_vectors_to_remove(), max_results, *result_buffer_);
   auto result_size = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   auto passed = MonoTime::Now() - key_provider.merge_done_time();

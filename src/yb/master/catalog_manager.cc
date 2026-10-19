@@ -667,7 +667,9 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_key_components, 0,
     "have no tenant. Applies only to the yb_hnsw_hnswlib backend, and a value above the number of "
     "key components of the table means all of them. The value is fixed for an index when it is "
     "created. Older releases cannot read the chunks of an index created with a nonzero value. "
-    "Search of such an index must have equality conditions on the tenant key components.");
+    "Search of such an index must have equality conditions on the tenant key components. "
+    "Vector index chunks are not encrypted at rest, and with tenants they keep the key bytes of "
+    "every tenant.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "

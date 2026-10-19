@@ -283,11 +283,8 @@ Result<bool> PgTableDesc::IsVectorTenantColumn(
   if (idx >= indexed_table.num_key_columns()) {
     return false;
   }
-  // All hash columns form one component.
-  const auto num_hash_columns = indexed_table.num_hash_key_columns();
-  const auto component =
-      idx < num_hash_columns ? 0 : idx - num_hash_columns + (num_hash_columns ? 1 : 0);
-  return component < num_tenant_components;
+  return Schema::KeyComponentIndex(idx, indexed_table.num_hash_key_columns()) <
+         num_tenant_components;
 }
 
 }  // namespace pggate

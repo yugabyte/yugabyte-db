@@ -19,8 +19,11 @@
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 
+#include "yb/gutil/endian.h"
+
 #include "yb/hnsw/vector_index_test_base.h"
 
+#include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
@@ -54,6 +57,16 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
   static constexpr size_t kMaxResults = 10;
   static constexpr size_t kEf = 64;
 
+  static HNSWOptions Options() {
+    return {
+        .dimensions = kDimensions,
+        .num_neighbors_per_vertex = 8,
+        .num_neighbors_per_vertex_base = 16,
+        .ef_construction = 64,
+        .distance_kind = DistanceKind::kL2Squared,
+    };
+  }
+
   struct Entry {
     VectorId id;
     FloatVector vector;
@@ -62,16 +75,9 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
 
   void SetUp() override {
     VectorIndexTestBase::SetUp();
-    const HNSWOptions options = {
-        .dimensions = kDimensions,
-        .num_neighbors_per_vertex = 8,
-        .num_neighbors_per_vertex_base = 16,
-        .ef_construction = 64,
-        .distance_kind = DistanceKind::kL2Squared,
-    };
     // The payload of a vector in this test is its tenant.
     traits_ = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
-        block_cache_, options, /* mem_tracker= */ nullptr,
+        block_cache_, Options(), /* mem_tracker= */ nullptr,
         [](Slice payload) -> Result<Slice> { return payload; })));
     index_ = traits_->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
     ASSERT_OK(index_->Reserve(
@@ -178,12 +184,22 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
     ASSERT_TRUE(results.empty());
   }
 
+  // The first byte of the footer of a YbHnsw chunk file: the flags of the fields it holds.
+  static uint8_t FooterFlags(const std::string& path) {
+    faststring data;
+    CHECK_OK(ReadFileToString(Env::Default(), path, &data));
+    auto footer_size = LittleEndian::Load64(data.data() + data.size() - sizeof(uint64_t));
+    return data[data.size() - footer_size];
+  }
+
   // Checks the inserted index, the chunk it is saved to, and the chunk loaded from the file.
   void CheckIndexAndChunks() {
     ASSERT_NO_FATALS(CheckSearches(*index_));
     const auto path = GetTestPath("chunk");
     auto saved = ASSERT_RESULT(index_->SaveToFile(path));
     ASSERT_NE(saved, nullptr);
+    // Base fields and the tenant directory.
+    ASSERT_EQ(FooterFlags(path), 0x03);
     ASSERT_NO_FATALS(CheckSearches(*saved));
     auto loaded = traits_->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
     ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
@@ -239,6 +255,29 @@ TEST_F(HnswlibTenantTest, ConcurrentInserts) {
       /* num_threads= */ 8, static_cast<size_t>(0), kNumVectors,
       [this, &order](size_t i) { return Insert(entries_[order[i]]); }));
   ASSERT_NO_FATALS(CheckIndexAndChunks());
+}
+
+// A chunk without tenants has the footer of older releases, so they can still read it.
+TEST_F(HnswlibTenantTest, NoTenantsFooter) {
+  auto traits = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
+      block_cache_, Options(), /* mem_tracker= */ nullptr, /* tenant_extractor= */ nullptr)));
+  auto index = traits->Create(FactoryMode::kCreate, StoreVectorPayload::kTrue);
+  ASSERT_OK(index->Reserve(
+      kNumVectors, /* max_concurrent_inserts= */ 1, /* max_concurrent_reads= */ 1,
+      rocksdb::Cache::ReservationMode::kAlways));
+  for (const auto& entry : entries_) {
+    ASSERT_OK(index->Insert(entry.id, entry.vector, Slice(entry.tenant)));
+  }
+  const auto path = GetTestPath("chunk");
+  auto saved = ASSERT_RESULT(index->SaveToFile(path));
+  ASSERT_NE(saved, nullptr);
+  ASSERT_EQ(FooterFlags(path), 0x01);
+  auto loaded = traits->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
+  ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
+  auto results = ASSERT_RESULT(loaded->Search(
+      entries_.front().vector, SearchOptions{.max_num_results = kMaxResults, .ef = kEf}));
+  ASSERT_EQ(results.size(), kMaxResults);
+  ASSERT_EQ(results.front().vector_id, entries_.front().id);
 }
 
 } // namespace yb::ann_methods
