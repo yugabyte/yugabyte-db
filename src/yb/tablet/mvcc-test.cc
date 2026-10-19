@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <cmath>
 #include <deque>
 #include <sstream>
 
@@ -408,7 +410,7 @@ TEST_F(MvccTest, WaitForFollowerSafeTime) {
   ASSERT_NOK(manager_.SafeTimeForFollower(AddLogical(ht2, 2), CoarseMonoClock::now() + 100ms));
 }
 
-TEST_F(MvccTest, ShutdownReleasesSafeTimeWaiters) {
+TEST_F(MvccTest, ShutdownWakesSafeTimeWaiters) {
   HybridTime ht = manager_.AddLeaderPending(OpId(1, 1));
   manager_.SetPropagatedSafeTimeOnFollower(ht.Decremented());
   std::thread leader_waiter([this, ht] {
@@ -425,51 +427,81 @@ TEST_F(MvccTest, ShutdownReleasesSafeTimeWaiters) {
   follower_waiter.join();
 }
 
-// Replicates operations with a fixed number in flight, as on a busy tablet leader, while readers
-// wait for safe time to reach the current time.
+// Replicates operations as on a busy tablet leader, while readers wait for safe time to reach
+// either the current time or a time far ahead of the clock.
 TEST_F(MvccTest, ReplicateWithManySafeTimeWaiters) {
-  constexpr int kOpsInFlight = 100;
   constexpr int kTotalOps = 20000;
+  constexpr uint64_t kAheadOfClock = 1ULL << 40;
   int op_index = 0;
-  for (size_t num_readers : {0, 32, 256, 600}) {
-    std::atomic<bool> stop{false};
-    std::atomic<size_t> num_reads{0};
-    vector<std::thread> readers;
-    for (size_t i = 0; i != num_readers; ++i) {
-      readers.emplace_back([this, &stop, &num_reads] {
-        while (!stop.load(std::memory_order_acquire)) {
-          ASSERT_OK(manager_.SafeTime(
-              clock_->Now(), CoarseMonoClock::now() + 60s, FixedHybridTimeLease()));
-          num_reads.fetch_add(1, std::memory_order_relaxed);
+  for (bool readers_ahead : {false, true}) {
+    for (size_t ops_in_flight : {100, 1}) {
+      for (size_t num_readers : {0, 32, 256, 600}) {
+        std::atomic<bool> stop{false};
+        std::atomic<size_t> running_readers{num_readers};
+        std::atomic<size_t> num_reads{0};
+        const auto ahead_time = AddLogical(clock_->Now(), kAheadOfClock);
+        vector<std::thread> readers;
+        for (size_t i = 0; i != num_readers; ++i) {
+          readers.emplace_back(
+              [this, &stop, &running_readers, &num_reads, readers_ahead, ahead_time] {
+            while (!stop.load(std::memory_order_acquire)) {
+              ASSERT_OK(manager_.SafeTime(
+                  readers_ahead ? ahead_time : clock_->Now(), CoarseMonoClock::now() + 60s,
+                  FixedHybridTimeLease()));
+              num_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+            running_readers.fetch_sub(1, std::memory_order_acq_rel);
+          });
         }
-      });
-    }
 
-    std::deque<std::pair<HybridTime, OpId>> in_flight;
-    auto replicate_front = [this, &in_flight] {
-      manager_.Replicated(in_flight.front().first, in_flight.front().second);
-      in_flight.pop_front();
-    };
-    auto start = CoarseMonoClock::now();
-    for (int i = 0; i != kTotalOps; ++i) {
-      OpId op_id(1, ++op_index);
-      in_flight.emplace_back(manager_.AddLeaderPending(op_id), op_id);
-      if (in_flight.size() > kOpsInFlight) {
-        replicate_front();
+        std::deque<std::pair<HybridTime, OpId>> in_flight;
+        auto add = [this, &in_flight, &op_index] {
+          OpId op_id(1, ++op_index);
+          in_flight.emplace_back(manager_.AddLeaderPending(op_id), op_id);
+        };
+        auto replicate_front = [this, &in_flight] {
+          manager_.Replicated(in_flight.front().first, in_flight.front().second);
+          in_flight.pop_front();
+        };
+        vector<std::chrono::steady_clock::duration> write_times;
+        write_times.reserve(kTotalOps);
+        auto start = CoarseMonoClock::now();
+        for (int i = 0; i != kTotalOps; ++i) {
+          auto write_start = std::chrono::steady_clock::now();
+          add();
+          if (in_flight.size() >= ops_in_flight) {
+            replicate_front();
+          }
+          write_times.push_back(std::chrono::steady_clock::now() - write_start);
+        }
+        auto elapsed = CoarseMonoClock::now() - start;
+
+        stop.store(true, std::memory_order_release);
+        clock_->Update(AddLogical(ahead_time, 1));
+        while (!in_flight.empty()) {
+          replicate_front();
+        }
+        while (running_readers.load(std::memory_order_acquire) != 0) {
+          add();
+          replicate_front();
+        }
+        for (auto& reader : readers) {
+          reader.join();
+        }
+
+        std::sort(write_times.begin(), write_times.end());
+        auto percentile_us = [&write_times](size_t percent) {
+          std::chrono::duration<double, std::micro> time =
+              write_times[write_times.size() * percent / 100];
+          return std::round(time.count() * 10) / 10;
+        };
+        LOG(INFO) << "Readers: " << num_readers << (readers_ahead ? " ahead of clock" : " at now")
+                  << ", ops in flight: " << ops_in_flight << ", "
+                  << static_cast<int64_t>(kTotalOps / ToSeconds(elapsed)) << " ops/s"
+                  << ", write p50: " << percentile_us(50) << " us, p99: " << percentile_us(99)
+                  << " us, reads: " << num_reads.load();
       }
     }
-    auto elapsed = CoarseMonoClock::now() - start;
-    stop.store(true, std::memory_order_release);
-    while (!in_flight.empty()) {
-      replicate_front();
-    }
-    for (auto& reader : readers) {
-      reader.join();
-    }
-    LOG(INFO) << "Readers: " << num_readers << ", replicated " << kTotalOps << " ops in "
-              << MonoDelta(elapsed) << ", "
-              << static_cast<int64_t>(kTotalOps / ToSeconds(elapsed)) << " ops/s, reads: "
-              << num_reads.load();
   }
 }
 

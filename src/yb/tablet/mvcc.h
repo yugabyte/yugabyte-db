@@ -31,9 +31,9 @@
 //
 #pragma once
 
-#include <condition_variable>
 #include <deque>
 #include <map>
+#include <mutex>
 #include <vector>
 
 #include "yb/common/opid.h"
@@ -47,6 +47,9 @@
 #include "yb/util/result.h"
 
 namespace yb {
+
+class Synchronizer;
+
 namespace tablet {
 
 // Allows us to keep track of how a particular value of safe time was obtained, for sanity
@@ -164,17 +167,19 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
-  struct SafeTimeWaiter;
   // Threads that wait for safe time, keyed by the min_allowed that they wait for.
-  using SafeTimeWaiters = std::multimap<HybridTime, SafeTimeWaiter*>;
+  using SafeTimeWaiters = std::multimap<HybridTime, Synchronizer*>;
 
-  template <class Predicate>
-  bool WaitForSafeTime(
+  // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.
+  template <class SafeTimeFunc>
+  Result<SafeTimeWithSource> WaitForSafeTime(
       SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
-      const Predicate& predicate, std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
+      const SafeTimeFunc& safe_time_func, std::unique_lock<std::mutex>* lock) const
+      REQUIRES(mutex_);
 
-  // Wakes the waiters whose min_allowed the current safe time has reached.
-  void ReleaseSafeTimeWaiters() REQUIRES(mutex_);
+  // Takes out the waiters that the current safe time could let through. The caller wakes them
+  // after releasing mutex_.
+  [[nodiscard]] std::vector<Synchronizer*> ExtractReachedWaiters() REQUIRES(mutex_);
 
   SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
 
