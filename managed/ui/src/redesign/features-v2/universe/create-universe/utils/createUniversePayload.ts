@@ -263,7 +263,7 @@ export const mapCreateUniversePayload = (
           ...(providerType !== CloudType.kubernetes && {
             instance_tags: otherAdvancedSettings?.instanceTags.reduce(
               (acc, tag) => {
-                acc[tag.name] = tag.value;
+                if (tag.name && tag.value) acc[tag.name] = tag.value;
                 return acc;
               },
               {} as Record<string, string>
