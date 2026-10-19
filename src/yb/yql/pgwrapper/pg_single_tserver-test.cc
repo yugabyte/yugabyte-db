@@ -1541,6 +1541,39 @@ class PgFastBackwardScanOnlyTest
       } // for (auto intents_usage... )
     } // for (auto max_prevs... )
   }
+
+  // A transaction's fast backward scan must see the transaction's own writes. Column w of
+  // r = 2, the first row read, has more than max_prevs_to_avoid_seek versions, so
+  // DoReadColumnBackward finishes it with a forward Seek(). No intent follows w within the scan's
+  // upper bound (the end of the table for a colocated table, the end of the hash code range for a
+  // hash-sharded one), so the Seek leaves the intent iterator invalid. The own writes to v of
+  // r = 2, ordered before w, and to v of r = 1 are read after that. See GH #35147.
+  void SameTransactionWritesAfterForwardSeekTest(bool colocated) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = 2;
+
+    ASSERT_OK(CreateDB(colocated));
+    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE t (h INT, r INT, v INT, w INT, PRIMARY KEY (h $0, r ASC))",
+        colocated ? "ASC" : "HASH"));
+    // Single-row statements take the fast path, so these are applied when they return.
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1, 0, 0)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 0, 0)"));
+    for (int i = 1; i <= 3; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("UPDATE t SET w = $0 WHERE h = 1 AND r = 2", i));
+    }
+
+    ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("UPDATE t SET v = 100 WHERE h = 1 AND r = 2"));
+    ASSERT_OK(conn.Execute("UPDATE t SET v = 100 WHERE h = 1 AND r = 1"));
+
+    const auto stmt = "SELECT r, v, w FROM t WHERE h = 1 ORDER BY r DESC";
+    const auto explain = ASSERT_RESULT(conn.FetchAllAsString(Format("EXPLAIN $0", stmt)));
+    ASSERT_TRUE(Slice(explain).starts_with("Index Scan Backward")) << explain;
+    ASSERT_OK(FetchAndValidate(conn, stmt, "2, 100, 3; 1, 100, 0"));
+    ASSERT_OK(conn.CommitTransaction());
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1560,6 +1593,14 @@ TEST_P(PgFastBackwardScanOnlyTest, ColumnMultipleUpdatesColocated) {
 
   ASSERT_OK(CreateDB(/* colocated */ true));
   RunTests();
+}
+
+TEST_P(PgFastBackwardScanOnlyTest, SameTransactionWritesAfterForwardSeekColocated) {
+  SameTransactionWritesAfterForwardSeekTest(/* colocated = */ true);
+}
+
+TEST_P(PgFastBackwardScanOnlyTest, SameTransactionWritesAfterForwardSeekHashSharded) {
+  SameTransactionWritesAfterForwardSeekTest(/* colocated = */ false);
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/24118.

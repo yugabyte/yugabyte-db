@@ -49,6 +49,7 @@ DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(use_fast_next_for_iteration);
 DECLARE_int32(max_nexts_to_avoid_seek);
+DECLARE_int32(max_prevs_to_avoid_seek);
 
 namespace yb {
 namespace docdb {
@@ -2961,6 +2962,73 @@ TEST_F(FastBackwardScanSplitChildTest, ScanAfterNewerDelete) {
       /* prev_deleted= */ true);
   ASSERT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b"}))), AsString(std::vector<std::string>{
       R"#({string:"dddddddddddddddd",int64:2,missing,missing,missing})#"}));
+}
+
+// GH #35147: in a fast backward scan of a colocated table, column C of the last row B has
+// more updates than max_prevs_to_avoid_seek, so it is read with a forward Seek(). Nothing
+// in the IntentsDB follows C within the table, so that Seek() leaves the intent iterator
+// invalid. Row A has a committed but not yet applied update of C, newer than its applied
+// value, and the scan must return it.
+TEST_F(DocRowwiseIteratorTest, FastBackwardScanColocatedSeesIntentAfterForwardSeek) {
+  constexpr ColocationId kColocationId(0x4001);
+  Schema schema = doc_read_context().schema();
+  schema.set_colocation_id(kColocationId);
+  const auto read_context = DocReadContext::TEST_Create(schema);
+  const DocKey high_key(schema, dockv::MakeKeyEntryValues("b", int64_t{1}));
+  const DocKey low_key(schema, dockv::MakeKeyEntryValues("a", int64_t{1}));
+
+  auto write_c = [this](const DocKey& doc_key, HybridTime ht, const std::string& value) {
+    auto dwb = MakeDocWriteBatch();
+    ASSERT_OK(dwb.TEST_SetPrimitive(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(30_ColId)),
+        QLValue::Primitive(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, ht));
+  };
+
+  write_c(high_key, 1000_usec_ht, "h1");
+  write_c(high_key, 1100_usec_ht, "h2");
+  write_c(high_key, 1200_usec_ht, "h3");
+  write_c(low_key, 1000_usec_ht, "applied");
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  const auto txn_id = TransactionId::GenerateRandom();
+  SetCurrentTransactionId(txn_id);
+  write_c(low_key, 1500_usec_ht, "committed");
+  ResetCurrentTransactionId();
+  TransactionStatusManagerMock txn_status_manager;
+  txn_status_manager.Commit(txn_id, 1600_usec_ht);
+  DocDBDebugDumpToConsole();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = 2;
+
+  Schema projection;
+  ASSERT_OK(schema.TEST_CreateProjectionByNames({"a", "b", "c"}, &projection));
+  const KeyEntryValues empty_key_components;
+  DocPgsqlScanSpec spec(
+      schema, rocksdb::kDefaultQueryId, /* arena = */ nullptr,
+      /* encoded_hashed_components = */ {}, empty_key_components, /* condition = */ nullptr,
+      /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt,
+      /* start_doc_key = */ DocKey(), /* is_forward_scan = */ false,
+      /* lower_doc_key = */ DocKey(schema), /* upper_doc_key = */ DocKey(
+          schema, KeyEntryValues{KeyEntryValue(dockv::KeyEntryType::kHighest)}));
+
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection, read_context, {TransactionId::GenerateRandom(), &txn_status_manager}, doc_db(),
+      ReadOperationData::FromSingleReadTime(2000_usec_ht), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(projection);
+  dockv::PgTableRow row(reader_projection);
+  std::vector<std::string> rows;
+  while (ASSERT_RESULT(iter->PgFetchNext(&row))) {
+    rows.push_back(ASSERT_RESULT(PgTableRowToString(schema, row, &projection)));
+  }
+  ASSERT_EQ(AsString(rows), AsString(std::vector<std::string>{
+      R"#({string:"b",int64:1,string:"h3",missing,missing})#",
+      R"#({string:"a",int64:1,string:"committed",missing,missing})#"}));
 }
 
 }  // namespace docdb
