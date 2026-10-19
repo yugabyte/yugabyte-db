@@ -221,11 +221,11 @@ Status AddRecord(
     return Status::OK();
   }
 
+  // TODO(#35284): delete_vector_ids reach the target only for transactional records, and only when
+  // not empty. Empty ids only mark a vector deletion, see DocWriteBatch::MarkVectorDeletion.
   if (record.has_transaction_state()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
     Slice delete_vector_ids;
-    // TODO(#35284): empty ids, which only mark a vector deletion, see
-    // DocWriteBatch::MarkVectorDeletion, are lost on the way to the target.
     if (record.has_delete_vector_ids()) {
       delete_vector_ids = Slice(record.delete_vector_ids());
     }

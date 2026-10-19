@@ -5467,6 +5467,16 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  Result<bool> HasVectorDeletion() {
+    auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+    return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
+  }
+
+  void TestFastPathVectorDeletion(const std::string& statement);
+  void TestUnappliedVectorUpdates();
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
@@ -5955,18 +5965,13 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  auto has_vector_deletion = [this]() -> Result<bool> {
-    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
-    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet with vector indexes");
-    return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
-  };
   const auto query_text = Format(
       "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
   auto query = [&conn, &query_text]() -> Result<std::string> {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(query_text)));
   };
 
-  ASSERT_FALSE(ASSERT_RESULT(has_vector_deletion()));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
   docdb::TEST_vector_index_filter_allowed = false;
   ASSERT_EQ(ASSERT_RESULT(query()), "[1, 2, 3, 4, 5]");
   docdb::TEST_vector_index_filter_allowed = true;
@@ -5974,7 +5979,7 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
   // The old vector of row 1 stays in the index next to the new one.
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 200, 300]' WHERE id = 1"));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_TRUE(ASSERT_RESULT(has_vector_deletion()));
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
   ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
 
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 3"));
@@ -5992,8 +5997,114 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
     ASSERT_OK(RestartCluster());
     conn = ASSERT_RESULT(Connect());
     ASSERT_EQ(ASSERT_RESULT(query()), "[2, 4, 5, 1]");
-    ASSERT_TRUE(ASSERT_RESULT(has_vector_deletion()));
+    ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
   }
+}
+
+// A table without vector indexes takes the single-shard fast path for an autocommit single-row
+// write, which is applied without intents.
+void PgVectorIndexUtilTest::TestFastPathVectorDeletion(const std::string& statement) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 5));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+
+  // So that a write taking the distributed path does not mark the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute(statement));
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadFastPathUpdate) {
+  TestFastPathVectorDeletion("UPDATE test SET embedding = '[100, 200, 300]' WHERE id = 1");
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadFastPathDelete) {
+  TestFastPathVectorDeletion("DELETE FROM test WHERE id = 3");
+}
+
+// A restore to a time uses a later snapshot, whose vector index keeps the vectors replaced after
+// that time, while the regular DB is rolled back. The tablet keeps checking rows after a restart.
+TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto restore_at = cluster_->mini_master(0)->Now();
+  // Closer to the query vector than any row, so the vector left in the index comes first.
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[0.5, 1, 1.5]' WHERE id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  ASSERT_EQ(AsString(ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
+                "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+                VectorOp(), kNumRows)))),
+            "[1, 2, 3, 4, 5]");
+}
+
+// A committed transaction is visible through its intents until it is applied, while the index
+// still holds the old vectors of the rows it updated. A later transaction applied first leaves the
+// intents of the earlier one with a stale vector.
+void PgVectorIndexUtilTest::TestUnappliedVectorUpdates() {
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  const auto query_text = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto query = [&conn, &query_text]() -> Result<std::string> {
+    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(query_text)));
+  };
+  auto update = [&conn](int64_t id, const std::string& vector) -> Status {
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
+    return conn.Execute("COMMIT");
+  };
+
+  // Ignored applies are resent after transaction_resend_applying_interval_usec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(update(1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
+
+  ASSERT_OK(update(2, "[200, 400, 600]"));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(update(2, "[4.5, 9, 13.5]"));
+  // Set by the apply of the last update.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> { return HasVectorDeletion(); }, 10s * kTimeMultiplier,
+      "Last update applied"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+}
+
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdates) {
+  TestUnappliedVectorUpdates();
+}
+
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdatesStoredPayload) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  TestUnappliedVectorUpdates();
 }
 
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
