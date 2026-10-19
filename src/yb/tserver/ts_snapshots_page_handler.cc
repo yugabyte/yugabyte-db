@@ -115,7 +115,10 @@ Result<NamespaceToSnapshotToInodesMap> GetNamespaceToSnapshotToInodesMap(
     auto snapshot_dirs = VERIFY_RESULT(env->GetChildren(snapshots_dir, ExcludeDots::kTrue));
     for (const auto& snapshot_id : snapshot_dirs) {
       auto snapshot_dir = JoinPathSegments(snapshots_dir, snapshot_id);
-      if (!env->DirExists(snapshot_dir)) continue;
+      if (tablet::TabletSnapshots::IsTempSnapshotDir(snapshot_dir) ||
+          !env->DirExists(snapshot_dir)) {
+        continue;
+      }
 
       uint64_t snapshot_creation_time = 0;
       if (auto it = snapshot_metadata.find(snapshot_id); it != snapshot_metadata.end()) {
