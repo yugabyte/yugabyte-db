@@ -676,4 +676,111 @@ TEST_F(MasterTxnStatusCheck, AutoScaleRetriesWhenTablespaceInfoUnavailable) {
       MonoDelta::FromSeconds(30), "Waiting for transaction tablets in the local table"));
 }
 
+// One tablespace with invalid replication info must not stop the scale-up of local transaction
+// status tables that belong to other tablespaces, and fixing it must let its own table scale.
+TEST_F(MasterTxnStatusCheck, AutoScaleSkipsInvalidTablespace) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_name_transaction_tables_with_tablespace_id) = true;
+  // The tablespace is invalidated by a cluster config change, which the master only notices on
+  // its periodic tablespace refresh.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 1);
+  ASSERT_OK(WaitForGlobalTxnStatusTableCreation());
+
+  // Two tablespaces in zone2. tablespace_rr also names a read-replica cluster that does not exist
+  // yet, which is allowed.
+  const std::string kOkTablespace = "tablespace_ok";
+  const std::string kRrTablespace = "tablespace_rr";
+  auto ok_oid = ASSERT_RESULT(CreateTablespaceAndGetOid(kOkTablespace));
+  auto conn = ASSERT_RESULT(Connect());
+  const auto rr_placement_json = [](const std::string& placement_uuid) {
+    return Format(
+        R"#({"num_replicas":1,"placement_uuid":"$0","placement_blocks":[
+          {"cloud":"test_cloud","region":"test_region","zone":"zone3","min_num_replicas":1}]})#",
+        placement_uuid);
+  };
+  ASSERT_OK(conn.ExecuteFormat(R"#(
+      CREATE TABLESPACE $0 WITH (replica_placement='{
+        "num_replicas": 1,
+        "placement_blocks": [{
+          "cloud": "test_cloud", "region": "test_region", "zone": "zone2",
+          "min_num_replicas": 1
+        }]
+      }', read_replica_placement='$1'))#", kRrTablespace, rr_placement_json("rr1")));
+  auto rr_oid = ASSERT_RESULT(GetTablespaceOid(kRrTablespace));
+
+  auto ts_opts1 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ts_opts1.SetPlacement("test_cloud", "test_region", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(ts_opts1, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(2));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t_ok (key INT PRIMARY KEY) TABLESPACE $0", kOkTablespace));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t_rr (key INT PRIMARY KEY) TABLESPACE $0", kRrTablespace));
+
+  const std::string ok_txn_table = "transactions_" + std::to_string(ok_oid);
+  const std::string rr_txn_table = "transactions_" + std::to_string(rr_oid);
+  const size_t per_tserver = FLAGS_transaction_table_num_tablets_per_tserver;
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(ok_txn_table, per_tserver).ok() &&
+               VerifyTransactionTableTablets(rr_txn_table, per_tserver).ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for the local transaction tables"));
+
+  // Add a read-replica cluster whose placement_uuid differs from the one tablespace_rr names.
+  // The tablespace is now invalid; the master rejects new tables in it once it has refreshed.
+  auto cluster_config = ASSERT_RESULT(ASSERT_RESULT(catalog_manager())->GetClusterConfig());
+  auto replication_info = cluster_config.replication_info();
+  auto* read_replicas = replication_info.add_read_replicas();
+  read_replicas->set_placement_uuid("rr2");
+  read_replicas->set_num_replicas(1);
+  auto* block = read_replicas->add_placement_blocks();
+  block->mutable_cloud_info()->set_placement_cloud("test_cloud");
+  block->mutable_cloud_info()->set_placement_region("test_region");
+  block->mutable_cloud_info()->set_placement_zone("zone3");
+  block->set_min_num_replicas(1);
+  ASSERT_OK(ASSERT_RESULT(cluster_->CreateClient())->SetReplicationInfo(replication_info));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        auto status = conn.ExecuteFormat(
+            "CREATE TABLE probe (key INT PRIMARY KEY) TABLESPACE $0", kRrTablespace);
+        if (status.ok()) {
+          RETURN_NOT_OK(conn.Execute("DROP TABLE probe"));
+          return false;
+        }
+        const auto status_str = status.ToString();
+        SCHECK_STR_CONTAINS(status_str, "does not match any read-replica cluster");
+        return true;
+      },
+      MonoDelta::FromSeconds(30), "Waiting for the master to mark tablespace_rr invalid"));
+
+  // Another zone2 tserver: tablespace_ok's transaction table scales up, tablespace_rr's does not.
+  auto ts_opts2 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ts_opts2.SetPlacement("test_cloud", "test_region", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(ts_opts2, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(ok_txn_table, 2 * per_tserver).ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for tablespace_ok's transaction table to scale"));
+  ASSERT_OK(VerifyTransactionTableTablets(rr_txn_table, per_tserver));
+
+  // Fixing the tablespace lets its transaction table scale on the next check.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLESPACE $0 SET (read_replica_placement='$1')", kRrTablespace,
+      rr_placement_json("rr2")));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(rr_txn_table, 2 * per_tserver).ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for tablespace_rr's transaction table to scale"));
+}
+
 }  // namespace yb

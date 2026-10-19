@@ -251,9 +251,13 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
     global_state_->activity_info_.CountWarning(type, warn_msg); \
   } while (false)
 
-ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(const TableInfoPtr& table) const {
-  // todo(GH30679): We should fix this before we remove load balancer wait on new master leaders.
-  return catalog_manager_->GetTableReplicationInfoWithDefault(table);
+Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
+    const TableInfoPtr& table) const {
+  // No cluster-config default here: the balancer moves data, so a table whose tablespace failed
+  // validation must be skipped rather than rebalanced to a placement the user did not ask for.
+  // "Not loaded yet" cases are filtered out by NeedsRefreshToFindTablePlacement before this is
+  // called (todo(GH30679): revisit before removing the load balancer wait on new master leaders).
+  return catalog_manager_->GetTableReplicationInfoNoDefault(table);
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {
@@ -441,13 +445,23 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
       continue;
     }
 
-    const auto replication_info = GetTableReplicationInfo(table);
+    auto replication_info = GetTableReplicationInfo(table);
+    if (!replication_info.ok()) {
+      // Typically the table's tablespace has a placement that failed master-side validation.
+      // Leave the table alone (including any under-replication) until the tablespace is fixed.
+      LOG_AND_COUNT_WARNING(
+          1 /* vlog_level */,
+          ClusterBalancerWarningType::kSkipTableLoadBalancing,
+          Format("Skipping cluster balancing for table $0: $1", table_id,
+                 StatusToString(replication_info.status())));
+      continue;
+    }
     VLOG(2) << Format("Replication info for table $0: $1", table_id,
-        replication_info.ShortDebugString());
+        replication_info->ShortDebugString());
 
     ResetTableStatePtr(table_id, options);
 
-    auto populate_ri_status = PopulateReplicationInfo(table, replication_info);
+    auto populate_ri_status = PopulateReplicationInfo(table, *replication_info);
     if (!populate_ri_status.ok()) {
       YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 2) << "Skipping cluster balancing for table "
           << table_id << ": as populating replication info failed with error "

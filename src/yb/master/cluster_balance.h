@@ -117,8 +117,9 @@ class ClusterLoadBalancer {
   // table API the cluster balancer uses.
   std::vector<scoped_refptr<TableInfo>> GetAllTablesClusterBalancerSkipped();
 
-  // Return the replication info for 'table'.
-  virtual ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const;
+  // Return the replication info for 'table'. Fails if the table's tablespace has invalid
+  // replication info; the table is then skipped for this run.
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) const;
 
   //
   // Catalog manager indirection methods.

@@ -90,12 +90,21 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
         auto result =
             server_->catalog_manager_impl()->
                 GetTablespaceReplicationInfoWithRetry(req->tablespace_id());
-        if (!result.ok()) {
+        if (!result.ok() && result.status().IsNotFound()) {
           SetupErrorAndRespond(resp->mutable_error(), result.status(),
                               MasterErrorPB_Code_UNKNOWN_ERROR, &rpc);
           return;
         }
-        auto tablespace_replication_pb = std::move(*result);
+        // The tserver list is only used as a hint (e.g. for query parallelism), so a tablespace
+        // whose placement failed validation is treated like one with no placement rather than
+        // failing the request.
+        std::optional<ReplicationInfoPB> tablespace_replication_pb;
+        if (result.ok()) {
+          tablespace_replication_pb = std::move(*result);
+        } else {
+          LOG(WARNING) << "Could not use replication info of tablespace " << req->tablespace_id()
+                       << ": " << result.status();
+        }
         if (!tablespace_replication_pb.has_value()) {
           LOG(INFO) << "Could not retrieve placement info from tablespace ID "
                     << req->tablespace_id() << ". "

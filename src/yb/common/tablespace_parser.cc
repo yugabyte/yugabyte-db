@@ -14,6 +14,8 @@
 
 #include "yb/common/tablespace_parser.h"
 
+#include <algorithm>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <rapidjson/document.h>
@@ -158,6 +160,28 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
           "Sum of effective max_num_replicas fields ($0) is less than the total replication "
           "factor in the placement policy ($1)",
           total_max_replicas, replicas->num_replicas());
+    }
+
+    // Per-block maxima require attributing every tserver to exactly one block, which wildcard
+    // (partially-specified) blocks can't guarantee. Same rule as
+    // CatalogManagerUtil::ValidateMaxNumReplicasFields; enforcing it here too means CREATE/ALTER
+    // TABLESPACE rejects the combination instead of the master silently invalidating the
+    // tablespace later.
+    const bool has_explicit_max = std::any_of(
+        placements.begin(), placements.end(),
+        [](const auto& block) { return block.has_max_num_replicas(); });
+    if (has_explicit_max) {
+      for (const auto& block : placements) {
+        const auto& cloud_info = block.cloud_info();
+        if (!cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
+            !cloud_info.has_placement_zone()) {
+          return STATUS_FORMAT(
+              Corruption,
+              "max_num_replicas is not supported in combination with wildcard placement "
+              "blocks: $0",
+              block.ShortDebugString());
+        }
+      }
     }
   }
 

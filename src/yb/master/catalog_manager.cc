@@ -2528,7 +2528,9 @@ Result<std::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicatio
   auto tablespace_manager = GetTablespaceManager();
   auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 
-  if (replication_info_result) {
+  // Only a missing tablespace can be fixed by a refresh; an invalid placement is a persistent
+  // error that we return as-is.
+  if (replication_info_result.ok() || !replication_info_result.status().IsNotFound()) {
     return replication_info_result;
   }
 
@@ -2657,10 +2659,10 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   }
 
   for (auto& iter : *tablespace_map) {
-    if (!iter.second) {
+    if (!iter.second.ok() || !*iter.second) {
       continue;
     }
-    auto& replication_info = iter.second.value();
+    auto& replication_info = **iter.second;
     if (!live_placement_uuid.empty()) {
       replication_info.mutable_live_replicas()->set_placement_uuid(live_placement_uuid);
     }
@@ -2673,18 +2675,20 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
     }
   }
 
-  // Before updating the tablespace placement map, validate the
-  // placement policies. If validation fails, mark the tablespace as invalid (nullopt) so that
-  // tables in this tablespace will fail to be placed, but other tablespaces continue to work.
+  // Validate the placement policies. A tablespace that fails validation keeps the error in the
+  // map (rather than being dropped or reset to nullopt) so that placing a table in it fails with
+  // that error instead of silently using the cluster placement, while other tablespaces continue
+  // to work.
   for (auto& iter : *tablespace_map) {
-    if (iter.second) {
-      auto status = ValidateTableReplicationInfo(iter.second.value());
-      if (!status.ok()) {
-        LOG(WARNING) << "Tablespace " << iter.first
-                     << " has invalid replication info: " << status
-                     << ". Marking it as invalid.";
-        iter.second = std::nullopt;
-      }
+    if (!iter.second.ok() || !*iter.second) {
+      continue;
+    }
+    auto status = ValidateTableReplicationInfo(**iter.second);
+    if (!status.ok()) {
+      LOG(WARNING) << "Tablespace " << iter.first << " has invalid replication info: " << status
+                   << ". Tables in this tablespace cannot be placed until it is fixed.";
+      iter.second = status.CloneAndPrepend(
+          Format("Tablespace $0 has invalid replication info", iter.first));
     }
   }
 
@@ -2874,7 +2878,7 @@ Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
     }
   }
   for (const auto& entry : tablespace_info) {
-    if (!entry.second) {
+    if (!entry.second.ok() || !*entry.second) {
       valid_tablespaces.erase(entry.first);
     }
   }

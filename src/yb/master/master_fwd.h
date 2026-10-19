@@ -155,8 +155,11 @@ YB_DEFINE_ENUM(CollectFlag,
 using CollectFlags = EnumBitSet<CollectFlag>;
 
 using TableToTablespaceIdMap = std::unordered_map<TableId, std::optional<TablespaceId>>;
+// Value semantics: nullopt means the tablespace has no replica_placement and tables in it use
+// the cluster placement; a non-OK status means the tablespace has a placement that failed
+// master-side validation, and tables in it must not silently fall back to the cluster placement.
 using TablespaceIdToReplicationInfoMap =
-    std::unordered_map<TablespaceId, std::optional<ReplicationInfoPB>>;
+    std::unordered_map<TablespaceId, Result<std::optional<ReplicationInfoPB>>>;
 
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;

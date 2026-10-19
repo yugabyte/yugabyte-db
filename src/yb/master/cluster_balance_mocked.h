@@ -47,7 +47,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return std::cref(it->second);
   }
 
-  ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const override {
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) const override {
     return replication_info_;
   }
 

@@ -417,8 +417,12 @@ Status CatalogManagerBgTasks::DoScaleUpTransactionStatusTables(
 Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
     const LeaderEpoch& epoch, const TableId& global_txn_table_id) {
 
-  // Collect all the local transaction status tables and their placements.
+  // Collect all the local transaction status tables and their placements. A table whose placement
+  // cannot be determined (e.g. its tablespace has invalid replication info, or tablespace info has
+  // not been loaded yet) is skipped so the others still get scaled, but the whole check is
+  // reported as failed so that the caller retries it on the next interval.
   std::vector<std::pair<TableInfoPtr, ReplicationInfoPB>> transaction_tables;
+  Status skipped_status;
   {
     CatalogManager::SharedLock lock(catalog_manager_->mutex_);
     for (const auto& table_id : catalog_manager_->transaction_table_ids_set_) {
@@ -433,8 +437,17 @@ Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
             << " in transaction_table_ids_set_ but not in table_ids_map_";
         continue;
       }
-      transaction_tables.push_back(
-          {table, VERIFY_RESULT(catalog_manager_->GetTableReplicationInfoNoDefault(table))});
+      auto repl_info = catalog_manager_->GetTableReplicationInfoNoDefault(table);
+      if (!repl_info.ok()) {
+        LOG(WARNING) << "Skipping scale-up check for transaction status table " << table->name()
+                     << " (" << table->id() << "): " << repl_info.status();
+        if (skipped_status.ok()) {
+          skipped_status = repl_info.status().CloneAndPrepend(
+              Format("Could not check transaction status table $0", table->id()));
+        }
+        continue;
+      }
+      transaction_tables.emplace_back(table, std::move(*repl_info));
     }
   }
 
@@ -461,7 +474,7 @@ Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
     RETURN_NOT_OK(AddTabletsToTransactionStatusTableIfNeeded(
         table, num_live_tservers, repl_info, /* is_global */ false, epoch));
   }
-  return Status::OK();
+  return skipped_status;
 }
 
 Status CatalogManagerBgTasks::AddTabletsToTransactionStatusTableIfNeeded(

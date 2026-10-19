@@ -52,8 +52,9 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceRep
     }
   }
 
-  return STATUS(InternalError, "pg_tablespace info for tablespace " +
-      tablespace_id + " not found");
+  // NotFound (as opposed to the validation error stored in the map for an invalid tablespace)
+  // tells CatalogManager::GetTablespaceReplicationInfoWithRetry that a refresh may help.
+  return STATUS(NotFound, "pg_tablespace info for tablespace " + tablespace_id + " not found");
 }
 
 Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable(
@@ -114,7 +115,7 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicat
   const auto iter = tablespace_id_to_replication_info_map_->find(tablespace_id.value());
   if (iter == tablespace_id_to_replication_info_map_->end()) {
     VLOG(1) << "Tablespace found for table " << table->id() << " but placement not found";
-    return STATUS(InternalError, "Placement policy not found for " + tablespace_id.value());
+    return STATUS(NotFound, "Placement policy not found for " + tablespace_id.value());
   }
   return iter->second;
 }

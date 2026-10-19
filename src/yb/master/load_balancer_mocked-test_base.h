@@ -85,7 +85,7 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.SetBlacklistAndPendingDeleteTS();
 
     const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
-    const auto replication_info = cb_.GetTableReplicationInfo(table);
+    const auto replication_info = VERIFY_RESULT(cb_.GetTableReplicationInfo(table));
     RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, replication_info));
 
     cb_.InitializeTSDescriptors();

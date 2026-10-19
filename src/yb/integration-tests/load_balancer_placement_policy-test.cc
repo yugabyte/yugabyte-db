@@ -40,6 +40,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_tablespace_util.h"
+#include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -1530,11 +1531,10 @@ TEST_P(TablespaceReadReplicaUuidTest, RemoveAndReAddReadReplicaCluster) {
 }
 
 // Same setup as MultipleReadReplicaClustersViaRpc above, but verifies that a tablespace with a
-// read-replica placement that omits placement_uuid is effectively invalid when multiple
-// read-replica clusters exist (the master cannot auto-populate the UUID and marks the tablespace
-// as invalid during background validation, so tables in it fall back to cluster-level placement).
-// When the tablespace includes an explicit placement_uuid, it works correctly and directs read
-// replicas to the targeted cluster.
+// read-replica placement that omits placement_uuid is invalid when multiple read-replica clusters
+// exist: the master cannot auto-populate the UUID, so CREATE TABLE in that tablespace fails rather
+// than silently falling back to cluster-level placement. When the tablespace includes an explicit
+// placement_uuid, it works correctly and directs read replicas to the targeted cluster.
 TEST_F(TablespaceReadReplicaTest, MultipleReadReplicaClustersTablespace) {
   const auto kDatabaseName = "yugabyte";
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
@@ -1579,9 +1579,9 @@ TEST_F(TablespaceReadReplicaTest, MultipleReadReplicaClustersTablespace) {
       test::PlacementBlock("c", "r", "z2", 1)};
 
   // (1) A tablespace whose read-replica placement omits placement_uuid is created successfully
-  // at the SQL level, but the master's background validation rejects it (because there are
-  // multiple read-replica clusters and the UUID is ambiguous). Tables created in this tablespace
-  // fall back to cluster-level placement, which includes both read-replica clusters.
+  // at the SQL level (the ambiguity is only known to the master), but the master rejects it
+  // during validation because there are multiple read-replica clusters. CREATE TABLE in it must
+  // surface that error instead of placing the table with the cluster-level placement.
   const test::Tablespace tablespace_no_uuid(
       "ts_multi_rr_no_uuid",
       /* numReplicas = */ 3, live_placement_blocks, {test::PlacementBlock("c", "r", "z3", 1)},
@@ -1590,20 +1590,12 @@ TEST_F(TablespaceReadReplicaTest, MultipleReadReplicaClustersTablespace) {
   ASSERT_OK(pg_conn.Execute(tablespace_no_uuid.CreateCmd()));
 
   const std::string kPgTableNoUuid = "t_no_uuid";
-  ASSERT_OK(pg_conn.ExecuteFormat(
-      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
-      kPgTableNoUuid, tablespace_no_uuid.name));
-
-  WaitForLoadBalancerToBeIdle();
-
-  const TableId table_id_no_uuid = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTableNoUuid));
-  vector<int> counts_per_ts =
-      ASSERT_RESULT(GetLoadOnTserversByTableId(table_id_no_uuid, num_tservers));
-  // The tablespace wanted only z3, but because it was invalidated (no placement_uuid with
-  // multiple RR clusters), the table falls back to cluster-level placement which has both RR
-  // clusters. Every tserver gets a tablet.
-  vector<int> expected_counts_per_ts = {1, 1, 1, 1, 1};
-  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+  ASSERT_NOK_STR_CONTAINS(
+      pg_conn.ExecuteFormat(
+          "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
+          kPgTableNoUuid, tablespace_no_uuid.name),
+      "must specify a placement_uuid");
+  ASSERT_NOK(FindYsqlTableId(kDatabaseName, kPgTableNoUuid));
 
   // (2) A tablespace with an explicit placement_uuid works correctly and directs read replicas
   // to the targeted cluster only.
@@ -1620,14 +1612,205 @@ TEST_F(TablespaceReadReplicaTest, MultipleReadReplicaClustersTablespace) {
       "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
       kPgTableWithUuid, tablespace_with_uuid.name));
 
-  WaitForLoadBalancerToBeIdle();
-
+  // Live replicas on z0, z1, z2; read replica only on z4 (the targeted cluster). The read replica
+  // is added by the load balancer, so wait for the placement rather than for the balancer to go
+  // idle: with two read-replica clusters and a tablespace targeting only one of them, the pass
+  // for the other cluster falls back to the first read_replicas entry
+  // (ClusterLoadBalancer::GetReadOnlyPlacementFromUuid) and never finds matching tservers.
   const TableId table_id_with_uuid =
       ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTableWithUuid));
-  counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id_with_uuid, num_tservers));
-  // Live replicas on z0, z1, z2; read replica only on z4 (the targeted cluster).
-  expected_counts_per_ts = {1, 1, 1, 0, 1};
+  const vector<int> expected_counts_per_ts = {1, 1, 1, 0, 1};
+  vector<int> counts_per_ts;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        counts_per_ts = VERIFY_RESULT(GetLoadOnTserversByTableId(table_id_with_uuid, num_tservers));
+        return counts_per_ts == expected_counts_per_ts;
+      },
+      kDefaultTimeout * 2, "Wait for read replica placement"));
   ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+}
+
+class TablespaceInvalidationTest : public TablespaceReadReplicaTest {
+ protected:
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    TablespaceReadReplicaTest::CustomizeExternalMiniCluster(opts);
+    // The test invalidates a tablespace by changing the cluster config; the master only notices
+    // on its periodic tablespace refresh.
+    opts->extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
+  }
+
+  Status WaitForTableLoad(
+      const TableId& table_id, size_t num_tservers, const vector<int>& expected_counts_per_ts,
+      const std::string& description) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto counts = VERIFY_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+          LOG(INFO) << description << ": " << AsString(counts);
+          return counts == expected_counts_per_ts;
+        },
+        kDefaultTimeout * 2, description);
+  }
+};
+
+// A tablespace that becomes invalid after tables were created in it (here: its read-replica
+// placement omits placement_uuid and a second read-replica cluster is added, making the uuid
+// ambiguous). The load balancer must leave those tables alone rather than rebalance them to the
+// cluster placement, other tables must keep being balanced, and fixing the tablespace must
+// resume balancing.
+TEST_F(TablespaceInvalidationTest, TablesInInvalidatedTablespaceAreNotRebalanced) {
+  const auto kDatabaseName = "yugabyte";
+  const std::string kReadReplicaPlacementUuid2 = "read_replica_2";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  size_t num_tservers = num_tablet_servers();
+  AddNewTserverToZone("z3", ++num_tservers, kReadReplicaPlacementUuid);
+  AddNewTserverToZone("z4", ++num_tservers, kReadReplicaPlacementUuid2);
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z3", 1 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+
+  const std::vector<test::PlacementBlock> live_placement_blocks = {
+      test::PlacementBlock("c", "r", "z0", 1), test::PlacementBlock("c", "r", "z1", 1),
+      test::PlacementBlock("c", "r", "z2", 1)};
+
+  // Valid for now: with a single read-replica cluster the master auto-fills the uuid.
+  const test::Tablespace tablespace_rr(
+      "ts_rr", /* numReplicas = */ 3, live_placement_blocks,
+      {test::PlacementBlock("c", "r", "z3", 1)},
+      /* read_replica_num_replicas = */ std::nullopt, /* read_replica_placement_uuid = */ "");
+  ASSERT_OK(pg_conn.Execute(tablespace_rr.CreateCmd()));
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE t (k INT PRIMARY KEY) TABLESPACE ts_rr SPLIT INTO 1 TABLETS"));
+
+  // A control table in a tablespace that stays valid throughout (live replicas only).
+  const test::Tablespace tablespace_ok("ts_ok", /* numReplicas = */ 3, live_placement_blocks);
+  ASSERT_OK(pg_conn.Execute(tablespace_ok.CreateCmd()));
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE t_ok (k INT PRIMARY KEY) TABLESPACE ts_ok SPLIT INTO 1 TABLETS"));
+
+  WaitForLoadBalancerToBeIdle();
+  const TableId table_id = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, "t"));
+  const TableId table_id_ok = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, "t_ok"));
+  ASSERT_VECTORS_EQ(
+      (vector<int>{1, 1, 1, 1, 0}),
+      ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers)));
+  ASSERT_VECTORS_EQ(
+      (vector<int>{1, 1, 1, 0, 0}),
+      ASSERT_RESULT(GetLoadOnTserversByTableId(table_id_ok, num_tservers)));
+
+  // Add a second read-replica cluster via direct RPC (yb-admin refuses). ts_rr's uuid-less
+  // read-replica placement is now ambiguous, so the master marks it invalid on its next refresh.
+  master::MasterClusterClient cluster_client(
+      GetMasterLeaderProxy<master::MasterClusterProxy>());
+  auto cluster_config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  auto* second_rr = cluster_config.mutable_replication_info()->add_read_replicas();
+  second_rr->set_placement_uuid(kReadReplicaPlacementUuid2);
+  second_rr->set_num_replicas(1);
+  auto* placement_block = second_rr->add_placement_blocks();
+  auto* cloud_info = placement_block->mutable_cloud_info();
+  cloud_info->set_placement_cloud("c");
+  cloud_info->set_placement_region("r");
+  cloud_info->set_placement_zone("z4");
+  placement_block->set_min_num_replicas(1);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(cluster_config)));
+
+  // Wait for the master to pick up the change: once it has, CREATE TABLE in ts_rr fails.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto status = pg_conn.Execute(
+            "CREATE TABLE probe (k INT PRIMARY KEY) TABLESPACE ts_rr SPLIT INTO 1 TABLETS");
+        if (status.ok()) {
+          RETURN_NOT_OK(pg_conn.Execute("DROP TABLE probe"));
+          return false;
+        }
+        const auto status_str = status.ToString();
+        SCHECK_STR_CONTAINS(status_str, "must specify a placement_uuid");
+        return true;
+      },
+      kDefaultTimeout, "Wait for the master to mark ts_rr invalid"));
+
+  // Give the balancer a reason to move live replicas: a second z2 tserver and a blacklisted
+  // first one. t_ok's replica moves; t's must not, and t must not get a z4 read replica
+  // (which the cluster placement would call for).
+  AddNewTserverToZone("z2", ++num_tservers);
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+      external_mini_cluster()->GetLeaderMaster(), external_mini_cluster()->tablet_server(2)));
+  ASSERT_OK(WaitForTableLoad(
+      table_id_ok, num_tservers, {1, 1, 0, 0, 0, 1}, "t_ok moved off the blacklisted tserver"));
+  ASSERT_VECTORS_EQ(
+      (vector<int>{1, 1, 1, 1, 0, 0}),
+      ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers)));
+
+  // Fix the tablespace by naming its read-replica cluster. The balancer resumes and moves t's
+  // replica off the blacklisted tserver.
+  const test::Tablespace tablespace_fixed(
+      "ts_rr", /* numReplicas = */ 3, live_placement_blocks,
+      {test::PlacementBlock("c", "r", "z3", 1)},
+      /* read_replica_num_replicas = */ std::nullopt, kReadReplicaPlacementUuid);
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "ALTER TABLESPACE ts_rr SET (read_replica_placement='$0')",
+      tablespace_fixed.ReadReplicaJson()));
+  ASSERT_OK(WaitForTableLoad(
+      table_id, num_tservers, {1, 1, 0, 1, 0, 1}, "t moved off the blacklisted tserver"));
+}
+
+// GitHub issue #35227: a tablespace combining a wildcard placement block with max_num_replicas.
+const char* const kWildcardWithMaxTablespaceCmd =
+    R"(CREATE TABLESPACE ts_wild WITH (replica_placement='{"num_replicas": 3,
+         "placement_blocks": [
+           {"cloud": "c", "region": "r", "zone": "z0", "min_num_replicas": 2,
+            "max_num_replicas": 2},
+           {"cloud": "c", "region": "r", "zone": "*", "min_num_replicas": 1}]}'))";
+const char* const kWildcardWithMaxError =
+    "max_num_replicas is not supported in combination with wildcard placement blocks";
+
+TEST_F(LoadBalancerReadReplicaPlacementPolicyYsqlTest, TablespaceWildcardWithMaxNumReplicas) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+  ASSERT_NOK_STR_CONTAINS(pg_conn.Execute(kWildcardWithMaxTablespaceCmd), kWildcardWithMaxError);
+}
+
+// Same as above with the SQL-level placement validation disabled, standing in for a tablespace
+// created before the check existed. The master must refuse to place tables in the tablespace
+// rather than silently using the cluster placement.
+class TablespaceValidationDisabledTest : public LoadBalancerReadReplicaPlacementPolicyYsqlTest {
+ protected:
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    LoadBalancerReadReplicaPlacementPolicyYsqlTest::CustomizeExternalMiniCluster(opts);
+    opts->extra_tserver_flags.push_back("--enable_tablespace_validation=false");
+  }
+};
+
+TEST_F(TablespaceValidationDisabledTest, TablespaceWildcardWithMaxNumReplicasNotPlaced) {
+  const auto kDatabaseName = "yugabyte";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+  ASSERT_OK(pg_conn.Execute(kWildcardWithMaxTablespaceCmd));
+
+  const std::string kPgTable = "t_wild";
+  ASSERT_NOK_STR_CONTAINS(
+      pg_conn.ExecuteFormat(
+          "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE ts_wild SPLIT INTO 3 TABLETS",
+          kPgTable),
+      kWildcardWithMaxError);
+  ASSERT_NOK(FindYsqlTableId(kDatabaseName, kPgTable));
+
+  // The invalid tablespace must not affect other tablespaces.
+  ASSERT_OK(pg_conn.Execute(
+      R"(CREATE TABLESPACE ts_ok WITH (replica_placement='{"num_replicas": 3,
+           "placement_blocks": [
+             {"cloud": "c", "region": "r", "zone": "z0", "min_num_replicas": 1},
+             {"cloud": "c", "region": "r", "zone": "*", "min_num_replicas": 1}]}'))"));
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE t_ok (k INT PRIMARY KEY) TABLESPACE ts_ok SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(FindYsqlTableId(kDatabaseName, "t_ok"));
 }
 
 } // namespace integration_tests

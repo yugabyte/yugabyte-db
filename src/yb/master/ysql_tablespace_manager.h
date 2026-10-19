@@ -46,6 +46,8 @@ class YsqlTablespaceManager {
   std::shared_ptr<YsqlTablespaceManager> CreateCloneWithTablespaceMap(
       std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_map);
 
+  // nullopt: the tablespace has no custom placement. NotFound: the tablespace is not (yet) in the
+  // map. Any other error: the tablespace's placement failed master-side validation.
   Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
       const TablespaceId& tablespace_id);
 

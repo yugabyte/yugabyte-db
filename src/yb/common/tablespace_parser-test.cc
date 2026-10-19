@@ -663,11 +663,41 @@ TEST(TablespaceParserTest, MaxNumReplicasValidation) {
          {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1,
           "max_num_replicas":1}]})",
        "Sum of effective max_num_replicas fields (2) is less than the total replication factor"},
+      // Wildcard blocks anywhere in the placement are incompatible with explicit maxima, even
+      // when the maximum is on a fully-qualified block (github issue #35227).
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":2,
+          "max_num_replicas":2},
+         {"cloud":"aws","region":"us-west-2","zone":"*","min_num_replicas":1}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1},
+         {"cloud":"c","region":"*","zone":"*","min_num_replicas":1,
+          "max_num_replicas":2}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
   };
 
   for (const auto& [placement, expected_error] : invalid_placements) {
     ASSERT_NOK_STR_CONTAINS(TablespaceParser::FromString(placement, ""), expected_error);
   }
+
+  // The wildcard rule applies to the read replica placement independently.
+  ASSERT_NOK_STR_CONTAINS(
+      TablespaceParser::FromString(
+          R"({"num_replicas":1,"placement_blocks":[
+            {"cloud":"c","region":"r","zone":"z","min_num_replicas":1}]})",
+          R"({"num_replicas":2,"placement_uuid":"rr","placement_blocks":[
+            {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
+             "max_num_replicas":1},
+            {"cloud":"c","region":"r","zone":"*","min_num_replicas":1}]})"),
+      "max_num_replicas is not supported in combination with wildcard placement blocks");
+
+  // Without a maximum the wildcard block is fine.
+  ASSERT_OK(TablespaceParser::FromString(
+      R"({"num_replicas":3,"placement_blocks":[
+        {"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":2},
+        {"cloud":"aws","region":"us-west-2","zone":"*","min_num_replicas":1}]})",
+      ""));
 
   ASSERT_OK(TablespaceParser::FromString(
       R"({"num_replicas":1,"placement_blocks":[
