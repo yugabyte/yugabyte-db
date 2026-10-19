@@ -7858,6 +7858,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_forwarded_cert_parse_failed = false;
+					MyProcPort->yb_logical_conn_server_cert_hash_len = 0;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -8020,6 +8021,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->yb_forwarded_cert_parse_failed = false;
+					MyProcPort->yb_logical_conn_server_cert_hash_len = 0;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;

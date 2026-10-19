@@ -153,6 +153,17 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 				   yb_client_cert_len);
 	}
 
+	/* forward the server certificate hash for SCRAM channel binding. */
+	int yb_server_cert_hash_len = 0;
+	char *yb_server_cert_hash =
+		yb_encode_server_cert_hash(client, &yb_server_cert_hash_len);
+	if (yb_server_cert_hash != NULL) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_SERVER_CERT_HASH));
+		yb_kiwi_set_fe_arg(&argv[argc++], yb_server_cert_hash,
+				   yb_server_cert_hash_len);
+	}
+
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("replication"));
@@ -183,6 +194,8 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 	argv = NULL;
 	if (yb_client_cert != NULL)
 		free(yb_client_cert);
+	if (yb_server_cert_hash != NULL)
+		free(yb_server_cert_hash);
 
 	if (msg == NULL)
 		return -1;
