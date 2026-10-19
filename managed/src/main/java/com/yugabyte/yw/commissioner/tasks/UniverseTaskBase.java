@@ -2580,11 +2580,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
                   throw new PlatformServiceException(
                       BAD_REQUEST,
-                      "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                          + " agent. Disable provider runtime config "
-                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
-                          + " to not use universe certificates for node agent installation and"
-                          + " retry.");
+                      String.format(
+                          "Certificate %s is of type %s, but only CustomCertHostPath or SelfSigned"
+                              + " type certificate is supported for node agent. Disable provider"
+                              + " runtime config %s to not use universe certificates for node"
+                              + " agent installation and retry.",
+                          certificateInfo.getLabel(),
+                          certificateInfo.getCertType(),
+                          ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()));
                 }
               }
               params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
