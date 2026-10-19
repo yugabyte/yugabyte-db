@@ -174,6 +174,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 "VM image upgrade is only supported for cloud providers, got: "
                     + provider.getCloudCode());
           }
+          // The OCI image precheck reads what YBA knows about an image from its image bundle.
+          if (cluster.getProviderCloudType(node) == CloudType.oci) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST, "Use imageBundles for VM image upgrade of OCI universes.");
+          }
           if (!machineImages.containsKey(region.getUuid())) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,

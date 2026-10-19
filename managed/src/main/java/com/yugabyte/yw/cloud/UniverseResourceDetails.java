@@ -182,7 +182,7 @@ public class UniverseResourceDetails {
         continue;
       }
 
-      DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
+      DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(nodeDetails);
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
@@ -338,7 +338,19 @@ public class UniverseResourceDetails {
     result.instancePricePerHour =
         ocpus * ocpuRate.getPriceDetails().pricePerHour + memGb * memPricePerHour;
 
-    DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
+    // NVMe is a compute meter (stops with the instance). Families without the meter include the
+    // drives in the OCPU rate.
+    double nvmeTb = OCIPriceUtil.nvmeTerabytes(instanceType);
+    if (nvmeTb > 0) {
+      PriceComponent nvmeRate =
+          context.getPriceComponent(
+              provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode(family));
+      if (nvmeRate != null) {
+        result.instancePricePerHour += nvmeTb * nvmeRate.getPriceDetails().pricePerHour;
+      }
+    }
+
+    DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(nodeDetails);
     if (deviceInfo != null
         && deviceInfo.storageType != null
         && deviceInfo.storageType.getCloudType() == Common.CloudType.oci) {
@@ -397,7 +409,7 @@ public class UniverseResourceDetails {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = providerGetter.apply(node);
       if (node.isActive()) {
-        DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
+        DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
         if (deviceInfo != null && deviceInfo.volumeSize != null && deviceInfo.numVolumes != null) {
           details.addVolumeCount(deviceInfo.numVolumes);
           details.addVolumeSizeGB(deviceInfo.volumeSize * deviceInfo.numVolumes);

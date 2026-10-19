@@ -29,6 +29,7 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
 YbAshTrackNestedQueries
@@ -61,6 +62,8 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
+YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
@@ -117,16 +120,19 @@ YbIndexCorruptionErrors
 YbIndexErrorInfo
 YbIndexInconsistencyLogStore
 YbIndexPathInfo
-YbIndexProcessorState
+YbIndiciesHTABEntry
+YbIndiciesHTABEntryData
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
+YbInt8TransTypeData
 YbIntCounters
 YbInternalConnKind
 YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
@@ -172,6 +178,7 @@ YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
+YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
@@ -214,6 +221,7 @@ YbSkippableEntityType
 YbSortArrayContext
 YbSortInfo
 YbSplitType
+YbStatExtListEntry
 YbStatLabel
 YbStatLabelData
 YbStatementType
@@ -243,7 +251,6 @@ YbTerminatedQueriesBuffer
 YbTerminatedQuery
 YbTraceparentResult
 YbTruncateType
-YbTserverUuidClauseResult
 YbTupleBitmap
 YbTupleCache
 YbTupleCacheEntry
@@ -346,6 +353,7 @@ YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns
+YbcPgSysTablePrefetchKind
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTableLocalityInfo
@@ -361,6 +369,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode

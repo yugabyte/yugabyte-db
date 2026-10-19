@@ -50,7 +50,6 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/options.h"
 

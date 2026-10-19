@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 
 #include "yb/ash/wait_state.h"
@@ -108,7 +109,6 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTableType;
-using strings::Substitute;
 
 #define RETURN_STMT_NOT_OK(s, reset_async_calls) do {                      \
     auto&& _s = (s);                                                       \
@@ -1104,7 +1104,7 @@ Status Executor::GetOffsetOrLimit(
 
   if (expr_pb.has_value() && IsNull(expr_pb.value())) {
     return exec_context_->Error(get_val(tnode),
-                                Substitute("$0 value cannot be null.", clause_type).c_str(),
+                                Format("$0 value cannot be null.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
 
@@ -1114,7 +1114,7 @@ Status Executor::GetOffsetOrLimit(
 
   if (expr_pb.value().int32_value() < 0) {
     return exec_context_->Error(get_val(tnode),
-                                Substitute("$0 value cannot be negative.", clause_type).c_str(),
+                                Format("$0 value cannot be negative.", clause_type).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
   }
   *value = expr_pb.value().int32_value();

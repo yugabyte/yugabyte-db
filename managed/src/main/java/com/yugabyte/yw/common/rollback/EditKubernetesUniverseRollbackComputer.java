@@ -28,6 +28,8 @@ import play.libs.Json;
 @Singleton
 public class EditKubernetesUniverseRollbackComputer implements TaskRollbackComputer {
 
+  public static final TaskType ROLLBACK_TASK_TYPE = TaskType.RollbackEditKubernetesUniverse;
+
   private final RuntimeConfGetter confGetter;
 
   @Inject
@@ -36,9 +38,25 @@ public class EditKubernetesUniverseRollbackComputer implements TaskRollbackCompu
   }
 
   @Override
+  public boolean isEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback);
+  }
+
+  @Override
+  public TaskType rollbackTaskType() {
+    return ROLLBACK_TASK_TYPE;
+  }
+
+  @Override
+  public boolean requiresStateTransitionDetails() {
+    return true;
+  }
+
+  @Override
   public RollbackSubmission compute(RollbackContext context) {
     TaskType taskType = context.getTaskInfo().getTaskType();
-    if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+    // Second gate for direct API calls; listing already uses {@link #isEnabled()}.
+    if (!isEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -58,7 +76,7 @@ public class EditKubernetesUniverseRollbackComputer implements TaskRollbackCompu
     params.expectedUniverseVersion = -1;
     // Fresh task: must not inherit EditKubernetesUniverse runtimeInfo / retry semantics.
     return new RollbackSubmission(
-        TaskType.RollbackEditKubernetesUniverse,
+        rollbackTaskType(),
         params,
         CustomerTask.TaskType.RollbackEditKubernetesUniverse,
         false /* setPreviousTaskUUID */);

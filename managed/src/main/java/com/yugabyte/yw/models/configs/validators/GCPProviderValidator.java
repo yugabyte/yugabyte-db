@@ -40,7 +40,6 @@ import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -74,16 +73,12 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   // when the provider is saved, instead of failing later on every node in ManageCloudFederation.
   // The ARN is restricted to the standard 'aws' partition because both YBA and the node use the
   // global STS endpoint, which aws-cn and aws-us-gov do not serve.
-  private static final Pattern FEDERATED_IAM_ROLE_ARN_PATTERN =
-      Pattern.compile("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9._/+=,@-]{1,256}$");
-  private static final Pattern FEDERATED_IAM_AUDIENCE_PATTERN =
-      Pattern.compile("^[A-Za-z0-9._:/-]{1,512}$");
 
   @Override
   public void validate(Provider provider) {
     // Deliberately before the runtime-flag gate below: these are cheap format checks that need no
     // GCP API access, and a bad value here breaks universe creation on every node.
-    validateFederatedIamFields(provider);
+    validateCrossCloudFederationTargets(provider);
 
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableGcpProviderValidation)) {
       log.warn("Validation is not enabled");
@@ -580,24 +575,11 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   }
 
   private String getVpcNetwork(Provider provider) {
-    String vpcNetwork = "";
-    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    if (gcpCloudInfo.getVpcType() == VPCType.EXISTING) {
-      vpcNetwork = gcpCloudInfo.getDestVpcId();
-    } else if (gcpCloudInfo.getVpcType() == VPCType.HOSTVPC) {
-      vpcNetwork = gcpCloudInfo.getHostVpcId();
-    }
-    return vpcNetwork;
+    return GCPUtil.getVpcNetwork(CloudInfoInterface.get(provider));
   }
 
   private String getVpcProject(Provider provider) {
-    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    String project = gcpCloudInfo.getGceProject();
-    // Check for the existence of VPC in the Shared VPC Project if provided
-    if (gcpCloudInfo.getSharedVPCProject() != null) {
-      project = gcpCloudInfo.getSharedVPCProject();
-    }
-    return project;
+    return GCPUtil.getVpcProject(CloudInfoInterface.get(provider));
   }
 
   private List<String> getFirewallTags(Provider provider, boolean addDefaultTags) {
@@ -773,30 +755,5 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           sshPort);
     }
     return false;
-  }
-
-  private void validateFederatedIamFields(Provider provider) {
-    GCPCloudInfo gcpInfo = CloudInfoInterface.get(provider);
-    if (gcpInfo == null || !gcpInfo.isEnableFederatedIam()) {
-      return;
-    }
-    String roleArn = gcpInfo.getFederatedIamRoleArn();
-    if (StringUtils.isBlank(roleArn)
-        || !FEDERATED_IAM_ROLE_ARN_PATTERN.matcher(roleArn).matches()) {
-      throwBeanProviderValidatorError(
-          "FEDERATED_IAM_ROLE_ARN",
-          "Federated IAM is enabled but the role ARN is missing or malformed. Expected"
-              + " arn:aws:iam::<12-digit-account>:role/<role-name>.",
-          null);
-    }
-    String audience = gcpInfo.getFederatedIamAudience();
-    if (StringUtils.isBlank(audience)
-        || !FEDERATED_IAM_AUDIENCE_PATTERN.matcher(audience).matches()) {
-      throwBeanProviderValidatorError(
-          "FEDERATED_IAM_AUDIENCE",
-          "Federated IAM is enabled but the audience is missing or contains unsupported"
-              + " characters.",
-          null);
-    }
   }
 }

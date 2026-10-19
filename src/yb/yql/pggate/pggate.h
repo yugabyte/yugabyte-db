@@ -16,6 +16,7 @@
 #include <concepts>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -125,6 +126,7 @@ class PgApiImpl {
   void Shutdown();
 
   void SetupPgBackendCgroup(YbcPgOid dboid);
+  void SetConnectedDatabaseOid(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
 
@@ -132,6 +134,8 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
+  void SetHistoricalReadContext(const ReadHybridTime& read_time, const char* transaction_id);
+  void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   uint64_t GetSessionID() const { return pg_client_.SessionID(); }
@@ -167,6 +171,8 @@ class PgApiImpl {
   ReplicationInfoSnapshot& replication_info_snapshot() { return replication_info_snapshot_; }
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+
+  [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
   Result<uint32_t> GetNumberOfDatabases();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
@@ -385,6 +391,9 @@ class PgApiImpl {
   Status SetTablespaceOid(PgStatement *handle, uint32_t tablespace_oid);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
+
+  Result<client::TableSizeInfo> GetTablegroupDiskSize(
+      PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
@@ -637,6 +646,9 @@ class PgApiImpl {
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
 
+  Status DmlANNBindKeyFilter(
+      PgStatement *handle, std::span<const YbcPgVectorKeyColumn> columns);
+
   void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
@@ -674,7 +686,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -705,6 +717,7 @@ class PgApiImpl {
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
   bool IsDdlModeWithRegularTransactionBlock() const;
+  bool IsTableLockingEnabledForCurrentTxn() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
@@ -894,7 +907,8 @@ class PgApiImpl {
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
-  bool IsCronLeader() const;
+  bool HasCronLease() const;
+  bool CanCronStartJobs() const;
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 

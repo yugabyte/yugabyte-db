@@ -21,8 +21,7 @@
 
 #include "yb/common/roles_permissions.h"
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -34,7 +33,6 @@ namespace ql {
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 namespace {
 
@@ -75,11 +73,11 @@ Status ListError(ErrorCode code, const string& message) {
 }
 
 string RoleDisplayName(const string& role) {
-  return Substitute("<role $0>", role);
+  return Format("<role $0>", role);
 }
 
 Status RoleNotFound(const string& role) {
-  return ListError(ErrorCode::ROLE_NOT_FOUND, Substitute("$0 doesn't exist",
+  return ListError(ErrorCode::ROLE_NOT_FOUND, Format("$0 doesn't exist",
                                                          RoleDisplayName(role)));
 }
 
@@ -200,7 +198,7 @@ Result<vector<AuthRoleInfo>> ListRoles(const AuthCatalog& catalog,
     names = catalog.RolesOf(*of_role, recursive);
   } else {
     return ListError(ErrorCode::UNAUTHORIZED,
-                     Substitute("You are not authorized to view roles granted to $0", *of_role));
+                     Format("You are not authorized to view roles granted to $0", *of_role));
   }
 
   vector<AuthRoleInfo> result;
@@ -239,7 +237,7 @@ Result<vector<PermissionRow>> ListPermissions(const AuthCatalog& catalog,
                                           PermissionType::DESCRIBE_PERMISSION)))) {
     return ListError(
         ErrorCode::UNAUTHORIZED,
-        of_role ? Substitute("You are not authorized to view $0's permissions", *of_role)
+        of_role ? Format("You are not authorized to view $0's permissions", *of_role)
                 : string("You are not authorized to view everyone's permissions"));
   }
 
@@ -305,10 +303,10 @@ std::optional<string> ResourceDisplayName(const string& canonical_name,
   if (on && (on->type == ResourceType::KEYSPACE || on->type == ResourceType::TABLE)) {
     const string keyspace_resource = get_canonical_keyspace(on->keyspace);
     if (canonical_name == keyspace_resource) {
-      return Substitute("<keyspace $0>", on->keyspace);
+      return Format("<keyspace $0>", on->keyspace);
     }
     if (on->type == ResourceType::TABLE && canonical_name == on->canonical_name) {
-      return Substitute("<table $0.$1>", on->keyspace,
+      return Format("<table $0.$1>", on->keyspace,
                         canonical_name.substr(keyspace_resource.size() + 1));
     }
   }
@@ -327,9 +325,9 @@ std::optional<string> ResourceDisplayName(const string& canonical_name,
     // quoted keyspace names that contain '/'.
     const auto slash = rest.find('/');
     if (slash == string::npos) {
-      return Substitute("<keyspace $0>", rest);
+      return Format("<keyspace $0>", rest);
     }
-    return Substitute("<table $0.$1>", rest.substr(0, slash), rest.substr(slash + 1));
+    return Format("<table $0.$1>", rest.substr(0, slash), rest.substr(slash + 1));
   }
   return std::nullopt;
 }

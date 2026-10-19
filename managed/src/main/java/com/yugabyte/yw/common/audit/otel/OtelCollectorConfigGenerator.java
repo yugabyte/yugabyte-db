@@ -70,6 +70,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 import play.libs.Json;
@@ -252,7 +253,7 @@ public class OtelCollectorConfigGenerator {
       int otelColMetricsPort,
       NodeAgent nodeAgent) {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
-      Yaml yaml = new Yaml(new SkipNullRepresenter());
+      Yaml yaml = collectorConfigYaml();
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
       addCommonService(collectorConfigFormat, provider, userIntent, otelColMetricsPort);
       AuditLogConfig auditLogConfig =
@@ -1178,7 +1179,7 @@ public class OtelCollectorConfigGenerator {
     // POJO directly tags every node with its Java class (e.g. !!...$FileLogReceiver), which
     // pollutes the rendered collector config. SkipNullRepresenter drops the nulls Jackson includes.
     Object plainConfig = Json.mapper().convertValue(cfg, Object.class);
-    Yaml yaml = new Yaml(new SkipNullRepresenter());
+    Yaml yaml = collectorConfigYaml();
     StringWriter writer = new StringWriter();
     yaml.dump(plainConfig, writer);
     // The operator injects this config into the sidecar as the OTEL_CONFIG env var, and kubelet's
@@ -2049,7 +2050,7 @@ public class OtelCollectorConfigGenerator {
 
     // Add node exporter scrape config if the scrape config target is enabled.
     if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.NODE_EXPORT)) {
-      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, nodeDetails));
+      scrapeConfigs.add(createNodeExporterScrapeConfig(nodeAddress, universe, nodeDetails));
     }
 
     // Add node-agent scrape config if the scrape config target is enabled.
@@ -2397,11 +2398,11 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.ScrapeConfig createNodeExporterScrapeConfig(
-      String nodeAddress, NodeDetails nodeDetails) {
+      String nodeAddress, Universe universe, NodeDetails nodeDetails) {
     OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
         new OtelCollectorConfigFormat.ScrapeConfig();
     scrapeConfig.setJob_name(JOB_NAME_NODE);
-    scrapeConfig.setScheme("http");
+    scrapeConfig.setScheme(universe.isNodeExporterHttps() ? "https" : "http");
     scrapeConfig.setMetrics_path("/metrics");
 
     // Add TLS config
@@ -3244,7 +3245,7 @@ public class OtelCollectorConfigGenerator {
   private String getFirstMountPoint(
       Provider provider, UniverseDefinitionTaskParams.UserIntent userIntent) {
     if (provider.getCloudCode() == Common.CloudType.onprem) {
-      String mountPoints = userIntent.deviceInfo.mountPoints;
+      String mountPoints = userIntent.getBaseDeviceInfo(provider.getUuid()).mountPoints;
       return mountPoints.split(",")[0];
     }
     return "/mnt/d0";
@@ -3261,6 +3262,13 @@ public class OtelCollectorConfigGenerator {
       secretEnv.add(
           ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
     }
+  }
+
+  /** Long values stay on one line: a folded credential could not be redacted by value. */
+  private static Yaml collectorConfigYaml() {
+    DumperOptions options = new DumperOptions();
+    options.setSplitLines(false);
+    return new Yaml(new SkipNullRepresenter(options), options);
   }
 
   private void appendSecretEnv(

@@ -452,12 +452,12 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 }
 
 /*
- * Whether or not we are using the hash batching strategy. We go with
- * the hash strategy if we have at least one hashable clause in our join
- * condition as signified by num_hashClauseInfos.
+ * Whether the hash batching strategy is used: hashing is enabled and at
+ * least one join clause is hashable, as signified by num_hashClauseInfos.
+ * EXPLAIN reports the tuplestore strategy through this same test.
  */
-static bool inline
-UseHash(YbBatchedNestLoop *plan, YbBatchedNestLoopState *nl)
+bool
+YbBnlUseHash(const YbBatchedNestLoop *plan)
 {
 	return yb_bnl_enable_hashing && plan->num_hashClauseInfos > 0;
 }
@@ -477,7 +477,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bool		inneropsfixed = bnlstate->js.ps.inneropsfixed;
 	bool		inneropsset = bnlstate->js.ps.inneropsset;
 
-	Assert(UseHash(plan, bnlstate));
+	Assert(YbBnlUseHash(plan));
 
 	int			num_hashClauseInfos = plan->num_hashClauseInfos;
 	Oid		   *eqops = palloc(num_hashClauseInfos * (sizeof(Oid)));
@@ -485,6 +485,8 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->numLookupAttrs = num_hashClauseInfos;
 	bnlstate->innerAttrs =
 		palloc(num_hashClauseInfos * sizeof(AttrNumber));
+	bnlstate->innerKeyExprs =
+		palloc0(num_hashClauseInfos * sizeof(ExprState *));
 	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState *)));
 	List	   *outerParamExprs = NULL;
 	List	   *hashExprs = NULL;
@@ -497,6 +499,16 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		Assert(OidIsValid(eqop));
 		eqops[i] = eqop;
 		bnlstate->innerAttrs[i] = current_hinfo->innerHashAttNo;
+		/*
+		 * An inner key that is not a column (an expression index key, for
+		 * instance) is evaluated on each inner tuple when it is looked up.
+		 * The expression references INNER_VAR, so it is compiled here, while
+		 * innerops still describe the inner plan's result slot.
+		 */
+		if (current_hinfo->innerHashExpr != NULL)
+			bnlstate->innerKeyExprs[i] =
+				ExecInitExpr(current_hinfo->innerHashExpr,
+							 (PlanState *) bnlstate);
 		Expr	   *outerExpr = current_hinfo->outerParamExpr;
 
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
@@ -609,7 +621,16 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 							  inner,
 							  eq,
 							  bnlstate->innerHashFunctions,
-							  bnlstate->innerAttrs);
+							  bnlstate->innerAttrs,
+							  bnlstate->innerKeyExprs);
+
+	/*
+	 * The key expressions were evaluated in the hash table's per-tuple
+	 * memory, which nothing else resets; release it now that the lookup is
+	 * done so that pass-by-reference keys do not accumulate per inner tuple.
+	 */
+	MemoryContextReset(ht->tempcxt);
+
 	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
@@ -1106,7 +1127,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	bnlstate->bnl_is_sorted = false;
 	bnlstate->bnl_tuple_sort = NULL;
 
-	if (UseHash(plan, bnlstate))
+	if (YbBnlUseHash(plan))
 	{
 		InitHash(bnlstate);
 		REGISTER_LOCAL_JOIN_FN(FlushTuple, Hash);

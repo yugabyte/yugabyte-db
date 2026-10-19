@@ -261,8 +261,7 @@ public class GCPProviderValidatorCmekTest {
 
     validate(GLOBAL_KEY);
 
-    assertTrue(
-        "missing cryptoKeys.get must not fail validation, got " + errors, errors.isEmpty());
+    assertTrue("missing cryptoKeys.get must not fail validation, got " + errors, errors.isEmpty());
   }
 
   @Test

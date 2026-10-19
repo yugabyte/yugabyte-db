@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -67,6 +69,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
   @Mock private NodeUniverseManager nodeUniverseManager;
 
   @Mock private RuntimeConfGetter confGetter;
+  private YNPConfigGenerator ynpConfigGenerator;
 
   @Mock ImageBundleUtil mockImageBundleUtil;
 
@@ -91,10 +94,16 @@ public class YNPProvisioningTest extends FakeDBApplication {
     when(confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.ybUserHomeOverride)))
         .thenReturn("");
     when(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel)).thenReturn(0);
-    YNPConfigGenerator ynpConfigGenerator =
+    setYbaFipsEnabled(false);
+    ynpConfigGenerator =
         new YNPConfigGenerator(
             confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);
     ynpProvisioning = new YNPProvisioning(baseTaskDependencies, ynpConfigGenerator);
+  }
+
+  private void setYbaFipsEnabled(boolean fipsEnabled) {
+    Config staticConf = ConfigFactory.parseMap(Map.of(CommonUtils.FIPS_ENABLED, fipsEnabled));
+    lenient().when(confGetter.getStaticConf()).thenReturn(staticConf);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {
@@ -330,11 +339,12 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set primary cluster user intent with clockbound
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(true);
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
     // Set device info on user intent (required for getDeviceInfoForNode)
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.getProviderInitializerForTests(primaryUserIntent, provider.getUuid())
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
@@ -411,6 +421,49 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertTrue(encoded.contains("/mnt/d1=22222222-2222-2222-2222-222222222222"));
 
     Files.deleteIfExists(tempFile);
+  }
+
+  @Test
+  public void testDetachedNodeConfigTakesFipsFromYba() {
+    // A node checked without a universe (adding it to an on-prem provider) has only YBA's own FIPS
+    // mode to go by, and a FIPS YBA allows nothing but FIPS universes.
+    YNPConfigGenerator.ConfigParams params =
+        YNPConfigGenerator.ConfigParams.builder()
+            .nodeAgentHome(Paths.get("/tmp/node-agent"))
+            .provider(provider)
+            .build();
+
+    assertEquals(
+        false,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
+
+    setYbaFipsEnabled(true);
+    assertEquals(
+        true,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
+  }
+
+  @Test
+  public void testUniverseConfigTakesFipsFromUniverse() {
+    Universe universe = ModelFactory.createUniverse("fips-universe", customer.getId());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.fipsEnabled = true;
+              u.setUniverseDetails(details);
+            });
+    YNPConfigGenerator.ConfigParams params =
+        YNPConfigGenerator.ConfigParams.builder()
+            .nodeAgentHome(Paths.get("/tmp/node-agent"))
+            .provider(provider)
+            .universe(universe)
+            .build();
+
+    assertEquals(
+        true,
+        ynpConfigGenerator.generateConfig(params).get("ynp").get("is_fips_enabled").asBoolean());
   }
 
   @Test
@@ -663,11 +716,12 @@ public class YNPProvisioningTest extends FakeDBApplication {
     UserIntent updatedUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
     // This should not affect.
     updatedUserIntent.setUseClockbound(true);
-    updatedUserIntent.providerType = CloudType.aws;
-    updatedUserIntent.provider = provider.getUuid().toString();
     // Set device info on user intent (required for getDeviceInfoForNode)
-    updatedUserIntent.deviceInfo = new DeviceInfo();
-    updatedUserIntent.deviceInfo.numVolumes = 2; // This differs from the intent in task params;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2; // This differs from the intent in task params;
+    TestUtils.getProviderInitializerForTests(updatedUserIntent, provider.getUuid())
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
@@ -707,18 +761,22 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set up primary cluster user intent
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(false); // Different from read replica
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
+
     // Set device info on primary user intent
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(primaryUserIntent)
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Add read replica cluster
     UserIntent rrUserIntent = primaryUserIntent.clone();
     rrUserIntent.setUseClockbound(true); // Read replica has clockbound enabled
     // Set device info on read replica user intent
-    rrUserIntent.deviceInfo = new DeviceInfo();
-    rrUserIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo rrDeviceInfo = new DeviceInfo();
+    rrDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(rrUserIntent).setDeviceInfo(rrDeviceInfo);
+
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
     placementAZ.uuid = UUID.randomUUID();
@@ -745,8 +803,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
     universeDetails = universe.getUniverseDetails();
 
     // Ensure deviceInfo is set on read replica cluster
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo di = new DeviceInfo();
+    di.numVolumes = 3;
+    TestUtils.existingProviderInitializer(universeDetails.getReadOnlyClusters().get(0).userIntent)
+        .setDeviceInfo(di);
 
     // Verify read replica cluster exists
     List<UniverseDefinitionTaskParams.Cluster> readOnlyClusters =
@@ -832,18 +892,21 @@ public class YNPProvisioningTest extends FakeDBApplication {
     // Set up primary cluster user intent
     UserIntent primaryUserIntent = universeDetails.getPrimaryCluster().userIntent;
     primaryUserIntent.setUseClockbound(false);
-    primaryUserIntent.providerType = CloudType.aws;
-    primaryUserIntent.provider = provider.getUuid().toString();
     // Set device info on primary user intent
-    primaryUserIntent.deviceInfo = new DeviceInfo();
-    primaryUserIntent.deviceInfo.numVolumes = 2;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(primaryUserIntent)
+        .setProviderType(CloudType.aws)
+        .setDeviceInfo(deviceInfo);
 
     // Add read replica cluster
     UserIntent rrUserIntent = primaryUserIntent.clone();
     rrUserIntent.setUseClockbound(true);
     // Set device info on read replica user intent
-    rrUserIntent.deviceInfo = new DeviceInfo();
-    rrUserIntent.deviceInfo.numVolumes = 3;
+    DeviceInfo rrDeviceInfo = new DeviceInfo();
+    rrDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(rrUserIntent).setDeviceInfo(rrDeviceInfo);
+
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
     placementAZ.uuid = UUID.randomUUID();
@@ -870,10 +933,16 @@ public class YNPProvisioningTest extends FakeDBApplication {
     universeDetails = universe.getUniverseDetails();
 
     // Ensure deviceInfo is set on both clusters
-    universeDetails.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getPrimaryCluster().userIntent.deviceInfo.numVolumes = 2;
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo = new DeviceInfo();
-    universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo.numVolumes = 3;
+
+    DeviceInfo newDeviceInfo = new DeviceInfo();
+    newDeviceInfo.numVolumes = 2;
+    TestUtils.existingProviderInitializer(universeDetails.getPrimaryCluster().userIntent)
+        .setDeviceInfo(newDeviceInfo);
+
+    DeviceInfo rrNewDeviceInfo = new DeviceInfo();
+    rrNewDeviceInfo.numVolumes = 3;
+    TestUtils.existingProviderInitializer(universeDetails.getReadOnlyClusters().get(0).userIntent)
+        .setDeviceInfo(rrNewDeviceInfo);
 
     UUID primaryClusterUuid = universeDetails.getPrimaryCluster().uuid;
     UUID rrClusterUuid = universeDetails.getReadOnlyClusters().get(0).uuid;

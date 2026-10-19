@@ -464,7 +464,7 @@ public class CustomerTaskManager {
     Path restoreFilePath = Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE);
     Path restoreCustomerTaskFilePath =
         Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
-    if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+    if (Util.restoreTaskInfoExists()) {
       finalizeRestoredYbaBackupTask();
       try {
         TaskInfo restoreTaskInfo =
@@ -748,9 +748,7 @@ public class CustomerTaskManager {
           if (!optional.isPresent()) {
             return false;
           }
-          return tf.getUuid().equals(optional.get().getUniverseDetails().updatingTaskUUID)
-              || tf.getUuid()
-                  .equals(optional.get().getUniverseDetails().placementModificationTaskUuid);
+          return optional.get().getUniverseDetails().isOwnedByTask(tf.getUuid());
         });
   }
 
@@ -793,8 +791,7 @@ public class CustomerTaskManager {
       }
     } else if (taskParams instanceof UniverseTaskParams) {
       Universe universe = Universe.getOrBadRequest(targetUUID);
-      if (!retriedTaskUuid.equals(universe.getUniverseDetails().updatingTaskUUID)
-          && !retriedTaskUuid.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
+      if (!universe.getUniverseDetails().isOwnedByTask(retriedTaskUuid)) {
         return String.format("Invalid task state: Task %s cannot be retried", retriedTaskUuid);
       }
       CommonUtils.maybeGetUserFromContext()
@@ -930,6 +927,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
+      case RollbackResizeNode:
         taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
         break;
       case DestroyKubernetesUniverse:
@@ -1052,6 +1050,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
+      case RollbackAddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:

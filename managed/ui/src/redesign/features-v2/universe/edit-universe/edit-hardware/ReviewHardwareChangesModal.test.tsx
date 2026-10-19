@@ -321,4 +321,33 @@ describe('ReviewHardwareChangesModal storage spec', () => {
     expect(screen.getAllByText('storageType').length).toBeGreaterThan(0);
     expect(screen.queryByText('ebsType')).not.toBeInTheDocument();
   });
+
+  it('hides storage-spec sub-fields that are unchanged on both sides (e.g. throughput "-/-")', () => {
+    renderReview({
+      isAws: true,
+      sections: [
+        {
+          current: {
+            storageType: 'IO1',
+            diskIops: 1000,
+            throughput: null,
+            volumeSize: 100,
+            numVolumes: 1
+          },
+          next: {
+            storageType: 'IO2',
+            diskIops: 2000,
+            throughput: null,
+            volumeSize: 100,
+            numVolumes: 1
+          }
+        }
+      ]
+    });
+
+    expect(screen.getAllByText('ebsType').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('iops').length).toBeGreaterThan(0);
+    expect(screen.queryByText('throughput')).not.toBeInTheDocument();
+    expect(screen.queryByText('throughputPod')).not.toBeInTheDocument();
+  });
 });

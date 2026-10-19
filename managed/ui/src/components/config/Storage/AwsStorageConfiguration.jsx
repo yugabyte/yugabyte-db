@@ -4,7 +4,6 @@ import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './StorageConfiguration.scss';
 
@@ -52,21 +51,11 @@ class AwsStorageConfiguration extends Component {
     }
   };
 
-  componentDidMount = () => {
-    const { customerConfigs } = this.props;
-    const s3Config = customerConfigs?.data.find((config) => config.name === 'S3');
-    const config = s3Config ? s3Config.data : {};
-    if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
-      this.setState({ iamRoleEnabled: true });
-    }
-  };
-
   render() {
     const {
+      showFederatedIam,
       isEdited,
-      iamInstanceToggle,
       iamRoleEnabled,
-      federatedIamToggle,
       federatedIamEnabled,
       enablePathStyleAccess,
       enableChunkedEncoding,
@@ -106,12 +95,12 @@ class AwsStorageConfiguration extends Component {
               <Field
                 name="IAM_INSTANCE_PROFILE"
                 component={YBToggle}
-                onToggle={iamInstanceToggle}
                 isReadOnly={this.disableInputFields(isEdited, 'IAM_INSTANCE_PROFILE')}
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
           </Row>
+          {showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Federated IAM</div>
@@ -120,7 +109,6 @@ class AwsStorageConfiguration extends Component {
               <Field
                 name="FEDERATED_IAM"
                 component={YBToggle}
-                onToggle={federatedIamToggle}
                 isReadOnly={this.disableInputFields(isEdited, 'FEDERATED_IAM')}
                 subLabel="Whether to use cross-cloud federated IAM for S3 backup."
               />
@@ -132,6 +120,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          )}
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Access Key</div>

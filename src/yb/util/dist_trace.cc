@@ -18,6 +18,7 @@
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
 #include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
+#include "opentelemetry/sdk/trace/samplers/parent.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/sdk/trace/provider.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
@@ -233,8 +234,12 @@ Status InitDistTraceProvider(const resource_sdk::Resource& resource_attrs) {
     auto exporter = CreateExporter();
     auto processor = CreateProcessor(std::move(exporter));
 
-    std::shared_ptr<trace::TracerProvider> provider =
-        trace_sdk::TracerProviderFactory::Create(std::move(processor), resource_attrs);
+    // ParentBased: a span under an unsampled (-00) parent is dropped, and so is everything
+    // beneath it. Roots we start have no parent and are always recorded.
+    std::shared_ptr<trace::TracerProvider> provider = trace_sdk::TracerProviderFactory::Create(
+        std::move(processor), resource_attrs,
+        std::make_unique<trace_sdk::ParentBasedSampler>(
+            std::make_shared<trace_sdk::AlwaysOnSampler>()));
 
     trace_sdk::Provider::SetTracerProvider(provider);
 

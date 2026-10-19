@@ -13,8 +13,11 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -65,6 +68,38 @@ const char* kSysCatalogSnapshotRocksDbSubDir = "rocksdb";
 const char* kSysCatalogSnapshotTabletMetadataChangesFile =
     "exported_tablet_metadata_changes";
 const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SNAPSHOT";
+
+bool SameDatabase(const TableId& table_id1, const TableId& table_id2) {
+  auto database_oid1 = GetPgsqlDatabaseOidByTableId(table_id1);
+  auto database_oid2 = GetPgsqlDatabaseOidByTableId(table_id2);
+  return database_oid1.ok() && database_oid2.ok() && *database_oid1 == *database_oid2;
+}
+
+// Whether CatalogManager::CopyPgsqlSysTables would replicate change in the same request as batch.
+bool CanAddToBatch(
+    const tablet::ChangeMetadataRequestPB& batch, const tablet::ChangeMetadataRequestPB& change) {
+  return !batch.add_multiple_tables().empty() &&
+         batch.tablet_id() == change.tablet_id() &&
+         batch.only_abort_txns_not_using_table_locks() ==
+             change.only_abort_txns_not_using_table_locks() &&
+         SameDatabase(batch.add_multiple_tables(0).table_id(), change.add_table().table_id());
+}
+
+// Describes the fields of an add_table change that MergeAddTableChanges does not carry over.
+std::string FieldsDroppedByMerge(const tablet::ChangeMetadataRequestPB& change) {
+  tablet::ChangeMetadataRequestPB kept;
+  kept.set_tablet_id(change.tablet_id());
+  *kept.mutable_add_table() = change.add_table();
+  if (change.has_only_abort_txns_not_using_table_locks()) {
+    kept.set_only_abort_txns_not_using_table_locks(change.only_abort_txns_not_using_table_locks());
+  }
+  std::string diff_str;
+  google::protobuf::util::MessageDifferencer md;
+  md.ReportDifferencesToString(&diff_str);
+  md.Compare(kept, change);
+  return diff_str;
+}
+
 }  // anonymous namespace
 
 // ------------------------------------------------------------------------------------------------
@@ -115,6 +150,32 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
 // End of InitialSysCatalogSnapshotWriter
 // ------------------------------------------------------------------------------------------------
 
+// Each change metadata operation on the sys catalog rewrites and fsyncs the whole superblock, so
+// replaying the snapshot's add_table changes one by one is quadratic. Batch them the way CREATE
+// DATABASE does.
+std::vector<tablet::ChangeMetadataRequestPB> MergeAddTableChanges(
+    tserver::ExportedTabletMetadataChanges&& changes) {
+  std::vector<tablet::ChangeMetadataRequestPB> result;
+  for (auto& change : *changes.mutable_metadata_changes()) {
+    if (!change.has_add_table()) {
+      result.push_back(std::move(change));
+      continue;
+    }
+    DCHECK_EQ(FieldsDroppedByMerge(change), "")
+        << "CatalogManager::CompleteCreateYsqlSysTable recorded a field that MergeAddTableChanges "
+           "does not carry over";
+    if (result.empty() || !CanAddToBatch(result.back(), change)) {
+      auto& batch = result.emplace_back();
+      batch.set_tablet_id(change.tablet_id());
+      if (change.only_abort_txns_not_using_table_locks()) {
+        batch.set_only_abort_txns_not_using_table_locks(true);
+      }
+    }
+    *result.back().add_add_multiple_tables() = std::move(*change.mutable_add_table());
+  }
+  return result;
+}
+
 Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
@@ -148,14 +209,16 @@ Status RestoreInitialSysCatalogSnapshot(
       Env::Default(),
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotTabletMetadataChangesFile),
       &tablet_metadata_changes));
-  for (const auto& change_metadata_req : tablet_metadata_changes.metadata_changes()) {
+  const auto num_changes = tablet_metadata_changes.metadata_changes_size();
+  const auto merged_changes = MergeAddTableChanges(std::move(tablet_metadata_changes));
+  for (const auto& change_metadata_req : merged_changes) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_metadata_req,
         sys_catalog_tablet_peer,
         term));
   }
-  LOG(INFO) << "Imported " << tablet_metadata_changes.metadata_changes_size()
-            << " tablet metadata changes";
+  LOG(INFO) << "Imported " << num_changes << " tablet metadata changes in "
+            << merged_changes.size() << " operations";
 
   latch.Wait();
   return Status::OK();

@@ -15,6 +15,7 @@
 #include <memory>
 #include <ranges>
 #include <regex>
+#include <set>
 #include <string>
 #include <unordered_set>
 
@@ -26,6 +27,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -110,6 +112,7 @@ DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 namespace yb::integration_tests {
 
@@ -248,12 +251,15 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
  public:
+  virtual int32_t tablet_overhead_size_percentage() const { return 20; }
+
   void InitCluster() override {
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_overhead_size_percentage) =
+        tablet_overhead_size_percentage();
     opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
@@ -306,6 +312,41 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   }
 
  protected:
+  // /api/v1/xcluster must list each outbound stream as a JSON object (#33773).
+  Status VerifyXClusterJsonOutboundStreams() {
+    auto table = CreateTestTable();
+    std::set<std::string> expected_stream_ids;
+    for (int i = 0; i < 2; ++i) {
+      auto stream_id = VERIFY_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+          table->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+      expected_stream_ids.insert(stream_id.ToString());
+    }
+
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/xcluster", &result));
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(result.ToString()));
+    auto outbound_streams = VERIFY_RESULT(root["outbound_streams"].GetArray());
+    std::set<std::string> actual_stream_ids;
+    for (const auto& stream : outbound_streams) {
+      SCHECK(
+          stream.IsObject(), IllegalState, "$0 is not an object: $1", stream.Path(),
+          VERIFY_RESULT(stream.ToString()));
+      SCHECK(
+          stream["metadata"].IsObject(), IllegalState, "$0.metadata is not an object",
+          stream.Path());
+      actual_stream_ids.insert(VERIFY_RESULT(stream["stream_id"].GetString()));
+    }
+    SCHECK_EQ(
+        actual_stream_ids.size(), outbound_streams.size(), IllegalState,
+        "Duplicate stream ids in outbound_streams");
+    SCHECK_FORMAT(
+        actual_stream_ids == expected_stream_ids, IllegalState,
+        "outbound_streams has stream ids $0, expected $1", actual_stream_ids,
+        expected_stream_ids);
+    return Status::OK();
+  }
+
   std::unique_ptr<client::YBClient> client_;
 };
 
@@ -330,6 +371,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(GetUrl("/tablet-replication", &result));
   ASSERT_OK(GetUrl("/load-distribution", &result));
   ASSERT_OK(GetUrl("/api/v1/meta-cache", &result));
+  ASSERT_OK(VerifyXClusterJsonOutboundStreams());
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
@@ -659,6 +701,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
     MasterPathHandlersItest::SetUp();
   }
 
@@ -707,6 +750,65 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
 
   ASSERT_FALSE(ASSERT_RESULT(webpage_shows_deleted_tablets(false /* should_show_deleted */)));
   ASSERT_TRUE(ASSERT_RESULT(webpage_shows_deleted_tablets(true /* should_show_deleted */)));
+}
+
+// With the cleanup on, a split parent removed from memory is still listed, with its children, when
+// the table page shows deleted tablets.
+TEST_F_EX(MasterPathHandlersItest, ShowRemovedSplitParent, TabletSplitMasterPathHandlersItest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = true;
+  CreateTestTable(1 /* num_tablets */);
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  const auto parent_tablet_id = tablet->tablet_id();
+
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto parent = catalog_manager.GetTabletInfo(parent_tablet_id);
+        return !parent.ok() && parent.status().IsDeleted();
+      },
+      30s /* timeout */, "Wait for split parent to be removed from memory"));
+
+  const auto table_page = [this, &table](const bool show_deleted) -> Result<std::string> {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(
+        "/table?id=" + table->id() + (show_deleted ? "&show_deleted" : ""), &result));
+    return result.ToString();
+  };
+  // Match the row, since the task list can also mention the parent.
+  ASSERT_STR_NOT_CONTAINS(
+      ASSERT_RESULT(table_page(false /* show_deleted */)), "<tr><th>" + parent_tablet_id);
+  const auto page = ASSERT_RESULT(table_page(true /* show_deleted */));
+  ASSERT_STR_CONTAINS(page, parent_tablet_id);
+  // The state message is kept. Partition and split depth are checked through the JSON endpoint.
+  ASSERT_STR_CONTAINS(page, "Not serving tablet deleted upon request at");
+
+  // The JSON endpoint lists it too, with the same rebuilt fields.
+  faststring json_result;
+  ASSERT_OK(GetUrl("/api/v1/table?id=" + table->id(), &json_result));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(json_result.ToString()));
+  bool found_parent = false;
+  for (const auto& tablet_json : ASSERT_RESULT(json_obj["tablets"].GetArray())) {
+    if (ASSERT_RESULT(tablet_json["tablet_id"].GetString()) != parent_tablet_id) {
+      continue;
+    }
+    found_parent = true;
+    ASSERT_FALSE(ASSERT_RESULT(tablet_json["partition"].GetString()).empty());
+    ASSERT_EQ(ASSERT_RESULT(tablet_json["split_depth"].GetUint64()), 0);
+    ASSERT_EQ(ASSERT_RESULT(tablet_json["state"].GetString()), "Deleted");
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(tablet_json["message"].GetString()),
+        "Not serving tablet deleted upon request at");
+    ASSERT_TRUE(ASSERT_RESULT(tablet_json["locations"].GetArray()).empty());
+  }
+  ASSERT_TRUE(found_parent) << json_result.ToString();
 }
 
 // Hidden split parent tablet shouldn't be shown as leaderless.
@@ -1898,13 +2000,17 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
   std::vector<std::string> row;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    // Other transient warnings (e.g. a table skipped before its tablets are reported) and runs
+    // that did not yet cover all tablets can show up first, so wait for the expected row.
     auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
-    if (rows.empty()) {
-      return false;
+    for (const auto& r : rows) {
+      if (r.size() == 2 && r[0].find("Could not find a valid tserver to host tablet") !=
+              std::string::npos && std::stoi(r[1]) > 3) {
+        row = r;
+        return true;
+      }
     }
-    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
-    row = rows[0];
-    return true;
+    return false;
   }, 10s /* timeout */, "Waiting for warnings to show up in the Warnings Summary table"));
 
   ASSERT_EQ(row.size(), 2);
@@ -2044,6 +2150,23 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 #if YB_GOOGLE_TCMALLOC
   ASSERT_RESULT(GetHtmlTableRows("/pprof/heap", "heap_profile"));
 #endif
+}
+
+class MasterPathHandlersNoTabletOverheadItest : public MasterPathHandlersItest {
+ public:
+  int32_t tablet_overhead_size_percentage() const override { return 0; }
+  int num_tablet_servers() const override { return 1; }
+  int num_masters() const override { return 1; }
+};
+
+// Without tablet overhead memory the universe has no computable tablet peer limit.
+TEST_F_EX(
+    MasterPathHandlersItest, TabletPeerLimitUndefinedWithoutOverhead,
+    MasterPathHandlersNoTabletOverheadItest) {
+  auto cols = ASSERT_RESULT(GetHtmlTableColumn(
+      "/tablet-servers", "universe_summary", "Tablet Peer Limit (Unenforced)"));
+  ASSERT_EQ(cols.size(), 1);
+  ASSERT_EQ(cols[0], "limit undefined");
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {

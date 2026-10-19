@@ -558,8 +558,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
-  // Verifies that this peer has the op_id in its local log.
-  Status VerifyAsyncWriteReceived(const OpId& op_id);
+  // Verifies that this peer has the op_id in its local log. Without allow_log_lookup, a write from
+  // two or more terms ago is rejected.
+  Status VerifyAsyncWriteReceived(
+      const OpId& op_id, AllowLogLookup allow_log_lookup = AllowLogLookup::kTrue);
 
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
@@ -671,6 +673,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
+  Status CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) override;
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfoUnlocked() const REQUIRES(lock_);
 

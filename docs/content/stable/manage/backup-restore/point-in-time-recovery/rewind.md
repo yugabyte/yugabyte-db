@@ -157,3 +157,4 @@ A database or keyspace can have at most one snapshot schedule. On a universe man
 - Rewind via snapshot schedules works with _in-cluster_ distributed snapshots. For restoring from off-cluster backups to a point in time, see [Restore to PIT](../restore/).
 - Issuing DDLs against a database while it is being rewound is not recommended.
 - Rewinding to a time during which DDLs were in flight may fail or produce inconsistent results. See issue {{<issue 12797>}}.
+- PITR is not supported for databases with [vector indexes](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).

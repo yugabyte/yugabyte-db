@@ -77,6 +77,7 @@
 | "Enable K8s Support Bundle" | "yb.support_bundle.k8s_enabled" | "GLOBAL" | "This config lets you enable support bundle creation on k8s universes." | "Boolean" |
 | "Enable On Prem Support Bundle" | "yb.support_bundle.onprem_enabled" | "GLOBAL" | "This config lets you enable support bundle creation for onprem universes." | "Boolean" |
 | "Allow collection of cores in Support Bundle" | "yb.support_bundle.allow_cores_collection" | "GLOBAL" | "This global config allows you to disable collection of cores in support bundle, even if it is passed as a component while creating." | "Boolean" |
+| "Enable Support Bundle V2 API in UI" | "yb.support_bundle.ui_v2_enabled" | "GLOBAL" | "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table). When false, the UI continues to use the v1 support bundle API. V1 and v2 bundles are stored separately; toggling this flag switches which bundles appear in the UI list." | "Boolean" |
 | "Application Logs Regex Pattern" | "yb.support_bundle.application_logs_regex_pattern" | "GLOBAL" | "Regex pattern used to filter application log files when creating support bundles." | "Raw String" |
 | "Application Logs SDF Pattern" | "yb.support_bundle.application_logs_sdf_pattern" | "GLOBAL" | "SimpleDateFormat pattern used to parse dates from application log file names when creating support bundles." | "String" |
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
@@ -135,6 +136,7 @@
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "Enables extra logging" | "yb.logging.enable_task_failed_request_logs" | "GLOBAL" | "Enables extra logging for task params and request body" | "Boolean" |
 | "Enable gflags sensitive data API redaction" | "yb.api.enable_gflags_sensitive_data_redaction" | "GLOBAL" | "When true, API responses redact gflags sensitive data that is not covered by JsonPath (for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). JsonPath based API redaction remains enabled." | "Boolean" |
+| "Fail fast OCI instance type change with multiple volumes" | "yb.oci.fail_fast_multi_volume_instance_type_change" | "GLOBAL" | "When enabled, ResizeNode precheck fails instance type changes if the node has more than one data volume. OCI UpdateInstance allows at most one boot volume and one secondary volume." | "Boolean" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
 | "Customer UUID to use with Kubernentes Operator" | "yb.kubernetes.operator.customer_uuid" | "GLOBAL" | "Customer UUID to use with Kubernentes Operator, do not change once set" | "String" |
 | "Enable Kubernentes Operator" | "yb.kubernetes.operator.enabled" | "GLOBAL" | "Enable Kubernentes Operator, requires restart to take effect" | "Boolean" |
@@ -174,6 +176,7 @@
 | "Enable Query Logging" | "yb.universe.query_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable YSQL query logging on universes." | "Boolean" |
 | "Enable Metrics Export" | "yb.universe.metrics_export_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable metrics export on universes." | "Boolean" |
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
+| "Enable primary replication factor 9" | "yb.universe.enable_primary_rf_9" | "GLOBAL" | "When enabled, allows creating universes and increasing primary cluster replication factor to 9." | "Boolean" |
 | "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
 | "XCluster Metrics Scheduler Interval" | "yb.xcluster.xcluster_metrics_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Metrics Scheduler runs" | "Duration" |
 | "XCluster Master Address Sync Interval" | "yb.xcluster.xcluster_master_address_sync_interval" | "GLOBAL" | "Interval at which the XCluster Master Address Sync Scheduler runs to keep source master addresses up to date on target universe replication groups" | "Duration" |
@@ -208,6 +211,9 @@
 | "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup location" | "Integer" |
 | "Enable Performing Automatic Rollback of Edit Operation" | "yb.task.enable_edit_auto_rollback" | "GLOBAL" | "Enable performing automatic rollback of edit operation (if possible)" | "Boolean" |
 | "Allow Rollback of Edit Universe Tasks" | "yb.task.allow_edit_universe_rollback" | "GLOBAL" | "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task rollback API" | "Boolean" |
+| "Allow Rollback of Add Node Tasks" | "yb.task.allow_add_node_rollback" | "GLOBAL" | "Allow rolling back a failed add-node-to-universe task via the task rollback API. Rollback is limited to the window before tserver start / raft join; Kubernetes is out of scope." | "Boolean" |
+| "Allow Rollback of Resize Node Tasks" | "yb.task.allow_resize_node_rollback" | "GLOBAL" | "Allow rolling back a failed resize node task via the task rollback API. Kubernetes and disk-size shrink are out of scope; IOPS/throughput revert during the cloud disk-modify cooldown window is rejected." | "Boolean" |
+| "Enable Cross-Cloud Federated IAM" | "yb.ui.feature_flags.enable_cross_cloud_federated_iam" | "GLOBAL" | "Exposes the cross-cloud federated IAM fields on the provider and backup storage configuration pages. Off by default while the feature is in preview; a provider or storage config that already has it set keeps working regardless." | "Boolean" |
 | "Enable S3 Backup Proxy" | "yb.ui.feature_flags.enable_s3_backup_proxy" | "GLOBAL" | "Enable proxy configuration for S3 backup storage" | "Boolean" |
 | "Allow YBA Restore With Universes" | "yb.yba_backup.allow_restore_with_universes" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when existing universes are present" | "Boolean" |
 | "Allow YBA Restore With Old Backup" | "yb.yba_backup.allow_restore_with_old_backup" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when backup file is more than 1 day old" | "Boolean" |
@@ -226,6 +232,8 @@
 | "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
+| "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
+| "HTTP conditional GET (ETag / 304)" | "yb.api.conditional_get.enabled" | "GLOBAL" | "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when the client sends a matching If-None-Match ETag, skipping heavy response construction. When disabled, those endpoints always return a full 200 body." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -410,6 +418,7 @@
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
+| "Allow OCI boot volume replacement with Marketplace-based images" | "yb.oci.allow_boot_volume_replace_for_marketplace_based_images" | "UNIVERSE" | "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or custom images built from one. Use only when YBA's record of an image is wrong or missing." | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
 | "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |

@@ -41,8 +41,10 @@ X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
 X_YBA_API_AUDIT = "x-yba-api-audit"
 X_YBA_API_AUTHZ = "x-yba-api-authz"
+X_YBA_API_BLOCK_OPERATOR_RESOURCE = "x-yba-api-block-operator-resource"
 X_YBA_API_MULTIPART = "x-yba-api-multipart"
 X_YBA_API_STREAM_RESPONSE = "x-yba-api-stream-response"
+X_YBA_API_CONDITIONAL_GET = "x-yba-api-conditional-get"
 X_YBA_API_PREFIX = "x-yba-api-"
 # Every vendor extension understood by the openapi server and client templates. A new extension
 # must be added here, otherwise validate_vendor_ext_names() rejects the spec that uses it.
@@ -51,8 +53,10 @@ X_YBA_API_EXTENSIONS = frozenset([
     X_YBA_API_SINCE,
     X_YBA_API_AUDIT,
     X_YBA_API_AUTHZ,
+    X_YBA_API_BLOCK_OPERATOR_RESOURCE,
     X_YBA_API_MULTIPART,
     X_YBA_API_STREAM_RESPONSE,
+    X_YBA_API_CONDITIONAL_GET,
 ])
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"

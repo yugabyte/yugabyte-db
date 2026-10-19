@@ -240,6 +240,16 @@ struct TableWithTabletsEntries {
   SysTabletsEntriesWithIds tablets_entries;
 };
 
+// What the master keeps of a split parent once its TabletInfo is dropped.
+struct DeletedSplitParent {
+  // The table it belonged to, so its entry can be found by table and dropped with it.
+  TableId table_id;
+  // The tablets that replaced it. A vector because a split can produce more than two tablets.
+  std::vector<TabletId> child_ids;
+  // Its state message when it was deleted, which records when; shown in the master UI.
+  std::string state_msg;
+};
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -708,6 +718,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) override;
 
+  void HandleAlterTableTaskFailed(const TableInfo& table) override
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
   // For a table that is currently in PREPARING state, if all its tablets have transitioned to
   // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
   // advanced to the RUNNING state after all of these tasks complete successfully.
@@ -1113,6 +1126,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // must have updated the config in the meantime.
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   Result<int32_t> GetClusterConfigVersion();
+  Result<uint32_t> GetOidCacheInvalidationsCount();
 
   // Validator for placement information with respect to cluster configuration
   Status ValidateReplicationInfo(
@@ -1326,7 +1340,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Schedule a task to run on the async task thread pool.
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
-  // Time since this peer became master leader. Caller should verify that it is leader before.
+  // Time since this peer last became master leader.
   MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
@@ -1895,6 +1909,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  // Returns the split parents of table_id in deleted_split_parents_. Used by the master UI to list
+  // split parents no longer in memory.
+  std::vector<std::pair<TabletId, DeletedSplitParent>> GetDeletedSplitParents(
+      const TableId& table_id) const EXCLUDES(mutex_);
 
   bool IsColocatedNamespace(const NamespaceId& ns_id) const EXCLUDES(mutex_);
 
@@ -2474,6 +2493,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This function should only be called from the bg_tasks thread, in a single threaded fashion!
   void CleanUpDeletedTables(const LeaderEpoch& epoch);
 
+  // Removes DELETED tablets from TableInfo::tablets_ and tablet_map_, recording split parents'
+  // children in deleted_split_parents_. Tablets of a table that has started hiding or deleting are
+  // left to CleanUpDeletedTables above. Takes the candidate list
+  // ExtractTabletsToProcess already built this cycle. Called from the bg_tasks thread.
+  void RemoveDeletedTabletsFromTables(const TabletInfos& candidates);
+
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
 
@@ -2581,14 +2606,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
-  // The set of tablets that have ever been deleted from the cluster. This set is populated on the
-  // TabletLoader path in VisitSysCatalog when the loader sees a tablet with DELETED state.
+  // The set of tablets that have ever been deleted from the cluster. This set is populated by the
+  // TabletLoader in VisitSysCatalog when it sees a tablet with DELETED state, and whenever a
+  // DELETED tablet is dropped from tablet_map_, by CleanUpDeletedTables or
+  // RemoveDeletedTabletsFromTables.
   // This set is used when processing a tablet report. If a reported tablet is not present in
-  // tablet_map_, then make sure it is present in deleted_tablets_loaded_from_sys_catalog_ before
+  // tablet_map_, then make sure it is present in this set before
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
   UnorderedStringSet<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
+
+  // Split parents dropped from tablet_map_, or never loaded into it, so a lookup for a parent can
+  // still redirect to its children. Populated by RemoveDeletedTabletsFromTables and by the
+  // TabletLoader, and pruned by CleanUpDeletedTables when the table is dropped.
+  UnorderedStringMap<TabletId, DeletedSplitParent> deleted_split_parents_ GUARDED_BY(mutex_);
 
   // Stores the info about the tablets being hidden and retained for CDC.
   // A tablet is retained by CDC in two scenarios:
@@ -2643,12 +2675,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // At all other times, the address pointed to remains the same
   // (thus the value of this shared ptr remains the same), only
   // the underlying object is read or modified via cow read/write lock mechanism.
-  // We don't need a lock guard for changing this pointer value since
-  // we already acquire the leader write lock during catalog loading,
-  // so all concurrent accesses of this shared ptr -- either external via RPCs or
-  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
-  // are locked out since they grab the scoped leader shared lock that
-  // depends on this leader lock.
+  // Catalog load holds leader_mutex_ for writing, so RPC handlers and bg tasks (which hold
+  // ScopedLeaderSharedLock) never observe the swap. Some ClusterConfig() callers
+  // (e.g. XClusterSafeTimeService) do not hold leader_mutex_, so the pointer is accessed via
+  // std::atomic_load/std::atomic_store. Direct reads are only allowed on the load path.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // Transaction tables information.
@@ -2946,6 +2976,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CreateLocalTransactionStatusTableIfNeeded(
       rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
+
+  bool CheckTransactionStatusTabletUsable(const TabletInfoPtr& tablet);
 
   // Get tablet ids of the global transaction status table.
   Status GetGlobalTransactionStatusTablets(
@@ -3261,9 +3293,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
-
-  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
-      client::internal::RemoteTabletPtr tablet);
 
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(

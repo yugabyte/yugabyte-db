@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -187,13 +186,7 @@ public class YbcHandler {
     taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
     taskParams.verifyParams(universe, true /* isFirstTry */);
-    boolean isK8s =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes);
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     UUID taskUUID =
         commissioner.submit(
             isK8s ? TaskType.UpgradeKubernetesYbcGFlags : TaskType.UpgradeYbcGFlags, taskParams);
@@ -214,13 +207,7 @@ public class YbcHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     taskParams.verifyParams(universe, true /* isFirstTry */);
-    boolean isK8s =
-        universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes);
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     UUID taskUUID =
         commissioner.submit(
             isK8s ? TaskType.UpdateK8sYbcThrottleFlags : TaskType.UpdateYbcThrottleFlags,

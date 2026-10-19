@@ -329,8 +329,14 @@ case "$command" in
       "$clock_sync_script"
     fi
 
+    # yb-server-exec.sh execs the daemon, so $! below is still the daemon's PID.
+    launcher=""
+    if [[ "$daemon" == "master" || "$daemon" == "tserver" ]]; then
+      launcher="{{ yb_home_dir }}/bin/yb-server-exec.sh"
+    fi
+
     # We need all three file descriptors closed so SSH connections running this do not hang!
-    nohup ${daemon_binary} $create_option --flagfile ${daemon_conf} \
+    nohup $launcher ${daemon_binary} $create_option --flagfile ${daemon_conf} \
       >>"$daemon_home/${daemon}.out" 2>>"$daemon_home/${daemon}.err" </dev/null &
     # Save pid to file after waiting for log dir to show up.
     daemon_pid=$!

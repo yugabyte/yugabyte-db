@@ -33,7 +33,7 @@ By default this applies to statements run on their own, outside an explicit tran
 
 ## Enable for transaction blocks
 
-{{<tags/feature/tp idea="2337">}}To use the optimization inside explicit transaction blocks, set the YB-TServer flag `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` to true. This also requires [Read Committed isolation](../../../explore/transactions/isolation-levels/#read-committed-isolation) and [transactional DDL](../../../explore/transactions/transactional-ddl/).
+{{<tags/feature/tp idea="2337">}}To use the optimization inside explicit transaction blocks, set the YB-TServer flag `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` to true. This also requires [Read Committed isolation](../read-committed/) and [transactional DDL](../transactional-ddl/).
 
 Because `ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks` is a preview flag, add it to the [`allowed_preview_flags_csv`](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before you set it.
 
@@ -67,7 +67,7 @@ Two session settings control the feature. Any user can change them; superuser pr
 | Setting | Default | Description |
 | :------ | :------ | :---------- |
 | [`yb_enable_new_relation_fastpath_write`](../../../reference/configuration/yb-tserver/#yb-enable-new-relation-fastpath-write) | on | Turns the optimization on or off. |
-| [`yb_enable_new_relation_fastpath_write_in_txn_blocks`](../../../reference/configuration/yb-tserver/#yb-enable-new-relation-fastpath-write-in-txn-blocks) | off | Extends the optimization to explicit transaction blocks. Requires the setting above to be on, [transactional DDL](../../../explore/transactions/transactional-ddl/) to be enabled, and [Read Committed isolation](../../../explore/transactions/isolation-levels/#read-committed-isolation). |
+| [`yb_enable_new_relation_fastpath_write_in_txn_blocks`](../../../reference/configuration/yb-tserver/#yb-enable-new-relation-fastpath-write-in-txn-blocks) | off | Extends the optimization to explicit transaction blocks. Requires the setting above to be on, [transactional DDL](../transactional-ddl/) to be enabled, and [Read Committed isolation](../read-committed/). |
 
 Both have cluster-wide equivalents you can set as flags: `--ysql_yb_enable_new_relation_fastpath_write` and `--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks`.
 

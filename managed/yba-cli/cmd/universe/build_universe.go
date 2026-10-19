@@ -910,6 +910,8 @@ func setDefaultInstanceTypes(
 				instanceTypeDefault = "Standard_DS2_v2"
 			case util.GCPProviderType:
 				instanceTypeDefault = "n1-standard-1"
+			case util.OCIProviderType:
+				instanceTypeDefault = "VM.Standard.E4.Flex"
 			case util.OnpremProviderType:
 				instanceTypeDefault = onpremInstanceTypeDefault.GetInstanceTypeCode()
 			case util.K8sProviderType:
@@ -933,6 +935,8 @@ func setDefaultStorageTypes(
 		storageType = "Premium_LRS"
 	case util.GCPProviderType:
 		storageType = "Persistent"
+	case util.OCIProviderType:
+		storageType = "OCI_Balanced"
 	case util.OnpremProviderType:
 		storageType = ""
 	}
@@ -950,6 +954,8 @@ func getProviderType() {
 		providerType = util.OnpremProviderType
 	} else if strings.Compare(providerType, "k8s") == 0 {
 		providerType = util.K8sProviderType
+	} else if strings.Compare(providerType, "oracle") == 0 {
+		providerType = util.OCIProviderType
 	}
 }
 

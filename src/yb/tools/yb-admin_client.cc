@@ -65,6 +65,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -570,6 +571,12 @@ ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
       timeout_(timeout),
       initted_(false) {}
 
+ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout, string certs_dir)
+    : master_addr_list_(std::move(addrs)),
+      timeout_(timeout),
+      certs_dir_(std::move(certs_dir)),
+      initted_(false) {}
+
 ClusterAdminClient::ClusterAdminClient(const HostPort& init_master_addr, MonoDelta timeout)
     : init_master_addr_(init_master_addr),
       timeout_(timeout),
@@ -653,7 +660,7 @@ Status ClusterAdminClient::Init() {
 
   // Check if caller will initialize the client and related parts.
   rpc::MessengerBuilder messenger_builder("yb-admin");
-  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder, certs_dir_));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
@@ -4869,6 +4876,43 @@ Status ClusterAdminClient::GetReplicationInfo(const std::string& replication_gro
   return Status::OK();
 }
 
+Result<rapidjson::Document> ClusterAdminClient::GetPersistenceBlockMap() {
+  const auto catalog_entry = VERIFY_RESULT(XClusterClient().GetPersistenceBlockMap());
+
+  // Construct database OID->name mapping.
+  std::unordered_map<uint32_t, NamespaceName> database_names;
+  // A dropped database keeps its entry until master erases it in some corner cases, so name
+  // non-running ones too.
+  for (const auto& namespace_info : VERIFY_RESULT(yb_client_->ListNamespaces(
+           client::IncludeNonrunningNamespaces::kTrue, YQL_DATABASE_PGSQL))) {
+    if (auto db_oid = GetPgsqlDatabaseOid(namespace_info.id.id()); db_oid.ok()) {
+      database_names[*db_oid] = namespace_info.id.name();
+    }
+  }
+
+  rapidjson::Document document;
+  document.SetObject();
+  auto& allocator = document.GetAllocator();
+  AddStringField("version", std::to_string(catalog_entry.version()), &document, &allocator);
+  rapidjson::Value databases(rapidjson::kArrayType);
+  for (const auto& [db_oid, blocked_through_ht_repr] :
+       catalog_entry.persistence_block_map().blocked_through_ht()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("database_oid", std::to_string(db_oid), &json_entry, &allocator);
+    auto it = database_names.find(db_oid);
+    AddStringField(
+        "database_name", it == database_names.end() ? "" : it->second, &json_entry, &allocator);
+    const auto blocked_through_ht = HybridTime::FromPB(blocked_through_ht_repr);
+    AddStringField(
+        "blocked_through",
+        blocked_through_ht == HybridTime::kMax ? "max" : HybridTimeToString(blocked_through_ht),
+        &json_entry, &allocator);
+    databases.PushBack(json_entry, allocator);
+  }
+  document.AddMember("databases", databases, allocator);
+  return document;
+}
+
 Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include_lag_and_skew) {
   master::GetXClusterSafeTimeRequestPB req;
   master::GetXClusterSafeTimeResponsePB resp;
@@ -5536,7 +5580,8 @@ Status ExpandColocationParent(
 Status ClusterAdminClient::VerifyXClusterGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const GroupVerifyOptions& options,
-    const std::unordered_set<TableId>& skip_source_table_ids) {
+    const std::unordered_set<TableId>& skip_source_table_ids,
+    const std::string& source_certs_dir) {
   const auto group_info = VERIFY_RESULT(
       XClusterClient().GetUniverseReplicationInfo(replication_group_id));
   SCHECK_FORMAT(
@@ -5551,7 +5596,7 @@ Status ClusterAdminClient::VerifyXClusterGroup(
       replication_group_id);
   const auto source_master_addrs =
       HostPort::ToCommaSeparatedString(group_info.source_master_addrs);
-  ClusterAdminClient source(source_master_addrs, timeout_);
+  ClusterAdminClient source(source_master_addrs, timeout_, source_certs_dir);
   RETURN_NOT_OK_PREPEND(
       source.Init(),
       Format("Unable to connect to source masters at [$0]", source_master_addrs));

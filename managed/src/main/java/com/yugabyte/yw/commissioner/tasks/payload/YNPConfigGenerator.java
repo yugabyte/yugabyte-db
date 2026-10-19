@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
@@ -380,12 +381,12 @@ public class YNPConfigGenerator {
     ynpNode.put(
         "configure_cgroup",
         Util.configureCgroup(persistedUserIntent, provider, params.isBlankNode(), confGetter));
-    DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
+    DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     List<String> mountPaths =
         getValidatedMountPaths(deviceInfo, provider.getCloudCode() != CloudType.onprem);
     // DeviceInfo stores custom mount points as CSV, while YNP consumes a shell word list.
     extraNode.put("mount_paths", String.join(" ", mountPaths));
-    if (userIntent.providerType == Common.CloudType.azu) {
+    if (provider.getCloudCode() == Common.CloudType.azu) {
       extraNode.put("disk_lun_indexes", getValidatedAzureLunIndexes(node, deviceInfo));
     }
     if (provider.getCloudCode() != CloudType.onprem) {
@@ -397,7 +398,7 @@ public class YNPConfigGenerator {
       List<String> devicePaths =
           this.queryHelper.getDeviceNames(
               provider,
-              userIntent.providerType,
+              provider.getCloudCode(),
               Integer.toString(deviceInfo.numVolumes),
               storageType,
               node.cloudInfo.region,
@@ -413,7 +414,7 @@ public class YNPConfigGenerator {
         if (imageBundleUUID != null) {
           ImageBundle.NodeProperties overwriteProperties =
               imageBundleUtil.getNodePropertiesOrFail(
-                  imageBundleUUID, node.getRegion(), userIntent.providerType.toString());
+                  imageBundleUUID, node.getRegion(), provider.getCloudCode().toString());
           if (overwriteProperties.getSshPort() != 22) {
             extraNode.put("custom_ssh_port", overwriteProperties.getSshPort());
           }
@@ -472,6 +473,10 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
+    // A FIPS enabled YBA only allows FIPS enabled universes, so a node checked without a universe
+    // (adding it to an on-prem provider) is held to the same requirement. Overridden by the
+    // universe's own flag below when there is one.
+    ynpNode.put("is_fips_enabled", confGetter.getStaticConf().getBoolean(CommonUtils.FIPS_ENABLED));
     // Propagate the YNP version check flag so the YNP (Go) code respects it uniformly when
     // comparing versions across all provisioning and precheck paths.
     extraNode.put(

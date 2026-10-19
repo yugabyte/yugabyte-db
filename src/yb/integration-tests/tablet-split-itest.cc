@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -99,6 +100,7 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -118,6 +120,7 @@ using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
 DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_min_keys_per_index_block);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_maintenance_manager);
@@ -183,6 +186,8 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
+DECLARE_int32(num_tablets_to_open_simultaneously);
+DECLARE_bool(TEST_wait_for_split_parent_running_on_open);
 DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 
 METRIC_DECLARE_gauge_uint64(tablet_split_candidates);
@@ -290,6 +295,126 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
   ASSERT_OK(CheckRowsCount(kNumRows));
 }
 
+namespace {
+
+// Waits until the tablet is gone from both its table's tablets_ and the catalog manager's
+// tablet_map_, and returns the split children a lookup for it now reports.
+constexpr auto kTabletRemovedTimeout = 30s * kTimeMultiplier;
+
+Result<std::vector<TabletId>> WaitForTabletRemoved(
+    master::CatalogManagerIf& catalog_mgr, const master::TableInfo& table_info,
+    const TabletId& tablet_id, MonoDelta timeout = kTabletRemovedTimeout) {
+  std::vector<TabletId> split_child_ids;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tablet = catalog_mgr.GetTabletInfo(tablet_id);
+        if (tablet.ok()) {
+          return false;
+        }
+        if (!tablet.status().IsDeleted()) {
+          return tablet.status();
+        }
+        const auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
+        SCHECK(
+            std::ranges::find_if(tablets, [&tablet_id](const auto& t) {
+              return t->tablet_id() == tablet_id;
+            }) == tablets.end(),
+            IllegalState, "Tablet erased from tablet_map_ but still in tablets_");
+        split_child_ids = SplitChildTabletIdsData(tablet.status()).value();
+        return true;
+      },
+      timeout, Format("Wait for tablet $0 to be removed", tablet_id)));
+  return split_child_ids;
+}
+
+} // namespace
+
+// Test for #15043
+TEST_F(TabletSplitITest, DeletedParentTabletRemovedFromTableMaps) {
+  const auto parent_tablet_id = ASSERT_RESULT(CreateSingleTabletAndSplit(kDefaultNumRows));
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  std::vector<TabletId> child_ids;
+  for (const auto& tablet : ASSERT_RESULT(table_info->GetTablets())) {
+    child_ids.push_back(tablet->tablet_id());
+  }
+  ASSERT_EQ(child_ids.size(), 2);
+
+  // Nothing here retains the parent, so it is deleted and removed. A lookup for it must still name
+  // its children: that is how a client holding a stale parent location finds them.
+  auto split_child_ids =
+      ASSERT_RESULT(WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id));
+  std::ranges::sort(child_ids);
+  std::ranges::sort(split_child_ids);
+  ASSERT_EQ(split_child_ids, child_ids);
+}
+
+// A deleted split parent must stay out of the maps after a master restart, whether the loader
+// skips it or the cleanup removes it again.
+TEST_F(TabletSplitITest, DeletedParentTabletRemovedAfterRestart) {
+  const auto parent_tablet_id = ASSERT_RESULT(CreateSingleTabletAndSplit(kDefaultNumRows));
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  ASSERT_RESULT(WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id));
+}
+
+// Under a snapshot schedule a split parent is hidden, not deleted. It must stay in
+// TableInfo::tablets_ while retained so PITR can restore to before the split, and be removed once
+// it ages out of the retention window and is deleted.
+TEST_F(TabletSplitITest, HiddenParentTabletRemovedFromTableMapsAfterRetention) {
+  constexpr auto kNumRows = kDefaultNumRows;
+  constexpr auto kInterval = 1s;
+  constexpr auto kRetention = 5s * kTimeMultiplier;
+
+  CreateSingleTablet();
+
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client_->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util->CreateSchedule(
+      table_, client::kTableName.namespace_type(), client::kTableName.namespace_name(),
+      client::WaitSnapshot::kTrue, kInterval, kRetention));
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(
+      split_hash_code, kNumRows, /* parent_tablet_protected_from_deletion = */ true));
+
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_id = ASSERT_RESULT(GetTestTableId());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_id));
+  auto parent_in_tablets = [&]() -> Result<bool> {
+    const auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
+    return std::ranges::find_if(tablets, [&parent_tablet_id](const auto& tablet) {
+             return tablet->tablet_id() == parent_tablet_id;
+           }) != tablets.end();
+  };
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        // Read tablets_ before the tablet's state: only a DELETED tablet is removed, so if the
+        // parent is still not deleted afterwards it must have been listed.
+        const auto listed = VERIFY_RESULT(parent_in_tablets());
+        auto parent = VERIFY_RESULT(catalog_mgr->GetTabletInfo(parent_tablet_id));
+        auto parent_lock = parent->LockForRead();
+        SCHECK(
+            !parent_lock->is_deleted(), IllegalState, "Split parent deleted before it was hidden");
+        if (!parent_lock->is_hidden()) {
+          return false;
+        }
+        SCHECK(listed, IllegalState, "Retained hidden parent was removed from tablets_");
+        return true;
+      },
+      30s * kTimeMultiplier, "Wait for split parent to become hidden"));
+
+  ASSERT_RESULT(
+      WaitForTabletRemoved(*catalog_mgr, *table_info, parent_tablet_id, 120s * kTimeMultiplier));
+}
+
 // Test for #31936, ensure that marking all_tablets as stale forces a full tablet lookup, even if
 // each tablet in all_tablets is individually looked up and un-staled.
 TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
@@ -344,6 +469,36 @@ TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
          "not the cached pre-split parent.";
   for (const auto& tablet : post_split_tablets) {
     EXPECT_NE(tablet->tablet_id(), parent_id) << "parent leaked back into all_tablets";
+  }
+}
+
+// GH#34286: LookupAllTablets with a table opened after a split must not return the tablets cached
+// before the split.
+TEST_F(TabletSplitITest, LookupAllTabletsWithTableOpenedAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const client::YBTableName table_name = table_->name();
+  auto pre_split_table = ASSERT_RESULT(client_->OpenTable(table_name));
+  auto initial_tablets = ASSERT_RESULT(
+      client_->LookupAllTabletsFuture(pre_split_table, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(initial_tablets.size(), 1);
+  const TabletId parent_id = initial_tablets[0]->tablet_id();
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /*expected_non_split_tablets=*/2, /*expected_split_tablets=*/1));
+
+  auto post_split_table = ASSERT_RESULT(client_->OpenTable(table_name));
+  ASSERT_GT(
+      post_split_table->GetPartitionListVersion(), pre_split_table->GetPartitionListVersion());
+  auto post_split_tablets = ASSERT_RESULT(
+      client_->LookupAllTabletsFuture(post_split_table, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(post_split_tablets.size(), 2);
+  for (const auto& tablet : post_split_tablets) {
+    ASSERT_NE(tablet->tablet_id(), parent_id);
   }
 }
 
@@ -915,6 +1070,8 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   CreateSingleTablet();
   ASSERT_OK(WriteRows(kNumRows, 1));
   ASSERT_OK(CheckRowsCount(kNumRows));
+  // Intents are applied asynchronously; flushing before apply leaves no SST to pick a split key.
+  ASSERT_OK(WaitForTestTableIntentsApplied());
 
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
 
@@ -2688,16 +2845,34 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   Status TestSplitBeforeParentDeletion(bool hide_only);
 
   void TestRetryableWrite();
+  void TestRetryableWriteAfterSplitChildRestart(bool flush_child_bootstrap_state);
 };
 
 // Parameterized extension to test N-way tablet split.
+// Block settings: small data blocks give Cross enough cut points for N-way splits; small index
+// blocks + min_keys_per_index_block=10 give a production-like 2+ level index.
 class TabletNSplitSingleServerITest :
     public TabletSplitSingleServerITest,
     public testing::WithParamInterface<int> {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_min_keys_per_index_block) = 10;
     TabletSplitSingleServerITest::SetUp();
     cluster_->SetSplitFactor(GetParam());
+  }
+
+  size_t DbBlockSizeBytes() const override { return 256; }
+  size_t DbIndexBlockSizeBytes() const override { return 1_KB; }
+
+  // Verifies the index is 2+ levels, so the test really covers multi-level index traversal.
+  static void AssertMultiLevelIndex(tablet::Tablet* tablet) {
+    auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
+        ASSERT_RESULT(tablet->regular_db()->TEST_GetLargestSstTableReader()));
+    ASSERT_NE(table_reader, nullptr);
+    auto index_reader_base = ASSERT_RESULT(table_reader->TEST_GetIndexReader());
+    auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
+    ASSERT_NE(index_reader, nullptr);
+    ASSERT_GE(index_reader->TEST_GetNumLevels(), 2U);
   }
 };
 
@@ -2793,6 +2968,7 @@ TEST_P(TabletNSplitSingleServerITest, ComputeSplitKeys) {
   // Compute split keys.
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  ASSERT_NO_FATALS(AssertMultiLevelIndex(tablet.get()));
 
   const auto split_factor = cluster_->GetSplitFactor();
   const auto expected_num_keys = split_factor - 1;
@@ -2822,6 +2998,7 @@ TEST_P(TabletNSplitSingleServerITest, GetSplitKeys) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  ASSERT_NO_FATALS(AssertMultiLevelIndex(tablet.get()));
   const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(cluster_->GetSplitFactor()));
   const auto& expected_split_encoded_keys = split_keys.encoded_keys;
   const auto expected_first_split_key_hash =
@@ -3180,11 +3357,11 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     auto parent = catalog_mgr->GetTabletInfo(parent_tablet_id);
     if (!parent.ok()) {
-      if (parent.status().IsNotFound()) {
+      if (parent.status().IsDeleted() || parent.status().IsNotFound()) {
         return true;
-    }
+      }
       return parent.status();
-  }
+    }
     auto parent_lock = parent.get()->LockForRead();
     return hide_only ? parent_lock->is_hidden() : parent_lock->is_deleted();
   }, 10s * kTimeMultiplier, "Wait for parent to be hidden / deleted."));
@@ -3287,6 +3464,118 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithPersistedStructure) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   TestRetryableWrite();
+}
+
+void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
+    bool flush_child_bootstrap_state) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+
+  constexpr int kNumRows = 2;
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  const auto parent_tablet_id = parent_peer->tablet_id();
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(2, 1, 1));
+  const auto child_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(child_peers.size(), 2);
+  ASSERT_OK(WriteRow(NewSession(), kNumRows + 1, 0));
+  std::vector<OpId> child_committed_op_ids;
+  for (const auto& child_peer : child_peers) {
+    child_committed_op_ids.push_back(
+        ASSERT_RESULT(child_peer->GetRaftConsensus())->GetLastCommittedOpId());
+  }
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1",
+       "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:WriteTimedOut"},
+      {"TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite",
+       "AsyncRpc::Finished:SetTimedOut:2"},
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  Status write_status;
+  std::thread write_thread([&] {
+    write_status = ResultToStatus(WriteRow(NewSession(), kNumRows + 1, kNumRows + 1));
+  });
+  auto write_thread_cleanup = ScopeExit([&] {
+    if (write_thread.joinable()) {
+      // Releases the client if a check failed before the retry was allowed.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+      TEST_SYNC_POINT(
+          "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite");
+      write_thread.join();
+    }
+#ifndef NDEBUG
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearTrace();
+#endif
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i != child_peers.size(); ++i) {
+          if (VERIFY_RESULT(child_peers[i]->GetRaftConsensus())->GetLastCommittedOpId() >
+              child_committed_op_ids[i]) {
+            return true;
+          }
+        }
+        return false;
+      },
+      10s * kTimeMultiplier, "post-split update is applied"));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:WriteTimedOut");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  for (const auto& child_peer : child_peers) {
+    if (flush_child_bootstrap_state) {
+      ASSERT_OK(child_peer->log()->AllocateSegmentAndRollOver());
+      ASSERT_OK(WaitFor([&] { return child_peer->TEST_HasBootstrapStateOnDisk(); },
+                        10s * kTimeMultiplier, "child retryable requests flushed to disk"));
+    } else {
+      ASSERT_FALSE(child_peer->TEST_HasBootstrapStateOnDisk());
+    }
+    ASSERT_OK(ASSERT_RESULT(child_peer->shared_tablet())->Flush(
+        tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_wait_for_split_parent_running_on_open) = true;
+  // Both waiting children plus the parent each need a bootstrap thread.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablets_to_open_simultaneously) = 3;
+  auto* tablet_server = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto peer = tablet_server->server()->tablet_manager()->GetTablet(parent_tablet_id);
+        return peer.ok() && (*peer)->state() == tablet::RaftGroupStatePB::RUNNING;
+      },
+      10s * kTimeMultiplier, "split parent is running"));
+  ASSERT_OK(WaitFor(
+      [&] { return ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size() == 2; },
+      10s * kTimeMultiplier, "split children are running after restart"));
+
+  ASSERT_OK(DeleteRow(NewSession(), kNumRows + 1));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart:RetryWrite");
+  write_thread.join();
+  ASSERT_OK(write_status);
+
+  ASSERT_OK(CheckRowsCount(kNumRows));
+}
+
+TEST_F(TabletSplitSingleServerITest, YB_DEBUG_ONLY_TEST(RetryableWriteAfterSplitChildRestart)) {
+  TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ true);
+}
+
+TEST_F(TabletSplitSingleServerITest,
+       YB_DEBUG_ONLY_TEST(RetryableWriteAfterSplitChildRestartWithoutFlush)) {
+  TestRetryableWriteAfterSplitChildRestart(/* flush_child_bootstrap_state= */ false);
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {

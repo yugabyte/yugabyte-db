@@ -23,13 +23,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -94,12 +94,16 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),

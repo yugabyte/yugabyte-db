@@ -14,6 +14,7 @@ package com.yugabyte.jedis;
 
 import static org.yb.AssertionWrappers.*;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -26,6 +27,7 @@ import java.util.List;
 import org.yb.YBParameterizedTestRunner;
 
 @RunWith(YBParameterizedTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class TestYBJedisTSRevRangeByTime extends BaseJedisTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);

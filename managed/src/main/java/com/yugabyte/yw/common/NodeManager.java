@@ -1660,7 +1660,7 @@ public class NodeManager extends DevopsBase {
     Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
-      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", provider.getCloudCode());
       return;
     }
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
@@ -1979,8 +1979,8 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = provider.getCloudCode();
 
-          if (cloudType.equals(Common.CloudType.aws)) {
-            // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.oci)) {
+            // aws / oci use instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
@@ -2254,7 +2254,7 @@ public class NodeManager extends DevopsBase {
             if (node != null
                 && cluster != null
                 && provider.getCloudCode() != Common.CloudType.onprem
-                && (deviceInfo = cluster.userIntent.getDeviceInfoForNode(node)) != null) {
+                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
               commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
@@ -2711,6 +2711,7 @@ public class NodeManager extends DevopsBase {
   }
 
   // OCI Flex shapes require shapeConfig.ocpus on launch and UpdateInstance.
+  // DenseIO/HPC Flex included: those cores and memory come from the YAML min SKU.
   private void addOciFlexShapeConfigArgs(
       List<String> commandArgs, Provider provider, String instanceTypeCode) {
     if (provider.getCloudCode() != Common.CloudType.oci

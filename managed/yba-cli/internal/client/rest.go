@@ -42,6 +42,7 @@ func (a *AuthAPIClient) RestAPICall(
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-AUTH-YW-API-TOKEN", token)
+	req.Header.Set("User-Agent", UserAgent())
 
 	r, err := a.RestClient.Client.Do(req)
 	if err != nil {
@@ -85,6 +86,7 @@ func (a *AuthAPIClient) RestAPICallV1Path(
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-AUTH-YW-API-TOKEN", token)
+	req.Header.Set("User-Agent", UserAgent())
 
 	r, err := a.RestClient.Client.Do(req)
 	if err != nil {

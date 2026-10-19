@@ -13,15 +13,19 @@
 //
 //
 
+#include <cinttypes>
+#include <cstdarg>
+#include <cstdio>
+#include <limits>
+#include <map>
 #include <sstream>
 #include <string>
-#include <unordered_map>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -34,27 +38,6 @@ using namespace std::literals;
 namespace yb {
 
 namespace {
-
-template<class... Args>
-void CheckPlain(const std::string& format, Args&&... args) {
-  ASSERT_EQ(strings::Substitute(format, std::forward<Args>(args)...),
-            Format(format, std::forward<Args>(args)...));
-}
-
-template<class T>
-void CheckInt(const std::string& format, const T& t) {
-  CheckPlain(format, t);
-  CheckPlain(format, std::numeric_limits<T>::min());
-  CheckPlain(format, std::numeric_limits<T>::max());
-}
-
-template<class Collection>
-void CheckCollection(const std::string& format, const Collection& collection) {
-  ASSERT_EQ(strings::Substitute(format, ToString(collection)), Format(format, collection));
-}
-
-std::vector<std::string> kFormats = { "Is it $0?", "Yes, it is $0", "$0 == $0, right?"};
-std::string kLongFormat = "We have format of $0 and $1, may be also $2";
 
 class Custom {
  public:
@@ -70,87 +53,41 @@ class Custom {
   int value_;
 };
 
-double ClocksToMs(std::clock_t clocks) {
-  return 1000.0 * clocks / CLOCKS_PER_SEC;
-}
-
-template<class... Args>
-void CheckSpeed(const std::string& format, Args&&... args) {
-#ifdef THREAD_SANITIZER
-  const size_t kCycles = 5000;
-#else
-  const size_t kCycles = 500000;
-#endif
-  const size_t kMeasurements = 10;
-  std::vector<std::clock_t> substitute_times, format_times;
-  substitute_times.reserve(kMeasurements);
-  format_times.reserve(kMeasurements);
-  for (size_t m = 0; m != kMeasurements; ++m) {
-    const auto start = std::clock();
-    for (size_t i = 0; i != kCycles; ++i) {
-      strings::Substitute(format, std::forward<Args>(args)...);
-    }
-    const auto mid = std::clock();
-    for (size_t i = 0; i != kCycles; ++i) {
-      Format(format, std::forward<Args>(args)...);
-    }
-    const auto stop = std::clock();
-    substitute_times.push_back(mid - start);
-    format_times.push_back(stop - mid);
-  }
-  std::sort(substitute_times.begin(), substitute_times.end());
-  std::sort(format_times.begin(), format_times.end());
-  std::clock_t substitute_time = 0;
-  std::clock_t format_time = 0;
-  size_t count = 0;
-  for (size_t i = kMeasurements / 4; i != kMeasurements * 3 / 4; ++i) {
-    substitute_time += substitute_times[i];
-    format_time += format_times[i];
-    ++count;
-  }
-  substitute_time /= count;
-  format_time /= count;
-  if (format_time > substitute_time) {
-    LOG(INFO) << Format("Format times: $0, substitute times: $1", format_times, substitute_times);
-  }
-  LOG(INFO) << "Performance results for [[ "
-            << Format(format, std::forward<Args>(args)...) << " ]]: "
-            << "substitute: " << ClocksToMs(substitute_time) << "ms, "
-            << "format: " << ClocksToMs(format_time) << "ms";
-
-  // Check that Format and Substitute differ by a factor within a certain range.
-  ASSERT_PERF_LE(format_time, substitute_time * 3);
-  ASSERT_PERF_LE(substitute_time, format_time * 10);
-}
-
 } // namespace
 
 TEST(FormatTest, Number) {
-  for (const auto& format : kFormats) {
-    CheckInt<int>(format, 1984);
-    CheckInt<int16>(format, 2349);
-    CheckInt<uint32_t>(format, 23984296);
-    CheckInt<size_t>(format, 2936429238477);
-    CheckInt<ptrdiff_t>(format, -962394729);
-    CheckInt<int8_t>(format, 45);
-  }
+  ASSERT_EQ("Is it 1984?", Format("Is it $0?", 1984));
+  ASSERT_EQ("-2147483648 2147483647",
+            Format("$0 $1", std::numeric_limits<int>::min(), std::numeric_limits<int>::max()));
+  ASSERT_EQ("-32768 32767",
+            Format("$0 $1", std::numeric_limits<int16_t>::min(),
+                   std::numeric_limits<int16_t>::max()));
+  ASSERT_EQ("0 4294967295", Format("$0 $1", uint32_t{0}, std::numeric_limits<uint32_t>::max()));
+  ASSERT_EQ("18446744073709551615", Format("$0", std::numeric_limits<size_t>::max()));
+  ASSERT_EQ("-962394729", Format("$0", ptrdiff_t{-962394729}));
+  ASSERT_EQ("-128 127", Format("$0 $1", int8_t{-128}, int8_t{127}));
+}
+
+TEST(FormatTest, Placeholders) {
+  ASSERT_EQ("7 == 7, right?", Format("$0 == $0, right?", 7));
+  ASSERT_EQ("b a", Format("$1 $0", "a", "b"));
+  ASSERT_EQ("$0 costs $5", Format("$$0 costs $$$0", 5));
+  ASSERT_EQ("no placeholders", Format("no placeholders", 1));
 }
 
 TEST(FormatTest, String) {
-  for (const auto& format : kFormats) {
-    CheckPlain(format, "YugaByte");
-    const char* pointer = "Pointer";
-    CheckPlain(format, pointer);
-    char array[] = "Array";
-    CheckPlain(format, &array[0]);
-    std::string string = "String";
-    CheckPlain(format, string);
-    CheckPlain(format, "TempString"s);
-  }
+  const char* pointer = "Pointer";
+  char array[] = "Array";
+  std::string string = "String";
+  ASSERT_EQ("Literal Pointer Array String Temp View",
+            Format("$0 $1 $2 $3 $4 $5", "Literal", pointer, &array[0], string, "Temp"s,
+                   std::string_view("View")));
+  ASSERT_EQ("[zero\0zero]"s, Format("[$0]", "zero\0zero"s));
+  ASSERT_EQ("[Embedded\0zero]"s, Format("[$0]", std::string_view("Embedded\0zero", 13)));
+  ASSERT_EQ("[][]", Format("[$0][$1]", std::string_view(), std::string()));
 }
 
-// strings::Substitute ignores actual size of array.
-// That is why CheckPlain helper can't be used to check Format with array argument without '\0'.
+// Format respects the actual size of an array that has no terminating '\0'.
 TEST(FormatTest, Array) {
   union {
     char data[10] = "head-tail";
@@ -161,15 +98,9 @@ TEST(FormatTest, Array) {
 }
 
 TEST(FormatTest, Collections) {
-  for (const auto& format : kFormats) {
-    CheckCollection<std::vector<int>>(format, {1, 2, 3});
-    CheckCollection<std::unordered_map<int, std::string>>(format,
-                                                          {{1, "one"}, {2, "two"}, {3, "three"}});
-  }
-}
-
-TEST(FormatTest, MultiArgs) {
-  CheckPlain(kLongFormat, 5, "String", "zero\0zero"s);
+  ASSERT_EQ("Is it [1, 2, 3]?", Format("Is it $0?", std::vector<int>{1, 2, 3}));
+  ASSERT_EQ("[{1, one}, {2, two}]",
+            Format("$0", std::map<int, std::string>{{1, "one"}, {2, "two"}}));
 }
 
 TEST(FormatTest, MultiArgsTwoDigit) {
@@ -179,20 +110,8 @@ TEST(FormatTest, MultiArgsTwoDigit) {
 }
 
 TEST(FormatTest, Custom) {
-  for (const auto& format : kFormats) {
-    Custom value(42);
-    ASSERT_EQ(strings::Substitute(format, value.ToString()), Format(format, value));
-  }
-}
-
-TEST(FormatTest, Performance) {
-  CheckSpeed(kLongFormat, 1, 2, 3);
-  CheckSpeed(kLongFormat, 5, "String", "zero\0zero"s);
-  CheckSpeed("Connection ($0) $1 $2 => $3",
-             static_cast<void*>(this),
-             "client",
-             "127.0.0.1:12345"s,
-             "127.0.0.1:9042"s);
+  Custom value(42);
+  ASSERT_EQ("Value is { Custom: 42 }", Format("Value is $0", value));
 }
 
 TEST(FormatTest, Time) {
@@ -203,6 +122,73 @@ TEST(FormatTest, Time) {
   // convert the duration to MonoDelta for consistency.
   out << MonoDelta(15s);
   ASSERT_EQ("15.000s", out.str());
+}
+
+namespace {
+
+std::string Printf(const char* format, ...) __attribute__((format(printf, 1, 2)));
+
+std::string Printf(const char* format, ...) {
+  char buffer[128];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+  return buffer;
+}
+
+} // namespace
+
+TEST(FormatTest, FixedPoint) {
+  for (double value : {0.0, -0.0, 1.0, 0.5, 2.675, -3.14159, 1e-9, 123456789.987654321}) {
+    for (int precision : {0, 1, 3, 10}) {
+      ASSERT_EQ(Printf("%.*f", precision, value), FixedPoint(value, precision));
+    }
+  }
+  ASSERT_EQ("Elapsed 1.500 s", Format("Elapsed $0 s", FixedPoint(1.5, 3)));
+}
+
+TEST(FormatTest, Scientific) {
+  for (double value : {0.0, 1.0, -2.5e-12, 6.02214076e23}) {
+    ASSERT_EQ(Printf("%E", value), Scientific(value));
+    ASSERT_EQ(Printf("%.2E", value), Scientific(value, 2));
+  }
+}
+
+TEST(FormatTest, Pad) {
+  ASSERT_EQ("   ab", PadLeft("ab", 5));
+  ASSERT_EQ("ab   ", PadRight("ab", 5));
+  ASSERT_EQ("**ab", PadLeft("ab", 4, '*'));
+  ASSERT_EQ("abcdef", PadLeft("abcdef", 3));
+  ASSERT_EQ("abcdef", PadRight("abcdef", 3));
+  ASSERT_EQ("", PadLeft("", 0));
+  ASSERT_EQ(Printf("%6zu", size_t{42}), PadLeft(ToString(42), 6));
+  ASSERT_EQ(Printf("%-8s|", "xy"), PadRight("xy", 8) + "|");
+}
+
+TEST(FormatTest, ZeroPadded) {
+  for (int value : {0, 7, -7, 42, -42, 123456, std::numeric_limits<int>::min(),
+                    std::numeric_limits<int>::max()}) {
+    for (int width : {0, 1, 3, 6, 12}) {
+      ASSERT_EQ(Printf("%0*d", width, value), ZeroPadded(value, width));
+    }
+  }
+  ASSERT_EQ(Printf("%09" PRIu64, std::numeric_limits<uint64_t>::max()),
+            ZeroPadded(std::numeric_limits<uint64_t>::max(), 9));
+  ASSERT_EQ(Printf("%06" PRId64, int64_t{-12}), ZeroPadded(int64_t{-12}, 6));
+}
+
+TEST(FormatTest, HexString) {
+  for (unsigned value : {0u, 1u, 0xau, 0xffu, 0x1234u, 0xdeadbeefu}) {
+    for (int width : {0, 2, 4, 10}) {
+      ASSERT_EQ(Printf("%0*x", width, value), HexString(value, width));
+    }
+  }
+  ASSERT_EQ(Printf("%x", -1), HexString(-1));
+  ASSERT_EQ(Printf("%" PRIx64, std::numeric_limits<uint64_t>::max()),
+            HexString(std::numeric_limits<uint64_t>::max()));
+  ASSERT_EQ("ff", HexString(int8_t{-1}));
+  ASSERT_EQ("0x0042", Format("0x$0", HexString(0x42, 4)));
 }
 
 } // namespace yb

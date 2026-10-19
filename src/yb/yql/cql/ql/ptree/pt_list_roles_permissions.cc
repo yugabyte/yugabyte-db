@@ -19,10 +19,9 @@
 
 #include "yb/client/table.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
@@ -40,7 +39,6 @@ namespace yb {
 namespace ql {
 
 using std::string;
-using strings::Substitute;
 
 namespace {
 
@@ -133,7 +131,7 @@ Status PTListPermissions::Analyze(SemContext* sem_context) {
   const auto& permission_map = PTGrantRevokePermission::kPermissionMap;
   auto iterator = permission_map.find(string(permission_name_->c_str()));
   if (iterator == permission_map.end()) {
-    return sem_context->Error(this, Substitute("Unknown Permission '$0'",
+    return sem_context->Error(this, Format("Unknown Permission '$0'",
                                                permission_name_->c_str()).c_str(),
                               ErrorCode::SYNTAX_ERROR);
   }
@@ -156,7 +154,7 @@ Status PTListPermissions::Analyze(SemContext* sem_context) {
         }
         if (!*exists) {
           return sem_context->Error(this,
-                                    Substitute("<keyspace $0> doesn't exist", keyspace).c_str(),
+                                    Format("<keyspace $0> doesn't exist", keyspace).c_str(),
                                     ErrorCode::KEYSPACE_NOT_FOUND);
         }
         break;
@@ -171,7 +169,7 @@ Status PTListPermissions::Analyze(SemContext* sem_context) {
         if (table == nullptr || table->IsIndex() ||
             table->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
           return sem_context->Error(this,
-                                    Substitute("<table $0.$1> doesn't exist",
+                                    Format("<table $0.$1> doesn't exist",
                                                table_name.namespace_name(),
                                                table_name.table_name()).c_str(),
                                     ErrorCode::OBJECT_NOT_FOUND);

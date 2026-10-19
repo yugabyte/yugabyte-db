@@ -20,6 +20,7 @@ import com.bettercloud.vault.response.AuthResponse;
 import com.bettercloud.vault.response.LogicalResponse;
 import com.bettercloud.vault.rest.RestResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.HostPreservingSSLSocketFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -33,6 +34,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import javax.net.ssl.SSLContext;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -186,13 +188,33 @@ public class VaultAccessor {
       LOG.debug("Using YBA's custom trust-store with Java defaults");
       KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
       try {
-        config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
+        config.sslConfig(new HostPreservingSslConfig().trustStore(ybaJavaKeyStore).build());
       } catch (VaultException e) {
         LOG.error("Creation of vault with SSL config has failed with error:" + e.getMessage());
         throw e;
       }
     }
     return config;
+  }
+
+  /**
+   * The driver sets {@code getSslContext().getSocketFactory()} on each HttpsURLConnection,
+   * bypassing the JVM default factory, so it needs its own {@link HostPreservingSSLSocketFactory}.
+   */
+  private static class HostPreservingSslConfig extends SslConfig {
+    private transient SSLContext wrappedContext;
+
+    @Override
+    public synchronized SSLContext getSslContext() {
+      SSLContext context = super.getSslContext();
+      if (context == null) {
+        return null;
+      }
+      if (wrappedContext == null) {
+        wrappedContext = HostPreservingSSLSocketFactory.wrap(context);
+      }
+      return wrappedContext;
+    }
   }
 
   public void tokenSelfLookupCheck() throws VaultException {

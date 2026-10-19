@@ -381,6 +381,8 @@ TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
 }
 
 TEST_F(PgSharedMemTest, ConnectionShutdown) {
+  // Load balancer tablet moves start new tablet peers, which spawn threads and break the count.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   {
     auto conn = ASSERT_RESULT(Connect());
 
@@ -388,11 +390,17 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
   }
 
-  auto threads_before = CountManagedThreads();
-  auto workers_created_before = SumExchangeThreadPoolWorkersCreated();
+  size_t threads_before = 0;
+  size_t workers_created_before = 0;
   constexpr size_t kNumIterations = 16;
 
-  for (int i = 0; i != kNumIterations; ++i) {
+  // Iteration 0 is a warm-up: the first read spawns one-time background threads, so the baseline
+  // is taken after it.
+  for (size_t i = 0; i <= kNumIterations; ++i) {
+    if (i == 1) {
+      threads_before = CountManagedThreads();
+      workers_created_before = SumExchangeThreadPoolWorkersCreated();
+    }
     auto conn = ASSERT_RESULT(Connect());
     auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
     ASSERT_EQ(result, "1");

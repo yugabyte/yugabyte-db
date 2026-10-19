@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Fully manual provisioning is deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned this way continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -449,7 +449,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Wants=yb-zip_purge_yb_logs.timer
 
     [Service]
     Type=oneshot
@@ -465,7 +464,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte logs
-    Requires=yb-zip_purge_yb_logs.service
 
     [Timer]
     Unit=yb-zip_purge_yb_logs.service
@@ -481,7 +479,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Wants=yb-clean_cores.timer
 
     [Service]
     Type=oneshot
@@ -535,7 +532,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte clean cores
-    Requires=yb-clean_cores.service
 
     [Timer]
     Unit=yb-clean_cores.service
@@ -551,7 +547,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Wants=yb-collect_metrics.timer
 
     [Service]
     Type=oneshot
@@ -559,7 +554,6 @@ You can install systemd-specific database service unit files, as follows:
     ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
 
     [Install]
-    WantedBy=multi-user.target
     ```
 
     `yb-collect_metrics.timer`
@@ -567,7 +561,6 @@ You can install systemd-specific database service unit files, as follows:
     ```properties
     [Unit]
     Description=Yugabyte collect metrics
-    Requires=yb-collect_metrics.service
 
     [Timer]
     Unit=yb-collect_metrics.service

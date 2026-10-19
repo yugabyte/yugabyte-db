@@ -347,6 +347,18 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  void ApplyLeaseEpochFloors(
+      const google::protobuf::RepeatedPtrField<tserver::LeaseEpochFloorPB>& floors)
+      EXCLUDES(mutex_) {
+    TRACE_FUNC();
+    for (const auto& floor : floors) {
+      if (floor.session_host_uuid().empty() || !floor.ignore_lease_epochs_before()) {
+        continue;
+      }
+      UpdateLeaseEpochIfNecessary(floor.session_host_uuid(), floor.ignore_lease_epochs_before());
+    }
+  }
+
   Status CheckShutdown() const {
     return shutdown_
         ? STATUS_FORMAT(ShutdownInProgress, "Object Lock Manager Shutdown") : Status::OK();
@@ -403,7 +415,7 @@ class TSLocalLockManager::Impl {
     return Wait(
         [this]() -> bool {
           bool ret = is_bootstrapped_;
-          VTRACE(2, "Is bootstrapped: $0", ret);
+          VTRACE(2, "Is bootstrapped: $0", ret ? "true" : "false");
           return ret;
         },
         deadline, "Waiting to Bootstrap.");
@@ -429,6 +441,7 @@ class TSLocalLockManager::Impl {
     WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(req, deadline);
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
     RETURN_NOT_OK(add_to_in_progress.status());
+    ApplyLeaseEpochFloors(req.lease_epoch_floors());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
@@ -564,7 +577,8 @@ class TSLocalLockManager::Impl {
       const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
       CoarseTimePoint deadline,
       StdStatusCallback&& callback,
-      const TransactionId& background_txn_id) {
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet) {
     auto s = CheckShutdown();
     if (!s.ok()) {
       callback(s);
@@ -585,7 +599,8 @@ class TSLocalLockManager::Impl {
       return;
     }
     object_lock_manager_.WaitForConflictingLockers(
-        *keys_to_check, std::move(callback), deadline, background_txn_id);
+        *keys_to_check, std::move(callback), deadline, background_txn_id,
+        background_txn_status_tablet);
   }
 
   void Poll() {
@@ -696,8 +711,12 @@ class TSLocalLockManager::Impl {
   }
 
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
-      TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+      TEST_GetLockStateMapForTxn(TransactionId txn) const {
     return object_lock_manager_.TEST_GetLockStateMapForTxn(txn);
+  }
+
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const {
+    return object_lock_manager_.TEST_GetStatusTabletForTxn(txn);
   }
 
   std::string DumpLocksToHtml() {
@@ -729,6 +748,7 @@ class TSLocalLockManager::Impl {
         return s;
       }
     }
+    ApplyLeaseEpochFloors(entries.lease_epoch_floors());
     MarkBootstrapped();
     VLOG_WITH_FUNC(2) << "success.";
     return Status::OK();
@@ -765,6 +785,14 @@ class TSLocalLockManager::Impl {
         lock_info.add_blocking_txn_ids(blocker_id.data(), blocker_id.size());
       }
     }
+  }
+
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet) {
+    object_lock_manager_.UpdateStatusTablet(txn_id, status_tablet);
+  }
+
+  void TEST_ConsumePendingSharedLockRequests() {
+    object_lock_manager_.ConsumePendingSharedLockRequests();
   }
 
  private:
@@ -818,8 +846,11 @@ void TSLocalLockManager::WaitForLockersAsync(
     const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
     CoarseTimePoint deadline,
     StdStatusCallback&& callback,
-    const TransactionId& background_txn_id) {
-  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
+    const TransactionId& background_txn_id,
+    const TabletId& background_txn_status_tablet) {
+  impl_->WaitForLockersAsync(
+      object_locks, deadline, std::move(callback), background_txn_id,
+      background_txn_status_tablet);
 }
 
 void TSLocalLockManager::Start(
@@ -860,6 +891,10 @@ void TSLocalLockManager::PopulateObjectLocks(
   impl_->PopulateObjectLocks(object_lock_infos);
 }
 
+void TSLocalLockManager::UpdateStatusTablet(TransactionId txn_id, const TabletId& tablet_id) {
+  impl_->UpdateStatusTablet(txn_id, tablet_id);
+}
+
 size_t TSLocalLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
@@ -873,8 +908,12 @@ void TSLocalLockManager::TEST_MarkBootstrapped() {
 }
 
 std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
-    TSLocalLockManager::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+    TSLocalLockManager::TEST_GetLockStateMapForTxn(TransactionId txn) const {
   return impl_->TEST_GetLockStateMapForTxn(txn);
+}
+
+TabletId TSLocalLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
+  return impl_->TEST_GetStatusTabletForTxn(txn);
 }
 
 void TSLocalLockManager::TrackDeadlineForGlobalAcquire(
@@ -888,6 +927,10 @@ void TSLocalLockManager::ScheduleReleaseForLostMessages(
     const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
     const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req) {
   impl_->ScheduleReleaseForLostMessages(client, lock_manager_weak, txn_id, subtxn_id, release_req);
+}
+
+void TSLocalLockManager::TEST_ConsumePendingSharedLockRequests() {
+  impl_->TEST_ConsumePendingSharedLockRequests();
 }
 
 void ReleaseWithRetriesGlobal(

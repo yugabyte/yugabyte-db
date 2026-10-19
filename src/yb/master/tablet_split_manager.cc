@@ -39,6 +39,7 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -73,6 +74,11 @@ DECLARE_bool(TEST_validate_all_tablet_candidates);
 DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
+
+DEFINE_RUNTIME_bool(enable_tablet_split_of_uncommitted_ysql_tables, false,
+    "When set, it enables automatic tablet splitting of YSQL tables whose creating DDL "
+    "transaction has not committed yet.");
+TAG_FLAG(enable_tablet_split_of_uncommitted_ysql_tables, advanced);
 
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_tables_with_vector_index, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables with vector indexes");
@@ -148,7 +154,6 @@ METRIC_DEFINE_gauge_uint64(cluster, outstanding_tablet_splits,
 
 namespace yb::master {
 
-using strings::Substitute;
 using namespace std::literals;
 
 namespace {
@@ -277,6 +282,21 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     return STATUS_FORMAT(
         NotSupported, "Table is in hide_state: $0; ignoring for splitting. table: $1",
         table_lock->hide_state_name(), *table);
+  }
+
+  // A table whose creating transaction has not committed is still being loaded, and with the YSQL
+  // new-relation fastpath its rows reach the regular DB immediately, so the splitter sees it grow
+  // and splits it repeatedly mid-load. Every resulting tablet takes a memtable from a tserver-wide
+  // budget that does not scale with tablet count, and the forced flushes can block writes past the
+  // client deadline. Split once it has settled instead. This sits ahead of the
+  // ignore_disabled_lists handling so manual splits are refused too.
+  if (!FLAGS_enable_tablet_split_of_uncommitted_ysql_tables &&
+      table_lock->is_being_created_by_ysql_ddl_txn()) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for a table whose creating transaction has not "
+        "committed, table: $0",
+        *table);
   }
 
   if (table_lock->is_index() && table_lock->pb.index_info().has_vector_idx_options()) {
@@ -474,15 +494,15 @@ void TabletSplitManager::DisableSplittingFor(
     const MonoDelta& disable_duration, const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
-                          disable_duration.ToMilliseconds(), feature_name);
+  LOG(INFO) << Format("Disabling tablet splitting for $0 milliseconds for feature $1.",
+                      disable_duration.ToMilliseconds(), feature_name);
   splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
 }
 
 void TabletSplitManager::ReenableSplittingFor(const std::string& feature_name) {
   DCHECK(!feature_name.empty());
   UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Re-enabling tablet splitting for feature $0.", feature_name);
+  LOG(INFO) << Format("Re-enabling tablet splitting for feature $0.", feature_name);
   splitting_disabled_until_.erase(feature_name);
 }
 

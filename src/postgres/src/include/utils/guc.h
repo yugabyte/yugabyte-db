@@ -519,5 +519,7 @@ extern void YbValidateConfigFile(const char *config_file);
 extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
 extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void YbSetParallelWorker();
+extern char *YbResolveGucValue(const char *name, const char *value);
+extern bool YbIsValidConfigFileName(const char *name);
 
 #endif							/* GUC_H */

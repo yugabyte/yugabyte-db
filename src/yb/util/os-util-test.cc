@@ -31,8 +31,7 @@
 //
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/os-util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
@@ -42,13 +41,13 @@ using std::string;
 namespace yb {
 
 void RunTest(const string& name, int user_ticks, int kernel_ticks, int io_wait) {
-  string buf = strings::Substitute(string("0 ($0) S 0 0 0 0 0 0 0") +
-                                   " 0 0 0 $1 $2 0 0 0 0 0"         +
-                                   " 0 0 0 0 0 0 0 0 0 0 "          +
-                                   " 0 0 0 0 0 0 0 0 0 0 "          +
-                                   " 0 $3 0 0 0 0 0 0 0 0 "         +
-                                   " 0 0",
-                                   name, user_ticks, kernel_ticks, io_wait);
+  string buf = Format(string("0 ($0) S 0 0 0 0 0 0 0") +
+                      " 0 0 0 $1 $2 0 0 0 0 0"         +
+                      " 0 0 0 0 0 0 0 0 0 0 "          +
+                      " 0 0 0 0 0 0 0 0 0 0 "          +
+                      " 0 $3 0 0 0 0 0 0 0 0 "         +
+                      " 0 0",
+                      name, user_ticks, kernel_ticks, io_wait);
   ThreadStats stats;
   string extracted_name;
   ASSERT_OK(ParseStat(buf, &extracted_name, &stats));

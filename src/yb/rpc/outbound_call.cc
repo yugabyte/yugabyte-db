@@ -43,7 +43,6 @@
 
 #include "opentelemetry/trace/span.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/connection.h"
@@ -328,6 +327,11 @@ void OutboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& 
     if (SetSent()) {
       std::lock_guard lock(sent_on_connection_mutex_);
       sent_on_connection_ = conn;
+    }
+    if (otel_span_ && conn) {
+      const auto& local = conn->local();
+      otel_span_->SetAttribute("network.local.address", local.address().to_string());
+      otel_span_->SetAttribute("network.local.port", static_cast<int64_t>(local.port()));
     }
   } else {
     VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
@@ -778,16 +782,19 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
 }
 
 void OutboundCall::SetTimedOut() {
+  DoSetTimedOut(STATUS_FORMAT(
+      TimedOut,
+      "$0 RPC (request call id $3) to $1 timed out after $2",
+      remote_method_.method_name(),
+      conn_id_.remote(),
+      controller_->timeout(),
+      call_id_));
+}
+
+void OutboundCall::DoSetTimedOut(Status status) {
   TRACE_TO(trace_, "Call TimedOut.");
   bool invoke_callback;
   {
-    auto status = STATUS_FORMAT(
-        TimedOut,
-        "$0 RPC (request call id $3) to $1 timed out after $2",
-        remote_method_.method_name(),
-        conn_id_.remote(),
-        controller_->timeout(),
-        call_id_);
     std::lock_guard l(mtx_);
     status_ = std::move(status);
     invoke_callback = SetState(RpcCallState::TIMED_OUT, status_);

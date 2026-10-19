@@ -416,7 +416,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
       RowMessage::DELETE};
 
   // Catch up both streams.
-  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, nullptr, 0, -1, 0, /* expected_records_count = */ 5);
   size_t record_size_1 = change_resp_1.records.size();
   auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id_2, tablets);
   size_t record_size_2 = change_resp_2.records.size();
@@ -457,7 +458,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Call GetChanges only on stream 1.
   auto previous_checkpoint_1 = change_resp_1.checkpoint;
-  change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets, &previous_checkpoint_1);
+  change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, &previous_checkpoint_1, 0, -1, 0, /* expected_records_count = */ 3);
   record_size_1 = change_resp_1.records.size();
   ASSERT_EQ(record_size_1, 3);
 
@@ -480,7 +482,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Call GetChanges on stream 1.
   previous_checkpoint_1 = change_resp_1.checkpoint;
-  change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets, &previous_checkpoint_1);
+  change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, &previous_checkpoint_1, 0, -1, 0, /* expected_records_count = */ 2);
   record_size_1 = change_resp_1.records.size();
   ASSERT_EQ(record_size_1, 2);
 
@@ -12198,8 +12201,9 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   // compared to pre-consumption.
   std::unordered_map<std::string, size_t> final_log_segment_count;
   GetLogSegmentCountForTablet(tablet_id, &final_log_segment_count);
+  // A rollover in flight at the first sample can still add a segment, so only check none were GCed.
   for (const auto& [peer, segment_count] : final_log_segment_count) {
-    ASSERT_EQ(segment_count, log_segment_count[peer]);
+    ASSERT_GE(segment_count, log_segment_count[peer]);
   }
 
   ASSERT_OK(WaitFor(

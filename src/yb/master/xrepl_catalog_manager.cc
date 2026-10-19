@@ -162,7 +162,7 @@ DEFINE_RUNTIME_int32(cdc_create_stream_alter_table_dispatch_delay_ms, 50,
     "cdc_create_stream_alter_table_dispatch_batch_size per-table AlterTable calls during CDC "
     "stream creation.");
 
-DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs, 10,
+DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs, 0,
     "Maximum number of concurrent outstanding AsyncAlterTable RPCs the master will allow in "
     "flight. 0 disables the throttle entirely. Positive values are used as the absolute global "
     "cap. If its value is < 0 then the max_concurrent_alter_table_rpcs_per_tserver gflag and the "
@@ -3838,17 +3838,20 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
       cdc_state_table_->DeleteEntries(entries_to_delete),
       "Error deleting XRepl stream rows from cdc_state table");
 
-  std::vector<CDCStreamInfo::WriteLock> locks;
-  locks.reserve(streams.size());
   std::vector<CDCStreamInfo*> streams_to_delete;
   streams_to_delete.reserve(streams.size());
-
   for (auto& stream : streams) {
-    locks.push_back(stream->LockForWrite());
     streams_to_delete.push_back(stream.get());
   }
 
+  // Must be done before locking the streams: outbound replication groups are locked before streams.
   RETURN_NOT_OK(xcluster_manager_->RemoveStreamsFromSysCatalog(epoch, streams_to_delete));
+
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  locks.reserve(streams.size());
+  for (auto& stream : streams) {
+    locks.push_back(stream->LockForWrite());
+  }
 
   bool TEST_fail = false;
   TEST_SYNC_POINT_CALLBACK("CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", &TEST_fail);

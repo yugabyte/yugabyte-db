@@ -49,7 +49,6 @@
 
 #include "yb/server/clock.h"
 
-#include "yb/util/atomic.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -537,6 +536,15 @@ Status TSManager::RemoveTabletServer(
               desc->permanent_uuid(), tablet->id());
         }
       }
+    }
+    // Once removed, PropagateXClusterGuardedInfo cannot see this TServer, so it must not be able
+    // to hold a xCluster-guarded information lease.
+    if (desc_lock->MaybeHasXClusterGuardedLease()) {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Cannot remove tablet server $0 because it may still hold a xCluster-guarded information "
+          "lease",
+          desc->permanent_uuid());
     }
     write_lock = std::move(desc_lock);
   }

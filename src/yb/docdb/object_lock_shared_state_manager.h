@@ -75,13 +75,18 @@ class ObjectLockOwnerRegistry {
 
     ObjectLockSharedState* shared;
     TransactionId txn_id;
-    TabletId status_tablet;
+
+    mutable std::mutex status_tablet_mutex;
+    TabletId status_tablet GUARDED_BY(status_tablet_mutex);
   };
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
   RegistrationGuard Register(
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
+
+  void UpdateRegistrationStatusTablet(
+      const RegistrationGuard& guard, const TabletId& tablet_id);
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
 

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -146,6 +147,27 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
 
   @Test
   public void testVerifyParamsRejectsOciPrimaryUniverse() {
+    Universe ociUniverse = createOciUniverse();
+    assertOciUpgradeForbidden(
+        ociUniverse, ociUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+  }
+
+  @Test
+  public void testVerifyParamsRejectsOciMachineImages() {
+    Universe ociUniverse = createOciUniverse();
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = ociUniverse.getUniverseDetails().clusters;
+    params.machineImages =
+        Map.of(
+            ociUniverse.getUniverseDetails().getPrimaryCluster().userIntent.regionList.get(0),
+            "oci-target-image");
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(ociUniverse, true));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("Use imageBundles"));
+  }
+
+  private Universe createOciUniverse() {
     Provider ociProvider = ModelFactory.ociProvider(customer);
     Region ociRegion = Region.create(ociProvider, "ashburn", "Ashburn", "oci-image");
     AvailabilityZone ociAz =
@@ -165,13 +187,8 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(ociAz.getUuid(), placement, 1, 1, true);
 
     Universe ociUniverse = ModelFactory.createUniverse("oci-univ", customer.getId());
-    ociUniverse =
-        Universe.saveDetails(
-            ociUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(ociIntent, placement, true));
-
-    assertOciUpgradeForbidden(
-        ociUniverse, ociUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    return Universe.saveDetails(
+        ociUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(ociIntent, placement, true));
   }
 
   @Test
@@ -201,14 +218,20 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
             universe.getUniverseUUID(),
             u -> {
               UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
-              UniverseDefinitionTaskParams.ProviderSpecification ociSpec =
-                  new UniverseDefinitionTaskParams.ProviderSpecification();
-              ociSpec.setProviderType(Common.CloudType.oci);
-              ociSpec.setProviderUUID(ociProvider.getUuid());
-              ociSpec.setNodesSpecs(
-                  TestUtils.tserverSpec("VM.Standard.E4.Flex", intent.deviceInfo));
-              intent.providerSpecifications =
-                  Arrays.asList(TestUtils.toProviderSpecification(intent), ociSpec);
+              UUID providerUUID = intent.maybeGetSingleProviderUUID().get();
+              TestUtils.specificationProviderInitializer(intent, providerUUID)
+                  .setProviderType(intent.getProviderType(providerUUID))
+                  .setAccessCode(intent.accessKeyCode)
+                  .setInstanceTags(intent.instanceTags)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setInstanceType(intent.instanceType);
+
+              TestUtils.specificationProviderInitializer(intent, ociProvider.getUuid())
+                  .setProviderType(Common.CloudType.oci)
+                  .setInstanceType("VM.Standard.E4.Flex")
+                  .setDeviceInfo(intent.deviceInfo.clone());
+
+              assertEquals(2, intent.providerSpecifications.size());
 
               NodeDetails ociNode = new NodeDetails();
               ociNode.nodeIdx = intent.numNodes + 1;

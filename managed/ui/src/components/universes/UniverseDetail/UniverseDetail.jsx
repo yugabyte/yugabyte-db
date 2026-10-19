@@ -82,6 +82,7 @@ import { UpdateNodeAgentModal } from '../../../redesign/features/universe/univer
 import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
+  EDIT_ROLLBACK_TASK_TYPES,
   PerfAdvisorModalIntention,
   PERF_ADVISOR_PATH,
   RuntimeConfigKey,
@@ -751,6 +752,8 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isUpdateNodeAgentCertDisabled =
+      isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPDATE_NODE_AGENT);
     const isReprovisionNodesWithYnpDisabled =
       isUniverseStatusPending ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
@@ -773,10 +776,28 @@ class UniverseDetail extends Component {
     const isSampleAppsDisabled = isUniverseStatusPending && !backupRestoreInProgress;
     const isSupportBundleDisabled =
       this.isUniverseDeleting() || isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES);
-    const isBackupsDisabled = isUniverseStatusPending || isK8ActionsDisabled;
+    // Disable Backup only flips a universe flag (update_backup_state). It is not a task, so
+    // allowedTasks cannot express it; mirror the failed-rollback lock here instead.
+    const isLockedByFailedRollback =
+      !!allowedTasks?.restricted &&
+      EDIT_ROLLBACK_TASK_TYPES.includes(universeInfo.universeDetails?.updatingTask);
+    const isBackupsDisabled =
+      isUniverseStatusPending || isLockedByFailedRollback || isK8ActionsDisabled;
     const isUniverseRegisteredToPa =
       universePaRegistrationStatus?.data?.success && isNonEmptyArray(ybaToPaServiceDetails?.data);
-    const isPerfAdvisorActionDisabled = isUniverseStatusPending;
+    // Enable Performance Monitoring registers the universe and Disable unregisters it. The
+    // Advanced Observability toggles re-register it in another mode.
+    const isPerfMonitoringDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(
+        allowedTasks,
+        isUniverseRegisteredToPa
+          ? UNIVERSE_TASKS.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+          : UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR
+      );
+    const isAdvancedObservabilityDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.REGISTER_UNIVERSE_TO_PERF_ADVISOR);
     const isPauseUniverseDisabled =
       (universePaused && isUniverseStatusPending) ||
       this.isUniverseDeleting() ||
@@ -1855,7 +1876,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isInstallNodeAgentDisabled}
+                            disabled={isUpdateNodeAgentCertDisabled}
                             onClick={showUpdateNodeAgentModal}
                           >
                             <YBLabelWithIcon icon="fa fa-refresh">
@@ -1932,7 +1953,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isPerfMonitoringDisabled}
                             onClick={showEnablePerfAdvisorModal}
                           >
                             <YBLabelWithIcon
@@ -1943,8 +1964,8 @@ class UniverseDetail extends Component {
                               }
                             >
                               {isUniverseRegisteredToPa
-                                ? 'Disable Perf Advisor Collector'
-                                : 'Enable Perf Advisor Collector'}
+                                ? 'Disable Performance Monitoring'
+                                : 'Enable Performance Monitoring'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
@@ -1961,7 +1982,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showEnableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -1982,7 +2003,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isPerfAdvisorActionDisabled}
+                            disabled={isAdvancedObservabilityDisabled}
                             onClick={showDisableAdvancedObservabilityModal}
                           >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
@@ -2328,11 +2349,12 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
         />
 
-        <UniverseSupportBundleModal
-          currentUniverse={currentUniverse.data}
-          modal={modal}
-          closeModal={closeModal}
-        />
+        {showModal && visibleModal === 'supportBundleModal' && (
+          <UniverseSupportBundleModal
+            currentUniverse={currentUniverse.data}
+            closeModal={closeModal}
+          />
+        )}
 
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel

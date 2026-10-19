@@ -84,9 +84,9 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   // universe's provider at backup/delete time. When set on a federation config, YBA builds an
   // in-process AssumeRoleWithWebIdentity credential (GCE identity token -> STS) to reach S3,
   // instead of static keys or the default credential chain.
-  @JsonIgnore @Nullable public String federationRoleArn;
+  @JsonIgnore @Nullable public String crossCloudFederationRoleArn;
 
-  @JsonIgnore @Nullable public String federationAudience;
+  @JsonIgnore @Nullable public String crossCloudFederationAudience;
 
   public static class RegionLocations extends RegionLocationsBase {
     @ApiModelProperty(value = "AWS host base", example = "s3.amazonaws.com")

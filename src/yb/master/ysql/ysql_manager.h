@@ -114,6 +114,9 @@ class YsqlManager : public YsqlManagerIf {
       const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
       GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Runs at yb-master startup, before this process can own a pg_upgrade postgres.
+  Status CleanupStalePgUpgradeSocketDir();
+
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
   Status ValidateWriteToCatalogTableAllowed(TableIdView table_id, bool is_forced_update) const;

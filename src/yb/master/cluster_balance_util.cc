@@ -22,6 +22,7 @@
 #include "yb/master/master_cluster.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
 using std::string;
@@ -112,6 +113,43 @@ int GlobalLoadState::GetGlobalLoad(const TabletServerId& ts_uuid) const {
 int GlobalLoadState::GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
   return ts_meta.leaders_count;
+}
+
+uint64_t GlobalLoadState::GetEstimatedDiskUsedBytes(const TabletServerId& ts_uuid) const {
+  const auto it = per_ts_global_meta_.find(ts_uuid);
+  if (it == per_ts_global_meta_.end()) {
+    return 0;
+  }
+  return it->second.disk_used_bytes + it->second.starting_tablets_size;
+}
+
+bool GlobalLoadState::HasFreeDiskSpaceFor(
+    const TabletServerId& ts_uuid, uint64_t additional_bytes) const {
+  const uint64_t min_free_pct =
+      std::min<uint64_t>(FLAGS_load_balancer_min_free_disk_space_pct, 100);
+  if (min_free_pct == 0) {
+    return true;
+  }
+  const auto it = per_ts_global_meta_.find(ts_uuid);
+  if (it == per_ts_global_meta_.end() || it->second.disk_capacity_bytes == 0) {
+    return true;
+  }
+  const auto capacity = it->second.disk_capacity_bytes;
+  const auto max_used_bytes = capacity - capacity * min_free_pct / 100;
+  const auto estimated_used_bytes = it->second.disk_used_bytes + it->second.starting_tablets_size;
+  return estimated_used_bytes + additional_bytes <= max_used_bytes;
+}
+
+std::vector<std::string> GlobalLoadState::DescribeTabletServersLowOnDiskSpace() const {
+  std::vector<std::string> descriptions;
+  for (const auto& [ts_uuid, ts_meta] : per_ts_global_meta_) {
+    if (HasFreeDiskSpaceFor(ts_uuid, 0 /* additional_bytes */)) {
+      continue;
+    }
+    descriptions.push_back(Format("$0 ($1 of $2 bytes in use)", ts_uuid,
+        GetEstimatedDiskUsedBytes(ts_uuid), ts_meta.disk_capacity_bytes));
+  }
+  return descriptions;
 }
 
 PerTableLoadState::PerTableLoadState(GlobalLoadState* global_state)
@@ -259,20 +297,11 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       continue;
     }
 
-    // If we do not have ts_meta information for this particular replica, then we are in the
-    // rare case where we just became the master leader and started doing load balancing, but we
-    // have yet to receive heartbeats from all the tablet servers. We will just return false
-    // across the stack and stop load balancing and log errors, until we get all the needed info.
-    //
-    // Worst case scenario, there is a network partition that is stopping us from actually
-    // getting the heartbeats from a certain tablet server, but we anticipate that to be a
-    // temporary matter. We should monitor error logs for this and see that it never actually
-    // becomes a problem!
     VLOG(3) << "Obtained replica " << replica.ToString() << " for tablet " << tablet_id;
     if (per_ts_meta_.find(ts_uuid) == per_ts_meta_.end()) {
-      return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
-          "heartbeat from ts $0, either master just became leader or a network partition.",
-                                ts_uuid);
+      return STATUS_FORMAT(
+        IllegalState, "TServer $0 has a replica of tablet $1 but is not in the master's tserver "
+        "list (replaced, or registered after this load-balancer run started)", ts_uuid, tablet_id);
     }
     auto& meta_ts = per_ts_meta_[ts_uuid];
 
@@ -282,18 +311,18 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         if (FLAGS_allow_leader_balancing_dead_node) {
           allow_only_leader_balancing_ = true;
           YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 3)
-              << strings::Substitute("Master leader not received heartbeat from ts $0. "
-                                     "Only performing leader balancing for tables with replicas"
-                                     " in this TS.", ts_uuid);
+              << Format("Master leader not received heartbeat from ts $0. "
+                        "Only performing leader balancing for tables with replicas"
+                        " in this TS.", ts_uuid);
         } else {
-          return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
+          return STATUS_FORMAT(LeaderNotReadyToServe, "Master leader has not yet received "
               "heartbeat from ts $0. Aborting load balancing.", ts_uuid);
         }
       } else {
         YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 3)
-            << strings::Substitute("Master leader not received heartbeat from ts $0 but it is "
-                                   "blacklisted. Continuing LB operations for tables with replicas"
-                                   " in this TS.", ts_uuid);
+            << Format("Master leader not received heartbeat from ts $0 but it is "
+                      "blacklisted. Continuing LB operations for tables with replicas"
+                      " in this TS.", ts_uuid);
       }
     }
 
@@ -310,7 +339,8 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     if (is_replica_running_and_consensus_ready) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     } else {
-      // Keep track of transitioning state (not in a stopped or failed state).
+      // Usually an in-progress remote bootstrap, but SHUTDOWN / QUIESCING peers land here too and
+      // are counted as starting.
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
       ++meta_ts.path_to_starting_tablets_count[replica.fs_data_dir];
       // If there are any starting tablets, there are ongoing remote bootstraps, so the cluster
@@ -332,7 +362,8 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     // If this replica has blacklisted leader, we want to keep track of these specially, so we can
     // prioritize accordingly.
-    if (global_state_->leader_blacklisted_servers_.count(ts_uuid)) {
+    if (replica.role == PeerRole::LEADER &&
+      global_state_->leader_blacklisted_servers_.count(ts_uuid)) {
       VLOG(3) << "Replica " << ts_uuid << " is leader blacklisted, so need to move it out";
       tablet_meta.leader_blacklisted_tablet_servers.insert(ts_uuid);
     }
@@ -489,7 +520,14 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
   ts_meta.descriptor = ts_desc;
 
   // Also insert into per_ts_global_meta_ if we have yet to.
-  global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerGlobalMetadata());
+  auto [global_meta_it, inserted] =
+      global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerGlobalMetadata());
+  if (inserted) {
+    for (const auto& [_, path_metrics] : ts_desc->path_metrics()) {
+      global_meta_it->second.disk_used_bytes += path_metrics.used_space;
+      global_meta_it->second.disk_capacity_bytes += path_metrics.total_space;
+    }
+  }
 
   // Set as blacklisted if it matches.
   bool is_blacklisted = (global_state_->blacklisted_servers_.count(ts_uuid) != 0);
@@ -505,7 +543,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
   switch (options_->type) {
     case ReplicaType::kLive: {
       if (!ts_in_live_placement) {
-        VLOG(3) << "TS " << ts_uuid << " is in live placement but this is a read only "
+        VLOG(3) << "TS " << ts_uuid << " is in read-only placement but this is a live "
                 << "run.";
         return;
       }
@@ -513,7 +551,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     }
     case ReplicaType::kReadOnly: {
       if (ts_in_live_placement) {
-        VLOG(3) << "TS " << ts_uuid << " is in read-only placement but this is a live "
+        VLOG(3) << "TS " << ts_uuid << " is in live placement but this is a read only "
                 << "run.";
         return;
       }
@@ -645,6 +683,16 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
                       "host tablet $2 with size $3 bytes. Max inbound bytes per ts: $4",
                       to_ts, ts_global_meta.starting_tablets_size, tablet_id,
                       tablet_meta.GetSizeOrDefault(), options_->kMaxInboundBytesPerTs);
+    return false;
+  }
+
+  // Skip tservers that are (or would be) too full.
+  if (!global_state_->HasFreeDiskSpaceFor(to_ts, tablet_meta.GetSizeOrDefault())) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 4) << Format(
+        "tablet server $0 has an estimated $1 of $2 bytes of disk in use. Not allowing it to host "
+        "tablet $3 with size $4 bytes, which would leave less than $5% of its capacity free.",
+        to_ts, global_state_->GetEstimatedDiskUsedBytes(to_ts), ts_global_meta.disk_capacity_bytes,
+        tablet_id, tablet_meta.GetSizeOrDefault(), FLAGS_load_balancer_min_free_disk_space_pct);
     return false;
   }
 
@@ -889,8 +937,8 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
   SCHECK_NE(&per_tablet_meta_[tablet_id].leader_uuid, &from_ts, InvalidArgument,
       "from_ts should not be a reference to the leader_uuid in per_tablet_meta_");
   if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
-    return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
-                              tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
+    return STATUS_FORMAT(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
+                          tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
   }
   per_tablet_meta_[tablet_id].leader_uuid = to_ts;
   RETURN_NOT_OK(RemoveLeaderTablet(tablet_id, from_ts));
@@ -968,7 +1016,7 @@ int PerTableLoadState::AdjustLeaderBalanceThreshold(int zone_set_size) {
                             : static_cast<int>(std::ceil(
                                   static_cast<double>(per_tablet_meta_.size()) / zone_set_size));
     if (adjusted_leader_balance_threshold < min_threshold) {
-      LOG(WARNING) << strings::Substitute(
+      LOG(WARNING) << Format(
           "leader_balance_threshold flag is set to $0 but is too low for the current "
           "configuration. Adjusting it to $1.",
           adjusted_leader_balance_threshold, min_threshold);

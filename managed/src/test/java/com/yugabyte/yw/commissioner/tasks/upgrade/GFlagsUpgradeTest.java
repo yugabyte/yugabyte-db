@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -53,7 +54,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -139,14 +139,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
+    TestUtils.copyProviderFields(curIntent, userIntent, confGetter);
+
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
@@ -1259,6 +1256,50 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartKeepsNewInstallYsqlPgConfCsv() throws Exception {
+    Map<String, String> userTserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of(), userTserverGFlags);
+              Map<String, String> cboFlags =
+                  ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on");
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(MASTER, cboFlags);
+              newInstallGFlags.value.put(TSERVER, cboFlags);
+              universe.setNewInstallGFlags(newInstallGFlags);
+            });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Map<String, String> tserverGFlags = new HashMap<>(userTserverGFlags);
+    tserverGFlags.put("enable_automatic_tablet_splitting", "false");
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("enable_automatic_tablet_splitting", "false"), tserverGFlags);
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    int numTservers = defaultUniverse.getTServers().size();
+    verify(mockClient, times(numTservers))
+        .setFlag(
+            any(),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq("log_statement=DDL,yb_enable_cbo=on"),
+            anyBoolean());
+    // Masters have no user ysql_pg_conf_csv, so it is not set on them at all.
+    verify(mockClient, times(numTservers))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
   }
 
   @Test

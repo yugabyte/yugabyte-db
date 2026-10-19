@@ -24,9 +24,11 @@
 #include "catalog/pg_amproc_d.h"
 #include "catalog/pg_attrdef_d.h"
 #include "catalog/pg_cast_d.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion_d.h"
+#include "catalog/pg_default_acl_d.h"
 #include "catalog/pg_extension_d.h"
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
@@ -868,6 +870,26 @@ PushVariableMap(JsonbParseState *state)
 	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 }
 
+char *
+PushAnalyzedRelation(JsonbParseState *state, Oid relid)
+{
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
+
+	if (!relname || !nspname)
+		return NULL;
+
+	AddJsonKey(state, "analyze_rels");
+	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	AddStringJsonEntry(state, "rel_name", relname);
+	AddStringJsonEntry(state, "rel_namespace", nspname);
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
+
+	return psprintf("ANALYZE %s", quote_qualified_identifier(nspname, relname));
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -1152,6 +1174,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case CollationRelationId:
 			case ConstraintRelationId:
 			case ConversionRelationId:
+			case DefaultAclRelationId:
 			case ExtensionRelationId:
 			case ForeignDataWrapperRelationId:
 			case ForeignServerRelationId:

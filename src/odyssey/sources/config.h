@@ -92,7 +92,6 @@ struct od_config {
 	int yb_ysql_max_connections;
 	int yb_use_auth_backend;
 	int yb_cert_auth;
-	int yb_optimized_extended_query_protocol;
 	int yb_enable_multi_route_pool;
 	int yb_optimized_session_parameters;
 	int yb_max_pools;
@@ -103,6 +102,7 @@ struct od_config {
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
 	_Atomic int yb_backend_drain_timeout_ms;
+	char *yb_data_directory;
 };
 
 void od_config_init(od_config_t *);

@@ -23,6 +23,7 @@ export const BACKUP_PITR_ENABLED = 'yb.ui.feature_flags.off_cluster_pitr_enabled
 export const PATH_STYLE_ACCESS = 'yb.ui.feature_flags.enable_path_style_access';
 export const CHUNKED_ENCODING = 'yb.ui.feature_flags.enable_chunked_encoding';
 export const ENABLE_SIGNING_REGION = 'yb.ui.feature_flags.enable_signing_region';
+export const ENABLE_CROSS_CLOUD_FEDERATED_IAM = 'yb.ui.feature_flags.enable_cross_cloud_federated_iam';
 export const ENABLE_S3_BACKUP_PROXY = 'yb.ui.feature_flags.enable_s3_backup_proxy';
 
 /**
@@ -255,6 +256,18 @@ export const isPathStyleAccess = (runtimeConfigs: RunTimeConfig) => {
 
 export const isChunkedEncodingEnabled = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === CHUNKED_ENCODING)?.value === 'true';
+};
+
+/**
+ * Cross-cloud federated IAM is in preview, so its fields stay hidden unless explicitly enabled.
+ * Gates display only - a provider or storage config that already carries the settings keeps
+ * working whatever this returns.
+ */
+export const isCrossCloudFederatedIamEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return (
+    find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_CROSS_CLOUD_FEDERATED_IAM)
+      ?.value === 'true'
+  );
 };
 
 export const isSigningRegionEnabled = (runtimeConfigs: RunTimeConfig) => {

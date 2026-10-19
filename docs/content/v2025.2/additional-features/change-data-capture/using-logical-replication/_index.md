@@ -106,7 +106,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
-- CDC currently doesn't support [Transactional DDL](../../../explore/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
+- CDC currently doesn't support [Transactional DDL](../../../architecture/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 
 - There should be a primary key on the table you want to stream the changes from.
 
@@ -130,7 +130,11 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
 - Currently, to use [replication origins](./advanced-topic/#replication-origins), you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.
 
-- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
+
+    When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
+
+    If errors due to addition of unqualified tables are not resolved within the stream expiry duration, the replication slot would be rendered unusable.
 
 ### CDC with point-in-time recovery
 

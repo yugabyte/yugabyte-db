@@ -32,8 +32,10 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -813,6 +815,10 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
 #endif
 }
 
+void PgApiImpl::SetConnectedDatabaseOid(YbcPgOid dboid) {
+  pg_txn_manager_->SetConnectedDatabaseOid(dboid);
+}
+
 void PgApiImpl::Interrupt() {
   interrupter_->Interrupt();
 }
@@ -1311,6 +1317,15 @@ Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& tabl
   return pg_client_.GetTableDiskSize(table_oid);
 }
 
+Result<client::TableSizeInfo> PgApiImpl::GetTablegroupDiskSize(
+    PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated) {
+  const auto tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
+  const auto parent_table_id = is_database_colocated
+      ? GetColocationParentTableId(tablegroup_id)
+      : GetTablegroupParentTableId(tablegroup_id);
+  return pg_client_.GetTableDiskSizeByYbTableId(parent_table_id);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateIndex(const char* database_name,
@@ -1436,6 +1451,7 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  req.set_origination_ht(pg_txn_manager_->GetOriginationHt());
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
@@ -1825,9 +1841,7 @@ Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
 }
 
 bool PgApiImpl::IsValidYbctid(uint64_t ybctid) {
-  dockv::DocKey key;
-  auto s = key.DecodeFrom(YbctidAsSlice(pg_types_, ybctid));
-  return s.ok();
+  return dockv::DocKey::IsDecodable(YbctidAsSlice(pg_types_, ybctid));
 }
 
 Status PgApiImpl::DmlANNBindVector(PgStatement* handle, PgExpr* vector) {
@@ -1840,6 +1854,11 @@ Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement* handle, int prefetch_size) 
 
 Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).HnswSetReadOptions(ef_search);
+}
+
+Status PgApiImpl::DmlANNBindKeyFilter(
+    PgStatement* handle, std::span<const YbcPgVectorKeyColumn> columns) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindKeyFilter(columns);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
@@ -2049,6 +2068,10 @@ void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
   };
 }
 
+uint32_t PgApiImpl::GetSharedYsqlCatalogPrefetchLoad() const {
+  return tserver_shared_object_.ysql_catalog_prefetch_load();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
     return tserver_shared_object_.ysql_catalog_version();
@@ -2154,9 +2177,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction(int64_t start_time) {
+Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time) {
   fk_reference_cache_.Clear();
-  return pg_txn_manager_->BeginTransaction(start_time);
+  return pg_txn_manager_->BeginTransaction(start_time, origination_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
@@ -2337,12 +2360,25 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+}
+
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
   return pg_session_->CurrentTransactionUsesFastPath();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
+}
+
+void PgApiImpl::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, const char* transaction_id) {
+  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+}
+
+void PgApiImpl::ResetHistoricalReadContext() {
+  pg_session_->ResetHistoricalReadContext();
 }
 
 ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
@@ -2704,7 +2740,9 @@ SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
   return pg_session_->ClearState();
 }
 
-bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
+bool PgApiImpl::HasCronLease() const { return tserver_shared_object_.HasCronLease(); }
+
+bool PgApiImpl::CanCronStartJobs() const { return tserver_shared_object_.CanCronStartJobs(); }
 
 Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
   return pg_client_.SetCronLastMinute(last_minute);

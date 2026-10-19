@@ -100,6 +100,17 @@ class TServerSharedData {
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }
 
+  // Last known catalog prefetch load on the master leader, refreshed from the heartbeat. Read by
+  // postgres backends before they bump the catalog version, which is what sends the whole cluster
+  // to the leader to prefetch again.
+  void SetYsqlCatalogPrefetchLoad(uint32_t load) {
+    ysql_catalog_prefetch_load_.store(load, std::memory_order_release);
+  }
+
+  uint32_t ysql_catalog_prefetch_load() const {
+    return ysql_catalog_prefetch_load_.load(std::memory_order_acquire);
+  }
+
   void SetPostgresAuthKey(uint64_t auth_key) {
     postgres_auth_key_ = auth_key;
   }
@@ -117,11 +128,21 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-    cron_leader_lease_ = cron_leader_lease_end;
+  void SetCronLeaseEnd(MonoTime lease_end) {
+    cron_lease_end_ = lease_end;
   }
 
-  bool IsCronLeader() const;
+  void SetCronCanStartJobs(bool can_start) {
+    cron_can_start_jobs_ = can_start;
+  }
+
+  // Whether this node holds a valid (unexpired) pg_cron leader lease. Remains true while draining
+  // after a step down, until the lease expires.
+  bool HasCronLease() const;
+
+  // Whether this node is the active pg_cron leader (holds a valid lease and has not stepped down).
+  // Only the active leader starts new job runs.
+  bool CanCronStartJobs() const;
 
   void SetPid(pid_t pid) {
     pid_ = pid;
@@ -142,7 +163,11 @@ class TServerSharedData {
 
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 
-  std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
+  std::atomic<MonoTime> cron_lease_end_{MonoTime::kUninitialized};
+
+  // Set while this node is the pg_cron leader, cleared when it steps down. CanCronStartJobs()
+  // requires this flag and an unexpired lease: only then may the node start new job runs.
+  std::atomic<bool> cron_can_start_jobs_{false};
 
   // pid of the local TServer
   pid_t pid_;
@@ -150,6 +175,8 @@ class TServerSharedData {
   // Whether AllocatorsInitialized() has been called -- until then, pointers in shared memory cannot
   // be used.
   std::atomic<bool> fully_initialized_{false};
+
+  std::atomic<uint32_t> ysql_catalog_prefetch_load_{0};
 };
 
 using SharedMemoryReadyCallback = std::function<void()>;

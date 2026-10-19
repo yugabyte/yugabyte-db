@@ -1312,7 +1312,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
-  const string err_message = strings::Substitute(
+  const string err_message = Format(
       "Unable to get the latest entry op id from "
       "peer $0 and tablet $1 because its log object hasn't been initialized",
       tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
@@ -4448,7 +4448,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
         GetServingTablet(tablet_id), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
     if (!tablet_peer->log_available()) {
-      const string err_message = strings::Substitute(
+      const string err_message = Format(
           "Unable to get the latest entry op id from "
           "peer $0 and tablet $1 because its log object hasn't been initialized",
           tablet_peer->permanent_uuid(), tablet_peer->tablet_id());

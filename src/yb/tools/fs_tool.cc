@@ -37,6 +37,7 @@
 #include <memory>
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/common/schema.h"
@@ -47,7 +48,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/sys_catalog_constants.h"
@@ -65,7 +65,6 @@ using log::ReadableLogSegment;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using tablet::Tablet;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
@@ -116,7 +115,7 @@ Status FsTool::ListAllLogSegments() {
   auto wal_root_dirs = fs_manager_->GetWalRootDirs();
   for (auto const& wals_dir : wal_root_dirs) {
     if (!fs_manager_->Exists(wals_dir)) {
-      return STATUS(Corruption, Substitute(
+      return STATUS(Corruption, Format(
           "root log directory '$0' does not exist", wals_dir));
     }
 
@@ -161,8 +160,8 @@ Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
 
   const string& tablet_wal_dir = meta->wal_dir();
   if (!fs_manager_->Exists(tablet_wal_dir)) {
-    return STATUS(NotFound, Substitute("tablet '$0' has no logs in wals dir '$1'",
-                                       tablet_id, tablet_wal_dir));
+    return STATUS(NotFound, Format("tablet '$0' has no logs in wals dir '$1'",
+                                   tablet_id, tablet_wal_dir));
   }
   std::cout << "Tablet WAL dir found: " << tablet_wal_dir << std::endl;
   RETURN_NOT_OK(ListSegmentsInDir(tablet_wal_dir));

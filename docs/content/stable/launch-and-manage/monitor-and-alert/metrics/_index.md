@@ -29,7 +29,7 @@ To learn about some of the categories of metrics and how to use them for your us
 | :--- | :--- |
 | [Throughput and latency](throughput/) | YSQL query processing and database IOPS. |
 | [Connections](connections/) | Cumulative number of connections to YSQL backend per node. |
-| [Cache and storage subsystems](cache-storage/) | Storage layer IOPS, block cache, bloom filter, SST file, compaction, memtable, and write ahead logging metrics. |
+| [Cache and storage subsystems](cache-storage/) | Storage layer IOPS, block cache, bloom filter, SST file, compaction, memtable, write ahead logging, and per-drive write I/O metrics. |
 | [Raft and distributed systems](raft-dst/) | Raft operations, throughput, and latencies, clock skew, and remote bootstrap. |
 | [YB-Master](ybmaster/) | Table and tablet management. |
 | [Replication](replication/) | Replication lag. |

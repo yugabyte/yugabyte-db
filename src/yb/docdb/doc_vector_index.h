@@ -13,11 +13,16 @@
 
 #pragma once
 
+#include <mutex>
+#include <optional>
+
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/hnsw/hnsw_fwd.h"
 
@@ -34,7 +39,10 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -49,12 +57,16 @@ namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
 
+// Whether the indexed table writes the vector reverse mapping, see
+// TablePropertiesPB::skip_vector_reverse_mapping.
+YB_STRONGLY_TYPED_BOOL(TableWritesReverseMapping);
+
 struct DocVectorIndexInsertEntry {
   ValueBuffer value;
 
-  // ybctid of the row that contains the vector. Attached to the vector in the chunk when the
-  // index stores ybctids, so search can resolve rows without reading the reverse mapping, see
-  // DocVectorIndex::StoresYbctid.
+  // ybctid of the row that contains the vector. Goes into the payload attached to the vector in
+  // the chunk when the index stores payloads, so search can resolve rows without reading the
+  // reverse mapping, see DocVectorIndex::StoresPayload.
   KeyBuffer ybctid;
 };
 
@@ -68,6 +80,34 @@ struct DocVectorIndexSearchResultEntry {
 };
 
 using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResultEntry>;
+
+struct DocVectorIndexEntry {
+  vector_index::VectorId vector_id;
+
+  // The vector in the YSQL encoding, the same as EncodedDocVectorValue::data of the row.
+  Slice vector;
+
+  // Empty when the index stores no payloads, see DocVectorIndex::StoresPayload.
+  Slice payload;
+};
+
+using DocVectorIndexEntryCallback = LWFunction<Status(const DocVectorIndexEntry&)>;
+
+// Read-only view of the index chunks in the manifest when the view was created, which accept no
+// inserts. Flush and WaitForFlush the index first to cover every vector inserted before the view.
+// The view keeps its chunks alive while it exists.
+class DocVectorIndexView {
+ public:
+  virtual ~DocVectorIndexView() = default;
+
+  virtual Status ForEachVector(const DocVectorIndexEntryCallback& callback) const = 0;
+
+  // Number of vectors in the view, including the ones of deleted and updated rows that
+  // compaction has not removed yet.
+  virtual size_t NumVectors() const = 0;
+};
+
+using DocVectorIndexViewPtr = std::unique_ptr<DocVectorIndexView>;
 
 struct DocVectorIndexSearchResult {
   bool could_have_more_data;
@@ -91,7 +131,6 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
-
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
@@ -101,12 +140,6 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
-
-  // Creates a reader at the tablet's current history cutoff. A tombstone visible to this reader
-  // cannot be observed as a live vector by any allowed read time, so the merge filter may
-  // discard the corresponding vector.
-  virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReaderAtHistoryCutoff()
-      const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -131,6 +164,8 @@ struct InsertOptions {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // See vector_index::VectorLSMInsertContext::chunk_holds.
+  vector_index::VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 class DocVectorIndex {
@@ -147,10 +182,16 @@ class DocVectorIndex {
   virtual const DocVectorIndexContext& context() const = 0;
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
-  // Whether ybctids are stored in the vector index chunks as vector payloads, so search resolves
-  // rows without reading the reverse mapping and insert-time reverse mapping entries are not
-  // needed. Fixed for the lifetime of the index.
-  virtual bool StoresYbctid() const = 0;
+  // Whether a payload is attached to every vector in the index chunks. The payload carries the
+  // ybctid, so search resolves rows without the reverse mapping. Fixed when the index is created,
+  // see PgVectorIdxOptionsPB::store_payload, and always true when the indexed table writes no
+  // reverse mapping, which leaves the payload as the only way to resolve a row.
+  virtual bool StoresPayload() const = 0;
+
+  // Whether the indexed table writes the reverse mapping, see TableWritesReverseMapping.
+  virtual bool HasReverseMapping() const = 0;
+
+  virtual Result<DocVectorIndexViewPtr> CreateImmutableView() = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) = 0;
@@ -170,6 +211,26 @@ class DocVectorIndex {
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
 
+  // Persists `frontier` as part of the flushed state without inserting any vector. Stamps an OpId
+  // on an index that is known to reflect everything up to it, but cannot reach it by flushing,
+  // because a truncate or a restore replaced its storage.
+  //
+  // With kUpdate, the stamp only moves the flushed OpId forward: the flushed frontier is the
+  // maximum over the index chunks. That covers a truncate and a restore within the same Raft group,
+  // whose chunks carry lower OpIds. kForce first sets the OpId of every chunk to the one of
+  // `frontier`, for a restore whose chunks carry OpIds of another Raft group, which can be higher.
+  // It needs an index without unflushed data and with compactions off, as right after a restore.
+  //
+  // Each stamp adds a frontier only chunk that stays in the manifest until a full compaction, so
+  // it is reserved for storage replacement and not used to advance an idle index.
+  virtual Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) = 0;
+
+  // Advances the flushed OpId of an index that holds nothing unflushed, without a chunk file.
+  // Unlike ModifyFlushedFrontier, repeated calls keep a single frontier only chunk, so it can be
+  // used to advance an idle index. Returns false when the index has unflushed data.
+  virtual Result<bool> AdvanceFlushedOpId(const OpId& op_id) = 0;
+
   // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.
@@ -185,7 +246,6 @@ class DocVectorIndex {
   virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
-  virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 
@@ -198,7 +258,24 @@ class DocVectorIndex {
   virtual bool TEST_HasBackgroundInserts() const = 0;
   virtual size_t TEST_NextManifestFileNo() const = 0;
 
-  bool BackfillDone();
+  // Returns whether the backfill is done. If it isn't and the last attempt failed, returns that
+  // error instead, so whoever waits for the backfill doesn't wait forever.
+  Result<bool> BackfillDone() EXCLUDES(backfill_status_mutex_);
+  void SetBackfillStatus(const Status& status) EXCLUDES(backfill_status_mutex_);
+
+  // Rows committed after this hybrid time are not added to the index. Invalid while the index is
+  // active. See tablet::TableInfo::vector_index_deactivated_ht.
+  HybridTime deactivated_hybrid_time() const {
+    return deactivated_hybrid_time_.load(std::memory_order_acquire);
+  }
+
+  bool IsDeactivated() const {
+    return deactivated_hybrid_time().is_valid();
+  }
+
+  void SetDeactivatedHybridTime(HybridTime hybrid_time) {
+    deactivated_hybrid_time_.store(hybrid_time, std::memory_order_release);
+  }
 
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
@@ -215,6 +292,9 @@ class DocVectorIndex {
 
   std::atomic<bool> backfill_done_cache_{false};
   std::atomic<bool> parent_data_compacted_cache_{false};
+  std::mutex backfill_status_mutex_;
+  Status backfill_status_ GUARDED_BY(backfill_status_mutex_);
+  std::atomic<HybridTime> deactivated_hybrid_time_{HybridTime()};
 };
 
 struct DocVectorIndexThreadPools {
@@ -236,6 +316,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
+    TableWritesReverseMapping table_writes_reverse_mapping,
     HybridTime hybrid_time,
     uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,

@@ -36,8 +36,7 @@
 #include "yb/common/common_net.h"
 #include "yb/common/tablespace_parser.h"
 
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/format.h"
 #include "yb/util/test_macros.h"
 
 using std::string;
@@ -688,7 +687,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Valid option with no preferred zones.
   {
-    auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
+    auto no_preferred_zone = Format(format, zone1, zone2, zone3);
     auto replication_info =
         ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{no_preferred_zone}));
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
@@ -697,27 +696,27 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
   // Negative priority.
   {
     auto negative_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{negative_priority}));
   }
 
   // Zero priority.
   {
     auto zero_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{zero_priority}));
   }
 
   // No priority 1.
   {
     auto no_priority_1 =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
     ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{no_priority_1}));
   }
 
   // Non contiguous priority.
   {
-    auto non_cont_priority_1 = strings::Substitute(
+    auto non_cont_priority_1 = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
@@ -727,7 +726,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Non contiguous priority3.
   {
-    auto non_cont_priority_3 = strings::Substitute(
+    auto non_cont_priority_3 = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":3)#",
@@ -739,7 +738,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
   // Only 1 zone has priority
   {
     auto one_zone_priority =
-        strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
+        Format(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
     auto replication_info =
         ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{one_zone_priority}));
     ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
@@ -749,7 +748,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // Two zones have priority 1
   {
-    auto two_zone_priority = strings::Substitute(
+    auto two_zone_priority = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
@@ -764,7 +763,7 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
 
   // All unique priority
   {
-    auto teo_zone_priority = strings::Substitute(
+    auto teo_zone_priority = Format(
         format,
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":2)#",
@@ -796,7 +795,7 @@ TEST(TablespaceParserTest, TestDisabledTablespaceValidation) {
   const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
   const string format =
       R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
-  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+  const auto duplicate_placement = Format(format, zone1, zone1_copy, zone3);
   ASSERT_RESULT(TablespaceParser::FromQLValue({duplicate_placement}));
 }
 
@@ -806,7 +805,7 @@ TEST(TablespaceParserTest, TestDuplicatePlacementBlocks) {
   const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
   const string format =
       R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
-  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+  const auto duplicate_placement = Format(format, zone1, zone1_copy, zone3);
 
   // Should fail to create replication info because of duplicate placement blocks.
   auto result = TablespaceParser::FromQLValue({duplicate_placement});

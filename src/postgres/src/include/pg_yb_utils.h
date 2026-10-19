@@ -135,6 +135,24 @@ typedef enum YbGeolocationDistance
 
 extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 
+/**
+ * Returns a null-terminated string representing the name of the
+ * cloud this process is running on.
+ */
+extern const char *YBGetCurrentCloud();
+
+/**
+ * Returns a null-terminated string representing the region this
+ * process is running on.
+ */
+extern const char *YBGetCurrentRegion();
+
+/**
+ * Returns a null-terminated string representing the zone this
+ * process is running on.
+ */
+extern const char *YBGetCurrentZone();
+
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -327,6 +345,13 @@ extern YbObjectLockMode YBGetObjectLockMode();
  * Whether we need to preload additional catalog tables.
  */
 extern bool YbNeedAdditionalCatalogTables();
+
+/* yb_test_catalog_preload_cache_list, implemented in relcache.c. */
+extern bool yb_check_test_catalog_preload_cache_list(char **newval, void **extra,
+													 GucSource source);
+extern void yb_assign_test_catalog_preload_cache_list(const char *newval,
+													  void *extra);
+extern bool YbCatalogPreloadCacheListIsSet(void);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
@@ -830,6 +855,12 @@ extern char *yb_default_replica_identity;
 extern char *yb_dist_tracecontext;
 
 /*
+ * Fraction (0 to 1) of protocol cycles without a traceparent that start a
+ * distributed trace of their own; 0 disables sampling.
+ */
+extern double yb_dist_trace_sample_rate;
+
+/*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
  * the new table is created.
  */
@@ -928,6 +959,24 @@ extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
+extern int	yb_ddl_wait_for_master_prefetch_drain_ms;
+
+/*
+ * Mirrors YsqlCatalogPrefetchLoadPB in master_heartbeat.proto, naming every value it can carry
+ * even where the code only compares against some of them. The master sends a value in the
+ * heartbeat response, the tserver stores it in this node's shared memory, and backends read it
+ * from there.
+ */
+typedef enum YbCatalogPrefetchLoad
+{
+	YB_CATALOG_PREFETCH_LOAD_UNKNOWN = 0,
+	YB_CATALOG_PREFETCH_LOAD_LOW = 1,
+	YB_CATALOG_PREFETCH_LOAD_BUSY = 2,
+	YB_CATALOG_PREFETCH_LOAD_SUPER_BUSY = 3,
+} YbCatalogPrefetchLoad;
+
+extern void YbWaitForMasterCatalogPrefetchDrain(void);
+
 /*
  * Enable parallel query for different relation sharding types
  */
@@ -996,6 +1045,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
+extern bool yb_enable_xcluster_analyze_replication;
+
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
@@ -1047,6 +1098,7 @@ extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
+extern bool YBCurrentStmtCannotIncrementCatalogVersion();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
@@ -1375,6 +1427,13 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
 
+extern uint64_t yb_origination_time;
+extern void YbRefreshOriginationTime(void);
+extern bool yb_check_origination_time_override(char **newval, void **extra,
+											   GucSource source);
+extern void yb_assign_origination_time_override(const char *newval,
+												void *extra);
+
 /* GUC assign hook for max_replication_slots */
 extern void yb_assign_max_replication_slots(int newval, void *extra);
 
@@ -1615,6 +1674,18 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 															char replident);
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
+
+extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
+										uint64_t in_txn_limit_ht,
+										const char *docdb_txn_id);
+
+extern void YBCInvalidateCachesForHistoricalReadContext(void);
+
+extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
+															 uint64_t in_txn_limit_ht,
+															 const char *docdb_txn_id);
+
+extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
 
 extern void YBCResetYbReadTimeAndInvalidateRelcache();
 

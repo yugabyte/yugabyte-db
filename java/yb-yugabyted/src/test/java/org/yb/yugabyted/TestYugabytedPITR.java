@@ -108,6 +108,10 @@ public class TestYugabytedPITR extends BaseYbdClientTest {
         String earliestRecoverableTime = getEarliestRecoverableTime(baseDir);
         LOG.info("Earliest Recoverable Time: " + earliestRecoverableTime);
 
+        // yugabyted rounds the earliest recoverable time up to the next second and rejects
+        // restore times later than now, so wait for that time to pass.
+        Thread.sleep(1000);
+
         //Restore to the earliest recoverable time
         String recoveryPoint =
                 YugabytedCommands.restoreToPointInTime(baseDir, earliestRecoverableTime);

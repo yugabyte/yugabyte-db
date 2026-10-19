@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.ha.PlatformInstanceClient.FipsModeMismatchException;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -295,6 +296,8 @@ public class PlatformInstanceController extends AuthenticatedController {
             boolean succeeded = false;
             try {
               succeeded = replicationManager.validateRemoteBackup(config, leader, backup.getName());
+            } catch (FipsModeMismatchException e) {
+              throw e;
             } catch (Exception e) {
               log.error("Connection test to the current leader {} failed", leader, e);
               throw new PlatformServiceException(

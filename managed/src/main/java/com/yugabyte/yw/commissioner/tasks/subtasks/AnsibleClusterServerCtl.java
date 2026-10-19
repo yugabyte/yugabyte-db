@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.base.Stopwatch;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -134,9 +135,13 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
         // Flush tablets before stopping tserver.
         flushTablets(universeOpt.get(), nodeDetails);
       }
-      boolean isNodeAgentSupported =
-          NodeAgentClient.isCloudTypeSupported(
-              universeOpt.get().getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+      Common.CloudType providerType =
+          universeOpt
+              .get()
+              .getUniverseDetails()
+              .getClusterByUuid(nodeDetails.placementUuid)
+              .getProviderCloudType(nodeDetails);
+      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
       if (isNodeAgentSupported) {
         NodeAgent nodeAgent =
             nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
