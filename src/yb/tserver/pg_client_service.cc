@@ -2566,16 +2566,14 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     table_cache_.GetTables(table_ids, query);
   }
 
-  void InvalidateTableCache() {
+  void InvalidateTableCache(const std::optional<PgTableCacheInvalidationFilter>& filter) {
+    if (filter) {
+      table_cache_.InvalidateDbTables(*filter);
+      db_cache_.Invalidate(filter->dropped_dbs);
+      return;
+    }
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
     db_cache_.Clear();
-  }
-
-  void InvalidateTableCache(
-      const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-      const std::unordered_set<uint32_t>& db_oids_deleted) {
-    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
-    db_cache_.Invalidate(db_oids_deleted);
   }
 
   // Return the TabletServer hosting the specified status tablet.
@@ -3243,14 +3241,9 @@ void PgClientServiceImpl::Perform(
   impl_->Perform(const_cast<PgPerformRequestMsg*>(req), resp, &context);
 }
 
-void PgClientServiceImpl::InvalidateTableCache() {
-  impl_->InvalidateTableCache();
-}
-
 void PgClientServiceImpl::InvalidateTableCache(
-    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-    const std::unordered_set<uint32_t>& db_oids_deleted) {
-  impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    const std::optional<PgTableCacheInvalidationFilter>& filter) {
+  impl_->InvalidateTableCache(filter);
 }
 
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(

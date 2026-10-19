@@ -1415,8 +1415,7 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
       "true"));
 
   {
-    LogWaiter log_waiter(ts2,
-                         "Invalidating db PgTableCache caches since catalog version incremented");
+    LogWaiter log_waiter(ts2, "Invalidating PgTableCache with filter=");
     ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
     ts1->Shutdown();
     ASSERT_OK(log_waiter.WaitFor(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli));

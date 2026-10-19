@@ -17,8 +17,6 @@
 #include <future>
 #include <span>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 
 #include <boost/container/container_fwd.hpp>
 
@@ -27,6 +25,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_ddl.fwd.h"
 
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
@@ -88,8 +87,7 @@ class PgTableCache {
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);
-  void InvalidateDbTables(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                          const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidateDbTables(const PgTableCacheInvalidationFilter& filter);
 
  private:
   class Impl;

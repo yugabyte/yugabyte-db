@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <utility>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
 
@@ -1371,8 +1373,8 @@ Status TabletServer::SetTserverCatalogMessageList(
                             << " catalog version: " << new_catalog_version
                             << " is_breaking_change: " << is_breaking_change;
       }
-      InvalidatePgTableCache({{db_oid, new_catalog_version}} /* db_oids_updated */,
-                             {} /* db_oids_deleted */);
+      DbCatalogVersionUpdate updated_db[]{{db_oid, new_catalog_version}};
+      InvalidatePgTableCache(PgTableCacheInvalidationFilter{updated_db});
     }
     // We may have added one more message to the queue that exceeded the max size.
     if (db_message_lists &&
@@ -1626,8 +1628,8 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
-  std::unordered_map<uint32_t, uint64_t> db_oids_updated;
-  std::unordered_set<uint32_t> db_oids_deleted;
+  boost::container::small_vector<DbCatalogVersionUpdate, 32> updated_dbs;
+  boost::container::small_vector<PgOid, 16> dropped_dbs;
   bool has_stale_new_version = false;
   // Invalid when the sender reports no read time: a pre-upgrade master, or one of the senders
   // that has none to report (the DDL-commit broadcast, which sets
@@ -1635,11 +1637,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   const auto master_read_ht = db_catalog_version_data.has_catalog_versions_read_time()
       ? HybridTime(db_catalog_version_data.catalog_versions_read_time())
       : HybridTime::kInvalid;
-  for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
-    const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
-    const uint32_t db_oid = db_catalog_version.db_oid();
-    const uint64_t new_version = db_catalog_version.current_version();
-    const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+  for (const auto& db_catalog_version : db_catalog_version_data.db_catalog_versions()) {
+    const auto db_oid = db_catalog_version.db_oid();
+    const auto new_version = db_catalog_version.current_version();
+    const auto new_breaking_version = db_catalog_version.last_breaking_version();
     if (FLAGS_TEST_check_catalog_version_overflow) {
       CHECK_GE(static_cast<int64_t>(new_version), 0)
           << new_version << " db_oid: " << db_oid
@@ -1684,7 +1685,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         existing_entry.stale_since_read_ht = HybridTime::kInvalid;
         existing_entry.stale_fatal_threshold = MonoDelta();
         row_updated = true;
-        db_oids_updated.insert({db_oid, new_version});
+        updated_dbs.emplace_back(db_oid, new_version);
         shm_index = existing_entry.shm_index;
         CHECK(
             shm_index >= 0 &&
@@ -1860,10 +1861,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   if (!has_stale_new_version) {
     for (auto it = ysql_db_catalog_version_map_.begin();
          it != ysql_db_catalog_version_map_.end();) {
-      const uint32_t db_oid = it->first;
-      if (db_oid_set.count(db_oid) == 0) {
+      const auto db_oid = it->first;
+      if (!db_oid_set.contains(db_oid)) {
         // This means the entry for db_oid no longer exists.
-        db_oids_deleted.insert(db_oid);
+        dropped_dbs.push_back(db_oid);
         catalog_changed = true;
         auto shm_index = it->second.shm_index;
         CHECK(shm_index >= 0 &&
@@ -1897,17 +1898,16 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
 
   // If we only inserted new rows, then the existing databases do not have
   // any catalog version changes and the current catalog caches are valid.
-  if (db_oids_updated.empty() && db_oids_deleted.empty()) {
+  if (updated_dbs.empty() && dropped_dbs.empty()) {
     return;
   }
   // If many databases have their catalog versions changed, there is
   // a high chance that a global impact DDL statement has incremented the
   // catalog versions of all databases.
-  if (db_oids_updated.size() > ysql_db_catalog_version_map_.size() / 2) {
-    InvalidatePgTableCache();
-  } else {
-    InvalidatePgTableCache(db_oids_updated, db_oids_deleted);
-  }
+  InvalidatePgTableCache(
+      updated_dbs.size() > ysql_db_catalog_version_map_.size() / 2
+          ? std::nullopt
+          : std::make_optional<PgTableCacheInvalidationFilter>(updated_dbs, dropped_dbs));
 }
 
 void TabletServer::ResetCatalogVersionsFingerprint() {
@@ -2360,30 +2360,12 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
   return Status::OK();
 }
 
-void TabletServer::InvalidatePgTableCache() {
-  auto pg_client_service = pg_client_service_.lock();
-  if (!pg_client_service) {
-    return;
-  }
-
-  LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
-  pg_client_service->impl.InvalidateTableCache();
-}
-
 void TabletServer::InvalidatePgTableCache(
-    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-    const std::unordered_set<uint32_t>& db_oids_deleted) {
-  auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    string msg = "Invalidating db PgTableCache caches since ";
-    if (!db_oids_updated.empty()) {
-      msg += Format("catalog version incremented for $0 ", yb::ToString(db_oids_updated));
-    }
-    if (!db_oids_deleted.empty()) {
-      msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
-    }
-    LOG(INFO) << msg;
-    pg_client_service->impl.InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    const std::optional<PgTableCacheInvalidationFilter>& filter) {
+  if (auto pg_client_service = pg_client_service_.lock(); pg_client_service) {
+    LOG(INFO) << "Invalidating PgTableCache with filter=" << AsString(filter)
+              << (filter ? "" : " (entirely)");
+    pg_client_service->impl.InvalidateTableCache(filter);
   }
 }
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
