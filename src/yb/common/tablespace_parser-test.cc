@@ -637,6 +637,16 @@ TEST(TablespaceParserTest, MaxNumReplicasValidation) {
          {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1,
           "max_num_replicas":1}]})",
        "Sum of effective max_num_replicas fields (2) is less than the total replication factor"},
+      // The wildcard block itself has no maximum; a maximum anywhere rules out wildcards.
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z1","min_num_replicas":2,
+          "max_num_replicas":2},
+         {"cloud":"c","region":"r","zone":"*","min_num_replicas":1}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"*","zone":"*","min_num_replicas":3,
+          "max_num_replicas":3}]})",
+       "max_num_replicas is not supported in combination with wildcard placement blocks"},
   };
 
   for (const auto& [placement, expected_error] : invalid_placements) {
