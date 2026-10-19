@@ -77,6 +77,7 @@ struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
+struct TierMigrationHooks;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 
