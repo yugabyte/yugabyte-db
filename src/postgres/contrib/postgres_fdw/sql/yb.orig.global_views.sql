@@ -507,12 +507,25 @@ $$ AS query \gset
 -- Function pushdown behavior
 --
 
--- Stable function (NOW()) in predicate: not pushed down because
--- contain_mutable_functions() rejects non-immutable expressions.
+-- NOW() in predicate: pushed down because the deparser emits it as a
+-- remote param that is re-evaluated on every EXECUTE.
 SELECT $$
 :P
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
 WHERE updated_at < NOW()
+ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
+
+-- LOCALTIMESTAMP: not pushed down because the timestamptz vs timestamp
+-- comparison operator is stable (timezone-dependent).
+-- CURRENT_TIMESTAMP: pushed down because no cross-type comparison is needed.
+\set Q1 LOCALTIMESTAMP
+\set Q2 CURRENT_TIMESTAMP
+SELECT $$
+:P
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < :Q
 ORDER BY node_id, metric_name;
 $$ AS query \gset
 \i :run_query
@@ -543,6 +556,91 @@ WHERE is_high_value(metric_value)
 ORDER BY node_id, metric_name;
 $$ AS query \gset
 \i :run_query
+
+-- SQL value functions in predicates: all SQLValueFunction nodes
+-- (time/date, identity, and catalog variants) are pushed down as remote
+-- params — the coordinator evaluates and ships the concrete value.
+CREATE VIEW sqlvalue_function_test AS
+    SELECT
+        yb_get_local_tserver_uuid() AS server_uuid,
+        NULL::TIMESTAMPTZ AS timestamptz_value,
+        NULL::DATE AS date_value,
+        NULL::TIMESTAMP AS timestamp_value,
+        NULL::TIME AS time_value,
+        NULL::TIMETZ AS timetz_value,
+        NULL::NAME AS role_value,
+        NULL::NAME AS catalog_value,
+        NULL::NAME AS schema_value
+    WHERE false;
+
+-- Global-view reads execute as the non-superuser yb_global_views_user role
+-- (a member of pg_read_all_stats), so grant it read access to the view.
+GRANT SELECT ON sqlvalue_function_test TO pg_read_all_stats;
+
+CREATE FOREIGN TABLE "gv$sqlvalue_function_test" (
+    server_uuid       UUID,
+    timestamptz_value TIMESTAMPTZ,
+    date_value        DATE,
+    timestamp_value   TIMESTAMP,
+    time_value        TIME,
+    timetz_value      TIMETZ,
+    role_value        NAME,
+    catalog_value     NAME,
+    schema_value      NAME
+) SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'sqlvalue_function_test');
+
+\set Q1 'timestamptz_value < CURRENT_TIMESTAMP'
+\set Q2 'timestamptz_value < CURRENT_TIMESTAMP(3)'
+\set Q3 'date_value < CURRENT_DATE'
+\set Q4 'timetz_value < CURRENT_TIME'
+\set Q5 'timetz_value < CURRENT_TIME(3)'
+SELECT $$
+:P
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE :Q;
+$$ AS query \gset
+\i :run_query
+
+\set Q1 'timestamp_value < LOCALTIMESTAMP'
+\set Q2 'timestamp_value < LOCALTIMESTAMP(3)'
+\set Q3 'time_value < LOCALTIME'
+\set Q4 'time_value < LOCALTIME(3)'
+\unset Q5
+\i :run_query
+
+\set Q1 'role_value = CURRENT_ROLE'
+\set Q2 'role_value = CURRENT_USER'
+\set Q3 'role_value = USER'
+\set Q4 'role_value = SESSION_USER'
+\i :run_query
+
+\set Q1 'catalog_value = CURRENT_CATALOG'
+\set Q2 'schema_value = CURRENT_SCHEMA'
+\unset Q3
+\unset Q4
+\i :run_query
+
+--
+-- GUC: postgres_fdw.yb_enable_global_views_stable_func_pushdown
+-- When disabled, stable functions and SQLValueFunctions fall back to
+-- upstream behavior (not pushed down); RESET restores pushdown.
+--
+\set Q1 'timestamptz_value < NOW()'
+\set Q2 'timestamptz_value < CURRENT_TIMESTAMP'
+\set Q3 'role_value = CURRENT_USER'
+SELECT $$
+:explain
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE :Q;
+$$ AS query \gset
+
+SET postgres_fdw.yb_enable_global_views_stable_func_pushdown = false;
+\i :run_query
+
+RESET postgres_fdw.yb_enable_global_views_stable_func_pushdown;
+\i :run_query
+\unset Q3
 
 --
 -- Global views for yb_active_session_history and pg_stat_statements.
@@ -765,11 +863,13 @@ FROM "gv$node_metrics";
 --
 -- Cleanup
 --
+DROP FOREIGN TABLE "gv$sqlvalue_function_test";
 DROP FOREIGN TABLE "gv$pg_stat_statements";
 DROP FOREIGN TABLE "gv$yb_active_session_history";
 DROP VIEW pg_stat_statements_with_server_uuid;
 DROP VIEW yb_active_session_history_with_server_uuid;
 DROP FOREIGN TABLE "gv$node_metrics";
+DROP VIEW sqlvalue_function_test;
 DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;

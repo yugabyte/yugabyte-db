@@ -2343,8 +2343,8 @@ LIMIT 3;
 --
 -- Function pushdown behavior
 --
--- Stable function (NOW()) in predicate: not pushed down because
--- contain_mutable_functions() rejects non-immutable expressions.
+-- NOW() in predicate: pushed down because the deparser emits it as a
+-- remote param that is re-evaluated on every EXECUTE.
 SELECT $$
 :P
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
@@ -2358,22 +2358,22 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
 WHERE updated_at < NOW()
 ORDER BY node_id, metric_name;
-                                                                       QUERY PLAN                                                                       
---------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                 QUERY PLAN                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Merge Append
    Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
          Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at
-         Filter: ("gv$node_metrics_1".updated_at < now())
-         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+         Remote Filter: ("gv$node_metrics_1".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
          Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at
-         Filter: ("gv$node_metrics_2".updated_at < now())
-         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+         Remote Filter: ("gv$node_metrics_2".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
          Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at
-         Filter: ("gv$node_metrics_3".updated_at < now())
-         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+         Remote Filter: ("gv$node_metrics_3".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
 (14 rows)
 
 SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
@@ -2394,6 +2394,86 @@ ORDER BY node_id, metric_name;
        3 | memory_usage | Sun Mar 09 21:00:00 2025 PDT
 (11 rows)
 
+-- LOCALTIMESTAMP: not pushed down because the timestamptz vs timestamp
+-- comparison operator is stable (timezone-dependent).
+-- CURRENT_TIMESTAMP: pushed down because no cross-type comparison is needed.
+\set Q1 LOCALTIMESTAMP
+\set Q2 CURRENT_TIMESTAMP
+SELECT $$
+:P
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < :Q
+ORDER BY node_id, metric_name;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < LOCALTIMESTAMP
+ORDER BY node_id, metric_name;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at
+         Filter: ("gv$node_metrics_1".updated_at < LOCALTIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at
+         Filter: ("gv$node_metrics_2".updated_at < LOCALTIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at
+         Filter: ("gv$node_metrics_3".updated_at < LOCALTIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < CURRENT_TIMESTAMP
+ORDER BY node_id, metric_name;
+                                                                                                 QUERY PLAN                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at
+         Remote Filter: ("gv$node_metrics_1".updated_at < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at
+         Remote Filter: ("gv$node_metrics_2".updated_at < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at
+         Remote Filter: ("gv$node_metrics_3".updated_at < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < $1::timestamp with time zone)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < LOCALTIMESTAMP
+ORDER BY node_id, metric_name;
+ node_id | metric_name  |          updated_at          
+---------+--------------+------------------------------
+       1 |              | Wed Jan 15 04:00:00 2025 PST
+       1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST
+       1 | disk_io      | Wed Jan 15 08:30:00 2025 PST
+       1 | memory_usage | Tue Jan 14 21:30:00 2025 PST
+       2 | cpu_usage    | Thu Feb 20 06:00:00 2025 PST
+       2 | disk_io      | Thu Feb 20 15:00:00 2025 PST
+       2 | memory_usage | Wed Feb 19 21:30:00 2025 PST
+       2 |              | Thu Feb 20 08:00:00 2025 PST
+       3 | cpu_usage    | Mon Mar 10 02:00:00 2025 PDT
+       3 | disk_io      | Mon Mar 10 08:00:00 2025 PDT
+       3 | memory_usage | Sun Mar 09 21:00:00 2025 PDT
+(11 rows)
+
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < CURRENT_TIMESTAMP
+ORDER BY node_id, metric_name;
+(output identical to previous)
 -- Immutable built-in function (ABS) in predicate: pushed down because
 -- the function is built-in and immutable.
 SELECT $$
@@ -2490,6 +2570,570 @@ ORDER BY node_id, metric_name;
        3 | memory_usage |         91.5
 (4 rows)
 
+-- SQL value functions in predicates: all SQLValueFunction nodes
+-- (time/date, identity, and catalog variants) are pushed down as remote
+-- params — the coordinator evaluates and ships the concrete value.
+CREATE VIEW sqlvalue_function_test AS
+    SELECT
+        yb_get_local_tserver_uuid() AS server_uuid,
+        NULL::TIMESTAMPTZ AS timestamptz_value,
+        NULL::DATE AS date_value,
+        NULL::TIMESTAMP AS timestamp_value,
+        NULL::TIME AS time_value,
+        NULL::TIMETZ AS timetz_value,
+        NULL::NAME AS role_value,
+        NULL::NAME AS catalog_value,
+        NULL::NAME AS schema_value
+    WHERE false;
+-- Global-view reads execute as the non-superuser yb_global_views_user role
+-- (a member of pg_read_all_stats), so grant it read access to the view.
+GRANT SELECT ON sqlvalue_function_test TO pg_read_all_stats;
+CREATE FOREIGN TABLE "gv$sqlvalue_function_test" (
+    server_uuid       UUID,
+    timestamptz_value TIMESTAMPTZ,
+    date_value        DATE,
+    timestamp_value   TIMESTAMP,
+    time_value        TIME,
+    timetz_value      TIMETZ,
+    role_value        NAME,
+    catalog_value     NAME,
+    schema_value      NAME
+) SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'sqlvalue_function_test');
+\set Q1 'timestamptz_value < CURRENT_TIMESTAMP'
+\set Q2 'timestamptz_value < CURRENT_TIMESTAMP(3)'
+\set Q3 'date_value < CURRENT_DATE'
+\set Q4 'timetz_value < CURRENT_TIME'
+\set Q5 'timetz_value < CURRENT_TIME(3)'
+SELECT $$
+:P
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE :Q;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP;
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP(3);
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < CURRENT_TIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp(3) with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < CURRENT_TIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp(3) with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < CURRENT_TIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp(3) with time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE date_value < CURRENT_DATE;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".date_value < CURRENT_DATE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((date_value < $1::date))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".date_value < CURRENT_DATE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((date_value < $1::date))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".date_value < CURRENT_DATE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((date_value < $1::date))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timetz_value < CURRENT_TIME;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timetz_value < CURRENT_TIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timetz_value < CURRENT_TIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timetz_value < CURRENT_TIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time with time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timetz_value < CURRENT_TIME(3);
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timetz_value < CURRENT_TIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time(3) with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timetz_value < CURRENT_TIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time(3) with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timetz_value < CURRENT_TIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timetz_value < $1::time(3) with time zone))
+(13 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP;
+ ?column? 
+----------
+(0 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP(3);
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE date_value < CURRENT_DATE;
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timetz_value < CURRENT_TIME;
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timetz_value < CURRENT_TIME(3);
+(output identical to previous)
+\set Q1 'timestamp_value < LOCALTIMESTAMP'
+\set Q2 'timestamp_value < LOCALTIMESTAMP(3)'
+\set Q3 'time_value < LOCALTIME'
+\set Q4 'time_value < LOCALTIME(3)'
+\unset Q5
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamp_value < LOCALTIMESTAMP;
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamp_value < LOCALTIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamp_value < LOCALTIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamp_value < LOCALTIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp without time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamp_value < LOCALTIMESTAMP(3);
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamp_value < LOCALTIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp(3) without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamp_value < LOCALTIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp(3) without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamp_value < LOCALTIMESTAMP(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamp_value < $1::timestamp(3) without time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE time_value < LOCALTIME;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".time_value < LOCALTIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".time_value < LOCALTIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".time_value < LOCALTIME)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time without time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE time_value < LOCALTIME(3);
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".time_value < LOCALTIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time(3) without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".time_value < LOCALTIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time(3) without time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".time_value < LOCALTIME(3))
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((time_value < $1::time(3) without time zone))
+(13 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamp_value < LOCALTIMESTAMP;
+ ?column? 
+----------
+(0 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamp_value < LOCALTIMESTAMP(3);
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE time_value < LOCALTIME;
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE time_value < LOCALTIME(3);
+(output identical to previous)
+\set Q1 'role_value = CURRENT_ROLE'
+\set Q2 'role_value = CURRENT_USER'
+\set Q3 'role_value = USER'
+\set Q4 'role_value = SESSION_USER'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_ROLE;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".role_value = CURRENT_ROLE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".role_value = CURRENT_ROLE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".role_value = CURRENT_ROLE)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_USER;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = USER;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".role_value = USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".role_value = USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".role_value = USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = SESSION_USER;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".role_value = SESSION_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".role_value = SESSION_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".role_value = SESSION_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+(13 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_ROLE;
+ ?column? 
+----------
+(0 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_USER;
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = USER;
+(output identical to previous)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = SESSION_USER;
+(output identical to previous)
+\set Q1 'catalog_value = CURRENT_CATALOG'
+\set Q2 'schema_value = CURRENT_SCHEMA'
+\unset Q3
+\unset Q4
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE catalog_value = CURRENT_CATALOG;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".catalog_value = CURRENT_CATALOG)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((catalog_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".catalog_value = CURRENT_CATALOG)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((catalog_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".catalog_value = CURRENT_CATALOG)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((catalog_value = $1::name))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE schema_value = CURRENT_SCHEMA;
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+(13 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE catalog_value = CURRENT_CATALOG;
+ ?column? 
+----------
+(0 rows)
+
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE schema_value = CURRENT_SCHEMA;
+(output identical to previous)
+--
+-- GUC: postgres_fdw.yb_enable_global_views_stable_func_pushdown
+-- When disabled, stable functions and SQLValueFunctions fall back to
+-- upstream behavior (not pushed down); RESET restores pushdown.
+--
+\set Q1 'timestamptz_value < NOW()'
+\set Q2 'timestamptz_value < CURRENT_TIMESTAMP'
+\set Q3 'role_value = CURRENT_USER'
+SELECT $$
+:explain
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE :Q;
+$$ AS query \gset
+SET postgres_fdw.yb_enable_global_views_stable_func_pushdown = false;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < NOW();
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < now())
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < now())
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < now())
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT timestamptz_value FROM public.sqlvalue_function_test
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_USER;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_1".role_value = CURRENT_USER)
+         Remote SQL: SELECT role_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_2".role_value = CURRENT_USER)
+         Remote SQL: SELECT role_value FROM public.sqlvalue_function_test
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Filter: ("gv$sqlvalue_function_test_3".role_value = CURRENT_USER)
+         Remote SQL: SELECT role_value FROM public.sqlvalue_function_test
+(13 rows)
+
+RESET postgres_fdw.yb_enable_global_views_stable_func_pushdown;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < NOW();
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < now())
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < now())
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < now())
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE timestamptz_value < CURRENT_TIMESTAMP;
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".timestamptz_value < CURRENT_TIMESTAMP)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((timestamptz_value < $1::timestamp with time zone))
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT 1 FROM "gv$sqlvalue_function_test"
+WHERE role_value = CURRENT_USER;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Append
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_1".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_2".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+   ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
+         Output: 1
+         Remote Filter: ("gv$sqlvalue_function_test_3".role_value = CURRENT_USER)
+         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((role_value = $1::name))
+(13 rows)
+
+\unset Q3
 --
 -- Global views for yb_active_session_history and pg_stat_statements.
 -- These tests only verify EXPLAIN plans (no data verification).
@@ -3297,11 +3941,13 @@ FROM "gv$node_metrics";
 --
 -- Cleanup
 --
+DROP FOREIGN TABLE "gv$sqlvalue_function_test";
 DROP FOREIGN TABLE "gv$pg_stat_statements";
 DROP FOREIGN TABLE "gv$yb_active_session_history";
 DROP VIEW pg_stat_statements_with_server_uuid;
 DROP VIEW yb_active_session_history_with_server_uuid;
 DROP FOREIGN TABLE "gv$node_metrics";
+DROP VIEW sqlvalue_function_test;
 DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
