@@ -1399,12 +1399,18 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms));
   }
 
+  StringWaiterLogSink fail_at_end_log("Failing due to xcluster_ddl_queue_handler_fail_at_end");
+
   // Resume replication.
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
 
+  // Wait for the first failure. It can take longer than the check below, and if the flag is
+  // cleared before it, the batch succeeds on the first try and the retry is never tested.
+  ASSERT_OK(fail_at_end_log.WaitFor(kTimeout));
+
   // Safe time should not advance.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Allow processing to continue.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
@@ -1543,7 +1549,7 @@ TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
 
   // Replication should not resume until we recreate the ddl_queue poller.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Resume replication by pausing and unpausing, this will recreate the pollers.
   ASSERT_OK(ToggleUniverseReplication(
@@ -2195,6 +2201,8 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   // will still replicate the following DROP COLUMN on the target.
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = true;
+  StringWaiterLogSink fail_before_bump_log(
+      "Failing due to xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump");
 
   // Drop a column and insert more data.
   ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableName));
@@ -2202,7 +2210,9 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
       producer_conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1001, 2000) as i", kTableName));
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  // Wait for the DROP COLUMN to run on the target and hit the failure.
+  ASSERT_OK(fail_before_bump_log.WaitFor(kTimeout));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
 
   // Selects at this point should still work, and should still see the old column.
@@ -2356,23 +2366,20 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
 
   // Regular replication should make progress, but ddl_queue should be stuck.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);
 
   // Step down the ddl_queue tablet.
   ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
 
   // Replication should still be stuck, even with a new queue handler.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);  // The new poller should not have tried to process queue.
 
   // Resume the ddl_queue handler.
   TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");
 
   // Replication should resume.
-  propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
@@ -3519,10 +3526,7 @@ TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
       "INSERT INTO tbl1 SELECT i,i,i,i FROM generate_series(301, 400) as i"));
 
   // Safe time should be stuck due to the lagging tablet.
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  propagation_timeout_ = original_propagation_timeout;
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Force the source to use the earlier checkpoint instead of using its in-memory checkpoints.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
