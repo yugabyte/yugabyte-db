@@ -864,6 +864,65 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
    AND t1a.a < 60 AND t1b.a < 60;
 DROP TABLE p5_part;
 
+-- Nested loops over a partitioned inner relation, forced with the BNL hint and
+-- GUC (yb_prefer_bnl off, yb_enable_batchednl on, nested loops off from the
+-- top of the file, YbBatchedNL or NestLoop) rather than the pre-BNL-hint
+-- compatibility mode.  Under the cost-based optimizer the partitioned
+-- table needs two parameterized Appends for the same outer relation: one whose
+-- children all take the batch, for the batched nested loop, and one whose
+-- children take one outer row, for the classic one.  Without the first,
+-- YbBatchedNL is not followed; the NestLoop statements check that the second
+-- is still built.  Legacy costing builds the batched one only, so the batched
+-- join is checked there too.  In p5_subparts one partition is itself
+-- partitioned: that partition builds its own Appends, which the top-level
+-- Appends take and flatten, so its partitions show as children of the same
+-- Append (#35384).
+-- Expected: a YB Batched Nested Loop over an Append of batched index scans in
+-- both cost modes, a Nested Loop over an Append of parameterized index scans
+-- for the NestLoop hint, and 300 rows each.
+SET yb_prefer_bnl = off;
+SET yb_enable_batchednl = on;
+CREATE TABLE p5_parts (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_parts_lo PARTITION OF p5_parts FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_parts_hi PARTITION OF p5_parts FOR VALUES FROM (30) TO (MAXVALUE);
+INSERT INTO p5_parts SELECT * FROM p5;
+ANALYZE p5_parts;
+CREATE TABLE p5_subparts (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_subparts_lo PARTITION OF p5_subparts FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_subparts_hi PARTITION OF p5_subparts FOR VALUES FROM (30) TO (MAXVALUE)
+  PARTITION BY RANGE (b);
+CREATE TABLE p5_subparts_hi_lo PARTITION OF p5_subparts_hi FOR VALUES FROM (MINVALUE) TO (5);
+CREATE TABLE p5_subparts_hi_hi PARTITION OF p5_subparts_hi FOR VALUES FROM (5) TO (MAXVALUE);
+INSERT INTO p5_subparts SELECT * FROM p5;
+ANALYZE p5_subparts;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) NestLoop(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) NestLoop(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+DROP TABLE p5_parts;
+DROP TABLE p5_subparts;
+RESET yb_enable_batchednl;
+SET yb_prefer_bnl = on;
+
 -- GEQO ignores join hints, and without the check its own search picks the
 -- split for the four-relation query above.
 -- Expected: t1b.b + t1a.b is never probed with t1a and t1b batched by different
