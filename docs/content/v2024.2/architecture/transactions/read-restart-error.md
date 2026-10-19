@@ -106,7 +106,7 @@ You can handle and mitigate read restart errors using the following techniques:
 
   Read-write SERIALIZABLE transactions and single-row (fast-path) writes don't face read restart errors, so they don't wait.
 
-- If an additional 500ms of latency is not acceptable, or `deferred` isn't available in your release, try increasing the value of `ysql_output_buffer_size`.
+- If an additional 500ms of latency is not acceptable, or you are running a release earlier than {{<release "2024.2.6.0">}}, try increasing the value of `ysql_output_buffer_size`.
 
   This will enable YugabyteDB to retry the query internally on behalf of the user. As long as the output of a statement hasn't crossed ysql_output_buffer_size to result in flushing partial data to the external client, the YSQL query layer retries read restart errors for all statements in a Read Committed transaction block, for the first statement in a Repeatable Read transaction block, and for any standalone statement outside a transaction block. As a tradeoff, increasing the buffer size also increases the memory consumed by the YSQL backend processes, resulting in a higher risk of out-of-memory errors.
 

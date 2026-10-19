@@ -102,7 +102,7 @@ You can handle and mitigate read restart errors using the following techniques:
   COMMIT;
   ```
 
-- When the statement is not read only, or is part of a read-write transaction, but the additional latency is acceptable, set `yb_read_after_commit_visibility` to `deferred`. Like DEFERRABLE, this waits out the maximum clock skew (`max_clock_skew_usec`) to avoid read restart errors, but it isn't limited to READ ONLY transactions and applies to any isolation level and to statements that write. The parameter can't be set inside a transaction block, so set it before `BEGIN`, at the session level, or with `ALTER ROLE` or `ALTER DATABASE`.
+- When the statement is not read only, or is part of a read-write transaction, but the additional latency is acceptable, set `yb_read_after_commit_visibility` to `deferred`. Like DEFERRABLE, this waits out the maximum clock skew ([max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec)) to avoid read restart errors, but it isn't limited to READ ONLY transactions and applies to any isolation level and to statements that write. The parameter can't be set inside a transaction block, so set it before `BEGIN`, at the session level, or with `ALTER ROLE` or `ALTER DATABASE`.
 
   ```sql
   SET yb_read_after_commit_visibility TO deferred;
