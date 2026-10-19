@@ -1,0 +1,19 @@
+title: LoginSpec
+description: Credentials of the user logging in. Part of LoginReq.
+type: object
+required:
+  - email
+  - password
+properties:
+  email:
+    description: Email of the user
+    type: string
+    example: admin@example.com
+    minLength: 5
+  password:
+    description: Password of the user
+    type: string
+    format: password
+    writeOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

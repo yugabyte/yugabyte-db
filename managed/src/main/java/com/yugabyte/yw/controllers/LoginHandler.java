@@ -39,7 +39,7 @@ public class LoginHandler {
   }
 
   @NotNull
-  Users login(CustomerLoginFormData data) {
+  public Users login(CustomerLoginFormData data) {
     boolean useOAuth = this.confGetter.getGlobalConf(GlobalConfKeys.useOauth);
     boolean useLdap = this.confGetter.getGlobalConf(GlobalConfKeys.useLdap);
     boolean allowLocalLoginWithSso =
