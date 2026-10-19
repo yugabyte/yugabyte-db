@@ -1427,7 +1427,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // already finalizes params in precheck; this keeps the generic path correct for other tasks.
     // Deep-copy before so a freeze callback that mutates universe details cannot alias the
     // snapshot used for the delta (otherwise new nodes look like REPLACE, not ADD).
-    if (isFirstTry() && shouldCaptureStateTransitionDelta()) {
+    // A retry after an auto-rollback starts again from the restored universe, and the unlock that
+    // performed the rollback cleared the earlier checkpoint, so capture a new one.
+    if ((isFirstTry() || universe.getUniverseDetails().autoRollbackPerformed)
+        && shouldCaptureStateTransitionDelta()) {
       UniverseDefinitionTaskParams beforeDetails =
           Json.fromJson(
               Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
