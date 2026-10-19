@@ -205,9 +205,7 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
     waitForLoadBalancer(expectedTServers);
   }
 
-  void waitForLoadBalancer() throws InterruptedException {
-    // Let the master refresh tablespace info so the LB sees placement changes from recent DDLs.
-    Thread.sleep(2 * 1000 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+  void waitForLoadBalancer() {
     LOG.info("Waiting for the loadbalancer to become active...");
     assertTrue(
         miniCluster.getClient().waitForLoadBalancerActive(MASTER_LOAD_BALANCER_WAIT_TIME_MS));
@@ -302,6 +300,22 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
     for (LocatedTablet tablet : tabletLocations) {
       verifyTabletPlacement(tablet, tablespace);
     }
+  }
+
+  /**
+   * Waits until the table's placement matches the tablespace. Use after ALTER ... SET TABLESPACE
+   * instead of waitForLoadBalancer(): the load balancer can go active and idle before the master
+   * refreshes its tablespace info and sees the new placement.
+   */
+  void waitForTablePlacement(final String table, Tablespace tablespace) throws Exception {
+    TestUtils.waitFor(() -> {
+      try {
+        verifyTablePlacement(table, tablespace);
+        return true;
+      } catch (AssertionError e) {
+        return false;
+      }
+    }, MASTER_LOAD_BALANCER_WAIT_TIME_MS);
   }
 
   private void verifyTabletPlacement(LocatedTablet tablet, Tablespace tablespace) {
