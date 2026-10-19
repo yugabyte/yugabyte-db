@@ -12,6 +12,7 @@ import {
   ClusterPlacementSpec
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { ClusterType } from '../../../../helpers/dtos';
 import { SecuritySettingsProps, CertType } from '../steps/security-settings/dtos';
 import { getEffectiveReplicationFactorForResilience } from './resilienceReplication';
@@ -260,7 +261,8 @@ export const mapCreateUniversePayload = (
               ['gflag_groups']: ['ENHANCED_POSTGRES_COMPATIBILITY']
             })
           },
-          ...(providerType !== CloudType.kubernetes && {
+          // Tags are only editable for cloud vendors; drop any left over from a provider switch.
+          ...(isCloudVendorCloudType(providerType) && {
             instance_tags: otherAdvancedSettings?.instanceTags.reduce(
               (acc, tag) => {
                 if (tag.name && tag.value) acc[tag.name] = tag.value;

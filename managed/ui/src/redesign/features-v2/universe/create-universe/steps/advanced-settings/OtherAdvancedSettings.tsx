@@ -38,7 +38,7 @@ import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/univers
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { canOverrideCommunicationPorts } from '../../helpers/syncConnectionPoolingPorts';
 import { COMMUNICATION_PORT_FIELD_NAMES } from '../../helpers/duplicatePortValidation';
-import { getDevUserTags, useRuntimeConfigValues } from '../../helpers/utils';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 
 const { Box, Typography } = mui;
 
@@ -132,19 +132,18 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const hasNamedUserTag = !!userTagsValue?.some((tag) => tag.name);
   const watched = watch();
 
-  const { runtimeConfigs } = useRuntimeConfigValues();
+  const { runtimeConfigs, devUserTags } = useRuntimeConfigValues();
   const [devTagsApplied, setDevTagsApplied] = useState(false);
   // Seed once per create flow so tags the user removed are not re-added on revisit.
   useEffect(() => {
     if (!isCloudVendorCloudType(provider?.code) || !runtimeConfigs) return;
     if (methods.getValues('userTagsSeeded')) return;
-    const devTags = getDevUserTags(runtimeConfigs);
-    if (devTags.length && !methods.getValues(USER_TAGS_FIELD)?.some((tag) => tag.name)) {
-      methods.setValue(USER_TAGS_FIELD, devTags);
+    if (devUserTags.length && !methods.getValues(USER_TAGS_FIELD)?.some((tag) => tag.name)) {
+      methods.setValue(USER_TAGS_FIELD, devUserTags);
       setDevTagsApplied(true);
     }
     methods.setValue('userTagsSeeded', true);
-  }, [runtimeConfigs, provider?.code, methods]);
+  }, [runtimeConfigs, devUserTags, provider?.code, methods]);
 
   useEffect(() => {
     if (isSubmitted && !hasErrors) {

@@ -1,49 +1,10 @@
+import { useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
-import {
-  RunTimeConfig,
-  RunTimeConfigEntry
-} from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { getDevUserTags } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
-import { InstanceTag } from '../steps/advanced-settings/dtos';
-
-// dev_tags accepts "key:value" strings (the only form the runtime config API can set, since the
-// key is a string list) and [{name, value}] objects (only settable via HOCON, e.g. application.conf).
-// Malformed entries are dropped rather than breaking the form.
-export const getDevUserTags = (runtimeConfigs?: RunTimeConfig): InstanceTag[] => {
-  const getValue = (key: string) =>
-    runtimeConfigs?.configEntries?.find((c: RunTimeConfigEntry) => c.key === key)?.value;
-  if (getValue(RuntimeConfigKey.IS_TAGS_ENFORCED) !== 'true') return [];
-  const raw = getValue(RuntimeConfigKey.DEFAULT_DEV_TAGS) ?? '[]';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    try {
-      // Values set through the API come back with their quotes escaped: [\"k:v\"].
-      parsed = JSON.parse(JSON.parse(`"${raw}"`));
-    } catch {
-      return [];
-    }
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map((tag) => {
-      if (typeof tag === 'string') {
-        const sep = tag.indexOf(':');
-        return sep < 0 ? null : { name: tag.slice(0, sep), value: tag.slice(sep + 1) };
-      }
-      return { name: tag?.name, value: tag?.value };
-    })
-    .filter(
-      (tag): tag is InstanceTag =>
-        typeof tag?.name === 'string' &&
-        typeof tag?.value === 'string' &&
-        tag.name !== '' &&
-        tag.value !== ''
-    );
-};
 
 export const useRuntimeConfigValues = (providerUUID?: string) => {
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
@@ -81,6 +42,16 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const enablePrimaryRf9 = getConfigValue(RuntimeConfigKey.ENABLE_PRIMARY_RF_9) === 'true';
 
+  // Memoized so effects depending on it run only when the config changes.
+  const devUserTags = useMemo(
+    () =>
+      getDevUserTags(
+        getConfigValue(RuntimeConfigKey.IS_TAGS_ENFORCED),
+        getConfigValue(RuntimeConfigKey.DEFAULT_DEV_TAGS)
+      ),
+    [runtimeConfigs]
+  );
+
   return {
     runtimeConfigs,
     providerRuntimeConfigs,
@@ -92,6 +63,7 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     canUseSpotInstance,
     ebsVolumeEnabled,
     enableAzOverridesK8s,
-    enablePrimaryRf9
+    enablePrimaryRf9,
+    devUserTags
   };
 };
