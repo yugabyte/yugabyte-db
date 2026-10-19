@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.encryption.bc.Pbkdf2HmacSha256Hasher;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -533,7 +534,7 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(apiTokenVersion);
+    return upsertApiToken(null);
   }
 
   public String upsertApiToken(Long version) {
@@ -553,18 +554,17 @@ public class Users extends Model {
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null && version != -1) {
-        // This instance was loaded before the lock was taken, so compare against the stored
-        // version.
-        // Otherwise two rotations that both loaded version N would both pass, and the second would
-        // silently replace the first one's token.
-        if (uuid != null) {
-          refresh();
-        }
-        if (apiTokenVersion != null && !version.equals(apiTokenVersion)) {
-          throw new PlatformServiceException(
-              versionMismatchStatus, "API token version has changed");
-        }
+      // This instance may have been loaded before the lock was taken, so re-read the stored row:
+      // the version check and the increment must start from the stored version. Otherwise two
+      // rotations that both loaded version N would both pass the check and both store N + 1.
+      if (!DB.beanState(this).isNew()) {
+        refresh();
+      }
+      if (version != null
+          && version != -1
+          && apiTokenVersion != null
+          && !version.equals(apiTokenVersion)) {
+        throw new PlatformServiceException(versionMismatchStatus, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
       apiToken = Users.pbkdf2Hasher.hash(apiTokenUnhashed);
