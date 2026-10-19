@@ -18,7 +18,10 @@ import { getQueryParams } from 'browser-query-utils';
       if (property.indexOf('utm_') === 0 && keyValuePairs[property] !== '') {
         setCookie(property, keyValuePairs[property], {
           timeToLive: 1,
-          unit: 'month'
+          unit: 'month',
+          domains: ['.yugabyte.com'],
+          sameSite: 'Strict',
+          secure: true,
         });
         setUTMs = true;
       }
@@ -27,7 +30,10 @@ import { getQueryParams } from 'browser-query-utils';
     if (setUTMs) {
       setCookie('utm_check', true, {
         timeToLive: 1,
-        unit: 'month'
+        unit: 'month',
+        domains: ['.yugabyte.com'],
+        sameSite: 'Strict',
+        secure: true,
       });
     }
   }
