@@ -36,13 +36,22 @@ describe('getDevUserTags', () => {
     expect(getDevUserTags(config('true'))).toEqual([]);
   });
 
+  it('accepts "key:value" strings, as set through the runtime config API', () => {
+    expect(getDevUserTags(config('true', '["test:test","url:http://x"]'))).toEqual([
+      { name: 'test', value: 'test' },
+      { name: 'url', value: 'http://x' }
+    ]);
+  });
+
   it('ignores malformed values', () => {
     expect(getDevUserTags(config('true', 'not json'))).toEqual([]);
     expect(getDevUserTags(config('true', '{"name":"a","value":"b"}'))).toEqual([]);
-    expect(getDevUserTags(config('true', '["yb_task:dev"]'))).toEqual([]);
     expect(
       getDevUserTags(
-        config('true', '[{"name":"a","value":"b"},{"name":"","value":"x"},{"name":"c"},null]')
+        config(
+          'true',
+          '[{"name":"a","value":"b"},{"name":"","value":"x"},{"name":"c"},null,"nocolon",":v","k:",5]'
+        )
       )
     ).toEqual([{ name: 'a', value: 'b' }]);
   });

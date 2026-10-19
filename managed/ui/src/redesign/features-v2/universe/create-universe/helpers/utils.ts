@@ -8,27 +8,35 @@ import {
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { InstanceTag } from '../steps/advanced-settings/dtos';
 
-// dev_tags is declared as a string list, but the value used (application.conf, v1 form) is
-// JSON [{name, value}]; anything else yields no tags rather than a broken form.
+// dev_tags accepts "key:value" strings (the only form the runtime config API can set, since the
+// key is a string list) and [{name, value}] objects (only settable via HOCON, e.g. application.conf).
+// Malformed entries are dropped rather than breaking the form.
 export const getDevUserTags = (runtimeConfigs?: RunTimeConfig): InstanceTag[] => {
   const getValue = (key: string) =>
     runtimeConfigs?.configEntries?.find((c: RunTimeConfigEntry) => c.key === key)?.value;
   if (getValue(RuntimeConfigKey.IS_TAGS_ENFORCED) !== 'true') return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(getValue(RuntimeConfigKey.DEFAULT_DEV_TAGS) ?? '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (tag) =>
-          typeof tag?.name === 'string' &&
-          typeof tag?.value === 'string' &&
-          tag.name !== '' &&
-          tag.value !== ''
-      )
-      .map(({ name, value }) => ({ name, value }));
+    parsed = JSON.parse(getValue(RuntimeConfigKey.DEFAULT_DEV_TAGS) ?? '[]');
   } catch {
     return [];
   }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((tag) => {
+      if (typeof tag === 'string') {
+        const sep = tag.indexOf(':');
+        return sep < 0 ? null : { name: tag.slice(0, sep), value: tag.slice(sep + 1) };
+      }
+      return { name: tag?.name, value: tag?.value };
+    })
+    .filter(
+      (tag): tag is InstanceTag =>
+        typeof tag?.name === 'string' &&
+        typeof tag?.value === 'string' &&
+        tag.name !== '' &&
+        tag.value !== ''
+    );
 };
 
 export const useRuntimeConfigValues = (providerUUID?: string) => {
