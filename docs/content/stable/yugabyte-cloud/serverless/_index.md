@@ -2,8 +2,8 @@
 title: Serverless Postgres
 headerTitle: Serverless Postgres
 linkTitle: Serverless Postgres
-description: Create a Serverless Postgres cluster in YugabyteDB Aeon.
-headcontent: Agentic Multitenant PostgreSQL, fully managed by Yugabyte
+headContent: Agentic multitenant PostgreSQL, fully managed by Yugabyte
+description: Create a Serverless Postgres cluster in YugabyteDB Aeon
 aliases:
   - /stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/
   - /stable/yugabyte-cloud/cloud-basics/create-clusters-free/
@@ -20,13 +20,9 @@ type: docs
 
 Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. It is YugabyteDB AMP (Agentic Multitenant PostgreSQL). Each agent or tenant gets its own isolated PostgreSQL database, and Yugabyte manages the service. Use it for AI agents and for workloads that are bursty or often idle.
 
-An organization has one AMP Managed account. Choosing Serverless Postgres opens that account. Yugabyte prepares the environment and the shared pool, so the create wizard does not ask you to pick either one.
-
-Your account includes free compute of up to 1 vCPU and 8Gi of memory, shared by everything the account runs. Any size beyond what remains is billed. Creating or resizing a cluster to a billed size asks you to create a billing profile first.
-
 ## Features
 
-A Serverless Postgres cluster includes the following:
+A Serverless Postgres cluster includes the following features:
 
 - Scale to zero.
 - An isolated PostgreSQL database for each agent or tenant.
@@ -35,56 +31,83 @@ A Serverless Postgres cluster includes the following:
 - Built-in connection pooling.
 - Fair CPU sharing across tenants.
 
-## Create a cluster
+Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabytDB Aeon prepares the environment and the shared pool for you.
 
-To create a Serverless Postgres cluster:
+Serverless Postgres is free to start, and includes:
 
-1. On the **Clusters** page, click **Add Cluster**.
+- 2 vCPU, 16 GB RAM, 100 GB storage
 
-1. On **Choose a cluster type**, select **Serverless Postgres** and click **Choose**.
+This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the account. Only Admin users can create a billing profile.
 
-    If the environment is still being prepared, the wizard shows **Before you proceed ...** and you wait until it is serving.
+## Create a serverless cluster
 
-1. On **General**, enter a **Cluster name** and click **Next**. The name is prefilled; click the shuffle icon to get another suggestion.
+To create a Serverless Postgres cluster, on the **Clusters** page, click **Add Cluster**, and choose **Serverless** to start the **Create Cluster** wizard.
 
-1. On **Cluster Settings**, set the following and click **Next**:
+The **Create Cluster** wizard has the following pages:
 
-    - **Engine**. **PostgreSQL** is the default. **AI Database**, **Oracle**, **SQL Server**, and **DocumentDB** are the other engines. The engine decides which extensions are included. An engine that this environment does not have is marked **Not available in this environment**.
-    - **Read-write compute**. Choose a size:
-        - **Free** is the free vCPU your account includes. The wizard starts on it while free vCPU remains.
-        - **Small** is 2 vCPU and 16Gi. **Medium** is 4 vCPU and 32Gi. **Large** is 8 vCPU and 64Gi. If the free size matches one of these, its card is labeled with **Free**.
-        - **Custom** lets you set **vCPU** and **Memory**. vCPU can be from 0.5 to 64, including millicores such as `1500m`. Memory can be from 1 to 512, in `Mi` or `Gi`, and must be at least 8Gi per vCPU.
+1. [General](#general)
+1. [Cluster Settings](#cluster-settings)
+1. [Network Access](#network-access)
+1. [DB Credentials](#database-credentials)
 
-        Sizes beyond your remaining free compute are marked **Billed**. If you select one, you are asked to create a billing profile when you click **Create Cluster**.
-    - **Extensions**. Optional. The cluster starts with a `main` branch, and you fork other branches from it. What you select is seeded on `main`, and every branch forked from it inherits those extensions. Extensions that the engine includes are marked **Included with engine**. You can add extensions to a branch later. You cannot remove them. For pgvector, enable it in the database with `CREATE EXTENSION vector`.
+### General
 
-1. On **Network Access**, under **Connectivity Method**, choose how clients connect and click **Next**.
+Set the following options:
 
-    **Public Endpoint** is the default. **Cluster-Only Access** and **Private Endpoint** are marked **Not available for AMP Managed clusters**.
+- **Cluster Name**: Enter a name for the cluster.
 
-    For a public endpoint, enter **Trusted IP Addresses**. Each entry is one address or a CIDR range. Separate several entries with commas.
+### Cluster Settings
 
-    {{< warning title="Important" >}}
+#### Engine
+
+**PostgreSQL** is the default. **AI Database**, **Oracle**, **SQL Server**, and **DocumentDB** are the other engines. The engine decides which extensions are included.
+
+#### Read-write compute
+
+Choose a size:
+
+- **Small/Free**: 2 vCPU and 16Gi.
+- **Medium**: 4 vCPU and 32Gi.
+- **Large**: 8 vCPU and 64Gi.
+- **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GiB; you can also enter values in MiB. You must have at least 8Gi per vCPU.
+
+    If you choose an option other than Free, you will be prompted to create a billing profile before the cluster is created.
+
+#### Extensions
+
+Optional. The cluster starts with a `main` branch, and you fork other branches from it. What you select is seeded on `main`, and every branch forked from it inherits those extensions. Extensions that the engine includes are marked **Included with engine**. You can add extensions to a branch later. You cannot remove them. For pgvector, enable it in the database with `CREATE EXTENSION vector`.
+
+### Network Access
+
+Select a **Connectivity Method**. This determines how clients connect to the cluster.
+
+**Public Endpoint** is the default. Enter **Trusted IP Addresses**. Each entry is one address or a CIDR range. Separate several entries using commas.
+
+{{< warning title="Important" >}}
 
 A public endpoint with no trusted IP addresses accepts connections from anywhere on the internet. The database password is the only protection. Do not use `0.0.0.0/0` for production data.
 
-    {{< /warning >}}
+{{< /warning >}}
 
-1. If the wizard shows **DB Credentials**, choose **Use default credentials** or **Add your own credentials**.
+### DB Credentials
 
-    The database user is `cloud_admin`. You set the password, not the user name. A password you enter must include lowercase and uppercase letters and meet the minimum length. Click **Download credentials**. The wizard does not continue until the file is downloaded. The credentials are only shown this once.
+The database admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 
-    {{< warning title="Important" >}}
+The database user is `cloud_admin`. You can use the default password generated by YugabyteDB Aeon, or add your own.
+
+{{< warning title="Important" >}}
 
 Save the credentials file. You need it to connect, and the console does not show the password again.
 
-    {{< /warning >}}
+{{< /warning >}}
 
-1. Click **Create Cluster**.
+Download the credentials, and click **Create Cluster**.
 
-    If you selected anything other than **Free**, and your account has no billing profile, the console asks you to create one before it creates the cluster. If you can't manage billing, ask an account admin to add a billing profile, or pick a size within your free compute.
+If you selected a Billed size and the account doesn't have a billing profile, you are prompted to create one. See [Billing and invoices](../cloud-admin/cloud-billing-profile/#add-or-edit-your-billing-profile).
 
-The console reports that it is creating the cluster. The cluster then appears on **Clusters**.
+When the cluster is ready, the cluster **Overview** tab is displayed.
+
+You now have a fully configured YugabyteDB serverless cluster provisioned in YugabyteDB Aeon with the database admin credentials you specified.
 
 ## Connect
 

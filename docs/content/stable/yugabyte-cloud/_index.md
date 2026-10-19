@@ -45,7 +45,7 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
   >}}
 {{< /sections/2-boxes >}}
 
-## Cluster basics
+## Distributed cluster basics
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
