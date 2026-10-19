@@ -68,3 +68,8 @@ components:
       type: apiKey
       name: X-AUTH-YW-API-TOKEN
       in: header
+    authTokenAuth:
+      type: apiKey
+      name: X-AUTH-TOKEN
+      in: header
+      description: Session token returned by login
