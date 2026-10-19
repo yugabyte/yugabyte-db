@@ -1234,31 +1234,34 @@ public class GFlagsUtil {
             String.format(
                 "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
-      // This is for new universes only, so don't consider old form of GFLags
-      if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
+      if (userIntent.specificGFlags == null) {
+        // Create still accepts the deprecated maps and converts them to specificGFlags only after
+        // this check runs.
+        checkFipsGFlagNotDisabled(userIntent.masterGFlags);
+        checkFipsGFlagNotDisabled(userIntent.tserverGFlags);
+      } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
         Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
         if (userIntent.specificGFlags.getPerAZ() != null) {
           azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
         }
         for (UUID azUuid : azUuids) {
-          Map<String, String> masterGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER);
-          if (masterGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !masterGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
-          }
-          Map<String, String> tserverGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER);
-          if (tserverGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !tserverGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
-          }
+          checkFipsGFlagNotDisabled(
+              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER));
+          checkFipsGFlagNotDisabled(
+              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
         }
       }
       validateFipsCompliancyOfHelmOverrides(
           userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  private static void checkFipsGFlagNotDisabled(@Nullable Map<String, String> gflags) {
+    if (gflags != null
+        && gflags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(gflags.get(OPENSSL_REQUIRE_FIPS))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
     }
   }
 
@@ -1394,6 +1397,18 @@ public class GFlagsUtil {
               userGFlags.remove(gflag);
             }
           });
+    }
+    // Enforced even with allowOverrideAll: the gflags validators can be bypassed, and a FIPS
+    // universe must never run with FIPS off.
+    if ("true".equals(platformGFlags.get(OPENSSL_REQUIRE_FIPS))
+        && userGFlags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(userGFlags.get(OPENSSL_REQUIRE_FIPS))) {
+      LOG.warn(
+          "Removing {}={} from user gflags of FIPS universe node {}",
+          OPENSSL_REQUIRE_FIPS,
+          userGFlags.get(OPENSSL_REQUIRE_FIPS),
+          node.nodeName);
+      userGFlags.remove(OPENSSL_REQUIRE_FIPS);
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
