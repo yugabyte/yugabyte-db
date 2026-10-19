@@ -728,43 +728,6 @@ SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
   )#");
 }
 
-// GH#34419: an xCluster target batch is written at the time of its first record, but a later
-// record can apply an external transaction that inserts a reverse mapping at a later commit time.
-// The batch's delete_vector_ids must tombstone that mapping, not land below it.
-TEST_F(NonTransactionalBatchWriterTest, XClusterVectorTombstoneAboveAppliedReverseMapping) {
-  const auto vector_id = ASSERT_RESULT(vector_index::VectorIdFromString(
-      "10000000-2000-3000-4000-000000000001"));
-  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
-  const TransactionId txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
-  const DocKey doc_key(MakeKeyEntryValues("row1"));
-  const DocPath vector_path(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
-  const DocPath other_path(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(12)));
-
-  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
-  AddExternalIntentsWritePair(
-      &put_batch, txn, kMinSubTransactionId,
-      {{vector_path, EncodeTableOwnedVectorColumnValue(vector_id)}}, involved_tablet);
-  ASSERT_OK(SendWriteBatch(put_batch, 5000_usec_ht, 5000_usec_ht));
-
-  put_batch.Clear();
-  AddApplyExternalTxn(&put_batch, txn, 6500_usec_ht);
-  auto* write_pair = put_batch.add_write_pairs();
-  write_pair->dup_key(EncodeDocPathKey(other_path).AsSlice());
-  write_pair->dup_value(EncodeValue(QLValue::Primitive("value1")));
-  write_pair->set_external_hybrid_time((7000_usec_ht).ToUint64());
-  put_batch.dup_delete_vector_ids(vector_id.AsSlice());
-  ASSERT_OK(SendWriteBatch(put_batch, 6000_usec_ht, 6000_usec_ht));
-
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 7000 w: 1 }]) -> DEL
-MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6500 }]) -> \
-    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
-SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6500 }]) -> \
-    VECTOR_DATA(561000000020003000400000000000000111)
-SubDocKey(DocKey([], ["row1"]), [ColumnId(12); HT{ physical: 7000 }]) -> "value1"
-  )#");
-}
-
 // GH#32694: whenever the writer fills the intents write batch, it must clear the tablet's
 // can_advance_intents_flush_op_id_.
 TEST_F(NonTransactionalBatchWriterTest, ClearsCanAdvanceIntentsFlushOpId) {

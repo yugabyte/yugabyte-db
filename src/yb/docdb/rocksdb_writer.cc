@@ -1474,18 +1474,9 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
 
   if (put_batch_.has_delete_vector_ids()) {
     if (apply_to_storages_.TestRegularDB()) {
-      // On an xCluster target write_hybrid_time_ is the time of the first record in the batch. A
-      // later record in the batch can apply an external transaction that inserts a reverse
-      // mapping at its commit time, and a tombstone below that would never take effect (#34419).
-      // The record that replaced the vector carries its own, later, hybrid time on its pairs.
-      auto tombstone_ht = write_hybrid_time_;
-      for (const auto& write_pair : put_batch_.write_pairs()) {
-        if (write_pair.has_external_hybrid_time()) {
-          tombstone_ht.MakeAtLeast(HybridTime(write_pair.external_hybrid_time()));
-        }
-      }
       RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
-          handler, Slice(put_batch_.delete_vector_ids()), DocHybridTime(tombstone_ht, write_id)));
+          handler, Slice(put_batch_.delete_vector_ids()),
+          DocHybridTime(write_hybrid_time_, write_id)));
     }
     frontiers_.Largest().SetHasVectorDeletion();
   }
