@@ -4955,6 +4955,7 @@ class PgCatalogPreloadCachePartitionedTest
     ASSERT_EQ(misses["pg_proc_oid_index"], 0);
     ASSERT_EQ(misses["pg_proc_proname_args_nsp_index"], 0);
     ASSERT_EQ(misses["pg_range_rngtypid_index"], 0);
+    ASSERT_EQ(misses["pg_range_rngmultitypid_index"], 0);
   }
 };
 
@@ -4985,6 +4986,14 @@ TEST_P(PgCatalogPreloadCachePartitionedTest, PrefilledCacheMisses) {
   auto misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
   ASSERT_NO_FATALS(AssertNoPrefilledCacheMisses(misses));
 
+  // The type cache keeps the range info of int4range across the refresh, so only a key type that
+  // the backend has not seen yet makes the refresh look up pg_range. A multirange key looks up both
+  // the multirange and its range.
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE pm (m int8multirange) PARTITION BY RANGE (m)"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm1 PARTITION OF pm FOR VALUES FROM ('{[1,2)}') TO ('{[5,6)}')"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm2 PARTITION OF pm FOR VALUES FROM ('{[5,6)}') TO ('{[9,10)}')"));
   ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
   WaitForCatalogVersionToPropagate();
   misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
