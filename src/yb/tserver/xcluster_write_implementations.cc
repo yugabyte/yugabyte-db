@@ -271,25 +271,55 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
     const auto& tablet_id = process_record_info.tablet_id;
-    docdb::KeyValueWriteBatchMsg* write_batch = nullptr;
-    // Finally, handle records to be applied to both regular and intents db.
-    auto it = records_.find(tablet_id);
-    if (it == records_.end()) {
-      // Create a write request for tablet.
-      auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
-      write_request->dup_tablet_id(tablet_id);
-      write_request->set_external_hybrid_time(record.time());
-      // Set on all consumer writes, but only used for producer filters on automatic mode.
-      write_request->set_xcluster_target_applied(true);
-      write_batch = write_request->mutable_write_batch();
-      records_.emplace(tablet_id, std::move(write_request));
-    } else {
-      write_batch = it->second->mutable_write_batch();
+    auto& used_packed_schema_versions =
+        used_packed_schema_versions_[process_record_info.colocation_id];
+    RETURN_NOT_OK(AddRecord(
+        process_record_info, record, used_packed_schema_versions,
+        GetWriteBatch(tablet_id, record)));
+
+    if (record.operation() != cdc::CDCRecordPB::WRITE &&
+        record.operation() != cdc::CDCRecordPB::DELETE) {
+      return Status::OK();
+    }
+    // All records of a source WAL op arrive consecutively and carry the op's hybrid time.
+    if (record.time() != write_op_time_) {
+      write_op_time_ = record.time();
+      write_op_tablet_ids_.clear();
+    }
+    if (std::find(write_op_tablet_ids_.begin(), write_op_tablet_ids_.end(), tablet_id) ==
+        write_op_tablet_ids_.end()) {
+      write_op_tablet_ids_.push_back(tablet_id);
+    }
+    if (!record.has_delete_vector_ids()) {
+      return Status::OK();
     }
 
-    return AddRecord(
-        process_record_info, record,
-        used_packed_schema_versions_[process_record_info.colocation_id], write_batch);
+    // The source does not know which row each replaced vector id belongs to, so it attaches the
+    // ids of its whole write batch to the batch's last record. When the target is partitioned
+    // differently, the batch's rows can land on several target tablets, and each of them must
+    // tombstone the ids or its vector index keeps returning the replaced vectors (#34419).
+    // Tombstoning an id on a tablet that never had it is harmless: vector ids are unique.
+    Slice delete_vector_ids(record.delete_vector_ids());
+    for (const auto& op_tablet_id : write_op_tablet_ids_) {
+      auto* write_batch = GetWriteBatch(op_tablet_id, record);
+      if (!record.has_transaction_state()) {
+        write_batch->ref_delete_vector_ids(write_batch->arena().CatSlices(
+            write_batch->delete_vector_ids(), delete_vector_ids));
+        continue;
+      }
+      if (op_tablet_id == tablet_id) {
+        // AddRecord already appended the ids to this record's external intents.
+        continue;
+      }
+      // External intents without key-value pairs: applying them only tombstones the ids.
+      RETURN_NOT_OK(CombineExternalIntents(
+          record.transaction_state(),
+          record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
+          google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>(), delete_vector_ids,
+          write_batch->mutable_write_pairs()->Add(), used_packed_schema_versions,
+          process_record_info.schema_versions_map));
+    }
+    return Status::OK();
   }
 
   std::shared_ptr<WriteRequestMsg> FetchNextRequest() override {
@@ -314,9 +344,29 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   }
 
  private:
+  docdb::KeyValueWriteBatchMsg* GetWriteBatch(
+      const TabletId& tablet_id, const cdc::CDCRecordPB& record) {
+    auto it = records_.find(tablet_id);
+    if (it != records_.end()) {
+      return it->second->mutable_write_batch();
+    }
+    auto write_request = rpc::SharedMessage<LWWriteRequestPB>();
+    write_request->dup_tablet_id(tablet_id);
+    write_request->set_external_hybrid_time(record.time());
+    // Set on all consumer writes, but only used for producer filters on automatic mode.
+    write_request->set_xcluster_target_applied(true);
+    auto* write_batch = write_request->mutable_write_batch();
+    records_.emplace(tablet_id, std::move(write_request));
+    return write_batch;
+  }
+
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
   UnorderedStringMap<TabletId, std::shared_ptr<WriteRequestMsg>> records_;
+
+  // Target tablets that received rows of the source WAL op with hybrid time write_op_time_.
+  uint64_t write_op_time_ = 0;
+  std::vector<TabletId> write_op_tablet_ids_;
 
   // Keep track of the packed schema versions used.
   // kColocationIdNotSet is used for non-colocated tables.
