@@ -1101,7 +1101,9 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
 Status TabletVectorIndexes::Remove(const TableId& table_id) {
   VLOG_WITH_FUNC(2) << "table_id: " << table_id;
   docdb::DocVectorIndexPtr index;
-  {
+  // Not an early return: has_vector_indexes_ stays false when the only vector index of the tablet
+  // was skipped, whose storage still has to be destroyed below.
+  if (has_vector_indexes_.load()) {
     UniqueLock lock(vector_indexes_mutex_);
     auto it = vector_indexes_map_.find(table_id);
     if (it != vector_indexes_map_.end()) {
@@ -1134,8 +1136,7 @@ void TabletVectorIndexes::DestroySkippedIndexStorage(const TableId& table_id) {
   LOG_WITH_PREFIX(INFO)
       << "Destroying storage of not instantiated vector index " << table_id << " at "
       << storage_dir;
-  // Like DeleteTabletData, leak the directory rather than fail the apply, which would fail the
-  // tablet.
+  // Leak the directory rather than fail the apply, which would fail the tablet.
   auto status = env().DeleteRecursively(storage_dir);
   LOG_IF_WITH_PREFIX(WARNING, !status.ok())
       << "Failed to destroy storage of vector index " << table_id << " at " << storage_dir << ": "
