@@ -290,7 +290,9 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
         write_op_tablet_ids_.end()) {
       write_op_tablet_ids_.push_back(tablet_id);
     }
-    if (!record.has_delete_vector_ids()) {
+    // Non-transactional records' ids are not applied on the target (see AddRecord). A batch-level
+    // delete_vector_ids would be tombstoned at the request's hybrid time, not the replacing op's.
+    if (!record.has_delete_vector_ids() || !record.has_transaction_state()) {
       return Status::OK();
     }
 
@@ -298,15 +300,11 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
     // ids of its whole write batch to the batch's last record. When the target is partitioned
     // differently, the batch's rows can land on several target tablets, and each of them must
     // tombstone the ids or its vector index keeps returning the replaced vectors (#34419).
-    // Tombstoning an id on a tablet that never had it is harmless: vector ids are unique.
+    // Tombstoning an id on a tablet that never had it is correct, since vector ids are unique, but
+    // it marks that tablet's vector indexes as having deletions, so its searches stop skipping the
+    // vector filter check.
     Slice delete_vector_ids(record.delete_vector_ids());
     for (const auto& op_tablet_id : write_op_tablet_ids_) {
-      auto* write_batch = GetWriteBatch(op_tablet_id, record);
-      if (!record.has_transaction_state()) {
-        write_batch->ref_delete_vector_ids(write_batch->arena().CatSlices(
-            write_batch->delete_vector_ids(), delete_vector_ids));
-        continue;
-      }
       if (op_tablet_id == tablet_id) {
         // AddRecord already appended the ids to this record's external intents.
         continue;
@@ -316,7 +314,8 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
           record.transaction_state(),
           record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
           google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>(), delete_vector_ids,
-          write_batch->mutable_write_pairs()->Add(), used_packed_schema_versions,
+          GetWriteBatch(op_tablet_id, record)->mutable_write_pairs()->Add(),
+          used_packed_schema_versions,
           process_record_info.schema_versions_map));
     }
     return Status::OK();
