@@ -128,6 +128,7 @@ DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
+DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
@@ -148,7 +149,7 @@ extern size_t TEST_vector_index_max_checked_entries;
 
 namespace yb::tablet {
 
-extern bool TEST_block_after_backfilling_first_vector_index_chunks;
+extern bool TEST_block_after_backfilling_first_vector_index_batch;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 extern bool TEST_skip_vector_index_post_split_compaction;
 extern bool TEST_vector_index_force_parent_data_not_compacted;
@@ -676,11 +677,11 @@ Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
     RETURN_NOT_OK(InsertRows(conn, 1, num_rows, keep_vectors));
     std::future<void> future;
-    if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
+    if (tablet::TEST_block_after_backfilling_first_vector_index_batch) {
       future = std::async([this] {
         std::this_thread::sleep_for(1s);
         CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
-        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
+        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch)
             = false;
         std::this_thread::sleep_for(5s * kTimeMultiplier);
       });
@@ -1087,7 +1088,7 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   num_pre_split_tablets_ = 1;
-  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
   size_t tablet_entries = 0;
   for (const auto& index : ListVectorIndexes(cluster_.get())) {
@@ -3304,7 +3305,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   lagging_ts->Shutdown();
   ASSERT_OK(CreateIndex(conn));
 
-  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
   ASSERT_OK(lagging_ts->RestartStoppedServer(tserver::WaitTabletsBootstrapped::kTrue));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     for (const auto& index : ListTableVectorIndexes(source_table_id, lagging_uuid)) {
@@ -3316,7 +3317,7 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneResumesIncompleteBackfill) {
   }, 60s * kTimeMultiplier, "Lagging replica backfilled its first chunk"));
 
   ASSERT_OK(CloneSourceDb());
-  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
       false;
 
   const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
@@ -5730,6 +5731,50 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
       after_backfill);
 }
 
+// Backfill inserts rows in batches of a default mutable chunk's worth of vectors. For
+// high-dimension vectors the chunk memory limit bounds that well below
+// vector_index_initial_chunk_size, so the rows of one backfill chunk arrive in several batches.
+TEST_F(PgVectorIndexUtilTest, BackfillBatchesByChunkMemoryLimit) {
+  constexpr size_t kDimensions = 1024;
+  constexpr size_t kNumRows = 1000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = 1;
+  // The batch sizes below must come from a single tablet's backfill.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable(kDimensions));
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  std::mutex batch_sizes_mutex;
+  std::vector<size_t> batch_sizes;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorIndexBackfillHelper::Flush:NumEntries",
+      [&batch_sizes_mutex, &batch_sizes](void* arg) {
+        std::lock_guard lock(batch_sizes_mutex);
+        batch_sizes.push_back(*static_cast<size_t*>(arg));
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  std::lock_guard lock(batch_sizes_mutex);
+  LOG(INFO) << "Backfill batch sizes: " << AsString(batch_sizes);
+  ASSERT_GT(batch_sizes.size(), 1);
+  // Every batch but the last is full.
+  for (size_t i = 1; i + 1 < batch_sizes.size(); ++i) {
+    ASSERT_EQ(batch_sizes[i], batch_sizes.front());
+  }
+  ASSERT_LE(batch_sizes.back(), batch_sizes.front());
+  ASSERT_EQ(std::accumulate(batch_sizes.begin(), batch_sizes.end(), size_t{0}), kNumRows);
+}
+
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
   constexpr size_t kNumRows = 50;
   constexpr size_t kQueryLimit = 75;
@@ -6385,9 +6430,9 @@ class PgVectorIndexSplitTest : public PgVectorIndexUtilTest {
 TEST_F(PgVectorIndexSplitTest, SplitBackfilledTabletDuringCreateIndex) {
   constexpr size_t kChunkSize = 100;
   // With db_block_size_bytes = 256 this is enough for the small tablet to have a split key. It is
-  // below kChunkSize, so the small tablet backfills in its final chunk and is not blocked.
+  // below kChunkSize, so the small tablet backfills all its rows in one batch and is not blocked.
   constexpr size_t kSmallTabletRows = 40;
-  // More than one chunk, so the large tablet blocks after its first chunk.
+  // More than one batch, so the large tablet blocks after its first batch.
   constexpr size_t kNumRows = kSmallTabletRows + 2 * kChunkSize;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
@@ -6414,9 +6459,9 @@ TEST_F(PgVectorIndexSplitTest, SplitBackfilledTabletDuringCreateIndex) {
   const auto small_tablet_id = (*small_tablet_it)->tablet_id();
 
   // Keep the large tablet backfilling until the split parent is deleted.
-  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
   auto unblock_backfill = ScopeExit([] {
-    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
         false;
   });
 
@@ -6474,7 +6519,7 @@ TEST_F(PgVectorIndexSplitTest, SplitBackfilledTabletDuringCreateIndex) {
     });
   }, 60s * kTimeMultiplier, "Split parent deleted"));
 
-  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) =
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
       false;
   threads.JoinAll();
 

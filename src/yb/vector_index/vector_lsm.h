@@ -90,7 +90,6 @@ struct VectorLSMOptions {
   std::string log_prefix;
   std::string storage_dir;
   VectorIndexTraits vector_index_traits;
-  size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
@@ -151,6 +150,10 @@ class VectorLSM {
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
+
+  // Capacity of a new mutable chunk when the insert does not specify one. Controlled by runtime
+  // gflags, so a change applies from the next chunk. Returns 0 when the gflags are 0.
+  size_t DefaultChunkCapacity() const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
@@ -242,8 +245,7 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+  Status RollChunk(size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
 
@@ -270,12 +272,17 @@ class VectorLSM {
 
   Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
 
-  // Creates vector index and reserve at least for `min_vectors` entries.
+  // Creates a vector index sized for exactly `capacity` vectors -- the backend may round that up,
+  // but this method never does. Sizing is the caller's decision: a compaction output chunk
+  // is sized by its mem-store budget, a mutable chunk by CreateNewMutableChunk.
   Result<VectorIndexPtr> CreateVectorIndex(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
+      size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const;
 
+  // Creates a mutable chunk for an insert of `num_entries` vectors. Its capacity is the context's
+  // chunk_size when the insert specifies one, as backfill does, otherwise DefaultChunkCapacity();
+  // a larger batch gets a chunk of its own size.
   Status CreateNewMutableChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+      size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 

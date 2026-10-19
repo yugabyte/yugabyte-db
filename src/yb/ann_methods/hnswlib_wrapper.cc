@@ -28,6 +28,7 @@
 
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -198,6 +199,8 @@ class HnswlibIndex :
   Status Reserve(
       size_t num_vectors, size_t, size_t,
       rocksdb::Cache::ReservationMode reservation_mode) override {
+    TEST_SYNC_POINT_CALLBACK("VectorIndex::Reserve:NumVectors", &num_vectors);
+
     if (hnsw_) {
       return STATUS_FORMAT(
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
