@@ -6019,6 +6019,14 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexColocatedRowsBeforeTargetCreateTab
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return consumer_conn_->FetchRow<bool>(
+            "SELECT EXISTS (SELECT 1 FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)");
+      },
+      kTimeout, "consumer vector index backfill"));
 
   auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
       "EXPLAIN (COSTS OFF) SELECT id FROM vec_test "
@@ -6026,10 +6034,12 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexColocatedRowsBeforeTargetCreateTab
   ASSERT_STR_CONTAINS(c_explain, "vec_test_idx");
 
   ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 100);
+  // The search wider than the table goes first: with rows the index cannot resolve, it returns
+  // none of them, while the narrower searches never finish.
   for (const auto* query : {
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT 200",
       "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 1.0]' LIMIT 10",
-      "SELECT id FROM vec_test ORDER BY embedding <-> '[75.0, 150.0, 1.0]' LIMIT 10",
-      "SELECT id FROM vec_test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT 200"}) {
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[75.0, 150.0, 1.0]' LIMIT 10"}) {
     auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
     auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
     ASSERT_EQ(p_search, c_search) << query;

@@ -5554,10 +5554,33 @@ TEST_F(PgVectorIndexColocatedUtilTest, BackfillWritesMissingReverseMapping) {
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
-  for (const auto& check : ASSERT_RESULT(VerifyVectorIndexes())) {
+  // Only the rows missing an entry get one, at the backfill time, so after the inserted ones.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  // Vector index compaction discards vectors without a reverse mapping entry.
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, kNumRows + 2));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_OK(indexes.front()->Compact());
+  ASSERT_OK(indexes.front()->WaitForCompaction());
+
+  auto checks = ASSERT_RESULT(VerifyVectorIndexes());
+  ASSERT_FALSE(checks.empty());
+  for (const auto& check : checks) {
     ASSERT_EQ(check.result().inconsistencies_size(), 0) << check.ShortDebugString();
   }
-  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, ExpectedRows(kNumRows)));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, ExpectedRows(kNumRows + 2)));
 }
 
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
@@ -6374,6 +6397,32 @@ TEST_P(PgVectorIndexReverseMappingCompactionGcColocatedTest, DropTable) {
   ASSERT_OK(conn.Execute("DROP TABLE test"));
   SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
   // Keep the colocated tablet alive via dummy; compact and dump through that table.
+  ASSERT_OK(CompactTabletForTable("dummy"));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping("dummy")));
+}
+
+// The entries the backfill writes for rows missing them (GH #34504) are garbage collected with the
+// table as well.
+TEST_P(PgVectorIndexReverseMappingCompactionGcColocatedTest, DropTableWithBackfilledMapping) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("CREATE TABLE dummy (id int PRIMARY KEY) WITH (COLOCATED = 1)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_reverse_mapping_write) = true;
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_reverse_mapping_write) = false;
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
   ASSERT_OK(CompactTabletForTable("dummy"));
   ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping("dummy")));
 }
