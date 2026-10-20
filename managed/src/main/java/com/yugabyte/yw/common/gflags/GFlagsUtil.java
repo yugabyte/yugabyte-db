@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
@@ -207,6 +208,10 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  // K8s pods keep these on the persistent volume: the container filesystem is reset on every pod
+  // restart, so files under the YB home would be lost.
+  public static final String K8S_GFLAG_REMOTE_FILES_PATH =
+      KubernetesTaskBase.K8S_NODE_YW_DATA_DIR + "/conf/gflag_files/";
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
@@ -675,6 +680,21 @@ public class GFlagsUtil {
       return CommonUtils.DEFAULT_YB_HOME_DIR;
     }
     return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
+  }
+
+  /** Directory on the node that holds files referenced by gflags, such as JWKS keys. */
+  public static String getRemoteGFlagFilesPath(Provider provider) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
+      return K8S_GFLAG_REMOTE_FILES_PATH;
+    }
+    return provider.getYbHome() + GFLAG_REMOTE_FILES_PATH;
+  }
+
+  private static String getRemoteGFlagFilesPath(@Nullable String providerUUID) {
+    if (providerUUID == null) {
+      return getYbHomeDir(null) + GFLAG_REMOTE_FILES_PATH;
+    }
+    return getRemoteGFlagFilesPath(Provider.getOrBadRequest(UUID.fromString(providerUUID)));
   }
 
   private static String getMasterAddrs(
@@ -1897,8 +1917,7 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, String.format("JWKS file write failed %s", e.getMessage()));
       }
-      String ybHomeDir = getYbHomeDir(providerUUID);
-      String remoteJWKSFilePath = ybHomeDir + GFLAG_REMOTE_FILES_PATH + fileName;
+      String remoteJWKSFilePath = getRemoteGFlagFilesPath(providerUUID) + fileName;
       String jwtJWKSPath = JWT_JWKS_FILE_PATH + "=\"\"" + remoteJWKSFilePath + "\"\"";
       StringBuilder sb = new StringBuilder(hbaConfValue);
       sb.replace(jwksIndex, endIndex + 1, jwtJWKSPath);

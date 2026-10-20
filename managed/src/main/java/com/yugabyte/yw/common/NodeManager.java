@@ -1160,9 +1160,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = provider.getUuid().toString();
-                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
                 // Append the path to copy the gFlag file from local to remote host
                 subcommand.add("--local_gflag_files_path");
                 subcommand.add(localGflagFilePath.toString());
