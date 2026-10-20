@@ -924,8 +924,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()] {
-      // pggate closes the connection on interrupt, but the process could exit only after its
-      // in-flight request completes. So keep checking until the session would expire anyway.
+      // Backend process exit could take long (e.g. in sanitizer builds), so keep checking until
+      // the session would expire anyway.
       ScheduleCheckSessionShutdown(
           pid, session_id,
           CoarseMonoClock::Now() + FLAGS_pg_client_session_expiration_ms * 1ms);
