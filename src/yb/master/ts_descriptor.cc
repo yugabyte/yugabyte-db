@@ -44,7 +44,6 @@
 #include "yb/master/master_ysql_lease.pb.h"
 
 #include "yb/util/status_format.h"
-#include "yb/util/storage_tier.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
@@ -362,27 +361,9 @@ bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
 }
 
 std::set<std::string> TSDescriptor::GetStorageTiers() const {
-  std::set<std::string> tiers;
-  {
-    auto l = LockForRead();
-    const auto& registered = l->pb.registration().storage_tiers();
-    tiers.insert(registered.begin(), registered.end());
-  }
-  if (!tiers.empty()) {
-    return tiers;
-  }
-  {
-    SharedLock<decltype(mutex_)> l(mutex_);
-    for (const auto& path_metric : ts_metrics_.path_metrics) {
-      if (!path_metric.second.storage_tier.empty()) {
-        tiers.insert(path_metric.second.storage_tier);
-      }
-    }
-  }
-  if (tiers.empty()) {
-    tiers.insert(kDefaultStorageTier);
-  }
-  return tiers;
+  auto l = LockForRead();
+  const auto& registered = l->pb.registration().storage_tiers();
+  return {registered.begin(), registered.end()};
 }
 
 bool TSDescriptor::HasStorageTier(const std::string& tier) const {

@@ -116,12 +116,13 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
   }
 }
 
-// The tier set comes from the persisted registration, then from the tiers in the path metrics (a
-// tserver from before the registration field), then kDefaultStorageTier.
-TEST(TestTSDescriptor, StorageTiersFallBackFromRegistrationToMetricsToDefault) {
+// The tier set comes from the persisted registration alone. A tserver that registered none (a
+// binary from before the field) has an unknown, empty set, and its path metrics do not fill it in:
+// they cover WAL roots too, and they are lost on master failover.
+TEST(TestTSDescriptor, StorageTiersComeFromRegistrationOnly) {
   TSDescriptor ts("test", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
-  ASSERT_EQ(ts.GetStorageTiers(), std::set<std::string>{kDefaultStorageTier});
-  ASSERT_TRUE(ts.HasStorageTier(kDefaultStorageTier));
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier(kDefaultStorageTier));
   ASSERT_FALSE(ts.HasStorageTier("hdd"));
 
   TServerMetricsPB metrics;
@@ -129,8 +130,8 @@ TEST(TestTSDescriptor, StorageTiersFallBackFromRegistrationToMetricsToDefault) {
   path_metric->set_path_id("/mnt/d0");
   path_metric->set_storage_tier("hdd");
   ts.UpdateMetrics(metrics);
-  ASSERT_EQ(ts.GetStorageTiers(), std::set<std::string>{"hdd"});
-  ASSERT_FALSE(ts.HasStorageTier(kDefaultStorageTier));
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
 
   NodeInstancePB instance;
   instance.set_permanent_uuid("test");

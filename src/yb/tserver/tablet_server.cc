@@ -803,7 +803,7 @@ Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly 
   }
   // Unlabeled data dirs are on kDefaultStorageTier, so this is never empty once the fs is open.
   reg->clear_storage_tiers();
-  for (const auto& [tier, data_roots] : fs_manager_->GetDataRootsByTier()) {
+  for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
     reg->add_storage_tiers(tier);
   }
   return Status::OK();

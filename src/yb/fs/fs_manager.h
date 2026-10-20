@@ -185,8 +185,10 @@ class FsManager {
   std::vector<std::string> GetDataRootDirs() const;
 
   // Returns the storage-tier label for a given canonicalized fs root (as
-  // returned by GetFsRootDirs()).  Returns kDefaultStorageTier when the root
-  // is not found in the tier map (e.g. WAL-only roots).
+  // returned by GetFsRootDirs()), or an empty string for a root that is not a
+  // data root (e.g. a WAL-only root): tiers are a property of data roots only,
+  // so reporting the default tier for a WAL root would advertise an ssd data
+  // disk the node does not have.
   const std::string& GetTierForDataRoot(const std::string& canonicalized_fs_root) const;
 
   // Returns all data-root directories (i.e. the paths that GetDataRootDirs()

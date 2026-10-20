@@ -201,11 +201,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool IsRunningOn(const HostPortPB& hp) const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
-  // Storage tiers this tserver has data directories for (labels from ValidStorageTiers()).
-  // Read from the persisted registration, so it is correct from the first heartbeat and right
-  // after a master failover. A tserver from before the registration field reports none; then the
-  // tiers seen in its metrics heartbeat are used, and before any heartbeat kDefaultStorageTier
-  // alone, which is what FsManager assigns to unlabeled data dirs.
+  // Storage tiers this tserver registered for its data directories (labels from
+  // ValidStorageTiers()). Persisted with the registration, so it is correct from the first
+  // heartbeat and right after a master failover. Empty for a tserver from before the field: its
+  // tiers are unknown, so it is not chosen for a placement that names a tier.
   std::set<std::string> GetStorageTiers() const EXCLUDES(mutex_);
   bool HasStorageTier(const std::string& tier) const EXCLUDES(mutex_);
 

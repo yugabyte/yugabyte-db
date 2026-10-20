@@ -987,7 +987,7 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierPicksCorrectTier) {
 }
 
 // Confirm that SelectPathIdForTier balances across disks within a tier: loading
-// one hdd disk more than the other causes the p√icker to prefer the lighter disk.
+// one hdd disk more than the other causes the picker to prefer the lighter disk.
 TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
   std::shared_ptr<tablet::TabletPeer> peer;
   ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));

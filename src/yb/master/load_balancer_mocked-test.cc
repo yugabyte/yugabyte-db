@@ -1006,37 +1006,53 @@ TEST_F(LoadBalancerMockedTest, StorageTierRejectsTserverWithoutTier) {
   for (const auto& ts_desc : ts_descs_) {
     SetTsStorageTiers(ts_desc, {"ssd", "hdd"});
   }
-  // An empty tserver with only ssd disks is the least loaded destination, but cannot host hdd.
+  // Two empty tservers are the least loaded destinations, but neither can host hdd: one has only
+  // ssd disks, the other registered no tiers (a binary from before the field), which is unknown.
   auto ssd_only_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
   SetTsStorageTiers(ssd_only_ts, {"ssd"});
+  auto unregistered_ts = ts_descs_.emplace_back(SetupTS("4444", "a"));
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
-  std::string tablet_id, from_ts, to_ts;
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  // Moving from an existing replica keeps the zone under its maximum, so the tier is what decides.
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& from_ts = ts_descs_[0]->permanent_uuid();
   ASSERT_FALSE(ASSERT_RESULT(
-      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), ssd_only_ts->permanent_uuid())));
+      CanAddTabletToTabletServer(tablet_id, ssd_only_ts->permanent_uuid(), from_ts)));
+  ASSERT_FALSE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablet_id, unregistered_ts->permanent_uuid(), from_ts)));
+  std::string moved_tablet_id, moved_from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&moved_tablet_id, &moved_from_ts, &to_ts)));
 
-  // With an hdd disk it becomes a valid destination.
+  // With an hdd disk the ssd-only tserver becomes the valid destination.
   SetTsStorageTiers(ssd_only_ts, {"ssd", "hdd"});
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablet_id, ssd_only_ts->permanent_uuid(), from_ts)));
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&moved_tablet_id, &moved_from_ts, &to_ts)));
   ASSERT_EQ(to_ts, ssd_only_ts->permanent_uuid());
 }
 
-// A table without a tier is on kDefaultStorageTier: an hdd-only tserver cannot host it, while a
-// tserver that registered no tiers (a binary from before the field) counts as ssd.
-TEST_F(LoadBalancerMockedTest, StorageTierDefaultsToSsd) {
+// A table without a tier is unconstrained, as before tiers existed: an hdd-only tserver and one
+// that registered no tiers are both valid destinations.
+TEST_F(LoadBalancerMockedTest, UntieredPlacementAcceptsAnyTserver) {
   PrepareTestStateSingleAz();
   auto hdd_only_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
   SetTsStorageTiers(hdd_only_ts, {"hdd"});
+  auto unregistered_ts = ts_descs_.emplace_back(SetupTS("4444", "a"));
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  std::string tablet_id, from_ts, to_ts;
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
 
-  auto unlabeled_ts = ts_descs_.emplace_back(SetupTS("4444", "a"));
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
-  ASSERT_EQ(to_ts, unlabeled_ts->permanent_uuid());
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& from_ts = ts_descs_[0]->permanent_uuid();
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablet_id, hdd_only_ts->permanent_uuid(), from_ts)));
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablet_id, unregistered_ts->permanent_uuid(), from_ts)));
+
+  std::string moved_tablet_id, moved_from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&moved_tablet_id, &moved_from_ts, &to_ts)));
+  ASSERT_TRUE(
+      to_ts == hdd_only_ts->permanent_uuid() || to_ts == unregistered_ts->permanent_uuid())
+      << to_ts;
 }
 
 class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {

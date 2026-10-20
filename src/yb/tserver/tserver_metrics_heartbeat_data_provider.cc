@@ -184,9 +184,12 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       path_metric->set_path_id(path);
       path_metric->set_used_space(stat->used_space);
       path_metric->set_total_space(stat->total_space);
-      // Advertise the storage tier for data roots.
+      // Only data roots have a tier. A WAL-only root reports its space but no tier, so the
+      // master never takes it for a data disk.
       const auto& tier = fs_mgr->GetTierForDataRoot(path);
-      path_metric->set_storage_tier(tier);
+      if (!tier.empty()) {
+        path_metric->set_storage_tier(tier);
+      }
     }
   }
 }

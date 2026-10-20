@@ -758,14 +758,15 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
 }
 
 // A placement that names a storage tier only counts tservers that registered that tier, so a
-// cluster with none of them rejects the replication info instead of creating tablets nowhere.
+// cluster with none of them rejects the replication info instead of creating tablets nowhere. A
+// placement without a tier is unconstrained, so an all-hdd cluster still accepts it.
 TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
   for (int i = 0; i < 3; ++i) {
     TSRegistrationPB reg;
     *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000 + i);
     *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000 + i);
-    reg.mutable_common()->add_storage_tiers(kDefaultStorageTier);
+    reg.mutable_common()->add_storage_tiers("hdd");
     TSToMasterCommonPB common;
     common.mutable_ts_instance()->set_permanent_uuid(Format("ts-$0", i));
     common.mutable_ts_instance()->set_instance_seqno(1);
@@ -777,18 +778,23 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
     ValidateReplicationInfoRequestPB req;
     auto* live_replicas = req.mutable_replication_info()->mutable_live_replicas();
     live_replicas->set_num_replicas(3);
-    live_replicas->set_storage_tier(storage_tier);
+    if (!storage_tier.empty()) {
+      live_replicas->set_storage_tier(storage_tier);
+    }
     ValidateReplicationInfoResponsePB resp;
     RETURN_NOT_OK(
         proxy_replication_->ValidateReplicationInfo(req, &resp, ResetAndGetController()));
     return resp;
   };
 
-  auto resp = ASSERT_RESULT(validate("hdd"));
+  auto resp = ASSERT_RESULT(validate(kDefaultStorageTier));
   ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_STR_CONTAINS(resp.error().status().message(), "Not enough live tablet servers");
 
-  resp = ASSERT_RESULT(validate(kDefaultStorageTier));
+  resp = ASSERT_RESULT(validate("hdd"));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  resp = ASSERT_RESULT(validate(""));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 
