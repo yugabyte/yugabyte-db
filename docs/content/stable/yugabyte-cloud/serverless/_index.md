@@ -18,7 +18,7 @@ menu:
 type: docs
 ---
 
-Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. It is YugabyteDB AMP (Agentic Multitenant PostgreSQL). Each agent or tenant gets its own isolated PostgreSQL database, and Yugabyte manages the service. Use it for AI agents and for workloads that are bursty or often idle.
+Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon, using YugabyteDB AMP (Agentic Multitenant PostgreSQL). Each agent or tenant gets its own isolated PostgreSQL database, and YugabyteDB Aeon manages the service. Use it for AI agents and for workloads that are bursty or often idle.
 
 ## Features
 
@@ -31,13 +31,13 @@ A Serverless Postgres cluster includes the following features:
 - Built-in connection pooling.
 - Fair CPU sharing across tenants.
 
-Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabytDB Aeon prepares the environment and the shared pool for you.
+Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabyteDB Aeon prepares the environment and the shared pool for you.
 
 Serverless Postgres is free to start, and includes:
 
 - 2 vCPU, 16 GB RAM, 100 GB storage
 
-This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the account. Only Admin users can create a billing profile.
+This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the serverless account. Only Admin users can create a billing profile.
 
 ## Create a serverless cluster
 
@@ -60,7 +60,9 @@ Set the following options:
 
 #### Engine
 
-**PostgreSQL** is the default. **AI Database**, **Oracle**, **SQL Server**, and **DocumentDB** are the other engines. The engine decides which extensions are included.
+**PostgreSQL** is the default. **AI Database**, **Oracle**, **SQL Server**, and **DocumentDB** are the other engines.
+
+The engine determines which [extensions](#extensions) can be included.
 
 #### Read-write compute
 
@@ -71,11 +73,19 @@ Choose a size:
 - **Large**: 8 vCPU and 64Gi.
 - **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GiB; you can also enter values in MiB. You must have at least 8Gi per vCPU.
 
-    If you choose an option other than Free, you will be prompted to create a billing profile before the cluster is created.
+    Your organization is allowed one Free cluster. If you choose an option other than Free and you have not added a [billing profile](../cloud-admin/cloud-billing-profile/) to the account, you will be prompted to create a billing profile before the cluster is created.
 
 #### Extensions
 
-Optional. The cluster starts with a `main` branch, and you fork other branches from it. What you select is seeded on `main`, and every branch forked from it inherits those extensions. Extensions that the engine includes are marked **Included with engine**. You can add extensions to a branch later. You cannot remove them. For pgvector, enable it in the database with `CREATE EXTENSION vector`.
+Select PostgreSQL extensions that you want to use with your cluster.
+
+PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. Serverless clusters support a variety of PostgreSQL extensions.
+
+Extensions that the engine includes are marked **Included with engine**.
+
+The cluster starts with a `main` branch, and you can [fork other branches](#add-a-branch) from it. The extensions you select are seeded on `main`, and every branch forked from it inherits these extensions. You can add extensions to a branch later. You cannot remove them.
+
+For information on extensions supported in YugabyteDB, see [PostgreSQL extensions](../../additional-features/pg-extensions/).
 
 ### Network Access
 
@@ -127,9 +137,11 @@ You now have a fully configured YugabyteDB serverless cluster provisioned in Yug
 
 ## Manage a cluster
 
-To manage a cluster, click **Clusters** in the left navigation and open the cluster. The **Cluster Branches** section lists the cluster's branches, and the compute endpoints on each branch. Use the search box and status filter to find a branch or endpoint. The branch and endpoint counts show how many are healthy or need attention.
+To manage a cluster, click **Clusters** in the left navigation and open the cluster. The **Cluster Branches** section lists the cluster's branches, and the compute endpoints on each branch.
 
-While a change is being applied, a banner at the top of the cluster page shows what is in progress. Some operations are unavailable until it finishes.
+Use the search box and status filter to find a branch or endpoint. The branch and endpoint counts show how many are healthy or need attention.
+
+While a change is being applied, some operations are unavailable.
 
 ### Add a branch
 
@@ -187,31 +199,9 @@ Creating, resizing, or deleting a resource records a task. To see the tasks, cli
 - Each task shows its **Task** type (for example, **Create cluster**, **Provision compute**, **Resize compute**, or **Delete branch**), **State**, **Cluster**, **Resource**, **Start time**, and **End time**.
 - Click a task to open **Task details**, which includes the task ID, its progress, and the error if it failed.
 
-## Sandbox clusters
-
-Existing Sandbox clusters continue to work. You can't create new Sandbox clusters from the **Create Cluster** wizard; use a Serverless Postgres cluster instead.
-
-Sandbox clusters are single-node, free clusters with the following limits:
-
-- One Sandbox cluster per account.
-- Sandbox clusters can't be scaled, and have no backups.
-- Network access is limited using IP allow lists. VPC networking is not supported.
-- Up to 15 simultaneous connections, and a maximum of 500 tables or 12.5 million rows. More than that may result in increased latencies, dropped connections, or out-of-memory errors.
-
-Sandbox clusters are not suitable for proof-of-concept (POC), staging, or performance testing. [Request a free trial](../managed-freetrial/) to try out larger clusters with more resources.
-
-Sandbox clusters are paused after 10 days of inactivity, and you receive an email notification. To resume a paused cluster, sign in to YugabyteDB Aeon, select the cluster on the **Clusters** page, and click **Resume**. A second notification is sent after 13 days of inactivity. Paused clusters are deleted after 15 days of inactivity. Idle cluster deletion jobs run daily, so your cluster may be paused or deleted up to 24 hours after the time in the notification email.
-
-To keep a cluster from being paused, perform any of the following:
-
-- Any SELECT, UPDATE, INSERT, or DELETE database operation.
-- Create or delete tables.
-- Add or remove IP allow lists.
-
 ## Next steps
 
 - [Explore distributed SQL with Distributed Postgres](../cloud-basics/create-clusters/)
 - [Build an application](/stable/develop/tutorials/build-apps/)
-- [Request a free trial](../managed-freetrial/)
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
