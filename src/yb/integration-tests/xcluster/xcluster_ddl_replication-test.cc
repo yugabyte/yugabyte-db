@@ -6280,21 +6280,25 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
 
   ASSERT_OK(consumer_cluster()->FlushTablets(
       tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
-  size_t num_checked_peers = 0;
+  tablet::TabletPtr consumer_tablet;
   for (const auto& peer : ListTabletPeers(consumer_cluster(), ListPeersFilter::kAll)) {
     auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet || !tablet->vector_indexes().List()) {
-      continue;
+    if (tablet && tablet->vector_indexes().List()) {
+      ASSERT_FALSE(consumer_tablet);
+      consumer_tablet = tablet;
     }
-    auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
-    ASSERT_FALSE(op_ids.vector_indexes.empty());
-    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
-      ASSERT_LT(vector_index_op_id, op_ids.regular) << AsString(op_ids);
-      ASSERT_LE(op_ids.intents, vector_index_op_id) << AsString(op_ids);
-    }
-    ++num_checked_peers;
   }
-  ASSERT_EQ(num_checked_peers, 1);
+  ASSERT_TRUE(consumer_tablet);
+  // The intents DB flushed OpId is advanced by the regular DB flush listener, which may run after
+  // the flush returns. It must reach the vector index flushed OpId, so the advance is exercised,
+  // but not go past it.
+  tablet::DocDbOpIds op_ids;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    op_ids = VERIFY_RESULT(consumer_tablet->MaxPersistentOpId());
+    return op_ids.vector_indexes.size() == 1 && op_ids.intents == op_ids.vector_indexes[0];
+  }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
+  ASSERT_LT(op_ids.vector_indexes[0], op_ids.regular) << AsString(op_ids);
+  consumer_tablet.reset();
 
   DisableFlushOnShutdown(*consumer_cluster(), true);
   ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(

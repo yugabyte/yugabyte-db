@@ -4677,8 +4677,12 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
   // Like IntentsDbFlushFilter, keep the intents DB flushed OpId behind the rows a vector index
   // holds only in memory. Bootstrap gates the replay of an xCluster external WRITE_OP on the
   // intents DB flushed OpId, so advancing past such rows loses them from the vector index on an
-  // ungraceful restart, while the regular DB keeps them (GH#34699). Read after 'regular_op_id', see
-  // MayAdvanceDeactivatedVectorIndexesFlushedOpId.
+  // ungraceful restart, while the regular DB keeps them (GH#34699).
+  //
+  // Read after 'regular_op_id': rows of an operation covered by it were registered in the index
+  // while its regular DB write was applied. A registered row reaches the in-memory frontier only
+  // once its insert task completes, so an index without that frontier may still hold rows, which
+  // its flush ability reports.
   auto new_intents_op_id = regular_op_id;
   if (auto vector_indexes = vector_indexes_->List()) {
     const storage::FrontierKinds frontier_kinds{
@@ -4686,7 +4690,12 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
     for (const auto& vector_index : *vector_indexes) {
       auto frontiers = vector_index->GetFrontiers(frontier_kinds);
       if (!frontiers.in_memory.smallest) {
-        continue;
+        if (vector_index->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData) {
+          continue;
+        }
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " has inserts in progress";
+        return Status::OK();
       }
       auto mem_index = down_cast<const docdb::ConsensusFrontier&>(
           *frontiers.in_memory.smallest).op_id().index;
