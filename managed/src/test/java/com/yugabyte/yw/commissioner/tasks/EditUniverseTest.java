@@ -89,6 +89,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -1040,6 +1041,137 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertNull(universe.getStateTransitionDetails());
     assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
     assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testRollbackOfferedOnRetryAfterAutoRollback() {
+    // PLAT-23111: the first attempt auto-rolls back before any VM exists, which clears the
+    // checkpoint. The retry re-runs the edit, creates VMs and fails in the rollback-safe window.
+    AtomicBoolean retrying = new AtomicBoolean(false);
+    doAnswer(
+            invocation -> {
+              NodeManager.NodeCommandType type = invocation.getArgument(0);
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              // First attempt: everything but List fails, so it fails before any VM exists.
+              // Retry: VMs get created and it fails at configure, before MarkRollbackUnsafe.
+              boolean fail =
+                  retrying.get()
+                      ? NodeManager.NodeCommandType.Configure.equals(type)
+                      : !NodeManager.NodeCommandType.List.equals(type);
+              if (fail) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask.create(
+        defaultCustomer,
+        universe.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Edit,
+        universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getStateTransitionDetails());
+
+    retrying.set(true);
+    CustomerTask retryCustomerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTaskInfo;
+    try {
+      retryTaskInfo = waitForTask(retryCustomerTask.getTaskUUID());
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    assertEquals(Failure, retryTaskInfo.getTaskState());
+    assertTrue(
+        "retry should fail after creating VMs: "
+            + retryTaskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() != Success)
+                .map(t -> t.getTaskType() + "=" + t.getTaskState())
+                .collect(Collectors.toList())
+            + " error: "
+            + retryTaskInfo.getErrorMessage(),
+        retryTaskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleCreateServer
+                        && t.getTaskState() == Success));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // The retry created VMs, so it did not auto-roll back, and it holds the placement lock.
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertEquals(
+        retryTaskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    // Listing offers Rollback; submit must agree and accept it.
+    assertTrue(listingCanRollback(retryCustomerTask, retryTaskInfo, universe));
+    assertNotNull(
+        "retry after auto-rollback must capture a checkpoint",
+        universe.getStateTransitionDetails());
+    assertTrue(commissioner.canTaskRollbackDetailed(retryTaskInfo));
+  }
+
+  @Test
+  public void testRetryKeepsFirstCheckpointWithoutAutoRollback() {
+    // Without an auto-rollback the retry continues from where the first attempt stopped, so it
+    // must keep the first attempt's checkpoint rather than capture the half-edited universe.
+    doAnswer(
+            invocation -> {
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              if (NodeManager.NodeCommandType.Configure.equals(invocation.getArgument(0))) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask.create(
+        defaultCustomer,
+        universe.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Edit,
+        universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNotNull(universe.getStateTransitionDetails());
+    JsonNode firstCheckpoint = Json.toJson(universe.getStateTransitionDetails());
+
+    CustomerTask retryCustomerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTaskInfo;
+    try {
+      retryTaskInfo = waitForTask(retryCustomerTask.getTaskUUID());
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    assertEquals(Failure, retryTaskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        retryTaskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    assertEquals(firstCheckpoint, Json.toJson(universe.getStateTransitionDetails()));
+    assertTrue(commissioner.canTaskRollbackDetailed(retryTaskInfo));
   }
 
   @Test

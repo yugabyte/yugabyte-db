@@ -2120,9 +2120,20 @@ TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
     }
   });
 
+  // A concurrent ANALYZE catalog version bump can legitimately cause a read restart on the DDL's
+  // catalog version read; retry only that error since query layer retries are disabled.
+  auto execute_ddl = [&conn2](const std::string& ddl) -> Status {
+    for (int attempt = 1;; ++attempt) {
+      auto s = conn2.Execute(ddl);
+      if (s.ok() || attempt >= 10 ||
+          s.message().ToBuffer().find("Restart read required") == std::string::npos) {
+        return s;
+      }
+    }
+  };
   for (int i = 1; i <= 20; i++) {
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 ADD COLUMN v1 INT"));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 DROP COLUMN v1"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 ADD COLUMN v1 INT"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 DROP COLUMN v1"));
   }
 
   thread_holder.Stop();
