@@ -1952,9 +1952,12 @@ TEST_F_EX(PgMiniTest, TruncateTombstoneCacheHealedByRestart, PgMiniTestSingleNod
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
     ASSERT_EQ(peers.size(), 1);
     auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
-    ASSERT_OK(WaitFor([&] {
-      return DumpHasTableTombstone(tablet->TEST_DocDBDumpStr(), kColocationId);
-    }, 30s * kTimeMultiplier, "TRUNCATE table-level tombstone applied"));
+    std::string dump;
+    ASSERT_TRUE(WaitFor([&] {
+      dump = tablet->TEST_DocDBDumpStr();
+      return DumpHasTableTombstone(dump, kColocationId);
+    }, 30s * kTimeMultiplier, "Table tombstone applied").ok())
+        << "TRUNCATE did not write a table-level tombstone (rewrite path taken?). Dump:\n" << dump;
   }
 
   ASSERT_OK(RestartCluster());
