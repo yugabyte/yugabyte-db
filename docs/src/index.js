@@ -293,7 +293,7 @@ $(document).ready(() => {
     }));
 
     if (window.OneTrust && window.OnetrustActiveGroups) {
-      deleteInternalCookies();
+      deleteFunctionalCookies();
     }
   }
 
