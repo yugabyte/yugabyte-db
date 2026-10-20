@@ -3886,9 +3886,23 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 //   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
 //     tasks will fail.
 void CatalogManager::PrepareRestore() {
-  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+  // The leader that submitted the restore op already fenced in FenceSysCatalogForRestore.
+  // Waiting for in-flight writes here would deadlock: their ops are queued behind this one.
+  if (!restoring_sys_catalog_.exchange(true)) {
+    LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+    sys_catalog_->IncrementPitrCount();
+  }
+}
+
+void CatalogManager::FenceSysCatalogForRestore() {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs before submitting sys catalog restore";
   restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::UnfenceSysCatalogForRestore() {
+  LOG_WITH_PREFIX(INFO) << "Accepting RPCs since sys catalog restore was not submitted";
+  restoring_sys_catalog_ = false;
 }
 
 Status CatalogManager::GetYsqlYbSystemTableInfo(

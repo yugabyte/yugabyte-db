@@ -1838,6 +1838,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void PrepareRestore() override;
 
+  // Fails in-flight sys catalog work and rejects new RPCs ahead of a sys catalog restore op.
+  // Must be called before the op is submitted, not on apply.
+  void FenceSysCatalogForRestore();
+  void UnfenceSysCatalogForRestore();
+
   void RunXReplBgTasks(const LeaderEpoch& epoch);
 
   Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);

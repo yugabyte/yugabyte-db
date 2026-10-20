@@ -1882,7 +1882,12 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
+    cm_->FenceSysCatalogForRestore();
+    auto status = context_.Submit(std::move(operation), leader_term);
+    if (!status.ok()) {
+      cm_->UnfenceSysCatalogForRestore();
+      return status;
+    }
 
     return synchronizer->Wait();
   }
