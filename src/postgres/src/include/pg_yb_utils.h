@@ -1641,6 +1641,7 @@ extern bool yb_default_collation_resolved;
  */
 extern bool YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
+extern void YbUpdatePggateTableCacheAfterApply(void);
 
 extern bool YbInvalidationMessagesTableExists();
 
