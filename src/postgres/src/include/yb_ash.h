@@ -32,8 +32,7 @@
 #include "utils/timestamp.h"
 
 #define YbAshIsClientAddrSet() \
-	(yb_enable_ash && !IsBootstrapProcessingMode() && \
-	 !YBIsInitDbModeEnvVarSet() && MyProcPort != NULL)
+	(yb_enable_ash && !IsBootstrapProcessingMode() && !YBIsInitDbModeEnvVarSet())
 
 /*
  * query_id 0 is never produced by pg_stat_statements for a real query, so it

@@ -871,7 +871,9 @@ YbAshSetOneTimeMetadata()
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
 	MyProc->yb_ash_metadata.client_port = 0;
 
-	Assert(MyProcPort != NULL);
+	/* Non-client backends have NULL MyProcPort */
+	if (MyProcPort == NULL)
+		return;
 
 	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
 
