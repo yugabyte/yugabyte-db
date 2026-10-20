@@ -3677,7 +3677,8 @@ class PgClientSession::Impl {
     if (options.is_catalog_snapshot() && data->transaction &&
         data->transaction->isolation() == SERIALIZABLE_ISOLATION) {
       for (const auto& op_data : data->ops) {
-        if (!op_data.op->read_only()) {
+        if (!op_data.op->read_only() ||
+            !op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table()) {
           continue;
         }
         auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);

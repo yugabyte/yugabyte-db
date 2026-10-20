@@ -2805,6 +2805,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_serializable_catalog_snapshot_reads", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Read the catalog in SERIALIZABLE transactions without read intents."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_serializable_catalog_snapshot_reads,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,

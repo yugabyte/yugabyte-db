@@ -800,6 +800,14 @@ void PgTxnManager::ClampCatalogReadTime(
   read_time_options.set_clamp_uncertainty_window(true);
 }
 
+// Catalog reads of a SERIALIZABLE transaction take a read time too, and the tserver serves them as
+// snapshot reads: read intents on catalog rows would make every concurrent DDL that writes them
+// abort this transaction. The AutoFlag holds this back until masters understand such reads.
+bool PgTxnManager::UsesCatalogSnapshotReadTime(IsCatalogSnapshot is_catalog_snapshot) const {
+  return is_catalog_snapshot &&
+         (!IsSerializableIsolation() || yb_enable_serializable_catalog_snapshot_reads);
+}
+
 Status PgTxnManager::SetupReadTimeOptions(
     tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
     std::optional<ReadTimeAction> read_time_action,
@@ -859,10 +867,7 @@ Status PgTxnManager::SetupReadTimeOptions(
     return Status::OK(); // Other read time options below do not apply.
   }
 
-  // Catalog reads of a SERIALIZABLE transaction take a read time too: the tserver serves them as
-  // snapshot reads, since read intents on catalog rows would make every concurrent DDL that writes
-  // them abort this transaction.
-  if (is_catalog_snapshot) {
+  if (UsesCatalogSnapshotReadTime(is_catalog_snapshot)) {
     ClampCatalogReadTime(read_time_options);
     return Status::OK();
   }
@@ -943,7 +948,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
-  options.set_is_catalog_snapshot(is_catalog_snapshot);
+  options.set_is_catalog_snapshot(UsesCatalogSnapshotReadTime(is_catalog_snapshot));
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 

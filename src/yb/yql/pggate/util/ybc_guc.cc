@@ -166,6 +166,8 @@ bool enable_object_locking_infra = true;
 
 bool yb_enable_ddl_savepoint_infra = true;
 
+bool yb_enable_serializable_catalog_snapshot_reads = true;
+
 bool yb_use_cluster_config_for_geolocation_costing = false;
 
 bool yb_skip_ensure_read_time_in_parallel_execution = false;

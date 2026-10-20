@@ -563,9 +563,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     // the intents db and land in the regular db. Only this op's read time moves; the transaction
     // and its metadata are untouched.
     //
-    // Serializable is excluded because it must not carry a read time at all (see the check above),
-    // and does not need one: it reads at the latest time, which is already above those rows.
-    if (data.read_at_in_txn_limit && has_read_time && !serializable) {
+    // A SERIALIZABLE RPC has a read time only for a forced snapshot read (see where read_time is
+    // set above). Other SERIALIZABLE reads don't need one: they read at the latest time, which is
+    // already above those rows.
+    if (data.read_at_in_txn_limit && has_read_time) {
       if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
         // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime
         // skips SetInTxnLimit for autonomous DDL ones (see the TODO there) -- but the relation

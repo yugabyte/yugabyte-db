@@ -965,6 +965,54 @@ INSTANTIATE_TEST_CASE_P(
     TableLocksEnabled, PgObjectLocksTestAbortTxnsInMixedMode, ::testing::Bool(),
     ::testing::PrintToStringParamName());
 
+class PgObjectLocksTestSerializableCatalogReadsPromotion : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_enable_serializable_catalog_snapshot_reads=false");
+    // Same reason as in PgObjectLocksTestMixModeDuringPromotion.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+  }
+
+  Status RunSerializableTxnWithConcurrentDdl(const std::string& suffix) {
+    auto* ts = cluster_->tablet_server(0);
+    auto conn = VERIFY_RESULT(ConnectToTs(*ts));
+    auto ddl_conn = VERIFY_RESULT(ConnectToTs(*ts));
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    RETURN_NOT_OK(conn.Fetch("SELECT now()"));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat(
+        "CREATE FUNCTION f$0() RETURNS INT LANGUAGE SQL AS 'SELECT 1'", suffix));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM t WHERE k = 1"));
+    return conn.CommitTransaction();
+  }
+};
+
+// Until the AutoFlag is promoted, SERIALIZABLE catalog reads keep their read intents, so a master
+// that predates snapshot catalog reads never receives one.
+TEST_F(PgObjectLocksTestSerializableCatalogReadsPromotion, Promotion) {
+  auto* ts = cluster_->tablet_server(0);
+  {
+    auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  }
+  ASSERT_NOK_STR_CONTAINS(
+      RunSerializableTxnWithConcurrentDdl("1"), "current transaction is expired or aborted");
+
+  for (auto* daemon : cluster_->tserver_daemons()) {
+    ASSERT_OK(cluster_->SetFlag(daemon, "ysql_yb_enable_serializable_catalog_snapshot_reads",
+                                "true"));
+  }
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto conn = VERIFY_RESULT(ConnectToTs(*ts));
+    return VERIFY_RESULT(conn.FetchRow<std::string>(
+        "SHOW yb_enable_serializable_catalog_snapshot_reads")) == "on";
+  }, 30s * kTimeMultiplier, "Waiting for postgres to pick up the promoted flag"));
+
+  ASSERT_OK(RunSerializableTxnWithConcurrentDdl("2"));
+}
+
 class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {

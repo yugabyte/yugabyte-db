@@ -202,6 +202,8 @@ extern bool enable_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
 
+extern bool yb_enable_serializable_catalog_snapshot_reads;
+
 extern bool yb_skip_ensure_read_time_in_parallel_execution;
 
 /*
