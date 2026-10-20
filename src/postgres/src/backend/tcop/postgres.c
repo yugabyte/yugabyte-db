@@ -224,6 +224,11 @@ static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
 static long YbNumHintCacheRefreshes = 0;
+/*
+ * Connections that started from a catalog version this node already had a prefetch cached at,
+ * rather than fetching the catalog from the master leader.
+ */
+static long YbNumStaleCatalogPrefetches = 0;
 static long YbNumHintCacheHits = 0;
 static long YbNumHintCacheMisses = 0;
 
@@ -8402,10 +8407,28 @@ YbGetCatCacheDeltaRefreshes()
 	return YbNumCatalogCacheDeltaRefreshes;
 }
 
+void
+YbIncrementCatCacheDeltaRefreshes()
+{
+	YbNumCatalogCacheDeltaRefreshes++;
+}
+
 long
 YbGetHintCacheRefreshes()
 {
 	return YbNumHintCacheRefreshes;
+}
+
+long
+YbGetStaleCatalogPrefetches()
+{
+	return YbNumStaleCatalogPrefetches;
+}
+
+void
+YbIncrementStaleCatalogPrefetches()
+{
+	YbNumStaleCatalogPrefetches++;
 }
 
 long

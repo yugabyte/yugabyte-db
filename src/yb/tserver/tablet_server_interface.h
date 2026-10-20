@@ -94,6 +94,12 @@ class TabletServerIf : public LocalTabletServer {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
 
+  // Records that this node now has a cached sys table prefetch for db_oid at catalog_version, so
+  // that a backend starting up can read the catalog at that version locally instead of fetching it
+  // from the master leader. Ignored for a database this node has no catalog version slot for, and
+  // never moves the recorded version backwards.
+  virtual void SetYsqlDbLastPrefetchedCatalogVersion(uint32_t db_oid, uint64_t catalog_version) = 0;
+
   // Asynchronously triggers an internal superuser PG connection that rebuilds the relcache init
   // file for `req.database_name()`. The callback is invoked once the operation finishes (or fails)
   // with the final Status. Implementations must not block the caller's thread waiting for the

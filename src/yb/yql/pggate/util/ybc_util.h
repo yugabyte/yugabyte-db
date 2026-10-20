@@ -39,6 +39,7 @@ bool YBCStatusIsNotFound(YbcStatus s);
 bool YBCStatusIsUnknownSession(YbcStatus s);
 bool YBCStatusIsDuplicateKey(YbcStatus s);
 bool YBCStatusIsSnapshotTooOld(YbcStatus s);
+bool YBCStatusIsResponseCacheMiss(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
