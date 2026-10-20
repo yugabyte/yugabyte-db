@@ -123,6 +123,11 @@ class AzureCreateRootVolumesMethod(CreateRootVolumesMethod):
                 host_info = self.cloud.get_host_info(args)
                 if host_info:
                     self.delete_instance(args, host_info["node_uuid"], False)
+                else:
+                    # The VM was never created, but its NIC was. Nothing else cleans it up since
+                    # the VM name has a random prefix that no retry will reuse.
+                    self.cloud.get_admin().destroy_orphaned_resources(
+                        args.search_pattern, args.node_uuid)
             except Exception as cleanup_error:
                 logging.warning("Could not clean up Azure VM {}. Failed with error {}."
                                 .format(args.search_pattern, cleanup_error))

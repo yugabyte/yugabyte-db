@@ -28,7 +28,8 @@ class TestAzureCreateMasterVolume(TestCase):
         self.method = AzureCreateRootVolumesMethod(base_command)
         self.method.create_method = MagicMock()
         self.admin = self.cloud.get_admin.return_value
-        self.args = SimpleNamespace(search_pattern=self.VM_NAME, assign_public_ip=True)
+        self.args = SimpleNamespace(search_pattern=self.VM_NAME, node_uuid="node-1",
+                                    assign_public_ip=True)
 
     def test_returns_root_volume_and_keeps_os_disk(self):
         self.cloud.get_host_info.return_value = dict(self.HOST_INFO)
@@ -51,7 +52,7 @@ class TestAzureCreateMasterVolume(TestCase):
         # The OS disk is deleted as well since it is not going to be used.
         self.admin.destroy_instance.assert_called_once_with(self.VM_NAME, "node-1", False)
 
-    def test_creation_error_is_raised_when_vm_does_not_exist(self):
+    def test_orphaned_resources_are_cleaned_up_when_vm_does_not_exist(self):
         creation_error = Exception("(QuotaExceeded) Operation could not be completed.")
         self.method.create_method.run_create_instance.side_effect = creation_error
         self.cloud.get_host_info.return_value = None
@@ -61,6 +62,19 @@ class TestAzureCreateMasterVolume(TestCase):
 
         self.assertIs(creation_error, raised.exception)
         self.admin.destroy_instance.assert_not_called()
+        # The NIC is created before the VM, so it is left behind when the VM is not.
+        self.admin.destroy_orphaned_resources.assert_called_once_with(self.VM_NAME, "node-1")
+
+    def test_creation_error_is_not_replaced_by_orphan_cleanup_error(self):
+        creation_error = Exception("(QuotaExceeded) Operation could not be completed.")
+        self.method.create_method.run_create_instance.side_effect = creation_error
+        self.cloud.get_host_info.return_value = None
+        self.admin.destroy_orphaned_resources.side_effect = Exception("(NicReservedForAnotherVm)")
+
+        with self.assertRaises(Exception) as raised:
+            self.method.create_master_volume(self.args)
+
+        self.assertIs(creation_error, raised.exception)
 
     def test_creation_error_is_not_replaced_by_cleanup_error(self):
         creation_error = Exception("(AllocationFailed) Allocation failed.")
