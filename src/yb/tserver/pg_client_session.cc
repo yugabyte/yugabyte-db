@@ -1309,7 +1309,7 @@ class TransactionProvider {
       Synchronizer synchronizer;
       if (txn->batcher_if().Prepare(
           &ops_info, client::ForceConsistentRead::kFalse, deadline, client::Initial::kFalse,
-          synchronizer.AsStdStatusCallback())) {
+          /* read_point= */ nullptr, synchronizer.AsStdStatusCallback())) {
         synchronizer.StatusCB(Status::OK());
       }
       RETURN_NOT_OK(synchronizer.Wait());
@@ -3320,9 +3320,8 @@ class PgClientSession::Impl {
       return HybridTime::kInvalid;
     }
     // History may already hold the HT saved after FlushAsync (including for the current serial).
-    ConsistentReadPoint from_history(clock());
-    if (read_point_history_.Restore(&from_history, pin_read_time_serial_no)) {
-      return from_history.GetReadTime().read;
+    if (auto from_history = read_point_history_.Find(pin_read_time_serial_no)) {
+      return from_history->GetReadTime().read;
     }
     for (const auto kind :
          {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl}) {
@@ -4178,7 +4177,7 @@ class PgClientSession::Impl {
          isolation == IsolationLevel::READ_COMMITTED) &&
         txn_serial_no_ == options.txn_serial_no() &&
         (read_point && read_point->GetReadTime())) {
-      txn->InitWithReadPoint(isolation, std::move(*read_point));
+      RETURN_NOT_OK(txn->Init(isolation, read_point->GetReadTime()));
       VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
                           << ", id: " << txn->id()
                           << ", kept read time: " << txn->read_point().GetReadTime();
@@ -4187,12 +4186,13 @@ class PgClientSession::Impl {
                           << ", id: " << txn->id()
                           << ", new read time";
       RETURN_NOT_OK(txn->Init(isolation));
+      session->SetReadPointOverride(std::make_shared<ConsistentReadPoint>(clock()));
     }
     if (global_required) {
       RETURN_NOT_OK(txn->EnsureGlobal(deadline));
     }
 
-    RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, deadline, &txn->read_point()));
+    RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, deadline, session->read_point()));
 
     if (saved_priority_) {
       priority = *saved_priority_;
@@ -4303,11 +4303,20 @@ class PgClientSession::Impl {
     }
 
     SCHECK(
-        txn->IsRestartRequired(), IllegalState,
+        session.IsRestartRequired(), IllegalState,
         "Attempted to restart when transaction does not require restart");
     RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kind, deadline));
+    const auto read_point_override = session.read_point_override();
+    if (read_point_override) {
+      txn->read_point().SetMomento(read_point_override->GetMomento());
+    }
     txn = VERIFY_RESULT(txn->CreateRestartedTransaction());
     session.SetTransaction(txn);
+    if (read_point_override) {
+      auto restarted = std::make_shared<ConsistentReadPoint>(clock());
+      restarted->SetMomento(txn->read_point().GetMomento());
+      session.SetReadPointOverride(std::move(restarted));
+    }
     VLOG_WITH_PREFIX(3) << "Restarted transaction";
     return Status::OK();
   }
@@ -4318,6 +4327,9 @@ class PgClientSession::Impl {
     auto& session = Session(kind);
     if (!session) {
       session = CreateSession(&client_, deadline, clock(), arena);
+      if (kind == PgClientSessionKind::kPlain) {
+        session->SetReadPointOverride(std::make_shared<ConsistentReadPoint>(clock()));
+      }
     } else {
       session->SetDeadline(deadline);
       session->ResetArena(arena);
@@ -4351,16 +4363,21 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(session_data, options));
     read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
     const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
-    if (read_time_serial_no != read_time_serial_no_) {
-      // Update history because a read point could have been chosen (due to multiple reasons:
-      // a used read time was received from DocDB or a read time was chosen while sending previous
-      // request).
-      auto& read_point = *session_data.session->read_point();
-      if (read_point.GetReadTime()) {
-        read_point_history_.Save(read_point, read_time_serial_no_);
+    if (read_time_serial_no != read_time_serial_no_ &&
+        read_time_serial_no != kInvalidReadTimeSerialNo) {
+      // Switch to a different read point object instead of overwriting the current one: batches
+      // flushed with the current one may still build their requests from it or update it on
+      // response (#35498).
+      auto& session = *session_data.session;
+      auto current = session.read_point_override();
+      if (current->GetReadTime()) {
+        read_point_history_.Save(current, read_time_serial_no_);
       }
-      if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
+      if (auto restored = read_point_history_.Find(read_time_serial_no)) {
+        session.SetReadPointOverride(std::move(restored));
         read_time_serial_no_ = read_time_serial_no;
+      } else {
+        session.SetReadPointOverride(std::make_shared<ConsistentReadPoint>(clock()));
       }
     }
     return Status::OK();
