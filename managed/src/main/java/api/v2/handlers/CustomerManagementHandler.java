@@ -95,10 +95,15 @@ public class CustomerManagementHandler {
       String apiToken = user.upsertApiToken();
       txn.commit();
 
-      // The first registration has no authenticated user to audit; attribute it to the new user.
       Customer customer = Customer.get(user.getCustomerUUID());
-      RequestContext.putIfAbsent(
-          TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
+      if (firstCustomer) {
+        // The first registration has no authenticated user to audit; attribute it to the new user.
+        // put, not putIfAbsent: RequestContext is a ThreadLocal, and a user left on this worker
+        // thread by an earlier request must not get the entry. A later registration was set to
+        // the SuperAdmin by superAdminAuthentication.
+        RequestContext.put(
+            TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
+      }
 
       return new CustomerRegistration()
           .customerUuid(customer.getUuid())
@@ -123,10 +128,10 @@ public class CustomerManagementHandler {
       throw new PlatformServiceException(FORBIDDEN, "User does not belong to customer " + cUUID);
     }
 
-    // Before the rotation, so that a failure here can't kill the old token without returning a new
-    // one.
-    RequestContext.putIfAbsent(
-        TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
+    // The audited user is the caller. put, not putIfAbsent: RequestContext is a ThreadLocal, and a
+    // user left on this worker thread by an earlier request must not get the entry. Before the
+    // rotation, so that a failure here can't kill the old token without returning a new one.
+    RequestContext.put(TokenAuthenticator.USER, userService.getUserWithFeatures(customer, user));
     String apiToken = user.rotateApiToken(spec == null ? null : spec.getApiTokenVersion());
 
     return new UserApiToken()

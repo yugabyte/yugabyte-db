@@ -10,17 +10,30 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import api.v2.handlers.SessionManagementHandler;
+import api.v2.models.LoginSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -113,5 +126,32 @@ public class SessionApiTest extends FakeDBApplication {
     JsonNode session = loginOk(credentials(EMAIL, PASSWORD));
 
     assertEquals(userUuid.toString(), session.get("user_uuid").asText());
+  }
+
+  @Test
+  public void loginAuditsTheLoggedInUserAndLeavesTheThreadAlone() {
+    SessionManagementHandler handler = app.injector().instanceOf(SessionManagementHandler.class);
+    LoginSpec spec = new LoginSpec().email(EMAIL).password(PASSWORD);
+    Http.Request request = Helpers.fakeRequest("POST", "/api/v2/login").build();
+
+    handler.login(request, spec);
+    // Nothing clears RequestContext after this controller, so login must not put a user there.
+    assertNull(RequestContext.getIfPresent(TokenAuthenticator.USER));
+
+    // A user left on the worker thread by an earlier request doesn't get the audit entry.
+    Users stale = ModelFactory.testUser(ModelFactory.testCustomer("Other Customer"));
+    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(stale));
+    try {
+      handler.login(request, spec);
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
+    }
+    List<Audit> logins =
+        Audit.getAllUserEntries(userUuid).stream()
+            .filter(a -> a.getAction() == Audit.ActionType.Login)
+            .collect(Collectors.toList());
+    assertEquals(2, logins.size());
+    logins.forEach(a -> assertEquals(customerUuid, a.getCustomerUUID()));
+    assertTrue(Audit.getAllUserEntries(stale.getUuid()).isEmpty());
   }
 }

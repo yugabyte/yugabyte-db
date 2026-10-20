@@ -26,6 +26,6 @@ public class SessionApiControllerImp extends SessionApiControllerImpInterface {
 
   @Override
   public Session login(Http.Request request, LoginSpec loginSpec) {
-    return sessionHandler.login(loginSpec);
+    return sessionHandler.login(request, loginSpec);
   }
 }

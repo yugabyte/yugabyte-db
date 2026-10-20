@@ -11,13 +11,19 @@ import static org.junit.Assert.assertEquals;
 import static play.mvc.Http.Status.CONFLICT;
 
 import api.v2.handlers.CustomerManagementHandler;
+import api.v2.models.CustomerRegistration;
 import api.v2.models.CustomerRegistrationSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -88,6 +94,29 @@ public class CustomerRegistrationSingleTenantApiTest extends FakeDBApplication {
       assertEquals(1, Customer.find.query().findCount());
     } finally {
       executor.shutdownNow();
+    }
+  }
+
+  @Test
+  public void firstRegistrationIsAttributedToTheNewUserEvenWithAStaleUserOnTheThread() {
+    CustomerManagementHandler handler = app.injector().instanceOf(CustomerManagementHandler.class);
+    Users stale = new Users();
+    RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(stale));
+    try {
+      CustomerRegistration registration =
+          handler.registerCustomer(
+              Helpers.fakeRequest().build(),
+              new CustomerRegistrationSpec()
+                  .code("admin")
+                  .name("Example Customer")
+                  .email("admin@example.com")
+                  .password("Passw0rd#123"));
+
+      assertEquals(
+          registration.getUserUuid(),
+          RequestContext.get(TokenAuthenticator.USER).getUser().getUuid());
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
     }
   }
 }
