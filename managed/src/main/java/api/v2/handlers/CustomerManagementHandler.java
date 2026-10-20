@@ -15,10 +15,7 @@ import api.v2.models.UserApiToken;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -34,8 +31,6 @@ import play.mvc.Http;
 @Singleton
 public class CustomerManagementHandler {
 
-  private final Config config;
-  private final RuntimeConfGetter confGetter;
   // TokenAuthenticator caches token lookups for 10 minutes. Play creates one per request; a
   // singleton holding one would keep accepting a token for up to 10 minutes after it is rotated.
   private final Provider<TokenAuthenticator> tokenAuthenticatorProvider;
@@ -44,13 +39,9 @@ public class CustomerManagementHandler {
 
   @Inject
   public CustomerManagementHandler(
-      Config config,
-      RuntimeConfGetter confGetter,
       Provider<TokenAuthenticator> tokenAuthenticatorProvider,
       CustomerRegistrationHandler customerRegistrationHandler,
       UserService userService) {
-    this.config = config;
-    this.confGetter = confGetter;
     this.tokenAuthenticatorProvider = tokenAuthenticatorProvider;
     this.customerRegistrationHandler = customerRegistrationHandler;
     this.userService = userService;
@@ -65,25 +56,28 @@ public class CustomerManagementHandler {
     // Explicit, because ebean.mf enhances @Transactional only under com.yugabyte.yw. The
     // registration lock, the checks and the inserts must share this transaction.
     try (Transaction txn = DB.beginTransaction()) {
-      boolean firstCustomer = customerRegistrationHandler.countCustomersForRegistration() == 0;
-      if (!firstCustomer) {
-        if (!config.getBoolean("yb.multiTenant")) {
-          throw new PlatformServiceException(
-              CONFLICT, "A customer is already registered on this single-tenant YBA instance");
-        }
-        if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
-          throw new PlatformServiceException(
-              CONFLICT, "A customer is already registered on this SSO-enabled YBA instance");
-        }
-        TokenAuthenticator tokenAuthenticator = tokenAuthenticatorProvider.get();
-        if (!tokenAuthenticator.superAdminAuthentication(request)) {
-          if (tokenAuthenticator.getCurrentAuthenticatedUser(request) == null) {
-            throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
-          }
-          throw new PlatformServiceException(
-              FORBIDDEN, "Only SuperAdmins can register additional customers");
-        }
-      }
+      int customerCount = customerRegistrationHandler.countCustomersForRegistration();
+      boolean firstCustomer = customerCount == 0;
+      customerRegistrationHandler
+          .checkAllowed(request, customerCount)
+          .ifPresent(
+              refusal -> {
+                switch (refusal) {
+                  case SINGLE_TENANT:
+                    throw new PlatformServiceException(
+                        CONFLICT,
+                        "A customer is already registered on this single-tenant YBA instance");
+                  case SSO_ENABLED:
+                    throw new PlatformServiceException(
+                        CONFLICT,
+                        "A customer is already registered on this SSO-enabled YBA instance");
+                  case NOT_AUTHENTICATED:
+                    throw new PlatformServiceException(UNAUTHORIZED, "Unable to authenticate user");
+                  default:
+                    throw new PlatformServiceException(
+                        FORBIDDEN, "Only SuperAdmins can register additional customers");
+                }
+              });
 
       Users user =
           customerRegistrationHandler.register(
