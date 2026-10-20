@@ -251,7 +251,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                                   }))
                   .setSubTaskGroupType(getTaskSubGroupType());
               // The collector's scrape targets come from the node's API flags and ports, which
-              // changed above. Regenerate its config from the updated node.
+              // changed above. Regenerate its config from the updated node. This runs before the
+              // tserver restart (runBeforeStopping), so a newly enabled API or new port fails to
+              // scrape only until the restart, when every target on the node is down anyway.
               TelemetryConfig telemetryConfig =
                   OtelCollectorUtil.getCurrentTelemetryConfig(universe);
               if (universe.getUniverseDetails().otelCollectorEnabled

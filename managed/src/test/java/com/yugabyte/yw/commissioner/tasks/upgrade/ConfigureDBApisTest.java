@@ -214,6 +214,34 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .verifyTasks(taskInfo.getSubTasks());
   }
 
+  // The collector can run for log export alone. Without metrics export it has no scrape targets,
+  // so ConfigureDBApis must not regenerate its config.
+  @Test
+  public void testSkipsOtelCollectorWhenMetricsExportDisabled() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().otelCollectorEnabled = true);
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .tserverTask(TaskType.UpdateUniverseFields)
+        .applyRound()
+        .addTasks(TaskType.UpdateUniverseCommunicationPorts)
+        .addTasks(TaskType.UpdateClusterAPIDetails)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .addTasks(TaskType.ChangeAdminPassword)
+        .verifyTasks(taskInfo.getSubTasks());
+  }
+
   private MockUpgrade initMockUpgrade() {
     MockUpgrade mockUpgrade = initMockUpgrade(ConfigureDBApis.class);
     mockUpgrade.setUpgradeContext(UpgradeTaskBase.RUN_BEFORE_STOPPING);
