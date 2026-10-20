@@ -5475,6 +5475,18 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
   }
 
+  // Ids of the rows nearest to the origin.
+  Result<std::string> NearestIds(PGConn& conn, size_t limit) {
+    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
+  }
+
+  static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
+    return conn.Execute("COMMIT");
+  }
+
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
 };
@@ -5965,11 +5977,7 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  const auto query_text = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  auto query = [&conn, &query_text]() -> Result<std::string> {
-    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(query_text)));
-  };
+  auto query = [this, &conn] { return NearestIds(conn, kNumRows); };
 
   ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
   docdb::TEST_vector_index_filter_allowed = false;
@@ -6053,10 +6061,7 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
   ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
-  ASSERT_EQ(AsString(ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
-                "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
-                VectorOp(), kNumRows)))),
-            "[1, 2, 3, 4, 5]");
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
@@ -6068,26 +6073,17 @@ void PgVectorIndexUtilTest::TestUnappliedVectorUpdates() {
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  const auto query_text = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  auto query = [&conn, &query_text]() -> Result<std::string> {
-    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(query_text)));
-  };
-  auto update = [&conn](int64_t id, const std::string& vector) -> Status {
-    RETURN_NOT_OK(conn.Execute("BEGIN"));
-    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
-    return conn.Execute("COMMIT");
-  };
+  auto query = [this, &conn] { return NearestIds(conn, kNumRows); };
 
   // Ignored applies are resent after transaction_resend_applying_interval_usec.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
-  ASSERT_OK(update(1, "[100, 200, 300]"));
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
   ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
 
-  ASSERT_OK(update(2, "[200, 400, 600]"));
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[200, 400, 600]"));
   ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
-  ASSERT_OK(update(2, "[4.5, 9, 13.5]"));
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[4.5, 9, 13.5]"));
   // Set by the apply of the last update.
   ASSERT_OK(WaitFor(
       [this]() -> Result<bool> { return HasVectorDeletion(); }, 10s * kTimeMultiplier,
@@ -6105,6 +6101,22 @@ TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdates) {
 TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdatesStoredPayload) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   TestUnappliedVectorUpdates();
+}
+
+// The search does not filter vectors, so the index entries of the rows with intents are left in
+// its results.
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdateSkipFilterCheck) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows + 1)), "[2, 3, 4, 5, 1]");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
 }
 
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).

@@ -901,6 +901,12 @@ Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData&
   return result;
 }
 
+// Whether key is among intent_keys, see ReadIntentRowKeys.
+bool IsIntentRow(const std::vector<std::string>& intent_keys, Slice key) {
+  return std::binary_search(
+      intent_keys.begin(), intent_keys.end(), key, [](Slice lhs, Slice rhs) { return lhs < rhs; });
+}
+
 class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
@@ -931,34 +937,9 @@ class VectorIndexKeyProvider {
   }
 
   Status Prefetch(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
-    auto indexed_column_index = projection.ColumnIdxById(vector_index_.column_id());
-    RSTATUS_DCHECK(indexed_column_index != dockv::ReaderProjection::kNotFoundIndex, Corruption,
-                   "Indexed column ($0) not found in projection: $1",
-                   vector_index_.column_id(), projection);
-    // Until a committed transaction is applied, the index keeps the vectors it replaced, whatever
-    // the tablet's vector deletion mark says. The intents alone are not the current row either,
-    // e.g. when a later transaction is applied first. So the filter leaves out the index entries of
-    // rows with intents, and such a row is added here at its current version.
-    dockv::PgTableRow table_row(projection);
-    size_t old_size = result_entries_.size();
-    for (const auto& key : intent_keys_) {
-      // A miss leaves the iterator done.
-      iterator.Refresh();
-      if (VERIFY_RESULT(iterator.FetchTuple(key, &table_row)) != FetchResult::Found) {
-        continue;
-      }
-      auto vector_value = table_row.GetValueByIndex(indexed_column_index);
-      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
-                     vector_index_.column_id(), table_row.ToString());
-      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-      result_entries_.push_back(DocVectorIndexSearchResultEntry {
-        // TODO(vector_index) Avoid decoding vector_slice for each vector
-        .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
-            vector_slice_, encoded_value.data)),
-        .key = KeyBuffer(key),
-      });
+    if (!intent_keys_.empty()) {
+      RETURN_NOT_OK(ReplaceIntentRows(iterator, projection));
     }
-    found_intents_ = result_entries_.size() - old_size;
     prefetch_done_time_ = MonoTime::Now();
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
@@ -1011,6 +992,42 @@ class VectorIndexKeyProvider {
   }
 
  private:
+  // Until a committed transaction is applied, the index keeps the vectors it replaced, whatever
+  // the tablet's vector deletion mark says. The intents alone are not the current row either,
+  // e.g. when a later transaction is applied first. So the filter leaves out the index entries of
+  // rows with intents, and this adds such rows at their current version.
+  Status ReplaceIntentRows(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
+    auto indexed_column_index = projection.ColumnIdxById(vector_index_.column_id());
+    RSTATUS_DCHECK(indexed_column_index != dockv::ReaderProjection::kNotFoundIndex, Corruption,
+                   "Indexed column ($0) not found in projection: $1",
+                   vector_index_.column_id(), projection);
+    // Unless vector_index_skip_filter_check is set, the filter already left them out.
+    std::erase_if(result_entries_, [this](const auto& entry) {
+      return IsIntentRow(intent_keys_, entry.key.AsSlice());
+    });
+    dockv::PgTableRow table_row(projection);
+    size_t old_size = result_entries_.size();
+    for (const auto& key : intent_keys_) {
+      // A miss leaves the iterator done.
+      iterator.Refresh();
+      if (VERIFY_RESULT(iterator.FetchTuple(key, &table_row)) != FetchResult::Found) {
+        continue;
+      }
+      auto vector_value = table_row.GetValueByIndex(indexed_column_index);
+      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
+                     vector_index_.column_id(), table_row.ToString());
+      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
+      result_entries_.push_back(DocVectorIndexSearchResultEntry {
+        // TODO(vector_index) Avoid decoding vector_slice for each vector
+        .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
+            vector_slice_, encoded_value.data)),
+        .key = KeyBuffer(key),
+      });
+    }
+    found_intents_ = result_entries_.size() - old_size;
+    return Status::OK();
+  }
+
   bool could_have_more_data_;
   DocVectorIndexSearchResultEntries& result_entries_;
   PgsqlResponseMsg& response_;
@@ -1135,9 +1152,7 @@ class PgsqlVectorFilter {
       resolved_via_reverse_mapping = true;
     }
     // Such a row is added at its current version, see VectorIndexKeyProvider::Prefetch.
-    if (std::binary_search(
-            intent_keys_.begin(), intent_keys_.end(), ybctid,
-            [](Slice lhs, Slice rhs) { return lhs < rhs; })) {
+    if (IsIntentRow(intent_keys_, ybctid)) {
       return false;
     }
     if (!row_ || (resolved_via_reverse_mapping && !iter_.has_filter())) {
