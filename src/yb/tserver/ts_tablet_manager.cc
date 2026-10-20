@@ -1333,14 +1333,7 @@ Status TSTabletManager::ApplyTabletSplit(
       }
   }};
 
-  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term));
-  if (request->has_split_parent_leader_uuid()) {
-    cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
-    LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
-  }
-  cmeta->set_split_parent_tablet_id(tablet_id);
+  LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
 
   for (auto& tcmeta : tcmetas) {
     const auto& new_tablet_id = tcmeta.tablet_id;
@@ -1354,10 +1347,13 @@ Status TSTabletManager::ApplyTabletSplit(
               << ", split_generation: " << tcmeta.raft_group_metadata->split_generation();
 
     // Store consensus metadata.
-    // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
-    // 1) Their consensus metadata only differ by tablet id.
-    // 2) Flush() will save it into a new path corresponding to tablet ID we set before flushing.
-    cmeta->set_tablet_id(new_tablet_id);
+    auto cmeta = ConsensusMetadata::CreateUnflushed(
+        fs_manager_, new_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
+        split_op_id.term);
+    if (request->has_split_parent_leader_uuid()) {
+      cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
+    }
+    cmeta->set_split_parent_tablet_id(tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
