@@ -63,7 +63,7 @@ The restart time of a slot is the commit time from which streaming resumes when 
 
 The restart time advances in the following cases:
 
-- When the client acknowledges an LSN (a standby status update with the flushed LSN). The restart time moves to the commit of the latest transaction whose `COMMIT` record is at or before the acknowledged LSN. Acknowledging an LSN in the middle of a transaction does not move the restart time past the previous commit. With the HYBRID_TIME LSN type, acknowledge only the LSN of a `COMMIT` record, after applying the whole transaction.
+- When the client acknowledges an LSN by reporting it as flushed in its feedback message. The restart time moves to the commit of the latest transaction whose `COMMIT` record is at or before the acknowledged LSN. Acknowledging an LSN in the middle of a transaction does not move the restart time past the previous commit. With the HYBRID_TIME LSN type, acknowledge only the LSN of a `COMMIT` record, after applying the whole transaction.
 - When the slot is idle. If the client has acknowledged everything it received and there is nothing new to stream, the restart time advances to the slot's safe time every 60 seconds, so that an idle slot does not accumulate retained changes. This is controlled by the `cdcsdk_update_restart_time_when_nothing_to_stream` and `cdcsdk_update_restart_time_interval_secs` flags.
 
 The restart time does not advance while the client is disconnected, or while a connected client receives changes without acknowledging them. In both cases the retained WAL and intents keep growing on every tablet the slot polls.
@@ -76,7 +76,7 @@ When the client disconnects, the walsender exits, and the in-memory state of the
 
 While the client is disconnected, every tablet the slot polls keeps retaining WAL, transaction intents, and, if the slot needs before images, row history from the slot's restart time. Nothing is released before the client reconnects and acknowledges changes, unless the slot expires first. The retention lasts up to [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) (default 8 hours), measured from the last successful poll of each tablet. After that the slot expires; see [When a slot becomes unusable](#when-a-slot-becomes-unusable). The matching WAL retention is set by [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) (default 8 hours), which must be at least as long.
 
-When the client reconnects, streaming resumes from the restart time. Every transaction committed after the restart time is sent again, in full, including transactions the client received but had not acknowledged before it disconnected. The records keep the LSNs they had before (see [Determinism](#lsn)), so the client can detect and skip duplicates.
+When the client reconnects, streaming resumes from the restart time. Every transaction committed after the restart time is sent again, in full, including transactions the client had received, and possibly acknowledged, if the server did not process the acknowledgment before the disconnection. The records keep the LSNs they had before (see [Determinism](#lsn)), so the client can detect and skip duplicates.
 
 #### When a slot becomes unusable
 
