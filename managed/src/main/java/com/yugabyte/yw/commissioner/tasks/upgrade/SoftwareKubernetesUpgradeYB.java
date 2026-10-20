@@ -257,9 +257,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
                   true /* isSoftwareRollbackAllowed */);
             } else {
-              // Re-create PITR schedules that an earlier no-finalize upgrade disabled and never
-              // restored. Only the upgrade flow disables PITR configs.
-              createEnablePitrConfigTask();
               createUpdateUniverseSoftwareUpgradeStateTask(
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
                   true /* isSoftwareRollbackAllowed */);

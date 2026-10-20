@@ -12,7 +12,6 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -25,7 +24,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
-import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -50,12 +48,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
-import org.yb.client.CreateSnapshotScheduleResponse;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsYsqlMajorCatalogUpgradeDoneResponse;
-import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.SnapshotScheduleInfo;
@@ -64,7 +60,6 @@ import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import org.yb.master.MasterTypes;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -309,38 +304,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
-  @Test
-  public void testSoftwareUpgradeWithoutFinalizeReenablesDisabledPitr() throws Exception {
-    // A universe hit by PLAT-23184 before the fix has a disabled config and no schedule. The next
-    // no-finalize upgrade re-creates it.
-    MasterTypes.NamespaceIdentifierPB namespace =
-        MasterTypes.NamespaceIdentifierPB.newBuilder()
-            .setName("test-keyspace")
-            .setId(ByteString.copyFromUtf8("87d2d6473b3645f7ba56d9e3f7dae239"))
-            .setDatabaseType(CommonTypes.YQLDatabase.YQL_DATABASE_CQL)
-            .build();
-    ListNamespacesResponse namespacesResponse = mock(ListNamespacesResponse.class);
-    when(namespacesResponse.getNamespacesList()).thenReturn(Collections.singletonList(namespace));
-    when(mockClient.getNamespacesList()).thenReturn(namespacesResponse);
-    CreateSnapshotScheduleResponse createResponse = mock(CreateSnapshotScheduleResponse.class);
-    when(createResponse.getSnapshotScheduleUUID()).thenReturn(UUID.randomUUID());
-    when(mockClient.createSnapshotSchedule(any(), any(), any(), anyLong(), anyLong()))
-        .thenReturn(createResponse);
-
-    runUpgradeWithPitrConfig(false /* requireFinalize */, true /* startDisabled */);
-
-    verify(mockClient, times(1)).createSnapshotSchedule(any(), any(), any(), anyLong(), anyLong());
-    assertEquals(1, PitrConfig.getByUniverseUUID(defaultUniverse.getUniverseUUID()).size());
-    assertTrue(PitrConfig.getDisabledByUniverseUUID(defaultUniverse.getUniverseUUID()).isEmpty());
-  }
-
-  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize) throws Exception {
-    return runUpgradeWithPitrConfig(requireFinalize, false /* startDisabled */);
-  }
-
   /** Runs a successful multi-AZ upgrade on a universe with one PITR config. */
-  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize, boolean startDisabled)
-      throws Exception {
+  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize) throws Exception {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseMultiAZ(false, true);
     factory
@@ -358,9 +323,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     params.retentionPeriodInSeconds = 86400L;
     params.intervalInSeconds = 3600L;
     PitrConfig pitrConfig = PitrConfig.create(UUID.randomUUID(), params);
-    if (startDisabled) {
-      pitrConfig.updateDisabledStatus(true);
-    }
     SnapshotScheduleInfo scheduleInfo =
         new SnapshotScheduleInfo(
             pitrConfig.getUuid(),
@@ -373,8 +335,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     ListSnapshotSchedulesResponse listResponse = mock(ListSnapshotSchedulesResponse.class);
     lenient()
         .when(listResponse.getSnapshotScheduleInfoList())
-        .thenReturn(
-            startDisabled ? Collections.emptyList() : Collections.singletonList(scheduleInfo));
+        .thenReturn(Collections.singletonList(scheduleInfo));
     lenient().when(mockClient.listSnapshotSchedules(isNull())).thenReturn(listResponse);
     lenient()
         .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
