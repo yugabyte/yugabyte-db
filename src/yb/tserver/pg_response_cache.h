@@ -47,8 +47,11 @@ class PgResponseCache {
  public:
   using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
 
-  // Invoked when a response is cached, with the key group it was cached under and the catalog
-  // version that response holds. Not invoked when an already cached response is served.
+  // Invoked once a connection start's prefetch is wholly cached: the request that carried
+  // completes_connection_prefetch succeeded and no operation in it was still paging. Not invoked
+  // for the rounds before it, for any other caller's fill, or when a cached response is served.
+  // The filter is here rather than in the observer so that a caller may read the callback as this
+  // node now holding a whole prefetch at the version it is given.
   using FillObserver = std::function<void(KeyGroup, uint64_t)>;
 
   PgResponseCache(
