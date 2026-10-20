@@ -201,6 +201,14 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     uint32_t key_group;
     std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
+    // Catalog version the response is cached at, for the tserver to record. Already inside
+    // key_value, but only as bytes it cannot interpret.
+    uint64_t catalog_version;
+    // Do not fill on a miss; see CachingInfoPB.lookup_only.
+    bool lookup_only;
+    // Last request of a connection start's prefetch; see
+    // CachingInfoPB.completes_connection_prefetch.
+    bool completes_connection_prefetch;
   };
 
   Result<PerformFuture> RunAsync(

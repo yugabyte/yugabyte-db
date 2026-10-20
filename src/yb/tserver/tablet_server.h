@@ -348,6 +348,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
 
+  void SetYsqlDbLastPrefetchedCatalogVersion(
+      uint32_t db_oid, uint64_t catalog_version) EXCLUDES(lock_) override;
+
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
       StdStatusCallback callback) EXCLUDES(lock_) override;

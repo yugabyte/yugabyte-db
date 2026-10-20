@@ -792,6 +792,27 @@ message PgPerformOptionsPB {
     uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
+
+    // The catalog version this response is being cached at. The version is already part of
+    // key_value, but only as opaque bytes that pggate serialized; naming it separately lets the
+    // tserver record which version it now holds a prefetch for, for backends that want to start
+    // from an older one.
+    uint64 catalog_version = 4;
+
+    // Serve this request only if the response is already cached. A miss returns an Incomplete
+    // status instead of being filled, so a backend asking for an older version cannot cause the
+    // catalog to be read afresh and then stored under that older version's key.
+    bool lookup_only = 5;
+
+    // This request is the last of a connection start's prefetch, so once it is cached this node
+    // holds every entry such a connection needs at catalog_version. The tserver records the
+    // version only for these, because the load worth sparing the master leader is the large
+    // catalog read a connection start makes, and a connection skips it only when the whole set
+    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
+    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
+    // relcache preload -- cost the leader little, so a version recorded from one of them would
+    // advertise a saving that does not exist.
+    bool completes_connection_prefetch = 6;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.

@@ -78,6 +78,15 @@ class LRUCache {
     return impl_.template get<IdTag>().contains(key);
   }
 
+  template<class Key>
+  const_iterator find(const Key& key) {
+    auto i = impl_.template project<0>(impl_.template get<IdTag>().find(key));
+    if (i != impl_.end()) {
+      MoveFront(i);
+    }
+    return i;
+  }
+
   // Erase by usage order iterator
   const_iterator erase(const_iterator pos) {
     return impl_.erase(pos);
@@ -106,6 +115,12 @@ class LRUCache {
       impl_.pop_back();
     }
     return insertion_result.first;
+  }
+
+  void MoveFront(const_iterator i) {
+    if (i != impl_.begin()) {
+      impl_.relocate(impl_.begin(), i);
+    }
   }
 
   const size_t capacity_;

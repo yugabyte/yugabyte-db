@@ -1093,6 +1093,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     auto& caching_info = *options.mutable_caching_info();
     caching_info.set_key_group(cache_options.key_group);
     caching_info.set_key_value(std::move(cache_options.key_value));
+    caching_info.set_catalog_version(cache_options.catalog_version);
+    caching_info.set_lookup_only(cache_options.lookup_only);
+    caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }

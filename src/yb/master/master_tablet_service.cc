@@ -195,9 +195,9 @@ std::atomic<int32_t> rejections_injected{0};
   });
 }
 
-[[nodiscard]] bool IsCacheRefreshPrefetch(const tserver::ReadRequestPB& req) {
+[[nodiscard]] bool IsHighPriorityPrefetch(const tserver::ReadRequestPB& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
-    return op.catalog_prefetch_kind() == YSQL_CATALOG_PREFETCH_CACHE_REFRESH;
+    return op.catalog_prefetch_kind() == YSQL_CATALOG_PREFETCH_HIGH_PRIORITY;
   });
 }
 
@@ -255,10 +255,13 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
 
   // Only the opening read of a connection-startup prefetch is held to the lower watermark. Once a
   // sequence is under way its later reads use the whole limit -- refusing one of them wastes every
-  // read before it -- and so does a backend refreshing its catalog cache, which is blocked on the
-  // data rather than merely waiting to begin. One new prefetch is always admissible, or a small
-  // limit (<= 0) would admit nothing at all.
-  const auto effective_limit = (IsPrefetchContinuation(req) || IsCacheRefreshPrefetch(req))
+  // read before it -- and so does a prefetch something is already blocked on rather than merely
+  // waiting to begin. The read that precedes authentication is one of those: it carries a handful
+  // of small tables, and the large prefetch that follows it is served from the node's own response
+  // cache while this leader is busy, so admitting it is what lets a connection finish without
+  // coming back here. One new prefetch is always admissible, or a small limit (<= 0) would admit
+  // nothing at all.
+  const auto effective_limit = (IsPrefetchContinuation(req) || IsHighPriorityPrefetch(req))
       ? limit
       : NewPrefetchLimit(limit);
 

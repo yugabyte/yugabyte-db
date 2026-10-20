@@ -294,7 +294,7 @@ static int	relcache_callback_count = 0;
 
 static uint64_t yb_accept_inval_failed_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-static bool yb_refresh_cache_in_progress = false;
+bool		yb_refresh_cache_in_progress = false;
 
 /* ----------------------------------------------------------------
  *				Invalidation subgroup support functions
