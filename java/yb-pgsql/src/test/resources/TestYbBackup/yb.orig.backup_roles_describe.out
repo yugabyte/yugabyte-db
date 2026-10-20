@@ -1,10 +1,10 @@
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -16,7 +16,7 @@
 (1 row)
 
 INSERT 0 1
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -27,7 +27,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -38,7 +38,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -49,7 +49,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -60,7 +60,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -71,7 +71,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -82,7 +82,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -93,7 +93,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -104,7 +104,7 @@ INSERT 0 1
   1
 (1 row)
 
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test

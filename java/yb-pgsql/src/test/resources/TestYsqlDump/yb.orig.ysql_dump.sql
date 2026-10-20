@@ -37,17 +37,12 @@ CREATE TABLE tbl13 (a INT, b INT, c INT, d INT, PRIMARY KEY((b,c) HASH));
 
 CREATE USER tablegroup_test_user SUPERUSER;
 CREATE USER rls_user NOLOGIN;
--- #33665: newline in a quoted role name must survive --dump-role-checks.
-CREATE ROLE "r1
-x" NOLOGIN;
 
 CREATE TABLE rls_public(k INT PRIMARY KEY, v TEXT);
 CREATE TABLE rls_private(k INT PRIMARY KEY, v TEXT);
 
 GRANT ALL ON rls_public TO public;
 GRANT SELECT ON rls_private TO rls_user;
-GRANT SELECT ON tbl1 TO "r1
-x";
 
 ALTER TABLE rls_public ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rls_private ENABLE ROW LEVEL SECURITY;
@@ -379,3 +374,10 @@ VALUES
     ('[80, 85]'),  -- Length 5
     ('[90, 100]'); -- Length 10
 ANALYZE range_test;
+
+-- #33665: a newline in a quoted identifier must survive --dump-role-checks.
+-- Role names cannot contain newlines, so use a table name.
+CREATE TABLE "tbl
+x" (k INT PRIMARY KEY);
+GRANT SELECT ON "tbl
+x" TO rls_user;

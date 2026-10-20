@@ -4,8 +4,8 @@
 
 \restrict test
 
--- Dumped from database version 15.12-YB-2.31.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -19,6 +19,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -390,15 +391,16 @@ COPY public.row_type_user (x) FROM stdin;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_child',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_child',
 	'attname', 'a',
@@ -408,7 +410,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_child',
 	'attname', 'b',
@@ -418,7 +420,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_child',
 	'attname', 'c',
@@ -434,15 +436,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_parent',
 	'relpages', '-1'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_parent',
 	'attname', 'a',
@@ -452,7 +455,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_parent',
 	'attname', 'b',
@@ -462,7 +465,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_parent',
 	'attname', 'c',
@@ -478,15 +481,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_child',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_child',
 	'attname', 'r',
@@ -496,7 +500,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_child',
 	'attname', 'tag',
@@ -512,15 +516,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_parent',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_parent',
 	'attname', 'r',
@@ -530,7 +535,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'comp_uses_parent',
 	'attname', 'tag',
@@ -546,15 +551,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_child',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_child',
 	'attname', 'a',
@@ -564,7 +570,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_child',
 	'attname', 'b',
@@ -574,7 +580,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_child',
 	'attname', 'c',
@@ -590,15 +596,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_parent',
 	'relpages', '-1'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_parent',
 	'attname', 'a',
@@ -608,7 +615,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_parent',
 	'attname', 'b',
@@ -618,7 +625,7 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 	'n_distinct', '-1'::real
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_drop_parent',
 	'attname', 'c',
@@ -634,15 +641,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'row_type_tbl',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'row_type_tbl',
 	'attname', 'x1',
@@ -658,15 +666,16 @@ SELECT * FROM pg_catalog.pg_restore_attribute_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'row_type_user',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 SELECT * FROM pg_catalog.pg_restore_attribute_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'row_type_user',
 	'attname', 'x',
@@ -692,14 +701,14 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \unrestrict test
 \if :use_roles
 \restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \unrestrict test
 \endif
