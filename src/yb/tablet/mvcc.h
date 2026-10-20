@@ -33,6 +33,7 @@
 
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -167,8 +168,9 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
-  // Threads that wait for safe time, keyed by the min_allowed that they wait for.
-  using SafeTimeWaiters = std::multimap<HybridTime, Synchronizer*>;
+  // Threads that wait for safe time, keyed by the min_allowed that they wait for. Shared ownership
+  // lets a waker signal a waiter after releasing mutex_, even if that waiter has timed out.
+  using SafeTimeWaiters = std::multimap<HybridTime, std::shared_ptr<Synchronizer>>;
 
   // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.
   template <class SafeTimeFunc>
@@ -179,7 +181,8 @@ class MvccManager {
 
   // Takes out the waiters that the current safe time could let through. The caller wakes them
   // after releasing mutex_.
-  [[nodiscard]] std::vector<Synchronizer*> ExtractReachedWaiters() REQUIRES(mutex_);
+  [[nodiscard]] std::vector<std::shared_ptr<Synchronizer>> ExtractReachedWaiters()
+      REQUIRES(mutex_);
 
   SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
 

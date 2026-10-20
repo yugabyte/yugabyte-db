@@ -258,8 +258,8 @@ std::string SafeTimeWithSource::ToString() const {
 
 namespace {
 
-void WakeWaiters(const std::vector<Synchronizer*>& waiters) {
-  for (auto* waiter : waiters) {
+void WakeWaiters(const std::vector<std::shared_ptr<Synchronizer>>& waiters) {
+  for (const auto& waiter : waiters) {
     waiter->StatusCB(Status::OK());
   }
 }
@@ -285,7 +285,8 @@ template <class SafeTimeFunc>
 Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
     SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
     const SafeTimeFunc& safe_time_func, std::unique_lock<std::mutex>* lock) const {
-  for (bool timed_out = false;;) {
+  const auto steady_deadline = ToSteady(deadline);
+  for (;;) {
     if (closing_) {
       return STATUS(ShutdownInProgress, "MvccManager is shutting down");
     }
@@ -293,40 +294,34 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
     if (result.safe_time >= min_allowed) {
       return result;
     }
-    if (timed_out) {
+    if (std::chrono::steady_clock::now() >= steady_deadline) {
       return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
     }
 
-    Synchronizer synchronizer;
-    waiters->emplace(min_allowed, &synchronizer);
+    auto waiter = std::make_shared<Synchronizer>();
+    waiters->emplace(min_allowed, waiter);
     lock->unlock();
-    timed_out = !synchronizer.WaitUntil(ToSteady(deadline)).ok();
+    auto status = waiter->WaitUntil(steady_deadline);
     lock->lock();
-    if (!timed_out) {
-      continue;
+    if (!status.ok()) {
+      // A waker may have taken the waiter out already. It holds its own reference, so only remove
+      // the waiter if it is still there.
+      auto [begin, end] = waiters->equal_range(min_allowed);
+      auto it = std::find_if(
+          begin, end, [&waiter](const auto& entry) { return entry.second == waiter; });
+      if (it != end) {
+        waiters->erase(it);
+      }
     }
-    auto [begin, end] = waiters->equal_range(min_allowed);
-    auto it = std::find_if(begin, end, [&synchronizer](const auto& entry) {
-      return entry.second == &synchronizer;
-    });
-    if (it != end) {
-      waiters->erase(it);
-      continue;
-    }
-    // A waker has already taken this waiter out and wakes it right after releasing mutex_, so wait
-    // for that before synchronizer goes out of scope.
-    lock->unlock();
-    CHECK_OK(synchronizer.Wait());
-    lock->lock();
   }
 }
 
-std::vector<Synchronizer*> MvccManager::ExtractReachedWaiters() {
-  std::vector<Synchronizer*> result;
+std::vector<std::shared_ptr<Synchronizer>> MvccManager::ExtractReachedWaiters() {
+  std::vector<std::shared_ptr<Synchronizer>> result;
   auto extract = [&result](SafeTimeWaiters& waiters, HybridTime safe_time) {
     const auto end = waiters.upper_bound(safe_time);
     for (auto it = waiters.begin(); it != end; ++it) {
-      result.push_back(it->second);
+      result.push_back(std::move(it->second));
     }
     waiters.erase(waiters.begin(), end);
   };
@@ -336,11 +331,12 @@ std::vector<Synchronizer*> MvccManager::ExtractReachedWaiters() {
     extract(follower_safe_time_waiters_, HybridTime::kMax);
     return result;
   }
-  // While the queue is not empty, a DoGetSafeTime waiter computes
-  // max(min(queue front - 1, lease), last_replicated_), and its lease is at least its min_allowed
-  // (see the CHECK_LE in DoGetSafeTime). So the lease never holds a waiter back, and
-  // max(queue front - 1, last_replicated_) tells which waiters can proceed. With an empty queue the
-  // safe time comes from the clock or the waiter's own lease, so every waiter checks again.
+  // A waiter never waits past its own ht_lease.lease: Tablet::DoGetSafeTime waits for the lease to
+  // reach min_allowed, and DoGetSafeTime CHECKs it. So the lease never holds a waiter back, and
+  // with a non-empty queue a waiter can proceed once max(queue front - 1, last_replicated_) reaches
+  // its min_allowed. With an empty queue a waiter with a lease always can, since
+  // Tablet::DoGetSafeTime also keeps min_allowed at or below ht_lease.time. A waiter without a
+  // lease depends on the clock, so every waiter is woken.
   extract(safe_time_waiters_,
           queue_.empty()
               ? HybridTime::kMax
@@ -355,7 +351,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
   CHECK(!op_id.empty());
 
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -372,7 +368,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
 }
 
 void MvccManager::StartShutdown() {
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     closing_ = true;
@@ -384,7 +380,7 @@ void MvccManager::StartShutdown() {
 void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
 
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -516,7 +512,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
 void MvccManager::SetLastReplicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -531,7 +527,7 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
 void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -555,7 +551,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
     NO_THREAD_SAFETY_ANALYSIS {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht_lease << ")";
 
-  std::vector<Synchronizer*> waiters;
+  std::vector<std::shared_ptr<Synchronizer>> waiters;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     auto safe_time_result = DoGetSafeTime(HybridTime::kMin,       // min_allowed
