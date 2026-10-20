@@ -569,9 +569,8 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   const auto backfill_ht = context_->backfill_ht();
   const auto& entries = context_->entries();
 
-  // TODO(vector_index): the entry is written at backfill_ht, so on an xCluster target a later
-  // applied tombstone of the vector with an earlier commit time sorts below it and the mapping
-  // stays live.
+  // TODO(#35495): the entry is written at backfill_ht, so on an xCluster target a later applied
+  // tombstone of the vector with an earlier commit time sorts below it and the mapping stays live.
   // The entry should be written at the write time of the vector column instead.
   for (const auto& [ybctid, entry_index] : context_->reverse_entries()) {
     docdb::DocVectorIndex::ApplyReverseEntry(
