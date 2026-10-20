@@ -891,11 +891,16 @@ class VectorIndexKeyProvider {
                    vector_index_.column_id(), projection);
     // TODO(vector_index) Use limit during prefetch.
     dockv::PgTableRow table_row(projection);
-    size_t old_size = result_entries_.size();
+    size_t num_index_entries = result_entries_.size();
+    // Keys of the rows with intents, in key order.
+    std::vector<KeyBuffer> intent_keys;
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
+      intent_keys.emplace_back(iterator.impl().GetTupleId());
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
-      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
-                     vector_index_.column_id(), table_row.ToString());
+      if (!vector_value) {
+        // A row with a NULL vector is not a search result.
+        continue;
+      }
       auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
       result_entries_.push_back(DocVectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
@@ -904,7 +909,15 @@ class VectorIndexKeyProvider {
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
-    found_intents_ = result_entries_.size() - old_size;
+    found_intents_ = result_entries_.size() - num_index_entries;
+    // Until a transaction is applied, the index keeps the vectors it replaced. So rows with intents
+    // replace their index entries.
+    auto index_end = result_entries_.begin() + num_index_entries;
+    result_entries_.erase(
+        std::remove_if(result_entries_.begin(), index_end, [&intent_keys](const auto& entry) {
+          return std::binary_search(intent_keys.begin(), intent_keys.end(), entry.key);
+        }),
+        index_end);
     prefetch_done_time_ = MonoTime::Now();
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
@@ -912,16 +925,9 @@ class VectorIndexKeyProvider {
     };
     std::ranges::sort(result_entries_, cmp_keys);
 
-    if (found_intents_) {
-      auto range = std::ranges::unique(result_entries_, [](const auto& lhs, const auto& rhs) {
-        return lhs.key == rhs.key;
-      });
-      result_entries_.erase(range.begin(), range.end());
-    }
-
     // Simulates reverse-mapping misses shrinking the result entries below the skip count.
-    // There are several scenarios where this can happen in production, for example: intents
-    // deduplication (a couple of lines above), reverse-mapping misses, etc.
+    // There are several scenarios where this can happen in production, for example: rows with
+    // intents replacing their index entries, reverse-mapping misses, etc.
     if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
       result_entries_.clear();
       ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
@@ -933,7 +939,9 @@ class VectorIndexKeyProvider {
                       << ", result_entries_.size(): " << result_entries_.size()
                       << ", max_results_: " << max_results_
                       << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
-    could_have_more_data_ = could_have_more_data_ || result_entries_.size() >= max_results_;
+    // A full index result could have more data, even if rows with intents replaced some of it.
+    could_have_more_data_ = could_have_more_data_ || num_index_entries >= max_results_ ||
+                            result_entries_.size() >= max_results_;
     if (result_entries_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
