@@ -45,6 +45,7 @@
 #include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
@@ -6219,6 +6220,97 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
       "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kOpenTxnRowId);
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// The consumer applies a polled committed transaction to the regular DB and the vector indexes in
+// one write op, without the intents DB, and bootstrap gates the replay of that op on the intents DB
+// flushed OpId. So a regular DB flush must not advance the intents DB flushed OpId past the vectors
+// a vector index holds only in memory, otherwise an ungraceful restart drops them from the index
+// (GH #34699).
+TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 1;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto producer_tablet_id = tablets[0].tablet_id();
+
+  // Commit while replication is paused, so the consumer gets the intents of each transaction
+  // together with its apply and never writes them to the intents DB. An intents DB write would
+  // disable advancing the intents DB flushed OpId for the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  constexpr int kNumTxns = 5;
+  constexpr int kRowsPerTxn = 4;
+  constexpr int kNumRows = kNumTxns * kRowsPerTxn;
+  for (int txn = 0; txn != kNumTxns; ++txn) {
+    ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (int id = txn * kRowsPerTxn + 1; id <= (txn + 1) * kRowsPerTxn; ++id) {
+      ASSERT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+    }
+    ASSERT_OK(producer_conn_->CommitTransaction());
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+
+  ASSERT_OK(consumer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  size_t num_checked_peers = 0;
+  for (const auto& peer : ListTabletPeers(consumer_cluster(), ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet || !tablet->vector_indexes().List()) {
+      continue;
+    }
+    auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
+    ASSERT_FALSE(op_ids.vector_indexes.empty());
+    for (const auto& vector_index_op_id : op_ids.vector_indexes) {
+      ASSERT_LT(vector_index_op_id, op_ids.regular) << AsString(op_ids);
+      ASSERT_LE(op_ids.intents, vector_index_op_id) << AsString(op_ids);
+    }
+    ++num_checked_peers;
+  }
+  ASSERT_EQ(num_checked_peers, 1);
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(
+      tserver::WaitTabletsBootstrapped::kTrue));
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(consumer_conn.FetchAllAsString("EXPLAIN (COSTS OFF) " + query)),
+      "vec_test_idx");
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
 }
 
