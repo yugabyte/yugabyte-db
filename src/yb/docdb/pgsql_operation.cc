@@ -1014,8 +1014,10 @@ class VectorIndexKeyProvider {
         continue;
       }
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
-      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
-                     vector_index_.column_id(), table_row.ToString());
+      if (!vector_value) {
+        // A row with a NULL vector is not a search result.
+        continue;
+      }
       auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
       result_entries_.push_back(DocVectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
