@@ -86,6 +86,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
@@ -656,22 +657,30 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken, Http.Request request) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
-    int customerCount = customerRegistrationHandler.countCustomersForRegistration();
-    Optional<CustomerRegistrationHandler.Refusal> refusal =
-        customerRegistrationHandler.checkAllowed(request, customerCount);
-    if (refusal.isPresent()) {
-      switch (refusal.get()) {
-        case SINGLE_TENANT:
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
-        case SSO_ENABLED:
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
-        default:
-          throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
+    // /register isn't wrapped in TokenAuthenticator, which is what clears RequestContext's user
+    // after other requests. Clear it here, or the user set below (or by checkAllowed) would stay on
+    // the worker thread and be attributed to later requests.
+    try {
+      int customerCount = customerRegistrationHandler.countCustomersForRegistration();
+      Optional<CustomerRegistrationHandler.Refusal> refusal =
+          customerRegistrationHandler.checkAllowed(request, customerCount);
+      if (refusal.isPresent()) {
+        switch (refusal.get()) {
+          case SINGLE_TENANT:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
+          case SSO_ENABLED:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
+          default:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Only Super Admins can register tenant.");
+        }
       }
+      return registerCustomer(data, customerCount == 0, generateApiToken, request);
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
     }
-    return registerCustomer(data, customerCount == 0, generateApiToken, request);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -704,10 +713,11 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(
             authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
-    // When there is no authenticated user in context; we just pretend that the user
-    // created himself for auditing purpose.
-    RequestContext.putIfAbsent(
-        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    if (isSuper) {
+      // The first registration has no authenticated user to audit; attribute it to the new user.
+      // A later one is attributed to the SuperAdmin, set by checkAllowed.
+      RequestContext.put(TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    }
     auditService()
         .createAuditEntryWithReqBody(
             request,
