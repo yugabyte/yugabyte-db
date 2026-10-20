@@ -101,9 +101,7 @@ class TransactionLoader::Executor {
     // The loader starts at tablet open, before WAL replay, and the regular DB has no RocksDB WAL,
     // so every apply state it reads comes from a flushed file. LoadPendingApplies relies on that.
     DCHECK_EQ(db.regular->GetFlushAbility(), storage::FlushAbility::kNoNewData);
-    // Read after creating the regular iterator, so it covers every file the iterator reads.
-    regular_flushed_op_id_ = docdb::MaxPersistentOpIdForDb(
-        db.regular, /* invalid_if_no_new_data= */ false);
+    regular_db_ = db.regular;
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
@@ -232,19 +230,23 @@ class TransactionLoader::Executor {
         // file (see Start), so the regular DB flushed op id is not less than the real apply op id,
         // and using it claims nothing the regular DB does not already cover.
         if (state->apply_op_id.empty()) {
-          if (regular_flushed_op_id_.empty()) {
+          if (!regular_flushed_op_id_) {
+            regular_flushed_op_id_ = docdb::MaxPersistentOpIdForDb(
+                regular_db_, /* invalid_if_no_new_data= */ false);
+          }
+          if (regular_flushed_op_id_->empty()) {
             // Not expected: the file holding the state has a frontier. Without an op id the
             // remaining batches cannot be written safely, so stop here.
             LOG_WITH_PREFIX(FATAL)
-                << "Pending batch-apply of " << *txn_id << " has no apply op id, and the regular "
-                << "DB has no flushed op id to resume it with. Finish the apply on the release "
-                << "that wrote it before upgrading.";
+                << "Pending apply of " << *txn_id << " has no apply op id, and the regular DB "
+                << "has no flushed op id to resume it with. Finish the apply on the release that "
+                << "wrote it before upgrading.";
           } else {
-            state->apply_op_id = regular_flushed_op_id_;
+            state->apply_op_id = *regular_flushed_op_id_;
             // A test waits for this message.
             LOG_WITH_PREFIX(INFO)
-                << "Pending batch-apply of " << *txn_id << " has no apply op id, resuming it with "
-                << "op id " << state->apply_op_id;
+                << "Pending apply of " << *txn_id << " has no apply op id, resuming it with op id "
+                << state->apply_op_id;
           }
         }
 
@@ -417,7 +419,9 @@ class TransactionLoader::Executor {
 
   docdb::OptimizedRocksDbIterator<docdb::BoundedRocksDbIterator> regular_iterator_;
   docdb::BoundedRocksDbIterator intents_iterator_;
-  OpId regular_flushed_op_id_;
+  rocksdb::DB* regular_db_ = nullptr;
+  // Read on first need, for apply states stored without an apply op id.
+  std::optional<OpId> regular_flushed_op_id_;
 
   // Buffer that contains key of current record, i.e. value type + transaction id.
   dockv::KeyBytes current_key_;
