@@ -83,6 +83,8 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
     boolean requireAdditionalSuperUserForCatalogUpgrade =
         softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
             universe, currentVersion, newVersion);
+    boolean upgradeRequireFinalize =
+        softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
     runUpgrade(
         () -> {
           createUpdateUniverseSoftwareUpgradeStateTask(
@@ -91,8 +93,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
 
-          // Disable PITR configs at the start of software upgrade
-          createDisablePitrConfigTask();
+          // Only an upgrade that waits for finalize disables PITR; finalize or rollback
+          // re-creates the snapshot schedules.
+          if (upgradeRequireFinalize) {
+            createDisablePitrConfigTask();
+          }
 
           String password = null;
           boolean catalogUpgradeCompleted = false;
@@ -245,8 +250,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 ysqlMajorVersionUpgrade,
                 requireAdditionalSuperUserForCatalogUpgrade);
           } else {
-            boolean upgradeRequireFinalize =
-                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
             if (upgradeRequireFinalize) {
               createUpdateUniverseSoftwareUpgradeStateTask(
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
