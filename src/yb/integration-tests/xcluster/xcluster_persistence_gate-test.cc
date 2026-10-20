@@ -60,6 +60,7 @@
 
 DECLARE_bool(enable_persistence_gate);
 DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_bool(xcluster_lease_relinquish_leadership);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_string(time_source);
@@ -326,6 +327,10 @@ TEST_F(XClusterPersistenceGateTest, RefusesCommitReceivedBeforeStop) {
 // Checks that TServers without a lease refuse stamped writes, without counting the refusals,
 // and the client retries them until the leases come back; unstamped (YCQL) writes still succeed.
 TEST_F(XClusterPersistenceGateTest, FailsClosedWithoutLease) {
+  // Every TServer loses its lease below.  With relinquishing on, no tablet would then have a
+  // leader, and the writes and reads below would hang instead of being refused or succeeding.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_lease_relinquish_leadership) = false;
+
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto conn = ASSERT_RESULT(ConnectToDB(database.name));
   auto observer_conn = ASSERT_RESULT(ConnectToDB(database.name));

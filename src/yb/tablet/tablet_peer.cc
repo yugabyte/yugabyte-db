@@ -531,6 +531,10 @@ Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_ms
   return Status::OK();
 }
 
+bool TabletPeer::ShouldRelinquishLeadership() {
+  return persistence_gate_ && persistence_gate_->ShouldRelinquishLeadership();
+}
+
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
     std::lock_guard l(state_change_lock_);

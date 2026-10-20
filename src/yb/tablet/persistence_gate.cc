@@ -77,10 +77,16 @@ const LWOriginationInfoPB* GetOriginationInfo(const consensus::LWReplicateMsg& r
 }  // namespace
 
 PersistenceGate::PersistenceGate(
-    PersistenceBlockLookupFunc lookup_func, const scoped_refptr<MetricEntity>& server_metric_entity)
+    PersistenceBlockLookupFunc lookup_func, const scoped_refptr<MetricEntity>& server_metric_entity,
+    ShouldRelinquishLeadershipFunc should_relinquish_leadership_func)
     : lookup_func_(std::move(lookup_func)),
+      should_relinquish_leadership_func_(std::move(should_relinquish_leadership_func)),
       persistence_violation_rejections_(
           METRIC_persistence_violation_rejections.Instantiate(server_metric_entity)) {}
+
+bool PersistenceGate::ShouldRelinquishLeadership() const {
+  return should_relinquish_leadership_func_ && should_relinquish_leadership_func_();
+}
 
 Status PersistenceGate::CheckPersistAllowed(const consensus::LWReplicateMsg& replicate_msg) const {
   if (!IsPersistenceGateEnforced()) {

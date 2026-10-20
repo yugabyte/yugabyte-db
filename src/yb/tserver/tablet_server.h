@@ -258,6 +258,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // applies.
   void MaybeStartPg() const EXCLUDES(pg_start_mutex_);
 
+  // Whether this TServer satisfies the xCluster-guarded information lease requirement: it holds the
+  // lease or the persistence gate that requires it is not enforced.  Decides both whether PG may
+  // start and whether this TServer's tablets must give up leadership.
+  bool IsXClusterLeaseRequirementMet() const;
+
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
 
@@ -707,7 +712,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
-  bool IsPgStartAllowedByXClusterLeaseStatus() const;
   Status RestartPgUnlocked() const REQUIRES(pg_start_mutex_);
   Status KillPgUnlocked() const REQUIRES(pg_start_mutex_);
 

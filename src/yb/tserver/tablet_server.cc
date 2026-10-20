@@ -1150,7 +1150,7 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 
 Status TabletServer::RestartPG() const {
   std::lock_guard lock(pg_start_mutex_);
-  if (!IsPgStartAllowedByXClusterLeaseStatus()) {
+  if (!IsXClusterLeaseRequirementMet()) {
     LOG(DETAIL) << "Keeping Postgres paused until this TServer holds an xCluster-guarded "
                 << "information lease";
     pg_awaiting_xcluster_lease_ = true;
@@ -1168,7 +1168,7 @@ Status TabletServer::KillPg() const {
 
 void TabletServer::MaybeStartPg() const {
   std::lock_guard lock(pg_start_mutex_);
-  if (!pg_awaiting_xcluster_lease_ || !IsPgStartAllowedByXClusterLeaseStatus()) {
+  if (!pg_awaiting_xcluster_lease_ || !IsXClusterLeaseRequirementMet()) {
     return;
   }
   // The YSQL lease checker marks the lease dead before its KillPg clears
@@ -1184,7 +1184,7 @@ void TabletServer::MaybeStartPg() const {
   WARN_NOT_OK(RestartPgUnlocked(), "Failed to start PG postmaster");
 }
 
-bool TabletServer::IsPgStartAllowedByXClusterLeaseStatus() const {
+bool TabletServer::IsXClusterLeaseRequirementMet() const {
   return !IsPersistenceGateEnforced() || xcluster_context_->HasXClusterGuardedInfoLease();
 }
 

@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -706,6 +707,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
+  // Steps down every leader on this TServer while its tablets must not lead (see
+  // PersistenceGate::ShouldRelinquishLeadership).  Runs on the scheduler; the step-downs run on
+  // the Raft pool, in StepDownLocalLeaders.
+  void RelinquishLeadershipIfNeeded();
+  void StepDownLocalLeaders();
+
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
@@ -912,6 +919,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
+
+  std::unique_ptr<rpc::Poller> relinquish_leadership_poller_;
+
+  // Whether StepDownLocalLeaders is queued or running; at most one is.
+  std::atomic<bool> relinquish_leadership_running_{false};
+
+  // When StepDownLocalLeaders last asked this TServer's leader of each tablet to step down.  Never
+  // pruned: an entry is a few dozen bytes per tablet this TServer has led.  Used only by
+  // StepDownLocalLeaders, which runs one at a time.
+  std::unordered_map<TabletId, CoarseTimePoint> relinquish_step_down_requests_;
 
   // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
   // on the server, accounting for hardlinks.
