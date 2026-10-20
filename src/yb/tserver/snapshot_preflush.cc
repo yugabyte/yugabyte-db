@@ -281,6 +281,7 @@ class SnapshotPreflush::Impl {
       call->request.add_tablet_ids(attempt.results->tablet_id);
       call->request.set_operation(FlushTabletsRequestPB::FLUSH);
       call->request.set_flags(tablet::FLUSH_COMPACT_ALL);
+      call->request.set_snapshot_preflight(true);
       call->request.set_propagated_hybrid_time(server_.Clock()->Now().ToUint64());
       call->controller.set_deadline(attempt.deadline);
       calls.push_back(std::move(call));

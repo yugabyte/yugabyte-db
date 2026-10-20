@@ -23,6 +23,11 @@ DEFINE_NON_RUNTIME_int32(tablet_flush_concurrency, 4,
     "use a separate lane sized by snapshot_preflush_concurrency.");
 DEFINE_validator(tablet_flush_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
 TAG_FLAG(tablet_flush_concurrency, advanced);
+DEFINE_NON_RUNTIME_int32(tablet_flush_preflight_concurrency, 4,
+    "Workers running flushes requested by other servers' snapshot preflights, kept separate from "
+    "admin FlushTablets jobs so bulk flushes cannot delay snapshot creation.");
+DEFINE_validator(tablet_flush_preflight_concurrency, FLAG_GT_VALUE_VALIDATOR(0));
+TAG_FLAG(tablet_flush_preflight_concurrency, advanced);
 DECLARE_int32(snapshot_preflush_concurrency);
 
 DEFINE_RUNTIME_int32(tablet_flush_max_outstanding, 16,
@@ -39,6 +44,8 @@ DECLARE_bool(TEST_skip_force_superblock_flush);
 THREAD_POOL_METRICS_DEFINE(server, tablet_flush_pool, "Admin tablet flush workers");
 THREAD_POOL_METRICS_DEFINE(server, tablet_flush_reserved_pool,
     "Snapshot preflight local flush workers");
+THREAD_POOL_METRICS_DEFINE(server, tablet_flush_preflight_pool,
+    "Incoming snapshot preflight flush workers");
 METRIC_DEFINE_gauge_uint64(server, tablet_flush_active, "Admitted tablet flush jobs",
     yb::MetricUnit::kOperations,
     "Flush jobs including reserved, queued, running, and retiring work", 0);
@@ -187,6 +194,10 @@ TabletFlusher::TabletFlusher(const scoped_refptr<MetricEntity>& metrics)
       .set_max_threads(FLAGS_snapshot_preflush_concurrency)
       .set_metrics(THREAD_POOL_METRICS_INSTANCE(metrics, tablet_flush_reserved_pool))
       .Build(&reserved_pool_));
+  CHECK_OK(ThreadPoolBuilder("tablet-flush-preflight")
+      .set_max_threads(FLAGS_tablet_flush_preflight_concurrency)
+      .set_metrics(THREAD_POOL_METRICS_INSTANCE(metrics, tablet_flush_preflight_pool))
+      .Build(&preflight_pool_));
 }
 
 TabletFlusher::~TabletFlusher() {
@@ -237,8 +248,9 @@ Status TabletFlusher::Submit(
   });
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(Admit(ids));
+  auto& pool = request.snapshot_preflight() ? *preflight_pool_ : *pool_;
   auto status = Enqueue(
-      *pool_, /* reserved = */ false, std::move(tablets), ids, request, deadline,
+      pool, /* reserved = */ false, std::move(tablets), ids, request, deadline,
       std::move(callback));
   if (!status.ok()) {
     ReleaseUnlocked(ids, /* reserved = */ false);
@@ -320,7 +332,7 @@ void TabletFlusher::StartShutdown() {
 }
 
 void TabletFlusher::CompleteShutdown() {
-  for (auto* pool : {pool_.get(), reserved_pool_.get()}) {
+  for (auto* pool : {pool_.get(), reserved_pool_.get(), preflight_pool_.get()}) {
     pool->Wait();
     pool->Shutdown();
   }

@@ -84,6 +84,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(snapshot_create_flush_before_submit);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(snapshot_preflush_timeout_ms);
+DECLARE_int32(tablet_flush_concurrency);
 DECLARE_int32(tablet_flush_max_outstanding);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -858,6 +859,82 @@ TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
   const auto retry = ASSERT_RESULT(CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id));
   ASSERT_FALSE(retry.has_error()) << retry.DebugString();
   ASSERT_EQ(snapshot_tablet_flushes.load(std::memory_order_acquire), 3);
+}
+
+// Follower legs of a preflight run on the receiver's preflight lane, so a follower whose admin
+// flush workers are all held by bulk flushes still completes the snapshot within its budget.
+TEST_F(SnapshotTest, FollowerAdminFlushesDoNotDelayPreflight) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_create_flush_before_submit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  const auto saved_timeout = FLAGS_snapshot_preflush_timeout_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = 5000;
+  auto restore_timeout = ScopeExit([saved_timeout] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_preflush_timeout_ms) = saved_timeout;
+  });
+  const auto num_admin_workers = static_cast<size_t>(FLAGS_tablet_flush_concurrency);
+  auto workload = CreateDefaultWorkload();
+  workload.set_num_tablets(static_cast<int>(num_admin_workers + 1));
+  workload.Setup();
+  const auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  ASSERT_EQ(peers.size(), 3 * (num_admin_workers + 1));
+  const auto snapshot_tablet_id = peers.front()->tablet_id();
+  auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
+  ASSERT_NE(leader, nullptr);
+  auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
+  // Every other tablet has a replica on the follower; hold one admin flush per worker there.
+  std::vector<tablet::TabletPtr> held;
+  for (const auto& peer : peers) {
+    if (peer->tablet_id() != snapshot_tablet_id &&
+        peer->permanent_uuid() == follower->server()->permanent_uuid()) {
+      held.push_back(ASSERT_RESULT(peer->shared_tablet()));
+    }
+  }
+  ASSERT_EQ(held.size(), num_admin_workers);
+  CountDownLatch flushed(num_admin_workers), release(1);
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (std::find_if(held.begin(), held.end(),
+                     [tablet](const auto& t) { return t.get() == tablet; }) != held.end()) {
+      flushed.CountDown();
+      release.Wait();
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  std::vector<Status> admin_statuses(held.size());
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  for (size_t i = 0; i != held.size(); ++i) {
+    threads.AddThreadFunctor([&, i] {
+      tserver::TabletServerAdminServiceProxy proxy(
+          &client_->proxy_cache(), HostPort::FromBoundEndpoint(follower->bound_rpc_addr()));
+      tserver::FlushTabletsRequestPB request;
+      request.set_dest_uuid(follower->server()->permanent_uuid());
+      request.add_tablet_ids(held[i]->tablet_id());
+      tserver::FlushTabletsResponsePB response;
+      RpcController controller;
+      controller.set_timeout(60s);
+      admin_statuses[i] = proxy.FlushTablets(request, &response, &controller);
+      if (admin_statuses[i].ok() && response.has_error()) {
+        admin_statuses[i] = StatusFromPB(response.error().status());
+      }
+    });
+  }
+  ASSERT_TRUE(flushed.WaitFor(30s));
+  const auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  const auto reply = ASSERT_RESULT(CreateTabletSnapshot(leader, snapshot_tablet_id, snapshot_id));
+  ASSERT_FALSE(reply.has_error()) << reply.DebugString();
+  release.CountDown();
+  threads.JoinAll();
+  for (const auto& status : admin_statuses) {
+    ASSERT_OK(status);
+  }
 }
 
 // Every captured replica must flush, so a peer still being remote bootstrapped delays snapshot

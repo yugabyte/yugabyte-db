@@ -600,10 +600,11 @@ class SnapshotPreflushLimitServiceTest : public SnapshotPreflushServiceTest {
     SnapshotPreflushServiceTest::SetUp();
   }
 
-  Status AdminFlush(const TabletId& id, MonoDelta timeout = 10s) {
+  Status AdminFlush(const TabletId& id, MonoDelta timeout = 10s, bool preflight = false) {
     FlushTabletsRequestPB request;
     request.set_dest_uuid(mini_server_->server()->permanent_uuid());
     request.add_tablet_ids(id);
+    request.set_snapshot_preflight(preflight);
     FlushTabletsResponsePB response;
     RpcController controller;
     controller.set_timeout(timeout);
@@ -691,6 +692,52 @@ TEST_F(SnapshotPreflushLimitServiceTest, ReservedFlushRunsWhileAdminWorkersBusy)
   threads.JoinAll();
   ASSERT_OK(admin_status);
   ASSERT_NO_FATALS(WaitForRetiredPreflight());
+}
+
+// A follower leg of another leader's preflight is marked on the wire and runs on its own lane, so
+// bulk admin flushes on the receiver cannot delay it; an unmarked request still queues behind them.
+TEST_F(SnapshotPreflushLimitServiceTest, IncomingPreflightFlushRunsWhileAdminWorkersBusy) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_flush_max_outstanding) = 3;
+  auto first = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  auto second = ASSERT_RESULT(AddTablet("second-tablet"));
+  auto third = ASSERT_RESULT(AddTablet("third-tablet"));
+  CountDownLatch flushed(1), release(1);
+  std::atomic<int> third_flushed{0};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("TabletFlusher::Flushed", [&](void* arg) {
+    auto* tablet = static_cast<tablet::Tablet*>(arg);
+    if (tablet == first.get()) {
+      flushed.CountDown();
+      release.Wait();
+    } else if (tablet == third.get()) {
+      third_flushed.fetch_add(1, std::memory_order_acq_rel);
+    }
+  });
+  sync->EnableProcessing();
+  TestThreadHolder threads;
+  Status first_status, third_status;
+  auto cleanup = ScopeExit([&] {
+    release.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([&] { first_status = AdminFlush(first->tablet_id()); });
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  // Unmarked: admitted, but waits for the held admin worker.
+  threads.AddThreadFunctor([&] { third_status = AdminFlush(third->tablet_id()); });
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 2; }, 5s, "Unmarked flush admitted"));
+  // Marked: completes on the preflight lane while the admin worker is still held.
+  ASSERT_OK(AdminFlush(second->tablet_id(), 10s, /* preflight = */ true));
+  ASSERT_EQ(third_flushed.load(std::memory_order_acquire), 0);
+  ASSERT_EQ(mini_server_->server()->metric_entity()
+      ->FindOrNull<Counter>(METRIC_tablet_flush_expired_queued)->value(), 0);
+  release.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(first_status);
+  ASSERT_OK(third_status);
+  ASSERT_EQ(third_flushed.load(std::memory_order_acquire), 1);
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Flushes retired"));
 }
 
 // The leader's own flush must be admitted together with the preflight slot. Otherwise the server

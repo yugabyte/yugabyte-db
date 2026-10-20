@@ -24,10 +24,13 @@ namespace tserver {
 
 // Shared by local snapshot preflights and the admin FlushTablets RPC. Admission bounds
 // outstanding batches (reserved, queued, running, retiring) separately from worker count, so
-// accepted work can wait for a worker instead of being rejected. Reserved jobs run on their own
-// lane: a reservation is only ever held by an admitted preflight, so the lane sized to the
-// preflight limit guarantees each reserved job a worker regardless of admin bulk flushes. A
-// caller timeout does not release a running job's slot.
+// accepted work can wait for a worker instead of being rejected. Three lanes keep snapshot
+// preflights out of bulk admin flushes: reserved jobs (the leader's own leg) have a lane sized to
+// the preflight limit, and since a reservation is only ever held by an admitted preflight, each
+// reserved job is guaranteed a worker. Requests marked snapshot_preflight (follower legs of other
+// leaders' preflights) have their own lane; they are bounded by the coordinator rather than
+// locally, so that lane isolates them from admin flushes without a worker guarantee. A caller
+// timeout does not release a running job's slot.
 class TabletFlusher {
  public:
   using Callback = std::function<void(const Status&, const TabletId&)>;
@@ -83,6 +86,7 @@ class TabletFlusher {
 
   std::unique_ptr<ThreadPool> pool_;
   std::unique_ptr<ThreadPool> reserved_pool_;
+  std::unique_ptr<ThreadPool> preflight_pool_;
   // Admission and shutdown are serialized here; callbacks and I/O run without this mutex.
   std::mutex mutex_;
   bool closing_ GUARDED_BY(mutex_) = false;

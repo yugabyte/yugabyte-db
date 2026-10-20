@@ -32,6 +32,7 @@ apply-time stalls, and is a policy change rather than a bug fix.
 | `snapshot_preflush_timeout_ms` | `10000` | Runtime; capped by the snapshot RPC deadline |
 | `snapshot_preflush_concurrency` | `4` | Startup; admitted preflights per server |
 | `tablet_flush_concurrency` | `4` | Startup; workers running admin flush jobs |
+| `tablet_flush_preflight_concurrency` | `4` | Startup; workers running other leaders' preflight flushes |
 | `tablet_flush_max_outstanding` | `16` | Runtime; admitted flush jobs: reserved, queued, running, retiring; must exceed `snapshot_preflush_concurrency` |
 
 Admission is non-waiting and excludes overlapping work for the same tablet. Overload is a
@@ -41,7 +42,12 @@ reservation is consumed by the local flush job or released when the attempt fail
 Reserved jobs run on a lane of `snapshot_preflush_concurrency` workers: at most that many
 reservations exist, so admin bulk flushes (for example a whole-table `FlushTables`, one batch per
 server) occupying the shared workers cannot make an admitted preflight expire in the queue after
-its followers already flushed. Other admitted jobs beyond the worker count wait in the shared pool;
+its followers already flushed. That guarantee covers only the leader's own leg. The follower legs
+arrive as `FlushTablets` requests marked `snapshot_preflight`; the receiver runs them on a third
+lane of `tablet_flush_preflight_concurrency` workers. Their count is bounded by the coordinator,
+not locally, so that lane isolates them from admin flushes without guaranteeing a worker: they can
+still wait behind other leaders' preflights. A receiver predating the field runs them on its admin
+pool. Other admitted jobs beyond the worker count wait in the shared pool;
 a job whose deadline passed while queued fails without launching I/O and is counted in
 `tablet_flush_expired_queued`. `tablet_flush_max_outstanding` must exceed
 `snapshot_preflush_concurrency` (validated) so local reservations leave room for other servers'
