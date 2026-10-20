@@ -117,10 +117,22 @@ class AzureCreateRootVolumesMethod(CreateRootVolumesMethod):
             self.create_method.run_create_instance(args)
         except Exception as e:
             logging.error("Could not create Azure master volume. Failed with error {}.".format(e))
-            host_info = self.cloud.get_host_info(args)
-            self.delete_instance(args, host_info["node_uuid"], False)
+            # Best effort cleanup of the temporary VM. The creation error is the one to surface,
+            # so a cleanup failure must not replace it.
+            try:
+                host_info = self.cloud.get_host_info(args)
+                if host_info:
+                    self.delete_instance(args, host_info["node_uuid"], False)
+            except Exception as cleanup_error:
+                logging.warning("Could not clean up Azure VM {}. Failed with error {}."
+                                .format(args.search_pattern, cleanup_error))
+            raise
 
         host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError(
+                "Could not find Azure VM {} created for the master volume.".format(
+                    args.search_pattern))
         self.delete_instance(args, host_info["node_uuid"], True)
         return host_info["root_volume"]
 
