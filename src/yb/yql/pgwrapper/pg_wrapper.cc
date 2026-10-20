@@ -89,6 +89,10 @@ DEFINE_test_flag(bool, pg_collation_enabled, true,
 DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
 
+DEFINE_test_flag(string, ysql_pg_upgrade_dump_pid_dir, "",
+                 "If set, each ysql_dump that pg_upgrade runs creates a file named after its pid "
+                 "in this directory, then waits for a signal instead of dumping.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -997,7 +1001,7 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
@@ -1067,6 +1071,8 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1136,8 +1142,16 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
+  Subprocess pg_upgrade(program_path, args);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
+  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
+    pg_upgrade.SetEnv(
+        "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
+  }
   RETURN_NOT_OK_PREPEND(
-      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      pg_upgrade.Run(/*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
