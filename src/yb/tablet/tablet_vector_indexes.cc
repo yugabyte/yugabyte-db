@@ -705,7 +705,7 @@ Status TabletVectorIndexes::Backfill(
   // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(flush_op);
-  // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart:
+  // TODO(#35499) Need to handle scenario when regular db was not flushed before restart:
   // the reverse mapping entries of the chunks flushed so far are lost, and a resumed backfill does
   // not rewrite them.
   RETURN_NOT_OK_PREPEND(
