@@ -21955,8 +21955,13 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Catalog Cache Miss Count",
-      "expr" : "sum(rate(rpc_latency_count{export_type=\"ysql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", table_name=~\"..*\", server_type=\"yb_ysqlserver\", service_method=\"CatalogCacheTableMisses\"}[300s]))",
+      "expr" : "sum(rate(rpc_latency_count{export_type=\"ysql_export\", node_prefix=~\"$dbcluster\", saved_name=~\"handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count|yb_ysqlserver_CatalogCacheMisses_count\", table_name=~\"..*\"}[300s]))",
       "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Catalog Cache Miss Count",
+      "expr" : "sum(rate(yb_ysqlserver_CatalogCacheMisses_count{export_type=\"ysql_export\", node_prefix=~\"$dbcluster\", saved_name=~\"handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count|yb_ysqlserver_CatalogCacheMisses_count\", table_name=~\"..*\"}[300s]))",
+      "refId" : "B"
     } ],
     "gridPos" : {
       "w" : 12,
