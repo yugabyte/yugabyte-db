@@ -29,6 +29,30 @@ public class PlatformLoggingConfig {
   @ApiModelProperty(
       value =
           "WARNING: This is a preview API that could change. "
+              + "Maximum size of the active application log file before it is rolled over,"
+              + " for example \"1024MB\" or \"1GB\". Minimum 256MB.",
+      example = "1024MB",
+      required = false)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.31.0.0")
+  @Nullable
+  private String maxFileSize;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Total size of retained application log archives, for example \"20GB\". Archives"
+              + " are deleted oldest first once this is exceeded, so on a high volume node this"
+              + " binds before maxHistory and retains fewer days than maxHistory allows."
+              + " Minimum 5GB.",
+      example = "20GB",
+      required = false)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.31.0.0")
+  @Nullable
+  private String totalSizeCap;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
               + "Application log file name prefix. Defaults to \"\". For example, setting this to"
               + " \"yb-platform-\" will generate application log files as"
               + " \"yb-platform-application.log\" instead of \"application.log\".",
