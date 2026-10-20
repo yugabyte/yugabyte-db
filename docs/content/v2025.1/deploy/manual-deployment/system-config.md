@@ -224,7 +224,6 @@ Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes 
 This applies to:
 
 - Red Hat Enterprise Linux 8 for ARM and distributions based on it, including AlmaLinux 8, Rocky Linux 8, CentOS Stream 8, and Oracle Linux 8 with the Red Hat Compatible Kernel. Their ARM kernel always uses 64 KiB pages.
-- Oracle Linux 7 for ARM with the Unbreakable Enterprise Kernel Release 5.
 - Any other kernel older than 5.2 that was built with 64 KiB pages.
 
 Kernels 5.2 and later don't refuse requests this way, even with 64 KiB pages. This includes the optional `kernel-64k` kernel for Red Hat Enterprise Linux 9 and distributions based on it, the Unbreakable Enterprise Kernel Release 6 for ARM, and Ubuntu's `-64k` kernels.
