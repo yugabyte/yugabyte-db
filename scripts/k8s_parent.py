@@ -304,20 +304,43 @@ def set_exported_instance_env(command):
     if process_type(command) is ProcessType.Controller:
         return
     try:
-        if process_type(command) is ProcessType.Master:
-            pod_type = "yb-master"
+        hostname = os.getenv("HOSTNAME") or ""
+        # Extract the "yb-<server>-..." portion from the pod hostname exactly
+        # the way YBA's KubernetesCommandExecutor.processNodeInfo does when it
+        # writes NodeDetails.nodeName (hostname.lastIndexOf("yb-") + substring).
+        # This is sts-index-aware: hostname "<helmFullName>yb-tserver-0" yields
+        # "yb-tserver-0"; hostname "<helmFullName>yb-tserver-1-0" (statefulset
+        # index 1 from full-move / partial-update flows) yields "yb-tserver-1-0".
+        # Falls back to the process-type + last hostname segment only if the
+        # substring isn't found, matching the legacy behavior.
+        yb_idx = hostname.rfind("yb-")
+        if yb_idx >= 0:
+            base_name = hostname[yb_idx:]
         else:
-            pod_type = "yb-tserver"
-        ordinal_index = os.getenv("HOSTNAME").split("-")[-1]
+            pod_type = "yb-master" if process_type(command) is ProcessType.Master \
+                else "yb-tserver"
+            base_name = "%s-%s" % (pod_type, hostname.split("-")[-1])
+        # YBA (KubernetesCommandExecutor.generateHelmOverrides) injects the exact
+        # suffix it puts after "yb-<server>-N[-M]" in NodeDetails.nodeName:
+        #   ""                single-AZ primary
+        #   "_<az>"           multi-AZ  primary
+        #   "-readonly"       single-AZ RR
+        #   "_<az>-readonly"  multi-AZ RR
+        # When present (even if empty), trust it verbatim so Prometheus
+        # exported_instance always matches the YBA node name used for filtering.
+        suffix = os.getenv("YB_METRIC_NODE_NAME_SUFFIX")
+        if suffix is not None:
+            os.environ["EXPORTED_INSTANCE"] = "%s%s" % (base_name, suffix)
+            return
+        # Legacy fallback for pods deployed by an older YBA that didn't set
+        # YB_METRIC_NODE_NAME_SUFFIX. Preserves historical single-AZ / multi-AZ
+        # behavior; RR remains uncovered until helm re-applies with the new env
+        # var (matches "fixes on next software upgrade" migration semantics).
         availability_zone = parse_zone_from_flags(command)
-        # if we cannot find zone for some reason, we should just call it yb-tserver-0
-        # in multi-zone deployments, we will have to format it like  yb-tserver-0_us-west1-ae
-        if availability_zone.strip():
-            # format yb-tserver-0_us-west1-a"
-            os.environ["EXPORTED_INSTANCE"] = "%s-%s_%s" % (
-                pod_type, ordinal_index, availability_zone)
+        if availability_zone and availability_zone.strip():
+            os.environ["EXPORTED_INSTANCE"] = "%s_%s" % (base_name, availability_zone)
         else:
-            os.environ["EXPORTED_INSTANCE"] = "%s-%s" % (pod_type, ordinal_index)
+            os.environ["EXPORTED_INSTANCE"] = base_name
     except Exception as e:
         logging.error("Error while setting exported instance env: {}, traceback: {}".format(
             e, traceback.format_exc()))

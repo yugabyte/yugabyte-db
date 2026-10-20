@@ -36,7 +36,14 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private final boolean isRecharts;
 
-  // Names the k8s_ keys' lines by the universe's release metadata; null without universe context.
+  // Resolver that maps Kubernetes container-metric label triples (pod_name, namespace, az_name)
+  // to YBA node names using the universe's cluster / AZ / helm-release metadata. Populated by
+  // MetricQueryHelper for container-metric queries with a resolvable universe so
+  // MetricQueryResponse can render the canonical node name (correctly handling single-AZ vs.
+  // multi-AZ and primary vs. read-replica) even for samples whose NodeDetails entries have
+  // already been removed. Null for non-container queries or when no universe was resolved;
+  // MetricQueryResponse falls back to the label-only heuristic in that case, defaulting to
+  // multi-AZ naming when no resolver is available.
   private final K8sPodNodeNameResolver k8sPodNodeNameResolver;
 
   public MetricQueryExecutor(
@@ -52,25 +59,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         queryParam,
         additionalFilters,
         MetricSettings.defaultSettings(queryParam.get("queryKey")),
-        false);
-  }
-
-  public MetricQueryExecutor(
-      MetricUrlProvider metricUrlProvider,
-      ApiHelper apiHelper,
-      Map<String, String> headers,
-      Map<String, String> queryParam,
-      Map<String, String> additionalFilters,
-      MetricSettings metricSettings,
-      boolean isRecharts) {
-    this(
-        metricUrlProvider,
-        apiHelper,
-        headers,
-        queryParam,
-        additionalFilters,
-        metricSettings,
-        isRecharts,
+        false,
         null);
   }
 

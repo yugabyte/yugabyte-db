@@ -185,6 +185,132 @@ public class MetricQueryResponseTest {
     assertThat(metricData.y, allOf(notNullValue(), instanceOf(ArrayNode.class)));
   }
 
+  // The following volume-metric tests reproduce the scenarios reported against real universes
+  // where PVC labels emitted by the yugabyte Helm chart in newNamingStyle look like
+  // `<fullname>datadir<N>-<fullname>yb-<server>-<idx>` (i.e. the volume-claim-template name is
+  // prefixed with `<fullname>`, so `datadir<N>` is in the middle of the label rather than at
+  // the start). Regressions here previously caused the datadir suffix to be dropped and the RR
+  // pods to be resolved as primary because the pod-name portion couldn't be recovered.
+
+  @Test
+  public void testContainerVolumeMetricsSingleAzPrimaryNewNamingStyle() {
+    String releaseName = "ybamalyshev-single-pdmc";
+    // yugabyte chart in newNamingStyle: PVC = `<fullname>datadir<N>-<fullname>yb-<server>-<idx>`
+    // where `<fullname>` = helm release name + "-".
+    String pvc = releaseName + "-datadir0-" + releaseName + "-yb-tserver-0";
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + " {\"persistentvolumeclaim\":\""
+                + pvc
+                + "\",\"namespace\":\"ybamalyshev-single\",\"az_name\":\"us-west1-a\"},"
+                + "\"value\":[1479278137,\"0.5\"]}]}}");
+    MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
+    K8sPodNodeNameResolver resolver =
+        K8sPodNodeNameResolver.ofReleases(
+            true /* newNamingStyle */,
+            ImmutableList.of(
+                new ReleaseInfo(
+                    releaseName,
+                    "ybamalyshev-single",
+                    "us-west1-a",
+                    false /* isMultiAZ */,
+                    false /* isReadReplica */)));
+
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(
+            "container_volume_stats",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_volume_stats"),
+            resolver);
+
+    assertEquals(1, data.size());
+    // Single-AZ primary must not carry the AZ or `-readonly` suffix, but must preserve the
+    // datadir suffix so per-volume series stay distinguishable on the graph.
+    assertThat(data.get(0).instanceName, allOf(notNullValue(), equalTo("yb-tserver-0_datadir0")));
+  }
+
+  @Test
+  public void testContainerVolumeMetricsMultiAzReadReplicaNewNamingStyle() {
+    // Note the `arr` in the release name: `azRR` = azName ("us-west1-a") + "rr" -> "us-west1-arr".
+    // See KubernetesUtil.getHelmReleaseName; this is what causes RR release names to sort
+    // differently from primary ones and is why matching purely by namespace collapses them.
+    String releaseName = "ybamalyshev-o-us-west1-arr-nlwt";
+    String pvc = releaseName + "-datadir0-" + releaseName + "-yb-tserver-0";
+    // Primary release for the same AZ - added to the resolver so we can prove that the RR pod
+    // still resolves to its own release and doesn't fall through to the (namespace-shared)
+    // primary entry.
+    ReleaseInfo primary =
+        new ReleaseInfo(
+            "ybamalyshev-o-us-west1-a-abcd",
+            "ybamalyshev-o",
+            "us-west1-a",
+            true /* isMultiAZ */,
+            false /* isReadReplica */);
+    ReleaseInfo readReplica =
+        new ReleaseInfo(
+            releaseName,
+            "ybamalyshev-o",
+            "us-west1-a",
+            true /* isMultiAZ */,
+            true /* isReadReplica */);
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + " {\"persistentvolumeclaim\":\""
+                + pvc
+                + "\",\"namespace\":\"ybamalyshev-o\",\"az_name\":\"us-west1-a\"},"
+                + "\"value\":[1479278137,\"0.5\"]}]}}");
+    MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
+    K8sPodNodeNameResolver resolver =
+        K8sPodNodeNameResolver.ofReleases(
+            true /* newNamingStyle */, ImmutableList.of(primary, readReplica));
+
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(
+            "container_volume_stats",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_volume_stats"),
+            resolver);
+
+    assertEquals(1, data.size());
+    // Multi-AZ RR must produce the `_<az>-readonly` suffix (matching KubernetesUtil.
+    // getKubernetesNodeName) followed by the datadir suffix.
+    assertThat(
+        data.get(0).instanceName,
+        allOf(notNullValue(), equalTo("yb-tserver-0_us-west1-a-readonly_datadir0")));
+  }
+
+  @Test
+  public void testContainerVolumeMetricsOldNamingStylePreservesDatadir() {
+    // Old naming style: PVC is `datadir<N>-yb-<server>-<idx>` (no fullname prefix on either
+    // side). Confirm the pattern still handles this and the fallback path still tags the
+    // datadir suffix on the reconstructed instance name.
+    String pvc = "datadir0-yb-tserver-0";
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + " {\"persistentvolumeclaim\":\""
+                + pvc
+                + "\",\"namespace\":\"yb-old-univ\",\"az_name\":\"us-west1-a\"},"
+                + "\"value\":[1479278137,\"0.5\"]}]}}");
+    MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
+
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(
+            "container_volume_stats",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_volume_stats"),
+            null /* resolver - trigger the label-only fallback (defaults to multi-AZ) */);
+
+    assertEquals(1, data.size());
+    // With no resolver, the fallback path defaults to multi-AZ naming so the AZ suffix should be
+    // added and the datadir suffix preserved.
+    assertThat(
+        data.get(0).instanceName,
+        allOf(notNullValue(), equalTo("yb-tserver-0_us-west1-a_datadir0")));
+  }
+
   @Test
   public void testK8sKeysGetPodAndVolumeInstanceNames() {
     JsonNode podJson =
@@ -287,8 +413,8 @@ public class MetricQueryResponseTest {
             "yb-master-0_us-west1-a_datadir0",
             "yb-tserver-0_us-west1-a-readonly_datadir0",
             "yb-tserver-0_us-west1-b_datadir1",
-            // A release the universe no longer has keeps the claim name.
-            "ybu-us-west1-c-gone-datadir0-ybu-us-west1-c-gone-yb-tserver-0"));
+            // A release the universe no longer has falls back to the label-based name.
+            "yb-tserver-0_datadir0"));
 
     JsonNode podJson =
         Json.parse(
@@ -304,7 +430,7 @@ public class MetricQueryResponseTest {
                 resolver);
     assertThat(podData.get(0).instanceName, equalTo("yb-tserver-0_us-west1-a-readonly"));
 
-    // The older container keys keep their label-based names.
+    // The container keys are named by the same release metadata.
     List<MetricGraphData> containerData =
         Json.fromJson(volumeJson, MetricQueryResponse.class)
             .getGraphData(
@@ -312,9 +438,7 @@ public class MetricQueryResponseTest {
                 new MetricConfigDefinition().setGroupBy("persistentvolumeclaim"),
                 MetricSettings.defaultSettings("container_volume_stats"),
                 resolver);
-    assertThat(
-        containerData.get(0).instanceName,
-        equalTo("ybu-us-west1-a-abcd-datadir0-ybu-us-west1-a-abcd-yb-master-0"));
+    assertThat(containerData.get(0).instanceName, equalTo("yb-master-0_us-west1-a_datadir0"));
   }
 
   @Test

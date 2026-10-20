@@ -4806,6 +4806,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.commandType = KubernetesCommandExecutor.CommandType.COPY_PACKAGE;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.ybcServerName = node.nodeName;
+    // Capture the stable node identifier alongside the name so KubernetesCommandExecutor
+    // can survive a rename between here and subtask execution (see resolveTargetNode).
+    params.nodeUuid = node.nodeUuid;
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.ybcGflags = ybcGflags;
     params.providerUUID = providerUUID;
@@ -4839,6 +4842,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.commandType = KubernetesCommandExecutor.CommandType.YBC_ACTION;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.ybcServerName = node.nodeName;
+    // Capture the stable node identifier alongside the name so KubernetesCommandExecutor
+    // can survive a rename between here and subtask execution (see resolveTargetNode).
+    params.nodeUuid = node.nodeUuid;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.providerUUID = providerUUID;
     params.command = command;

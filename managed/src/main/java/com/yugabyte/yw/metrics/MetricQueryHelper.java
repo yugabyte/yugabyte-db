@@ -145,7 +145,7 @@ public class MetricQueryHelper {
   public JsonNode query(Customer customer, List<String> metricKeys, Map<String, String> params) {
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
     List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
-    return query(customer, metricSettings, params, filterOverrides, false);
+    return query(customer, metricSettings, params, filterOverrides, false, null);
   }
 
   public JsonNode query(
@@ -154,7 +154,7 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
     List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
-    return query(customer, metricSettings, params, filterOverrides, false);
+    return query(customer, metricSettings, params, filterOverrides, false, null);
   }
 
   public JsonNode query(Customer customer, MetricQueryParams metricQueryParams) {
@@ -192,7 +192,8 @@ public class MetricQueryHelper {
           new ArrayList<>(metricSettingsMap.values()),
           params,
           filterOverrides,
-          metricQueryParams.isRecharts());
+          metricQueryParams.isRecharts(),
+          null);
     }
 
     // Choosing filters per key, since cAdvisor and kubelet series have no node_prefix and one
@@ -204,14 +205,19 @@ public class MetricQueryHelper {
     // DB-container filter for the container keys only, set when nodes are selected; a k8s key
     // names its own containers.
     String dbContainerFilter = null;
-    // Names the k8s_ keys' lines from the universe's release metadata, since a series summed by
-    // claim carries no az_name to build the name from.
-    K8sPodNodeNameResolver k8sPodNodeNameResolver = null;
     boolean hasKubernetesKey =
         metricSettingsMap.keySet().stream()
             .anyMatch(key -> getKubernetesKind(key) != KubernetesKind.NONE);
 
     ObjectNode filterJson = Json.newObject();
+    // Cluster-derived resolver for Kubernetes container-metric labels. Built once per query from
+    // the universe's cluster / AZ / helm-release metadata so it also covers pods whose
+    // NodeDetails have already been removed (e.g. samples from before a rolling upgrade). Null
+    // for non-container queries or when the universe isn't resolvable - MetricQueryResponse
+    // then falls back to its label-only heuristic. The resolver also carries the universe-level
+    // multi-AZ flag (via {@link K8sPodNodeNameResolver#isMultiAZ}), so we no longer need to
+    // thread that separately through the executor.
+    K8sPodNodeNameResolver k8sPodNodeNameResolver = null;
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
       String universePrefixes =
           customer.getUniverses().stream()
@@ -283,6 +289,14 @@ public class MetricQueryHelper {
       if (hasKubernetesKey) {
 
         boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
+        // Build the resolver from the universe's cluster / AZ metadata (which persists even
+        // for pods that no longer have a NodeDetails record). MetricQueryResponse prefers this
+        // over any label-based reconstruction so read-replica pods (which require the
+        // `-readonly` suffix) and multi-AZ pods render with the same node name YBA uses
+        // elsewhere in the UI, including for historical samples of already-removed pods.
+        // The resolver also exposes the universe-level multi-AZ flag (isMultiAZ) so we don't
+        // recompute it locally.
         k8sPodNodeNameResolver = K8sPodNodeNameResolver.forUniverse(universe);
 
         if (CollectionUtils.isNotEmpty(nodesToFilter)) {
@@ -437,20 +451,13 @@ public class MetricQueryHelper {
    *
    * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
    *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
+   * @param k8sPodNodeNameResolver resolver that maps Kubernetes container-metric label triples to
+   *     YBA node names using the universe's cluster / AZ / helm-release metadata. When non-null,
+   *     MetricQueryResponse uses it in preference to any label-only heuristic so read-replica pods
+   *     (which require the {@code -readonly} suffix) and multi-AZ pods render correctly - including
+   *     for historical samples whose {@code NodeDetails} entries may already be gone. Also carries
+   *     the universe-level multi-AZ flag used by the fallback path.
    * @return MetricQueryResponse Object
-   */
-  public JsonNode query(
-      Customer customer,
-      List<MetricSettings> metricsWithSettings,
-      Map<String, String> params,
-      Map<String, Map<String, String>> filterOverrides,
-      boolean isRecharts) {
-    return query(customer, metricsWithSettings, params, filterOverrides, isRecharts, null);
-  }
-
-  /**
-   * Query prometheus for a given metricType and query params, naming the k8s_ keys' lines with
-   * {@code k8sPodNodeNameResolver} when it is non-null.
    */
   public JsonNode query(
       Customer customer,

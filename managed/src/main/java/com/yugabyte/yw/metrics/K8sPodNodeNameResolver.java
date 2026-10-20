@@ -68,10 +68,28 @@ public class K8sPodNodeNameResolver {
 
   private final boolean newNamingStyle;
   private final List<ReleaseInfo> releases;
+  // Whether *any* cluster in the underlying universe spans multiple AZs. Derived once at build
+  // time from the same {@link ReleaseInfo#isMultiAZ} flags the resolver already tracks per
+  // release, so we don't have to recompute it (or thread it through the executor separately).
+  // A mixed universe still counts as multi-AZ because the multi-AZ cluster's pods would carry
+  // the AZ suffix in their node names; matching that here keeps the fallback naming in
+  // {@link MetricQueryResponse#getInstanceNameLabelForKubernetes} consistent with
+  // {@link com.yugabyte.yw.common.KubernetesUtil#getKubernetesNodeName}.
+  private final boolean multiAZ;
 
   private K8sPodNodeNameResolver(boolean newNamingStyle, List<ReleaseInfo> releases) {
     this.newNamingStyle = newNamingStyle;
     this.releases = releases;
+    this.multiAZ = releases.stream().anyMatch(r -> r.isMultiAZ);
+  }
+
+  /**
+   * Whether the underlying universe should be treated as a multi-AZ Kubernetes deployment for the
+   * purposes of pod-derived instance-name construction. See {@link #multiAZ} for the exact
+   * semantics.
+   */
+  public boolean isMultiAZ() {
+    return multiAZ;
   }
 
   /**
