@@ -28,6 +28,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -241,6 +242,14 @@ class MemTable {
 
   bool Erase(const Slice& key);
 
+  // Same as Erase, but only while this memtable has not been picked for flush. Used to erase from
+  // immutable memtables: an erase after the flush has read the entry would leave the entry in the
+  // flushed SST without a delete marker.
+  bool EraseIfNotPickedForFlush(const Slice& key);
+
+  // Called when this memtable is picked for flush. Disables EraseIfNotPickedForFlush.
+  void MarkPickedForFlush();
+
   // If prev_value for key exists, attempts to update it inplace.
   // else returns false
   // Pseudocode
@@ -399,6 +408,10 @@ class MemTable {
   std::atomic<uint64_t> num_entries_;
   std::atomic<uint64_t> num_deletes_;
   std::atomic<uint64_t> num_erased_{0};
+
+  // Serializes EraseIfNotPickedForFlush with MarkPickedForFlush.
+  std::mutex erase_flush_mutex_;
+  bool picked_for_flush_ = false;
 
   // These are used to manage memtable flushes to storage
   bool flush_in_progress_;        // started the flush

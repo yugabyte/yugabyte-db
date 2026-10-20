@@ -57,13 +57,35 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 
-#include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/faststring.h"
+#include "yb/util/flags.h"
+#include "yb/util/stats/perf_step_timer.h"
+
+DEFINE_RUNTIME_bool(rocksdb_erase_from_immutable_memtables, false,
+    "When a SingleDelete key is not found in the active memtable, try to erase it from immutable "
+    "memtables that are not picked for flush yet, instead of writing a delete marker.");
 
 namespace rocksdb {
 
 // anon namespace for file-local types
 namespace {
+
+// Tries to erase key from the immutable memtables of cfd that are not picked for flush yet.
+bool EraseFromImmutableMemTables(DBImpl* db, ColumnFamilyData* cfd, const Slice& key) {
+  if (!FLAGS_rocksdb_erase_from_immutable_memtables || !db || !cfd) {
+    return false;
+  }
+  auto* sv = db->GetAndRefSuperVersion(cfd);
+  bool erased = false;
+  for (auto* mem : sv->imm->memlist()) {
+    if (mem->EraseIfNotPickedForFlush(key)) {
+      erased = true;
+      break;
+    }
+  }
+  db->ReturnAndCleanupSuperVersion(cfd, sv);
+  return erased;
+}
 
 enum ContentFlags : uint32_t {
   DEFERRED = 1,
@@ -105,9 +127,11 @@ struct BatchContentClassifier : public WriteBatch::Handler {
 
 class DirectWriteHandlerImpl : public DirectWriteHandler {
  public:
-  explicit DirectWriteHandlerImpl(
-      MemTable* mem_table, SequenceNumber seq, WriteBatch::Handler* handler_for_logging)
-      : mem_table_(mem_table), seq_(seq), handler_for_logging_(handler_for_logging) {}
+  DirectWriteHandlerImpl(
+      DBImpl* db, ColumnFamilyData* cfd, SequenceNumber seq,
+      WriteBatch::Handler* handler_for_logging)
+      : db_(db), cfd_(cfd), mem_table_(cfd->mem()), seq_(seq),
+        handler_for_logging_(handler_for_logging) {}
 
   std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
     if (handler_for_logging_) {
@@ -123,7 +147,7 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
       WARN_NOT_OK(handler_for_logging_->SingleDeleteCF(0 /* column_family_id */, key),
                   "Logging handler failed on SingleDeleteCF");
     }
-    if (mem_table_->Erase(key)) {
+    if (mem_table_->Erase(key) || EraseFromImmutableMemTables(db_, cfd_, key)) {
       return;
     }
     Add(ValueType::kTypeSingleDeletion, SliceParts(&key, 1), SliceParts());
@@ -150,6 +174,8 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
         mem_table_->PrepareAdd(seq_++, value_type, key, value, &prepared_add_));
   }
 
+  DBImpl* const db_;
+  ColumnFamilyData* const cfd_;
   MemTable* mem_table_;
   SequenceNumber seq_;
   WriteBatch::Handler* handler_for_logging_;
@@ -799,7 +825,7 @@ class MemTableInserter : public WriteBatch::Handler {
     MemTable* mem = cf_mems_->GetMemTable();
     if ((delete_type == ValueType::kTypeSingleDeletion ||
          delete_type == ValueType::kTypeColumnFamilySingleDeletion) &&
-        mem->Erase(key)) {
+        (mem->Erase(key) || EraseFromImmutableMemTables(db_, cf_mems_->current(), key))) {
       return Status::OK();
     }
     auto* moptions = mem->GetMemTableOptions();
@@ -1026,7 +1052,7 @@ Result<size_t> DirectInsert(
     current = mems->current();
   }
   DirectWriteHandlerImpl direct_write_handler(
-      current->mem(), mem_table_inserter->sequence_, handler_for_logging);
+      mem_table_inserter->db_, current, mem_table_inserter->sequence_, handler_for_logging);
   RETURN_NOT_OK(writer->Apply(direct_write_handler));
   auto result = direct_write_handler.Complete();
   mem_table_inserter->CheckMemtableFull();

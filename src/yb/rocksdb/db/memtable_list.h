@@ -108,6 +108,9 @@ class MemTableListVersion {
 
   std::string ToString() const;
 
+  // Immutable memtables, newest first.
+  const std::list<MemTable*>& memlist() const { return memlist_; }
+
  private:
   // REQUIRE: m is an immutable memtable
   void Add(MemTable* m, autovector<MemTable*>* to_delete);
