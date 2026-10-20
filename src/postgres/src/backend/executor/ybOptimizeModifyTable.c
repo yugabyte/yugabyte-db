@@ -467,7 +467,7 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 		if (bms_is_member(entity_idx, modified_entities))
 		{
 			/* Mark the primary key as updated */
-			if (entity->oid == rel->rd_pkindex)
+			if (entity->etype == SKIP_PRIMARY_KEY)
 			{
 				Assert(skip_entities_initially_empty);
 				/*
