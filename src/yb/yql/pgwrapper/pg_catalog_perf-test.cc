@@ -1875,21 +1875,22 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
 TEST_F(PgStaleCatalogPrefetchTest, ConnectionChecksSeeARevocationInsideTheGap) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE d_revoked"));
-  // Leaves this node holding a prefetch cached at d_revoked's current version. The tserver
-  // learns a new database's catalog version on a heartbeat and only then has a slot to record a
-  // prefetch into, so the warm connection has to come after that: one whose fill lands earlier
-  // records nothing, and because every later connection is served from the entry it already
-  // filled, no fill ever records and this node never holds a version to read back.
+  // Leaves this node holding a prefetch cached at d_revoked's current version. The fill can
+  // land before the tserver has heard of this database and so before there is a slot to record
+  // into; the version is held until the slot arrives, so wait for the slot and the record
+  // together rather than ordering the connection behind the slot.
   const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
       "SELECT oid FROM pg_database WHERE datname = 'd_revoked'"));
-  ASSERT_OK(LoggedWaitFor([this, db_oid]() -> Result<bool> {
-    return HasSharedMemorySlot(db_oid);
-  }, 60s, "d_revoked's shared memory slot"));
   {
     auto warm = ASSERT_RESULT(ConnectToDB("d_revoked"));
-    ASSERT_OK(LoggedWaitFor([this, &warm]() -> Result<bool> {
+    ASSERT_OK(LoggedWaitFor([this, &warm, db_oid]() -> Result<bool> {
+      // RecordedCatalogVersion fails outright when there is no slot, which would end the wait
+      // instead of polling through the window this is here to cover.
+      if (!VERIFY_RESULT(HasSharedMemorySlot(db_oid))) {
+        return false;
+      }
       return VERIFY_RESULT(RecordedCatalogVersion(&warm)) != 0;
-    }, 30s, "d_revoked's prefetch to be recorded"));
+    }, 60s, "d_revoked's prefetch to be recorded"));
   }
 
   ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));

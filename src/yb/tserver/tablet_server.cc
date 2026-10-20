@@ -1352,8 +1352,25 @@ void TabletServer::SetYsqlDbLastPrefetchedCatalogVersion(
   std::lock_guard l(lock_);
   auto it = ysql_db_catalog_version_map_.find(db_oid);
   if (it == ysql_db_catalog_version_map_.end()) {
-    // No shared memory slot for this database, so there is nowhere to record it and no backend
-    // that could read it back.
+    // No slot for this database yet. Keep it until one arrives rather than dropping it.
+    // Otherwise nothing will fill this key again, so the node would hold a prefetch it
+    // never admits to holding.
+    //
+    // Every entry here is waiting for a slot, so there can never be more of them than there are
+    // slots. Past that, stop. An entry is only consumed when its slot arrives, so one for a
+    // database that never gets a slot stays, and a node in global catalog version mode allocates
+    // none at all. Leaving one costs a starting backend in a database that later reuses the oid
+    // the catch-up and fallback described where the deletion loop clears a dropped slot; keeping
+    // the map from growing without end is what the bound is for.
+    if (ysql_db_pending_last_prefetched_.size() >= TServerSharedData::kMaxNumDbCatalogVersions &&
+        !ysql_db_pending_last_prefetched_.contains(db_oid)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Not holding last prefetched catalog version for db_oid " << db_oid << ": already "
+          << "holding " << ysql_db_pending_last_prefetched_.size() << " databases with no slot";
+      return;
+    }
+    auto& pending = ysql_db_pending_last_prefetched_[db_oid];
+    pending = std::max(pending, catalog_version);
     return;
   }
   const auto shm_index = it->second.shm_index;
@@ -1672,6 +1689,16 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       }
       // update the newly inserted entry to have the allocated slot.
       inserted_entry.shm_index = shm_index;
+      // A prefetch cached before this slot existed had nowhere to record its version, and no
+      // later connection will fill that key again. Write it now that there is somewhere to put it.
+      if (auto pending = ysql_db_pending_last_prefetched_.find(db_oid);
+          pending != ysql_db_pending_last_prefetched_.end()) {
+        shared_object()->SetYsqlDbLastPrefetchedCatalogVersion(
+            static_cast<size_t>(shm_index), pending->second);
+        LOG_WITH_FUNC(INFO) << "applied pending last prefetched catalog version "
+                            << pending->second << " for db " << db_oid;
+        ysql_db_pending_last_prefetched_.erase(pending);
+      }
       LOG_WITH_FUNC(INFO) << "inserted new db " << db_oid << ", shm_index: " << shm_index
                           << ", catalog version: " << new_version
                           << ", breaking version: " << new_breaking_version
@@ -1727,6 +1754,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
         (*ysql_db_catalog_version_index_used_)[shm_index] = false;
         it = ysql_db_catalog_version_map_.erase(it);
         ysql_db_invalidation_messages_map_.erase(db_oid);
+        ysql_db_pending_last_prefetched_.erase(db_oid);
         // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
         // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
         // the shared memory file to examine its contents).
