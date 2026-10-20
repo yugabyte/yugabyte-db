@@ -42,6 +42,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -271,6 +272,26 @@ YbInstantiatePushdownExprs(YbPushdownExprs *pushdown, EState *estate)
 	 */
 	result->colrefs = pushdown->colrefs;
 	return result;
+}
+
+/*
+ * YbResetPushdownContext
+ *	  Prepare *cxt to hold a scan's instantiated pushdown expressions: create
+ *	  it under the per-query context on first use, reset it otherwise.
+ *
+ *	  A scan instantiates its pushdown expressions again on every rescan.  If
+ *	  they were allocated in the per-query context, each rescan's copy would be
+ *	  kept until the end of the query.
+ */
+void
+YbResetPushdownContext(MemoryContext *cxt, EState *estate)
+{
+	if (*cxt)
+		MemoryContextReset(*cxt);
+	else
+		*cxt = AllocSetContextCreate(estate->es_query_cxt,
+									 "YB pushdown expressions",
+									 ALLOCSET_SMALL_SIZES);
 }
 
 /*
@@ -798,9 +819,13 @@ YBCNewEvalExprCall(YbcPgStatement ybc_stmt, Expr *pg_expr)
 									collation_info.collate_is_valid_non_c,
 									&ybc_expr));
 
-	Datum		expr_datum = CStringGetDatum(ybSerializeNode(pg_expr));
+	char	   *serialized_expr = ybSerializeNode(pg_expr);
 	YbcPgExpr	expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
-									  expr_datum, /* IsNull */ false);
+									  CStringGetDatum(serialized_expr),
+									  /* IsNull */ false);
+
+	/* The constant holds its own copy of the string. */
+	pfree(serialized_expr);
 
 	HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, expr));
 	return ybc_expr;

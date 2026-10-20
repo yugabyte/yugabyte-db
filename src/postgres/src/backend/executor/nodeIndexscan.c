@@ -2059,13 +2059,17 @@ yb_init_index_scandesc(IndexScanState *node)
 		IndexScanDesc scandesc = node->iss_ScanDesc;
 		EState	   *estate = node->ss.ps.state;
 		IndexScan  *plan = (IndexScan *) node->ss.ps.plan;
+		MemoryContext oldcxt;
 
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
+		YbResetPushdownContext(&scandesc->yb_pushdown_cxt, estate);
+		oldcxt = MemoryContextSwitchTo(scandesc->yb_pushdown_cxt);
 		scandesc->yb_rel_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
 		scandesc->yb_idx_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
+		MemoryContextSwitchTo(oldcxt);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		scandesc->fetch_ybctids_only = false;

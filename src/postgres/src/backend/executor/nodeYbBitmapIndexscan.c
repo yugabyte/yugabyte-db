@@ -64,6 +64,9 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 	const bool	is_colocated = YbGetTableProperties(node->ss.ss_currentRelation)->is_colocated;
 	const bool	is_primary = scandesc->heapRelation->rd_pkindex == node->biss_RelationDesc->rd_id;
 
+	YbResetPushdownContext(&scandesc->yb_pushdown_cxt, estate);
+	MemoryContext oldcxt = MemoryContextSwitchTo(scandesc->yb_pushdown_cxt);
+
 	/*
 	 * primary keys on colocated indexes don't have a secondary index in their
 	 * request
@@ -74,6 +77,7 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 	else
 		scandesc->yb_idx_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
+	MemoryContextSwitchTo(oldcxt);
 }
 
 /* ----------------------------------------------------------------

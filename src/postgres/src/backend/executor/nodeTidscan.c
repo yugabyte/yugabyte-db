@@ -549,8 +549,13 @@ YbTidNext(TidScanState *node)
 	if (tsdesc == NULL)
 	{
 		TidScan    *plan = (TidScan *) node->ss.ps.plan;
+
+		YbResetPushdownContext(&node->yb_tss_pushdown_cxt, estate);
+		oldcontext = MemoryContextSwitchTo(node->yb_tss_pushdown_cxt);
 		YbPushdownExprs *rel_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
+
+		MemoryContextSwitchTo(oldcontext);
 
 		if (node->yb_tss_aggrefs)
 		{

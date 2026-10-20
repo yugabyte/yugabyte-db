@@ -245,8 +245,10 @@ ExecYbBitmapTableScan(PlanState *pstate)
 static TableScanDesc
 CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
+	EState	   *estate = scanstate->ss.ps.state;
 	YbPushdownExprs *yb_pushdown;
 	TableScanDesc tsdesc;
+	MemoryContext oldcxt;
 
 	/* Make a copy so it can be modified */
 	YbBitmapTableScan plan = *(YbBitmapTableScan *) scanstate->ss.ps.plan;
@@ -260,10 +262,13 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (!scanstate->recheck_local_quals)
 		plan.recheck_local_quals = NULL;
 
+	YbResetPushdownContext(&scanstate->pushdown_cxt, estate);
+	oldcxt = MemoryContextSwitchTo(scanstate->pushdown_cxt);
 	yb_pushdown = YbInstantiatePushdownExprs((scanstate->work_mem_exceeded ?
 											  &plan.fallback_pushdown :
 											  &plan.rel_pushdown),
-											 scanstate->ss.ps.state);
+											 estate);
+	MemoryContextSwitchTo(oldcxt);
 
 	{
 		YbTableScanOptions yb_options = {
@@ -281,19 +286,15 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 									   &yb_options);
 	}
 
-	if (yb_pushdown)
-		pfree(yb_pushdown);
-
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
+		oldcxt = MemoryContextSwitchTo(scanstate->pushdown_cxt);
 		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownExprs(&plan.recheck_pushdown,
-																	   scanstate->ss.ps.state);
+																	   estate);
 
+		MemoryContextSwitchTo(oldcxt);
 		if (recheck_pushdown)
-		{
 			yb_scan_desc_apply_primary_pushdown(tsdesc, recheck_pushdown);
-			pfree(recheck_pushdown);
-		}
 	}
 
 	return tsdesc;

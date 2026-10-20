@@ -214,6 +214,8 @@ typedef struct IndexScanDescData
 	Scan	   *yb_scan_plan;
 	YbPushdownExprs *yb_rel_pushdown;
 	YbPushdownExprs *yb_idx_pushdown;
+	MemoryContext yb_pushdown_cxt;	/* holds yb_rel_pushdown and
+									 * yb_idx_pushdown */
 	List	   *yb_aggrefs;		/* aggregate information for aggregate
 								 * pushdown */
 	TupleTableSlot *yb_agg_slot;	/* scan slot used by aggregate pushdown */

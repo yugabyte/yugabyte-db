@@ -1638,6 +1638,7 @@ typedef struct YbSeqScanState
 	Size		pscan_len;		/* size of parallel heap scan descriptor */
 	List	   *aggrefs;		/* aggregate pushdown information */
 	struct YBParallelPartitionKeysData *pscan;	/* parallel scan data */
+	MemoryContext pushdown_cxt; /* holds instantiated pushdown expressions */
 } YbSeqScanState;
 
 /* ----------------
@@ -1988,6 +1989,7 @@ typedef struct YbBitmapTableScanState
 	size_t		average_ybctid_bytes;
 	int			skipped_tuples;
 	List	   *aggrefs;		/* aggregate pushdown information */
+	MemoryContext pushdown_cxt; /* holds instantiated pushdown expressions */
 } YbBitmapTableScanState;
 
 /* ----------------
@@ -2011,6 +2013,7 @@ typedef struct TidScanState
 	ItemPointerData *tss_TidList;
 	HeapTupleData tss_htup;
 	List	   *yb_tss_aggrefs;
+	MemoryContext yb_tss_pushdown_cxt;
 } TidScanState;
 
 /* ----------------
