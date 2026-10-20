@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -57,6 +59,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -65,6 +68,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -81,11 +85,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.CommonTypes;
+import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.RollbackYsqlMajorCatalogVersionResponse;
+import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
@@ -1535,6 +1544,57 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  @Parameters({"true, false", "false, false", "true, true", "false, true"})
+  public void testSoftwareUpgradeDisablesPitrOnlyWhenFinalizeRequired(
+      boolean requireFinalize, boolean canary) throws Exception {
+    // Finalize or rollback re-creates PITR schedules; a no-finalize upgrade ends in Ready and
+    // never would, so it must leave them alone (PLAT-18619).
+    updateDefaultUniverseTo5Nodes(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    PitrConfig pitrConfig = createPitrConfigWithSchedule();
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    if (canary) {
+      List<AZUpgradeStep> steps = new ArrayList<>();
+      for (UUID azUUID : Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid())) {
+        AZUpgradeStep step = new AZUpgradeStep();
+        step.azUUID = azUUID;
+        step.pauseAfterTserverUpgrade = false;
+        steps.add(step);
+      }
+      taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+      taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
+      taskParams.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+    }
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    TaskInfo taskInfo = waitForTask(commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        requireFinalize,
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.DisablePitrConfig));
+    assertEquals(requireFinalize, PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, times(requireFinalize ? 1 : 0)).deleteSnapshotSchedule(pitrConfig.getUuid());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        requireFinalize ? SoftwareUpgradeState.PreFinalize : SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
   public void testCanaryConfigNoPausePoints() throws InterruptedException {
     updateDefaultUniverseTo5Nodes(true);
     when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
@@ -2358,5 +2418,38 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
       prechecks.add(TaskType.PGUpgradeTServerCheck);
     }
     return prechecks.toArray(new TaskType[0]);
+  }
+
+  /** A PITR config whose snapshot schedule the mocked client lists and can delete. */
+  private PitrConfig createPitrConfigWithSchedule() throws Exception {
+    CreatePitrConfigParams params = new CreatePitrConfigParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.name = "test-pitr";
+    params.keyspaceName = "test-keyspace";
+    params.tableType = CommonTypes.TableType.YQL_TABLE_TYPE;
+    params.retentionPeriodInSeconds = 86400L;
+    params.intervalInSeconds = 3600L;
+    PitrConfig pitrConfig = PitrConfig.create(UUID.randomUUID(), params);
+    SnapshotScheduleInfo scheduleInfo =
+        new SnapshotScheduleInfo(
+            pitrConfig.getUuid(),
+            3600L,
+            86400L,
+            Collections.emptyList(),
+            "test-keyspace",
+            UUID.randomUUID(),
+            CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    ListSnapshotSchedulesResponse listResponse = Mockito.mock(ListSnapshotSchedulesResponse.class);
+    lenient()
+        .when(listResponse.getSnapshotScheduleInfoList())
+        .thenReturn(Collections.singletonList(scheduleInfo));
+    lenient().when(mockClient.listSnapshotSchedules(isNull())).thenReturn(listResponse);
+    DeleteSnapshotScheduleResponse deleteResponse =
+        Mockito.mock(DeleteSnapshotScheduleResponse.class);
+    lenient()
+        .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
+        .thenReturn(deleteResponse);
+    return pitrConfig;
   }
 }

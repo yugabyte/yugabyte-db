@@ -12,45 +12,59 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.CommonTypes;
+import org.yb.client.CreateSnapshotScheduleResponse;
+import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsYsqlMajorCatalogUpgradeDoneResponse;
+import org.yb.client.ListNamespacesResponse;
+import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.StartYsqlMajorCatalogUpgradeResponse;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterTypes;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -269,6 +283,120 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithoutFinalizeKeepsPitr() throws Exception {
+    // PLAT-23184: a no-finalize upgrade ends in Ready, which never re-creates PITR schedules, so it
+    // must not delete them.
+    PitrConfig pitrConfig = runUpgradeWithPitrConfig(false /* requireFinalize */);
+    assertFalse(PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, never()).deleteSnapshotSchedule(any());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithFinalizeDisablesPitr() throws Exception {
+    // Finalize or rollback re-creates the schedules, so an upgrade that waits for finalize still
+    // disables them.
+    PitrConfig pitrConfig = runUpgradeWithPitrConfig(true /* requireFinalize */);
+    assertTrue(PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, times(1)).deleteSnapshotSchedule(pitrConfig.getUuid());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithoutFinalizeReenablesDisabledPitr() throws Exception {
+    // A universe hit by PLAT-23184 before the fix has a disabled config and no schedule. The next
+    // no-finalize upgrade re-creates it.
+    MasterTypes.NamespaceIdentifierPB namespace =
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName("test-keyspace")
+            .setId(ByteString.copyFromUtf8("87d2d6473b3645f7ba56d9e3f7dae239"))
+            .setDatabaseType(CommonTypes.YQLDatabase.YQL_DATABASE_CQL)
+            .build();
+    ListNamespacesResponse namespacesResponse = mock(ListNamespacesResponse.class);
+    when(namespacesResponse.getNamespacesList()).thenReturn(Collections.singletonList(namespace));
+    when(mockClient.getNamespacesList()).thenReturn(namespacesResponse);
+    CreateSnapshotScheduleResponse createResponse = mock(CreateSnapshotScheduleResponse.class);
+    when(createResponse.getSnapshotScheduleUUID()).thenReturn(UUID.randomUUID());
+    when(mockClient.createSnapshotSchedule(any(), any(), any(), anyLong(), anyLong()))
+        .thenReturn(createResponse);
+
+    runUpgradeWithPitrConfig(false /* requireFinalize */, true /* startDisabled */);
+
+    verify(mockClient, times(1)).createSnapshotSchedule(any(), any(), any(), anyLong(), anyLong());
+    assertEquals(1, PitrConfig.getByUniverseUUID(defaultUniverse.getUniverseUUID()).size());
+    assertTrue(PitrConfig.getDisabledByUniverseUUID(defaultUniverse.getUniverseUUID()).isEmpty());
+  }
+
+  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize) throws Exception {
+    return runUpgradeWithPitrConfig(requireFinalize, false /* startDisabled */);
+  }
+
+  /** Runs a successful multi-AZ upgrade on a universe with one PITR config. */
+  private PitrConfig runUpgradeWithPitrConfig(boolean requireFinalize, boolean startDisabled)
+      throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseMultiAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+
+    CreatePitrConfigParams params = new CreatePitrConfigParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.name = "test-pitr";
+    params.keyspaceName = "test-keyspace";
+    params.tableType = CommonTypes.TableType.YQL_TABLE_TYPE;
+    params.retentionPeriodInSeconds = 86400L;
+    params.intervalInSeconds = 3600L;
+    PitrConfig pitrConfig = PitrConfig.create(UUID.randomUUID(), params);
+    if (startDisabled) {
+      pitrConfig.updateDisabledStatus(true);
+    }
+    SnapshotScheduleInfo scheduleInfo =
+        new SnapshotScheduleInfo(
+            pitrConfig.getUuid(),
+            3600L,
+            86400L,
+            Collections.emptyList(),
+            "test-keyspace",
+            UUID.randomUUID(),
+            CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    ListSnapshotSchedulesResponse listResponse = mock(ListSnapshotSchedulesResponse.class);
+    lenient()
+        .when(listResponse.getSnapshotScheduleInfoList())
+        .thenReturn(
+            startDisabled ? Collections.emptyList() : Collections.singletonList(scheduleInfo));
+    lenient().when(mockClient.listSnapshotSchedules(isNull())).thenReturn(listResponse);
+    lenient()
+        .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
+        .thenReturn(mock(DeleteSnapshotScheduleResponse.class));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == TaskInfo.State.Failure)
+            .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+            .collect(Collectors.toList())
+            .toString(),
+        Success,
+        taskInfo.getTaskState());
+    assertEquals(
+        requireFinalize,
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.DisablePitrConfig));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    return pitrConfig;
   }
 
   @Test
