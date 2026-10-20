@@ -1,5 +1,5 @@
 import Clipboard from 'clipboard';
-import { setCookie } from 'browser-cookie-utils';
+import { setCookie, deleteCookies } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
 
@@ -260,8 +260,23 @@ function observeDocsHeaderHeight() {
   }
 }
 
+/**
+ * Delete Functional cookies when Functional consent (C0003) is not granted.
+ * Runs on OneTrustGroupsUpdated, which OneTrust fires on every page load and on every consent change.
+ */
+function deleteFunctionalCookies() {
+  const groups = window.OnetrustActiveGroups || '';
+  if (groups.indexOf('C0003') === -1) {
+    ['leftMenuWidth', 'leftMenuShowHide', 'closeAISearchBanner', 'utm_*'].forEach((pattern) => {
+      deleteCookies(pattern);
+    });
+  }
+}
+
 window.addEventListener('OneTrustGroupsUpdated', () => {
   activeGroups = window.OnetrustActiveGroups;
+
+  deleteFunctionalCookies();
 });
 
 $(document).ready(() => {
@@ -276,6 +291,10 @@ $(document).ready(() => {
       width: element.offsetWidth,
       parent: element.parentElement,
     }));
+
+    if (window.OneTrust && window.OnetrustActiveGroups) {
+      deleteInternalCookies();
+    }
   }
 
   let searchValue = '';

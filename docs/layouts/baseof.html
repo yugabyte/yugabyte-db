@@ -7,7 +7,6 @@
 
     {{ $onetrust_api_key := os.Getenv "ONETRUST_API_KEY" }}
     {{- if $onetrust_api_key -}}
-    <!-- OneTrust Cookies Consent Notice start -->
     <script>
     window.dataLayer = window.dataLayer || [];
     function gtag() {
@@ -22,10 +21,11 @@
     });
     gtag('set', 'ads_data_redaction', true);
     </script>
+
+    <!-- OneTrust Cookies Consent Notice start -->
     <script src="https://cdn.cookielaw.org/consent/{{- $onetrust_api_key -}}/OtAutoBlock.js"></script>
     <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" data-language="en" charset="UTF-8" data-domain-script="{{- $onetrust_api_key -}}"></script>
     <!-- OneTrust Cookies Consent Notice end -->
-    {{- end -}}
 
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -34,13 +34,16 @@
     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-5GH7JQS');</script>
     <!-- End Google Tag Manager -->
+    {{- end -}}
 
     {{- partial "head.html" . -}}
   </head>
   <body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
+    {{- if $onetrust_api_key -}}
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5GH7JQS" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
+    {{- end -}}
     <header>
       {{- partial "navbar.html" . -}}
     </header>
