@@ -220,6 +220,8 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
 
+  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
