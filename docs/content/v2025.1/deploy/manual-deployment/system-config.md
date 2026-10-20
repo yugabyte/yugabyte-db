@@ -220,6 +220,8 @@ If running on a virtual machine, execute the following to tune kernel settings:
 
     With the default setting (`0`), these kernels can refuse a memory request when the node is nearly out of memory, and the YugabyteDB process that made the request stops. With `1`, the Linux OOM killer handles out-of-memory conditions instead, as it does on kernels 5.2 and later. On kernels 5.2 and later, leave the default setting.
 
+    ARM (aarch64) nodes running these kernels are the most affected. Their kernel uses 64 KiB memory pages and, with transparent huge pages enabled, keeps a larger memory reserve, so it can start refusing requests while about 8% of the node's memory is still free or in the page cache.
+
 ### Using systemd
 
 If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, add the ulimits in the `Service` section of the systemd configuration file:

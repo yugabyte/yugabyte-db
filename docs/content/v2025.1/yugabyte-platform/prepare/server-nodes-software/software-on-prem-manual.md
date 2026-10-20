@@ -225,6 +225,8 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
         With the default setting (`0`), these kernels can refuse a memory request when the node is nearly out of memory, and the YugabyteDB process that made the request stops. With `1`, the Linux OOM killer handles out-of-memory conditions instead, as it does on kernels 5.2 and later. On kernels 5.2 and later, leave the default setting.
 
+        ARM (aarch64) nodes running these kernels are the most affected. Their kernel uses 64 KiB memory pages and, with transparent huge pages enabled, keeps a larger memory reserve, so it can start refusing requests while about 8% of the node's memory is still free or in the page cache.
+
 1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
     - List the available storage volumes, as follows:
