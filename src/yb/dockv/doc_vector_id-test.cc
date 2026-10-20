@@ -24,6 +24,7 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -196,8 +197,11 @@ TEST(DocVectorIdTest, MetaValueToStringTombstone) {
 
 TEST(DocVectorIdTest, VectorIndexPayload) {
   const Slice kYbctid("test_ybctid");
-  auto payload = DocVectorIndexPayload(kYbctid);
+  auto payload = DocVectorIndexPayload(kYbctid, /* tenant_prefix_size= */ 0);
+  // Only the ybctid flag, which older releases read.
+  ASSERT_EQ(payload.AsSlice()[0], 0x01);
   ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+  ASSERT_TRUE(ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice())).tenant.empty());
 
   // The ybctid is extractable when the payload contains more data after it.
   payload.Append(Slice("future covering index columns"));
@@ -206,6 +210,83 @@ TEST(DocVectorIdTest, VectorIndexPayload) {
   // Truncated payload is detected.
   auto truncated = payload.AsSlice().Prefix(kYbctid.size() / 2);
   ASSERT_NOK(DocVectorIndexPayloadYbctid(truncated));
+}
+
+TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
+  const Slice kYbctid("test_ybctid");
+  constexpr size_t kTenantPrefixSize = 4;
+  auto payload = DocVectorIndexPayload(kYbctid, kTenantPrefixSize);
+  auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
+  ASSERT_EQ(content.ybctid, kYbctid);
+  ASSERT_EQ(content.tenant, kYbctid.Prefix(kTenantPrefixSize));
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+
+  // Missing tenant prefix size.
+  ASSERT_NOK(DecodeDocVectorIndexPayload(payload.AsSlice().WithoutSuffix(1)));
+
+  // Tenant prefix longer than the ybctid.
+  auto broken = payload.AsSlice().WithoutSuffix(1).ToBuffer();
+  char tenant[kMaxVarIntBufferSize];
+  broken.append(tenant, FastEncodeUnsignedVarInt(kYbctid.size() + 1, tenant));
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+
+  // Unknown flags fail the full decode, but the ybctid is still extractable.
+  broken = payload.AsSlice().ToBuffer();
+  broken[0] = 0x7f;
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(broken)), kYbctid);
+
+  // No ybctid flag.
+  broken[0] = 0x02;
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+  ASSERT_NOK(DocVectorIndexPayloadYbctid(broken));
+  ASSERT_NOK(DecodeDocVectorIndexPayload(Slice()));
+}
+
+TEST(DocVectorIdTest, TenantPrefixSize) {
+  const auto tenant = KeyEntryValue::Create("tenant");
+  auto tenant_prefix_size = [](const KeyBytes& key, size_t num_key_components) {
+    return CHECK_RESULT(DocVectorTenantPrefixSize(key.AsSlice(), num_key_components));
+  };
+  // Drops the group end that closes the range group, as pggate does for a ybctid prefix.
+  auto query_prefix = [](const DocKey& doc_key) {
+    auto result = doc_key.Encode();
+    result.RemoveLastByte();
+    return result;
+  };
+
+  // PRIMARY KEY ((tenant) HASH, r1, r2).
+  auto ybctid = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1), KeyEntryValue::Int32(2)})
+      .Encode();
+  auto hash_part_size = ASSERT_RESULT(
+      DocKey::EncodedSize(ybctid.AsSlice(), DocKeyPart::kUpToHash));
+  auto r1_end = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)})).size();
+  ASSERT_EQ(tenant_prefix_size(ybctid, 0), 0U);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 2), r1_end);
+  // The closing range group end is not covered.
+  ASSERT_EQ(tenant_prefix_size(ybctid, 3), ybctid.size() - 1);
+  ASSERT_EQ(tenant_prefix_size(ybctid, 4), std::nullopt);
+
+  // A query prefix with the hash group gives the tenant of its rows.
+  auto prefix = query_prefix(DocKey(0x1234, {tenant}, {}));
+  ASSERT_EQ(prefix.AsSlice(), ybctid.AsSlice().Prefix(hash_part_size));
+  ASSERT_EQ(tenant_prefix_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(prefix, 2), std::nullopt);
+  prefix = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)}));
+  ASSERT_EQ(tenant_prefix_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(tenant_prefix_size(prefix, 2), r1_end);
+
+  // PRIMARY KEY ((tenant) HASH): the tenant is the whole key without the range group end.
+  auto hash_ybctid = DocKey(0x1234, {tenant}, {}).Encode();
+  ASSERT_EQ(tenant_prefix_size(hash_ybctid, 1), hash_part_size);
+
+  // PRIMARY KEY (r1 ASC, r2 ASC).
+  auto range_ybctid = DocKey({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)}).Encode();
+  auto range_prefix = query_prefix(DocKey({KeyEntryValue::Int32(7)}));
+  ASSERT_EQ(tenant_prefix_size(range_ybctid, 1), range_prefix.size());
+  ASSERT_EQ(tenant_prefix_size(range_prefix, 1), range_prefix.size());
+  ASSERT_EQ(tenant_prefix_size(range_prefix, 2), std::nullopt);
 }
 
 } // namespace yb::dockv
