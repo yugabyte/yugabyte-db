@@ -2574,6 +2574,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
 //                                                - new leader reports schema version
 //                                                master leader stepdown
 TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
+  // The leader balancer can move the tablet leader back right after the stepdown below.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // 1. Create a single-tablet table and start CREATE INDEX on a separate thread.

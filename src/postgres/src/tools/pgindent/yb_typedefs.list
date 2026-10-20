@@ -339,6 +339,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction

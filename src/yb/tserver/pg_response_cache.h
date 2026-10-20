@@ -47,8 +47,13 @@ class PgResponseCache {
  public:
   using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
 
+  // Invoked when a response is cached, with the key group it was cached under and the catalog
+  // version that response holds. Not invoked when an already cached response is served.
+  using FillObserver = std::function<void(KeyGroup, uint64_t)>;
+
   PgResponseCache(
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity);
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+      FillObserver fill_observer = {});
   ~PgResponseCache();
 
   struct Response {

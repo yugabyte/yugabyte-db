@@ -1067,13 +1067,14 @@ std::vector<server::SkewedClockDeltaChanger> JumpClocks(
 }
 
 void StepDownAllTablets(MiniCluster* cluster) {
-  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    for (const auto& peer : cluster->GetTabletPeers(i)) {
-      consensus::LeaderStepDownRequestPB req;
-      req.set_tablet_id(peer->tablet_id());
-      consensus::LeaderStepDownResponsePB resp;
-      ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
-    }
+  // Snapshot leaders first, so a leader elected by an earlier step down in this loop is not
+  // stepped down again before it acquires a lease.
+  auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders, UserTabletsOnly::kFalse);
+  for (const auto& peer : leaders) {
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(peer->tablet_id());
+    consensus::LeaderStepDownResponsePB resp;
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
   }
 }
 
