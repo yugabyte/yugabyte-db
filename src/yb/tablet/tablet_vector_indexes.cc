@@ -510,7 +510,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
     ++num_chunks_;
 
-    if (reverse_mapping_backfiller_ && !reverse_entries().empty()) {
+    if (reverse_mapping_backfiller_) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
     }
 
