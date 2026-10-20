@@ -912,6 +912,10 @@ message PgPerformOptionsPB {
 
   // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
   fixed64 origination_ht = 38;
+
+  // The ops read the catalog snapshot. A SERIALIZABLE transaction reads them at the clamped catalog
+  // read time without read intents, relying on object locks to order them against DDLs.
+  bool is_catalog_snapshot = 39;
 }
 
 message PgRequestSequenceNumPB {

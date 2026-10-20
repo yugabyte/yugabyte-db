@@ -320,6 +320,38 @@ TEST_F(PgObjectLocksTestRF1, TestSanity) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
+// Catalog lookups of a SERIALIZABLE transaction must not take read intents on catalog rows, else a
+// concurrent DDL that writes those rows aborts the transaction although no object lock conflicts.
+TEST_F(PgObjectLocksTestRF1, SerializableTxnSurvivesConcurrentDdl) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Fetch("SELECT now()"));
+  ASSERT_OK(ddl_conn.Execute("CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS 'SELECT 1'"));
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE t2(k INT PRIMARY KEY)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 1);
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 2 WHERE k = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 2);
+}
+
+TEST_F(PgObjectLocksTestRF1, SerializableTxnBlockWithDdl) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(ddl_conn.Execute("CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS 'SELECT 1'"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 5"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 5);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 5);
+}
+
 TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   CreateTestTable();
 

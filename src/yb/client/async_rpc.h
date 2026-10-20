@@ -70,6 +70,8 @@ struct AsyncRpcData {
   bool skip_intents = false;
   // Read this RPC's ops at in_txn_limit instead of the transaction read time.
   bool read_at_in_txn_limit = false;
+  // Serve this RPC's reads as snapshot reads even in a SERIALIZABLE transaction.
+  bool force_snapshot_read = false;
   ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;

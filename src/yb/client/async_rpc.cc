@@ -522,14 +522,23 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
+  const auto& metadata = batcher_->in_flight_ops().metadata;
+  const bool serializable =
+      !metadata.transaction.transaction_id.IsNil() &&
+      metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
   bool has_read_time = false;
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
     // Set read time for consistent read only for sequences_data table or if the table is
     // transaction-enabled and consistent read is required.
-    if (table()->id() == kPgSequencesDataTableId ||
-        (data.need_consistent_read &&
-         table()->InternalSchema().table_properties().is_transactional())) {
+    //
+    // A SERIALIZABLE transaction's read point carries a read time while it reads the catalog
+    // snapshot. Only the forced snapshot reads use it; the transaction's other RPCs in the same
+    // flush, e.g. the catalog writes of a DDL, must stay without one.
+    if ((!serializable || data.force_snapshot_read) &&
+        (table()->id() == kPgSequencesDataTableId ||
+         (data.need_consistent_read &&
+          table()->InternalSchema().table_properties().is_transactional()))) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
       if (read_time) {
         has_read_time = true;
@@ -544,14 +553,11 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   if (start_time_micros > 0) {
     req_.set_start_time_micros(start_time_micros);
   }
-  const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
     DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
-    bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
-    LOG_IF(DFATAL, has_read_time && serializable)
-        << "Read time should NOT be specified for serializable isolation: "
-        << read_point->GetReadTime().ToString();
+    LOG_IF(DFATAL, data.force_snapshot_read && !has_read_time)
+        << "Forced snapshot read without a read time";
 
     // Use in_txn_limit to be able to read writes that happened with skip_intents i.e., they bypass
     // the intents db and land in the regular db. Only this op's read time moves; the transaction
@@ -974,6 +980,9 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
+  if (data.force_snapshot_read) {
+    req_.set_force_snapshot_read(true);
+  }
   if (!data.pending_async_write_op_ids.empty()) {
     // Old servers only read this field, and reject the gaps the later fences would cover.
     data.pending_async_write_op_ids.front().ToPB(
