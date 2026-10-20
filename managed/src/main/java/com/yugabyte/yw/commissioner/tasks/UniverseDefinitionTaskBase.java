@@ -52,6 +52,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -95,6 +96,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -3036,6 +3038,66 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled =
+          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+      params.telemetryConfig = telemetryConfig;
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Rewrites the collector config on nodes that just became masters, so their master scrape target
+   * appears. Configure writes the config before UpdateNodeProcess stores isMaster, so the config
+   * written then has no master target (PLAT-23125).
+   */
+  protected void createOtelCollectorRefreshForNewMastersTasks(Collection<NodeDetails> nodes) {
+    Universe universe = getUniverse();
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (!universe.getUniverseDetails().otelCollectorEnabled
+        || !OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+            telemetryConfig.getMetricsExportConfig())) {
+      return;
+    }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    createManageOtelCollectorTasks(
+        primaryCluster.userIntent,
+        new ArrayList<>(nodes),
+        false /* installOtelCollector */,
+        telemetryConfig,
+        node ->
+            GFlagsUtil.getGFlagsForNode(
+                node, ServerType.TSERVER, primaryCluster, universe.getUniverseDetails().clusters));
+  }
+
   /**
    * Creates subtasks to start master processes on the nodes.
    *
@@ -3053,6 +3115,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Mark the node process flags as true.
       createUpdateNodeProcessTasks(updatableNodes, ServerType.MASTER, true /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+      createOtelCollectorRefreshForNewMastersTasks(updatableNodes);
     }
 
     // Wait for new masters to be responsive.

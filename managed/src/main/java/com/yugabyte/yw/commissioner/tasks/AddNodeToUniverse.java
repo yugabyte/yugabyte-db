@@ -308,6 +308,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Do this last so that master addresses does not pick up current node.
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createOtelCollectorRefreshForNewMastersTasks(nodeSet);
       }
 
       // Bring up Tservers, as needed.

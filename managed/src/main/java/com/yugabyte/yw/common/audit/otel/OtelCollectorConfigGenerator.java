@@ -2245,15 +2245,19 @@ public class OtelCollectorConfigGenerator {
 
   /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847). The collector config is written during configure,
-   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
-   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
-   * when it changes them). This is why MASTER_EXPORT is not gated.
+   * a closed port every interval (PLAT-21847, PLAT-23125). The collector config is written during
+   * configure, before add/start node store isTserver, so tserver targets gate only on dedicatedTo
+   * and the API flags (ConfigureDBApis regenerates the config when it changes them). MASTER_EXPORT
+   * gates on isMaster: flows that store isMaster after configure rewrite the config afterwards
+   * (createOtelCollectorRefreshForNewMastersTasks), and edit universe stores it before configure.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
+    if (!nodeDetails.isMaster) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
     boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
     if (dedicatedMaster) {
       targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
