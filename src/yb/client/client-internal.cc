@@ -338,6 +338,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, WaitForReplicationDrain);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterEnsureSequenceUpdatesAreInWal);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStopPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterStartPersisting);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterGetPersistenceBlockMap);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -387,8 +390,8 @@ Status CheckTabletLocations(
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),
-      id_(ClientId::GenerateRandom()),
-      log_prefix_(Format("Client $0: ", id_)) {
+      request_id_allocator_(internal::CreateRequestIdAllocator()),
+      log_prefix_(Format("Client $0: ", request_id_allocator_->client_id())) {
   for(auto& cache : tserver_count_cached_) {
     cache.store(0, std::memory_order_relaxed);
   }

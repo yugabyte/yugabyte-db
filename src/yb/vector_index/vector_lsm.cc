@@ -542,7 +542,7 @@ class VectorLSMInsertRegistryBase
     }
   }
 
-  virtual void DoTaskDoneUnlocked(InsertTask* task) REQUIRES(mutex_) {
+  virtual void DoTaskDoneUnlocked([[maybe_unused]] InsertTask* task) REQUIRES(mutex_) {
     // Nothing to do, could be used in derived classes.
   }
 
@@ -1328,6 +1328,11 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     auto user_frontiers = options_.frontiers_factory();
     RETURN_NOT_OK(user_frontiers->Smallest().FromPB(chunk_pb.smallest().user_frontier()));
     RETURN_NOT_OK(user_frontiers->Largest().FromPB(chunk_pb.largest().user_frontier()));
+    // Collapse consecutive chunks without a file, as AdvanceFlushedFrontier does when adding them.
+    if (!file && !immutable_chunks_.empty() && !immutable_chunks_.back()->file) {
+      storage::UpdateFrontiers(user_frontiers, *immutable_chunks_.back()->user_frontiers);
+      immutable_chunks_.pop_back();
+    }
     immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(
         chunk_pb.order_no(), std::move(file), std::move(index),
         std::move(user_frontiers), ImmutableChunkState::kInManifest
@@ -1459,12 +1464,22 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
+    if (num_tasks && context.chunk_holds) {
+      // Counted as one more task, so the chunk is saved only after the hold is released.
+      ++chunk->num_tasks;
+    }
   }
   release_tasks.Cancel();
 
   if (!num_tasks) {
     // Empty insert could be used to update frontiers.
     return Status::OK();
+  }
+
+  if (context.chunk_holds) {
+    context.chunk_holds->emplace_back([this, chunk] {
+      ReleaseChunkHold(*chunk);
+    });
   }
 
   std::shared_ptr<storage::UserFrontiers> frontiers_to_commit;
@@ -1603,6 +1618,22 @@ auto VectorLSM<Vector, DistanceResult>::AllIndexes() const -> Result<std::vector
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::ManifestIndexes() const
+    -> Result<std::vector<VectorIndexPtr>> {
+  std::vector<VectorIndexPtr> result;
+  SharedLock lock(mutex_);
+  RETURN_NOT_OK(failed_status_);
+  result.reserve(immutable_chunks_.size());
+  for (const auto& chunk : immutable_chunks_) {
+    // A chunk rolled but not yet in the manifest could still have inserts running.
+    if (chunk->index && chunk->IsInManifest()) {
+      result.push_back(chunk->index);
+    }
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
@@ -1649,26 +1680,6 @@ auto VectorLSM<Vector, DistanceResult>::Search(
       << ", time to search index chunks: " << chunks_search_time.ToPrettyString();
 
   return intermediate_results;
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
-    const vector_index::VectorId& vector_id) const {
-  // Search in insert registry is not implemented, so just wait until all entries are inserted.
-  while (insert_registry_->HasRunningTasks()) {
-    std::this_thread::sleep_for(10ms);
-  }
-  auto indexes = VERIFY_RESULT(AllIndexes());
-  for (const auto& index : indexes) {
-    auto vector_res = index->GetVector(vector_id);
-    if (vector_res.ok()) {
-      return true;
-    }
-    if (!vector_res.status().IsNotFound()) {
-      return vector_res.status();
-    }
-  }
-  return false;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2011,6 +2022,16 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::ReleaseChunkHold(MutableChunk& chunk) {
+  if (--chunk.num_tasks == 0) {
+    // Holds are released on the write path, so save the chunk on the insert thread pool.
+    DCHECK(chunk.save_callback);
+    options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
+    chunk.save_callback = {};
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::RollChunk(
     size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "min_vectors: " << min_vectors;
@@ -2109,6 +2130,109 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   TEST_SYNC_POINT("VectorLSM::Flush:AfterDoFlush");
 
   return wait ? promise.get_future().get() : Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
+    const std::function<void(storage::UserFrontiers&)>& modify) {
+  RETURN_NOT_OK(RUNNING_STATUS());
+
+  RETURN_NOT_OK(AcquireManifest());
+  auto release_manifest = ScopeExit([this] { ReleaseManifest(); });
+
+  std::vector<std::pair<ImmutableChunkPtr, storage::UserFrontiersPtr>> modified;
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  WritableFile* manifest_file = nullptr;
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+    SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
+           "Cannot modify chunk frontiers of a vector index with unflushed entries");
+    for (const auto& chunk : immutable_chunks_) {
+      SCHECK(chunk->IsInManifest(), IllegalState,
+             "Cannot modify chunk frontiers of a vector index with unflushed chunks");
+    }
+    if (immutable_chunks_.empty()) {
+      return Status::OK();
+    }
+
+    // Modify copies, so the in-memory chunks keep matching the manifest if the write fails.
+    modified.reserve(immutable_chunks_.size());
+    for (const auto& chunk : immutable_chunks_) {
+      auto frontiers = chunk->user_frontiers ? chunk->user_frontiers->Clone()
+                                             : storage::UserFrontiersPtr{};
+      if (frontiers) {
+        modify(*frontiers);
+      }
+      chunk->AddToUpdate(update);
+      if (frontiers) {
+        auto& added_chunk = *update.mutable_add_chunks(update.add_chunks_size() - 1);
+        frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+        frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+      }
+      modified.emplace_back(chunk, std::move(frontiers));
+    }
+    manifest_file = VERIFY_RESULT(RollManifest());
+  }
+
+  VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+
+  {
+    std::lock_guard lock(mutex_);
+    for (auto& [chunk, frontiers] : modified) {
+      chunk->user_frontiers = std::move(frontiers);
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Modified frontiers of " << modified.size() << " chunks";
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
+    const storage::UserFrontiers& frontiers) {
+  RETURN_NOT_OK(RUNNING_STATUS());
+
+  ImmutableChunkPtr chunk;
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+    if (mutable_chunk_ && mutable_chunk_->num_entries) {
+      return false;
+    }
+    for (const auto& immutable_chunk : immutable_chunks_) {
+      if (!immutable_chunk->IsInManifest()) {
+        return false;
+      }
+    }
+
+    auto user_frontiers = frontiers.Clone();
+    const size_t order_no =
+        immutable_chunks_.empty() ? 0 : immutable_chunks_.back()->order_no + 1;
+    // Only a compaction removes a chunk without a file, and an index without new rows does not
+    // compact. Fold the previous such chunk into this one, so they do not pile up. Frontiers
+    // merge field by field, so the flushed frontier stays the same.
+    // TODO(vector_index): the manifest still keeps a record per call, and only a compaction writes
+    // the reset that lets them be dropped. Write a reset past some number of records, see #27098.
+    if (!immutable_chunks_.empty()) {
+      const auto& last = immutable_chunks_.back();
+      if (!last->file && !last->index && last->ReadyForCompaction()) {
+        if (last->user_frontiers) {
+          storage::UpdateFrontiers(user_frontiers, *last->user_frontiers);
+        }
+        immutable_chunks_.pop_back();
+      }
+    }
+
+    chunk = std::make_shared<ImmutableChunk>(
+        order_no, VectorIndexPtr{}, std::move(user_frontiers), /* flush_promise= */ nullptr);
+    immutable_chunks_.push_back(chunk);
+    updates_queue_.emplace(order_no, chunk);
+  }
+
+  options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  return true;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

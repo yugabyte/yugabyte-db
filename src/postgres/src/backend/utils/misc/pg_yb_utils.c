@@ -96,6 +96,7 @@
 #include "commands/trigger.h"
 #include "commands/variable.h"
 #include "commands/yb_cmds.h"
+#include "commands/yb_tablegroup.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
@@ -1045,6 +1046,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 						   YbSwitchPgGateMemoryContext, YbCreatePgGateMemoryContext,
 						   YbDeletePgGateMemoryContext));
 
+	YbRefreshOriginationTime();
+
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
 	 * to the YugaByte cluster right away from every backend process. We only
@@ -1274,6 +1277,11 @@ typedef struct
 	/* set to true if the current statement being executed is a DDL */
 	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
+	/*
+	 * Whether the statement named by current_stmt_node_tag provably cannot
+	 * increment the catalog version. See YbDdlCannotIncrementCatalogVersion.
+	 */
+	bool		stmt_cannot_increment_version;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
 	/*
@@ -2330,6 +2338,7 @@ char	   *yb_test_fail_index_state_change = "";
 char	   *yb_default_replica_identity = "CHANGE";
 
 char	   *yb_dist_tracecontext = NULL;
+double		yb_dist_trace_sample_rate = 0.0;
 
 YbcOtelSpanContext yb_guc_remote_span_ctx = NULL;
 
@@ -2647,6 +2656,12 @@ bool
 YBIsCurrentStmtDdl()
 {
 	return ddl_transaction_state.is_top_level_ddl_active;
+}
+
+bool
+YBCurrentStmtCannotIncrementCatalogVersion()
+{
+	return ddl_transaction_state.stmt_cannot_increment_version;
 }
 
 static bool
@@ -3745,24 +3760,61 @@ YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
 }
 
+/*
+ * This function tells if a statement can never increment the catalog version.
+ *
+ * This function examines the statement. It does not examine the DDL mode,
+ * because the DDL mode is not enough. A statement can start without the
+ * YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT aspect and increment the catalog
+ * version later. There are three ways for this to occur:
+ *
+ * - A subcommand increments the catalog version. For example, CREATE TABLE ...
+ *	 REFERENCES executes an ALTER TABLE subcommand for the foreign key. The
+ *	 subcommand has the aspect, but the CREATE TABLE statement does not have it.
+ * - An event trigger executes a DDL. YbGetDdlMode calculates the mode of that
+ *	 DDL separately from the mode of the statement that fires the trigger.
+ * - A later statement in the same transaction block increments the catalog
+ *	 version.
+ *
+ * The statements for which this function returns true prevent all three of
+ * these conditions.
+ *
+ * DISCARD ALL is the only such statement. It changes the state of the
+ * session only. It drops the temporary objects of the session, but no other
+ * session can see those objects, and the catalog version does not change.
+ * PostgreSQL also makes DISCARD ALL a standalone statement.
+ * PreventInTransactionBlock() rejects it in a transaction block, in a
+ * subtransaction, in a pipeline, and in a function body. But this function is
+ * called before that check, and the lock decision persists if a savepoint
+ * rollback catches the error. Thus this function does the same check with
+ * IsInTransactionBlock(). A DISCARD ALL that passes it is the only DDL of its
+ * transaction.
+ *
+ * DROP TABLE of a temporary table is not such a statement. It also does not
+ * increment the catalog version, but it does not prevent the three conditions
+ * above. DISCARD ALL deletes its temporary objects with performDeletion(), and
+ * the DISCARD statement does not fire an event trigger. DROP TABLE does fire
+ * event triggers, and an event trigger can execute a DDL that increments the
+ * catalog version. A transaction block can also contain DROP TABLE and a later
+ * statement that increments the catalog version.
+ */
+static bool
+YbDdlCannotIncrementCatalogVersion(Node *parsetree,
+								   ProcessUtilityContext context)
+{
+	return IsA(parsetree, DiscardStmt) &&
+		castNode(DiscardStmt, parsetree)->target == DISCARD_ALL &&
+		!IsInTransactionBlock(context == PROCESS_UTILITY_TOPLEVEL);
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
-	/*
-	 * During a YSQL major version upgrade the cluster runs in compatibility
-	 * mode and yb-master rejects (and in debug builds crashes on) writes to the
-	 * catalog version table until the upgrade is finalized; catalog versions are
-	 * fixed up later in UpdateCatalogVersions. So forced DDLs that are still
-	 * allowed to run during the upgrade (e.g. a forced COMMENT executed after
-	 * yb_force_catalog_update_on_next_ddl is set) must not bump the catalog
-	 * version by default.
-	 */
 	bool		should_increment_version_by_default =
-		(yb_test_make_all_ddl_statements_incrementing ||
-		 yb_always_increment_catalog_version_on_ddl) &&
-		!YBCPgYsqlMajorVersionUpgradeInProgress();
+		yb_test_make_all_ddl_statements_incrementing ||
+		yb_always_increment_catalog_version_on_ddl;
 	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
@@ -3810,6 +3862,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		 * be incremented.
 		 */
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		ddl_transaction_state.stmt_cannot_increment_version =
+			YbDdlCannotIncrementCatalogVersion(parsetree, context);
 		if (ddl_transaction_state.current_stmt_ddl_command_tag != CMDTAG_UNKNOWN)
 			ddl_transaction_state.last_stmt_ddl_command_tag =
 				ddl_transaction_state.current_stmt_ddl_command_tag;
@@ -4582,6 +4636,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
+
+	Assert(!(ddl_transaction_state.stmt_cannot_increment_version &&
+			 is_version_increment));
 
 	if (!is_version_increment)
 		ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
@@ -6280,6 +6337,42 @@ yb_is_database_colocated(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Return leader SST+WAL disk size in bytes for a tablegroup's colocation
+ * parent tablet. Matches GetTableDiskSize / pg_table_size semantics (RF=1
+ * leader footprint). Errors if the oid is not a pg_yb_tablegroup entry.
+ */
+Datum
+yb_tablegroup_size(PG_FUNCTION_ARGS)
+{
+	Oid			tablegroup_oid = PG_GETARG_OID(0);
+	int64_t		size = 0;
+	int32_t		num_missing_tablets = 0;
+	char	   *grpname;
+
+	grpname = get_tablegroup_name(tablegroup_oid);
+	if (grpname == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup with OID %u does not exist", tablegroup_oid)));
+
+	HandleYBStatus(YBCPgGetTablegroupDiskSize(tablegroup_oid,
+											  MyDatabaseId,
+											  MyDatabaseColocated,
+											  &size,
+											  &num_missing_tablets));
+	if (num_missing_tablets > 0)
+	{
+		elog(NOTICE,
+			 "%d tablets of tablegroup %s did not provide disk size "
+			 "estimates, and were not added to the displayed totals.",
+			 num_missing_tablets,
+			 grpname);
+	}
+
+	PG_RETURN_INT64(size);
+}
+
+/*
  * This function serves mostly as a helper for YSQL migration to introduce
  * pg_yb_catalog_version table without breaking version continuity.
  */
@@ -6310,6 +6403,24 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	YbGeolocationDistance distance = get_geolocation_distance(tablespaceId);
 
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
+}
+
+const char *
+YBGetCurrentCloud()
+{
+	return YBCGetGFlags()->placement_cloud;
+}
+
+const char *
+YBGetCurrentRegion()
+{
+	return YBCGetGFlags()->placement_region;
+}
+
+const char *
+YBGetCurrentZone()
+{
+	return YBCGetGFlags()->placement_zone;
 }
 
 Datum
@@ -7137,7 +7248,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			sys_only_filter_attr = Anum_pg_enum_oid;
 			break;
 		case IndexRelationId:	/* pg_index */
-			mandatory_index_id = IndexIndrelidIndexId;
+			index_id = IndexIndrelidIndexId;
 			sys_only_filter_attr = Anum_pg_index_indexrelid;
 			break;
 		case InheritsRelationId:	/* pg_inherits */
@@ -7429,6 +7540,67 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Origination time, in Unix microseconds, stamped on the DocDB writes and
+ * commits this backend issues, so that StopPersisting/StartPersisting can
+ * block work by when it originated.  It must precede every write of the
+ * transaction (so writes cannot predate the stamp) and precede the shared
+ * catalog version check that the transaction's catalog cache rests on.
+ * Hence it is refreshed only at backend start, in the PostgresMain preamble
+ * for messages received outside a transaction (before
+ * YBCheckSharedCatalogCacheVersion), and before exit cleanup; parallel
+ * workers take their leader's value.  It is handed to pggate once per
+ * transaction, at transaction start.
+ */
+uint64_t	yb_origination_time = 0;
+
+/* Value of yb_origination_time_override; 0 means unset. */
+static uint64_t yb_origination_time_override = 0;
+
+void
+YbRefreshOriginationTime(void)
+{
+	if (yb_origination_time_override != 0)
+		yb_origination_time = yb_origination_time_override;
+	else
+		yb_origination_time = GetCurrentTimestamp() +
+			((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+			 SECS_PER_DAY * USECS_PER_SEC);
+}
+
+bool
+yb_check_origination_time_override(char **newval, void **extra,
+								   GucSource source)
+{
+	unsigned long long value;
+	char	   *endptr;
+	uint64_t   *myextra;
+
+	errno = 0;
+	value = strtoull(*newval, &endptr, 10);
+	if (endptr == *newval || *endptr != '\0' || errno == ERANGE ||
+		**newval == '-')
+	{
+		GUC_check_errdetail("Accepted value is a Unix timestamp in "
+							"microseconds, e.g., 1694673026673528, or 0 "
+							"for none.");
+		return false;
+	}
+
+	myextra = (uint64_t *) malloc(sizeof(uint64_t));
+	if (!myextra)
+		return false;
+	*myextra = value;
+	*extra = myextra;
+	return true;
+}
+
+void
+yb_assign_origination_time_override(const char *newval, void *extra)
+{
+	yb_origination_time_override = *((uint64_t *) extra);
 }
 
 void
@@ -9544,7 +9716,10 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * NULL, and start_range/end_range contain the decoded range partition key
  * boundaries.
  * Leader is provided as a separate column for simpler querying.
- * tablet_attrs is reserved for future use and is currently always NULL.
+ * tablet_attrs is a json object with tablet leader disk size fields when
+ * available: sst_bytes, wal_bytes, uncompressed_sst_bytes, total_bytes
+ * (sst+wal), and optionally vector_index_bytes. NULL when sizes are
+ * unavailable or the row is privilege-masked.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -9765,8 +9940,42 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[9] = true;
 		}
 
-		/* TODO(#30180): Populate tablet_attrs. */
-		nulls[12] = true;
+		/*
+		 * tablet_attrs: leader SST/WAL sizes. Omit when privilege-masked or
+		 * when master did not report drive info for the leader.
+		 */
+		if (show_real && tablet->has_disk_size)
+		{
+			char		attrs_buf[256];
+			int64		total_bytes =
+				tablet->sst_files_disk_size + tablet->wal_files_disk_size;
+
+			if (tablet->vector_index_disk_size > 0)
+			{
+				snprintf(attrs_buf, sizeof(attrs_buf),
+						 "{\"sst_bytes\":%lld,\"wal_bytes\":%lld,"
+						 "\"uncompressed_sst_bytes\":%lld,\"total_bytes\":%lld,"
+						 "\"vector_index_bytes\":%lld}",
+						 (long long) tablet->sst_files_disk_size,
+						 (long long) tablet->wal_files_disk_size,
+						 (long long) tablet->uncompressed_sst_files_disk_size,
+						 (long long) total_bytes,
+						 (long long) tablet->vector_index_disk_size);
+			}
+			else
+			{
+				snprintf(attrs_buf, sizeof(attrs_buf),
+						 "{\"sst_bytes\":%lld,\"wal_bytes\":%lld,"
+						 "\"uncompressed_sst_bytes\":%lld,\"total_bytes\":%lld}",
+						 (long long) tablet->sst_files_disk_size,
+						 (long long) tablet->wal_files_disk_size,
+						 (long long) tablet->uncompressed_sst_files_disk_size,
+						 (long long) total_bytes);
+			}
+			values[12] = DirectFunctionCall1(json_in, CStringGetDatum(attrs_buf));
+		}
+		else
+			nulls[12] = true;
 
 		if (tablet->tablet_state)
 			values[13] = CStringGetTextDatum(tablet->tablet_state);

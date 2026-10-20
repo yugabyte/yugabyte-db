@@ -482,7 +482,7 @@ static bool yb_is_binary_upgrade = false;
 
 
 Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
-  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp, data.origination_time));
   RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
   RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
       data.read_from_followers_enabled, data.follower_read_staleness_ms));
@@ -1324,6 +1324,19 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
   });
 }
 
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(
+      pgapi->GetTablegroupDiskSize(database_oid, tablegroup_oid, is_database_colocated),
+      [size, num_missing_tablets](auto value) {
+        *size = value.table_size;
+        *num_missing_tablets = value.num_missing_tablets;
+      });
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YbcStatus YBCPgNewCreateIndex(const char *database_name,
@@ -1554,6 +1567,12 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size) {
 
 YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
   return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
+}
+
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns) {
+  return ToYBCStatus(pgapi->DmlANNBindKeyFilter(
+      handle, std::span(columns, static_cast<size_t>(ncolumns))));
 }
 
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -1940,8 +1959,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgBeginTransaction(int64_t start_time) {
-  return ToYBCStatus(pgapi->BeginTransaction(start_time));
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time, origination_time));
 }
 
 YbcStatus YBCPgRecreateTransaction() {
@@ -3227,7 +3246,13 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
             ? YBCPAllocStdString(tablet_metadata.tablet_state())
             : nullptr,
         .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
-                                                           : kPgInvalidOid
+                                                           : kPgInvalidOid,
+        .has_disk_size = tablet_metadata.has_sst_files_disk_size() ||
+                         tablet_metadata.has_wal_files_disk_size(),
+        .sst_files_disk_size = tablet_metadata.sst_files_disk_size(),
+        .wal_files_disk_size = tablet_metadata.wal_files_disk_size(),
+        .uncompressed_sst_files_disk_size = tablet_metadata.uncompressed_sst_files_disk_size(),
+        .vector_index_disk_size = tablet_metadata.vector_index_disk_size()
       };
       ++dest;
     }
@@ -3350,7 +3375,9 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
       PgObjectId(database_oid, table_relfilenode_oid)));
 }
 
-bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+bool YBCHasCronLease() { return pgapi->HasCronLease(); }
+
+bool YBCCanCronStartJobs() { return pgapi->CanCronStartJobs(); }
 
 int YBCGetXClusterRole(uint32_t db_oid) {
   auto result = pgapi->GetXClusterRole(db_oid);
@@ -3525,6 +3552,10 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
 
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
   return PgFlushDebugContext::YbcEndOfTopLevelStmt();
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers() {
+  return PgFlushDebugContext::YbcParallelWorkers();
 }
 
 // ---------------------------------------------------------------------------

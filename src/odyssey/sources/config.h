@@ -102,6 +102,7 @@ struct od_config {
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
 	_Atomic int yb_backend_drain_timeout_ms;
+	char *yb_data_directory;
 };
 
 void od_config_init(od_config_t *);

@@ -38,7 +38,14 @@ option java_package = "org.yb.tablet";
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/tablet/tablet_types.proto";
+
+// A vector index whose backfill failed on the tablet.
+message VectorIndexBackfillFailurePB {
+  optional bytes table_id = 1;
+  optional AppStatusPB status = 2;
+}
 
 message TabletStatusPB {
   required string tablet_id = 1;
@@ -89,6 +96,8 @@ message TabletStatusPB {
   // vector indexes, or vector index post-split compaction is disabled. Unset if the tablet is
   // not available (e.g. bootstrapping or shutting down).
   optional bool vector_indexes_parent_data_compacted = 29;
+  // Vector indexes whose backfill failed on this tablet. See PollVectorIndexReady.
+  repeated VectorIndexBackfillFailurePB vector_index_failed_backfills = 30;
 }
 
 // Used to present the maintenance manager's internal state.
@@ -120,4 +129,48 @@ message MaintenanceManagerStatusPB {
   // This list is not guaranteed to be in any particular order. Can contain the same operation
   // multiple times.
   repeated CompletedOpPB completed_operations = 3;
+}
+
+// Kinds of vector index inconsistencies, see CheckVectorIndex.
+enum VectorIndexInconsistencyKind {
+  // A row references a vector which is missing in the index.
+  MISSING_VECTOR = 0;
+  // The index stores a different vector under the vector id a row references.
+  VECTOR_MISMATCH = 1;
+  // A row references a vector which has no live reverse mapping entry.
+  MISSING_REVERSE_MAPPING = 2;
+  // The reverse mapping entry of the vector a row references points to another row.
+  REVERSE_MAPPING_MISMATCH = 3;
+  // A live reverse mapping entry points to a row which does not exist or references another
+  // vector.
+  SPURIOUS_REVERSE_MAPPING = 4;
+  // The index holds more than one copy of the vector a row references.
+  DUPLICATE_VECTOR = 5;
+  // The vector a row references is in the index, but its payload references another row.
+  PAYLOAD_MISMATCH = 6;
+}
+
+message VectorIndexInconsistencyPB {
+  optional VectorIndexInconsistencyKind kind = 1;
+  optional bytes vector_id = 2;
+  // ybctid of the row, unset when the row does not exist.
+  optional bytes ybctid = 3;
+  // ybctid the index or its reverse mapping references, unset when it references none.
+  optional bytes index_ybctid = 4;
+  optional string details = 5;
+}
+
+message VectorIndexCheckResultPB {
+  // Hybrid time the indexed table and the reverse mapping were read at.
+  optional fixed64 read_ht = 1;
+  // Vectors stored in the index, including the invisible ones.
+  optional uint64 num_vectors = 2;
+  // Vectors no row references at read_ht: vectors of deleted rows and vectors replaced by updates,
+  // kept until compaction, and vectors written after read_ht.
+  optional uint64 num_invisible_vectors = 3;
+  // Rows of the indexed table with a non-NULL vector.
+  optional uint64 num_rows = 4;
+  repeated VectorIndexInconsistencyPB inconsistencies = 5;
+  // Whether inconsistencies beyond the requested limit were found and left out.
+  optional bool truncated = 6;
 }

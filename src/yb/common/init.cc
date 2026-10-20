@@ -43,14 +43,13 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 
 #if defined(__linux__)
 #include <sys/prctl.h>
-
-#include "yb/util/format.h"
 #endif
 
 using std::string;

@@ -16,6 +16,7 @@
 #include <concepts>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -391,6 +392,9 @@ class PgApiImpl {
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
+  Result<client::TableSizeInfo> GetTablegroupDiskSize(
+      PgOid database_oid, PgOid tablegroup_oid, bool is_database_colocated);
+
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
   Status NewCreateIndex(const char *database_name,
@@ -642,6 +646,9 @@ class PgApiImpl {
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
 
+  Status DmlANNBindKeyFilter(
+      PgStatement *handle, std::span<const YbcPgVectorKeyColumn> columns);
+
   void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
@@ -679,7 +686,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction(int64_t start_time);
+  Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -900,7 +907,8 @@ class PgApiImpl {
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
-  bool IsCronLeader() const;
+  bool HasCronLease() const;
+  bool CanCronStartJobs() const;
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 

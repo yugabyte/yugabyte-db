@@ -1,14 +1,16 @@
 /*-------------------------------------------------------------------------
  *
  * yb_scan_plan.h
- *	  Plan-time YB scan analysis types.
+ *	  Plan-time YB scan analysis.
  *
- *	  Holds the type that tracks which key columns of a scan have
- *	  bound conditions.  It is shared between scan-key setup
- *	  (yb_scan_core.c) and index cost estimation (yb_cost.c), which
- *	  predicts key binding without seeing scan execution state.
- *	  Plan-time analysis only: no execution state or pggate calls
- *	  belong here.
+ *	  Rules for which scan conditions YB binds to key columns, and
+ *	  the YbScanPlan type they are evaluated against.  Scan-key
+ *	  setup (yb_scan_core.c) binds a scan by these rules, and cost
+ *	  estimation (yb_cost.c, costsize.c) predicts that binding
+ *	  without seeing execution state.  Put a rule that both sides
+ *	  need here instead of copying it into the cost code.  Plan-time
+ *	  analysis only: no execution state (YbOpaque, ScanKey) or
+ *	  pggate calls belong here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -68,3 +70,9 @@ typedef struct YbScanPlanData
 } YbScanPlanData;
 
 typedef YbScanPlanData *YbScanPlan;
+
+extern int64 YbDatumGetInt64(Datum value, Oid value_typid);
+extern bool YbShouldRecheckEquality(Oid column_typid, Oid value_typid);
+extern bool YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val);
+extern bool YbIsScanCompatible(Oid column_typid, Oid value_typid,
+							   bool is_value_scalar, Datum value);

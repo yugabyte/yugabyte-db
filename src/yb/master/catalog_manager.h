@@ -718,6 +718,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) override;
 
+  void HandleAlterTableTaskFailed(const TableInfo& table) override
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
   // For a table that is currently in PREPARING state, if all its tablets have transitioned to
   // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
   // advanced to the RUNNING state after all of these tasks complete successfully.
@@ -2672,12 +2675,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // At all other times, the address pointed to remains the same
   // (thus the value of this shared ptr remains the same), only
   // the underlying object is read or modified via cow read/write lock mechanism.
-  // We don't need a lock guard for changing this pointer value since
-  // we already acquire the leader write lock during catalog loading,
-  // so all concurrent accesses of this shared ptr -- either external via RPCs or
-  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
-  // are locked out since they grab the scoped leader shared lock that
-  // depends on this leader lock.
+  // Catalog load holds leader_mutex_ for writing, so RPC handlers and bg tasks (which hold
+  // ScopedLeaderSharedLock) never observe the swap. Some ClusterConfig() callers
+  // (e.g. XClusterSafeTimeService) do not hold leader_mutex_, so the pointer is accessed via
+  // std::atomic_load/std::atomic_store. Direct reads are only allowed on the load path.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // Transaction tables information.
@@ -3292,9 +3293,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
-
-  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
-      client::internal::RemoteTabletPtr tablet);
 
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(

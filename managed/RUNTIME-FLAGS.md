@@ -176,6 +176,7 @@
 | "Enable Query Logging" | "yb.universe.query_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable YSQL query logging on universes." | "Boolean" |
 | "Enable Metrics Export" | "yb.universe.metrics_export_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable metrics export on universes." | "Boolean" |
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
+| "Enable primary replication factor 9" | "yb.universe.enable_primary_rf_9" | "GLOBAL" | "When enabled, allows creating universes and increasing primary cluster replication factor to 9." | "Boolean" |
 | "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
 | "XCluster Metrics Scheduler Interval" | "yb.xcluster.xcluster_metrics_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Metrics Scheduler runs" | "Duration" |
 | "XCluster Master Address Sync Interval" | "yb.xcluster.xcluster_master_address_sync_interval" | "GLOBAL" | "Interval at which the XCluster Master Address Sync Scheduler runs to keep source master addresses up to date on target universe replication groups" | "Duration" |
@@ -232,6 +233,7 @@
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
 | "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
+| "HTTP conditional GET (ETag / 304)" | "yb.api.conditional_get.enabled" | "GLOBAL" | "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when the client sends a matching If-None-Match ETag, skipping heavy response construction. When disabled, those endpoints always return a full 200 body." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -416,6 +418,7 @@
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
+| "Allow OCI boot volume replacement with Marketplace-based images" | "yb.oci.allow_boot_volume_replace_for_marketplace_based_images" | "UNIVERSE" | "When enabled, the OCI VM image upgrade precheck no longer blocks Marketplace images or custom images built from one. Use only when YBA's record of an image is wrong or missing." | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
 | "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |

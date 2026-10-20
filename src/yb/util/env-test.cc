@@ -46,6 +46,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/os-util.h"
 #include "yb/util/random.h"
@@ -62,8 +63,6 @@ DECLARE_bool(TEST_simulate_fs_without_fallocate);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
-
-#include "yb/util/format.h"
 #endif  // !defined(__APPLE__)
 // Copied from falloc.h. Useful for older kernels that lack support for
 // hole punching; fallocate(2) will return EOPNOTSUPP.

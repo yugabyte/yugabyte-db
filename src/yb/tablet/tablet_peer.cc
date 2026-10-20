@@ -482,6 +482,37 @@ Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::Operation
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }
 
+namespace {
+
+// Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the op was
+// assigned, letting a client with a time-bounded lease stop its writes landing once the lease is
+// gone.
+Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
+  if (msg.op_type() != consensus::OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
+  // An earlier clock reading would leave an unbounded window in which the op could still be
+  // assigned a time past the fence.
+  const auto hybrid_time = HybridTime(msg.hybrid_time());
+  if (fence > hybrid_time) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+}
+
+}  // namespace
+
+Status TabletPeer::CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) {
+  return CheckWriteFence(replicate_msg);
+}
+
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
     std::lock_guard l(state_change_lock_);
@@ -874,11 +905,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     auto tablet = tablet_;
     if (tablet) {
       status_pb_out->set_table_type(tablet->table_type());
-      auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
-      if (vector_index_finished_backfills) {
-        *status_pb_out->mutable_vector_index_finished_backfills() =
-            std::move(*vector_index_finished_backfills);
-      }
+      tablet->vector_indexes().FillBackfillStatus(*status_pb_out);
     }
     disk_size_info.ToPB(status_pb_out);
     // Set hide status of the tablet.
@@ -2130,7 +2157,8 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
   callback(VerifyAsyncWriteCompletion(op_id));
 }
 
-Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
+Status TabletPeer::VerifyAsyncWriteReceived(
+    const OpId& op_id, AllowLogLookup allow_log_lookup) {
   auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
   if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
     return Status::OK();
@@ -2149,29 +2177,53 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
     return Status::OK();
   }
 
-  if (op_id.term + 1 == leader_state.term) {
-    // One term ago - the current term's NO_OP committed everything before it. Also covers
-    // a split child on its first elected term, since first_index == split_op_id.index + 1.
-    if (op_id.index < first_index) {
+  if (op_id.index < first_index) {
+    if (op_id.term + 1 == leader_state.term) {
+      // One term ago - the current term's NO_OP committed everything before it. Also covers
+      // a split child on its first elected term, since first_index == split_op_id.index + 1.
       return Status::OK();
     }
-    // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
-    // transparently retry the transaction instead of surfacing an internal error.
-    return STATUS_EC_FORMAT(
-        NotFound, TransactionError(TransactionErrorCode::kAborted),
-        "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
-        "term $2 is $3). Retry the transaction.",
-        tablet_id(), op_id, leader_state.term, first_index)
+
+    if (!allow_log_lookup) {
+      return STATUS_EC_FORMAT(
+          NotFound, TransactionError(TransactionErrorCode::kAborted),
+          "Tablet $0: tablet leader moved more than once since async write $1 was issued "
+          "(write from term $2, current term is $3). Retry the transaction.",
+          tablet_id(), op_id, op_id.term, leader_state.term)
+          .CloneAndAddErrorCode(
+              tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
+    }
+
+    // Two or more terms ago - an intermediate term may have overwritten the write, so validate it
+    // from the log.
+    auto log_op_id = consensus->LookupOpId(op_id.index);
+    if (log_op_id.ok() && *log_op_id == op_id) {
+      return Status::OK();
+    }
+    auto status = log_op_id.ok()
+        ? STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 was overwritten by term $2 (found $3). Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id->term, *log_op_id)
+        // E.g. the entry was GCed, so the write may have committed but can't be confirmed.
+        : STATUS_FORMAT(
+              NotFound,
+              "Tablet $0: async write $1 could not be verified from the log: $2. Retry the "
+              "transaction.",
+              tablet_id(), op_id, log_op_id.status().message().ToBuffer());
+    return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
         .CloneAndAddErrorCode(
             tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
   }
 
-  // Two or more terms ago - we can't verify presence without a log lookup.
+  // Write was lost/overwritten. Tag as a transaction abort so that the query layer can
+  // transparently retry the transaction instead of surfacing an internal error.
   return STATUS_EC_FORMAT(
       NotFound, TransactionError(TransactionErrorCode::kAborted),
-      "Tablet $0: tablet leader moved more than once since async write $1 was issued "
-      "(write from term $2, current term is $3). Retry the transaction.",
-      tablet_id(), op_id, op_id.term, leader_state.term)
+      "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
+      "term $2 is $3). Retry the transaction.",
+      tablet_id(), op_id, leader_state.term, first_index)
       .CloneAndAddErrorCode(
           tserver::TabletServerError(tserver::TabletServerErrorPB::ASYNC_WRITE_LOST));
 }

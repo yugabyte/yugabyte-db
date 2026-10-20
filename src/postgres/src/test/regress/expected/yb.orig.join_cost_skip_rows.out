@@ -37,8 +37,12 @@ delete from variants;
 ------------------------------------------------------------------------------
 -- 100: the bound's collation.  The inner bound (100) and the outer bound
 -- (110) are the two directions; only the outer one reaches the batched nested
--- loop.  "c" and "posix" select the same rows, so any cost difference between
--- them is the estimate's alone.
+-- loop.  120 and 130 read the inner bound descending, where the bounds swap
+-- roles: 120's lower bound stops the merge and 130's upper bound moves its
+-- start.  Their bounds sit where both collations estimate the same inner
+-- rows (12 and 15), inside one 16-row page, so the inner scans cost the same
+-- and the merge rows differ by the clamp alone.  "c" and "posix" select the
+-- same rows, so any cost difference between them is the estimate's alone.
 ------------------------------------------------------------------------------
 insert into variants values
     (100, 'collation, inner bound', 1, 'none',
@@ -56,7 +60,23 @@ insert into variants values
       where o.k >= ''a'' collate "C" order by o.k'),
     (110, 'collation, outer bound', 3, 'posix',
      'select o.k from cln_o o join cln_i i on o.k = i.k
-      where o.k >= ''a'' collate "POSIX" order by o.k');
+      where o.k >= ''a'' collate "POSIX" order by o.k'),
+    (120, 'collation, inner bound, desc end', 1, 'none',
+     'select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc'),
+    (120, 'collation, inner bound, desc end', 2, 'c',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k > ''n'' collate "C" order by o.k desc'),
+    (120, 'collation, inner bound, desc end', 3, 'posix',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k > ''n'' collate "POSIX" order by o.k desc'),
+    (130, 'collation, inner bound, desc start', 1, 'none',
+     'select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc'),
+    (130, 'collation, inner bound, desc start', 2, 'c',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k < ''p'' collate "C" order by o.k desc'),
+    (130, 'collation, inner bound, desc start', 3, 'posix',
+     'select o.k from cln_o o join cln_i i on o.k = i.k
+      where i.k < ''p'' collate "POSIX" order by o.k desc');
 ------------------------------------------------------------------------------
 -- 200: the conditioning ratio.  o.g groups the key 52 rows at a time, so a
 -- bound on g bounds the key.  The inner starts at 131: "ge3" leaves 26 outer
@@ -111,37 +131,47 @@ insert into variants values
      'select o.k from bnd_o o join bnd_i i on o.k = i.k
       where o.k >= 10 order by o.k');
 select gid, vid, label, query from variants order by gid, vid;
- gid | vid |   label   |                              query                               
------+-----+-----------+------------------------------------------------------------------
+ gid | vid |   label   |                                query                                
+-----+-----+-----------+---------------------------------------------------------------------
  100 |   1 | none      | select o.k from cln_o o join cln_i i on o.k = i.k order by o.k
- 100 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k               +
+ 100 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k                  +
      |     |           |       where i.k < 'q' collate "C" order by o.k
- 100 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k               +
+ 100 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k                  +
      |     |           |       where i.k < 'q' collate "POSIX" order by o.k
  110 |   1 | none      | select o.k from cln_o o join cln_i i on o.k = i.k order by o.k
- 110 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k               +
+ 110 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k                  +
      |     |           |       where o.k >= 'a' collate "C" order by o.k
- 110 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k               +
+ 110 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k                  +
      |     |           |       where o.k >= 'a' collate "POSIX" order by o.k
+ 120 |   1 | none      | select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc
+ 120 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k                  +
+     |     |           |       where i.k > 'n' collate "C" order by o.k desc
+ 120 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k                  +
+     |     |           |       where i.k > 'n' collate "POSIX" order by o.k desc
+ 130 |   1 | none      | select o.k from cln_o o join cln_i i on o.k = i.k order by o.k desc
+ 130 |   2 | c         | select o.k from cln_o o join cln_i i on o.k = i.k                  +
+     |     |           |       where i.k < 'p' collate "C" order by o.k desc
+ 130 |   3 | posix     | select o.k from cln_o o join cln_i i on o.k = i.k                  +
+     |     |           |       where i.k < 'p' collate "POSIX" order by o.k desc
  200 |   1 | none      | select o.k from ext_o o join ext_i i on o.k = i.k order by o.k
- 200 |   2 | ge3       | select o.k from ext_o o join ext_i i on o.k = i.k               +
+ 200 |   2 | ge3       | select o.k from ext_o o join ext_i i on o.k = i.k                  +
      |     |           |       where o.g >= 3 order by o.k
- 200 |   3 | ge4       | select o.k from ext_o o join ext_i i on o.k = i.k               +
+ 200 |   3 | ge4       | select o.k from ext_o o join ext_i i on o.k = i.k                  +
      |     |           |       where o.g >= 4 order by o.k
  300 |   1 | text-none | select o.k from rlbt_o o join rlbt_i i on o.k = i.k order by o.k
- 300 |   2 | text-ge   | select o.k from rlbt_o o join rlbt_i i on o.k = i.k             +
+ 300 |   2 | text-ge   | select o.k from rlbt_o o join rlbt_i i on o.k = i.k                +
      |     |           |       where o.k >= '0251' order by o.k
  300 |   3 | vchr-none | select o.k from rlbv_o o join rlbv_i i on o.k = i.k order by o.k
- 300 |   4 | vchr-ge   | select o.k from rlbv_o o join rlbv_i i on o.k = i.k             +
+ 300 |   4 | vchr-ge   | select o.k from rlbv_o o join rlbv_i i on o.k = i.k                +
      |     |           |       where o.k >= '0251' order by o.k
  400 |   1 | none      | select o.k from bnd_o o join bnd_i i on o.k = i.k order by o.k
- 400 |   2 | ge11      | select o.k from bnd_o o join bnd_i i on o.k = i.k               +
+ 400 |   2 | ge11      | select o.k from bnd_o o join bnd_i i on o.k = i.k                  +
      |     |           |       where o.k >= 11 order by o.k
- 400 |   3 | gt10      | select o.k from bnd_o o join bnd_i i on o.k = i.k               +
+ 400 |   3 | gt10      | select o.k from bnd_o o join bnd_i i on o.k = i.k                  +
      |     |           |       where o.k > 10 order by o.k
- 400 |   4 | ge10      | select o.k from bnd_o o join bnd_i i on o.k = i.k               +
+ 400 |   4 | ge10      | select o.k from bnd_o o join bnd_i i on o.k = i.k                  +
      |     |           |       where o.k >= 10 order by o.k
-(17 rows)
+(23 rows)
 
 ------------------------------------------------------------------------------
 -- Plan validation.  Every (variant, method) pair must have realized the
@@ -212,18 +242,42 @@ order by gid, vid;
 -- the inner's first key.  Both methods charge those rows to startup, and both
 -- orderings agree: "posix" lands between "c" and no bound, costed without the
 -- clamp and scanning accordingly.
+--
+-- MJ, inner bound read descending, lower bound (120): the merge stops at the
+-- inner's lower bound instead of its upper one, and the clamp follows the
+-- direction, so the row reads as 100's does; a "c=posix" cost tie would mean
+-- the end clamp went back to ascending orders only (#34905).
+--
+-- MJ, inner bound read descending, upper bound (130): the bound moves the
+-- merge's start instead.  The 11 outer rows above it are read and discarded
+-- before the first match by "c" and "posix" alike; the clamp charges them to
+-- startup for "c", while "posix" falls back to the unclamped start as at 100
+-- and carries less startup cost for the same work.  That disagreement is the
+-- expected fallback; a "c=posix" cost tie would mean the start clamp went
+-- back to ascending orders only (#34905).
+--
+-- BNL, inner bound read descending (120, 130): the two bounds are costed
+-- identically and "c" scans the fewest rows, both for 100's reason.  Unlike
+-- 100, "posix" also does less work than no bound: its filter still scans all
+-- 26 inner rows but leaves 12 or 15, which fit in one 16-row page, where
+-- 100's leaves 16, which fill the page, so a second request follows.  The
+-- planner's credit to "posix" over no bound, unearned at 100, is earned here.
 ------------------------------------------------------------------------------
 select gid, grp, method, cost_order, work_order
 from skip_report
-where gid in (100, 110)
+where gid in (100, 110, 120, 130)
 order by gid, method;
- gid |          grp           | method |  cost_order  |  work_order  
------+------------------------+--------+--------------+--------------
- 100 | collation, inner bound | BNL    | c=posix none | c none=posix
- 100 | collation, inner bound | MJ     | c posix none | c=posix none
- 110 | collation, outer bound | BNL    | c posix none | c posix none
- 110 | collation, outer bound | MJ     | c posix none | c posix none
-(4 rows)
+ gid |                grp                 | method |  cost_order  |  work_order  
+-----+------------------------------------+--------+--------------+--------------
+ 100 | collation, inner bound             | BNL    | c=posix none | c none=posix
+ 100 | collation, inner bound             | MJ     | c posix none | c=posix none
+ 110 | collation, outer bound             | BNL    | c posix none | c posix none
+ 110 | collation, outer bound             | MJ     | c posix none | c posix none
+ 120 | collation, inner bound, desc end   | BNL    | c=posix none | c posix none
+ 120 | collation, inner bound, desc end   | MJ     | c posix none | c=posix none
+ 130 | collation, inner bound, desc start | BNL    | c=posix none | c posix none
+ 130 | collation, inner bound, desc start | MJ     | posix c none | c=posix none
+(8 rows)
 
 ------------------------------------------------------------------------------
 -- 200, the conditioning ratio, before extended statistics.  Both bounds must

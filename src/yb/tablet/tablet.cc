@@ -77,6 +77,7 @@
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -123,6 +124,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -365,6 +367,11 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
     "regular db during flushing regular db memtable. Implicitly disabled for a "
     "tablet once it has applied an external (xCluster target) write batch, until "
     "the next tserver restart.");
+
+DEFINE_RUNTIME_bool(advance_deactivated_vector_index_flushed_op_id, true,
+    "If true, the flushed op id of a deactivated vector index, e.g. one dropped while a snapshot "
+    "schedule retains it, is advanced to that of the regular db after a regular db flush.");
+TAG_FLAG(advance_deactivated_vector_index_flushed_op_id, advanced);
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
@@ -665,6 +672,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
     LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
         << "Failed to update intents db flushed op id: " << status;
+    status = tablet_.MayAdvanceDeactivatedVectorIndexesFlushedOpId();
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to advance deactivated vector indexes flushed op id: " << status;
   }
 
  private:
@@ -1771,6 +1781,10 @@ void Tablet::Start() {
   // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
   // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
+  // Bootstrap can replay rows committed before the cutoff into a deactivated index. Nothing else
+  // flushes it, since it gets no new rows, and its unflushed rows would hold back log GC and
+  // intents DB flushes.
+  vector_indexes_->FlushDeactivated();
 }
 
 bool Tablet::StartShutdown(
@@ -2026,7 +2040,8 @@ Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
-    AllowBootstrappingState allow_bootstrapping_state) const {
+    AllowBootstrappingState allow_bootstrapping_state,
+    docdb::IncludeIntents include_intents) const {
   if (state_ != kOpen && (!allow_bootstrapping_state || state_ != kBootstrapping)) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
@@ -2042,15 +2057,19 @@ Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
 
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
-  auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
-      /* transaction_id */ std::nullopt,
-      table_info->schema().table_properties().is_ysql_catalog_table()));
+  TransactionOperationContext txn_op_ctx;
+  if (include_intents) {
+    txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
+        /* transaction_id */ std::nullopt,
+        table_info->schema().table_properties().is_ysql_catalog_table()));
+  }
 
   docdb::ReadOperationData read_operation_data;
   RETURN_NOT_OK(GetSafeTimeReadOperationData(read_hybrid_time, deadline, read_operation_data));
 
   return std::make_unique<DocRowwiseIterator>(
-      projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
+      projection, table_info->doc_read_context, txn_op_ctx,
+      include_intents ? doc_db() : doc_db().WithoutIntents(), read_operation_data,
       std::move(scoped_read_operation));
 }
 
@@ -2084,7 +2103,8 @@ Status Tablet::ApplyRowOperations(
   }
 
   return ApplyOperation(
-      *operation, write_request.batch_idx(), put_batch, apply_to_storages, skip_opid_update);
+      *operation, write_request.batch_idx(), put_batch, apply_to_storages, skip_opid_update,
+      docdb::XClusterTargetApplied(write_request.xcluster_target_applied()));
 }
 
 Status Tablet::UpdateOpIdForOperation(WriteOperation* operation) {
@@ -2098,7 +2118,8 @@ Status Tablet::UpdateOpIdForOperation(WriteOperation* operation) {
 
 Status Tablet::ApplyOperation(
     const Operation& operation, int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& write_batch,
-    const docdb::StorageSet& apply_to_storages, bool skip_opid_update) {
+    const docdb::StorageSet& apply_to_storages, bool skip_opid_update,
+    docdb::XClusterTargetApplied xcluster_target_applied) {
   VLOG_WITH_FUNC(4)
       << "operation: " << AsString(operation) << ", batch_idx: " << batch_idx << ", write_batch: "
       << AsString(write_batch) << ", apply_to_storages: " << AsString(apply_to_storages);
@@ -2126,7 +2147,8 @@ Status Tablet::ApplyOperation(
     frontiers.Largest().AddSchemaVersion(table_id, p.schema_version());
   }
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages);
+      batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages,
+      xcluster_target_applied);
 }
 
 Status Tablet::WriteTransactionMetadataUpdate(
@@ -2215,7 +2237,8 @@ Status Tablet::WriteTransactionalBatch(
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch,
     docdb::ConsensusFrontiers& frontiers, HybridTime write_hybrid_time,
-    HybridTime batch_hybrid_time, const docdb::StorageSet& apply_to_storages) {
+    HybridTime batch_hybrid_time, const docdb::StorageSet& apply_to_storages,
+    docdb::XClusterTargetApplied xcluster_target_applied) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -2233,7 +2256,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
-        table_type(), &can_advance_intents_flush_op_id_);
+        table_type(), &can_advance_intents_flush_op_id_, xcluster_target_applied);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -3170,14 +3193,19 @@ Status Tablet::CreatePreparedChangeMetadata(
     // On follower, the previous op for adding table may not finish applying.
     // GetKeySchema might fail in this case.
     if (is_leader_side) {
+      // The table could have been removed, e.g. by hidden table cleanup after PITR. Failing
+      // prepare here is fatal once the consensus round exists, so let Apply skip the op instead.
       auto key_schema = GetKeySchema(
           operation->has_table_id() ? operation->table_id().ToBuffer() : "");
-      if (!key_schema.KeyEquals(*schema)) {
+      if (!key_schema.ok() && !key_schema.status().IsNotFound()) {
+        return key_schema.status();
+      }
+      if (key_schema.ok() && !key_schema->KeyEquals(*schema)) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
             schema->CreateKeyProjection(),
-            key_schema);
+            *key_schema);
       }
     }
 
@@ -3344,13 +3372,18 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
     }
   }
 
+  // Unset when bootstrap replays a change metadata operation from a superblock that does not
+  // track the last applied one, and in tests that apply the operation locally. Neither removes a
+  // vector index from an index map: a superblock hosting a vector index always tracks it.
+  const auto hybrid_time = operation->hybrid_time_even_if_unset();
   if (operation->has_new_table_name()) {
     metadata_->SetSchemaAndTableName(
         *operation->schema(), operation->index_map(), deleted_cols,
         operation->schema_version(), current_table_info->namespace_name,
         operation->new_table_name().ToBuffer(),
         operation->op_id(),
-        current_table_info->table_id);
+        current_table_info->table_id,
+        hybrid_time);
     // We shouldn't update the attributes of the colocation parent table's metrics when we alter
     // a colocated table.
     if (!metadata_->colocated()) {
@@ -3368,7 +3401,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
         *operation->schema(), operation->index_map(), deleted_cols,
         operation->schema_version(),
         operation->op_id(),
-        current_table_info->table_id);
+        current_table_info->table_id,
+        hybrid_time);
   }
 
   // The alter could bring back a vector column that was missing when its vector index table was
@@ -3376,6 +3410,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   RETURN_NOT_OK(vector_indexes_->CreateSkippedIndexes(
       VERIFY_RESULT(metadata_->GetTableInfo(current_table_info->table_id)),
       state_ == State::kBootstrapping));
+  vector_indexes_->RefreshDeactivation();
 
   // Cleanup the index from cache which are deleted or updated.
   if (current_table_info->index_map && !current_table_info->index_map->empty()) {
@@ -4425,7 +4460,8 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   // ones start from an empty frontier, and bootstrap replays the truncated writes back into them.
   // Stamped here rather than in ModifyFlushedFrontier: every snapshot op goes through that one, and
   // each stamp adds a chunk to the index manifest.
-  RETURN_NOT_OK(vector_indexes_->ModifyFlushedFrontier(frontier));
+  RETURN_NOT_OK(
+      vector_indexes_->ModifyFlushedFrontier(frontier, rocksdb::FrontierModificationMode::kUpdate));
 
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
@@ -4578,6 +4614,28 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
       }
     }
   }
+}
+
+Status Tablet::MayAdvanceDeactivatedVectorIndexesFlushedOpId() {
+  if (!FLAGS_advance_deactivated_vector_index_flushed_op_id) {
+    return Status::OK();
+  }
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  if (!regular_db_) {
+    return Status::OK();
+  }
+  // Read before the indexes' flush ability, as in MayModifyIntentsDbFlushedOpId. A row that passes
+  // the write gate is registered in the index's mutable chunk while its regular DB write is
+  // applied, so an index that took rows from an operation up to this OpId still has them
+  // unflushed, or already in the manifest.
+  auto regular_op_id = docdb::MaxPersistentOpIdForDb(
+      regular_db_.get(), /* invalid_if_no_new_data= */ false);
+  if (!regular_op_id.is_valid_not_empty()) {
+    return Status::OK();
+  }
+  vector_indexes_->AdvanceDeactivatedFlushedOpIds(regular_op_id);
+  return Status::OK();
 }
 
 Status Tablet::MayModifyIntentsDbFlushedOpId() {
@@ -5918,6 +5976,33 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
     if (split_partition_key.empty()) {
       split_partition_key = split_encoded_key;
     }
+    // Truncation moves the split back to the start of the hash code or DocKey that FindTargetKey
+    // landed in; if that key is large, the boundary after it can be closer to the target. For a
+    // 2-way split, keep whichever is closer. N-way splits keep the truncated split: moving one
+    // forward can leave the next split no legal key.
+    if (split_factor == kDefaultNumSplitParts) {
+      auto next_boundary = VERIFY_RESULT(NextSplitBoundary(split_encoded_key, split_partition_key));
+      if (next_boundary) {
+        const uint64_t truncated_cross = VERIFY_RESULT(pinned_version->Cross(split_encoded_key));
+        const uint64_t next_cross = VERIFY_RESULT(pinned_version->Cross(next_boundary->first));
+        VLOG_WITH_PREFIX_AND_FUNC(1)
+            << "Target cross: " << target_size
+            << ", truncated boundary: " << Slice(split_encoded_key).ToDebugHexString()
+            << ", truncated boundary cross: " << truncated_cross
+            << ", next boundary: " << Slice(next_boundary->first).ToDebugHexString()
+            << ", next boundary cross: " << next_cross;
+        if (unsigned_abs_diff(next_cross, target_size) <
+            unsigned_abs_diff(truncated_cross, target_size)) {
+          LOG_WITH_PREFIX_AND_FUNC(INFO)
+            << "Using split boundary after the large key: "
+            << Slice(next_boundary->first).ToDebugHexString() << " (cross " << next_cross
+            << ") instead of " << Slice(split_encoded_key).ToDebugHexString()
+            << " (cross " << truncated_cross << "), target cross " << target_size;
+          split_encoded_key = std::move(next_boundary->first);
+          split_partition_key = std::move(next_boundary->second);
+        }
+      }
+    }
     if (!split_keys.encoded_keys.empty() && split_encoded_key <= split_keys.encoded_keys.back()) {
       return STATUS_EC_FORMAT(
           IllegalState,
@@ -5934,6 +6019,52 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
 
   return split_keys;
+}
+
+Result<std::optional<std::pair<std::string, std::string>>> Tablet::NextSplitBoundary(
+    Slice encoded_key, Slice partition_key) const {
+  std::string candidate;
+  if (metadata()->partition_schema()->IsHashPartitioning()) {
+    // Hash partitioning splits on hash codes, so the next boundary is hash + 1.
+    const auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    if (hash_code == dockv::PartitionSchema::kMaxPartitionKey) {
+      return std::nullopt;
+    }
+    candidate = VERIFY_RESULT(metadata()->partition_schema()->GetEncodedPartitionKey(
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1)));
+  } else {
+    // Records of a DocKey are the DocKey plus a byte below kMaxByte, so DocKey + kMaxByte seeks to
+    // the next DocKey. Reading the live DB is fine: any existing DocKey is a legal boundary, and
+    // the caller measures both splits against its pinned version.
+    dockv::KeyBytes seek_key(encoded_key);
+    seek_key.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    rocksdb::ReadOptions read_opts;
+    read_opts.query_id = rocksdb::kDefaultQueryId;
+    docdb::BoundedRocksDbIterator iter(regular_db_.get(), read_opts, &key_bounds_);
+    iter.Seek(seek_key);
+    if (!VERIFY_RESULT(iter.CheckedValid())) {
+      return std::nullopt;
+    }
+    candidate = iter.key().ToBuffer();
+  }
+
+  std::string next_partition_key;
+  auto next_encoded_key = ValidateAndEncodeSplitKey(candidate, &next_partition_key);
+  if (!next_encoded_key.ok()) {
+    // Only an alternative to an already valid split, so don't fail the request over it.
+    // TABLET_SPLIT_KEY_RANGE_TOO_SMALL (outside the tablet) is expected; log anything else.
+    if (tserver::TabletServerError(next_encoded_key.status()) !=
+        tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Ignoring next split boundary candidate " << Slice(candidate).ToDebugHexString()
+          << ": " << next_encoded_key.status();
+    }
+    return std::nullopt;
+  }
+  if (next_partition_key.empty()) {
+    next_partition_key = *next_encoded_key;
+  }
+  return std::make_pair(std::move(*next_encoded_key), std::move(next_partition_key));
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
@@ -6313,11 +6444,11 @@ Result<docdb::DocReadContextPtr> Tablet::GetDocReadContext(const std::string& ta
   return VERIFY_RESULT(metadata_->GetTableInfo(table_id))->doc_read_context;
 }
 
-Schema Tablet::GetKeySchema(const std::string& table_id) const {
+Result<Schema> Tablet::GetKeySchema(const std::string& table_id) const {
   if (table_id.empty()) {
     return *key_schema_;
   }
-  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   return table_info->schema().CreateKeyProjection();
 }
 

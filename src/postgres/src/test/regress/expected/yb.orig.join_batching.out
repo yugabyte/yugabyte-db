@@ -4114,7 +4114,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
          Storage Table Read Ops: #
          Storage Table Rows Scanned: #
          Estimated Seeks: #
-         Estimated Nexts And Prevs: #
+         Estimated Nexts: #
+         Estimated Prevs: #
          Estimated Table Roundtrips: #
          Estimated Index Roundtrips: #
          Estimated Docdb Result Width: #
@@ -4124,11 +4125,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
          Storage Table Read Ops: #
          Storage Table Rows Scanned: #
          Estimated Seeks: #
-         Estimated Nexts And Prevs: #
+         Estimated Nexts: #
+         Estimated Prevs: #
          Estimated Table Roundtrips: #
          Estimated Index Roundtrips: #
          Estimated Docdb Result Width: #
-(21 rows)
+(23 rows)
 
 -- LIMIT 10 at four rows per outer row: 3 outer rows sized and used
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
@@ -4144,7 +4146,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4155,11 +4158,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(27 rows)
 
 -- OFFSET counts toward the rows the LIMIT needs: 30 rows, 8 outer rows
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET 20');
@@ -4175,7 +4179,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4186,11 +4191,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(27 rows)
 
 -- sorted BNL: the ordered outer lets the LIMIT stop after the first batch
 SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY o.k LIMIT 10');
@@ -4207,7 +4213,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4218,11 +4225,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- a Sort between the LIMIT and the join: the planner sizes the first batch,
 -- the executor cannot trim it
@@ -4241,7 +4249,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                      Storage Table Read Ops: #
                      Storage Table Rows Scanned: #
                      Estimated Seeks: #
-                     Estimated Nexts And Prevs: #
+                     Estimated Nexts: #
+                     Estimated Prevs: #
                      Estimated Table Roundtrips: #
                      Estimated Index Roundtrips: #
                      Estimated Docdb Result Width: #
@@ -4251,11 +4260,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                      Storage Table Read Ops: #
                      Storage Table Rows Scanned: #
                      Estimated Seeks: #
-                     Estimated Nexts And Prevs: #
+                     Estimated Nexts: #
+                     Estimated Prevs: #
                      Estimated Table Roundtrips: #
                      Estimated Index Roundtrips: #
                      Estimated Docdb Result Width: #
-(26 rows)
+(28 rows)
 
 -- the estimate needs more than a full batch for the LIMIT: the planner does
 -- not size the first batch, the executor still trims it to the LIMIT count
@@ -4271,7 +4281,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4283,11 +4294,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(25 rows)
+(27 rows)
 
 -- parameterized LIMIT and OFFSET: a custom plan sees the values and sizes the
 -- first batch; a generic plan cannot, so only the executor's trim shows
@@ -4307,7 +4319,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4317,11 +4330,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 SELECT explain_first_batch('EXECUTE fb_offset(20)');
                                 explain_first_batch                                
@@ -4336,7 +4350,8 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4346,11 +4361,12 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 SET plan_cache_mode = force_generic_plan;
 SELECT explain_first_batch('EXECUTE fb_limit(10)');
@@ -4365,7 +4381,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4375,11 +4392,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(10)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(23 rows)
+(25 rows)
 
 SELECT explain_first_batch('EXECUTE fb_limit(40)');
                                 explain_first_batch                                
@@ -4393,7 +4411,8 @@ SELECT explain_first_batch('EXECUTE fb_limit(40)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4403,11 +4422,12 @@ SELECT explain_first_batch('EXECUTE fb_limit(40)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(23 rows)
+(25 rows)
 
 SELECT explain_first_batch('EXECUTE fb_offset(20)');
                                 explain_first_batch                                
@@ -4421,7 +4441,8 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4431,11 +4452,12 @@ SELECT explain_first_batch('EXECUTE fb_offset(20)');
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(23 rows)
+(25 rows)
 
 RESET plan_cache_mode;
 DEALLOCATE fb_limit;
@@ -4455,7 +4477,8 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
@@ -4466,11 +4489,12 @@ SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_oute
                Storage Table Read Ops: #
                Storage Table Rows Scanned: #
                Estimated Seeks: #
-               Estimated Nexts And Prevs: #
+               Estimated Nexts: #
+               Estimated Prevs: #
                Estimated Table Roundtrips: #
                Estimated Index Roundtrips: #
                Estimated Docdb Result Width: #
-(24 rows)
+(26 rows)
 
 RESET yb_bnl_optimize_first_batch;
 RESET yb_explain_hide_non_deterministic_fields;

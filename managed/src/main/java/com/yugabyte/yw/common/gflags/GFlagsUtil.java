@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -815,6 +816,15 @@ public class GFlagsUtil {
     return result == null ? "/tmp" : result;
   }
 
+  // A GCP passthrough load balancer keeps its own IP as the packet destination, health probes
+  // included, so a proxy bound to the private IP alone refuses them. Any GCP load balancer: YBA
+  // can't tell the user's kind, and a proxy load balancer works either way.
+  public static boolean listensOnLoadBalancerAddress(@Nullable Cluster cluster) {
+    return cluster != null
+        && cluster.userIntent.providerType == CloudType.gcp
+        && (cluster.userIntent.enableLB || ManagedLoadBalancerUtil.isEnabled(cluster));
+  }
+
   private static Map<String, String> getYSQLGFlags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -823,7 +833,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       pgsqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -982,7 +994,9 @@ public class GFlagsUtil {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
+    if (useHostname
+        || useSecondaryIp
+        || listensOnLoadBalancerAddress(universe.getCluster(node.placementUuid))) {
       cqlProxyBindAddress = "0.0.0.0";
     }
 
@@ -1220,31 +1234,34 @@ public class GFlagsUtil {
             String.format(
                 "FIPS compliant universes are not supported on provider(s): %s", nonSupported));
       }
-      // This is for new universes only, so don't consider old form of GFLags
-      if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
+      if (userIntent.specificGFlags == null) {
+        // Create still accepts the deprecated maps and converts them to specificGFlags only after
+        // this check runs.
+        checkFipsGFlagNotDisabled(userIntent.masterGFlags);
+        checkFipsGFlagNotDisabled(userIntent.tserverGFlags);
+      } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
         Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
         if (userIntent.specificGFlags.getPerAZ() != null) {
           azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
         }
         for (UUID azUuid : azUuids) {
-          Map<String, String> masterGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER);
-          if (masterGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !masterGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
-          }
-          Map<String, String> tserverGFlags =
-              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER);
-          if (tserverGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
-              && !tserverGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
-          }
+          checkFipsGFlagNotDisabled(
+              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER));
+          checkFipsGFlagNotDisabled(
+              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
         }
       }
       validateFipsCompliancyOfHelmOverrides(
           userIntent.universeOverrides, userIntent.azOverrides, fipsEnabled);
+    }
+  }
+
+  private static void checkFipsGFlagNotDisabled(@Nullable Map<String, String> gflags) {
+    if (gflags != null
+        && gflags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(gflags.get(OPENSSL_REQUIRE_FIPS))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
     }
   }
 
@@ -1380,6 +1397,18 @@ public class GFlagsUtil {
               userGFlags.remove(gflag);
             }
           });
+    }
+    // Enforced even with allowOverrideAll: the gflags validators can be bypassed, and a FIPS
+    // universe must never run with FIPS off.
+    if ("true".equals(platformGFlags.get(OPENSSL_REQUIRE_FIPS))
+        && userGFlags.containsKey(OPENSSL_REQUIRE_FIPS)
+        && !"true".equals(userGFlags.get(OPENSSL_REQUIRE_FIPS))) {
+      LOG.warn(
+          "Removing {}={} from user gflags of FIPS universe node {}",
+          OPENSSL_REQUIRE_FIPS,
+          userGFlags.get(OPENSSL_REQUIRE_FIPS),
+          node.nodeName);
+      userGFlags.remove(OPENSSL_REQUIRE_FIPS);
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
@@ -1767,6 +1796,28 @@ public class GFlagsUtil {
       userGFlags.put(
           key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
+  }
+
+  /**
+   * Whether the universe's servers run with its new install gflags. K8s universes created before
+   * {@link Universe#K8S_APPLY_NEW_INSTALL_GFLAGS} have them saved but never applied, and applying
+   * them later would change running workloads (read committed isolation, cost based optimizer).
+   */
+  public static boolean areNewInstallGFlagsApplied(Universe universe) {
+    return !Util.isKubernetesBasedUniverse(universe)
+        || Boolean.parseBoolean(
+            universe.getConfig().getOrDefault(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, "false"));
+  }
+
+  /**
+   * Adds the universe's new install gflags to the given gflags as defaults: values already in the
+   * map win, and ysql_pg_conf_csv entries are merged per key.
+   */
+  public static void mergeNewInstallGFlags(
+      Map<String, String> gflags, Universe universe, ServerType serverType) {
+    Map<String, String> newInstallGFlags = universe.getNewInstallGFlags(serverType);
+    mergeCSVs(gflags, newInstallGFlags, YSQL_PG_CONF_CSV, true);
+    newInstallGFlags.forEach(gflags::putIfAbsent);
   }
 
   // Extract out the flag names from the undefok gflag.

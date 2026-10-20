@@ -507,6 +507,15 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       verifyTablePlacement(indexes[i], customTablespace);
     }
 
+    // Master failover can outlast the default 30s ysql lease in slow builds; an expired lease
+    // kills all pg sessions, including the test connection.
+    YBClient client = miniCluster.getClient();
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "master_ysql_operation_lease_ttl_ms", "90000"));
+    }
+    // Wait for tservers to refresh their leases with the new TTL.
+    Thread.sleep(5000);
+
     findAndKillMasterLeader();
     waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
 

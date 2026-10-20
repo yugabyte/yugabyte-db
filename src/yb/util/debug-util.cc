@@ -67,6 +67,7 @@
 #include "yb/util/thread.h"
 
 DECLARE_bool(use_libbacktrace);
+DECLARE_bool(stack_trace_symbolize);
 
 using namespace std::literals;
 
@@ -111,6 +112,11 @@ Status ListThreads(std::vector<pid_t> *tids) {
 
 std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
                           int num_top_frames_to_skip) {
+  if (!FLAGS_stack_trace_symbolize) {
+    StackTrace trace;
+    trace.Collect(num_top_frames_to_skip + 1);
+    return trace.ToLogFormatModuleOffsetString();
+  }
   std::string buf;
 #ifdef __linux__
   if (FLAGS_use_libbacktrace) {

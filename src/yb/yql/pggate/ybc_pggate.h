@@ -166,8 +166,11 @@ void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
 YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 
-// Is this node acting as the pg_cron leader?
-bool YBCIsCronLeader();
+// Does this node hold a valid pg_cron leader lease (true while draining after a step down)?
+bool YBCHasCronLease();
+
+// Is this node the active pg_cron leader (holds a lease and has not stepped down)?
+bool YBCCanCronStartJobs();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
 
@@ -430,6 +433,12 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
                                 int64_t *size,
                                 int32_t *num_missing_tablets);
 
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets);
+
 YbcStatus YBCGetSplitPoints(YbcPgTableDesc table_desc,
                             const YbcPgTypeEntity **type_entities,
                             YbcPgTypeAttrs *type_attrs_arr,
@@ -606,6 +615,11 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
 YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
 
+// Restrict a vector index search to the tablets that can hold rows whose primary key columns
+// have the given values. Columns that don't bound the tablets are ignored.
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -760,7 +774,7 @@ YbcStatus YBCSRFGetNext(YbcPgFunction handle, uint64_t *values, bool *is_nulls, 
 YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YbcStatus YBCPgBeginTransaction(int64_t start_time);
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -1148,6 +1162,7 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 YbcStatus YBCResetAutoAnalyzeMutationCounters(

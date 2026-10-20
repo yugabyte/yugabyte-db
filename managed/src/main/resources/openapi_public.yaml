@@ -28,6 +28,8 @@ tags:
   description: Operations related to universe backup and restore
 - name: Continuous Backup
   description: CRUD operations for Continuous YBA Backups
+- name: Customer
+  description: Customer management
 - name: Customer Configuration
   description: Customer configuration management
 - name: Disaster Recovery
@@ -519,6 +521,93 @@ paths:
           path: customers
           sourceType: endpoint
       x-yba-api-since: 2024.2.0.0
+      x-yba-api-visibility: preview
+  /customers:
+    post:
+      operationId: registerCustomer
+      summary: Register a customer
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Creates a customer and its primary
+        user, and returns an API token for that user. The first customer on a YBA
+        instance can be registered without authentication, and its user becomes a
+        SuperAdmin. Further customers can only be registered by a SuperAdmin on a
+        multi-tenant YBA instance (yb.multiTenant), and their users are Admins.'
+      tags:
+      - Customer
+      requestBody:
+        $ref: '#/components/requestBodies/CustomerRegistrationReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/CustomerRegistrationResp'
+        '400':
+          description: Invalid input, such as a password that violates the password
+            policy
+        '401':
+          description: Customers already exist and the request has no valid API token
+        '403':
+          description: Customers already exist and the caller is not a SuperAdmin
+        '409':
+          description: A customer already exists on a single-tenant or SSO-enabled
+            YBA instance, or a user with this email already exists
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      x-yba-api-audit:
+        auditTargetType: Customer
+        auditTargetId: obj.getCustomerUuid().toString()
+        auditActionType: Register
+      x-yba-api-authz:
+        noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/api-token:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    put:
+      operationId: generateApiToken
+      summary: Generate an API token
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Generates a new API token for
+        the calling user and returns it. The previous token stops working. The caller
+        authenticates with an API token or a session token (from login), and must
+        belong to the customer.'
+      tags:
+      - Customer
+      requestBody:
+        $ref: '#/components/requestBodies/ApiTokenReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserApiTokenResp'
+        '401':
+          description: The request has no valid API or session token
+        '403':
+          description: The caller does not belong to this customer
+        '404':
+          description: Customer not found
+        '409':
+          description: api_token_version is not the caller's current API token version,
+            e.g. because the token was rotated concurrently
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Customer
+        auditTargetId: cUUID.toString()
+        auditActionType: GenerateApiToken
+      x-yba-api-authz:
+        noAuthz: true
+      x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/customer-configs/page:
     parameters:
@@ -2522,7 +2611,13 @@ paths:
       summary: Get a YugabyteDB Universe
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2024.2.0.0 that could change.</b></p>Get details of a single YugabyteDB
-        Universe.'
+        Universe.
+
+        Early access: when the runtime flag yb.api.conditional_get.enabled is set,
+        this endpoint supports conditional requests. Send a previously returned ETag
+        in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields
+        derived from related resources (for example DR configs or pricing) may be
+        stale in that case.'
       tags:
       - Universe
       responses:
@@ -2544,6 +2639,9 @@ paths:
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+      x-yba-api-conditional-get:
+        provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+        resourcePathSegment: universes
       x-yba-api-since: 2024.2.0.0
       x-yba-api-visibility: preview
     put:
@@ -4444,6 +4542,11 @@ components:
       type: apiKey
       name: X-AUTH-YW-API-TOKEN
       in: header
+    authTokenAuth:
+      type: apiKey
+      name: X-AUTH-TOKEN
+      in: header
+      description: Session token returned by login
   schemas:
     ResourceDefinition:
       title: ResourceDefinition
@@ -5149,6 +5252,132 @@ components:
           format: uuid
           example: 89a46d52-4edd-4736-922a-35177a0b990c
           readOnly: true
+    CustomerRegistrationSpec:
+      title: CustomerRegistrationSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>CustomerRegistrationSpec
+
+
+        Customer to register and its primary user. Part of CustomerRegistrationReq.
+
+        '
+      type: object
+      required:
+      - code
+      - name
+      - email
+      - password
+      properties:
+        code:
+          description: Customer code
+          type: string
+          example: admin
+          maxLength: 15
+          minLength: 1
+        name:
+          description: Customer name
+          type: string
+          example: Example Customer
+          minLength: 3
+        email:
+          description: Email of the primary user. Must be unique on the YBA instance.
+          type: string
+          format: email
+          example: admin@example.com
+        password:
+          description: Password of the primary user. Must satisfy the YBA password
+            policy.
+          type: string
+          format: password
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    CustomerRegistration:
+      title: CustomerRegistration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>CustomerRegistration
+
+
+        Registered customer and the API token of its primary user. Part of CustomerRegistrationResp.
+
+        '
+      type: object
+      required:
+      - customer_uuid
+      - user_uuid
+      - api_token
+      - api_token_version
+      properties:
+        customer_uuid:
+          description: UUID of the registered customer
+          type: string
+          format: uuid
+          readOnly: true
+        user_uuid:
+          description: UUID of the primary user
+          type: string
+          format: uuid
+          readOnly: true
+        api_token:
+          description: API token of the primary user, to be sent in the X-AUTH-YW-API-TOKEN
+            header
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of the API token
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    ApiTokenSpec:
+      title: ApiTokenSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Optional condition for generating
+        an API token. Part of ApiTokenReq.'
+      type: object
+      properties:
+        api_token_version:
+          description: The caller's current API token version. When set, a new token
+            is generated only if it still matches, so that two concurrent rotations
+            do not silently replace each other.
+          type: integer
+          format: int64
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserApiToken:
+      title: UserApiToken
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A user''s newly generated API
+        token. Part of UserApiTokenResp.'
+      type: object
+      required:
+      - customer_uuid
+      - user_uuid
+      - api_token
+      - api_token_version
+      properties:
+        customer_uuid:
+          description: UUID of the user's customer
+          type: string
+          format: uuid
+          readOnly: true
+        user_uuid:
+          description: UUID of the user
+          type: string
+          format: uuid
+          readOnly: true
+        api_token:
+          description: The new API token, to be sent in the X-AUTH-YW-API-TOKEN header
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of the new API token
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedQuerySpec:
       title: CustomerConfigPagedQuerySpec
       description: 'Paged list of customer configurations (storage, alerts, call-home,
@@ -11858,6 +12087,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/YBATask'
+    CustomerRegistrationResp:
+      description: Registered customer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CustomerRegistration'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserApiTokenResp:
+      description: Generated API token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserApiToken'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedResp:
       description: Customer configurations visible to the caller for this page
       content:
@@ -12068,6 +12313,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ContinuousRestoreSpec'
+    CustomerRegistrationReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CustomerRegistrationSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    ApiTokenReq:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiTokenSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedReq:
       required: true
       content:

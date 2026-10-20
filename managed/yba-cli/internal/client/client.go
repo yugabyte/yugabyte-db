@@ -61,6 +61,11 @@ func SetHostVersion(version string) {
 	hostVersion = version
 }
 
+// UserAgent identifies YBA CLI requests in YBA's API usage telemetry
+func UserAgent() string {
+	return "yba-cli/" + cliVersion
+}
+
 // GetHostVersion fetches the version of YBA Host
 func GetHostVersion() string {
 	return hostVersion
@@ -131,6 +136,7 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 	cfg.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}
+	cfg.UserAgent = UserAgent()
 
 	cfgV2 := ybav2client.NewConfiguration()
 	cfgV2.Host = url.Host
@@ -153,6 +159,7 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 	cfgV2.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}
+	cfgV2.UserAgent = UserAgent()
 
 	apiClient := ybaclient.NewAPIClient(cfg)
 	apiV2Client := ybav2client.NewAPIClient(cfgV2)

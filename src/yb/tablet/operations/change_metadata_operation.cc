@@ -169,6 +169,17 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
   if (request()->has_schema()) {
     const auto& schema = request()->schema();
     metadata_change = MetadataChange::SCHEMA;
+    // The table could have been removed by an earlier op, e.g. hidden table cleanup after PITR
+    // racing with a heartbeat-triggered alter. Same lookup as Tablet::AlterSchema.
+    auto table_info = tablet->metadata()->GetTableInfo(
+        request()->has_alter_table_id() ? request()->alter_table_id().ToBuffer() : "");
+    if (!table_info.ok()) {
+      if (!table_info.status().IsNotFound()) {
+        return table_info.status();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Skipping alter of removed table: " << table_info.status();
+      return Status::OK();
+    }
     if (schema.has_colocated_table_id()) {
       switch (schema.colocated_table_id().value_case()) {
         case ColocatedTableIdentifierPB::kCotableId: {

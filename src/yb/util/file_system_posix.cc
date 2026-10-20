@@ -33,6 +33,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/drive_io_stats.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
@@ -67,8 +68,6 @@
 #ifdef __linux__
 #ifndef FALLOC_FL_KEEP_SIZE
 #include <linux/falloc.h>
-
-#include "yb/util/format.h"
 #endif
 #endif // __linux__
 

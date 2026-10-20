@@ -29,6 +29,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class JedisTest extends JedisCommandTestBase {
   private HostAndPort hnp1, hnp2;
 

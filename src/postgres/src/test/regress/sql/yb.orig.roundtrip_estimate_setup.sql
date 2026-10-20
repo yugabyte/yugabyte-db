@@ -224,6 +224,25 @@ create index nonconcurrently rc_skw3_idx  on sn.rC (skw3 asc) include (vv);
 insert into sn.rC select * from sn.r;
 analyze sn.rC;
 
+-- Composite primary key for distinct scans of the base table itself: g
+-- repeats every value 10 times, so a distinct scan on it skips from group to
+-- group with a seek.
+create table sn.rp (
+    g int,
+    pk int,
+    v int,
+    primary key (g asc, pk asc)
+) with (colocation = off);
+
+insert into sn.rp select (i - 1) / 10 + 1, i, i from generate_series(1, 12345) i;
+
+analyze sn.rp;
+
+create table sn.rpC (like sn.rp including constraints including indexes including statistics)
+    with (colocation = on);
+insert into sn.rpC select * from sn.rp;
+analyze sn.rpC;
+
 
 drop table if exists queries cascade;
 create table queries (qid int, query text, primary key (qid asc));
@@ -253,6 +272,7 @@ insert into explain_query_options values (false);
 --      Index Only Scan                  : act_table = 0,  act_index > 0
 --      colocated     non-PK Index Scan  : act_table > 0,  act_index = 0
 --      non-colocated non-PK Index Scan  : act_table > 0,  act_index > 0
+--      A Distinct Index [Only] Scan follows the scan kind it derives from.
 drop view if exists check_roundtrip_estimates;
 create view check_roundtrip_estimates as
 with recursive plan_tree as (
@@ -297,7 +317,7 @@ plan_rows as (
 scan_nodes as (
     select *
     from plan_rows
-    where "Node Type" like 'Index% Scan%' or "Node Type" = 'Seq Scan'
+    where "Node Type" like '%Index% Scan%' or "Node Type" = 'Seq Scan'
 ),
 parallel_context as (
     select
@@ -411,7 +431,7 @@ from (
         case
             when "Node Type" = 'Seq Scan' then 'seq'
             when "Index Name" like '%_pkey' then 'pk'
-            when "Node Type" like 'Index Only Scan%' then 'ios'
+            when "Node Type" like '%Index Only Scan%' then 'ios'
             else 'idx'
         end scan_kind,
         "Index Cond",
@@ -455,7 +475,7 @@ from (
             -- Normalize colocated non-PK Index Scan actuals; see header comment.
             case
                 when "Index Name" not like '%_pkey'
-                    and "Node Type" not like 'Index Only Scan%'
+                    and "Node Type" not like '%Index Only Scan%'
                     and "Index Name" like 'rc_%' then
                     coalesce("Storage Table Read Requests", 0)
                     + coalesce("Storage Index Read Requests", 0)
@@ -463,7 +483,7 @@ from (
             end act_table,
             case
                 when "Index Name" not like '%_pkey'
-                    and "Node Type" not like 'Index Only Scan%'
+                    and "Node Type" not like '%Index Only Scan%'
                     and "Index Name" like 'rc_%' then 0::float8
                 else coalesce("Storage Index Read Requests", 0)
             end act_index

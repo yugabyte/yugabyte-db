@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 
 #include "yb/common/common_fwd.h"
@@ -21,6 +22,7 @@
 
 namespace yb {
 class HybridTime;
+class PersistenceBlockMapPB;
 struct PgObjectId;
 struct YsqlFullTableName;
 
@@ -42,6 +44,10 @@ class TserverXClusterContextIf {
   // TServer's OID caches.  Fails if this TServer does not currently hold a xCluster-guarded
   // information lease.
   virtual Result<uint32_t> GetOidCacheInvalidationsCount() const = 0;
+
+  // Immutable snapshot of the persistence block map most recently received from master.  Fails if
+  // this TServer does not currently hold a xCluster-guarded information lease.
+  virtual Result<std::shared_ptr<const PersistenceBlockMapPB>> GetPersistenceBlockMap() const = 0;
 
   virtual bool IsReadOnlyMode(NamespaceIdView namespace_id) const = 0;
   virtual bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const = 0;

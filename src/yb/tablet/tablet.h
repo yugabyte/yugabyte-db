@@ -460,7 +460,8 @@ class Tablet : public AbstractTablet,
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
       const docdb::StorageSet& apply_to_storages,
-      bool skip_opid_update = false);
+      bool skip_opid_update = false,
+      docdb::XClusterTargetApplied xcluster_target_applied = docdb::XClusterTargetApplied::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -469,7 +470,8 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      const docdb::StorageSet& apply_to_storages);
+      const docdb::StorageSet& apply_to_storages,
+      docdb::XClusterTargetApplied xcluster_target_applied);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
@@ -542,12 +544,15 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
+  // Without include_intents it reads the regular DB only, for a read time no running transaction
+  // could have written at.
   Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kTrue) const;
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
@@ -702,7 +707,7 @@ class Tablet : public AbstractTablet,
   docdb::DocReadContextPtr GetDocReadContext() const override;
   Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
-  Schema GetKeySchema(const std::string& table_id = "") const;
+  Result<Schema> GetKeySchema(const std::string& table_id = "") const;
 
 
   // Provide a way for write operations to wait when tablet schema is
@@ -940,6 +945,10 @@ class Tablet : public AbstractTablet,
 
   // May modify the flushed op_id of intents db.
   Status MayModifyIntentsDbFlushedOpId();
+
+  // After a regular DB flush, advances the flushed OpId of deactivated vector indexes that hold
+  // nothing unflushed to the regular DB's.
+  Status MayAdvanceDeactivatedVectorIndexesFlushedOpId();
 
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
@@ -1392,6 +1401,13 @@ class Tablet : public AbstractTablet,
   // counts. Works for both partitioning schemes and any split_factor. Gated by
   // FLAGS_use_cross_split_key_detection_algorithm.
   Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
+
+  // Returns the first legal split boundary after encoded_key (an output of
+  // ValidateAndEncodeSplitKey) as {encoded key, partition key}: hash code + 1, or the next
+  // existing DocKey. nullopt if none is inside the tablet or it fails validation; errors only
+  // on read or encoding failure.
+  Result<std::optional<std::pair<std::string, std::string>>> NextSplitBoundary(
+      Slice encoded_key, Slice partition_key) const;
 
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;

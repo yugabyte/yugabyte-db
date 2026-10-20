@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -29,6 +30,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -188,6 +192,21 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
     String mergeKeyValues = mergeCSVs(csv1, csv2, true);
     assertThat(mergeKeyValues, equalTo("key1=val1,key2=val2,qwe,key3=val3,qwe asd"));
+  }
+
+  @Test
+  public void testAreNewInstallGFlagsApplied() {
+    long customerId = ModelFactory.testCustomer().getId();
+    Universe vmUniverse =
+        ModelFactory.createUniverse("vm-universe", customerId, Common.CloudType.aws);
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(vmUniverse));
+
+    Universe k8sUniverse =
+        ModelFactory.createUniverse("k8s-universe", customerId, Common.CloudType.kubernetes);
+    assertFalse(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+    k8sUniverse.updateConfig(
+        ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
   }
 
   @Test
@@ -999,6 +1018,66 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testValidateFipsCompliancyRejectsDisablingTheFipsGFlagInDeprecatedFields() {
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      UserIntent userIntent = new UserIntent();
+      userIntent.providerType = Common.CloudType.aws;
+      Map<String, String> gflags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+      if (serverType == ServerType.MASTER) {
+        userIntent.masterGFlags = gflags;
+      } else {
+        userIntent.tserverGFlags = gflags;
+      }
+
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+      assertEquals(
+          "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+          exception.getLocalizedMessage());
+    }
+  }
+
+  @Test
+  public void testValidateFipsCompliancyAcceptsFipsGFlagEnabledInDeprecatedFields() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.masterGFlags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true"));
+    userIntent.tserverGFlags = new HashMap<>(Map.of("max_log_size", "256"));
+
+    GFlagsUtil.validateFipsCompliancy(userIntent, true);
+  }
+
+  @Test
+  public void testProcessUserGFlagsKeepsFipsOnEvenWhenOverrideAllIsAllowed() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    for (boolean allowOverrideAll : List.of(false, true)) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false", "max_log_size", "100"));
+      Map<String, String> platformGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "256"));
+
+      GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, allowOverrideAll, null, null);
+
+      assertEquals(Map.of("max_log_size", "100"), userGFlags);
+    }
+  }
+
+  @Test
+  public void testProcessUserGFlagsLeavesFipsGFlagAloneOnNonFipsUniverse() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
+
+    assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
+  }
+
+  @Test
   public void testValidateFipsCompliancyRejectsHelmOverridesDisablingTheFipsGFlag() {
     // Helm overrides are merged over the generated gflags, so they are checked like specificGFlags.
     UserIntent userIntent = new UserIntent();
@@ -1056,5 +1135,41 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // Nothing is checked on a non-FIPS YBA.
     GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
         "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
+  }
+
+  private static Cluster lbCluster(Common.CloudType cloud, boolean enableLB, boolean managedLb) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloud;
+    userIntent.enableLB = enableLB;
+    if (managedLb) {
+      ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+      config.setEnablePrivate(true);
+      userIntent.setManagedLoadBalancer(config);
+    }
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithUserCreatedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, true, false)));
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithManagedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, true)));
+  }
+
+  @Test
+  public void testGcpProxiesKeepPrivateIpWithoutLoadBalancer() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, false)));
+  }
+
+  @Test
+  public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
   }
 }

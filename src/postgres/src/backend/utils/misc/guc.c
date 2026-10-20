@@ -908,6 +908,7 @@ bool		yb_enable_pg_subscription = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
+static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
 static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
@@ -6854,6 +6855,19 @@ static struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_dist_trace_sample_rate", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Fraction of queries without a traceparent that are "
+						 "distributed-traced."),
+			gettext_noop("Set through the ysql_yb_dist_trace_sample_rate "
+						 "yb-tserver flag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_dist_trace_sample_rate,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL
@@ -7854,6 +7868,23 @@ static struct config_string ConfigureNamesString[] =
 		NULL
 	},
 
+	{
+		{"yb_origination_time_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Origination time to stamp on this session's "
+						 "writes and commits instead of the time each "
+						 "transaction originated. Takes a Unix timestamp in "
+						 "microseconds; 0 means unset."),
+			gettext_noop("Set by the tablet server on internal connections "
+						 "that do work on behalf of an earlier statement, "
+						 "such as index backfill."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_origination_time_override_string,
+		"0",
+		yb_check_origination_time_override,
+		yb_assign_origination_time_override, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
@@ -8503,6 +8534,12 @@ static bool validate_option_array_item(const char *name, const char *value,
 static void write_auto_conf_file(int fd, const char *filename, ConfigVariable *head_p);
 static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **tail_p,
 									  const char *name, const char *value);
+
+/* YB declarations */
+
+static const char *YbFormatConfigValue(struct config_generic *record,
+									   const union config_var_val *val,
+									   char *buffer, size_t bufsize);
 
 
 /*
@@ -12617,35 +12654,8 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or have privileges of pg_read_all_settings to examine \"%s\"",
 						name)));
-
-	switch (record->vartype)
-	{
-		case PGC_BOOL:
-			return *((struct config_bool *) record)->variable ? "on" : "off";
-
-		case PGC_INT:
-			snprintf(buffer, sizeof(buffer), "%d",
-					 *((struct config_int *) record)->variable);
-			return buffer;
-
-		case PGC_OID:
-			snprintf(buffer, sizeof(buffer), "%u",
-					 *((struct yb_config_oid *) record)->variable);
-			return buffer;
-
-		case PGC_REAL:
-			snprintf(buffer, sizeof(buffer), "%g",
-					 *((struct config_real *) record)->variable);
-			return buffer;
-
-		case PGC_STRING:
-			return *((struct config_string *) record)->variable;
-
-		case PGC_ENUM:
-			return config_enum_lookup_by_value((struct config_enum *) record,
-											   *((struct config_enum *) record)->variable);
-	}
-	return NULL;
+	/* YB: Format the value for the given option */
+	return YbFormatConfigValue(record, NULL /* val */ , buffer, sizeof(buffer));
 }
 
 /*
@@ -18233,5 +18243,136 @@ check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **e
 			 return false;
 	 }
  }
+
+/*
+ * YB: Render a GUC's value as a string.
+ *
+ * val supplies a value that was parsed but not assigned; NULL reads the
+ * variable's current value.  Integers, reals and OIDs are written into buffer;
+ * the other types return a pointer the caller does not own, and PGC_STRING may
+ * return NULL.
+ */
+static const char *
+YbFormatConfigValue(struct config_generic *record,
+					const union config_var_val *val,
+					char *buffer, size_t bufsize)
+{
+	switch (record->vartype)
+	{
+		case PGC_BOOL:
+			if (val)
+				return val->boolval ? "on" : "off";
+			return *((struct config_bool *) record)->variable ? "on" : "off";
+
+		case PGC_INT:
+			snprintf(buffer, bufsize, "%d",
+					 val ? val->intval :
+					 *((struct config_int *) record)->variable);
+			return buffer;
+
+		case PGC_OID:
+			snprintf(buffer, bufsize, "%u",
+					 val ? val->oidval :
+					 *((struct yb_config_oid *) record)->variable);
+			return buffer;
+
+		case PGC_REAL:
+			snprintf(buffer, bufsize, "%g",
+					 val ? val->realval :
+					 *((struct config_real *) record)->variable);
+			return buffer;
+
+		case PGC_STRING:
+			return val ? val->stringval :
+				*((struct config_string *) record)->variable;
+
+		case PGC_ENUM:
+			return config_enum_lookup_by_value((struct config_enum *) record,
+											   val ? val->enumval :
+											   *((struct config_enum *) record)->variable);
+	}
+	return NULL;
+}
+
+/*
+ * YB: Resolve a raw configuration value and return its canonical spelling.
+ *
+ * A NULL value returns the GUC's boot_val.  The value is validated but never
+ * assigned, so only its check hook runs.  The caller must have run
+ * build_guc_variables().
+ *
+ * The result is palloc'd in the current memory context.
+ */
+char *
+YbResolveGucValue(const char *name, const char *value)
+{
+	struct config_generic *record;
+	union config_var_val newval;
+	void	   *newextra = NULL;
+	char	   *result = NULL;
+	const char *formatted;
+	char		buffer[256];
+
+	record = find_option(name, false, false, ERROR);
+	if (record == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("unrecognized configuration parameter \"%s\"", name)));
+
+	if (value == NULL)
+	{
+		switch (record->vartype)
+		{
+			case PGC_BOOL:
+				newval.boolval = ((struct config_bool *) record)->boot_val;
+				break;
+			case PGC_INT:
+				newval.intval = ((struct config_int *) record)->boot_val;
+				break;
+			case PGC_OID:
+				newval.oidval = ((struct yb_config_oid *) record)->boot_val;
+				break;
+			case PGC_REAL:
+				newval.realval = ((struct config_real *) record)->boot_val;
+				break;
+			case PGC_STRING:
+				/* Not guc_strdup'd, hence the "value != NULL" guard on the free below. */
+				newval.stringval = (char *) ((struct config_string *) record)->boot_val;
+				break;
+			case PGC_ENUM:
+				newval.enumval = ((struct config_enum *) record)->boot_val;
+				break;
+		}
+	}
+	else if (!parse_and_validate_value(record, name, value, PGC_S_FILE, ERROR,
+									   &newval, &newextra))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid value for parameter \"%s\": \"%s\"",
+						name, value)));
+
+	formatted = YbFormatConfigValue(record, &newval, buffer, sizeof(buffer));
+	result = pstrdup(formatted ? formatted : "");
+
+	if (record->vartype == PGC_STRING && value != NULL)
+		free(newval.stringval);
+
+	if (newextra)
+		free(newextra);
+
+	return result;
+}
+
+/*
+ * YB: Whether a config file may name this parameter: the same test
+ * ProcessConfigFileInternal() applies before accepting a file.  The caller must
+ * have run build_guc_variables().
+ */
+bool
+YbIsValidConfigFileName(const char *name)
+{
+	return find_option(name, false, true, LOG) != NULL ||
+		valid_custom_variable_name(name);
+}
 
 #include "guc-file.c"

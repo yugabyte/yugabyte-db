@@ -228,6 +228,7 @@ static Selectivity yb_conditioned_cmp_selectivity(PlannerInfo *root,
 static void yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root,
 												  Oid collation,
 												  Oid opfamily,
+												  bool isgt,
 												  VariableStatData *scanvar,
 												  Node *scanexpr,
 												  Oid scanvartype,
@@ -3153,15 +3154,12 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 	 * hard limits on where the merge can stop, unlike the statistical
 	 * extrema above; fold them in before deciding which estimate to believe.
 	 */
-	if (!isgt)
-	{
-		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
-											  &leftvar, left, op_lefttype,
-											  &rightvar, true, leftend);
-		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
-											  &rightvar, right, op_righttype,
-											  &leftvar, true, rightend);
-	}
+	yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily, isgt,
+										  &leftvar, left, op_lefttype,
+										  &rightvar, true, leftend);
+	yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily, isgt,
+										  &rightvar, right, op_righttype,
+										  &leftvar, true, rightend);
 
 	/*
 	 * Only one of the two "end" fractions can really be less than 1.0;
@@ -3193,16 +3191,13 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 	if (selec != DEFAULT_INEQ_SEL)
 		*rightstart = selec;
 
-	/* YB: likewise, enforced lower bounds raise the start fractions. */
-	if (!isgt)
-	{
-		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
-											  &leftvar, left, op_lefttype,
-											  &rightvar, false, leftstart);
-		yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily,
-											  &rightvar, right, op_righttype,
-											  &leftvar, false, rightstart);
-	}
+	/* YB: likewise, the other input's bounds raise the start fractions. */
+	yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily, isgt,
+										  &leftvar, left, op_lefttype,
+										  &rightvar, false, leftstart);
+	yb_clamp_scansel_by_other_side_bounds(root, collation, opfamily, isgt,
+										  &rightvar, right, op_righttype,
+										  &leftvar, false, rightstart);
 
 	/*
 	 * Only one of the two "start" fractions can really be more than zero;
@@ -8746,8 +8741,10 @@ yb_conditioned_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
  * folds in monotonically (Min into "end" fractions, Max into "start"
  * fractions) as P(scanvar CMP bound | scanvar's own restrictions), so a
  * same-column restriction on the scanned side, already reflected in its row
- * estimate, is not double-counted.  Ascending (!isgt) orders only, where
- * upper bounds map to scan ends and lower bounds to scan starts.
+ * estimate, is not double-counted.  Which bound reaches which fraction
+ * follows the merge direction: ascending ('isgt' false), an upper bound on
+ * the other input caps where the scan ends and a lower bound floors where it
+ * starts; descending, the roles swap.
  *
  * 'scanexpr' is the scanned side of the merge clause as the planner built it,
  * of declared type 'scanvartype'; 'scanvar' holds its statistics, whose var
@@ -8755,7 +8752,7 @@ yb_conditioned_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
  */
 static void
 yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root, Oid collation,
-									  Oid opfamily,
+									  Oid opfamily, bool isgt,
 									  VariableStatData *scanvar,
 									  Node *scanexpr,
 									  Oid scanvartype,
@@ -8783,19 +8780,25 @@ yb_clamp_scansel_by_other_side_bounds(PlannerInfo *root, Oid collation,
 		Selectivity selec;
 
 		bound = yb_join_key_bound_from_rinfo(rinfo, boundnode, opfamily,
-											 collation, clamp_end, &strict);
+											 collation, clamp_end != isgt,
+											 &strict);
 		if (bound == NULL)
 			continue;
 
 		/*
 		 * The scan runs until passing the other side's last value (end), or
-		 * skips values below its first one (start): a strict upper bound
-		 * caps the end at P(scanvar < C), a strict lower bound floors the
-		 * start at P(scanvar <= C), and non-strict bounds map the other way
-		 * around.
+		 * skips values before its first one (start).  Ascending, a strict
+		 * upper bound caps the end at P(scanvar < C), a strict lower bound
+		 * floors the start at P(scanvar <= C), and non-strict bounds map the
+		 * other way around; descending, upper and lower bounds swap and the
+		 * comparisons read > and >=.
 		 */
-		cmpstrategy = (strict == clamp_end) ? BTLessStrategyNumber :
-			BTLessEqualStrategyNumber;
+		if (isgt)
+			cmpstrategy = (strict == clamp_end) ? BTGreaterStrategyNumber :
+				BTGreaterEqualStrategyNumber;
+		else
+			cmpstrategy = (strict == clamp_end) ? BTLessStrategyNumber :
+				BTLessEqualStrategyNumber;
 
 		selec = yb_conditioned_cmp_selectivity(root, opfamily, collation,
 											   cmpstrategy,

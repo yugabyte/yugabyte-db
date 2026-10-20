@@ -66,20 +66,24 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(log_min_segments_to_retain);
 
 DEFINE_test_flag(int32, rbs_sleep_after_taking_metadata_ms, 0,
-                 "Sleep after tablet metadata was taken during remote boostrap session init.");
+    "Sleep after tablet metadata was taken during remote boostrap session init.");
 
 DEFINE_test_flag(bool, rbs_pause_after_wal_trim, false,
-                 "Pause between computing the WAL segments to ship and moving the session's log "
-                 "anchor to the front of that plan, to exercise the window in which a concurrent "
-                 "GC pass could otherwise reclaim a segment the plan keeps.");
+    "Pause between computing the WAL segments to ship and moving the session's log "
+    "anchor to the front of that plan, to exercise the window in which a concurrent "
+    "GC pass could otherwise reclaim a segment the plan keeps.");
 
 DEFINE_RUNTIME_int32(rbs_init_max_number_of_retries, 5,
-                     "Max number of retries during remote bootstrap session initialisation, "
-                     "when metadata before and after checkpoint does not match. "
-                     "0 - to disable retry logic.");
+    "Max number of retries during remote bootstrap session initialisation, "
+    "when metadata before and after checkpoint does not match. "
+    "0 - to disable retry logic.");
+DEFINE_RUNTIME_bool(rbs_skip_stream_incremental_wal, true,
+    "When true, remote bootstrap serves WAL only up to the session's snapshot "
+    "boundary and leaves post-snapshot catch-up to UpdateConsensus.");
+TAG_FLAG(rbs_skip_stream_incremental_wal, advanced);
 
 DEFINE_test_flag(bool, rbs_fail_checkpoint, false,
-                 "Fail all attempts to checkpoint data when retries still exist.");
+    "Fail all attempts to checkpoint data when retries still exist.");
 
 
 namespace yb {
@@ -427,6 +431,11 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
     num_to_skip--;
   }
 
+  if (!log_segments_.empty()) {
+    const auto& snapshot_tail_segment = VERIFY_RESULT(log_segments_.back()).get();
+    snapshot_max_wal_segment_seqno_ = snapshot_tail_segment->header().sequence_number();
+  }
+
   // Holds the session open between the trim decision and the anchor update below, so a test can
   // age segments out of the retention window and run a GC pass against the pinned snapshot.
   TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_rbs_pause_after_wal_trim);
@@ -745,6 +754,16 @@ Status RemoteBootstrapSession::InitSources() {
 
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
+  // Note(#29963): If we ever fix the slow intent apply problem with increasing num sst files
+  // or enable compaction during tablet bootstrap, we can go back to shipping incremental WALs.
+  if (PREDICT_TRUE(FLAGS_rbs_skip_stream_incremental_wal) &&
+      segment_seqno > snapshot_max_wal_segment_seqno_) {
+    *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
+    return STATUS_FORMAT(
+        NotFound,
+        "WAL segment $0 is past snapshot boundary ($1) for this remote bootstrap session",
+        segment_seqno, snapshot_max_wal_segment_seqno_);
+  }
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
   auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,

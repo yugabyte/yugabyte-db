@@ -2242,6 +2242,79 @@ TEST_P(PgIndexBackfillClientDeadline, DropAfterFail) {
   }
 }
 
+class PgIndexBackfillClientDeadlineNoTableLocks : public PgIndexBackfillClientDeadline {};
+
+// With object locking, DROP INDEX waits on the table lock CREATE INDEX holds, so the drop in
+// DropBeforeBackfillRequest cannot interleave and the scenario needs
+// enable_object_locking_for_table_locks off.
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadlineNoTableLocks, ::testing::Values(false));
+
+// A DROP INDEX between the index's creation and its BackfillIndex request removes the index from
+// the indexed table's list while the index table is still being deleted.  The request must fail
+// fast, not wait out the client deadline polling for a permission that never comes.  Simulate the
+// following:
+//   Session A                                    Session B
+//   --------------------------                   ----------------------
+//   CREATE INDEX
+//   - indislive
+//   - indisready
+//   - backfill (blocked before the request)
+//                                                DROP INDEX
+//   - BackfillIndex request
+TEST_P(PgIndexBackfillClientDeadlineNoTableLocks, DropBeforeBackfillRequest) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  // The drop removes the index from the indexed table's list when its transaction commits.  The
+  // index table stays DELETING, where the master still finds it, until every tablet replica
+  // reports its deletion.  Only a request in that window reaches the permission check.  The
+  // window is short on a healthy cluster and lasts as long as a tserver holding a replica is
+  // down, since the master retries the delete until it succeeds.  The flag stands in for the down
+  // tserver by not sending the deletes at all.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_tablet_deletion", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  // Runs before the holder joins the create thread, so an assertion that fires while the thread
+  // is blocked fails the test instead of hanging it.
+  auto unblock = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"), "unblock pg");
+  });
+  std::vector<ExternalDaemon*> tablet_servers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tablet_servers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter log_waiter(tablet_servers, "blocking concurrent index backfill");
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
+    // on the catalog version row.
+    ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
+    Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+    ASSERT_NOK(status);
+    ASSERT_FALSE(HasClientTimedOut(status)) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "is not an index of");
+  });
+  ASSERT_OK(log_waiter.WaitFor(60s * kTimeMultiplier));
+
+  LOG(INFO) << "Drop index";
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    RETURN_NOT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    RETURN_NOT_OK(sync.Wait());
+    return info->index_map.empty();
+  }, 60s * kTimeMultiplier, "Wait for the index to leave the indexed table"));
+
+  // Unblock CREATE INDEX to send the request.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  thread_holder_.JoinAll();
+}
+
 // Override to have a 30s BackfillIndex client timeout.
 class PgIndexBackfillFastClientTimeout : public PgIndexBackfillBlockDoBackfill {
  public:
@@ -2333,9 +2406,9 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
 
-// Master leader failover at each block point of an online index build: block CREATE INDEX, step
-// down the master leader, check the build is still blocked at the same point, unblock, and require
-// the build to complete with a consistent index.
+// Master leader failover at each block point of an online index build: block CREATE INDEX, fail the
+// master leader over, check the build is still blocked at the same point, unblock, and require the
+// build to complete with a consistent index.  The block points are in postgres and master.
 TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
   constexpr int kNumRows = 10;
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2347,9 +2420,22 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
     tablet_servers.push_back(cluster_->tablet_server(i));
   }
 
+  enum class Block {
+    // ysql_yb_test_block_index_phase, in postgres.
+    kPgPhase,
+    // TEST_slowdown_alter_table_rpcs_ms on the leader, in the master's BackfillIndex after it
+    // persisted DO_BACKFILL and before it responds.  The new leader resumes the backfill after the
+    // failover, so TEST_block_do_backfill is set as well and the resumed backfill blocks in the
+    // master's DoBackfill like the kMasterBackfill row's does.
+    kBackfillRequest,
+    // TEST_block_do_backfill, in the master after it has chosen the backfill read time.
+    kMasterBackfill,
+  };
+  enum class Failover { kStepDown, kKill };
   struct Phase {
     std::string name;
-    // Postgres side block: the tserver log line to wait for.  Empty for the master side block.
+    Block block;
+    Failover failover;
     std::string log_msg;
     // What other sessions see in pg_index while blocked.  nullopt: the transaction that creates the
     // index has not committed, so they do not see it at all.
@@ -2357,26 +2443,39 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
   };
   const IndexStateFlags kLiveAndReady{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady};
   const std::vector<Phase> phases = {
-      {"indislive", "blocking index state change indislive=true", std::nullopt},
-      {"indisready", "blocking index state change indisready=true",
-       IndexStateFlags{IndexStateFlag::kIndIsLive}},
+      {"indislive", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indislive=true", std::nullopt},
+      {"indisready", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indisready=true", IndexStateFlags{IndexStateFlag::kIndIsLive}},
       // Blocked before the BackfillIndex request is sent.
-      {"backfill", "blocking concurrent index backfill", kLiveAndReady},
-      // TEST_block_do_backfill blocks the master after it has chosen the backfill read time.
-      {"master backfill", "", kLiveAndReady},
-      {"postbackfill", "blocking operations after concurrent index backfill", kLiveAndReady},
-      {"indisvalid", "blocking index state change indisvalid=true", kLiveAndReady},
+      {"backfill", Block::kPgPhase, Failover::kStepDown, "blocking concurrent index backfill",
+       kLiveAndReady},
+      {"backfill request", Block::kBackfillRequest, Failover::kStepDown,
+       "blocking concurrent index backfill", kLiveAndReady},
+      // Unlike stepdown, killing the leader loses the BackfillIndex RPC response, so the client
+      // resends the request to the new leader, which finds the index at DO_BACKFILL.
+      {"resent backfill request", Block::kBackfillRequest, Failover::kKill,
+       "blocking concurrent index backfill", kLiveAndReady},
+      {"master backfill", Block::kMasterBackfill, Failover::kStepDown, "", kLiveAndReady},
+      {"postbackfill", Block::kPgPhase, Failover::kStepDown,
+       "blocking operations after concurrent index backfill", kLiveAndReady},
+      {"indisvalid", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indisvalid=true", kLiveAndReady},
   };
   int index_suffix = 0;
   for (const auto& phase : phases) {
-    const bool master_side = phase.log_msg.empty();
     const std::string index_name = Format("$0_$1", kIndexName, index_suffix++);
     LOG(INFO) << "Testing master failover while blocked at " << phase.name;
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", master_side ? "true" : "false"));
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "ysql_yb_test_block_index_phase", master_side ? "none" : phase.name));
+    ASSERT_OK(cluster_->SetFlagOnMasters(
+        "TEST_block_do_backfill", phase.block == Block::kPgPhase ? "false" : "true"));
+    // kBackfillRequest is held at backfill first, so the slowdown set below catches only the
+    // request's alter and not the one that adds the index.
+    const std::string pg_phase =
+        phase.block == Block::kPgPhase ? phase.name
+        : phase.block == Block::kBackfillRequest ? "backfill" : "none";
+    ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", pg_phase));
     std::optional<LogWaiter> log_waiter;
-    if (!master_side) {
+    if (!phase.log_msg.empty()) {
       log_waiter.emplace(tablet_servers, phase.log_msg);
     }
 
@@ -2387,6 +2486,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
       WARN_NOT_OK(
           cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock master");
       WARN_NOT_OK(
+          cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"), "unblock alter");
+      WARN_NOT_OK(
           cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"), "unblock pg");
     });
     thread_holder.AddThreadFunctor([this, &index_name] {
@@ -2395,15 +2496,49 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
       ASSERT_OK(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
     });
-    if (master_side) {
-      ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
-    } else {
-      ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+    ExternalMaster* request_leader = nullptr;
+    switch (phase.block) {
+      case Block::kPgPhase:
+        ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        break;
+      case Block::kBackfillRequest: {
+        ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        // The leader logs the slowed alter after persisting DO_BACKFILL and before responding.  A
+        // client permission read cannot find this window: GetTableSchema reports the fully applied
+        // index map while the alter is in progress.  The slowdown only has to outlast the wait and
+        // failover below, and it counts against the fixture's 30 s client timeout on the whole
+        // BackfillIndex call, so it does not scale with kTimeMultiplier.
+        request_leader = cluster_->GetLeaderMaster();
+        ASSERT_OK(cluster_->SetFlag(request_leader, "TEST_slowdown_alter_table_rpcs_ms", "10000"));
+        LogWaiter alter_waiter(request_leader, "before sending async alter table request");
+        ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+        ASSERT_OK(alter_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        break;
+      }
+      case Block::kMasterBackfill:
+        ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+        break;
     }
 
-    LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
-    tserver::TabletServerErrorPB::Code error_code;
-    ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+    switch (phase.failover) {
+      case Failover::kKill:
+        LOG(INFO) << "Killing the master leader while blocked at " << phase.name;
+        ASSERT_NE(request_leader, nullptr);
+        request_leader->Shutdown();
+        ASSERT_OK(WaitFor(
+            [this]() -> Result<bool> { return cluster_->GetLeaderMasterIndex().ok(); },
+            60s * kTimeMultiplier, "Wait for a new master leader"));
+        // Back as a follower with its startup flags.  The unblock below sets every flag on every
+        // master again.
+        ASSERT_OK(request_leader->Restart());
+        break;
+      case Failover::kStepDown: {
+        LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
+        tserver::TabletServerErrorPB::Code error_code;
+        ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+        break;
+      }
+    }
     // The failover neither advanced nor aborted the build.
     if (phase.flags_while_blocked) {
       ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(index_name, *phase.flags_while_blocked)));
@@ -2414,6 +2549,7 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
     }
 
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"));
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
     thread_holder.JoinAll();
 
@@ -2438,6 +2574,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
 //                                                - new leader reports schema version
 //                                                master leader stepdown
 TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
+  // The leader balancer can move the tablet leader back right after the stepdown below.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // 1. Create a single-tablet table and start CREATE INDEX on a separate thread.

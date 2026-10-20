@@ -241,6 +241,11 @@ public class SwamperHelper {
       MetricCollectionLevel level = getLevel(universe);
       appendCollectionLevelLabels(level, labels);
     }
+    // Prometheus uses the job's scheme only for targets without this label, so one "node" job
+    // serves HTTPS and HTTP universes. Labels starting with __ never reach stored series.
+    if (t == TargetType.NODE_EXPORT && universe.isNodeExporterHttps()) {
+      labels.put("__scheme__", "https");
+    }
 
     target.set("targets", targetNodes);
     target.set("labels", labels);

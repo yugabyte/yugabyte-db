@@ -504,6 +504,8 @@ class ClusterAdminClient {
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
+  Result<rapidjson::Document> GetPersistenceBlockMap();
+
   Status XClusterFailover(const std::string& replication_group_id);
 
   Status WaitForXClusterFailoverToFinish(const std::string& replication_group_id);

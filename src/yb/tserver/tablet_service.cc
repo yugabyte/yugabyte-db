@@ -339,6 +339,13 @@ DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
 DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
     "Used in tests to sleep before executing a remote PG query.");
 
+DEFINE_test_flag(uint64, persistence_reject_stamped_before_ht, 0,
+    "When nonzero, reject writes and transaction commits whose origination stamp has an "
+    "origination hybrid time below this value. Unstamped ones pass.");
+
+DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
+    "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
+
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
 
@@ -398,6 +405,35 @@ using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
 
 namespace {
+
+template <class OriginationInfo>
+Status CheckPersistenceTestRejection(const OriginationInfo& origination_info) {
+  const auto threshold = FLAGS_TEST_persistence_reject_stamped_before_ht;
+  if (PREDICT_TRUE(threshold == 0) || origination_info.origination_ht() >= threshold) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      Expired,
+      "TEST: persistence rejected op with connected database $0 with origination time $1 < $2",
+      origination_info.database_oid(), HybridTime(origination_info.origination_ht()),
+      HybridTime(threshold));
+}
+
+void CheckPersistenceStampPresent(const WriteRequestMsg& req) {
+  if (PREDICT_TRUE(!FLAGS_TEST_persistence_dfatal_unstamped_pgsql_write) ||
+      req.has_origination_info()) {
+    return;
+  }
+  for (const auto& pg_req : req.pgsql_write_batch()) {
+    auto db_oid = GetPgsqlDatabaseOidByTableId(pg_req.table_id().ToBuffer());
+    // Template1 backends write unstamped, and can only write tables of database 1.
+    if (!db_oid.ok() || *db_oid != kTemplate1Oid) {
+      LOG(DFATAL) << "YSQL write without origination stamp to table " << pg_req.table_id()
+                  << " of database " << db_oid << ": " << req.ShortDebugString();
+      return;
+    }
+  }
+}
 
 Result<std::shared_ptr<consensus::RaftConsensus>> GetConsensus(const TabletPeerPtr& tablet_peer) {
   auto result = tablet_peer->GetRaftConsensus();
@@ -1440,6 +1476,14 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
   if (!tablet) {
     return;
+  }
+
+  if (txn_status == TransactionStatus::COMMITTED && req->state().has_origination_info()) {
+    auto status = CheckPersistenceTestRejection(req->state().origination_info());
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
   }
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
@@ -2648,6 +2692,11 @@ Status TabletServiceImpl::PerformWrite(
     return STATUS(
         NotFound, "Tablet not found", req->tablet_id(),
         TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
+  }
+
+  CheckPersistenceStampPresent(*req);
+  if (req->has_origination_info()) {
+    RETURN_NOT_OK(CheckPersistenceTestRejection(req->origination_info()));
   }
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
@@ -4169,15 +4218,53 @@ void TabletServiceImpl::Shutdown() {
 
 Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
-  for (auto& peer : tablet_peers) {
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+  if (req.tablet_id().empty()) {
+    SCHECK(req.index_table_ids().empty(), InvalidArgument,
+           "Vector index ids are specified without a tablet id");
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  } else {
+    tablet_peers.push_back(
+        VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()))
+            .tablet_peer);
+  }
+  VerifyVectorIndexesResponsePB resp;
+  for (const auto& peer : tablet_peers) {
     auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }
-    RETURN_NOT_OK(tablet->vector_indexes().Verify());
+    std::vector<TableId> index_table_ids(
+        req.index_table_ids().begin(), req.index_table_ids().end());
+    if (index_table_ids.empty()) {
+      auto list = tablet->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& vector_index : *list) {
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
+      }
+    }
+    auto consensus = peer->GetConsensus();
+    auto role = consensus.ok() ? (**consensus).role() : PeerRole::UNKNOWN_ROLE;
+    for (const auto& index_table_id : index_table_ids) {
+      auto& check = *resp.add_checks();
+      check.set_tablet_id(peer->tablet_id());
+      check.set_index_table_id(index_table_id);
+      check.set_role(role);
+      auto result = tablet->vector_indexes().Check(
+          index_table_id, req.max_inconsistencies(), deadline);
+      if (result.ok()) {
+        *check.mutable_result() = std::move(*result);
+      } else {
+        StatusToPB(result.status(), check.mutable_status());
+      }
+    }
   }
-  return VerifyVectorIndexesResponsePB();
+  return resp;
 }
 
 Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(

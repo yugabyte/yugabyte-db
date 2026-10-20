@@ -16,6 +16,7 @@ OBJS = \
 	yb_catalog_scan.o \
 	yb_sample_scan.o \
 	yb_scan_core.o \
+	yb_scan_plan.o \
 	yb_table_scan.o \
 	yb_ybctid_scan.o
 

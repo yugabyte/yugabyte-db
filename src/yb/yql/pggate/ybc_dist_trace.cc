@@ -47,6 +47,12 @@ std::stack<OtelScopeEntry>& OtelScopeStack() {
   return stack;
 }
 
+// Whether this protocol cycle already drew against the sample rate; reset with the scope stack.
+bool& SampleDrawn() {
+  static bool drawn = false;
+  return drawn;
+}
+
 }  // namespace
 
 class OtelSpanContext : public PgMemctx::Registrable {
@@ -160,6 +166,19 @@ void YBCDestroySpanContext(YbcOtelSpanContext span_ctx) {
   PgMemctx::Destroy(span_ctx);
 }
 
+// Copy registered in the current memory context, so a longer-lived owner (plan source, portal)
+// can keep the span context past the message that parsed it.
+YbcOtelSpanContext YBCCopySpanContext(YbcOtelSpanContext span_ctx) {
+  auto copy = std::make_unique<OtelSpanContext>(DCHECK_NOTNULL(span_ctx)->span_ctx());
+  auto* raw = copy.get();
+  YBCGetPgCallbacks()->GetCurrentYbMemctx()->Register(copy.release());
+  return raw;
+}
+
+bool YBCIsSpanContextSampled(YbcOtelSpanContext span_ctx) {
+  return DCHECK_NOTNULL(span_ctx)->span_ctx().IsSampled();
+}
+
 void YBCInitDistTrace(const char* node_uuid) {
   dist_trace::InitDistTrace(dist_trace::kYsqlServiceName, DCHECK_NOTNULL(node_uuid));
 }
@@ -176,10 +195,21 @@ void YBCDistTraceClearStack() {
         trace::StatusCode::kError, "Span did not end normally");
     OtelScopeStack().pop();
   }
+  SampleDrawn() = false;
 }
 
+// True on the first call in a protocol cycle, false after that.
+bool YBCDistTraceClaimSampleDraw() {
+  if (SampleDrawn()) {
+    return false;
+  }
+  SampleDrawn() = true;
+  return true;
+}
+
+// parent_span_ctx NULL starts a new trace.
 void YBCDistTraceStartRootSpan(
-    const char* query, YbcOtelSpanContext yb_span_ctx, YbcPgOid db_oid, YbcPgOid user_id) {
+    const char* query, YbcOtelSpanContext parent_span_ctx, YbcPgOid db_oid, YbcPgOid user_id) {
   DCHECK(query);
   DCHECK(YBCIsOtelScopeStackEmpty());
 
@@ -187,7 +217,9 @@ void YBCDistTraceStartRootSpan(
   // kServer kind indicates that the span covers server-side handling of a remote request
   // while the client awaits a response.
   options.kind = trace::SpanKind::kServer;
-  options.parent = DCHECK_NOTNULL(yb_span_ctx)->span_ctx();
+  if (parent_span_ctx) {
+    options.parent = parent_span_ctx->span_ctx();
+  }
 
   // Safe to use a string_view into query instead of copying because:
   // StartSpan makes a deep copy of all attributes into a separate buffer before returning,

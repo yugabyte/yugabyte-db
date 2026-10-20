@@ -135,6 +135,24 @@ typedef enum YbGeolocationDistance
 
 extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 
+/**
+ * Returns a null-terminated string representing the name of the
+ * cloud this process is running on.
+ */
+extern const char *YBGetCurrentCloud();
+
+/**
+ * Returns a null-terminated string representing the region this
+ * process is running on.
+ */
+extern const char *YBGetCurrentRegion();
+
+/**
+ * Returns a null-terminated string representing the zone this
+ * process is running on.
+ */
+extern const char *YBGetCurrentZone();
+
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -837,6 +855,12 @@ extern char *yb_default_replica_identity;
 extern char *yb_dist_tracecontext;
 
 /*
+ * Fraction (0 to 1) of protocol cycles without a traceparent that start a
+ * distributed trace of their own; 0 disables sampling.
+ */
+extern double yb_dist_trace_sample_rate;
+
+/*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
  * the new table is created.
  */
@@ -1074,6 +1098,7 @@ extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
+extern bool YBCurrentStmtCannotIncrementCatalogVersion();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
@@ -1401,6 +1426,13 @@ void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+
+extern uint64_t yb_origination_time;
+extern void YbRefreshOriginationTime(void);
+extern bool yb_check_origination_time_override(char **newval, void **extra,
+											   GucSource source);
+extern void yb_assign_origination_time_override(const char *newval,
+												void *extra);
 
 /* GUC assign hook for max_replication_slots */
 extern void yb_assign_max_replication_slots(int newval, void *extra);
