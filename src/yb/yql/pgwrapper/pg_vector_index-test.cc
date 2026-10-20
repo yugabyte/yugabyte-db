@@ -5529,6 +5529,37 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
       after_backfill);
 }
 
+class PgVectorIndexColocatedUtilTest : public PgVectorIndexUtilTest {
+ protected:
+  bool IsColocated() const override {
+    return true;
+  }
+};
+
+// An automatic mode xCluster target applies the rows of a new colocated table before the table is
+// created there, so those rows have no reverse mapping entries although the table owns the reverse
+// mapping. The backfill has to write the entries of such rows (GH #34504).
+TEST_F(PgVectorIndexColocatedUtilTest, BackfillWritesMissingReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+
+  constexpr size_t kNumRows = 6;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_reverse_mapping_write) = true;
+  ASSERT_OK(InsertRows(conn, 1, kNumRows / 2));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_reverse_mapping_write) = false;
+  ASSERT_OK(InsertRows(conn, kNumRows / 2 + 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  for (const auto& check : ASSERT_RESULT(VerifyVectorIndexes())) {
+    ASSERT_EQ(check.result().inconsistencies_size(), 0) << check.ShortDebugString();
+  }
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, ExpectedRows(kNumRows)));
+}
+
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
   constexpr size_t kNumRows = 50;
   constexpr size_t kQueryLimit = 75;

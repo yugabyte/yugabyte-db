@@ -438,8 +438,10 @@ class VectorIndexBackfillContext {
       : backfill_ht_(backfill_ht), store_payload_(store_payload) {
   }
 
-  void Add(Slice ybctid, Slice value) {
-    ybctids_.push_back(arena_.DupSlice(ybctid));
+  void Add(Slice ybctid, Slice value, bool add_reverse_entry) {
+    if (add_reverse_entry) {
+      reverse_entries_.push_back({arena_.DupSlice(ybctid), entries_.size()});
+    }
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
       .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
@@ -448,7 +450,7 @@ class VectorIndexBackfillContext {
 
   void Reset() {
     entries_.clear();
-    ybctids_.clear();
+    reverse_entries_.clear();
     arena_.Reset(ResetMode::kKeepLast);
   }
 
@@ -460,15 +462,21 @@ class VectorIndexBackfillContext {
     return entries_;
   }
 
-  const std::vector<Slice>& ybctids() const {
-    return ybctids_;
+  struct ReverseEntry {
+    Slice ybctid;
+    size_t entry_index;
+  };
+
+  // Rows the reverse mapping backfill writes an entry for, a subset of entries().
+  const std::vector<ReverseEntry>& reverse_entries() const {
+    return reverse_entries_;
   }
 
  private:
   const HybridTime backfill_ht_;
   const bool store_payload_;
   docdb::DocVectorIndexInsertEntries entries_;
-  std::vector<Slice> ybctids_;
+  std::vector<ReverseEntry> reverse_entries_;
   Arena arena_;
 };
 
@@ -497,7 +505,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
     ++num_chunks_;
 
-    if (reverse_mapping_backfiller_) {
+    if (reverse_mapping_backfiller_ && !reverse_entries().empty()) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
     }
 
@@ -555,13 +563,11 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
 
   const auto backfill_ht = context_->backfill_ht();
   const auto& entries = context_->entries();
-  const auto& ybctids = context_->ybctids();
-  DCHECK_EQ(entries.size(), ybctids.size());
 
   // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
-  for (size_t i = 0; i != ybctids.size(); ++i) {
+  for (const auto& [ybctid, entry_index] : context_->reverse_entries()) {
     docdb::DocVectorIndex::ApplyReverseEntry(
-        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
+        handler, ybctid, entries[entry_index].value.AsSlice(), DocHybridTime(backfill_ht, 0));
   }
   return Status::OK();
 }
@@ -596,12 +602,27 @@ Status TabletVectorIndexes::Backfill(
   // The per-index decision keeps the ybctid in the entries, the reverse mapping backfill and
   // the payload mode of the chunks consistent with each other.
   const bool store_payload = vector_index->StoresPayload();
+  const bool owns_reverse_mapping =
+      indexed_table.schema().table_properties().owns_vector_reverse_mapping();
+  const bool backfill_all_reverse_entries =
+      !TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          store_payload || owns_reverse_mapping);
+
+  // A table which owns the reverse mapping writes an entry with each row, except for the rows an
+  // automatic mode xCluster target applies to a colocated tablet before the table is created
+  // there: no schema packing of the table is known at that point, so VectorIndexesUpdater writes
+  // no entry for them (#34504). Search and vector index compaction treat a vector without an entry
+  // as deleted, so backfill the entries such rows miss. Rows of a non-colocated table cannot reach
+  // the tablet before the table does.
+  docdb::DocVectorIndexReverseMappingReaderPtr existing_reverse_mapping;
+  if (!TEST_vector_index_skip_reverse_mapping_backfill.has_value() && !store_payload &&
+      owns_reverse_mapping && !vector_index->indexed_table_key_prefix().empty()) {
+    existing_reverse_mapping = VERIFY_RESULT(vector_index->context().CreateReverseMappingReader(
+        ReadHybridTime::SingleTime(backfill_ht), /* statistics= */ nullptr));
+  }
+
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
-  const bool skip_reverse_mapping_backfill =
-      TEST_vector_index_skip_reverse_mapping_backfill.value_or(
-          store_payload ||
-          indexed_table.schema().table_properties().owns_vector_reverse_mapping());
-  if (!skip_reverse_mapping_backfill) {
+  if (backfill_all_reverse_entries || existing_reverse_mapping) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 
@@ -654,7 +675,13 @@ Status TabletVectorIndexes::Backfill(
         std::this_thread::sleep_for(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms * 1ms);
       }
     }
-    helper.Add(ybctid, reader.current_vector_slice());
+    auto vector = reader.current_vector_slice();
+    auto add_reverse_entry = backfill_all_reverse_entries;
+    if (existing_reverse_mapping) {
+      auto vector_id = VERIFY_RESULT(dockv::EncodedDocVectorValue::FromSlice(vector).DecodeId());
+      add_reverse_entry = VERIFY_RESULT(existing_reverse_mapping->FetchYbctid(vector_id)).empty();
+    }
+    helper.Add(ybctid, vector, add_reverse_entry);
   }
 
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
