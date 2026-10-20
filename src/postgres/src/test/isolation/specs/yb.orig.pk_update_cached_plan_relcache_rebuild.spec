@@ -30,6 +30,8 @@ setup
 step s1_cache_plan	{ EXECUTE u(0); }
 step s1_sleep		{ SET yb_test_sleep_before_executor_start_ms = 10000; }
 step s1_update		{ EXECUTE u(1); }
+# Issued after s2_grant so the tester waits for s1_update before the checks.
+step s1_reset		{ RESET yb_test_sleep_before_executor_start_ms; }
 
 session s2
 setup				{ SET enable_seqscan = off; }
@@ -37,4 +39,4 @@ step s2_grant		{ GRANT SELECT ON t TO PUBLIC; }
 step s2_index_scan	{ SELECT * FROM t WHERE a = 1; }
 step s2_index_check	{ SELECT yb_index_check('t_a'::regclass); }
 
-permutation s1_cache_plan s1_sleep s1_update s2_grant s2_index_scan s2_index_check
+permutation s1_cache_plan s1_sleep s1_update s2_grant s1_reset s2_index_scan s2_index_check

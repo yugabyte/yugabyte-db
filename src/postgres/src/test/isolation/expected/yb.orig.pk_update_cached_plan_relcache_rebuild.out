@@ -1,11 +1,12 @@
 Parsed test spec with 2 sessions
 
-starting permutation: s1_cache_plan s1_sleep s1_update s2_grant s2_index_scan s2_index_check
+starting permutation: s1_cache_plan s1_sleep s1_update s2_grant s1_reset s2_index_scan s2_index_check
 step s1_cache_plan: EXECUTE u(0);
 step s1_sleep: SET yb_test_sleep_before_executor_start_ms = 10000;
 step s1_update: EXECUTE u(1); <waiting ...>
 step s2_grant: GRANT SELECT ON t TO PUBLIC;
 step s1_update: <... completed>
+step s1_reset: RESET yb_test_sleep_before_executor_start_ms;
 step s2_index_scan: SELECT * FROM t WHERE a = 1;
  id|a|b
 ---+-+-
