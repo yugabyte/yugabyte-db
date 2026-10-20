@@ -2368,6 +2368,8 @@ class PgVectorIndexColocationOnlyTest
   static constexpr auto kSourceDb = "source_db";
   static constexpr auto kCloneDb = "clone_db";
 
+  void TestSkippedIndexStorageDestroyedOnRemove(bool with_kept_index);
+
   // Creates kSourceDb holding table test with rows 1..num_rows, one statement per row. The vector
   // index is left to the caller.
   Result<PGConn> CreateSourceTable(size_t num_rows) {
@@ -3054,6 +3056,132 @@ TEST_P(PgVectorIndexColocationOnlyTest, SnapshotScheduleRestoreBeforeVectorColum
   ASSERT_EQ(
       kNumRows,
       make_unsigned(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"))));
+}
+
+// A restore to before the ADD COLUMN of a vector column, from a snapshot taken after the index on
+// that column was created, brings back the index storage while the restored schema lacks the
+// column, so the tablets skip the index. Removing the index from the tablets must still destroy
+// that storage: nothing knows about it once the index is gone from the tablet metadata (#35063).
+// With with_kept_index, another vector index, which the restore keeps, must keep its storage.
+// Without it, the skipped index is the only vector index of the tablet.
+void PgVectorIndexColocationOnlyTest::TestSkippedIndexStorageDestroyedOnRemove(
+    bool with_kept_index) {
+  constexpr size_t kNumRows = 16;
+  const std::string kKeptIndexName = "kept_vi";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  std::string create_suffix;
+  if (IsColocated()) {
+    create_suffix = " WITH (COLOCATED = 1)";
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db COLOCATION = true"));
+    conn = ASSERT_RESULT(Connect());
+  } else {
+    create_suffix = " SPLIT INTO 1 TABLETS";
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, kept_embedding vector(3))$0", create_suffix));
+  if (with_kept_index) {
+    ASSERT_OK(CreateIndex(conn, kKeptIndexName, std::nullopt, "kept_embedding"));
+  }
+
+  // The interval is long enough for the restore to find no snapshot covering restore_at, so it
+  // takes a new one, which includes the index storage.
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(), client::WaitSnapshot::kTrue, 10min, 20min));
+  auto restore_at = cluster_->mini_master(0)->Now();
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN embedding vector(3)"));
+  for (size_t i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test (id, kept_embedding, embedding) VALUES ($0, '[$0, 0, 0]', '[$0, 0, 0]')",
+        i));
+  }
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Storage dirs of the replicas of each index, by index name.
+  std::unordered_map<std::string, std::vector<std::string>> index_dirs;
+  TableId kept_index_id;
+  TableId skipped_index_id;
+  for (const auto& peer : ListTabletPeersWithVectorIndexes(cluster_.get())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    for (const auto& vector_index : *tablet->vector_indexes().List()) {
+      auto table_info =
+          ASSERT_RESULT(tablet->metadata()->GetTableInfo(vector_index->table_id()));
+      if (table_info->table_name == kKeptIndexName) {
+        kept_index_id = vector_index->table_id();
+      } else {
+        skipped_index_id = vector_index->table_id();
+      }
+      index_dirs[table_info->table_name].push_back(vector_index->path());
+    }
+  }
+  const auto& kept_dirs = index_dirs[kKeptIndexName];
+  const auto& skipped_dirs = index_dirs[kVectorIndexName];
+  ASSERT_FALSE(skipped_dirs.empty());
+  ASSERT_EQ(kept_dirs.size(), with_kept_index ? skipped_dirs.size() : 0);
+
+  // Depending on whether the snapshot taken by the restore retains it, the master removes the
+  // hidden index from the tablets right after the restore or once the schedule is deleted below.
+  // Hold the removal to check the state the restore leaves.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"SkippedIndexStorageDestroyedOnRemove::Restored",
+       "AsyncRemoveTableFromTablet::SendRequest"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+  ASSERT_EQ(peers.size(), kept_dirs.size());
+  for (const auto& peer : peers) {
+    auto vector_indexes = ASSERT_RESULT(peer->shared_tablet())->vector_indexes().List();
+    ASSERT_EQ(vector_indexes->size(), 1);
+    ASSERT_EQ(vector_indexes->front()->table_id(), kept_index_id);
+  }
+  for (const auto& dir : skipped_dirs) {
+    ASSERT_TRUE(Env::Default()->FileExists(dir)) << dir;
+  }
+  TEST_SYNC_POINT("SkippedIndexStorageDestroyedOnRemove::Restored");
+
+  ASSERT_OK(snapshot_util.DeleteSchedule(schedule_id));
+  ASSERT_OK(WaitFor(
+      [this, &skipped_index_id]() -> Result<bool> {
+        for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+          if (peer->tablet_metadata()->GetTableInfo(skipped_index_id).ok()) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s * kTimeMultiplier, "Index removed from the tablets"));
+  for (const auto& dir : skipped_dirs) {
+    EXPECT_FALSE(Env::Default()->FileExists(dir)) << dir;
+  }
+  for (const auto& dir : kept_dirs) {
+    EXPECT_TRUE(Env::Default()->FileExists(dir)) << dir;
+  }
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, SkippedIndexStorageDestroyedOnRemove) {
+  TestSkippedIndexStorageDestroyedOnRemove(/* with_kept_index= */ false);
+}
+
+TEST_P(PgVectorIndexColocationOnlyTest, SkippedIndexStorageDestroyedOnRemoveWithKeptIndex) {
+  TestSkippedIndexStorageDestroyedOnRemove(/* with_kept_index= */ true);
 }
 
 // After clone, the child's TS-side index_map must list the cloned vector index, not the source
