@@ -1497,8 +1497,8 @@ SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
  500500
 (1 row)
 
-set yb_test_force_parallel=force;
 EXPLAIN (costs off)
+/*+  Parallel(t32676 2 hard) */
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
                             QUERY PLAN                             
 -------------------------------------------------------------------
@@ -1510,6 +1510,7 @@ SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
                      Index Cond: (ROW(a, b) <= ROW(500, 500))
 (6 rows)
 
+/*+  Parallel(t32676 2 hard) */
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
  count  
 --------

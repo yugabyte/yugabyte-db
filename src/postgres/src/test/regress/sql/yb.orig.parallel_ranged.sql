@@ -407,8 +407,9 @@ INSERT INTO t32676 SELECT i/1000, i%1000, i FROM generate_series(1, 1000000) i;
 EXPLAIN (costs off)
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
-set yb_test_force_parallel=force;
 EXPLAIN (costs off)
+/*+  Parallel(t32676 2 hard) */
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
+/*+  Parallel(t32676 2 hard) */
 SELECT count(*) FROM t32676 WHERE (a,b) <= (500,500);
 DROP TABLE t32676;
