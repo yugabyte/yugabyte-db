@@ -1714,7 +1714,9 @@ RemoveRelations(DropStmt *drop)
 	/* Lock and validate each relation; build a list of object addresses */
 	objects = new_object_addresses();
 
-	bool		yb_only_temp_tables = IsYugaByteEnabled() && relkind == RELKIND_RELATION;
+	bool		yb_only_temp_tables = IsYugaByteEnabled() &&
+		(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
+		 relkind == RELKIND_SEQUENCE || relkind == RELKIND_VIEW);
 
 	foreach(cell, drop->objects)
 	{

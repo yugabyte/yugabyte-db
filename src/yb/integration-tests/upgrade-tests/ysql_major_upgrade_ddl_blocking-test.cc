@@ -129,6 +129,8 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
         "ALTER SEQUENCE tmp_obj_seq RENAME TO tmp_obj_seq2",
         "CREATE TEMP VIEW tmp_obj_view AS SELECT * FROM tmp_obj_tbl",
         "DROP VIEW tmp_obj_view",
+        "CREATE INDEX tmp_obj_idx ON tmp_obj_tbl (c)",
+        "DROP INDEX tmp_obj_idx",
         "DROP SEQUENCE tmp_obj_seq2",
         "DROP TABLE tmp_obj_tbl"};
 
