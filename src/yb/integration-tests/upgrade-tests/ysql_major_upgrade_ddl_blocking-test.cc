@@ -116,6 +116,31 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     return Status::OK();
   }
 
+  // Unlike RunTempTableDdls, every statement must succeed during the upgrade, so run this only on
+  // tservers of the current version.
+  Status RunTempObjectDdls(std::optional<size_t> node_index) {
+    const auto stmts = {
+        "CREATE TEMP TABLE tmp_obj_tbl (a serial, b int GENERATED ALWAYS AS IDENTITY, c int)",
+        "INSERT INTO tmp_obj_tbl (c) VALUES (1)",
+        "TRUNCATE tmp_obj_tbl",
+        "TRUNCATE tmp_obj_tbl RESTART IDENTITY",
+        "CREATE TEMP SEQUENCE tmp_obj_seq",
+        "ALTER SEQUENCE tmp_obj_seq RESTART WITH 10",
+        "ALTER SEQUENCE tmp_obj_seq RENAME TO tmp_obj_seq2",
+        "CREATE TEMP VIEW tmp_obj_view AS SELECT * FROM tmp_obj_tbl",
+        "DROP VIEW tmp_obj_view",
+        "DROP SEQUENCE tmp_obj_seq2",
+        "DROP TABLE tmp_obj_tbl"};
+
+    auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    // Needed to prevent read restart errors.
+    SleepFor(550ms);
+    for (const auto& stmt : stmts) {
+      RETURN_NOT_OK_PREPEND(conn.Execute(stmt), stmt);
+    }
+    return Status::OK();
+  }
+
   static constexpr auto kMatviewTable = "matview_tbl";
   static constexpr auto kNormalMatview = "mv_normal";
   static constexpr auto kConcurrentMatview = "mv_concurrent";
@@ -287,6 +312,20 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
   ASSERT_OK(FinalizeUpgrade());
 
   ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+}
+
+// DDLs on temporary objects should be allowed during the upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, TempObjectDdlsDuringUpgrade) {
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(RunTempObjectDdls(kMixedModeTserverPg15));
+
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
+
+  ASSERT_OK(FinalizeUpgrade());
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
 }
 
 // Make sure in-flight DDL transactions are killed by the upgrade.

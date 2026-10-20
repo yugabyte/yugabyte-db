@@ -3807,6 +3807,103 @@ YbDdlCannotIncrementCatalogVersion(Node *parsetree,
 		!IsInTransactionBlock(context == PROCESS_UTILITY_TOPLEVEL);
 }
 
+/*
+ * This function tells if a DDL changes temporary objects only. Only the
+ * current session can see them, so the DDL does not increment the catalog
+ * version and is not a breaking change.
+ *
+ * During a YSQL major upgrade, yb-master refuses catalog version writes, so
+ * every DDL that must run during the upgrade on temporary objects has to be
+ * listed here.
+ *
+ * Partitions and inheritance children are not listed: they change pg_inherits
+ * entries of their parent, which can be a permanent table.
+ */
+static bool
+YbIsTempObjectDdl(Node *parsetree)
+{
+	switch (nodeTag(parsetree))
+	{
+		case T_CreateStmt:
+			{
+				CreateStmt *stmt = castNode(CreateStmt, parsetree);
+
+				return stmt->relation->relpersistence == RELPERSISTENCE_TEMP &&
+					!stmt->partbound && !stmt->inhRelations;
+			}
+
+		case T_CreateTableAsStmt:
+			{
+				IntoClause *into = castNode(CreateTableAsStmt, parsetree)->into;
+
+				return into && into->rel &&
+					into->rel->relpersistence == RELPERSISTENCE_TEMP;
+			}
+
+		case T_ViewStmt:
+			return castNode(ViewStmt, parsetree)->view->relpersistence ==
+				RELPERSISTENCE_TEMP;
+
+		case T_CreateSeqStmt:
+			/* Also covers the sequences of SERIAL and identity columns. */
+			return castNode(CreateSeqStmt, parsetree)->sequence->relpersistence ==
+				RELPERSISTENCE_TEMP;
+
+		case T_AlterSeqStmt:
+			return YbIsRangeVarTempRelation(castNode(AlterSeqStmt, parsetree)->sequence);
+
+		case T_AlterTableStmt:
+			return YbIsRangeVarTempRelation(castNode(AlterTableStmt, parsetree)->relation);
+
+			/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
+		case T_RenameStmt:
+			{
+				RangeVar   *relation = castNode(RenameStmt, parsetree)->relation;
+
+				return relation && YbIsRangeVarTempRelation(relation);
+			}
+
+		case T_IndexStmt:
+			return YbIsRangeVarTempRelation(castNode(IndexStmt, parsetree)->relation);
+
+		case T_TruncateStmt:
+			{
+				ListCell   *cell;
+
+				foreach(cell, castNode(TruncateStmt, parsetree)->relations)
+				{
+					if (!YbIsRangeVarTempRelation(lfirst_node(RangeVar, cell)))
+						return false;
+				}
+				return true;
+			}
+
+		case T_DropStmt:
+			{
+				DropStmt   *stmt = castNode(DropStmt, parsetree);
+				ListCell   *cell;
+
+				if (stmt->removeType != OBJECT_INDEX &&
+					stmt->removeType != OBJECT_SEQUENCE &&
+					stmt->removeType != OBJECT_TABLE &&
+					stmt->removeType != OBJECT_VIEW)
+					return false;
+
+				foreach(cell, stmt->objects)
+				{
+					RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
+
+					if (!YbIsRangeVarTempRelation(rel))
+						return false;
+				}
+				return true;
+			}
+
+		default:
+			return false;
+	}
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
@@ -4081,16 +4178,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					break;
 				}
 
-				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				else
-				{
-					is_version_increment = should_increment_version_by_default;
-				}
+				is_version_increment = should_increment_version_by_default;
 				break;
 			}
 
@@ -4099,31 +4187,13 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * (eg: partitions) cannot be created using this statement.
 			 */
 		case T_CreateTableAsStmt:
-			{
-				CreateTableAsStmt *stmt = castNode(CreateTableAsStmt, parsetree);
-
-				/*
-				 * Simple add objects are not breaking changes, and they do not even require
-				 * a version increment because we do not do any negative caching for them.
-				 *
-				 * Temp tables are session-local, so they do not need catalog version
-				 * increments. They also alter existing data since they create relations
-				 * visible only to this transaction/session.
-				 */
-				if (stmt->into && stmt->into->rel &&
-					stmt->into->rel->relpersistence == RELPERSISTENCE_TEMP)
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				else
-				{
-					is_version_increment = should_increment_version_by_default;
-				}
-				is_breaking_change = false;
-				break;
-			}
+			/*
+			 * Simple add objects are not breaking changes, and they do not even require
+			 * a version increment because we do not do any negative caching for them.
+			 */
+			is_version_increment = should_increment_version_by_default;
+			is_breaking_change = false;
+			break;
 
 		case T_CreateSeqStmt:
 			is_breaking_change = false;
@@ -4199,9 +4269,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 							if (is_version_increment && marked_temp)
 								break;
 						}
-
-						if (!is_version_increment)
-							is_altering_existing_data = true;
 					}
 				}
 				is_breaking_change = false;
@@ -4301,14 +4368,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 				AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
 
-				if (YbIsRangeVarTempRelation(stmt->relation))
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-					break;
-				}
-
 				/*
 				 * Must increment catalog version when creating table with foreign
 				 * key reference and refresh PG cache on ongoing transactions.
@@ -4338,23 +4397,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 			/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
-			{
-				const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
-
-				/*
-				 * We don't have to increment the catalog version for renames
-				 * on temp objects as they are only visible to the current
-				 * session.
-				 */
-				if (stmt->relation && YbIsRangeVarTempRelation(stmt->relation))
-				{
-					is_breaking_change = false;
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				break;
-			}
+			break;
 
 			/* T_Grant... */
 		case T_GrantStmt:
@@ -4369,25 +4412,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 			/* T_Index... */
 		case T_IndexStmt:
-			{
-				IndexStmt  *stmt = castNode(IndexStmt, parsetree);
-
-				/*
-				 * For nonconcurrent index backfill we do not guarantee global consistency anyway.
-				 * For (new) concurrent backfill the backfill process should wait for ongoing
-				 * transactions so we don't have to force a transaction abort on PG side.
-				 */
-				if (YbIsRangeVarTempRelation(stmt->relation))
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				is_breaking_change = false;
-				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
-						YBCIsLegacyModeForCatalogOps();
-				break;
-			}
+			/*
+			 * For nonconcurrent index backfill we do not guarantee global consistency anyway.
+			 * For (new) concurrent backfill the backfill process should wait for ongoing
+			 * transactions so we don't have to force a transaction abort on PG side.
+			 */
+			is_breaking_change = false;
+			should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
+					YBCIsLegacyModeForCatalogOps();
+			break;
 
 		case T_VacuumStmt:
 			{
@@ -4539,6 +4572,14 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			/* Not a DDL operation. */
 			is_ddl = false;
 			break;
+	}
+
+	if (YbIsTempObjectDdl(parsetree))
+	{
+		is_version_increment = false;
+		is_breaking_change = false;
+		is_altering_existing_data = true;
+		YBMarkTxnUsesTempRelAndSetTxnId();
 	}
 
 	if (YbIsTopLevelOrAtomicStatement(context))
