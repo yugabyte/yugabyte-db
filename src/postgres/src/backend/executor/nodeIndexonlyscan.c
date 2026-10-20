@@ -55,7 +55,6 @@ static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 							IndexTuple itup, TupleDesc itupdesc);
 static void yb_init_indexonly_scandesc(IndexOnlyScanState *node);
-static void yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node);
 static void yb_store_index_tuple_decoded_pk(IndexOnlyScanState *node,
 											TupleTableSlot *slot,
 											IndexTuple itup,
@@ -106,13 +105,6 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 	if (scandesc == NULL)
 	{
-		if (IsYugaByteEnabled() && node->yb_ioss_aggrefs)
-		{
-			yb_agg_pushdown_init_scan_slot(node);
-			/* Refresh the local pointer. */
-			slot = node->ss.ss_ScanTupleSlot;
-		}
-
 		/*
 		 * We reach here if the index only scan is not parallel, or if we're
 		 * serially executing an index only scan that was planned to be
@@ -941,9 +933,6 @@ ExecIndexOnlyScanInitializeDSM(IndexOnlyScanState *node,
 	node->ioss_VMBuffer = InvalidBuffer;
 	yb_init_indexonly_scandesc(node);
 
-	if (node->yb_ioss_aggrefs)
-		yb_agg_pushdown_init_scan_slot(node);
-
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -989,9 +978,6 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 	node->ioss_ScanDesc->xs_want_itup = true;
 	yb_init_indexonly_scandesc(node);
 
-	if (node->yb_ioss_aggrefs)
-		yb_agg_pushdown_init_scan_slot(node);
-
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -1000,22 +986,6 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
-}
-
-static void
-yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node)
-{
-	Assert(node->yb_ioss_aggrefs);
-	/*
-	 * For aggregate pushdown, we only read aggregate results from
-	 * DocDB and pass that up to the aggregate node (agg pushdown
-	 * wouldn't be enabled if we needed to read other expressions). Set
-	 * up a dummy scan slot to hold as many attributes as there are
-	 * pushed aggregates.
-	 */
-	TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs));
-
-	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 }
 
 /*

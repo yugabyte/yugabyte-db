@@ -138,6 +138,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 		/* Create operator. */
 		HandleYBStatus(YBCPgNewOperator(handle, func_name, type_entity,
 										aggref->aggcollid, &op_handle));
+		pfree(func_name);
 
 		/* Handle arguments. */
 		if (aggref->aggstar)
