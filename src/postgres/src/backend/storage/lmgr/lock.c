@@ -5203,3 +5203,61 @@ YbGetNumTxnLocks()
 	return hash_get_num_entries(GetLockMethodLocalHash()) - YbNumSessionObjectLocks();
 }
 #endif
+
+/*
+ * YbProcHasLockManagerState - does the given process hold or wait on any PG
+ * heavyweight locks?
+ */
+bool
+YbProcHasLockManagerState(PGPROC *proc)
+{
+	LOCK	   *waitLock = proc->waitLock;
+	StringInfoData buf;
+
+	if (waitLock != NULL)
+	{
+		initStringInfo(&buf);
+		DescribeLockTag(&buf, &waitLock->tag);
+		elog(WARNING, "process %d was waiting for %s on %s",
+			 proc->pid,
+			 GetLockmodeName(LOCK_LOCKMETHOD(*waitLock), proc->waitLockMode),
+			 buf.data);
+		pfree(buf.data);
+		return true;
+	}
+
+	if (proc->fpVXIDLock)
+	{
+		elog(WARNING, "process %d holds a fast-path virtual transaction lock",
+			 proc->pid);
+		return true;
+	}
+
+	for (int i = 0; i < FastPathLockGroupsPerBackend; i++)
+	{
+		if (proc->fpLockBits[i] != 0)
+		{
+			elog(WARNING, "process %d holds fast-path relation locks", proc->pid);
+			return true;
+		}
+	}
+
+	for (int i = 0; i < NUM_LOCK_PARTITIONS; i++)
+	{
+		PROCLOCK   *proclock;
+		LOCK	   *lock;
+
+		if (dlist_is_empty(&proc->myProcLocks[i]))
+			continue;
+
+		proclock = dlist_head_element(PROCLOCK, procLink, &proc->myProcLocks[i]);
+		lock = proclock->tag.myLock;
+		initStringInfo(&buf);
+		DescribeLockTag(&buf, &lock->tag);
+		elog(WARNING, "process %d holds lock on %s", proc->pid, buf.data);
+		pfree(buf.data);
+		return true;
+	}
+
+	return false;
+}

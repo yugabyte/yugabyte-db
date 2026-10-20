@@ -651,5 +651,6 @@ extern int	yb_max_query_layer_retries;
 extern int *yb_too_many_conn;
 extern void YbRemoveLockGroupLeader(PGPROC *proc);
 extern void YbReleaseProcToFreeList(PGPROC *proc);
+extern bool YbIsAuxiliaryProc(PGPROC *proc);
 
 #endif							/* _PROC_H_ */

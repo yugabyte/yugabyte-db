@@ -2232,3 +2232,12 @@ YbExitCriticalSection(void)
 	if (MyProc)
 		MyProc->ybEnteredCriticalSection = false;
 }
+
+/*
+ * YbIsAuxiliaryProc -- is the given PGPROC an Auxiliary process?
+ */
+bool
+YbIsAuxiliaryProc(PGPROC *proc)
+{
+	return proc >= AuxiliaryProcs && proc < AuxiliaryProcs + NUM_AUXILIARY_PROCS;
+}
