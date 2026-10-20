@@ -570,6 +570,10 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(operation->op_id());
   frontier.set_hybrid_time(operation->hybrid_time());
+  // The restored flushed frontier replaces the one of the snapshot, which could record a vector
+  // deletion. A restore to a time also keeps the vector indexes of the snapshot, taken later, so
+  // they could hold vectors deleted or replaced at the restored time.
+  frontier.SetHasVectorDeletion();
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();

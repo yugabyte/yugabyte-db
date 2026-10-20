@@ -883,16 +883,41 @@ std::string DocDbStatsToString(const DocDBStatistics* doc_db_stats) {
   return ss.str();
 }
 
+// Returns the keys of the rows with intents visible at the read time, in key order.
+Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData& data) {
+  std::unique_ptr<YQLRowwiseIteratorIf> iterator_holder;
+  FilteringIterator iterator(&iterator_holder);
+  auto projection = CreateProjection(data.doc_read_context.schema(), data.request);
+  RETURN_NOT_OK(iterator.InitForYbctid(data, projection, data.doc_read_context, {}));
+  auto& iterator_impl = down_cast<DocRowwiseIterator&>(iterator.impl());
+  iterator_impl.Refresh(SeekFilter::kIntentsOnly);
+  iterator_impl.Seek(Slice());
+  std::vector<std::string> result;
+  dockv::PgTableRow row(projection);
+  // TODO(vector_index) Use limit during prefetch.
+  while (VERIFY_RESULT(iterator_impl.PgFetchNext(&row))) {
+    result.push_back(iterator_impl.GetTupleId().ToBuffer());
+  }
+  return result;
+}
+
+// Whether key is among intent_keys, see ReadIntentRowKeys.
+bool IsIntentRow(const std::vector<std::string>& intent_keys, Slice key) {
+  return std::binary_search(
+      intent_keys.begin(), intent_keys.end(), key, [](Slice lhs, Slice rhs) { return lhs < rhs; });
+}
+
 class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
       DocVectorIndexSearchResult& search_result, PgsqlResponseMsg& response,
-      DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
-      size_t max_results, WriteBuffer& result_buffer)
+      DocVectorIndex& vector_index, Slice vector_slice, const std::vector<std::string>& intent_keys,
+      size_t num_top_vectors_to_remove, size_t max_results, WriteBuffer& result_buffer)
       : could_have_more_data_(search_result.could_have_more_data),
         result_entries_(search_result.entries), response_(response), vector_index_(vector_index),
-        vector_slice_(vector_slice), num_top_vectors_to_remove_(num_top_vectors_to_remove),
-        max_results_(max_results), result_buffer_(result_buffer) {}
+        vector_slice_(vector_slice), intent_keys_(intent_keys),
+        num_top_vectors_to_remove_(num_top_vectors_to_remove), max_results_(max_results),
+        result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
     if (index_ >= result_entries_.size()) {
@@ -912,30 +937,9 @@ class VectorIndexKeyProvider {
   }
 
   Status Prefetch(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
-    auto& iterator_impl = down_cast<DocRowwiseIterator&>(iterator.impl());
-    iterator_impl.Refresh(SeekFilter::kIntentsOnly);
-    iterator_impl.Seek(Slice());
-
-    auto indexed_column_index = projection.ColumnIdxById(vector_index_.column_id());
-    RSTATUS_DCHECK(indexed_column_index != dockv::ReaderProjection::kNotFoundIndex, Corruption,
-                   "Indexed column ($0) not found in projection: $1",
-                   vector_index_.column_id(), projection);
-    // TODO(vector_index) Use limit during prefetch.
-    dockv::PgTableRow table_row(projection);
-    size_t old_size = result_entries_.size();
-    while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
-      auto vector_value = table_row.GetValueByIndex(indexed_column_index);
-      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
-                     vector_index_.column_id(), table_row.ToString());
-      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-      result_entries_.push_back(DocVectorIndexSearchResultEntry {
-        // TODO(vector_index) Avoid decoding vector_slice for each vector
-        .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
-            vector_slice_, encoded_value.data)),
-        .key = KeyBuffer(iterator.impl().GetTupleId()),
-      });
+    if (!intent_keys_.empty()) {
+      RETURN_NOT_OK(ReplaceIntentRows(iterator, projection));
     }
-    found_intents_ = result_entries_.size() - old_size;
     prefetch_done_time_ = MonoTime::Now();
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
@@ -943,16 +947,9 @@ class VectorIndexKeyProvider {
     };
     std::ranges::sort(result_entries_, cmp_keys);
 
-    if (found_intents_) {
-      auto range = std::ranges::unique(result_entries_, [](const auto& lhs, const auto& rhs) {
-        return lhs.key == rhs.key;
-      });
-      result_entries_.erase(range.begin(), range.end());
-    }
-
     // Simulates reverse-mapping misses shrinking the result entries below the skip count.
-    // There are several scenarios where this can happen in production, for example: intents
-    // deduplication (a couple of lines above), reverse-mapping misses, etc.
+    // There are several scenarios where this can happen in production, for example: reverse-mapping
+    // misses, rows with intents that no longer match the filter, etc.
     if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
       result_entries_.clear();
       ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
@@ -995,11 +992,48 @@ class VectorIndexKeyProvider {
   }
 
  private:
+  // Until a committed transaction is applied, the index keeps the vectors it replaced, whatever
+  // the tablet's vector deletion mark says. The intents alone are not the current row either,
+  // e.g. when a later transaction is applied first. So the filter leaves out the index entries of
+  // rows with intents, and this adds such rows at their current version.
+  Status ReplaceIntentRows(FilteringIterator& iterator, const dockv::ReaderProjection& projection) {
+    auto indexed_column_index = projection.ColumnIdxById(vector_index_.column_id());
+    RSTATUS_DCHECK(indexed_column_index != dockv::ReaderProjection::kNotFoundIndex, Corruption,
+                   "Indexed column ($0) not found in projection: $1",
+                   vector_index_.column_id(), projection);
+    // Unless vector_index_skip_filter_check is set, the filter already left them out.
+    std::erase_if(result_entries_, [this](const auto& entry) {
+      return IsIntentRow(intent_keys_, entry.key.AsSlice());
+    });
+    dockv::PgTableRow table_row(projection);
+    size_t old_size = result_entries_.size();
+    for (const auto& key : intent_keys_) {
+      // A miss leaves the iterator done.
+      iterator.Refresh();
+      if (VERIFY_RESULT(iterator.FetchTuple(key, &table_row)) != FetchResult::Found) {
+        continue;
+      }
+      auto vector_value = table_row.GetValueByIndex(indexed_column_index);
+      RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
+                     vector_index_.column_id(), table_row.ToString());
+      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
+      result_entries_.push_back(DocVectorIndexSearchResultEntry {
+        // TODO(vector_index) Avoid decoding vector_slice for each vector
+        .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
+            vector_slice_, encoded_value.data)),
+        .key = KeyBuffer(key),
+      });
+    }
+    found_intents_ = result_entries_.size() - old_size;
+    return Status::OK();
+  }
+
   bool could_have_more_data_;
   DocVectorIndexSearchResultEntries& result_entries_;
   PgsqlResponseMsg& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
+  const std::vector<std::string>& intent_keys_;
   const size_t num_top_vectors_to_remove_;
   // Please note that max_results_ includes vectors that should be removed.
   const size_t max_results_;
@@ -1019,19 +1053,19 @@ class PgsqlVectorFilter {
  public:
   PgsqlVectorFilter(
       std::reference_wrapper<const docdb::DocVectorIndexMetrics> metrics,
-      YQLRowwiseIteratorIf::UniPtr* table_iter)
-      : metrics_(metrics), iter_(table_iter) {
+      YQLRowwiseIteratorIf::UniPtr* table_iter, const std::vector<std::string>& intent_keys)
+      : metrics_(metrics), iter_(table_iter), intent_keys_(intent_keys) {
   }
 
   ~PgsqlVectorFilter() {
-    if (row_) {
+    if (reverse_mapping_reader_) {
       metrics_.filter_checked->Increment(num_checked_entries_);
       metrics_.filter_accepted->Increment(num_accepted_entries_);
       metrics_.filter_removed->Increment(num_removed_);
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
           << num_accepted_entries_ << ", num removed: " << num_removed_
-          << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+          << (row_ && iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
     }
     DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
@@ -1040,15 +1074,22 @@ class PgsqlVectorFilter {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
-    // An index which stores payloads keeps deleted vectors, they are detected only by fetching the
-    // row the stored ybctid points to, so it always needs the filter.
-    if (!data.table_has_vector_deletion && !data.vector_index->StoresPayload() &&
-        !FilteringIterator::NeedFilter(data.request) &&
-        FLAGS_vector_index_no_deletions_skip_filter_check) {
+    // Deleted and replaced vectors are detected by fetching the row they point to, which is needed
+    // only once the tablet has vector deletions.
+    auto check_rows = data.table_has_vector_deletion ||
+                      FilteringIterator::NeedFilter(data.request) ||
+                      !FLAGS_vector_index_no_deletions_skip_filter_check;
+    if (!check_rows && intent_keys_.empty()) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
              "skip because filter not specified and table does not have deletions";
       return false;
+    }
+    reverse_mapping_reader_ = VERIFY_RESULT(
+        data.vector_index->context().CreateReverseMappingReader(
+            data.read_operation_data.read_time, data.read_operation_data.statistics));
+    if (!check_rows) {
+      return true;
     }
     CHECK(TEST_vector_index_filter_allowed);
     std::vector<ColumnId> columns;
@@ -1067,16 +1108,11 @@ class PgsqlVectorFilter {
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
     RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
-
-    reverse_mapping_reader_ = VERIFY_RESULT(
-        data.vector_index->context().CreateReverseMappingReader(
-            data.read_operation_data.read_time, data.read_operation_data.statistics));
-
     return true;
   }
 
   bool operator()(const vector_index::VectorId& vector_id, Slice payload) {
-    if (!row_) {
+    if (!reverse_mapping_reader_) {
       return true;
     }
     if (!status_.ok()) {
@@ -1115,7 +1151,11 @@ class PgsqlVectorFilter {
       ybctid = *fetched_ybctid;
       resolved_via_reverse_mapping = true;
     }
-    if (resolved_via_reverse_mapping && !iter_.has_filter()) {
+    // Such a row is added at its current version, see VectorIndexKeyProvider::Prefetch.
+    if (IsIntentRow(intent_keys_, ybctid)) {
+      return false;
+    }
+    if (!row_ || (resolved_via_reverse_mapping && !iter_.has_filter())) {
       ++num_accepted_entries_;
       return true;
     }
@@ -1172,6 +1212,8 @@ class PgsqlVectorFilter {
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
+  // Keys of the rows with intents, in key order.
+  const std::vector<std::string>& intent_keys_;
   dockv::ReaderProjection projection_;
   docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
   Status status_;
@@ -2224,14 +2266,14 @@ Status PgsqlWriteOperation::HandleDeletedVectorIds(
 
 Status PgsqlWriteOperation::FillRemovedVectorId(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id) {
+  auto old_vector_value = table_row.GetValueByColumnId(column_id);
+  if (!old_vector_value) {
+    return Status::OK();
+  }
   // A table which writes no reverse mapping has nothing to tombstone: its indexes store the ybctid
   // with every vector, so search detects the deletion by fetching the row it points to.
   if (!doc_read_context_->schema().table_properties().writes_vector_reverse_mapping()) {
-    return Status::OK();
-  }
-
-  auto old_vector_value = table_row.GetValueByColumnId(column_id);
-  if (!old_vector_value) {
+    data.doc_write_batch->MarkVectorDeletion();
     return Status::OK();
   }
   auto vector_value = dockv::EncodedDocVectorValue::FromSlice(old_vector_value->binary_value());
@@ -2800,8 +2842,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   Slice vector_slice(options.vector().binary_value());
   size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
+  auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_));
   table_iter_.reset();
-  PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_);
+  PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_, intent_keys);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
   auto backfill_done = VERIFY_RESULT(data_.vector_index->BackfillDone());
   RSTATUS_DCHECK(
@@ -2836,7 +2879,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   auto dump_stats = FLAGS_vector_index_dump_stats;
   auto read_start_time = MonoTime::Now();
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice,
+      result, response_, *data_.vector_index, vector_slice, intent_keys,
       options.num_top_vectors_to_remove(), max_results, *result_buffer_);
   auto result_size = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   auto passed = MonoTime::Now() - key_provider.merge_done_time();

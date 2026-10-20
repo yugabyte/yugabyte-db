@@ -2239,6 +2239,11 @@ Status Tablet::ApplyKeyValueRowOperations(
   if (put_batch.has_transaction()) {
     RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, write_hybrid_time, frontiers));
   } else {
+    // Searches skip the row check of index candidates until the tablet has a vector deletion, so
+    // it is recorded before the vectors replacing the deleted ones reach the indexes.
+    if (put_batch.has_delete_vector_ids() && !vector_indexes_->has_vector_deletion()) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
     // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
