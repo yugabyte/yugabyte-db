@@ -63,6 +63,7 @@
 
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
@@ -338,6 +339,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
+
+  void SetYsqlDbLastPrefetchedCatalogVersion(
+      uint32_t db_oid, uint64_t catalog_version) EXCLUDES(lock_) override;
 
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
@@ -678,9 +682,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
-  void InvalidatePgTableCache();
-  void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                              const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidatePgTableCache(
+      const std::optional<PgTableCacheInvalidationFilter>& filter = std::nullopt);
 
   void ScheduleCheckLaggingCatalogVersions();
   Status CheckYsqlLaggingCatalogVersions();

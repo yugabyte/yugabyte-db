@@ -1402,6 +1402,13 @@ class Tablet : public AbstractTablet,
   // FLAGS_use_cross_split_key_detection_algorithm.
   Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
 
+  // Returns the first legal split boundary after encoded_key (an output of
+  // ValidateAndEncodeSplitKey) as {encoded key, partition key}: hash code + 1, or the next
+  // existing DocKey. nullopt if none is inside the tablet or it fails validation; errors only
+  // on read or encoding failure.
+  Result<std::optional<std::pair<std::string, std::string>>> NextSplitBoundary(
+      Slice encoded_key, Slice partition_key) const;
+
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 

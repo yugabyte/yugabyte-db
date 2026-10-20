@@ -442,21 +442,34 @@ void IntentAwareIterator::SeekBeforeSubKey(Slice key) {
   }
 
   if (intent_iter_->Initialized()) {
-    // The forward Seek may have capped the intent upper bound, so reposition explicitly.
     ResetIntentUpperbound();
-    ROCKSDB_SEEK(intent_iter_, key);
+    // The forward Seek may have capped the intent upper bound and left intent_iter_ invalid past
+    // it, which SeekBackward() would take as positioned before the key, so seek explicitly then.
     if (intent_iter_->Valid()) {
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
-    } else {
-      HandleStatus(intent_iter_->status());
-      if (!status_.ok()) {
-        return;
-      }
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+      SeekToSuitableIntent<Direction::kBackward>(intent_iter_.SeekBackward(key));
+    } else if (!IntentSeekBeforeKey(key)) {
+      return;
     }
   }
 
   FillEntry</* kDescending */ true>();
+}
+
+bool IntentAwareIterator::IntentSeekBeforeKey(Slice key) {
+  DCHECK(intent_iter_->Initialized());
+  ROCKSDB_SEEK(intent_iter_, key);
+  if (intent_iter_->Valid()) {
+    SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
+    return true;
+  }
+
+  HandleStatus(intent_iter_->status());
+  if (!status_.ok()) {
+    return false;
+  }
+
+  SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+  return true;
 }
 
 // If we reach a different key, stop seeking.
@@ -530,15 +543,8 @@ bool IntentAwareIterator::PreparePrev(Slice key) {
 
   if (intent_iter_->Initialized()) {
     ResetIntentUpperbound();
-    ROCKSDB_SEEK(intent_iter_, key);
-    if (intent_iter_->Valid()) {
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->Prev());
-    } else {
-      HandleStatus(intent_iter_->status());
-      if (!status_.ok()) {
-        return false;
-      }
-      SeekToSuitableIntent<Direction::kBackward>(intent_iter_->SeekToLast());
+    if (!IntentSeekBeforeKey(key)) {
+      return false;
     }
   }
 

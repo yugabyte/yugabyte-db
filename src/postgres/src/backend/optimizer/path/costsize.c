@@ -102,6 +102,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
@@ -8571,8 +8572,9 @@ yb_saop_const_bounds(ScalarArrayOpExpr *saop, Const **min_const,
  *      selectivity (sparse IN-lists ~ 1, clustered IN-lists ~ 0).
  *
  *      Returns false (outputs unchanged) when the clause is not a SAOP,
- *      the rhs is not a non-null Const array, or no btree comparator is
- *      available for the element type.
+ *      the rhs is not a non-null Const array, the executor cannot bind the
+ *      array to the index column, or no btree comparator is available for
+ *      the element type and the SAOP operator.
  */
 static bool
 yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
@@ -8588,6 +8590,8 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 	int			numElems;
 	Oid			elemtype;
 	TypeCacheEntry *typeCache;
+	Oid			lefttype;
+	Oid			righttype;
 	Oid			leOp;
 	Oid			geOp;
 	Expr	   *geExpr;
@@ -8607,12 +8611,26 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
 		return true;
 	}
 
+	/*
+	 * The executor binds the IN-list to the index only for the type pairs
+	 * YbIsScanCompatible accepts, e.g. not (name, text); otherwise no
+	 * bounding range is walked.
+	 */
+	op_input_types(saop->opno, &lefttype, &righttype);
+	if (!YbIsScanCompatible(lefttype, righttype,
+							false /* is_value_scalar */ , (Datum) 0))
+		return false;
+
+	/*
+	 * Look up btree '<=', '>=' for the SAOP operator's input types in the
+	 * element type's opfamily, to bound lhs.
+	 */
 	lhs = (Node *) linitial(saop->args);
 	elemtype = minConst->consttype;
 	typeCache = lookup_type_cache(elemtype, TYPECACHE_BTREE_OPFAMILY);
-	leOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	leOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTLessEqualStrategyNumber);
-	geOp = get_opfamily_member(typeCache->btree_opf, elemtype, elemtype,
+	geOp = get_opfamily_member(typeCache->btree_opf, lefttype, righttype,
 							   BTGreaterEqualStrategyNumber);
 	if (!OidIsValid(leOp) || !OidIsValid(geOp))
 		return false;
@@ -11015,16 +11033,18 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * statistics estimate the fraction of outer rows that sort before that
  * boundary.  This is the outer half of what initial_cost_mergejoin derives.
  *
- * Unlike merge join, we make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
- * mismatch over the FULL outer column histogram, ignoring the outer scan's
- * own restriction.  Multiplying that full-column fraction by the already
- * restricted outer_path_rows over-counts the skip whenever the outer is
- * itself bounded to start at/above the inner's matching range (e.g.
- * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
- * full-column fraction is large).  Conditioning the fraction on the outer
- * relation's baserestrictinfo collapses it to ~0 there while preserving a
- * genuine low-key prefix.
+ * We make that fraction FILTER-AWARE
+ * (yb_bnl_outer_skip_selectivity): the full-column fraction ignores the outer
+ * scan's own restriction, so multiplying it by the already restricted
+ * outer_path_rows over-counts the skip whenever the outer is itself bounded
+ * to start at/above the inner's matching range (e.g. "outer.k >= c" with
+ * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
+ * large).  Conditioning the fraction on the outer relation's baserestrictinfo
+ * collapses it to ~0 there while preserving a genuine low-key prefix.  Merge
+ * join conditions its start fraction on the join key's own range bounds
+ * instead, which also reach a join-relation outer, whose restriction list
+ * here is empty, and it tightens the fraction by the inner's range bounds,
+ * which do not move this skip.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the

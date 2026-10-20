@@ -269,6 +269,11 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+// The tserver response cache was asked for an entry it does not hold, under lookup_only.
+bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
+  return StatusWrapper(s)->IsIncomplete();
+}
+
 bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }

@@ -536,6 +536,9 @@ extern int	yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/* Enables pushing INSERT ON CONFLICT DO NOTHING resolution to DocDB. */
+extern bool yb_enable_ioc_do_nothing_pushdown;
+
 /*
  * Enables distinct pushdown.
  * If true, send supported DISTINCT operations to DocDB
@@ -789,6 +792,8 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+extern bool yb_test_fail_stale_catalog_message_check;
+extern bool yb_enable_stale_catalog_prefetch;
 
 /* Test fault injection: fail drop after heap_drop_with_catalog. */
 extern bool yb_test_fail_drop_after_heap_drop;
@@ -853,6 +858,12 @@ extern char *yb_default_replica_identity;
  * GUC variable to pass a W3C traceparent for distributed tracing.
  */
 extern char *yb_dist_tracecontext;
+
+/*
+ * Fraction (0 to 1) of protocol cycles without a traceparent that start a
+ * distributed trace of their own; 0 disables sampling.
+ */
+extern double yb_dist_trace_sample_rate;
 
 /*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
@@ -1660,6 +1671,8 @@ extern const char *YbGetRedactedQueryString(const char *query, int *redacted_que
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
 
+extern bool YbIsIocPushdownEnabled(OnConflictAction action);
+
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
 										bool is_truncate);
@@ -1731,6 +1744,11 @@ extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool yb_default_collation_resolved;
 
+/*
+ * Whether every message in the lists is one this backend knows how to apply. Looks only at the
+ * message bytes, so a caller can ask before it has anything to apply them to.
+ */
+extern bool YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 
 extern bool YbInvalidationMessagesTableExists();
@@ -1740,6 +1758,12 @@ extern bool yb_is_calling_internal_sql_for_ddl;
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 
 extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+
+/* Whether this backend is authenticating on connection manager's behalf. */
+extern bool YbIsPerformingConnMgrAuth();
+
+/* The admission priority to ask the master for when prefetching ahead of authentication. */
+extern YbcPgSysTablePrefetchKind YbAuthPrefetchKind();
 
 extern bool YbIsInvalidationMessageEnabled();
 

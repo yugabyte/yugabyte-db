@@ -10136,6 +10136,14 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
       break;
     // Pending cases.  NOT DONE
     case SysNamespaceEntryPB::PREPARING:
+      // A failed new-version catalog copy leaves the namespace PREPARING with NEXT_VER_FAILED, set
+      // by ProcessPendingNamespace on error or by NamespaceLoader::Visit after a master failover.
+      if (metadata.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_FAILED) {
+        resp->set_done(true);
+        return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR,
+            STATUS(InternalError,
+                "Namespace Create Failed: YSQL major upgrade catalog copy failed"));
+      }
       resp->set_done(false);
       break;
     // Failure cases.  Done, but we need to give the user an error message.

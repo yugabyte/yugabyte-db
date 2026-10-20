@@ -191,4 +191,26 @@ public class CustomerRegistrationApiTest extends FakeDBApplication {
     }
     assertEquals(3, Customer.find.query().findCount());
   }
+
+  @Test
+  public void rotatedSuperAdminTokenCannotRegister() {
+    JsonNode first = registerOk(app, registrationSpec("admin@example.com"), null);
+    String oldToken = first.get("api_token").asText();
+    Result rotated =
+        Helpers.route(
+            app,
+            Helpers.fakeRequest(
+                    "PUT",
+                    "/api/v2/customers/" + first.get("customer_uuid").asText() + "/api-token")
+                .header(TokenAuthenticator.API_TOKEN_HEADER, oldToken));
+    assertEquals(contentAsString(rotated), OK, rotated.status());
+    String newToken = Json.parse(contentAsString(rotated)).get("api_token").asText();
+
+    Result result =
+        assertPlatformException(
+            () -> register(app, registrationSpec("tenant@example.com"), oldToken));
+
+    assertUnauthorized(result, "Unable to authenticate user");
+    registerOk(app, registrationSpec("tenant@example.com"), newToken);
+  }
 }

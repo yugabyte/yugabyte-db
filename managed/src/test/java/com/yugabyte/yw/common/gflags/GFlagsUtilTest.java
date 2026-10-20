@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1014,6 +1015,66 @@ public class GFlagsUtilTest extends FakeDBApplication {
     assertEquals(
         "FIPS enabled YBAnywhere only supports FIPS enabled universe",
         exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsDisablingTheFipsGFlagInDeprecatedFields() {
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      UserIntent userIntent = new UserIntent();
+      userIntent.providerType = Common.CloudType.aws;
+      Map<String, String> gflags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+      if (serverType == ServerType.MASTER) {
+        userIntent.masterGFlags = gflags;
+      } else {
+        userIntent.tserverGFlags = gflags;
+      }
+
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+      assertEquals(
+          "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+          exception.getLocalizedMessage());
+    }
+  }
+
+  @Test
+  public void testValidateFipsCompliancyAcceptsFipsGFlagEnabledInDeprecatedFields() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.masterGFlags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true"));
+    userIntent.tserverGFlags = new HashMap<>(Map.of("max_log_size", "256"));
+
+    GFlagsUtil.validateFipsCompliancy(userIntent, true);
+  }
+
+  @Test
+  public void testProcessUserGFlagsKeepsFipsOnEvenWhenOverrideAllIsAllowed() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    for (boolean allowOverrideAll : List.of(false, true)) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false", "max_log_size", "100"));
+      Map<String, String> platformGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "256"));
+
+      GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, allowOverrideAll, null, null);
+
+      assertEquals(Map.of("max_log_size", "100"), userGFlags);
+    }
+  }
+
+  @Test
+  public void testProcessUserGFlagsLeavesFipsGFlagAloneOnNonFipsUniverse() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
+
+    assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
   }
 
   @Test

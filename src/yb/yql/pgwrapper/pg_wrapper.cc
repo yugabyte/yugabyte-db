@@ -283,6 +283,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ioc_do_nothing_pushdown, false,
+    "Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
     "'legacy_bnl_mode', 'legacy_stats_bnl_mode', 'legacy_ignore_stats_bnl_mode', "
@@ -527,6 +530,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "Time in milliseconds for which the notifications poller process waits before polling again "
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
+    "Fraction (0 to 1) of YSQL protocol cycles (simple query, Parse, Bind, Execute) that arrive "
+    "without a traceparent and are distributed-traced. Each cycle is drawn independently and "
+    "starts its own trace. 0 disables sampling. A traceparent with the sampled flag clear (-00) "
+    "is honoured: the query is not traced. Connections the tserver opens internally are not "
+    "sampled. Requires otel_collector_traces_endpoint.");
+DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");

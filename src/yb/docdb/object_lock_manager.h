@@ -117,10 +117,13 @@ class ObjectLockManager {
   void PopulateObjectLockWaiterBlockers(
       std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner);
 
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet);
+
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
-  std::unordered_map<ObjectLockPrefix, LockState>
-      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  std::unordered_map<ObjectLockPrefix, LockState> TEST_GetLockStateMapForTxn(
+      TransactionId txn) const;
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
 
  private:
   std::unique_ptr<ObjectLockManagerImpl> impl_;

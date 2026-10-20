@@ -260,6 +260,7 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
+  pg_cache_util.cc
   pg_client_service.cc
   pg_client_session.cc
   pg_client_session_util.cc

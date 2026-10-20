@@ -5139,6 +5139,28 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  Result<bool> HasVectorDeletion() {
+    auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+    return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
+  }
+
+  // Ids of the rows nearest to the origin.
+  Result<std::string> NearestIds(PGConn& conn, size_t limit) {
+    return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
+  }
+
+  static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
+    return conn.Execute("COMMIT");
+  }
+
+  void TestFastPathVectorDeletion(const std::string& statement);
+  void TestUnappliedVectorUpdates();
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
@@ -5600,14 +5622,6 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.Flush());
   ASSERT_OK(index.WaitForFlush());
 
-  const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
-  // Before any deletion, the rows the stored ybctids point to need no check.
-  docdb::TEST_vector_index_filter_allowed = false;
-  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
-  docdb::TEST_vector_index_filter_allowed = true;
-  ASSERT_EQ(rows.size(), kNumRows);
-
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumDeletedRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
@@ -5617,9 +5631,164 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(index.WaitForCompaction());
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
 
-  rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+  const auto query = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
+}
+
+// A table which writes no reverse mapping still marks its tablets as having vector deletions when
+// a row is deleted or its vector is replaced. Until then a search does not fetch the rows of its
+// candidates, after that it does, so the vector left behind by an update is not returned.
+TEST_F(PgVectorIndexUtilTest, StoredPayloadTracksVectorDeletions) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto query = [this, &conn] { return NearestIds(conn, kNumRows); };
+
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+  docdb::TEST_vector_index_filter_allowed = false;
+  ASSERT_EQ(ASSERT_RESULT(query()), "[1, 2, 3, 4, 5]");
+  docdb::TEST_vector_index_filter_allowed = true;
+
+  // The old vector of row 1 stays in the index next to the new one.
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 200, 300]' WHERE id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 3"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 4, 5, 1]");
+
+  // The tablet keeps knowing about the deletions after a restart, whether it replays them from the
+  // log or reads them from the flushed frontier.
+  for (auto flush : {false, true}) {
+    SCOPED_TRACE(Format("flush: $0", flush));
+    if (flush) {
+      ASSERT_OK(cluster_->FlushTablets());
+    }
+    DisableFlushOnShutdown(*cluster_, !flush);
+    ASSERT_OK(RestartCluster());
+    conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(query()), "[2, 4, 5, 1]");
+    ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  }
+}
+
+// A table without vector indexes takes the single-shard fast path for an autocommit single-row
+// write, which is applied without intents.
+void PgVectorIndexUtilTest::TestFastPathVectorDeletion(const std::string& statement) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 5));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+
+  // So that a write taking the distributed path does not mark the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute(statement));
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadFastPathUpdate) {
+  TestFastPathVectorDeletion("UPDATE test SET embedding = '[100, 200, 300]' WHERE id = 1");
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadFastPathDelete) {
+  TestFastPathVectorDeletion("DELETE FROM test WHERE id = 3");
+}
+
+// A restore to a time uses a later snapshot, whose vector index keeps the vectors replaced after
+// that time, while the regular DB is rolled back. The tablet keeps checking rows after a restart.
+TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto restore_at = cluster_->mini_master(0)->Now();
+  // Closer to the query vector than any row, so the vector left in the index comes first.
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[0.5, 1, 1.5]' WHERE id = 1"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+}
+
+// A committed transaction is visible through its intents until it is applied, while the index
+// still holds the old vectors of the rows it updated. A later transaction applied first leaves the
+// intents of the earlier one with a stale vector.
+void PgVectorIndexUtilTest::TestUnappliedVectorUpdates() {
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto query = [this, &conn] { return NearestIds(conn, kNumRows); };
+
+  // Ignored applies are resent after transaction_resend_applying_interval_usec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[2, 3, 4, 5, 1]");
+
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[200, 400, 600]"));
+  ASSERT_FALSE(ASSERT_RESULT(HasVectorDeletion()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(UpdateInTransaction(conn, 2, "[4.5, 9, 13.5]"));
+  // Set by the apply of the last update.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> { return HasVectorDeletion(); }, 10s * kTimeMultiplier,
+      "Last update applied"));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(query()), "[3, 4, 2, 5, 1]");
+}
+
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdates) {
+  TestUnappliedVectorUpdates();
+}
+
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdatesStoredPayload) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  TestUnappliedVectorUpdates();
+}
+
+// The search does not filter vectors, so the index entries of the rows with intents are left in
+// its results.
+TEST_F(PgVectorIndexUtilTest, UnappliedVectorUpdateSkipFilterCheck) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
+
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(UpdateInTransaction(conn, 1, "[100, 200, 300]"));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows + 1)), "[2, 3, 4, 5, 1]");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
 }
 
 // Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
@@ -5644,6 +5813,110 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
     ++v1_meta_values;
   }
   ASSERT_EQ(v1_meta_values, 1);
+}
+
+// The merge keeps a vector only when it finds its reverse mapping, so whether a merge can drop
+// the vectors of a write depends on how the reverse mappings are stored. The engine, the packing
+// mode and colocation do not change when the reverse mappings of a write become visible.
+class PgVectorIndexMergeTest : public PgVectorIndexUtilTest,
+                               public testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    PgVectorIndexUtilTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = GetParam();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexMergeTest, testing::Bool(),
+    [](const testing::TestParamInfo<bool>& param_info) -> std::string {
+      return param_info.param ? "TableOwned" : "LegacyOwned";
+    });
+
+// Applying a write hands the row's vectors to the VectorLSM before RocksDB publishes the batch
+// that carries the row and its reverse mapping. The merge filter reads reverse mappings from the
+// regular DB at a snapshot taken when the merge starts, so a merge that runs while such a batch is
+// still open cannot see the mappings of the vectors it merges and discards them for good, although
+// the rows do land in the table. A flush from another thread, e.g. the forced flush of an index
+// lagging the log tail, can save the mutable chunk while the batch is open. Here the write is
+// parked at the sync point hit right after its vector is handed to the insert thread pool, the
+// mutable chunk is flushed and all saved chunks are merged, and only then the write is released.
+// Expected: the row is found both by primary key and by vector search (GH #34246).
+TEST_P(PgVectorIndexMergeTest, MergeDuringUnpublishedWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
+  // point used to park the write.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+
+  constexpr size_t kNumRows = 8;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+  // The fill is applied in the background, so its inserts could otherwise hit the sync points
+  // below instead of the parked write.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(indexes.size(), 1);
+  auto index = indexes.front();
+
+  CountDownLatch parked(1);
+  CountDownLatch resume(1);
+  std::atomic<bool> armed{true};
+  // The insert task is held as well, so it completes only after the flush below: the completion
+  // of the last task of an immutable chunk saves the chunk, unless the chunk is held by the write.
+  CountDownLatch resume_task(1);
+  std::atomic<bool> task_armed{true};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued", [&](void*) {
+    if (!armed.exchange(false)) {
+      return;
+    }
+    parked.CountDown();
+    resume.Wait();
+  });
+  sync_point->SetCallBack("VectorLSMInsertTask::Run:Begin", [&](void*) {
+    if (task_armed.exchange(false)) {
+      resume_task.Wait();
+    }
+  });
+  sync_point->EnableProcessing();
+
+  const int64_t kRowId = kNumRows + 1;
+  TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the parked threads before they are
+  // joined.
+  auto release_parked = ScopeExit([&resume, &resume_task, sync_point] {
+    resume_task.CountDown();
+    resume.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([this, kRowId] {
+    auto insert_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(insert_conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1')", kRowId, AsString(Vector(kRowId))));
+  });
+  ASSERT_TRUE(parked.WaitFor(60s * kTimeMultiplier));
+
+  // The write is open: the vector is in the mutable chunk, the row and its reverse mapping are in
+  // an unpublished RocksDB batch. WaitForFlush would wait for the write, so wait for the insert
+  // task instead.
+  ASSERT_OK(index->Flush());
+  resume_task.CountDown();
+  ASSERT_OK(WaitFor(
+      [&index] { return !index->TEST_HasBackgroundInserts(); }, 60s * kTimeMultiplier,
+      "Wait for vector inserts"));
+  ASSERT_OK(index->Compact());
+  ASSERT_OK(index->WaitForCompaction());
+
+  resume.CountDown();
+  threads.WaitAndStop(60s * kTimeMultiplier);
+  ASSERT_OK(index->WaitForFlush());
+
+  auto id = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT id FROM test WHERE id = $0", kRowId)));
+  ASSERT_EQ(id, kRowId);
+  VerifyRows(conn, "", ExpectedRows(kNumRows + 1));
 }
 
 // ysql_dump recreates the table from the surviving columns, so DocDB assigns those columns dense

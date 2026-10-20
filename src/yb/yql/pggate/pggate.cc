@@ -1646,6 +1646,13 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
   return Status::OK();
 }
 
+Status PgApiImpl::DmlGetOnConflictOutcome(
+    PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome) {
+  *on_conflict_outcome =
+      VERIFY_RESULT_REF(GetStatementAs<PgDmlWrite>(handle)).GetOnConflictOutcome();
+  return Status::OK();
+}
+
 // Insert ------------------------------------------------------------------------------------------
 
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
@@ -1685,6 +1692,12 @@ Status PgApiImpl::ExecInsert(PgStatement* handle) {
 
 Status PgApiImpl::InsertStmtSetUpsertMode(PgStatement* handle) {
   VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetUpsertMode();
+  return Status::OK();
+}
+
+Status PgApiImpl::InsertStmtSetOnConflictAction(
+    PgStatement* handle, PgsqlWriteRequestPB::PgsqlOnConflictAction action) {
+  VERIFY_RESULT_REF(GetStatementAs<PgInsert>(handle)).SetOnConflictAction(action);
   return Status::OK();
 }
 
@@ -2123,6 +2136,15 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
       static_cast<size_t>(catalog_version_db_index_->second));
 }
 
+Result<uint64_t> PgApiImpl::GetSharedDbLastPrefetchedCatalogVersion(PgOid db_oid) {
+  // Both arrays are indexed by the same shared memory slot, and GetSharedCatalogVersion is what
+  // resolves and validates it. Until this backend has resolved that slot once, the call blocks
+  // for up to 30 seconds waiting for the database to appear in shared memory.
+  RETURN_NOT_OK(GetSharedCatalogVersion(db_oid));
+  return tserver_shared_object_.ysql_db_last_prefetched_catalog_version(
+      static_cast<size_t>(catalog_version_db_index_->second));
+}
+
 Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
       true /* size_only */, kPgInvalidOid /* db_oid */));
@@ -2549,9 +2571,9 @@ bool PgApiImpl::IsParallelWorker() const {
   return is_parallel_worker_;
 }
 
-Status PgApiImpl::PrefetchRegisteredSysTables() {
+Status PgApiImpl::PrefetchRegisteredSysTables(bool completes_connection_prefetch) {
   SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
-  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
+  return pg_sys_table_prefetcher_->Prefetch(pg_session_.get(), completes_connection_prefetch);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(

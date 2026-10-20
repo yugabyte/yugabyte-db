@@ -77,6 +77,7 @@
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -123,6 +124,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -2237,6 +2239,11 @@ Status Tablet::ApplyKeyValueRowOperations(
   if (put_batch.has_transaction()) {
     RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, write_hybrid_time, frontiers));
   } else {
+    // Searches skip the row check of index candidates until the tablet has a vector deletion, so
+    // it is recorded before the vectors replacing the deleted ones reach the indexes.
+    if (put_batch.has_delete_vector_ids() && !vector_indexes_->has_vector_deletion()) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
     // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
@@ -5962,6 +5969,33 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
     if (split_partition_key.empty()) {
       split_partition_key = split_encoded_key;
     }
+    // Truncation moves the split back to the start of the hash code or DocKey that FindTargetKey
+    // landed in; if that key is large, the boundary after it can be closer to the target. For a
+    // 2-way split, keep whichever is closer. N-way splits keep the truncated split: moving one
+    // forward can leave the next split no legal key.
+    if (split_factor == kDefaultNumSplitParts) {
+      auto next_boundary = VERIFY_RESULT(NextSplitBoundary(split_encoded_key, split_partition_key));
+      if (next_boundary) {
+        const uint64_t truncated_cross = VERIFY_RESULT(pinned_version->Cross(split_encoded_key));
+        const uint64_t next_cross = VERIFY_RESULT(pinned_version->Cross(next_boundary->first));
+        VLOG_WITH_PREFIX_AND_FUNC(1)
+            << "Target cross: " << target_size
+            << ", truncated boundary: " << Slice(split_encoded_key).ToDebugHexString()
+            << ", truncated boundary cross: " << truncated_cross
+            << ", next boundary: " << Slice(next_boundary->first).ToDebugHexString()
+            << ", next boundary cross: " << next_cross;
+        if (unsigned_abs_diff(next_cross, target_size) <
+            unsigned_abs_diff(truncated_cross, target_size)) {
+          LOG_WITH_PREFIX_AND_FUNC(INFO)
+            << "Using split boundary after the large key: "
+            << Slice(next_boundary->first).ToDebugHexString() << " (cross " << next_cross
+            << ") instead of " << Slice(split_encoded_key).ToDebugHexString()
+            << " (cross " << truncated_cross << "), target cross " << target_size;
+          split_encoded_key = std::move(next_boundary->first);
+          split_partition_key = std::move(next_boundary->second);
+        }
+      }
+    }
     if (!split_keys.encoded_keys.empty() && split_encoded_key <= split_keys.encoded_keys.back()) {
       return STATUS_EC_FORMAT(
           IllegalState,
@@ -5978,6 +6012,52 @@ Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeysCross(const int split_factor
   }
 
   return split_keys;
+}
+
+Result<std::optional<std::pair<std::string, std::string>>> Tablet::NextSplitBoundary(
+    Slice encoded_key, Slice partition_key) const {
+  std::string candidate;
+  if (metadata()->partition_schema()->IsHashPartitioning()) {
+    // Hash partitioning splits on hash codes, so the next boundary is hash + 1.
+    const auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    if (hash_code == dockv::PartitionSchema::kMaxPartitionKey) {
+      return std::nullopt;
+    }
+    candidate = VERIFY_RESULT(metadata()->partition_schema()->GetEncodedPartitionKey(
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1)));
+  } else {
+    // Records of a DocKey are the DocKey plus a byte below kMaxByte, so DocKey + kMaxByte seeks to
+    // the next DocKey. Reading the live DB is fine: any existing DocKey is a legal boundary, and
+    // the caller measures both splits against its pinned version.
+    dockv::KeyBytes seek_key(encoded_key);
+    seek_key.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    rocksdb::ReadOptions read_opts;
+    read_opts.query_id = rocksdb::kDefaultQueryId;
+    docdb::BoundedRocksDbIterator iter(regular_db_.get(), read_opts, &key_bounds_);
+    iter.Seek(seek_key);
+    if (!VERIFY_RESULT(iter.CheckedValid())) {
+      return std::nullopt;
+    }
+    candidate = iter.key().ToBuffer();
+  }
+
+  std::string next_partition_key;
+  auto next_encoded_key = ValidateAndEncodeSplitKey(candidate, &next_partition_key);
+  if (!next_encoded_key.ok()) {
+    // Only an alternative to an already valid split, so don't fail the request over it.
+    // TABLET_SPLIT_KEY_RANGE_TOO_SMALL (outside the tablet) is expected; log anything else.
+    if (tserver::TabletServerError(next_encoded_key.status()) !=
+        tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Ignoring next split boundary candidate " << Slice(candidate).ToDebugHexString()
+          << ": " << next_encoded_key.status();
+    }
+    return std::nullopt;
+  }
+  if (next_partition_key.empty()) {
+    next_partition_key = *next_encoded_key;
+  }
+  return std::make_pair(std::move(*next_encoded_key), std::move(next_partition_key));
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
