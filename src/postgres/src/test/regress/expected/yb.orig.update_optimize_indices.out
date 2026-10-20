@@ -1741,4 +1741,22 @@ DROP TABLE numeric_table;
 DROP TABLE array_types_table;
 DROP TABLE geometric_types_table;
 DROP TABLE json_types_table;
+-- A relcache rebuild during planning must not under-size the list of entities
+-- affected by the update.
+CREATE TABLE fk_parent (id INT PRIMARY KEY);
+CREATE TABLE fk_child (id INT PRIMARY KEY, f INT REFERENCES fk_parent, v1 INT, v2 INT);
+CREATE INDEX ON fk_child (v1);
+CREATE INDEX ON fk_child (v2);
+INSERT INTO fk_parent VALUES (1);
+INSERT INTO fk_child VALUES (1, 1, 1, 1);
+SET yb_test_invalidate_relcache_in_planner = true;
+UPDATE fk_child SET v1 = v1 + 1, v2 = v2 WHERE id = 1;
+RESET yb_test_invalidate_relcache_in_planner;
+SELECT * FROM fk_child;
+ id | f | v1 | v2 
+----+---+----+----
+  1 | 1 |  2 |  1
+(1 row)
+
+DROP TABLE fk_child, fk_parent;
 RESET extra_float_digits;
