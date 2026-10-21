@@ -4320,9 +4320,9 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
     for (const auto& vi : *indexes) {
       const auto vi_dir = meta->vector_index_dir(vi->options());
       ASSERT_TRUE(env->DirExists(vi_dir));
-      const auto files = AsString(
-          ASSERT_RESULT(vector_index::ListVectorLSMFiles(env, vi_dir)).manifest_and_chunk_files);
       if (unsplit_tablet == tablet->tablet_id()) {
+        const auto files = AsString(
+            ASSERT_RESULT(vector_index::ListVectorLSMFiles(env, vi_dir)).manifest_and_chunk_files);
         const auto expected_files = Format(
             "[0.meta, vectorindex_1$0]",
             docdb::GetVectorIndexChunkFileExtension(vi->options()));
@@ -4340,7 +4340,15 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
         const auto expected_files = Format(
             "[0.meta, 1.meta, 2.meta, vectorindex_2$0]",
             docdb::GetVectorIndexChunkFileExtension(vi->options()));
-        ASSERT_STR_EQ(files, expected_files);
+        // The compacted chunk file is removed in background, after the compaction is done.
+        std::string files;
+        auto status = LoggedWaitFor([env, &vi_dir, &expected_files, &files]() -> Result<bool> {
+          files = AsString(VERIFY_RESULT(vector_index::ListVectorLSMFiles(env, vi_dir))
+              .manifest_and_chunk_files);
+          return files == expected_files;
+        }, 10s * kTimeMultiplier, "Compacted chunk file removed");
+        ASSERT_TRUE(status.ok())
+            << status << ", files: " << files << ", expected: " << expected_files;
       }
     }
   }
