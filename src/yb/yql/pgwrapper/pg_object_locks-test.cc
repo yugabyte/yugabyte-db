@@ -2377,15 +2377,15 @@ TEST_F_EX(
   ASSERT_OK(setup_conn.Execute(
       "CREATE TABLE fk_child (id INT, pk_id INT REFERENCES pk_parent(id))"));
 
-  // Declared before rr_conn so that, if an assertion fails, rr_conn closes first and releases
-  // the lock that the detach is waiting on; otherwise joining the thread would hang.
+  // On an early assertion failure, rr_conn must close first to release the lock the detach waits
+  // on, and detach_conn must outlive the joined thread that uses it.
+  auto detach_conn = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
   auto rr_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(rr_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_EQ(ASSERT_RESULT(rr_conn.FetchRows<int32_t>("SELECT id FROM pk_parent ORDER BY id")),
             (std::vector<int32_t>{50, 150}));
 
-  auto detach_conn = ASSERT_RESULT(Connect());
   thread_holder.AddThreadFunctor([&detach_conn] {
     ASSERT_OK(detach_conn.Execute(
         "ALTER TABLE pk_parent DETACH PARTITION pk_part1 CONCURRENTLY"));

@@ -9,7 +9,8 @@
 #
 # A pending partition stays visible to a REPEATABLE READ transaction only if
 # that transaction read the parent's partition list before the partition went
-# pending; every other reader omits it.
+# pending; every other reader that omits detached partitions omits it.
+# Repeatable read tuple routing is the exception (#35568, see below).
 
 setup
 {

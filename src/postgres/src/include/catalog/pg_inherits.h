@@ -67,5 +67,6 @@ extern bool PartitionHasPendingDetach(Oid partoid);
 extern bool yb_detach_pending_use_latest_snapshot;
 extern bool YbDetachPendingInProgress(Oid parentrelid);
 extern void YbRememberPartitionList(Oid parentrelid);
+extern void YbResetPartitionListMemo(void);
 
 #endif							/* PG_INHERITS_H */

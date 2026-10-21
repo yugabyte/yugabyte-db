@@ -1,8 +1,3 @@
-# YB: Permutations that cancel the waiting DETACH (s1cancel) are removed:
-# pg_cancel_backend() does not interrupt DETACH PARTITION CONCURRENTLY while it
-# waits for lockers in YSQL, so those permutations hang.  Permutations that use
-# UPDATE ... WHERE CURRENT OF are removed because YSQL does not support it.
-# The steps used only by those permutations are removed too.
 # This test exercises behavior of foreign keys in the face of concurrent
 # detach of partitions in the referenced table.
 # (The cases where the detaching transaction is cancelled is interesting
@@ -32,10 +27,15 @@ session s1
 step s1b			{ begin; }
 step s1brr			{ begin isolation level repeatable read; }
 step s1s			{ select * from d4_primary; }
+# YB: removed, used only by permutations removed below: step s1cancel   { select pg_cancel_backend(pid) from d4_pid; }
+# YB: removed, used only by permutations removed below: step s1noop   { }
 step s1insert		{ insert into d4_fk values (1); }
 step s1c			{ commit; }
 step s1declare		{ declare f cursor for select * from d4_primary; }
+# YB: removed, used only by permutations removed below: step s1declare2  { declare f cursor for select * from d4_fk where a = 2; }
 step s1fetchall		{ fetch all from f; }
+# YB: removed, used only by permutations removed below: step s1fetchone  { fetch 1 from f; }
+# YB: removed, used only by permutations removed below: step s1updcur  { update d4_fk set a = 1 where current of f; }
 step s1svpt			{ savepoint f; }
 step s1rollback		{ rollback to f; }
 
@@ -47,24 +47,37 @@ session s3
 step s3brr			{ begin isolation level repeatable read; }
 step s3insert		{ insert into d4_fk values (1); }
 step s3commit		{ commit; }
+# YB: removed, used only by permutations removed below: step s3vacfreeze { vacuum freeze pg_catalog.pg_inherits; }
 
 # Trying to insert into a partially detached partition is rejected
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b   s1s s2detach s1cancel(s2detach) s1insert s1c
 permutation s2snitch s1b   s1s s2detach                    s1insert s1c
 # ... even under REPEATABLE READ mode.
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1brr s1s s2detach s1cancel(s2detach) s1insert s1c
 permutation s2snitch s1brr s1s s2detach                    s1insert s1c
 
 # If you read the referenced table using a cursor, you can see a row that the
 # RI query does not see.
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s1declare s2detach s1cancel(s2detach) s1fetchall s1insert s1c
 permutation s2snitch s1b s1declare s2detach                    s1fetchall s1insert s1c
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s1declare s2detach s1cancel(s2detach) s1svpt s1insert s1rollback s1fetchall s1c
 permutation s2snitch s1b s1declare s2detach                    s1svpt s1insert s1rollback s1fetchall s1c
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s2detach s1declare s1cancel(s2detach) s1fetchall s1insert s1c
 permutation s2snitch s1b s2detach s1declare                    s1fetchall s1insert s1c
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s2detach s1declare s1cancel(s2detach) s1svpt s1insert s1rollback s1fetchall s1c
 permutation s2snitch s1b s2detach s1declare                    s1svpt s1insert s1rollback s1fetchall s1c
 
 # Creating the referencing row using a cursor
+# YB: removed, YSQL does not support UPDATE ... WHERE CURRENT OF: permutation s2snitch s1brr s1declare2 s1fetchone s2detach s1cancel(s2detach) s1updcur s1c
+# YB: removed, YSQL does not support UPDATE ... WHERE CURRENT OF: permutation s2snitch s1brr s1declare2 s1fetchone s2detach                    s1updcur s1c
+# YB: removed, YSQL does not support UPDATE ... WHERE CURRENT OF: permutation s2snitch s1brr s1declare2 s1fetchone s1updcur s2detach s1c
 
 # Try reading the table from an independent session.
 permutation s2snitch s1b s1s s2detach s3insert s1c
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s1s s2detach s3brr s3insert s3commit s1cancel(s2detach) s1c
 permutation s2snitch s1b s1s s2detach s3brr s3insert s3commit s1c
 
 # Try one where we VACUUM FREEZE pg_inherits (to verify that xmin change is
 # handled correctly).
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1brr s1s s2detach s1cancel(s2detach) s1noop s3vacfreeze s1s s1insert s1c
+# YB: removed, pg_cancel_backend() does not interrupt a DETACH waiting for lockers: permutation s2snitch s1b s1s s2detach s1cancel(s2detach) s1noop s3vacfreeze s1s s1insert s1c
