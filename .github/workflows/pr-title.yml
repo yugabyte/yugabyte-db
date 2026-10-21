@@ -18,8 +18,10 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          TITLE_RE='^(\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])?'
-          TITLE_RE+='\[((#[0-9]+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
+          ISSUES_RE='\[((#[0-9]+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
+          # Titles on PG-version development branches (e.g. pg19) lead with [pgNN], and the issue
+          # ID is optional there.
+          TITLE_RE="^((\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])?${ISSUES_RE}|\[pg[0-9]+\](${ISSUES_RE})?)"
           TITLE_RE+=' [a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*:'
           TITLE_RE+=' \S.{8,98}\S$'
 
@@ -32,40 +34,42 @@ jobs:
             echo "::error ::Examples:"
             echo "::error ::  [#12345,#12367] area: Cool feature xyz"
             echo "::error ::  [BACKPORT 2045.1][#12345] area1,area2: Must have fix"
+            echo "::error ::  [pg19] area: PG19-only change"
             exit 1
           fi
           echo "Pull Request title is valid."
-      - name: Check Backport title
+      - name: Check target branch in title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
-          # Only release branches (e.g. 2025.2) take a target branch in the title; master and
-          # development branches such as feature-stack/* and pg19 do not.
-          RELEASE_BRANCH_RE='^[0-9]+(\.[0-9]+)+$'
-          if [[ ! "$BASE_REF" =~ $RELEASE_BRANCH_RE ]]; then
-            if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
+          TARGET_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+|pg[0-9]+)\]'
+          # Release branches (e.g. 2045.1) and PG-version development branches (e.g. pg19) must be
+          # named in the title; master and feature-stack/* must not.
+          TARGETED_BRANCH_RE='^([0-9]+(\.[0-9]+)+|pg[0-9]+)$'
+          TITLE_BRANCH=""
+          if [[ "$PR_TITLE" =~ $TARGET_RE ]]; then
+            TITLE_BRANCH="${BASH_REMATCH[2]}"
+          fi
+          if [[ ! "$BASE_REF" =~ $TARGETED_BRANCH_RE ]]; then
+            if [[ -n "$TITLE_BRANCH" ]]; then
               echo "::error ::Pull Request title should not specify target branch for $BASE_REF."
               exit 1
             fi
             echo "Pull Request title is valid for $BASE_REF branch."
+          elif [[ -z "$TITLE_BRANCH" ]]; then
+            echo "::error ::Pull Request title must begin with target branch in brackets."
+            echo "::error ::Examples:"
+            echo "::error ::[BACKPORT 2045.1][#12345] area1,area2: Must have fix from master"
+            echo "::error ::[2045.2][#12345] area: release-specific change"
+            echo "::error ::[pg19] area: PG19-only change"
+            exit 1
+          elif [[ "$TITLE_BRANCH" != "$BASE_REF" ]]; then
+            echo "::error ::Target branch in title ($TITLE_BRANCH) does not match"
+            echo "::error :: Pull Request base ref ($BASE_REF)."
+            exit 1
           else
-            if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
-              BACKPORT_BRANCH="${BASH_REMATCH[2]}"
-              if [[ "${BACKPORT_BRANCH}" != "$BASE_REF" ]]; then
-                echo "::error ::Backport branch in title (${BACKPORT_BRANCH}) does not match"
-                echo "::error :: Pull Request base ref ($BASE_REF)."
-                exit 1
-              fi
-              echo "Pull Request title branch reference ($BACKPORT_BRANCH) matches base reference."
-            else
-              echo "::error ::Pull Request title must begin with target release branch in brackets."
-              echo "::error ::Examples:"
-              echo "::error ::[BACKPORT 2045.1][#12345] area1,area2: Must have fix from master"
-              echo "::error ::[2045.2][#12345] area: release-specific change"
-              exit 1
-            fi
+            echo "Pull Request title branch reference ($TITLE_BRANCH) matches base reference."
           fi
       - name: Check Backport references
         env:
