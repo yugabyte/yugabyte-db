@@ -633,8 +633,12 @@ Status YBClient::Data::IsCreateTableInProgress(
     return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
   }
 
+  // This check is fast, so use the default RPC timeout.  The deadline is for the whole create,
+  // which can be long (e.g., xcluster_automatic_target_create_table_ddl_rpc_timeout_sec).
+  const auto rpc_deadline = std::min(deadline, CoarseMonoClock::Now() + default_rpc_timeout_);
   auto status = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsCreateTableDone", &master::MasterDdlProxy::IsCreateTableDoneAsync);
+      rpc_deadline, req, &resp, "IsCreateTableDone",
+      &master::MasterDdlProxy::IsCreateTableDoneAsync);
 
   *create_in_progress = !resp.done();
   return status;
