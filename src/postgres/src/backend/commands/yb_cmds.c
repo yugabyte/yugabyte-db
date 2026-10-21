@@ -1319,6 +1319,43 @@ ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
 	return result;
 }
 
+/*
+ * Whether an ALTER TABLE subcommand on a partitioned table needs to trickle
+ * down to its child partitions in DocDB.
+ */
+static bool
+YbATCmdAltersPartitions(AlterTableCmd *cmd)
+{
+	switch (cmd->subtype)
+	{
+		case AT_AddColumnRecurse:
+		case AT_DropColumnRecurse:
+		case AT_AddConstraintRecurse:
+		case AT_DropConstraintRecurse:
+		case AT_ValidateConstraintRecurse:
+		case AT_DropExpression:
+			return true;
+		default:
+			return false;
+	}
+}
+
+bool
+YbATAltersPartitions(List **subcmds, int subcmds_size)
+{
+	ListCell   *lcmd;
+
+	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
+	{
+		foreach(lcmd, subcmds[cmd_idx])
+		{
+			if (YbATCmdAltersPartitions((AlterTableCmd *) lfirst(lcmd)))
+				return true;
+		}
+	}
+	return false;
+}
+
 static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
@@ -1329,30 +1366,14 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 
-	if (isPartitionOfAlteredTable)
-	{
-		/*
-		 * This function was invoked on a child partition table to reflect
-		 * the effects of Alter on its parent.
-		 */
-		switch (cmd->subtype)
-		{
-			case AT_AddColumnRecurse:
-			case AT_DropColumnRecurse:
-			case AT_AddConstraintRecurse:
-			case AT_DropConstraintRecurse:
-			case AT_ValidateConstraintRecurse:
-			case AT_DropExpression:
-				break;
-			default:
-				/*
-				 * This is not an alter command on a partitioned table that
-				 * needs to trickle down to its child partitions. Nothing to
-				 * do.
-				 */
-				return handles;
-		}
-	}
+	/*
+	 * When invoked on a child partition table to reflect the effects of
+	 * Alter on its parent, there is nothing to do for commands that don't
+	 * trickle down to the child partitions.
+	 */
+	if (isPartitionOfAlteredTable && !YbATCmdAltersPartitions(cmd))
+		return handles;
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:

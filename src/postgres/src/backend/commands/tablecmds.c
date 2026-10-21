@@ -5496,10 +5496,13 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
-	 * YB: If this is a partitioned table, prepare alter table handles for
-	 * all the partitions as well. Lock the descendants before reading them.
+	 * YB: If this is a partitioned table and a subcommand trickles down to
+	 * the partitions, prepare alter table handles for all the partitions as
+	 * well. Lock them before reading them.
 	 */
-	List	   *children = find_all_inheritors(main_relid, lockmode, NULL);
+	List	   *children = (YbATAltersPartitions(info->subcmds, AT_NUM_PASSES) ?
+							find_all_inheritors(main_relid, lockmode, NULL) :
+							NIL);
 	ListCell   *child;
 
 	foreach(child, children)
