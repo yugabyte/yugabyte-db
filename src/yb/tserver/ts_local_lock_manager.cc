@@ -33,6 +33,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
