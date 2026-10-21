@@ -22,6 +22,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_bool(cdc_immediate_transaction_cleanup);
+
 namespace yb {
 namespace cdc {
 
@@ -54,6 +56,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
+  void TestStreamCreationKeepsOlderStreamIntents(bool sys_catalog_tablet);
   void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
   void TestVectorIndexAlterDoesNotLeakIndexSchema(bool colocated);
 };
@@ -6930,6 +6933,82 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithoutGRPC
   TestSysCatalogRetentionBarriers(/* use_grpc_stream */ true,
                                   /* use_logical_replication_stream */ true,
                                   /* add_dummy_grpc_slot_entry */ false);
+}
+
+// A transaction commits between the creation of streams A and B, so stream B's initial intent
+// barrier is past the transaction's apply op while stream A has not streamed it yet. Creating
+// stream B must leave the transaction participant's barrier, which decides intent GC, at stream
+// A's. When stream B's initial barrier overwrote it, the transaction's intents were removed and
+// stream A failed with "CDCSDK Trying to fetch already GCed intents".
+void CDCSDKConsumptionConsistentChangesTest::TestStreamCreationKeepsOlderStreamIntents(
+    bool sys_catalog_tablet) {
+  // Keep an applied transaction in memory until the intent barrier passes its apply op, so that
+  // moving the barrier removes its intents at once rather than at a later intents compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_immediate_transaction_cleanup) = false;
+  // While it stays in memory, the transaction holds the tablet's CDC safe time at its start time.
+  // A low threshold makes the producer resolve intents and use the leader safe time instead.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 1000 * kTimeMultiplier;
+  // Keep the background tasks from revising the barriers. On its first run the master task can also
+  // set an initial barrier on the sys catalog tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  tablet::TabletPeerPtr tablet_peer;
+  if (sys_catalog_tablet) {
+    tablet_peer = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster())->tablet_peer();
+  } else {
+    tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets[0].tablet_id()));
+  }
+
+  auto stream_a = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  // The participant's barrier, not the metadata copy that cdc_sdk_min_checkpoint_op_id() returns.
+  auto barrier_after_stream_a = tablet_peer->GetLatestCheckPoint();
+  ASSERT_NE(barrier_after_stream_a, OpId::Max());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  int expected_dml_records;
+  if (sys_catalog_tablet) {
+    // The DDL writes intents on the sys catalog tablet. The single-row insert writes none.
+    ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1, 1)"));
+    expected_dml_records = 1;
+  } else {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2)"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    expected_dml_records = 2;
+  }
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto barrier_after_stream_b = tablet_peer->GetLatestCheckPoint();
+
+  auto change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_a, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */));
+  ASSERT_EQ(change_resp.record_count[1] /* INSERT */, expected_dml_records);
+
+  ASSERT_EQ(barrier_after_stream_b, barrier_after_stream_a)
+      << "Creating stream B moved the intent barrier past stream A's";
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestStreamCreationKeepsOlderStreamIntentsOnUserTablet) {
+  TestStreamCreationKeepsOlderStreamIntents(/* sys_catalog_tablet */ false);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestStreamCreationKeepsOlderStreamIntentsOnSysCatalog) {
+  TestStreamCreationKeepsOlderStreamIntents(/* sys_catalog_tablet */ true);
 }
 
 // Test that retention barriers for the sys catalog tablet are propagated to all master peers
