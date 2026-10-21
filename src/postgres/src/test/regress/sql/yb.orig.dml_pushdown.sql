@@ -691,6 +691,20 @@ SELECT * FROM single_row_index ORDER BY k;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
 UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
 
+-- A soft error inside a pushed-down expression: comparing a timestamp with a
+-- date past the timestamp range converts the date with a soft error and ranks
+-- it above every timestamp.  The pushed-down filter must return the same rows
+-- as the filter evaluated by the backend.
+CREATE TABLE soft_error_test (k int PRIMARY KEY, ts timestamp);
+INSERT INTO soft_error_test VALUES (1, '2020-01-01'), (2, '294276-12-31');
+EXPLAIN (COSTS FALSE) SELECT k FROM soft_error_test WHERE ts < '294277-01-01'::date;
+SELECT k FROM soft_error_test WHERE ts < '294277-01-01'::date ORDER BY k;
+SET yb_enable_expression_pushdown TO off;
+EXPLAIN (COSTS FALSE) SELECT k FROM soft_error_test WHERE ts < '294277-01-01'::date;
+SELECT k FROM soft_error_test WHERE ts < '294277-01-01'::date ORDER BY k;
+RESET yb_enable_expression_pushdown;
+DROP TABLE soft_error_test;
+
 -- Test column ordering.
 CREATE TABLE single_row_col_order(a int, b int, c int, d int, e int, primary key(d, b));
 

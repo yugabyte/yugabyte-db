@@ -327,6 +327,46 @@ yb_errstart(int elevel)
 }
 
 /*
+ * yb_errsave_start - YbGate equivalent of errsave_start
+ *
+ * As in errsave_start(), a NULL or non-ErrorSaveContext context punts to an
+ * ordinary error, and an ErrorSaveContext that wants no details only gets
+ * its error_occurred flag set.
+ *
+ * Unlike errsave_start(), an ErrorSaveContext that wants the details gets an
+ * ordinary error.  In a tserver thread errdetail(), errhint() and
+ * errcontext_msg() are not implemented, so the YbGate error frame holds only
+ * the message, its arguments, the SQLSTATE and the location, and an error is
+ * better than an ErrorData whose detail, hint and context are silently
+ * missing.  Saving the details can wait for #35437 as long as no caller that
+ * asks for the details is pushed down; #35437 lists those callers.
+ * TODO(#35437): save the details in the ErrorSaveContext.
+ */
+bool
+yb_errsave_start(struct Node *context)
+{
+	ErrorSaveContext *escontext;
+
+	/*
+	 * Do we have a context for soft error reporting?  If not, just punt to
+	 * yb_errstart().
+	 */
+	if (context == NULL || !IsA(context, ErrorSaveContext))
+		return yb_errstart(ERROR);
+
+	/* Report that a soft error was detected */
+	escontext = (ErrorSaveContext *) context;
+	escontext->error_occurred = true;
+
+	/* Nothing else to do if caller wants no further details */
+	if (!escontext->details_wanted)
+		return false;
+
+	/* The details cannot be saved (see above): raise instead */
+	return yb_errstart(ERROR);
+}
+
+/*
  * yb_copy_edata_fields_to_status - transfer data from the YbgError frame to
  * the YbgStatus
  *
@@ -432,6 +472,22 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 		siglongjmp(*buffer, 1);
 		pg_unreachable();
 	}
+}
+
+/*
+ * yb_errsave_finish - YbGate equivalent of errsave_finish
+ *
+ * yb_errsave_start() begins only ordinary errors, so finish as yb_errfinish().
+ */
+void
+yb_errsave_finish(struct Node *context, const char *filename, int lineno,
+				  const char *funcname)
+{
+	YbgStatus	status PG_USED_FOR_ASSERTS_ONLY = YBCPgGetThreadLocalErrStatus();
+
+	Assert(((YbgError) YbgStatusGetEdata(status))->elevel >= ERROR);
+	yb_errfinish(filename, lineno, funcname);
+	pg_unreachable();
 }
 
 /*
@@ -1952,6 +2008,9 @@ errhint(const char *fmt,...)
 int
 errhint_internal(const char *fmt,...)
 {
+	/* YB: a hint is dropped in a tserver thread, as in errhint() */
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 

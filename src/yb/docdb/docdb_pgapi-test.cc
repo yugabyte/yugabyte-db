@@ -99,7 +99,7 @@ TEST_F(YbGateTest, EreportErrorLocation) {
   // check status location fields
   EXPECT_STREQ(YbgStatusGetFilename(ybg_status), "ybgate_api-test.c");
   // *** Line number may change if ybgate_api-test.c is modified ***
-  EXPECT_EQ(YbgStatusGetLineNumber(ybg_status), 124);
+  EXPECT_EQ(YbgStatusGetLineNumber(ybg_status), 137);
   EXPECT_STREQ(YbgStatusGetFuncname(ybg_status), "yb_test");
   YbgStatusDestroy(ybg_status);
 }
@@ -279,6 +279,72 @@ TEST_F(YbGateTest, EdataThrow) {
   // Nested error is caught
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "Modified error");
+  YbgStatusDestroy(ybg_status);
+}
+
+// errsave() with no ErrorSaveContext must raise a normal YbGate error.
+// Before the fix it fell through to the single-threaded errstart(), which
+// found ErrorContext == NULL and killed the tserver with exit(2).
+TEST_F(YbGateTest, ErrsaveNoContext) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERRSAVE_NO_CONTEXT);
+  ASSERT_EQ(YbgStatusIsError(ybg_status), true);
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "errsave without a soft error context");
+  EXPECT_EQ(YbgStatusGetSqlError(ybg_status),
+            std::to_underlying(yb::YBPgErrorCode::YB_PG_DIVISION_BY_ZERO));
+  YbgStatusDestroy(ybg_status);
+}
+
+// A context of another node type is no soft error context, as in
+// errsave_start().
+TEST_F(YbGateTest, ErrsaveOtherContext) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERRSAVE_OTHER_CONTEXT);
+  ASSERT_EQ(YbgStatusIsError(ybg_status), true);
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "errsave with another node as the context");
+  EXPECT_EQ(YbgStatusGetSqlError(ybg_status),
+            std::to_underlying(yb::YBPgErrorCode::YB_PG_DIVISION_BY_ZERO));
+  YbgStatusDestroy(ybg_status);
+}
+
+// An ErrorSaveContext that wants no details collects the soft error, and
+// control returns to the caller, as in a backend.
+TEST_F(YbGateTest, ErrsaveWithContext) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERRSAVE_WITH_CONTEXT);
+  EXPECT_EQ(YbgStatusIsError(ybg_status), false);
+  YbgStatusDestroy(ybg_status);
+}
+
+// The YbGate error frame has no detail, hint or context fields, so a context
+// that wants the details gets a normal error instead (#35437).
+TEST_F(YbGateTest, ErrsaveDetailsWanted) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERRSAVE_DETAILS_WANTED);
+  ASSERT_EQ(YbgStatusIsError(ybg_status), true);
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "soft error with details wanted");
+  YbgStatusDestroy(ybg_status);
+}
+
+// ereturn() reports through errsave_domain(): a normal error with no
+// context, the dummy return value with one.
+TEST_F(YbGateTest, EreturnNoContext) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERETURN_NO_CONTEXT);
+  ASSERT_EQ(YbgStatusIsError(ybg_status), true);
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "ereturn soft error");
+  EXPECT_EQ(YbgStatusGetSqlError(ybg_status),
+            std::to_underlying(yb::YBPgErrorCode::YB_PG_DIVISION_BY_ZERO));
+  YbgStatusDestroy(ybg_status);
+}
+
+TEST_F(YbGateTest, EreturnWithContext) {
+  auto ybg_status = YbgTest(YBGATE_TEST_ERETURN_WITH_CONTEXT);
+  EXPECT_EQ(YbgStatusIsError(ybg_status), false);
+  YbgStatusDestroy(ybg_status);
+}
+
+// errhint_internal() drops the hint in a tserver thread, like errhint(),
+// instead of reaching the backend error stack.
+TEST_F(YbGateTest, EreportHintInternal) {
+  auto ybg_status = YbgTest(YBGATE_TEST_EREPORT_HINT_INTERNAL);
+  ASSERT_EQ(YbgStatusIsError(ybg_status), true);
+  EXPECT_STREQ(YbgStatusGetMessage(ybg_status), "error with an internal hint");
   YbgStatusDestroy(ybg_status);
 }
 
