@@ -218,6 +218,32 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTrue(
         taskInfo.getSubTasks().stream()
             .anyMatch(t -> t.getTaskType() == TaskType.FinalizeYsqlMajorCatalogUpgrade));
+    // The target is recorded, since finalize clears prevYBSoftwareConfig, its only other record.
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertNull(details.prevYBSoftwareConfig);
+    assertEquals("2.21.0.0-b2", details.getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testFinalizeKeepsRecordedVersion() {
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(params);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.UpdateSoftwareVersion));
+    assertEquals(
+        "2.21.0.0-b2",
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .ybSoftwareVersion);
   }
 
   @Test

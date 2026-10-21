@@ -59,6 +59,12 @@ public class FinalizeKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           boolean superUserRequiredForCatalogUpgrade =
               softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
                   universe, oldVersion, currentVersion);
+          if (!currentVersion.equals(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+            // Record the target, since the final Ready state clears prevYBSoftwareConfig with it.
+            createUpdateSoftwareVersionTask(currentVersion, false /* isSoftwareUpdateViaVm */)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
           createFinalizeUpgradeTasks(
               taskParams().upgradeSystemCatalog,
               finalizeYSQLMajorVersionUpgrade,

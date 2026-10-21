@@ -25,8 +25,10 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -438,6 +440,42 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         YB_SOFTWARE_VERSION_NEW,
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
+  public void testFinalizeWithStaleUniverseVersionRecordsTarget() throws InterruptedException {
+    // PLAT-23182: older builds could leave PreFinalize with the old version still in the user
+    // intent. Finalize takes the target from prevYBSoftwareConfig and records it, since it clears
+    // prevYBSoftwareConfig.
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prev =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    prev.setAutoFlagConfigVersion(1);
+    prev.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
+    prev.setTargetUpgradeSoftwareVersion(YB_SOFTWARE_VERSION_NEW);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, prev);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_OLD);
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize);
+    FinalizeUpgradeParams params = new FinalizeUpgradeParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.expectedUniverseVersion = -1;
+    params.upgradeSystemCatalog = false;
+
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.FinalizeKubernetesUpgrade, params));
+
+    assertEquals(Success, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertNull(details.prevYBSoftwareConfig);
+    assertEquals(YB_SOFTWARE_VERSION_NEW, details.getPrimaryCluster().userIntent.ybSoftwareVersion);
   }
 
   @Test
