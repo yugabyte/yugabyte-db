@@ -1,16 +1,23 @@
-# ALTER TABLE subcommands that take ShareUpdateExclusiveLock must not fail
-# concurrent writers in an open transaction with a schema version mismatch
-# (GH #34831). VALIDATE CONSTRAINT of a foreign key alongside valid writes is
-# covered by the ported alter-table-1 spec.
+# ALTER TABLE ... VALIDATE CONSTRAINT and SET STATISTICS run concurrently with
+# DMLs in open transactions:
 #
-# NOT VALID constraints are still enforced on concurrent writes while the
-# VALIDATE is in flight, and VALIDATE still fails on rows that predate the
-# constraint.
+# 1. VALIDATE of a CHECK constraint with a concurrent valid insert
+# 2. SET STATISTICS with a concurrent insert
+# 3. VALIDATE of a CHECK constraint on a partitioned table with a concurrent
+#    valid insert
+# 4. Concurrent insert violating the CHECK constraint being validated fails;
+#    VALIDATE succeeds
+# 5. Concurrent insert violating the FK constraint being validated fails;
+#    VALIDATE succeeds
+# 6. Delete of a row referenced by the FK constraint being validated waits for
+#    VALIDATE, then fails
+# 7. VALIDATE fails on a row that predates the NOT VALID constraint; the
+#    concurrent writer is unaffected
+# 8. A writer that cached the table before ADD ... NOT VALID waits for the ADD,
+#    then its violating insert fails; VALIDATE succeeds
 #
-# In legacy mode, a writer whose relcache predates ADD ... NOT VALID could
-# insert a violating row unchecked, and only VALIDATE's schema version bump
-# (which aborts active transactions) stopped it. With table locks the writer
-# waits for the ADD and must see the constraint once it gets the lock.
+# VALIDATE of an FK constraint with concurrent valid DMLs is covered by
+# alter-table-1.
 
 setup
 {
@@ -76,19 +83,26 @@ step s2_show		{
   SELECT id, v FROM tb ORDER BY id;
 }
 
+# 1.
 permutation s1_begin s1_ins_t1 s2_begin s2_validate_check s1_ins_t2 s2_commit s1_commit
+
+# 2.
 permutation s1_begin s1_ins_t1 s2_begin s2_set_stats s1_ins_t2 s2_commit s1_commit
+
+# 3.
 permutation s1_begin s1_ins_p1 s2_begin s2_validate_part s1_ins_p2 s2_commit s1_commit
 
-# A concurrent write that violates the constraint being validated still fails.
+# 4.
 permutation s1_begin s1_ins_t1 s2_begin s2_validate_check s1_ins_t_bad_check s2_commit s1_commit s2_show
+
+# 5.
 permutation s1_begin s1_ins_t1 s2_begin s2_validate_fk s1_ins_t_bad_fk s2_commit s1_commit s2_show
+
+# 6.
 permutation s1_begin s2_begin s2_validate_fk s1_del_r_referenced s2_commit s1_commit s2_show
 
-# VALIDATE fails on a row that predates the NOT VALID constraint, and the
-# concurrent writer is unaffected by the failed VALIDATE.
+# 7.
 permutation s1_begin s1_ins_tb1 s2_begin s2_validate_tb s2_commit s1_ins_tb2 s1_commit s2_show
 
-# s1 caches tc without the constraint, then blocks behind the uncommitted
-# ADD; once it gets the lock it must enforce the new constraint.
+# 8.
 permutation s1_ins_tc_valid s2_begin s2_add_tc s1_begin s1_ins_tc_bad s2_commit s2_validate_tc s1_commit s2_show_tc
