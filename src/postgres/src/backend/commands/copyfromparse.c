@@ -253,21 +253,13 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 	switch (cstate->copy_src)
 	{
 		case COPY_FILE:
-			pgstat_report_wait_start(WAIT_EVENT_COPY_FROM_READ);
+			/* YB: report YB's COPY wait event instead, as documented for ASH */
+			if (IsYugaByteEnabled())
+				pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
+			else
+				pgstat_report_wait_start(WAIT_EVENT_COPY_FROM_READ);
 			bytesread = fread(databuf, 1, maxread, cstate->copy_file);
 			pgstat_report_wait_end();
-			/*
-			 * YB_TODO_PG19MERGE:  PG19 added WAIT_EVENT_COPY_FROM_READ.
-			 * Evaluate whether YB's specific WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ
-			 * is still needed.
-			 *
-			 * Original YB code:
-			 * if (IsYugaByteEnabled())
-			 *     pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
-			 * bytesread = fread(databuf, 1, maxread, cstate->copy_file);
-			 * if (IsYugaByteEnabled())
-			 *     pgstat_report_wait_end();
-			 */
 			if (ferror(cstate->copy_file))
 				ereport(ERROR,
 						(errcode_for_file_access(),

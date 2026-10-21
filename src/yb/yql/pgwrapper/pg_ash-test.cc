@@ -887,6 +887,36 @@ TEST_F(PgAshSingleNode, UniqueWaitEvents) {
   ASSERT_EQ(rows.empty(), true);
 }
 
+// COPY to or from a file or program should report YB's COPY wait events, not upstream's
+// CopyFromRead / CopyToWrite.
+TEST_F(PgAshSingleNode, CopyWaitEvents) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE copy_t (k INT)"));
+
+  // The program sleeps before producing data, so the backend blocks in fread().
+  ASSERT_OK(conn_->Execute("COPY copy_t FROM PROGRAM 'sleep 2; echo 1'"));
+
+  // The program sleeps before reading, so the backend blocks in fwrite() once the pipe is full.
+  ASSERT_OK(conn_->Execute(
+      "COPY (SELECT repeat('x', 1000) FROM generate_series(1, 1000)) "
+      "TO PROGRAM 'sleep 2; cat > /dev/null'"));
+
+  ASSERT_OK(StopAshSampling());
+
+  for (const auto& [yb_event, pg_event] : {
+      std::pair{"CopyCommandStreamRead", "CopyFromRead"},
+      std::pair{"CopyCommandStreamWrite", "CopyToWrite"}}) {
+    // Match the YB event by suffix so the check does not depend on its name prefix.
+    const auto yb_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event LIKE '%$0'",
+        yb_event)));
+    ASSERT_GT(yb_samples, 0) << yb_event;
+
+    const auto pg_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event = '$0'", pg_event)));
+    ASSERT_EQ(pg_samples, 0) << pg_event;
+  }
+}
+
 TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   static constexpr auto kColocatedDB = "cdb";
   static constexpr auto kTableName = "test";

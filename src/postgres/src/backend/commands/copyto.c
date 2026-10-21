@@ -589,18 +589,15 @@ CopySendEndOfRow(CopyToState cstate)
 	switch (cstate->copy_dest)
 	{
 		case COPY_FILE:
-			pgstat_report_wait_start(WAIT_EVENT_COPY_TO_WRITE);
-			/* YB_TODO_PG19MERGE: Do we still need YB's wait event? */
+			/* YB: report YB's COPY wait event instead, as documented for ASH */
 			if (IsYugaByteEnabled())
 				pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE);
-
+			else
+				pgstat_report_wait_start(WAIT_EVENT_COPY_TO_WRITE);
 			if (fwrite(fe_msgbuf->data, fe_msgbuf->len, 1,
 					   cstate->copy_file) != 1 ||
 				ferror(cstate->copy_file))
 			{
-				if (IsYugaByteEnabled())
-					pgstat_report_wait_end();
-
 				if (cstate->is_program)
 				{
 					if (errno == EPIPE)
