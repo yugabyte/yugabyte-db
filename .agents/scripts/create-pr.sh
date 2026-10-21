@@ -20,9 +20,12 @@
 #                  For several, pass a comma-separated list of one kind --
 #                  "33431,32640" -> "[#33431,#32640] ...". GH and JIRA cannot
 #                  be mixed; the pr-title check rejects that.
+#                  Optional when -b names a PG-version branch (e.g. pg19).
 #   -t title       Title body including the "Component: " prefix
 #                  (e.g. "DocDB: Fix flake in SamplingProfilerTest").
-#                  The "[<issue>] " prefix is added automatically.
+#                  The "[<issue>] " prefix is added automatically; for a
+#                  PG-version base (e.g. pg19) it is "[pg19] " or
+#                  "[pg19][<issue>] ", as the pr-title check requires.
 #   -d file        Path to a markdown file with the PR description (the
 #                  "what / why" prose). Becomes the "## Summary" section of
 #                  the body.
@@ -82,6 +85,7 @@ usage: $(basename "$0") -i <issue> -t <title> -d <description-file> -T <test-pla
 Required:
   -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN).
                  Several: comma-separated, all one kind ("33431,32640").
+                 Optional when -b is a PG-version branch (e.g. pg19).
   -t title       Title with "Component: " prefix (e.g. "DocDB: Fix flake")
   -d file        Path to PR description (markdown). Becomes "## Summary".
   -T file        Path to test plan (markdown). Becomes "## Test plan".
@@ -121,7 +125,13 @@ while getopts ":i:t:d:T:U:r:b:Dh" opt; do
   esac
 done
 
-[[ -z "$issue" || -z "$title" || -z "$description_file" || -z "$test_plan_file" ]] && usage
+# A PR into a PG-version development branch (e.g. pg19) must lead its title
+# with "[pg19]"; the issue tag after it is optional.
+is_pg_branch=0
+[[ "$base_branch" =~ ^pg[0-9]+$ ]] && is_pg_branch=1
+
+[[ -z "$title" || -z "$description_file" || -z "$test_plan_file" ]] && usage
+[[ -z "$issue" ]] && (( ! is_pg_branch )) && usage
 
 # Normalize the reviewer list: accept space- or comma-separated, collapse
 # repeated commas, strip leading/trailing commas. Without this, an input
@@ -196,18 +206,20 @@ for _tok in "${_issue_tokens[@]}"; do
   normalized_issue="${normalized_issue}${sep}${_tok}"
   sep=","
 done
-[[ -z "$normalized_issue" ]] && {
+[[ -n "$issue" && -z "$normalized_issue" ]] && {
   echo "error: -i is empty after normalization" >&2; exit 1;
 }
 issue="$normalized_issue"
 
-# If the user accidentally included an issue prefix in the title, strip it
-# along with any whitespace that follows. We add the canonical
-# "[<issue>] " prefix below; without the trim, an input like
+# If the user accidentally included issue or branch prefixes in the title
+# (e.g. "[pg19][#123] "), strip them along with any whitespace that follows.
+# We add the canonical prefix below; without the trim, an input like
 # "[#123]  Component: Title" (with two spaces) would leave a leading
 # space and trip the validation regex.
-title="${title#\[*\]}"
-title="${title#"${title%%[![:space:]]*}"}"
+while [[ "$title" == \[*\]* ]]; do
+  title="${title#\[*\]}"
+  title="${title#"${title%%[![:space:]]*}"}"
+done
 
 # Validate the title body is "<Component>: <Title>". Component must start with
 # a letter and contain at least one alphanumeric char; followed by ": " and
@@ -220,7 +232,11 @@ if ! [[ "$title" =~ ^[A-Za-z][A-Za-z0-9]+:[[:space:]].+ ]]; then
   exit 1
 fi
 
-full_title="[${issue}] ${title}"
+if (( is_pg_branch )); then
+  full_title="[${base_branch}]${issue:+[${issue}]} ${title}"
+else
+  full_title="[${issue}] ${title}"
+fi
 
 # Detect upstream remote (one that points at $GH_REPO).
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-}"
