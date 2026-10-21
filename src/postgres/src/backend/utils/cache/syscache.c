@@ -134,74 +134,74 @@ StaticAssertDecl(lengthof(cacheinfo) == SysCacheSize,
 	YB_CATCACHE_ENTRY(ENUMTYPOIDNAME, 24, "pg_enum_typid_label_index", YbCatalogCacheTable_pg_enum) \
 	YB_CATCACHE_ENTRY(EVENTTRIGGERNAME, 25, "pg_event_trigger_evtname_index", YbCatalogCacheTable_pg_event_trigger) \
 	YB_CATCACHE_ENTRY(EVENTTRIGGEROID, 26, "pg_event_trigger_oid_index", YbCatalogCacheTable_pg_event_trigger) \
-	YB_CATCACHE_ENTRY(EXTENSIONNAME, 27, "pg_extension_name_index", YbCatalogCacheTable_pg_extension) \
-	YB_CATCACHE_ENTRY(EXTENSIONOID, 28, "pg_extension_oid_index", YbCatalogCacheTable_pg_extension) \
-	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPERNAME, 29, "pg_foreign_data_wrapper_name_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
-	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPEROID, 30, "pg_foreign_data_wrapper_oid_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
-	YB_CATCACHE_ENTRY(FOREIGNSERVERNAME, 31, "pg_foreign_server_name_index", YbCatalogCacheTable_pg_foreign_server) \
-	YB_CATCACHE_ENTRY(FOREIGNSERVEROID, 32, "pg_foreign_server_oid_index", YbCatalogCacheTable_pg_foreign_server) \
-	YB_CATCACHE_ENTRY(FOREIGNTABLEREL, 33, "pg_foreign_table_relid_index", YbCatalogCacheTable_pg_foreign_table) \
-	YB_CATCACHE_ENTRY(INDEXRELID, 34, "pg_index_indexrelid_index", YbCatalogCacheTable_pg_index) \
-	YB_CATCACHE_ENTRY(LANGNAME, 35, "pg_language_name_index", YbCatalogCacheTable_pg_language) \
-	YB_CATCACHE_ENTRY(LANGOID, 36, "pg_language_oid_index", YbCatalogCacheTable_pg_language) \
-	YB_CATCACHE_ENTRY(NAMESPACENAME, 37, "pg_namespace_nspname_index", YbCatalogCacheTable_pg_namespace) \
-	YB_CATCACHE_ENTRY(NAMESPACEOID, 38, "pg_namespace_oid_index", YbCatalogCacheTable_pg_namespace) \
-	YB_CATCACHE_ENTRY(OPERNAMENSP, 39, "pg_operator_oprname_l_r_n_index", YbCatalogCacheTable_pg_operator) \
-	YB_CATCACHE_ENTRY(OPEROID, 40, "pg_operator_oid_index", YbCatalogCacheTable_pg_operator) \
-	YB_CATCACHE_ENTRY(OPFAMILYAMNAMENSP, 41, "pg_opfamily_am_name_nsp_index", YbCatalogCacheTable_pg_opfamily) \
-	YB_CATCACHE_ENTRY(OPFAMILYOID, 42, "pg_opfamily_oid_index", YbCatalogCacheTable_pg_opfamily) \
-	YB_CATCACHE_ENTRY(PARAMETERACLNAME, 43, "pg_parameter_acl_parname_index", YbCatalogCacheTable_pg_parameter_acl) \
-	YB_CATCACHE_ENTRY(PARAMETERACLOID, 44, "pg_parameter_acl_oid_index", YbCatalogCacheTable_pg_parameter_acl) \
-	YB_CATCACHE_ENTRY(PARTRELID, 45, "pg_partitioned_table_partrelid_index", YbCatalogCacheTable_pg_partitioned_table) \
-	YB_CATCACHE_ENTRY(PROCNAMEARGSNSP, 46, "pg_proc_proname_args_nsp_index", YbCatalogCacheTable_pg_proc) \
-	YB_CATCACHE_ENTRY(PROCOID, 47, "pg_proc_oid_index", YbCatalogCacheTable_pg_proc) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELALIAS, 48, "pg_propgraph_element_alias_index", YbCatalogCacheTable_pg_propgraph_element) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELEMENTLABELELEMENTLABEL, 49, "pg_propgraph_element_label_element_label_index", YbCatalogCacheTable_pg_propgraph_element_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELOID, 50, "pg_propgraph_element_oid_index", YbCatalogCacheTable_pg_propgraph_element) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELNAME, 51, "pg_propgraph_label_graph_name_index", YbCatalogCacheTable_pg_propgraph_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELOID, 52, "pg_propgraph_label_oid_index", YbCatalogCacheTable_pg_propgraph_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELPROP, 53, "pg_propgraph_label_property_label_prop_index", YbCatalogCacheTable_pg_propgraph_label_property) \
-	YB_CATCACHE_ENTRY(PROPGRAPHPROPNAME, 54, "pg_propgraph_property_name_index", YbCatalogCacheTable_pg_propgraph_property) \
-	YB_CATCACHE_ENTRY(PROPGRAPHPROPOID, 55, "pg_propgraph_property_oid_index", YbCatalogCacheTable_pg_propgraph_property) \
-	YB_CATCACHE_ENTRY(PUBLICATIONNAME, 56, "pg_publication_pubname_index", YbCatalogCacheTable_pg_publication) \
-	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACE, 57, "pg_publication_namespace_oid_index", YbCatalogCacheTable_pg_publication_namespace) \
-	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACEMAP, 58, "pg_publication_namespace_pnnspid_pnpubid_index", YbCatalogCacheTable_pg_publication_namespace) \
-	YB_CATCACHE_ENTRY(PUBLICATIONOID, 59, "pg_publication_oid_index", YbCatalogCacheTable_pg_publication) \
-	YB_CATCACHE_ENTRY(PUBLICATIONREL, 60, "pg_publication_rel_oid_index", YbCatalogCacheTable_pg_publication_rel) \
-	YB_CATCACHE_ENTRY(PUBLICATIONRELMAP, 61, "pg_publication_rel_prrelid_prpubid_index", YbCatalogCacheTable_pg_publication_rel) \
-	YB_CATCACHE_ENTRY(RANGEMULTIRANGE, 62, "pg_range_rngmultitypid_index", YbCatalogCacheTable_pg_range) \
-	YB_CATCACHE_ENTRY(RANGETYPE, 63, "pg_range_rngtypid_index", YbCatalogCacheTable_pg_range) \
-	YB_CATCACHE_ENTRY(RELNAMENSP, 64, "pg_class_relname_nsp_index", YbCatalogCacheTable_pg_class) \
-	YB_CATCACHE_ENTRY(RELOID, 65, "pg_class_oid_index", YbCatalogCacheTable_pg_class) \
-	YB_CATCACHE_ENTRY(REPLORIGIDENT, 66, "pg_replication_origin_roiident_index", YbCatalogCacheTable_pg_replication_origin) \
-	YB_CATCACHE_ENTRY(REPLORIGNAME, 67, "pg_replication_origin_roname_index", YbCatalogCacheTable_pg_replication_origin) \
-	YB_CATCACHE_ENTRY(RULERELNAME, 68, "pg_rewrite_rel_rulename_index", YbCatalogCacheTable_pg_rewrite) \
-	YB_CATCACHE_ENTRY(SEQRELID, 69, "pg_sequence_seqrelid_index", YbCatalogCacheTable_pg_sequence) \
-	YB_CATCACHE_ENTRY(STATEXTDATASTXOID, 70, "pg_statistic_ext_data_stxoid_inh_index", YbCatalogCacheTable_pg_statistic_ext_data) \
-	YB_CATCACHE_ENTRY(STATEXTNAMENSP, 71, "pg_statistic_ext_name_index", YbCatalogCacheTable_pg_statistic_ext) \
-	YB_CATCACHE_ENTRY(STATEXTOID, 72, "pg_statistic_ext_oid_index", YbCatalogCacheTable_pg_statistic_ext) \
-	YB_CATCACHE_ENTRY(STATRELATTINH, 73, "pg_statistic_relid_att_inh_index", YbCatalogCacheTable_pg_statistic) \
-	YB_CATCACHE_ENTRY(SUBSCRIPTIONNAME, 74, "pg_subscription_subname_index", YbCatalogCacheTable_pg_subscription) \
-	YB_CATCACHE_ENTRY(SUBSCRIPTIONOID, 75, "pg_subscription_oid_index", YbCatalogCacheTable_pg_subscription) \
-	YB_CATCACHE_ENTRY(SUBSCRIPTIONRELMAP, 76, "pg_subscription_rel_srrelid_srsubid_index", YbCatalogCacheTable_pg_subscription_rel) \
-	YB_CATCACHE_ENTRY(TABLESPACEOID, 77, "pg_tablespace_oid_index", YbCatalogCacheTable_pg_tablespace) \
-	YB_CATCACHE_ENTRY(TRFOID, 78, "pg_transform_oid_index", YbCatalogCacheTable_pg_transform) \
-	YB_CATCACHE_ENTRY(TRFTYPELANG, 79, "pg_transform_type_lang_index", YbCatalogCacheTable_pg_transform) \
-	YB_CATCACHE_ENTRY(TSCONFIGMAP, 80, "pg_ts_config_map_index", YbCatalogCacheTable_pg_ts_config_map) \
-	YB_CATCACHE_ENTRY(TSCONFIGNAMENSP, 81, "pg_ts_config_cfgname_index", YbCatalogCacheTable_pg_ts_config) \
-	YB_CATCACHE_ENTRY(TSCONFIGOID, 82, "pg_ts_config_oid_index", YbCatalogCacheTable_pg_ts_config) \
-	YB_CATCACHE_ENTRY(TSDICTNAMENSP, 83, "pg_ts_dict_dictname_index", YbCatalogCacheTable_pg_ts_dict) \
-	YB_CATCACHE_ENTRY(TSDICTOID, 84, "pg_ts_dict_oid_index", YbCatalogCacheTable_pg_ts_dict) \
-	YB_CATCACHE_ENTRY(TSPARSERNAMENSP, 85, "pg_ts_parser_prsname_index", YbCatalogCacheTable_pg_ts_parser) \
-	YB_CATCACHE_ENTRY(TSPARSEROID, 86, "pg_ts_parser_oid_index", YbCatalogCacheTable_pg_ts_parser) \
-	YB_CATCACHE_ENTRY(TSTEMPLATENAMENSP, 87, "pg_ts_template_tmplname_index", YbCatalogCacheTable_pg_ts_template) \
-	YB_CATCACHE_ENTRY(TSTEMPLATEOID, 88, "pg_ts_template_oid_index", YbCatalogCacheTable_pg_ts_template) \
-	YB_CATCACHE_ENTRY(TYPENAMENSP, 89, "pg_type_typname_nsp_index", YbCatalogCacheTable_pg_type) \
-	YB_CATCACHE_ENTRY(TYPEOID, 90, "pg_type_oid_index", YbCatalogCacheTable_pg_type) \
-	YB_CATCACHE_ENTRY(USERMAPPINGOID, 91, "pg_user_mapping_oid_index", YbCatalogCacheTable_pg_user_mapping) \
-	YB_CATCACHE_ENTRY(USERMAPPINGUSERSERVER, 92, "pg_user_mapping_user_server_index", YbCatalogCacheTable_pg_user_mapping) \
-	YB_CATCACHE_ENTRY(YBCONSTRAINTRELIDTYPIDNAME, 93, "pg_constraint_conrelid_contypid_conname_index", YbCatalogCacheTable_pg_constraint) \
-	YB_CATCACHE_ENTRY(YBTABLEGROUPOID, 94, "pg_yb_tablegroup_oid_index", YbCatalogCacheTable_pg_yb_tablegroup)
+	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPERNAME, 27, "pg_foreign_data_wrapper_name_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
+	YB_CATCACHE_ENTRY(FOREIGNDATAWRAPPEROID, 28, "pg_foreign_data_wrapper_oid_index", YbCatalogCacheTable_pg_foreign_data_wrapper) \
+	YB_CATCACHE_ENTRY(FOREIGNSERVERNAME, 29, "pg_foreign_server_name_index", YbCatalogCacheTable_pg_foreign_server) \
+	YB_CATCACHE_ENTRY(FOREIGNSERVEROID, 30, "pg_foreign_server_oid_index", YbCatalogCacheTable_pg_foreign_server) \
+	YB_CATCACHE_ENTRY(FOREIGNTABLEREL, 31, "pg_foreign_table_relid_index", YbCatalogCacheTable_pg_foreign_table) \
+	YB_CATCACHE_ENTRY(INDEXRELID, 32, "pg_index_indexrelid_index", YbCatalogCacheTable_pg_index) \
+	YB_CATCACHE_ENTRY(LANGNAME, 33, "pg_language_name_index", YbCatalogCacheTable_pg_language) \
+	YB_CATCACHE_ENTRY(LANGOID, 34, "pg_language_oid_index", YbCatalogCacheTable_pg_language) \
+	YB_CATCACHE_ENTRY(NAMESPACENAME, 35, "pg_namespace_nspname_index", YbCatalogCacheTable_pg_namespace) \
+	YB_CATCACHE_ENTRY(NAMESPACEOID, 36, "pg_namespace_oid_index", YbCatalogCacheTable_pg_namespace) \
+	YB_CATCACHE_ENTRY(OPERNAMENSP, 37, "pg_operator_oprname_l_r_n_index", YbCatalogCacheTable_pg_operator) \
+	YB_CATCACHE_ENTRY(OPEROID, 38, "pg_operator_oid_index", YbCatalogCacheTable_pg_operator) \
+	YB_CATCACHE_ENTRY(OPFAMILYAMNAMENSP, 39, "pg_opfamily_am_name_nsp_index", YbCatalogCacheTable_pg_opfamily) \
+	YB_CATCACHE_ENTRY(OPFAMILYOID, 40, "pg_opfamily_oid_index", YbCatalogCacheTable_pg_opfamily) \
+	YB_CATCACHE_ENTRY(PARAMETERACLNAME, 41, "pg_parameter_acl_parname_index", YbCatalogCacheTable_pg_parameter_acl) \
+	YB_CATCACHE_ENTRY(PARAMETERACLOID, 42, "pg_parameter_acl_oid_index", YbCatalogCacheTable_pg_parameter_acl) \
+	YB_CATCACHE_ENTRY(PARTRELID, 43, "pg_partitioned_table_partrelid_index", YbCatalogCacheTable_pg_partitioned_table) \
+	YB_CATCACHE_ENTRY(PROCNAMEARGSNSP, 44, "pg_proc_proname_args_nsp_index", YbCatalogCacheTable_pg_proc) \
+	YB_CATCACHE_ENTRY(PROCOID, 45, "pg_proc_oid_index", YbCatalogCacheTable_pg_proc) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAME, 46, "pg_publication_pubname_index", YbCatalogCacheTable_pg_publication) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACE, 47, "pg_publication_namespace_oid_index", YbCatalogCacheTable_pg_publication_namespace) \
+	YB_CATCACHE_ENTRY(PUBLICATIONNAMESPACEMAP, 48, "pg_publication_namespace_pnnspid_pnpubid_index", YbCatalogCacheTable_pg_publication_namespace) \
+	YB_CATCACHE_ENTRY(PUBLICATIONOID, 49, "pg_publication_oid_index", YbCatalogCacheTable_pg_publication) \
+	YB_CATCACHE_ENTRY(PUBLICATIONREL, 50, "pg_publication_rel_oid_index", YbCatalogCacheTable_pg_publication_rel) \
+	YB_CATCACHE_ENTRY(PUBLICATIONRELMAP, 51, "pg_publication_rel_prrelid_prpubid_index", YbCatalogCacheTable_pg_publication_rel) \
+	YB_CATCACHE_ENTRY(RANGEMULTIRANGE, 52, "pg_range_rngmultitypid_index", YbCatalogCacheTable_pg_range) \
+	YB_CATCACHE_ENTRY(RANGETYPE, 53, "pg_range_rngtypid_index", YbCatalogCacheTable_pg_range) \
+	YB_CATCACHE_ENTRY(RELNAMENSP, 54, "pg_class_relname_nsp_index", YbCatalogCacheTable_pg_class) \
+	YB_CATCACHE_ENTRY(RELOID, 55, "pg_class_oid_index", YbCatalogCacheTable_pg_class) \
+	YB_CATCACHE_ENTRY(REPLORIGIDENT, 56, "pg_replication_origin_roiident_index", YbCatalogCacheTable_pg_replication_origin) \
+	YB_CATCACHE_ENTRY(REPLORIGNAME, 57, "pg_replication_origin_roname_index", YbCatalogCacheTable_pg_replication_origin) \
+	YB_CATCACHE_ENTRY(RULERELNAME, 58, "pg_rewrite_rel_rulename_index", YbCatalogCacheTable_pg_rewrite) \
+	YB_CATCACHE_ENTRY(SEQRELID, 59, "pg_sequence_seqrelid_index", YbCatalogCacheTable_pg_sequence) \
+	YB_CATCACHE_ENTRY(STATEXTDATASTXOID, 60, "pg_statistic_ext_data_stxoid_inh_index", YbCatalogCacheTable_pg_statistic_ext_data) \
+	YB_CATCACHE_ENTRY(STATEXTNAMENSP, 61, "pg_statistic_ext_name_index", YbCatalogCacheTable_pg_statistic_ext) \
+	YB_CATCACHE_ENTRY(STATEXTOID, 62, "pg_statistic_ext_oid_index", YbCatalogCacheTable_pg_statistic_ext) \
+	YB_CATCACHE_ENTRY(STATRELATTINH, 63, "pg_statistic_relid_att_inh_index", YbCatalogCacheTable_pg_statistic) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONNAME, 64, "pg_subscription_subname_index", YbCatalogCacheTable_pg_subscription) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONOID, 65, "pg_subscription_oid_index", YbCatalogCacheTable_pg_subscription) \
+	YB_CATCACHE_ENTRY(SUBSCRIPTIONRELMAP, 66, "pg_subscription_rel_srrelid_srsubid_index", YbCatalogCacheTable_pg_subscription_rel) \
+	YB_CATCACHE_ENTRY(TABLESPACEOID, 67, "pg_tablespace_oid_index", YbCatalogCacheTable_pg_tablespace) \
+	YB_CATCACHE_ENTRY(TRFOID, 68, "pg_transform_oid_index", YbCatalogCacheTable_pg_transform) \
+	YB_CATCACHE_ENTRY(TRFTYPELANG, 69, "pg_transform_type_lang_index", YbCatalogCacheTable_pg_transform) \
+	YB_CATCACHE_ENTRY(TSCONFIGMAP, 70, "pg_ts_config_map_index", YbCatalogCacheTable_pg_ts_config_map) \
+	YB_CATCACHE_ENTRY(TSCONFIGNAMENSP, 71, "pg_ts_config_cfgname_index", YbCatalogCacheTable_pg_ts_config) \
+	YB_CATCACHE_ENTRY(TSCONFIGOID, 72, "pg_ts_config_oid_index", YbCatalogCacheTable_pg_ts_config) \
+	YB_CATCACHE_ENTRY(TSDICTNAMENSP, 73, "pg_ts_dict_dictname_index", YbCatalogCacheTable_pg_ts_dict) \
+	YB_CATCACHE_ENTRY(TSDICTOID, 74, "pg_ts_dict_oid_index", YbCatalogCacheTable_pg_ts_dict) \
+	YB_CATCACHE_ENTRY(TSPARSERNAMENSP, 75, "pg_ts_parser_prsname_index", YbCatalogCacheTable_pg_ts_parser) \
+	YB_CATCACHE_ENTRY(TSPARSEROID, 76, "pg_ts_parser_oid_index", YbCatalogCacheTable_pg_ts_parser) \
+	YB_CATCACHE_ENTRY(TSTEMPLATENAMENSP, 77, "pg_ts_template_tmplname_index", YbCatalogCacheTable_pg_ts_template) \
+	YB_CATCACHE_ENTRY(TSTEMPLATEOID, 78, "pg_ts_template_oid_index", YbCatalogCacheTable_pg_ts_template) \
+	YB_CATCACHE_ENTRY(TYPENAMENSP, 79, "pg_type_typname_nsp_index", YbCatalogCacheTable_pg_type) \
+	YB_CATCACHE_ENTRY(TYPEOID, 80, "pg_type_oid_index", YbCatalogCacheTable_pg_type) \
+	YB_CATCACHE_ENTRY(USERMAPPINGOID, 81, "pg_user_mapping_oid_index", YbCatalogCacheTable_pg_user_mapping) \
+	YB_CATCACHE_ENTRY(USERMAPPINGUSERSERVER, 82, "pg_user_mapping_user_server_index", YbCatalogCacheTable_pg_user_mapping) \
+	YB_CATCACHE_ENTRY(YBTABLEGROUPOID, 83, "pg_yb_tablegroup_oid_index", YbCatalogCacheTable_pg_yb_tablegroup) \
+	YB_CATCACHE_ENTRY(YBCONSTRAINTRELIDTYPIDNAME, 84, "pg_constraint_conrelid_contypid_conname_index", YbCatalogCacheTable_pg_constraint) \
+	YB_CATCACHE_ENTRY(EXTENSIONOID, 85, "pg_extension_oid_index", YbCatalogCacheTable_pg_extension) \
+	YB_CATCACHE_ENTRY(EXTENSIONNAME, 86, "pg_extension_name_index", YbCatalogCacheTable_pg_extension) \
+	YB_CATCACHE_ENTRY(PROPGRAPHELALIAS, 87, "pg_propgraph_element_alias_index", YbCatalogCacheTable_pg_propgraph_element) \
+	YB_CATCACHE_ENTRY(PROPGRAPHELEMENTLABELELEMENTLABEL, 88, "pg_propgraph_element_label_element_label_index", YbCatalogCacheTable_pg_propgraph_element_label) \
+	YB_CATCACHE_ENTRY(PROPGRAPHELOID, 89, "pg_propgraph_element_oid_index", YbCatalogCacheTable_pg_propgraph_element) \
+	YB_CATCACHE_ENTRY(PROPGRAPHLABELNAME, 90, "pg_propgraph_label_graph_name_index", YbCatalogCacheTable_pg_propgraph_label) \
+	YB_CATCACHE_ENTRY(PROPGRAPHLABELOID, 91, "pg_propgraph_label_oid_index", YbCatalogCacheTable_pg_propgraph_label) \
+	YB_CATCACHE_ENTRY(PROPGRAPHLABELPROP, 92, "pg_propgraph_label_property_label_prop_index", YbCatalogCacheTable_pg_propgraph_label_property) \
+	YB_CATCACHE_ENTRY(PROPGRAPHPROPNAME, 93, "pg_propgraph_property_name_index", YbCatalogCacheTable_pg_propgraph_property) \
+	YB_CATCACHE_ENTRY(PROPGRAPHPROPOID, 94, "pg_propgraph_property_oid_index", YbCatalogCacheTable_pg_propgraph_property)
 
 static const char *yb_cache_index_name_table[] = {
 #define YB_CATCACHE_ENTRY(name, id, idx, tbl) idx,
@@ -1488,6 +1488,14 @@ YbCheckCatalogCacheIds()
 	 * release, then in a new PG backend the new catcache should be invalidated
 	 * but old PG backend cannot provide that message needed. In this case
 	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
+	 *
+	 * The ids added by the PG19 merge (86-94) were evaluated as follows:
+	 * the PROPGRAPH* caches (87-94) are case (1). EXTENSIONNAME (86) is
+	 * case (2), on pg_extension, but needs no bump: the only releases without
+	 * it are PG15-based, and during a PG15 to PG19 major upgrade the master
+	 * rejects all non-forced catalog writes until every yb-tserver runs the
+	 * new version, so no old-release backend can change pg_extension while
+	 * new-release backends are running.
 	 */
 #define YB_CATCACHE_ENTRY(name, id, idx, tbl) \
 	static_assert(name == id, \

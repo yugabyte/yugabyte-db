@@ -2428,8 +2428,8 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80986U);
-    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+    ASSERT_EQ(result.size(), 84154U);
+    ASSERT_EQ(fingerprint, 5310798773787679549UL);
   } else {
     ASSERT_EQ(result.size(), 80932U);
     ASSERT_EQ(fingerprint, 148605032842492807UL);

@@ -26,24 +26,20 @@
 #include "relcache.h"
 
 /*
- * YB_TODO_PG19MERGE: PG now autogenerates the SysCacheIdentifier enum from
- * MAKE_SYSCACHE() macros in catalog headers, sorted alphabetically (see
- * src/backend/catalog/genbki.pl `foreach my $syscache (sort keys
- * %syscaches)`), so their enum values may change, but the comment below
- * says the values should be stable across versions, or does the comment
- * refer to the enum below?
- *
- * Original YB note (kept for context):
- *
- * Starting from 2025-03-11, we try to keep existing ids to have same integer
- * value. In other words, newly added ids should be appended at the end
- * and the alphabetical order can no longer be maintained. The purpose is
+ * YB: Starting from 2025-03-11, we try to keep existing ids to have same
+ * integer value. In other words, newly added ids should be appended at the
+ * end and the alphabetical order can no longer be maintained. The purpose is
  * to allow interop between different releases during YSQL upgrade so that
  * an id of the same integer value represents the same catalog cache across
  * different releases. In this way a catalog cache invalidation message
  * generated in release 123 can be applicable to release 456, or vice versa.
- * The function YbCheckCatalogCacheIds() is used to detect any change in
- * this enum list.
+ *
+ * The SysCacheIdentifier enum in catalog/syscache_ids.h is generated from the
+ * MAKE_SYSCACHE() macros in the catalog headers. Upstream genbki.pl numbers
+ * them alphabetically; YB's genbki.pl numbers them in the fixed order of
+ * @yb_ordered_syscaches instead, so a new syscache must be appended to the
+ * end of that list. The function YbCheckCatalogCacheIds() is used to detect
+ * any change in the resulting ids.
  */
 
 /*
