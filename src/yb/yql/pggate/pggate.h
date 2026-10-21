@@ -566,8 +566,6 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
-  // Drops buffered writes, buffered explicit row lock requests, INSERT ... ON CONFLICT buffers
-  // and the FK reference cache, without sending anything to the tserver.
   SetupPerformOptionsAccessorTag ClearSessionState();
   Status FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx);
   Status AdjustOperationsBuffering(int multiple = 1);

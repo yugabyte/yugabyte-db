@@ -664,8 +664,6 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
-// Drops buffered writes, buffered explicit row lock requests, INSERT ... ON CONFLICT buffers
-// and the FK reference cache, without sending anything to the tserver.
 void YBCPgClearSessionState();
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);

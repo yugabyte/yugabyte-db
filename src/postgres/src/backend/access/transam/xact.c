@@ -5749,11 +5749,7 @@ AbortSubTransaction(void)
 
 	/*
 	 * YB: Clear pggate session state, including this subtransaction's buffered
-	 * writes, before any step below can flush them (e.g. AtSubAbort_Snapshot
-	 * restoring the outer read point in READ COMMITTED). A flush error here
-	 * would leave the subtransaction half-aborted, and PL/pgSQL's cleanup then
-	 * frees ExprContexts that outer subtransaction callbacks still reference.
-	 * YBCRollbackToSubTransaction below clears the same state.
+	 * writes.
 	 */
 	if (IsYugaByteEnabled())
 		YBCPgClearSessionState();
