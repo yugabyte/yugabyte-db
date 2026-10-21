@@ -1493,7 +1493,7 @@ Maximum number of YSQL catalog prefetches the YB-Master leader serves at once wh
 
 `-1`, the default, is resolved once at process startup to `max(8, 2 * cores)` for this YB-Master. `0` means no limit. Setting the flag to `-1` after startup also means no limit, because that resolution runs only at startup.
 
-A prefetch beyond the limit is rejected, and the client retries until its RPC deadline which is 10 minutes by default expires, and then the connection fails. Set the limit at or above what the leader can serve. A lower limit makes those callers wait out their deadline and fail.
+A prefetch beyond the limit is rejected, and the client retries until its RPC deadline (10 minutes by default) expires, and then the connection fails. Set the limit at or above what the leader can serve. A lower limit makes those callers wait out their deadline and fail.
 
 ##### --master_new_ysql_catalog_prefetch_percent
 
@@ -2174,6 +2174,7 @@ When enabled, [--allow_insecure_connections](#allow-insecure-connections) should
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
 Default: `false`
 {{% /tags/wrap %}}
 

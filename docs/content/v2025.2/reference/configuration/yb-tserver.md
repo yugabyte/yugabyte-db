@@ -2584,6 +2584,7 @@ When enabled, [--allow_insecure_connections](#allow-insecure-connections) should
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
 Default: `false`
 {{% /tags/wrap %}}
 
