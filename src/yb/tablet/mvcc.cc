@@ -292,7 +292,7 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
       return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
     }
 
-    if (GetAtomicFlag(&FLAGS_mvcc_wake_all_safe_time_waiters)) {
+    if (FLAGS_mvcc_wake_all_safe_time_waiters) {
       ++cond_waiters_;
       if (deadline == CoarseTimePoint::max()) {
         cond_.wait(*lock);
@@ -324,7 +324,7 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
 MvccManager::ReachedWaiters MvccManager::ExtractReachedWaiters() {
   ReachedWaiters reached;
   reached.notify_cond =
-      cond_waiters_ > 0 || GetAtomicFlag(&FLAGS_mvcc_wake_all_safe_time_waiters);
+      cond_waiters_ > 0 || FLAGS_mvcc_wake_all_safe_time_waiters;
   auto& result = reached.waiters;
   auto extract = [&result](SafeTimeWaiters& waiters, HybridTime safe_time) {
     const auto end = waiters.upper_bound(safe_time);
