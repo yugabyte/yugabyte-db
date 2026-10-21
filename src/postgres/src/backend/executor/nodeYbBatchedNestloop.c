@@ -1058,7 +1058,6 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	 * tuples are stored into it, and a child such as Unique keeps its last
 	 * returned tuple in its result slot (#35565).
 	 */
-	/* the outer tuple always has to be a minimal tuple */
 	bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
 	bnlstate->js.ps.outeropsfixed = true;
 	bnlstate->js.ps.outeropsset = true;
