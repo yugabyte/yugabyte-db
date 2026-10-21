@@ -6914,4 +6914,58 @@ TEST_F_EX(
   }
 }
 
+class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    for (auto* flags : {&opts->extra_master_flags, &opts->extra_tserver_flags}) {
+      flags->insert(flags->end(), {
+          "--ysql_yb_ddl_transaction_block_enabled=true",
+          "--enable_object_locking_for_table_locks=true",
+          "--ysql_enable_concurrent_ddl=true"});
+    }
+  }
+};
+
+// PITR hides a vector index directly (it is colocated with its indexed table), so aborting the
+// CREATE INDEX afterwards must still complete DDL verification and release its object locks.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, PgsqlPitrDuringVectorIndexCreate,
+    YbAdminSnapshotScheduleTestWithYsqlObjectLocks) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  const auto& db_name = client::kTableName.namespace_name();
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v vector(3))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, '[1,2,3]')"));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_v ON t USING ybhnsw (v vector_l2_ops)"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Without the fix, ROLLBACK waits out the full DDL verification timeout (10 min) and the DDL's
+  // object locks stay held until then.
+  const auto start = MonoTime::Now();
+  // PITR may have killed the backend, which also aborts the transaction.
+  WARN_NOT_OK(conn.Execute("ROLLBACK"), "ROLLBACK after PITR failed");
+
+  ASSERT_OK(WaitFor([this, &conn, &db_name]() -> Result<bool> {
+    auto result = PgConnect(db_name);
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = $0", 60000 * kTimeMultiplier));
+  ASSERT_OK(conn.Execute("CREATE TABLE after_pitr (k INT PRIMARY KEY)"));
+  ASSERT_LT(MonoTime::Now() - start, 120s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname = 't_v'")), 0);
+}
+
 }  // namespace yb::tools
