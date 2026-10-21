@@ -291,10 +291,10 @@ $(document).ready(() => {
       width: element.offsetWidth,
       parent: element.parentElement,
     }));
+  }
 
-    if (window.OneTrust && window.OnetrustActiveGroups) {
-      deleteFunctionalCookies();
-    }
+  if (window.OneTrust && window.OnetrustActiveGroups) {
+    deleteFunctionalCookies();
   }
 
   let searchValue = '';
