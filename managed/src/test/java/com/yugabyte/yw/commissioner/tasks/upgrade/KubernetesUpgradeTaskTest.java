@@ -6,7 +6,6 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -25,6 +24,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -440,8 +440,9 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
   }
 
   /**
-   * Every Kubernetes command run with the read replica placement must target the read replica
-   * releases (PLAT-23200).
+   * The read replica's POD_INFO and helm upgrade commands must target the read replica releases
+   * (PLAT-23200). POD_INFO carries the read replica placement. A helm upgrade carries a per-AZ
+   * placement, and in these test universes only the read replica's has no masters.
    */
   protected void assertReadReplicaCommandsTargetReadReplica(
       TaskInfo taskInfo, Cluster readReplica) {
@@ -450,14 +451,26 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
             .map(TaskInfo::getTaskParams)
-            .filter(p -> readReplicaPlacement.equals(p.get("placementInfo")))
+            .filter(
+                p ->
+                    readReplicaPlacement.equals(p.get("placementInfo"))
+                        || (CommandType.HELM_UPGRADE.name().equals(p.path("commandType").asText())
+                            && p.path("placementInfo").findValues("replicationFactor").stream()
+                                .allMatch(rf -> rf.asInt() == 0)))
             .collect(Collectors.toList());
-    assertFalse(readReplicaCommands.isEmpty());
+    String commands =
+        readReplicaCommands.stream()
+            .map(p -> p.path("commandType").asText() + "/" + p.path("isReadOnlyCluster"))
+            .collect(Collectors.toList())
+            .toString();
+    for (CommandType commandType : List.of(CommandType.POD_INFO, CommandType.HELM_UPGRADE)) {
+      assertTrue(
+          "No read replica " + commandType + " in " + commands,
+          readReplicaCommands.stream()
+              .anyMatch(p -> commandType.name().equals(p.path("commandType").asText())));
+    }
     assertTrue(
-        "Commands with the read replica placement: "
-            + readReplicaCommands.stream()
-                .map(p -> p.path("commandType").asText() + "/" + p.path("isReadOnlyCluster"))
-                .collect(Collectors.toList()),
+        "Read replica commands: " + commands,
         readReplicaCommands.stream().allMatch(p -> p.path("isReadOnlyCluster").asBoolean()));
   }
 }
