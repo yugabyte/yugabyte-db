@@ -164,3 +164,31 @@ id|rid|v
 101|101
 (3 rows)
 
+
+starting permutation: s1_ins_tc_valid s2_begin s2_add_tc s1_begin s1_ins_tc_bad s2_commit s2_validate_tc s1_commit s2_show_tc
+step s1_ins_tc_valid: INSERT INTO tc VALUES (100, 100);
+step s2_begin: BEGIN;
+step s2_add_tc: ALTER TABLE tc ADD CONSTRAINT tc_v_pos CHECK (v > 0) NOT VALID;
+step s1_begin: BEGIN;
+step s1_ins_tc_bad: INSERT INTO tc VALUES (101, -1); <waiting ...>
+step s2_commit: COMMIT;
+step s1_ins_tc_bad: <... completed>
+ERROR:  new row for relation "tc" violates check constraint "tc_v_pos"
+step s2_validate_tc: ALTER TABLE tc VALIDATE CONSTRAINT tc_v_pos;
+step s1_commit: COMMIT;
+step s2_show_tc: 
+  SELECT conname, convalidated FROM pg_constraint
+  WHERE conrelid = 'tc'::regclass ORDER BY conname;
+  SELECT id, v FROM tc WHERE id >= 100 ORDER BY id;
+
+conname |convalidated
+--------+------------
+tc_pkey |t           
+tc_v_pos|t           
+(2 rows)
+
+ id|  v
+---+---
+100|100
+(1 row)
+
