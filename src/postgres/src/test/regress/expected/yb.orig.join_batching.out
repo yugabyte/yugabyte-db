@@ -4826,3 +4826,49 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 (1 row)
 
 DROP TABLE w1, w2, w3, w4;
+-- #35565: a Unique outer child of BNL must not return a key twice. Unique
+-- remembers its last returned tuple in its result slot, and BNL must not
+-- store its own tuples there. The inner index is hash-sharded, so the
+-- tuple BNL stores last differs from the one Unique returned last. The
+-- DISTINCT join must count every row of bnl_uniq exactly once (45).
+CREATE TABLE bnl_uniq (k1 int, k2 int, v int PRIMARY KEY);
+CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
+INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
+INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
+  FROM generate_series(1, 30) i WHERE i % 2 = 0;
+SET enable_hashagg = off;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET yb_enable_distinct_pushdown = off;
+SET yb_bnl_batch_size = 3;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+(9 rows)
+
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+ count 
+-------
+    45
+(1 row)
+
+RESET enable_hashagg;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+RESET yb_enable_distinct_pushdown;
+RESET yb_bnl_batch_size;
+DROP TABLE bnl_uniq;

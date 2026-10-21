@@ -1930,3 +1930,32 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
 
 DROP TABLE w1, w2, w3, w4;
+
+-- #35565: a Unique outer child of BNL must not return a key twice. Unique
+-- remembers its last returned tuple in its result slot, and BNL must not
+-- store its own tuples there. The inner index is hash-sharded, so the
+-- tuple BNL stores last differs from the one Unique returned last. The
+-- DISTINCT join must count every row of bnl_uniq exactly once (45).
+CREATE TABLE bnl_uniq (k1 int, k2 int, v int PRIMARY KEY);
+CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
+INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
+INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
+  FROM generate_series(1, 30) i WHERE i % 2 = 0;
+SET enable_hashagg = off;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET yb_enable_distinct_pushdown = off;
+SET yb_bnl_batch_size = 3;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+RESET enable_hashagg;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+RESET yb_enable_distinct_pushdown;
+RESET yb_bnl_batch_size;
+DROP TABLE bnl_uniq;
