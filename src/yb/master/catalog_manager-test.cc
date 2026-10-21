@@ -660,14 +660,14 @@ TEST(TestCatalogManager, PerTableLoadStateInitRequiresEveryTs) {
   {
     CMPerTableLoadState state(&global_state);
     state.per_ts_replica_load_ = {{"0000", 0}};
-    ASSERT_NOK(state.Init(ts_descs));
+    ASSERT_NOK_STR_CONTAINS(state.Init(ts_descs), "per_ts_replica_load_ does not contain 1111");
   }
   {
     CMGlobalLoadState partial_global_state;
     partial_global_state.per_ts_replica_load_ = {{"0000", 0}};
     CMPerTableLoadState state(&partial_global_state);
     state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
-    ASSERT_NOK(state.Init(ts_descs));
+    ASSERT_NOK_STR_CONTAINS(state.Init(ts_descs), "Could not locate tablet server 1111");
   }
 }
 
