@@ -423,6 +423,8 @@ class PGConn {
     return impl_.get();
   }
 
+  [[nodiscard]] int BackendPID() const;
+
  private:
   using ControllerReceiver = LWFunction<void(CopyController&)>;
 
@@ -511,5 +513,8 @@ Result<std::string> ResultAsString(
     const std::string& row_sep = DefaultRowSeparator());
 
 void ReplaceAll(std::string* str, const std::string& from, const std::string& to);
+
+Result<bool> TryTerminateBackendWithRunningQuery(
+    PGConn& conn, int backend_pid, uint32_t min_query_running_time_msecs);
 
 } // namespace yb::pgwrapper
