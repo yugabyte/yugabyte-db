@@ -1870,10 +1870,10 @@ YbMemoryContextDeleteIfNoLiveChunks(MemoryContext context)
 
 	/*
 	 * A recycled context would quietly serve allocations through a stale
-	 * pointer to this one, so free it outright where such misuse can be
-	 * caught.
+	 * pointer to this one, so free it outright under ASAN, whose quarantine
+	 * catches such misuse.
 	 */
-#if defined(USE_ASSERT_CHECKING) || defined(ADDRESS_SANITIZER)
+#ifdef ADDRESS_SANITIZER
 	YbAllocSetDisableRecycling(context);
 #endif
 
