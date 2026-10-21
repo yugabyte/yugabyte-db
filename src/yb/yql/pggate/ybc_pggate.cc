@@ -1594,8 +1594,8 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
-void YBCPgDiscardBufferedOperations() {
-  pgapi->DiscardBufferedOperations();
+void YBCPgClearSessionState() {
+  pgapi->ClearSessionState();
 }
 
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context) {

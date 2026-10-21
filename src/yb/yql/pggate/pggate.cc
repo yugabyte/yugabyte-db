@@ -1624,10 +1624,6 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
-void PgApiImpl::DiscardBufferedOperations() {
-  ClearSessionState();
-}
-
 Status PgApiImpl::FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx) {
   return ResultToStatus(FlushBufferedEntities(dbg_ctx));
 }
