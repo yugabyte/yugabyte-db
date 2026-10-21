@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -37,6 +38,9 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
     public String prevSoftwareVersion;
     // Is it a software update via VM upgrade.
     public boolean isSoftwareUpdateViaVm;
+    // Upgrade state written in the same save as the version, so an abort or YBA restart can't
+    // leave one updated without the other. Null leaves the state unchanged.
+    public SoftwareUpgradeState softwareUpgradeState;
   }
 
   protected Params taskParams() {
@@ -70,6 +74,9 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
                   taskParams().softwareVersion;
               for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
                 cluster.userIntent.ybSoftwareVersion = taskParams().softwareVersion;
+              }
+              if (taskParams().softwareUpgradeState != null) {
+                universeDetails.softwareUpgradeState = taskParams().softwareUpgradeState;
               }
               universe.setUniverseDetails(universeDetails);
             }
