@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <condition_variable>
 #include <deque>
 #include <map>
 #include <memory>
@@ -179,10 +180,16 @@ class MvccManager {
       const SafeTimeFunc& safe_time_func, std::unique_lock<std::mutex>* lock) const
       REQUIRES(mutex_);
 
+  struct ReachedWaiters {
+    std::vector<std::shared_ptr<Synchronizer>> waiters;
+    bool notify_cond = false;
+  };
+
   // Takes out the waiters that the current safe time could let through. The caller wakes them
   // after releasing mutex_.
-  [[nodiscard]] std::vector<std::shared_ptr<Synchronizer>> ExtractReachedWaiters()
-      REQUIRES(mutex_);
+  [[nodiscard]] ReachedWaiters ExtractReachedWaiters() REQUIRES(mutex_);
+
+  void WakeWaiters(const ReachedWaiters& reached) const;
 
   SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
 
@@ -203,6 +210,10 @@ class MvccManager {
   // Waiters in DoGetSafeTime and in SafeTimeForFollower.
   mutable SafeTimeWaiters safe_time_waiters_ GUARDED_BY(mutex_);
   mutable SafeTimeWaiters follower_safe_time_waiters_ GUARDED_BY(mutex_);
+
+  // Waiters on cond_, used while FLAGS_mvcc_wake_all_safe_time_waiters is set.
+  mutable std::condition_variable cond_;
+  mutable size_t cond_waiters_ GUARDED_BY(mutex_) = 0;
 
   struct QueueItem {
     HybridTime hybrid_time;

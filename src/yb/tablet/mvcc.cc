@@ -64,6 +64,10 @@ DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,
 DEFINE_test_flag(int32, inject_mvcc_delay_add_leader_pending_ms, 0,
                  "Inject delay after MvccManager::AddLeaderPending read clock.");
 
+DEFINE_RUNTIME_bool(mvcc_wake_all_safe_time_waiters, false,
+                    "Benchmark only: wait for safe time on a condition variable that every safe "
+                    "time change notifies, as before targeted wakeups.");
+
 namespace yb {
 namespace tablet {
 
@@ -256,16 +260,6 @@ std::string SafeTimeWithSource::ToString() const {
 // MvccManager
 // ------------------------------------------------------------------------------------------------
 
-namespace {
-
-void WakeWaiters(const std::vector<std::shared_ptr<Synchronizer>>& waiters) {
-  for (const auto& waiter : waiters) {
-    waiter->StatusCB(Status::OK());
-  }
-}
-
-} // namespace
-
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
     : prefix_(std::move(prefix)),
       clock_(std::move(clock)) {
@@ -298,6 +292,17 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
       return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
     }
 
+    if (GetAtomicFlag(&FLAGS_mvcc_wake_all_safe_time_waiters)) {
+      ++cond_waiters_;
+      if (deadline == CoarseTimePoint::max()) {
+        cond_.wait(*lock);
+      } else {
+        cond_.wait_until(*lock, deadline);
+      }
+      --cond_waiters_;
+      continue;
+    }
+
     auto waiter = std::make_shared<Synchronizer>();
     waiters->emplace(min_allowed, waiter);
     lock->unlock();
@@ -316,8 +321,11 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
   }
 }
 
-std::vector<std::shared_ptr<Synchronizer>> MvccManager::ExtractReachedWaiters() {
-  std::vector<std::shared_ptr<Synchronizer>> result;
+MvccManager::ReachedWaiters MvccManager::ExtractReachedWaiters() {
+  ReachedWaiters reached;
+  reached.notify_cond =
+      cond_waiters_ > 0 || GetAtomicFlag(&FLAGS_mvcc_wake_all_safe_time_waiters);
+  auto& result = reached.waiters;
   auto extract = [&result](SafeTimeWaiters& waiters, HybridTime safe_time) {
     const auto end = waiters.upper_bound(safe_time);
     for (auto it = waiters.begin(); it != end; ++it) {
@@ -329,7 +337,7 @@ std::vector<std::shared_ptr<Synchronizer>> MvccManager::ExtractReachedWaiters() 
   if (closing_) {
     extract(safe_time_waiters_, HybridTime::kMax);
     extract(follower_safe_time_waiters_, HybridTime::kMax);
-    return result;
+    return reached;
   }
   // A waiter never waits past its own ht_lease.lease: Tablet::DoGetSafeTime waits for the lease to
   // reach min_allowed, and DoGetSafeTime CHECKs it. So the lease never holds a waiter back, and
@@ -344,14 +352,23 @@ std::vector<std::shared_ptr<Synchronizer>> MvccManager::ExtractReachedWaiters() 
   if (!follower_safe_time_waiters_.empty()) {
     extract(follower_safe_time_waiters_, FollowerSafeTime().safe_time);
   }
-  return result;
+  return reached;
+}
+
+void MvccManager::WakeWaiters(const ReachedWaiters& reached) const {
+  for (const auto& waiter : reached.waiters) {
+    waiter->StatusCB(Status::OK());
+  }
+  if (reached.notify_cond) {
+    YB_PROFILE(cond_.notify_all());
+  }
 }
 
 void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
   CHECK(!op_id.empty());
 
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -368,7 +385,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
 }
 
 void MvccManager::StartShutdown() {
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::lock_guard lock(mutex_);
     closing_ = true;
@@ -380,7 +397,7 @@ void MvccManager::StartShutdown() {
 void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
 
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -512,7 +529,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
 void MvccManager::SetLastReplicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -527,7 +544,7 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
 void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::lock_guard lock(mutex_);
     if (op_trace_) {
@@ -551,7 +568,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
     NO_THREAD_SAFETY_ANALYSIS {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht_lease << ")";
 
-  std::vector<std::shared_ptr<Synchronizer>> waiters;
+  ReachedWaiters waiters;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     auto safe_time_result = DoGetSafeTime(HybridTime::kMin,       // min_allowed
