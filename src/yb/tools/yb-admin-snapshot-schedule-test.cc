@@ -6946,8 +6946,8 @@ TEST_F_EX(
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 
-  // Without the fix, ROLLBACK waits out the full DDL verification timeout (10 min) and the DDL's
-  // object locks stay held until then.
+  // If the hidden index keeps its DDL state, ROLLBACK waits out the full DDL verification timeout
+  // (10 min) and the DDL's object locks stay held until then.
   const auto start = MonoTime::Now();
   // PITR may have killed the backend, which also aborts the transaction.
   WARN_NOT_OK(conn.Execute("ROLLBACK"), "ROLLBACK after PITR failed");
@@ -6963,6 +6963,10 @@ TEST_F_EX(
 
   ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = $0", 60000 * kTimeMultiplier));
   ASSERT_OK(conn.Execute("CREATE TABLE after_pitr (k INT PRIMARY KEY)"));
+  // Conflicts with any lock CREATE INDEX still holds on t.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
+  ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_LT(MonoTime::Now() - start, 120s * kTimeMultiplier);
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT COUNT(*) FROM pg_class WHERE relname = 't_v'")), 0);

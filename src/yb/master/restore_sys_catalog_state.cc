@@ -950,10 +950,9 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     pb.set_hide_state(SysTablesEntryPB::HIDING);
   }
 
-  // The restore undoes any DDL in progress on this table. Leaving its DDL state would make the
-  // reloaded master verify that DDL against a table that is HIDDEN, or soon DELETED by
-  // CleanupHiddenTables, and neither path clears the state. Verification would then never finish
-  // and the DDL's object locks would stay held.
+  // The restore undoes any DDL in progress on this table, so drop its DDL state. For a colocated
+  // table, which goes straight to HIDDEN, nothing else clears it: the reloaded master would never
+  // finish verifying that DDL, and the DDL's object locks would stay held.
   pb.clear_ysql_ddl_txn_verifier_state();
   pb.clear_transaction();
 
