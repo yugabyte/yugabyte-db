@@ -5748,6 +5748,16 @@ AbortSubTransaction(void)
 	s->state = TRANS_ABORT;
 
 	/*
+	 * YB: Drop this subtransaction's buffered writes before any step below can
+	 * flush them (e.g. AtSubAbort_Snapshot restoring the outer read point in
+	 * READ COMMITTED). A flush error here would leave the subtransaction
+	 * half-aborted, and PL/pgSQL's cleanup then frees ExprContexts that outer
+	 * subtransaction callbacks still reference.
+	 */
+	if (IsYugaByteEnabled())
+		YBCPgDiscardBufferedOperations();
+
+	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in
 	 * AbortTransaction.)
 	 */
