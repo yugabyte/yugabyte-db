@@ -296,6 +296,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     outbound_replication_group_pb.set_automatic_ddl_mode(UseAutomaticMode());
     auto group = std::make_shared<XClusterOutboundReplicationGroupMocked>(
         kReplicationGroupId, outbound_replication_group_pb, helper_functions, *task_factory);
+    std::lock_guard l(mutex_);
     outbound_replication_groups_.push_back(group);
     return group;
   }
@@ -336,6 +337,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<XClusterOutboundReplicationGroupTaskFactoryMocked> task_factory;
   std::vector<std::shared_ptr<XClusterOutboundReplicationGroupMocked>> outbound_replication_groups_;
+  std::atomic<bool> is_automatic_mode_switchover{false};
+  std::vector<NamespaceId> start_persisting_namespace_ids GUARDED_BY(mutex_);
 
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
       .create_sequences_data_table_func = [this]() -> Status {
@@ -377,7 +380,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             return table_designators;
           },
-      .is_automatic_mode_switchover_func = [](const NamespaceId&) { return false; },
+      .is_automatic_mode_switchover_func =
+          [this](const NamespaceId&) { return is_automatic_mode_switchover.load(); },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&,
                  bool /*automatic_ddl_mode*/, bool /*allow_hidden_table*/,
@@ -433,7 +437,42 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         }
         return Status::OK();
       },
+      .start_persisting_func =
+          [this](const NamespaceId& namespace_id, const LeaderEpoch&) -> Status {
+        EXPECT_TRUE(UseAutomaticMode());
+        // The caller backs up a namespace once it is READY, so the barrier must come first.
+        std::vector<std::shared_ptr<XClusterOutboundReplicationGroupMocked>> groups;
+        {
+          SharedLock l(mutex_);
+          groups = outbound_replication_groups_;
+        }
+        bool checked = false;
+        for (const auto& group : groups) {
+          if (!group->HasNamespace(namespace_id)) {
+            continue;
+          }
+          EXPECT_FALSE(VERIFY_RESULT(group->GetNamespaceCheckpointInfo(namespace_id)));
+          checked = true;
+        }
+        // The group checkpointing namespace_id has it, so the check above ran.
+        EXPECT_TRUE(checked);
+        std::lock_guard l(mutex_);
+        start_persisting_namespace_ids.push_back(namespace_id);
+        return Status::OK();
+      },
   };
+
+  // The namespaces start_persisting_func was called for, in order.
+  std::vector<NamespaceId> GetStartPersistingNamespaceIds() {
+    SharedLock l(mutex_);
+    return start_persisting_namespace_ids;
+  }
+
+  // What GetStartPersistingNamespaceIds should return in automatic mode, and empty otherwise.
+  std::vector<NamespaceId> ExpectedStartPersistingNamespaceIds(
+      std::vector<NamespaceId> namespace_ids) {
+    return UseAutomaticMode() ? namespace_ids : std::vector<NamespaceId>{};
+  }
 
   Result<scoped_refptr<NamespaceInfo>> GetNamespace(const NamespaceIdentifierPB& ns_identifier) {
     scoped_refptr<NamespaceInfo> ns_info;
@@ -523,6 +562,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, TestMultipleTable) {
   ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   ASSERT_OK(outbound_rg.AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
   ASSERT_TRUE(outbound_rg.HasNamespace(kNamespaceId));
+  ASSERT_EQ(GetStartPersistingNamespaceIds(), ExpectedStartPersistingNamespaceIds({kNamespaceId}));
 
   auto ns_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info_opt.has_value());
@@ -610,6 +650,12 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddDeleteNamespaces)
 
   // We should have 4 normal streams now.
   ASSERT_EQ(xcluster_streams.size(), 4 + 2 * OverheadStreamsCount());
+
+  // Only the two checkpoints that completed started persisting: the task removed while blocked
+  // never reached the barrier.
+  ASSERT_EQ(
+      GetStartPersistingNamespaceIds(),
+      ExpectedStartPersistingNamespaceIds({kNamespaceId, namespace_id_2}));
 
   // The info of the first namespace should not change.
   auto ns1_info_dup = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
@@ -841,6 +887,15 @@ TEST_F(XClusterOutboundReplicationGroupMockedAutomaticDDLMode, AutoCreateSysTabl
   ASSERT_TRUE(TableExists(kPgSequencesDataNamespaceId, kPgSequencesDataTableId));
   ASSERT_TRUE(TableExists(kNamespaceId, /*table_id=*/xcluster::kDDLQueueTableName));
   ASSERT_TRUE(TableExists(kNamespaceId, /*table_id=*/xcluster::kDDLReplicatedTableName));
+}
+
+// Checks that checkpointing a namespace for switchover does not start persisting it.
+TEST_F(XClusterOutboundReplicationGroupMockedAutomaticDDLMode, NoStartPersistingOnSwitchover) {
+  ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
+  is_automatic_mode_switchover = true;
+  auto outbound_rg_ptr = CreateReplicationGroup();
+  ASSERT_OK(outbound_rg_ptr->AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
+  ASSERT_TRUE(GetStartPersistingNamespaceIds().empty());
 }
 
 TEST_F(

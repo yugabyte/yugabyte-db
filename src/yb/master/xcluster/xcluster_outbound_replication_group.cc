@@ -1473,4 +1473,18 @@ Status XClusterOutboundReplicationGroup::SetupDDLReplicationExtension(
   return helper_functions_.setup_ddl_replication_extension_func(namespace_id, std::move(callback));
 }
 
+Status XClusterOutboundReplicationGroup::MaybeBlockWritesStartedBeforeCheckpoint(
+    const NamespaceId& namespace_id, const LeaderEpoch& epoch) const {
+  if (!AutomaticDDLMode()) {
+    return Status::OK();
+  }
+  // On switchover this group is being created on the current target, which should have no user
+  // YSQL writes or commits for the barrier to refuse; skip it rather than add one whose interaction
+  // with the target's DDL replay would need testing.
+  if (helper_functions_.is_automatic_mode_switchover_func(namespace_id)) {
+    return Status::OK();
+  }
+  return helper_functions_.start_persisting_func(namespace_id, epoch);
+}
+
 }  // namespace yb::master
