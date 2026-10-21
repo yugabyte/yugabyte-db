@@ -1818,7 +1818,7 @@ Status PgApiImpl::FetchRequestedYbctids(
   return select.Exec(exec_params);
 }
 
-Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
+Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uint64_t* ybctids) {
   const auto sz = yb::make_unsigned(n);
   const auto ybctids_span = std::span{ybctids, sz};
   VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetRequestedYbctids(

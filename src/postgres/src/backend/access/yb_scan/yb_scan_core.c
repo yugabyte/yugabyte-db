@@ -2194,15 +2194,7 @@ YbBindSearchArray(YbOpaque ybScan, YbScanPlan scan_plan,
 							   num_elems, elem_values);
 	}
 	else if (scalar_attnum == YBTupleIdAttributeNumber)
-		/*
-		 * YB_TODO_PG19MERGE: PG19 (commit 2a600a93c7be5b0bf8cacb1af78009db12bc4857
-		 * "Make type Datum be 8 bytes wide everywhere") changed Datum from
-		 * uintptr_t to uint64_t. YBC's YBCPgBindYbctids declares the datums
-		 * param as uintptr_t*; the two are now distinct pointer types under
-		 * -Wint-conversion. Cast for now; long-term update ybc_pggate.h to
-		 * take Datum (or uint64_t).
-		 */
-		YBCPgBindYbctids(ybScan->handle, num_elems, (uintptr_t *) elem_values);
+		YBCPgBindYbctids(ybScan->handle, num_elems, elem_values);
 	else
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scalar_attnum, num_elems,

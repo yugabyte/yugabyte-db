@@ -632,7 +632,7 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const YbcPgExecParameters *exec_params,
                                YbcConstSliceVector ybctids);
 
-  Status BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids);
+  Status BindYbctids(PgStatement* handle, int n, uint64_t* ybctids);
 
   bool IsValidYbctid(uint64_t ybctid);
 
