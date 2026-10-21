@@ -43,6 +43,7 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
       PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
   private static final int INT4_OID = 23;
   private static final int TEXT_OID = 25;
+  private static final String PG_OUTPUT_PLUGIN_NAME = "pgoutput";
   private static final int INT8_OID = 20;
   private static final int VARCHAR_OID = 1043;
 
@@ -1755,6 +1756,100 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
         update("1", "uno"),
         relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
         insert("1", "new"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // ALTER PUBLICATION ... RENAME invalidates only pgoutput's RelationSyncCache: the entries of the
+  // publication's tables, or the whole cache for a FOR ALL TABLES publication. The walsender must
+  // apply that invalidation, also when the rename runs on another node: once the streamed
+  // publication is renamed away, its table is no longer published. A second publication on another
+  // table shows when the walsender has moved past the change that must be skipped. Needs this
+  // class's mode, where the walsender applies catalog invalidations during streaming and reads the
+  // catalog as of each change.
+  @Test
+  public void testPublicationRenameInvalidatesRelSyncCacheOnSameNode() throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(false /* differentNode */, false /* allTables */);
+  }
+
+  @Test
+  public void testPublicationRenameInvalidatesRelSyncCacheOnDifferentNode() throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(true /* differentNode */, false /* allTables */);
+  }
+
+  @Test
+  public void testAllTablesPublicationRenameInvalidatesRelSyncCacheOnSameNode() throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(false /* differentNode */, true /* allTables */);
+  }
+
+  @Test
+  public void testAllTablesPublicationRenameInvalidatesRelSyncCacheOnDifferentNode()
+      throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(true /* differentNode */, true /* allTables */);
+  }
+
+  private void testPublicationRenameInvalidatesRelSyncCache(
+      boolean differentNode, boolean allTables) throws Exception {
+    // The walsender looks its publications up by name whenever it refreshes the publication table
+    // list, and fails if one is missing. Keep that from happening while the publication is renamed
+    // away: no implicit refresh on catalog changes, and no periodic one during the test.
+    Map<String, String> tserverFlags = getTServerFlags();
+    Map<String, String> masterFlags = getMasterFlags();
+    tserverFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication", "false");
+    masterFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication", "false");
+    tserverFlags.put("cdcsdk_publication_list_refresh_interval_secs", "10000");
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b int)");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b int)");
+      stmt.execute("ALTER TABLE t2 REPLICA IDENTITY DEFAULT");
+      stmt.execute(allTables
+          ? "CREATE PUBLICATION pub FOR ALL TABLES"
+          : "CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("CREATE PUBLICATION pub2 FOR TABLE t2");
+    }
+
+    String slotName = "test_pub_rename_relsync";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = startStream(replConnection, slotName, "pub,pub2");
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    try (Connection ddlConn =
+             getConnectionBuilder().withTServer(differentNode ? 1 : 0).connect();
+         Statement stmt = ddlConn.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      result.addAll(receiveMessage(stream, 4));
+
+      stmt.execute("ALTER PUBLICATION pub RENAME TO pub_renamed");
+      // Let the new catalog version reach the walsender's node.
+      waitForTServerHeartbeat();
+      // Not published: "pub" no longer exists, and t1 is in no other publication.
+      stmt.execute("INSERT INTO t1 VALUES (2, 2)");
+      // Published through pub2. Arrives first only if the insert above was skipped.
+      stmt.execute("INSERT INTO t2 VALUES (3, 3)");
+      result.addAll(receiveMessage(stream, 4));
+    }
+
+    // pgoutput rejects replica identity CHANGE, so the tables use DEFAULT ('d'), unlike relation().
+    List<PgOutputRelationMessageColumn> columns =
+        Arrays.asList(column("a", INT4_OID), column("b", INT4_OID));
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("public", "t1", 'd', columns),
+        insert("1", "1"),
+        commitMessage(),
+        beginMessage(4),
+        PgOutputRelationMessage.CreateForComparison("public", "t2", 'd', columns),
+        insert("3", "3"),
         commitMessage());
     assertMessages(expectedResult, result);
 
