@@ -7121,7 +7121,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("ALTER TABLE t REPLICA IDENTITY DEFAULT");
       stmt.execute("CREATE PUBLICATION pub FOR TABLE t");
       stmt.execute("SELECT pg_create_logical_replication_slot("
-          + "'slot', 'pgoutput', false, false, 'HYBRID_TIME')");
+          + "'slot', 'pgoutput', false, false, false, 'HYBRID_TIME')");
       stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i");
       stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(100, 1299) i");
     }
