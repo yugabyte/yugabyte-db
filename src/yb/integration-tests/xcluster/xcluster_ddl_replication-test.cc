@@ -626,6 +626,28 @@ TEST_F(XClusterDDLReplicationTest, TableInNonDefaultSchema) {
   ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
 }
 
+TEST_F(XClusterDDLReplicationTest, DDLResolvesObjectsThroughFullSearchPath) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // A type that lives in public, standing in for an extension type like pgvector's `vector`.
+  ASSERT_OK(producer_conn_->Execute("CREATE DOMAIN public.pos_int AS int CHECK (VALUE > 0)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The application uses its own schema first in the search path, with public after it.
+  // The CREATE TABLE lands in app_schema but resolves pos_int through public.
+  const std::string kSchemaName = "app_schema";
+  const std::string kTableName = "app_items";
+  ASSERT_OK(producer_conn_->ExecuteFormat("SET search_path TO $0, public", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, v pos_int)", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10), (2, 20)", kTableName));
+
+  // The target must replay the DDL with the same search path, so that pos_int resolves there too.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTableWithNonZeroLogicalCommitTime) {
   ASSERT_OK(SetUpClustersAndReplication());
 
