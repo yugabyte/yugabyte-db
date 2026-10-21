@@ -195,7 +195,7 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 						/* Don't add the partition to the output list */
 						continue;
 					}
-				}
+				}				/* YB: end of the !IsYugaByteEnabled() branch */
 			}
 		}
 
