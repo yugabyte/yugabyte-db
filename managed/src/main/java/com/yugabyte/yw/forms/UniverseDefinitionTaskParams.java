@@ -598,9 +598,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (!userIntent.isMulticloudSupport()) {
         return userIntent.providerType;
       }
-      UUID providerUUID = getProviderUUIDForNode(nodeDetails);
-      return userIntent.getProviderSpecProperty(
-          providerUUID, spec -> spec.providerType, u -> u.providerType);
+      Optional<ProviderSpecification> providerOpt =
+          searchProviderUUIDByAz(nodeDetails.azUuid)
+              .map(uuid -> userIntent.getProviderSpecification(uuid));
+      if (!providerOpt.isPresent()) {
+        return Util.getProviderByAz(nodeDetails.azUuid).getCloudCode();
+      } else {
+        return providerOpt.get().providerType;
+      }
     }
 
     /**
@@ -701,7 +706,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
       if (userIntent.isMulticloudSupport()) {
-        Util.validateSpecificationsIfPresent(userIntent.providerSpecifications, false);
+        Util.validateSpecificationsIfPresent(
+            userIntent.dedicatedNodes, userIntent.providerSpecifications, false);
         Map<UUID, List<NodeDetails>> byAzUUID =
             nodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
         byAzUUID.forEach(
@@ -1230,9 +1236,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     /**
      * Validates all the required fields for ProviderSpecification.
      *
+     * @param isDedicated Whether it is dedicated masters mode.
      * @param isPartialUpdate Whether that state would be used to partially update basic state.
      */
-    public void validate(boolean isPartialUpdate) {
+    public void validate(boolean isDedicated, boolean isPartialUpdate) {
       if (providerUUID == null) {
         throw new PlatformServiceException(BAD_REQUEST, "providerUUID must be set");
       }
@@ -1242,10 +1249,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (nodesSpecs == null) {
         throw new PlatformServiceException(BAD_REQUEST, "nodesSpecs must be set");
       }
+      HierarchicalNodesSpec.NodeSpec tserverSpecification = nodesSpecs.getTserverSpecification();
+      HierarchicalNodesSpec.NodeSpec masterSpecification = nodesSpecs.getMasterSpecification();
+
       if (!isPartialUpdate) {
-        if (nodesSpecs.getTserverSpecification() == null) {
+        if (tserverSpecification == null) {
           throw new PlatformServiceException(
               BAD_REQUEST, "nodesSpecs.tserverSpecification must be set");
+        }
+        if (tserverSpecification.getInstanceType() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base instance type for tserver");
+        }
+        if (tserverSpecification.getDeviceInfo() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for tserver");
+        }
+        if (isDedicated) {
+          if (masterSpecification == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "nodesSpecs.masterSpecification must be set for dedicated masters mode");
+          }
+          if (masterSpecification.getInstanceType() == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Specify base instance type for master");
+          }
+          if (masterSpecification.getDeviceInfo() == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for master");
+          }
+        }
+      }
+
+      if (!isDedicated) {
+        if (masterSpecification != null && !masterSpecification.isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
         }
       }
       nodesSpecs.validate();
