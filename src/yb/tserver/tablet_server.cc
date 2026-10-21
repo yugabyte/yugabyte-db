@@ -62,6 +62,8 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/walltime.h"
+
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 
@@ -111,6 +113,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
@@ -197,6 +201,18 @@ DEFINE_NON_RUNTIME_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit"
 
 DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
+
+DEFINE_RUNTIME_bool(enable_active_table_metrics_filtering, true,
+    "Kill switch for filtering table-level metrics on /prometheus-metrics using the latest active "
+    "table list supplied through SetActiveTableIdsForMetrics. The opt-in is the scrape URL: a "
+    "scrape is filtered only if it passes version=v2 and apply_table_IDs_filter=true, and such a "
+    "scrape exports no filtered table metrics until the first list is received. When this flag is "
+    "disabled, all table metrics are exported regardless of the URL parameters.");
+
+DEFINE_RUNTIME_uint32(max_active_table_metrics_table_count, 1000,
+    "Safety cap on the number of table IDs accepted by SetActiveTableIdsForMetrics. Requests "
+    "exceeding this limit are rejected and the previously accepted list remains active. Zero "
+    "allows only an empty list.");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
@@ -309,6 +325,24 @@ DECLARE_string(ysql_ident_conf_csv);
 DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::tserver {
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_last_update_time, "Active Table Metrics Last Update Time",
+    MetricUnit::kMicroseconds,
+    "Physical time of the last SetActiveTableIdsForMetrics request received by this tablet server. "
+    "Zero means no request has been received since process start.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_table_count, "Active Table Metrics Table Count",
+    MetricUnit::kEntries,
+    "Number of table IDs in the active table list last accepted by SetActiveTableIdsForMetrics.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, active_table_metrics_list_version, "Active Table Metrics List Version",
+    MetricUnit::kUnits,
+    "Version supplied by the caller with the active table list last accepted by "
+    "SetActiveTableIdsForMetrics. Zero means no list has been received since process start, or "
+    "the caller did not supply a version.");
 
 constexpr auto kYsqlPgConfCsvFlag = "ysql_pg_conf_csv";
 constexpr auto kYsqlHbaConfCsvFlag = "ysql_hba_conf_csv";
@@ -445,6 +479,12 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
 #endif
       {
+  active_table_metrics_last_update_time_ =
+      METRIC_active_table_metrics_last_update_time.Instantiate(metric_entity(), 0);
+  active_table_metrics_table_count_ =
+      METRIC_active_table_metrics_table_count.Instantiate(metric_entity(), 0);
+  active_table_metrics_list_version_ =
+      METRIC_active_table_metrics_list_version.Instantiate(metric_entity(), 0);
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   ysql_db_catalog_version_index_used_ =
@@ -462,6 +502,51 @@ std::string TabletServer::ToString() const {
   return Format("TabletServer : rpc=$0, uuid=$1",
                 yb::ToString(first_rpc_address()),
                 fs_manager_->uuid());
+}
+
+// The list is accepted and stored regardless of enable_active_table_metrics_filtering. The flag
+// only gates whether scrapes may use the list, so an operator turning it on takes effect
+// immediately instead of waiting for the caller's next push.
+Status TabletServer::SetActiveTableIdsForMetrics(
+    std::unordered_set<std::string> table_ids, uint32_t list_version) {
+  // The RPC handler already rejects oversized lists while copying the request; this covers other
+  // callers.
+  if (table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Active table list contains $0 tables, exceeding the limit of $1",
+        table_ids.size(), FLAGS_max_active_table_metrics_table_count);
+  }
+  const auto table_count = table_ids.size();
+  const auto update_time = static_cast<uint64_t>(GetCurrentTimeMicros());
+  std::lock_guard lock(active_table_metrics_mutex_);
+  active_table_ids_for_metrics_ = ActiveTableIdsForMetrics{
+    .table_ids = std::make_shared<const std::unordered_set<std::string>>(std::move(table_ids)),
+    .list_version = list_version,
+    .last_update_time = update_time,
+  };
+  // Updated under the lock so that the gauges always describe the stored list, even when requests
+  // race.
+  active_table_metrics_table_count_->set_value(table_count);
+  active_table_metrics_list_version_->set_value(list_version);
+  active_table_metrics_last_update_time_->set_value(update_time);
+  return Status::OK();
+}
+
+ActiveTableIdsForMetrics TabletServer::GetActiveTableIdsForMetrics() const {
+  std::lock_guard lock(active_table_metrics_mutex_);
+  return active_table_ids_for_metrics_;
+}
+
+void TabletServer::ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {
+  // apply_table_ids_filter is only parsed for v2 scrapes.
+  if (!FLAGS_enable_active_table_metrics_filtering || !options->apply_table_ids_filter) {
+    return;
+  }
+  static const auto kNoActiveTables =
+      std::make_shared<const std::unordered_set<std::string>>();
+  std::lock_guard lock(active_table_metrics_mutex_);
+  const auto& table_ids = active_table_ids_for_metrics_.table_ids;
+  options->active_table_ids = table_ids ? table_ids : kNoActiveTables;
 }
 
 MonoDelta TabletServer::default_client_timeout() {

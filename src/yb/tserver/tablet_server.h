@@ -73,6 +73,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
@@ -123,6 +124,16 @@ class TserverXClusterContextIf;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
 
+// The active table list last accepted by SetActiveTableIdsForMetrics.
+struct ActiveTableIdsForMetrics {
+  // Null until the first list is accepted.
+  std::shared_ptr<const std::unordered_set<std::string>> table_ids;
+  // Version supplied by the caller with the list, zero if none.
+  uint32_t list_version = 0;
+  // Physical time in microseconds of the last accepted request, zero until then.
+  uint64_t last_update_time = 0;
+};
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
@@ -172,6 +183,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
+
+  Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> table_ids, uint32_t list_version) override;
+
+  // Returns the active table list last accepted by SetActiveTableIdsForMetrics.
+  ActiveTableIdsForMetrics GetActiveTableIdsForMetrics() const;
+
+  void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -686,6 +705,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   };
 
   ClusterConfig cluster_config_;
+
+  mutable std::mutex active_table_metrics_mutex_;
+  ActiveTableIdsForMetrics active_table_ids_for_metrics_ GUARDED_BY(active_table_metrics_mutex_);
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_last_update_time_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_table_count_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_list_version_;
 
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

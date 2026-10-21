@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/replace.hpp>
@@ -347,6 +348,8 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(enable_active_table_metrics_filtering);
+DECLARE_uint32(max_active_table_metrics_table_count);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -3781,6 +3784,55 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   }
   vector<TserverMetricsInfoPB> metrics = result.get();
   *resp->mutable_metrics() = {metrics.begin(), metrics.end()};
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::SetActiveTableIdsForMetrics(
+    const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reported on every response, including rejections, so the caller always learns whether any
+  // scrape can use the list it just sent.
+  resp->set_filtering_enabled(FLAGS_enable_active_table_metrics_filtering);
+
+  // DocDB table IDs are 32 hex characters, and colocation parent IDs are about twice that. The
+  // bound keeps a caller from parking arbitrarily large strings in tablet server memory.
+  constexpr size_t kMaxTableIdLength = 256;
+  // Reserve no more than the limit allows, so an oversized request cannot force a large allocation
+  // before the limit check below rejects it.
+  std::unordered_set<std::string> table_ids;
+  table_ids.reserve(std::min<size_t>(
+      req->table_ids_size(),
+      static_cast<size_t>(FLAGS_max_active_table_metrics_table_count) + 1));
+  for (const auto& table_id : req->table_ids()) {
+    if (table_id.empty() || table_id.size() > kMaxTableIdLength) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "table_ids must be between 1 and $0 bytes long, found $1 bytes",
+              kMaxTableIdLength, table_id.size()),
+          &context);
+      return;
+    }
+    // Checked while copying, so an oversized request is rejected after at most one entry over the
+    // limit instead of after the whole request has been copied. Duplicates do not count.
+    if (table_ids.insert(table_id).second &&
+        table_ids.size() > FLAGS_max_active_table_metrics_table_count) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_FORMAT(
+              InvalidArgument, "Active table list contains more than $0 tables",
+              FLAGS_max_active_table_metrics_table_count),
+          &context);
+      return;
+    }
+  }
+
+  const auto status =
+      server_->SetActiveTableIdsForMetrics(std::move(table_ids), req->list_version());
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 
