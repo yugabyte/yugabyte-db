@@ -91,9 +91,9 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-  title="Manage your account"
-  linkText1="Add Users to your account"
-  linkUrl1="managed-security/manage-access/"
+  title="Manage your accounts"
+  linkText1="Add users and accounts"
+  linkUrl1="managed-security/"
   linkText2="Manage billing"
   linkUrl2="cloud-admin/cloud-billing-profile/"
   linkText3="Automation"
