@@ -37,6 +37,7 @@ public class SoftwareUpgradeRetryPg15LocalTest extends SoftwareUpgradeRetryLocal
               PG_15_DB_VERSION,
               upgraded.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
           assertTrue(upgraded.getUniverseDetails().isSoftwareRollbackAllowed);
+          assertUpgradeProgressCompleted(upgraded);
           verifyPayload();
           verifyYSQL(upgraded);
         });
