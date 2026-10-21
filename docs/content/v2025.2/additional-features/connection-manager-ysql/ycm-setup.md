@@ -154,9 +154,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_password | Not used; internal connections authenticate with the TServer key in v2024.1.0.0 and later |
 | ysql_conn_mgr_max_phy_conn_percent | ysql_conn_mgr_reserve_internal_conns<br>v2025.2.1.0 and later |
 | ysql_conn_mgr_deallocate_if_invalid_prep_stmt (only available in v2025.2.3.0) | Removed. In v2025.2.4.0 through v2025.2.7.0, `ysql_conn_mgr_enable_prep_stmt_close`. |
-| ysql_conn_mgr_enable_prep_stmt_close | Removed in v2025.2.8.0. `Close` of a named protocol-level prepared statement is a no-op. Connection Manager closes those statements by LRU eviction (`ysql_conn_mgr_max_prepared_statements`). `Close` of the unnamed prepared statement is forwarded to the backend and drops it. Available in v2025.2.4.0 through v2025.2.7.0. |
-| ysql_conn_mgr_enable_dealloc_reconciliation | Removed in v2025.2.8.0. No replacement. |
-| ysql_yb_conn_mgr_selective_deallocate | Removed in v2025.2.8.0. `DEALLOCATE` of a protocol-level prepared statement is a no-op. `DEALLOCATE` still drops a SQL-level prepared statement created with `PREPARE`. Available in v2025.2.4.0 through v2025.2.7.0. |
+| ysql_conn_mgr_enable_prep_stmt_close | Deprecated in v2025.2.8.0; has no effect. `Close` of a named protocol-level prepared statement is a no-op. Connection Manager closes those statements by LRU eviction (`ysql_conn_mgr_max_prepared_statements`). `Close` of the unnamed prepared statement is forwarded to the backend and drops it. Available in v2025.2.4.0 through v2025.2.7.0. |
+| ysql_conn_mgr_enable_dealloc_reconciliation | Deprecated in v2025.2.8.0; has no effect. No replacement. |
+| ysql_yb_conn_mgr_selective_deallocate | Deprecated in v2025.2.8.0; has no effect. `DEALLOCATE` of a protocol-level prepared statement is a no-op. `DEALLOCATE` still drops a SQL-level prepared statement created with `PREPARE`. Available in v2025.2.4.0 through v2025.2.7.0. |
 
 ## Authentication methods
 
