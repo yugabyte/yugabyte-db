@@ -294,7 +294,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool need_restart_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
-  bool read_only_stmt_ = false;
+  std::optional<bool> read_only_stmt_;
+  std::optional<uint64_t> relaxed_read_time_serial_no_;
 
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
@@ -328,8 +329,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                is determined by the GUCs "default_transaction_read_only" and
   //                "transaction_read_only". Note that a transaction can be marked as read-only
   //                after it has already performed some writes.
-  // 2. read_only_stmt_: Does the current statement write to non temporary tables? Relevant in the
-  //                     context of read-only transactions, where all statements must be read-only.
+  // 2. read_only_stmt_: Has every statement of the current transaction,
+  //                     nested ones included, been free of writes and row
+  //                     locks? Relaxed read-after-commit visibility applies
+  //                     only while it is true.
   // 3. has_writes_: Has the current transaction performed any writes to non temporary tables?
   //                 This is used to track whether the transaction writes use the "fast path".
   //                 Note that a transaction can be marked as non-read-only and not have any writes.

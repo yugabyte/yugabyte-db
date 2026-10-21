@@ -351,7 +351,19 @@ Status PgTxnManager::SetInTxnBlock(bool in_txn_blk) {
 }
 
 Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
-  read_only_stmt_ = read_only_stmt;
+  // Postgres reports every statement here, including a SELECT that a trigger
+  // or function runs inside an UPDATE. That SELECT must not mark the UPDATE
+  // as read-only.
+  read_only_stmt_ = read_only_stmt_.value_or(true) && read_only_stmt;
+  // In REPEATABLE READ, a function that a relaxed SELECT calls runs its
+  // writes at the SELECT's clamped read point, which relaxed mode allows
+  // only for reads (#35522).
+  SCHECK(
+      read_only_stmt ||
+          relaxed_read_time_serial_no_ != serial_no_.read_time(),
+      NotSupported,
+      "Cannot write or lock rows at the read time of a read that uses "
+      "yb_read_after_commit_visibility = relaxed.");
   VLOG_WITH_FUNC(2)
     << "Executing a " << (read_only_stmt ? "read only " : "read/write ")
     << "stmt.";
@@ -602,7 +614,8 @@ void PgTxnManager::ResetTxnAndSession() {
   enable_tracing_ = false;
   crosstxn_snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-  read_only_stmt_ = false;
+  read_only_stmt_.reset();
+  relaxed_read_time_serial_no_.reset();
   clamp_uncertainty_window_ = false;
 
   // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
@@ -715,8 +728,18 @@ bool PgTxnManager::ShouldResetReadTime(std::optional<ReadTimeAction> read_time_a
 }
 
 bool PgTxnManager::ShouldClamp() const {
-  return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
-         clamp_uncertainty_window_;
+  if (clamp_uncertainty_window_) {
+    return true;
+  }
+  // A clamped read time misses rows that a node with a faster clock committed
+  // just before. Relaxed mode accepts that for reads only. A write can still
+  // be ordered after the commit it missed: a parent DELETE whose foreign key
+  // check misses a new child row leaves an orphan (#35522). A REPEATABLE READ
+  // txn block shares one read point, so its later writes would inherit the
+  // clamp of an earlier read.
+  return yb_read_after_commit_visibility ==
+             YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
+         (read_only_ || (!in_txn_blk_ && read_only_stmt_.value_or(false)));
 }
 
 Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
@@ -888,6 +911,9 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   if (ShouldClamp()) {
+    if (!clamp_uncertainty_window_) {
+      relaxed_read_time_serial_no_ = serial_no_.read_time();
+    }
     read_time_options.set_clamp_uncertainty_window(true);
     return Status::OK();
   }

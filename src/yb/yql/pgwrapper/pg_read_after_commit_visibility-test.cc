@@ -393,6 +393,34 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     }
   }
 
+  // #35522: relaxed mode must not clamp the read time of a write or a row
+  // lock. A clamped write can miss a row committed before it and still be
+  // ordered after that commit: a parent DELETE whose foreign key check
+  // misses a new child row leaves an orphan.
+  //
+  // Scenario: the data node's clock jumps 100ms ahead and a session there
+  // inserts row k = 1. Then a relaxed session on the proxy runs `query`,
+  // which must return that row.
+  void CheckRelaxedWriteSeesNewRow(const std::string& query) {
+    auto proxy_conn = ASSERT_RESULT(ConnectToProxy());
+    auto host_conn = ASSERT_RESULT(ConnectToDataHost());
+    ASSERT_OK(host_conn.Execute(
+        "CREATE TABLE kv (k INT, v INT, PRIMARY KEY(k HASH)) "
+        "SPLIT INTO 1 TABLETS"));
+
+    // Populate the catalog cache on the proxy.
+    ASSERT_OK(proxy_conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    ASSERT_RESULT(proxy_conn.FetchRows<int32_t>(query));
+    ASSERT_OK(proxy_conn.RollbackTransaction());
+    ASSERT_OK(proxy_conn.Execute(
+        "SET yb_read_after_commit_visibility = relaxed"));
+
+    auto changers = JumpClockDataNodes(100ms);
+    ASSERT_OK(host_conn.Execute("INSERT INTO kv(k) VALUES (1)"));
+    ASSERT_EQ(ASSERT_RESULT(proxy_conn.FetchRows<int32_t>(query)),
+              std::vector<int32_t>{1});
+  }
+
   int conn_idx_ = 0;
   int proxy_idx_ = 1;
   int host_idx_ = 0;
@@ -479,9 +507,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeDuplicateKeyInsert) {
   }, "INSERT INTO kv(k) VALUES (1)");
 }
 
-// Ensure that relaxed mode doesn't apply to fast-path writes.
-// However, relaxed mode is applied to distributed txn writes.
-// So, read-after-write visibility is not guaranteed for distributed txn writes.
+// Ensure that relaxed mode applies to neither fast-path nor distributed txn
+// writes.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathUpdate) {
   RunTest(Config{
     .is_dml = true,
@@ -505,8 +532,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathDelete) {
   ASSERT_EQ(rows.size(), 0);
 }
 
-// Hidden DMLs are still DMLs. So, relaxed mode is applied to them.
-// However, duplicate key violations are not ignored.
+// Hidden DMLs are still DMLs. So, relaxed mode does not apply to them,
+// and duplicate key violations are not ignored.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeHiddenDmlDuplicateKey) {
   RunTest(
     Config{
@@ -518,6 +545,47 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeHiddenDmlDuplicateKey) {
     "INSERT INTO kv(k) VALUES (1) RETURNING k"
     ") SELECT k FROM new_kv"
   );
+}
+
+// A scanning UPDATE must change a row committed just before on another node.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeScanUpdateSeesNewRow) {
+  CheckRelaxedWriteSeesNewRow(
+      "UPDATE kv SET v = 2 WHERE v IS NULL RETURNING k");
+}
+
+// SELECT FOR UPDATE must lock a row committed just before on another node.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeRowLockSeesNewRow) {
+  CheckRelaxedWriteSeesNewRow(
+      "SELECT k FROM kv WHERE v IS NULL FOR UPDATE");
+}
+
+// #35522: in REPEATABLE READ, a function that a relaxed SELECT calls would
+// write at the SELECT's clamped read time. That write must fail. In READ
+// COMMITTED, the function's INSERT takes a new snapshot, so the same SELECT
+// succeeds.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFunctionWriteInSelect) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE kv (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE kv_log (k INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO kv VALUES (1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION log_k(k INT) RETURNS INT LANGUAGE plpgsql AS "
+      "$$BEGIN INSERT INTO kv_log VALUES (k); RETURN k; END$$"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_read_after_commit_visibility = relaxed"));
+
+  ASSERT_OK(conn.Execute(
+      "SET default_transaction_isolation = 'repeatable read'"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT log_k(k) FROM kv"),
+      "Cannot write or lock rows at the read time of a read");
+
+  ASSERT_OK(conn.Execute(
+      "SET default_transaction_isolation = 'read committed'"));
+  ASSERT_OK(conn.Fetch("SELECT log_k(k) FROM kv"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+                "SELECT COUNT(*) FROM kv_log")),
+            1);
 }
 
 TEST_F(PgReadAfterCommitVisibilityTest, DifferentNodeDeferredRead) {

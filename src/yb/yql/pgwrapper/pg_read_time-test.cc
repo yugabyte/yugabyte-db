@@ -903,13 +903,14 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
   //
-  // relaxed yb_read_after_commit_visibility now clamps the read time for FOR UPDATE queries.
-  CheckReadTimeProvidedToDocdb(
+  // relaxed yb_read_after_commit_visibility does not apply to FOR UPDATE
+  // queries.
+  CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      });
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation
