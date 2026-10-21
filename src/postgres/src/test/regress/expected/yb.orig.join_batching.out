@@ -4836,11 +4836,8 @@ CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
 INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
 INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
   FROM generate_series(1, 30) i WHERE i % 2 = 0;
-SET enable_hashagg = off;
-SET enable_hashjoin = off;
-SET enable_mergejoin = off;
-SET yb_enable_distinct_pushdown = off;
-SET yb_bnl_batch_size = 3;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM bnl_uniq t
   JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
@@ -4858,6 +4855,8 @@ SELECT count(*) FROM bnl_uniq t
                Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
 (9 rows)
 
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
 SELECT count(*) FROM bnl_uniq t
   JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
     ON t.k1 = d.k1 AND t.k2 = d.k2;
@@ -4866,9 +4865,4 @@ SELECT count(*) FROM bnl_uniq t
     45
 (1 row)
 
-RESET enable_hashagg;
-RESET enable_hashjoin;
-RESET enable_mergejoin;
-RESET yb_enable_distinct_pushdown;
-RESET yb_bnl_batch_size;
 DROP TABLE bnl_uniq;
