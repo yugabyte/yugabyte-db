@@ -5747,10 +5747,6 @@ AbortSubTransaction(void)
 
 	s->state = TRANS_ABORT;
 
-	/*
-	 * YB: Clear pggate session state, including this subtransaction's buffered
-	 * writes.
-	 */
 	if (IsYugaByteEnabled())
 		YBCPgClearSessionState();
 
