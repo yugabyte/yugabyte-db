@@ -6936,7 +6936,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithoutGRPC
 // (including followers) and survive master leader failovers.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToFollowerMasters) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  // Scaled because after a failover the new leader's sys_catalog tablet lookup can stall for ~10s
+  // in sanitizer builds, which would otherwise let follower barriers go stale.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) =
+      10 * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
@@ -7000,8 +7003,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
   // CDCMasterBgTask is correctly refreshing them.
   SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+      MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2));
   check_all_masters_barriers();
 
   // Step down the master leader to simulate a failover. Then verify that retention barriers on all
