@@ -67,6 +67,9 @@ permutation s1b s1ins2 s2detach s3ins2 s1rollback
 permutation s1brr s1prep s1s s2detach s1s s1exec1 s3s s1c s1dealloc
 permutation s1brr s1prep s1exec2 s2detach s1s s1exec2 s3s s1c s1dealloc
 permutation s1brr s1prep s1s s2detach s1s s1exec2 s1c s1dealloc
+# YB: s1 reads d_listp only after d_listp2 went pending, so tuple routing omits
+# it and EXECUTE f(2) fails.  Upstream inserts the row; it then leaves with the
+# detached partition.
 permutation s1brr s1prep s2detach s1s s1exec2 s1c s1dealloc
 permutation s1brr s1prep1 s2detach s1s s1exec2 s1c s1dealloc
 permutation s1brr s1prep2 s2detach s1s s1exec2 s1c s1dealloc

@@ -774,6 +774,8 @@ typedef struct EState
 	List	   *yb_es_pk_proutes;
 	/* YB: partition directory used by yb_es_pk_proutes */
 	struct PartitionDirectoryData *yb_es_pk_partition_directory;
+	/* YB: partition directory used by tuple routing */
+	struct PartitionDirectoryData *yb_es_routing_partition_directory;
 
 	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
 	bool yb_read_ahead_allowed;

@@ -9,8 +9,7 @@
 #
 # A pending partition stays visible to a REPEATABLE READ transaction only if
 # that transaction read the parent's partition list before the partition went
-# pending; every other reader that omits detached partitions omits it.
-# Repeatable read tuple routing is the exception (#35568, see below).
+# pending; every other reader omits it.
 
 setup
 {
@@ -79,10 +78,9 @@ permutation sAb sAs sXb sXsnap sDdetach sXprep sXexec sAc sXs sXc sXdealloc
 # sX's snapshot is taken after the marker.
 permutation sAb sAs sDdetach sXb sXs sAc sXs sXc
 permutation sAb sAs sDdetach sCb sCs sXb sXsnap sAc sXs sCc sXs sXc
-# Repeatable read tuple routing still includes the pending partition, so this
-# INSERT queues behind finalize's lock on p2 and the row ends up in p2 after
-# the detach, as in upstream PostgreSQL.
-# TODO(#35568): the INSERT should fail instead; update the expected output.
+# sX first reads the parent after the marker, so tuple routing omits p2 and
+# the INSERT fails.  Upstream routes it into p2, where it waits behind
+# finalize's lock and lands in the detached table.
 permutation sAb sAs sXb sXsnap sDdetach sCb sCs sAc sXi sCc sXs sXc sCcheck
 # Read committed statements omit p2.
 permutation sAb sAs sDdetach sCb sCs sAc sRs sCc sRs

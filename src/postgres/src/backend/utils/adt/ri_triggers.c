@@ -451,7 +451,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 						  TupleTableSlot *pkslot, bool using_index,
 						  TupleConversionMap **leaf_root_conversion_map)
 {
-	PartitionDirectory saved_pdir = estate->es_partition_directory;
+	PartitionDirectory saved_pdir = estate->yb_es_routing_partition_directory;
 	bool		saved_use_latest = yb_detach_pending_use_latest_snapshot;
 	Relation	referenced_rel;
 
@@ -459,7 +459,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 		estate->yb_es_pk_partition_directory =
 			CreatePartitionDirectory(estate->es_query_cxt, true);
 
-	estate->es_partition_directory = estate->yb_es_pk_partition_directory;
+	estate->yb_es_routing_partition_directory = estate->yb_es_pk_partition_directory;
 	yb_detach_pending_use_latest_snapshot = true;
 	PG_TRY();
 	{
@@ -470,7 +470,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 	}
 	PG_FINALLY();
 	{
-		estate->es_partition_directory = saved_pdir;
+		estate->yb_es_routing_partition_directory = saved_pdir;
 		yb_detach_pending_use_latest_snapshot = saved_use_latest;
 	}
 	PG_END_TRY();

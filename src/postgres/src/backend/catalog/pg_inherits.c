@@ -733,9 +733,9 @@ YbResetPartitionListMemo(void)
  * committed, so the second phase waits for it, unless ROLLBACK TO SAVEPOINT
  * has since released that lock; it is then exposed exactly like an upstream
  * snapshot that predates the first phase. Every other omit_detached reader,
- * RI checks included, treats the first phase as committed and omits the
- * partition. Repeatable read tuple routing does not ask to omit detached
- * partitions and still includes it (#35568).
+ * tuple routing and RI checks included, treats the first phase as committed
+ * and omits the partition. Executor runtime pruning does not ask to omit
+ * detached partitions; it only looks up partitions the planner kept.
  */
 bool
 YbDetachPendingInProgress(Oid parentrelid)

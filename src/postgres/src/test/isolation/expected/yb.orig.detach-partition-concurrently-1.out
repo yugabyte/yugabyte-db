@@ -281,8 +281,9 @@ a
 (1 row)
 
 step s1exec2: EXECUTE f(2);
-step s1c: COMMIT;
+ERROR:  no partition of relation "d_listp" found for row
 step s2detach: <... completed>
+step s1c: COMMIT;
 step s1dealloc: DEALLOCATE f;
 
 starting permutation: s1brr s1prep1 s2detach s1s s1exec2 s1c s1dealloc
@@ -311,8 +312,9 @@ a
 (1 row)
 
 step s1exec2: EXECUTE f(2);
-step s1c: COMMIT;
+ERROR:  no partition of relation "d_listp" found for row
 step s2detach: <... completed>
+step s1c: COMMIT;
 step s1dealloc: DEALLOCATE f;
 
 starting permutation: s1brr s1s s1ins s1s s1c s2detach

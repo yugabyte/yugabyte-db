@@ -262,22 +262,18 @@ a
 (1 row)
 
 step sAc: COMMIT;
-step sXi: INSERT INTO parent VALUES (2); <waiting ...>
+step sXi: INSERT INTO parent VALUES (2);
+ERROR:  no partition of relation "parent" found for row
 step sCc: COMMIT;
 step sDdetach: <... completed>
-step sXi: <... completed>
 step sXs: SELECT * FROM parent ORDER BY a;
-a
--
-1
-(1 row)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 step sXc: COMMIT;
 step sCcheck: SELECT 'parent' AS t, count(*) FROM parent UNION ALL SELECT 'p2', count(*) FROM p2;
 t     |count
 ------+-----
 parent|    1
-p2    |    2
+p2    |    1
 (2 rows)
 
 
