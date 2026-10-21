@@ -410,6 +410,16 @@ bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
       cloud_info, LockForRead()->pb.registration().cloud_info());
 }
 
+std::set<std::string> TSDescriptor::GetStorageTiers() const {
+  auto l = LockForRead();
+  const auto& registered = l->pb.registration().storage_tiers();
+  return {registered.begin(), registered.end()};
+}
+
+bool TSDescriptor::HasStorageTier(const std::string& tier) const {
+  return GetStorageTiers().contains(tier);
+}
+
 CloudInfoPB TSDescriptor::GetCloudInfo() const {
   return LockForRead()->pb.registration().cloud_info();
 }

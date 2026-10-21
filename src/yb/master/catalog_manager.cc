@@ -12658,6 +12658,11 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
                                                  TSDescriptorVector* ts_descs) {
   ts_descs->clear();
   for (const auto& ts_desc : all_ts_descs) {
+    // A placement that names a storage tier needs a tserver with a disk on it.
+    if (!placement_info.storage_tier().empty() &&
+        !ts_desc->HasStorageTier(placement_info.storage_tier())) {
+      continue;
+    }
     if (placement_info.has_placement_uuid()) {
       string placement_uuid = placement_info.placement_uuid();
       if (ts_desc->placement_uuid() == placement_uuid) {
@@ -13698,6 +13703,19 @@ Status CatalogManager::ValidateReplicationInfo(
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
   GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  // When the tier is why nothing qualifies, say so: the count check below would only report that
+  // zero tablet servers are alive.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (!storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
+      std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
+        return ts_desc->HasStorageTier(storage_tier);
+      })) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+        STATUS_FORMAT(
+            InvalidArgument, "No live tablet server has a data directory on storage tier $0",
+            storage_tier));
+  }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
