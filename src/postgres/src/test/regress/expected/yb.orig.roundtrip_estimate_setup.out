@@ -42,6 +42,7 @@ create type index_plan_rows as (
     "Storage Index Filter" text,
     "Storage Filter" text,
     "Filter" text,
+    "Partial Aggregate" bool,
     "Actual Loops" float8,
     "Plan Rows" float8,
     "Total Cost" float8,
@@ -223,6 +224,11 @@ insert into explain_query_options values (false);
 -- planner attributes that bundled work to the table side; we move
 -- act_index into act_table for that case (act_table + act_index invariant).
 --
+-- A scan under a pushed-down aggregate ("Partial Aggregate") returns one
+-- partial-aggregate row per read op (one per request here: each scan reads
+-- one tablet), so the same est == act invariant applies with the request
+-- count in place of the row pagination.
+--
 -- This view is parallel-aware: it derives per-scan planned/actual loop
 -- counts from the enclosing Gather via parallel_context and exposes
 -- "Actual Workers"/"Went Parallel".  For serial plans there is no Gather,
@@ -329,6 +335,7 @@ select
     "Storage Index Filter",
     "Storage Filter",
     "Filter",
+    coalesce("Partial Aggregate", false) "Partial Aggregate",
     est_table "Estimated Table Roundtrips",
     est_index "Estimated Index Roundtrips",
     act_table "Storage Table Read Requests",
@@ -403,6 +410,7 @@ from (
         "Storage Index Filter",
         "Storage Filter",
         "Filter",
+        "Partial Aggregate",
         est_table,
         est_index,
         act_table,
