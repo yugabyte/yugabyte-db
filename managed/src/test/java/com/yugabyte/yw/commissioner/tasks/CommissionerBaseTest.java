@@ -35,6 +35,7 @@ import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
+import com.yugabyte.yw.cloud.oci.OCICloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -264,6 +265,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
 
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
+  protected OCICloudImpl mockOCICloudImpl = mock(OCICloudImpl.class);
 
   protected int failsOnCapacityReservation = 0;
   protected Gauge capacityReservationGauge;
@@ -598,6 +600,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(OCICloudImpl.class).toInstance(mockOCICloudImpl))
         .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(

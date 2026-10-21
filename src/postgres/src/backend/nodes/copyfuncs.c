@@ -248,6 +248,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_skip_entities);
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
+	COPY_SCALAR_FIELD(ybInsertOnConflictPushdownPossible);
 
 	return newnode;
 }
@@ -1023,6 +1024,10 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 							sizeof(YbBNLHashClauseInfo)));
 
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
+		newnode->hashClauseInfos[i].innerHashExpr = (Expr *)
+			copyObject(from->hashClauseInfos[i].innerHashExpr);
+
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)
 			copyObject(from->hashClauseInfos[i].outerParamExpr);
 
@@ -1235,6 +1240,7 @@ _copyAgg(const Agg *from)
 	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
+	COPY_SCALAR_FIELD(yb_pushdown_decision);
 
 	return newnode;
 }

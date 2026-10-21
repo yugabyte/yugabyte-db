@@ -570,7 +570,20 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
-    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
+    // Sanitizer masters can stall heartbeats for 10+s (e.g. during clone), expiring short leases.
+    opts->extra_master_flags.emplace_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", 10000 * kTimeMultiplier));
+    // Followers applying a sys catalog snapshot op can block UpdateConsensus for 5+s, causing a
+    // master failover that aborts in-progress clones.
+    opts->extra_master_flags.emplace_back(
+        Format("--leader_failure_max_missed_heartbeat_periods=$0", 10 * kTimeMultiplier));
+    // Such stalls (up to ~8s) outlast the default 2s raft lease, so the master leader keeps losing
+    // its lease and cannot refresh YSQL leases. Must stay below the 15s leader failure timeout.
+    if (IsSanitizer()) {
+      for (auto flag : {"leader_lease_duration_ms", "ht_lease_duration_ms"}) {
+        opts->extra_master_flags.emplace_back(Format("--$0=$1", flag, 4000 * kTimeMultiplier));
+      }
+    }
     opts->num_masters = 3;
   }
 
@@ -1488,6 +1501,19 @@ class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
   int HistoryRetentionIntervalSec() override {
     return 30;
   }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsqlParam::UpdateMiniClusterOptions(opts);
+    // On sanitizer builds clone and schedule snapshots stall master UpdateConsensus for 5-7s.
+    // With 5s consensus timeouts this causes master failover (aborting the clone) or leader lease
+    // loss long enough for the ysql lease to expire, killing the clone's ysqlsh.
+    // Keep the wait RPC timeout above the lease TTL.
+    opts->extra_tserver_flags.emplace_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=120000");
+    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=60000");
+    opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=30000");
+    opts->extra_master_flags.emplace_back("--leader_failure_max_missed_heartbeat_periods=60");
+  }
 };
 
 namespace {
@@ -2001,6 +2027,11 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_clearing_fully_applied_ms", "3000"));
+
+  // Master rejects backends catalog version waits for a lease TTL after becoming leader.
+  // Absorb that delay here, so it does not shift restore_time out of the backfill.
+  ASSERT_OK(conn.Execute("CREATE TABLE warmup_table (key INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX warmup_table_idx ON warmup_table (key)"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
@@ -4094,6 +4125,17 @@ class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest 
  public:
   // Suppresses the base class flags; keep the defaults.
   std::vector<std::string> ExtraTSFlags() override { return {}; }
+
+  // Under TSAN, pthread_create on the master leader can stall for ~12s around snapshot completion,
+  // starving raft heartbeats. Tolerate that without a master leader change, which would abort the
+  // in-flight restore. Raise the heartbeat interval rather than the missed-periods count, since the
+  // cluster appends its own sanitizer value for the latter after these flags.
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--raft_heartbeat_interval_ms=2000");
+    flags.push_back("--leader_lease_duration_ms=6000");
+    return flags;
+  }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -4261,7 +4303,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentTxnRestore, YbAdminSnapshotCons
           return false;
         }
         auto status = future.Wait();
-        if (!status.ok() && !status.IsTimedOut()) {
+        // Restore rolls back the status tablet, aborting transactions in flight across it.
+        if (!status.ok() && !status.IsTimedOut() &&
+            status.ToString().find("aborted") == std::string::npos) {
           EXPECT_OK(status);
         }
         return true;
@@ -6611,6 +6655,61 @@ TEST_F_EX(
 
   ASSERT_LT(elapsed, MonoDelta::FromMilliseconds(kLongIntentsFlushMaxDelayMs))
       << "the restored tablet's teardown flush waited out intents_flush_max_delay_ms";
+}
+
+// A PITR restore must not move a database's next-OID counters backwards. A TServer takes OIDs by
+// advancing master's counter past a batch of them and caching that batch, so OIDs that master has
+// given out but that nothing has used yet sit below the counter. Moving the counter back below
+// them makes master give those same OIDs out again to whoever asks for OIDs next.
+//
+// Both OID spaces are checked by reserving directly from master, which is the call a TServer uses
+// to fill its cache.
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlPitrDoesNotRewindOidCounter) {
+  constexpr uint32_t kOidsToReserve = 100;
+
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // The OID counters live on the database's namespace entry in master's sys catalog.
+  master::GetNamespaceInfoResponsePB namespace_info;
+  ASSERT_OK(client_->GetNamespaceInfo(
+      client::kTableName.namespace_name(), YQLDatabase::YQL_DATABASE_PGSQL, &namespace_info));
+  const std::string& namespace_id = namespace_info.namespace_().id();
+
+  struct ReservedOids {
+    uint32_t first;      // First OID of the batch master gave out.
+    uint32_t past_last;  // First OID master has not given out yet.
+  };
+  // Asking for next_oid 0 means master hands out from wherever its counter stands, rather than
+  // from a position we supply, which is what makes a counter that moved backwards visible here.
+  auto reserve_oids = [this, &namespace_id](bool use_secondary_space) -> Result<ReservedOids> {
+    ReservedOids reserved;
+    RETURN_NOT_OK(client_->ReservePgsqlOids(
+        namespace_id, /*next_oid=*/0, kOidsToReserve, use_secondary_space, &reserved.first,
+        &reserved.past_last));
+    return reserved;
+  };
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // Reserved after the restore time, so a restore that moves the counters back forgets that these
+  // OIDs were ever given out. A TServer that had asked for them would still be holding them.
+  auto normal_before_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/false));
+  auto secondary_before_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/true));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  auto normal_after_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/false));
+  auto secondary_after_restore = ASSERT_RESULT(reserve_oids(/*use_secondary_space=*/true));
+
+  EXPECT_GE(normal_after_restore.first, normal_before_restore.past_last)
+      << "The restore moved the normal space counter backwards: master had already given out "
+      << "every OID below " << normal_before_restore.past_last << ", then started again at "
+      << normal_after_restore.first;
+  EXPECT_GE(secondary_after_restore.first, secondary_before_restore.past_last)
+      << "The restore moved the secondary space counter backwards: master had already given out "
+      << "every OID below " << secondary_before_restore.past_last << ", then started again at "
+      << secondary_after_restore.first;
 }
 
 // Fixture for the clone-with-multiple-colocation-parents repro. We need the

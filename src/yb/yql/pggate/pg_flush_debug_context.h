@@ -42,6 +42,7 @@ class PgFlushDebugContext {
       uint64_t tuples_processed, const char* table_name);
   [[nodiscard]] static YbcFlushDebugContext YbcSwitchToDbCatalogVersionMode(PgOid db_oid);
   [[nodiscard]] static YbcFlushDebugContext YbcEndOfTopLevelStmt();
+  [[nodiscard]] static YbcFlushDebugContext YbcParallelWorkers();
 
   [[nodiscard]] static PgFlushDebugContext Make(const YbcFlushDebugContext& ybc_context);
   [[nodiscard]] static PgFlushDebugContext CatalogTablePrefetch();

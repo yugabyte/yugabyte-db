@@ -38,6 +38,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
@@ -66,6 +68,8 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -75,6 +79,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -84,6 +89,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -103,6 +109,8 @@ import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.util.PeerInfo;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -991,6 +999,182 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testManualRollbackNotOfferedAfterAutoRollback() {
+    // PLAT-22827: auto-rollback already restored the universe, so there is nothing to roll back.
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    // Manual rollback must be enabled, or the button is hidden for an unrelated reason.
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask editCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Edit,
+            universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // The edit keeps updatingTaskUUID (so it stays retryable) but no longer holds the placement
+    // lock or a checkpoint.
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertEquals(taskInfo.getUuid(), universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testRollbackOfferedOnRetryAfterAutoRollback() {
+    // PLAT-23111: the first attempt auto-rolls back before any VM exists, which clears the
+    // checkpoint. The retry re-runs the edit, creates VMs and fails in the rollback-safe window.
+    AtomicBoolean retrying = new AtomicBoolean(false);
+    doAnswer(
+            invocation -> {
+              NodeManager.NodeCommandType type = invocation.getArgument(0);
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              // First attempt: everything but List fails, so it fails before any VM exists.
+              // Retry: VMs get created and it fails at configure, before MarkRollbackUnsafe.
+              boolean fail =
+                  retrying.get()
+                      ? NodeManager.NodeCommandType.Configure.equals(type)
+                      : !NodeManager.NodeCommandType.List.equals(type);
+              if (fail) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask.create(
+        defaultCustomer,
+        universe.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Edit,
+        universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getStateTransitionDetails());
+
+    retrying.set(true);
+    CustomerTask retryCustomerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTaskInfo;
+    try {
+      retryTaskInfo = waitForTask(retryCustomerTask.getTaskUUID());
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    assertEquals(Failure, retryTaskInfo.getTaskState());
+    assertTrue(
+        "retry should fail after creating VMs: "
+            + retryTaskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() != Success)
+                .map(t -> t.getTaskType() + "=" + t.getTaskState())
+                .collect(Collectors.toList())
+            + " error: "
+            + retryTaskInfo.getErrorMessage(),
+        retryTaskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleCreateServer
+                        && t.getTaskState() == Success));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // The retry created VMs, so it did not auto-roll back, and it holds the placement lock.
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertEquals(
+        retryTaskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    // Listing offers Rollback; submit must agree and accept it.
+    assertTrue(listingCanRollback(retryCustomerTask, retryTaskInfo, universe));
+    assertNotNull(
+        "retry after auto-rollback must capture a checkpoint",
+        universe.getStateTransitionDetails());
+    assertTrue(commissioner.canTaskRollbackDetailed(retryTaskInfo));
+  }
+
+  @Test
+  public void testRetryKeepsFirstCheckpointWithoutAutoRollback() {
+    // Without an auto-rollback the retry continues from where the first attempt stopped, so it
+    // must keep the first attempt's checkpoint rather than capture the half-edited universe.
+    doAnswer(
+            invocation -> {
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              if (NodeManager.NodeCommandType.Configure.equals(invocation.getArgument(0))) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask.create(
+        defaultCustomer,
+        universe.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Edit,
+        universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNotNull(universe.getStateTransitionDetails());
+    JsonNode firstCheckpoint = Json.toJson(universe.getStateTransitionDetails());
+
+    CustomerTask retryCustomerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTaskInfo;
+    try {
+      retryTaskInfo = waitForTask(retryCustomerTask.getTaskUUID());
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    assertEquals(Failure, retryTaskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        retryTaskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    assertEquals(firstCheckpoint, Json.toJson(universe.getStateTransitionDetails()));
+    assertTrue(commissioner.canTaskRollbackDetailed(retryTaskInfo));
+  }
+
+  @Test
   public void testFullMoveNoRollback() {
     ShellResponse badShellResponse = new ShellResponse();
     badShellResponse.code = 100;
@@ -1023,6 +1207,159 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
     assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
     assertNotNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  // Moves all nodes of the primary cluster to the zone, which is in another region.
+  private UniverseDefinitionTaskParams moveToZone(Universe universe, AvailabilityZone zone) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    newUserIntent.regionList = ImmutableList.of(zone.getRegion().getUuid());
+    primaryCluster.userIntent = newUserIntent;
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        zone.getUuid(), placementInfo, newUserIntent.replicationFactor, newUserIntent.numNodes);
+    primaryCluster.placementInfo = placementInfo;
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    List<String> newIps = new ArrayList<>();
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter++;
+      if (node.state == NodeState.ToBeAdded) {
+        newIps.add(node.cloudInfo.private_ip);
+      }
+    }
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, newIps);
+    return taskParams;
+  }
+
+  @Test
+  public void testEditMovingToNewRegionCreatesItsLoadBalancerAndDeletesTheOldOne() {
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    String lbName = ManagedLoadBalancerUtil.getPrivateName(clusterUUID);
+    UUID oldRegionUUID = Region.getByCode(defaultProvider, "region-1").getUuid();
+    Region newRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone newZone =
+        AvailabilityZone.createOrThrow(newRegion, "az-3", "AZ 3", "subnet-3");
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+                  new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+              lbConfig.setEnablePrivate(true);
+              details.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+              ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+              state.put(
+                  new ManagedLoadBalancer(
+                      clusterUUID,
+                      oldRegionUUID,
+                      ManagedLoadBalancer.Scheme.PRIVATE,
+                      ImmutableList.of(),
+                      lbName,
+                      "old.elb"));
+              details.setManagedLoadBalancerState(state);
+            });
+    when(cloudAPI.ensureManagedLoadBalancer(any(), eq("region-2"), any(), any(), any(), any()))
+        .thenReturn("new.elb");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setDumpEntitiesMock(universe, "", false);
+    UniverseDefinitionTaskParams taskParams = moveToZone(universe, newZone);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == Failure)
+            .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+            .collect(Collectors.toList())
+            .toString(),
+        Success,
+        taskInfo.getTaskState());
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int ensure = subTasks.indexOf(TaskType.EnsureManagedLoadBalancer);
+    assertTrue(
+        subTasks.toString(),
+        0 <= ensure && ensure < subTasks.indexOf(TaskType.AnsibleCreateServer));
+    assertTrue(
+        subTasks.toString(),
+        subTasks.lastIndexOf(TaskType.AnsibleDestroyServer)
+            < subTasks.indexOf(TaskType.DeleteManagedLoadBalancer));
+    verify(cloudAPI).deleteManagedLoadBalancer(any(), eq("region-1"), eq(lbName));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    PlacementRegion region =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .placementInfo
+            .cloudList
+            .get(0)
+            .regionList
+            .get(0);
+    assertEquals(newRegion.getUuid(), region.uuid);
+    List<ManagedLoadBalancer> lbs =
+        universe.getUniverseDetails().getManagedLoadBalancerState().getLoadBalancers();
+    assertEquals(
+        ImmutableSet.of(newRegion.getUuid()),
+        lbs.stream().map(ManagedLoadBalancer::getRegionUuid).collect(Collectors.toSet()));
+    // Later subtasks that write the universe details must keep the state.
+    assertEquals("new.elb", lbs.get(0).getAddress());
+    assertEquals(ImmutableList.of(newZone.getUuid()), lbs.get(0).getAzUuids());
+  }
+
+  @Test
+  public void testEditChangingPortsReconcilesManagedLoadBalancerWithNewPorts() {
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig =
+                  new UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig();
+              lbConfig.setEnablePrivate(true);
+              u.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .setManagedLoadBalancer(lbConfig);
+            });
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.communicationPorts.ysqlServerRpcPort = 5434;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    assertTrue(
+        subTasks.toString(),
+        subTasks.indexOf(TaskType.UpdateUniverseCommunicationPorts)
+            < subTasks.lastIndexOf(TaskType.EnsureManagedLoadBalancer));
+    // Before the VMs with the stored ports, and again after the edit stores the new ones.
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), any(), any(), eq(List.of(5433, 9042)), any());
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
   }
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
@@ -1298,6 +1635,25 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
     // Listing canRollback: ownership still on the failed edit.
     assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testCanTaskRollbackFalseWhenAbortedAtPrecheck() {
+    // PLAT-22685: an edit aborted before the freeze/checkpoint captures no state_transition_details
+    // (and never took placement ownership), so submit eligibility must be false - matching listing
+    // - even though @CanRollback + error state + the feature flag all hold.
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = new TaskInfo(TaskType.EditUniverse, null);
+    taskInfo.setUuid(UUID.randomUUID());
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(Aborted);
+    assertNull(universe.getStateTransitionDetails());
+    // Type is rollbackable in general; the missing checkpoint is what makes it ineligible.
+    assertTrue(Commissioner.canTaskTypeRollback(TaskType.EditUniverse));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
   }
 
   @Test
@@ -2027,6 +2383,40 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testRollbackEditUniverseWithSecondaryIps() throws InterruptedException {
+    Universe universe = defaultUniverse;
+    int nodesBefore = universe.getUniverseDetails().nodeDetailsSet.size();
+    TaskInfo failedEdit = abortExpandWithSecondaryIps(universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    mockDualNicMembership(universe, Collections.emptySet());
+
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    TaskInfo membership = getSubTask(rollbackInfo, TaskType.ConfirmEditRollbackMembership);
+    assertEquals(membership.getErrorMessage(), Success, membership.getTaskState());
+    assertEquals(Success, rollbackInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackEditUniverseRejectsUnknownSecondaryIp() throws InterruptedException {
+    Universe universe = defaultUniverse;
+    TaskInfo failedEdit = abortExpandWithSecondaryIps(universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    String unknownIp = "203.0.113.99";
+    mockDualNicMembership(universe, Set.of(unknownIp));
+
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    assertEquals(Failure, rollbackInfo.getTaskState());
+    TaskInfo membership = getSubTask(rollbackInfo, TaskType.ConfirmEditRollbackMembership);
+    assertEquals(Failure, membership.getTaskState());
+    // Only the unknown server is flagged; secondary IPs of Live-before and ADD nodes are allowed.
+    assertThat(
+        membership.getErrorMessage(), containsString("unexpected servers [\"" + unknownIp + "\"]"));
+  }
+
+  @Test
   public void testRollbackEditUniverseAfterModifyBlackListAbort() throws InterruptedException {
     // U3: abort at first ModifyBlackList (new-node blacklist) - still pre-checkpoint.
     // Rollback clears orphaned server_blacklist for Live survivors and ADD nodes.
@@ -2178,6 +2568,108 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackEditUniverseRetryClearsBlacklistOfAlreadyDestroyedNodes()
+      throws InterruptedException {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+
+    Universe universe = defaultUniverse;
+    Set<String> beforeNames =
+        universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo failedEdit = submitTask(taskParams);
+    assertEquals(Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Set<String> addedNames =
+        universe.getNodes().stream()
+            .map(NodeDetails::getNodeName)
+            .filter(name -> name != null && !beforeNames.contains(name))
+            .collect(Collectors.toSet());
+    Set<String> addIps =
+        universe.getNodes().stream()
+            .filter(n -> addedNames.contains(n.getNodeName()))
+            .map(n -> n.cloudInfo == null ? null : n.cloudInfo.private_ip)
+            .filter(ip -> ip != null && !ip.isBlank())
+            .collect(Collectors.toSet());
+    assertFalse(addedNames.isEmpty());
+    assertFalse(addIps.isEmpty());
+
+    stubNodeManagerOkWithInstancesPresent();
+    UniverseDefinitionTaskParams rollbackParams =
+        Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    // Abort after the ADD nodes are destroyed and before ModifyBlackList clears their IPs.
+    setAbortPosition(5);
+    UUID rollbackUuid;
+    try {
+      rollbackUuid = commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams);
+      CustomerTask.create(
+          defaultCustomer,
+          universe.getUniverseUUID(),
+          rollbackUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackEditUniverse,
+          universe.getName());
+      TaskInfo aborted = waitForTask(rollbackUuid);
+      String sequence =
+          aborted.getSubTasks().stream()
+              .map(t -> t.getTaskType() + ":" + t.getTaskState())
+              .collect(Collectors.joining(", "));
+      assertEquals(sequence, Aborted, aborted.getTaskState());
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.AnsibleDestroyServer
+                          && t.getTaskState() == Success));
+      assertTrue(
+          sequence,
+          aborted.getSubTasks().stream()
+              .noneMatch(
+                  t -> t.getTaskType() == TaskType.ModifyBlackList && t.getTaskState() == Success));
+    } finally {
+      clearAbortOrPausePositions();
+    }
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(
+        "ADD nodes should be gone from the universe details after destroy",
+        universe.getNodes().stream().noneMatch(n -> addedNames.contains(n.getNodeName())));
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), rollbackUuid);
+    TaskInfo retryInfo = waitForTask(retryTask.getTaskUUID());
+    assertEquals(Success, retryInfo.getTaskState());
+    // The retry cannot find the destroyed nodes in the universe details any more.
+    assertTrue(privateIpsFromModifyBlackListRemoveNodes(retryInfo).containsAll(addIps));
+    Set<String> confirmedDestroyedIps =
+        retryInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ConfirmEditRollbackMembership)
+            .flatMap(
+                t ->
+                    com.google.common.collect.Streams.stream(
+                        t.getTaskParams().path("destroyedNodeIps").elements()))
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+    assertTrue(confirmedDestroyedIps.containsAll(addIps));
   }
 
   @Test
@@ -2709,19 +3201,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     CustomerTask loaded =
         CustomerTask.getOrBadRequest(customerTask.getCustomerUUID(), customerTask.getTaskUUID());
     Map<UUID, Set<String>> updatingTasks = new HashMap<>();
+    Map<UUID, Set<String>> placementLockTasks = new HashMap<>();
     Set<String> ids = new java.util.HashSet<>();
+    Set<String> lockIds = new java.util.HashSet<>();
     if (universe.getUniverseDetails().updatingTaskUUID != null) {
       ids.add(universe.getUniverseDetails().updatingTaskUUID.toString());
     }
     if (universe.getUniverseDetails().placementModificationTaskUuid != null) {
       ids.add(universe.getUniverseDetails().placementModificationTaskUuid.toString());
+      lockIds.add(universe.getUniverseDetails().placementModificationTaskUuid.toString());
     }
     updatingTasks.put(loaded.getTargetUUID(), ids);
+    placementLockTasks.put(loaded.getTargetUUID(), lockIds);
     Map<UUID, CustomerTask> lastTaskByTarget = new HashMap<>();
     lastTaskByTarget.put(loaded.getTargetUUID(), loaded);
     ObjectNode status =
         commissioner
-            .buildTaskStatus(loaded, taskInfo.getSubTasks(), updatingTasks, lastTaskByTarget)
+            .buildTaskStatus(
+                loaded, taskInfo.getSubTasks(), updatingTasks, placementLockTasks, lastTaskByTarget)
             .orElseThrow(() -> new AssertionError("expected task status"));
     return status.get("canRollback").asBoolean();
   }
@@ -2779,5 +3276,102 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
     rollbackParams.expectedUniverseVersion = -1;
     return waitForTask(commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams));
+  }
+
+  private TaskInfo getSubTask(TaskInfo taskInfo, TaskType subTaskType) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == subTaskType)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("no " + subTaskType + " subtask"));
+  }
+
+  /**
+   * Gives every node a secondary IP, then aborts an expand at WaitForServer (before
+   * MarkRollbackUnsafe), when the ADD servers are already running.
+   */
+  private TaskInfo abortExpandWithSecondaryIps(Universe universe) {
+    int nodesBefore = universe.getUniverseDetails().nodeDetailsSet.size();
+    universe = setSecondaryIps(universe);
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    // setSecondaryIps bumped the universe version.
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setAbortPosition(UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.WaitForServer));
+    TaskInfo failedEdit;
+    try {
+      failedEdit = submitTask(taskParams);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+    assertEquals(Aborted, failedEdit.getTaskState());
+    // Dual-NIC provisioning assigns ADD nodes a secondary IP too.
+    universe = setSecondaryIps(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertTrue(universe.getUniverseDetails().nodeDetailsSet.size() > nodesBefore);
+    stubNodeManagerOkWithInstancesPresent();
+    return failedEdit;
+  }
+
+  private Universe setSecondaryIps(Universe universe) {
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getNodes().stream()
+                .filter(n -> n.cloudInfo != null && n.cloudInfo.secondary_private_ip == null)
+                .forEach(n -> n.cloudInfo.secondary_private_ip = "198.51.100." + n.nodeIdx));
+  }
+
+  /**
+   * Mocks master membership as a cluster in secondary-IP mode reports it: servers bind {@code
+   * <secondary>,<private>}, so master peers list both IPs and live tservers report the secondary.
+   * Live-before servers come from the before snapshot, since survivor IPs in current details can
+   * differ from it (see testRollbackEditUniverseAfterWaitForServerAbort).
+   */
+  private void mockDualNicMembership(Universe universe, Set<String> extraTserverIps) {
+    UniverseDefinitionTaskParams before =
+        universe.getStateTransitionDetails().getBeforeUniverseDetails();
+    Set<String> beforeNames =
+        before.nodeDetailsSet.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    List<PeerInfo> masters = new ArrayList<>();
+    List<TabletServerInfo> tservers = new ArrayList<>();
+    for (NodeDetails node : before.nodeDetailsSet) {
+      if (node.state != NodeState.Live) {
+        continue;
+      }
+      if (node.isMaster) {
+        PeerInfo peer = new PeerInfo();
+        peer.setLastKnownPrivateIps(
+            List.of(
+                HostAndPort.fromParts(node.cloudInfo.secondary_private_ip, node.masterRpcPort),
+                HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort)));
+        masters.add(peer);
+      }
+      if (node.isTserver) {
+        tservers.add(liveTserver(node.cloudInfo.secondary_private_ip, node.tserverRpcPort));
+      }
+    }
+    for (NodeDetails node : universe.getNodes()) {
+      if (!beforeNames.contains(node.getNodeName())) {
+        tservers.add(liveTserver(node.cloudInfo.secondary_private_ip, node.tserverRpcPort));
+      }
+    }
+    extraTserverIps.forEach(ip -> tservers.add(liveTserver(ip, 9100)));
+    try {
+      ListMasterRaftPeersResponse peersResponse = mock(ListMasterRaftPeersResponse.class);
+      lenient().when(peersResponse.getPeersList()).thenReturn(masters);
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(peersResponse);
+      ListLiveTabletServersResponse tserversResponse = mock(ListLiveTabletServersResponse.class);
+      lenient().when(tserversResponse.getTabletServers()).thenReturn(tservers);
+      lenient().when(mockClient.listLiveTabletServers()).thenReturn(tserversResponse);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
+
+  private static TabletServerInfo liveTserver(String ip, int rpcPort) {
+    TabletServerInfo info = new TabletServerInfo();
+    info.setPrivateRpcAddress(HostAndPort.fromParts(ip, rpcPort));
+    return info;
   }
 }

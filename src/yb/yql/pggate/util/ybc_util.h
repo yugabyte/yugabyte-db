@@ -38,6 +38,7 @@ typedef struct YbcStatusStruct* YbcStatus;
 bool YBCStatusIsNotFound(YbcStatus s);
 bool YBCStatusIsUnknownSession(YbcStatus s);
 bool YBCStatusIsSnapshotTooOld(YbcStatus s);
+bool YBCStatusIsResponseCacheMiss(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
@@ -193,6 +194,7 @@ void YBCSetObjectLockingInfraForCurrTxn();
 bool YBCIsObjectLockingInfraEnabled();
 
 bool YBCIsObjectLockingEnabled();
+
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

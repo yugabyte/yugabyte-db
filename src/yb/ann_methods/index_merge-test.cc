@@ -164,11 +164,9 @@ class IndexMergeTest : public YBTest {
           .distance_kind = DistanceKind::kL2Squared};
 
     hnswlib_index_traits_ = CHECK_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
-        /* block_cache= */ nullptr, hnsw_options, HnswBackend::HNSWLIB,
-        /* mem_tracker= */ nullptr)));
+        /* block_cache= */ nullptr, hnsw_options, /* mem_tracker= */ nullptr)));
     usearch_index_traits_ = CHECK_RESULT((CreateUsearchIndexTraits<FloatVector, float>(
-        /* block_cache= */ nullptr, hnsw_options, HnswBackend::USEARCH,
-        /* mem_tracker= */ nullptr)));
+        /* block_cache= */ nullptr, hnsw_options, /* mem_tracker= */ nullptr)));
   }
 
   const std::vector<std::vector<float>> input_vectors_ = {

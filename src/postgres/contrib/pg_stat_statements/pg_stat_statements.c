@@ -1458,6 +1458,14 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query, jstate);
 
+	/*
+	 * YB: Mark before the tracking check.  A query parsed while it is not
+	 * tracked, such as one prepared under track = 'none' or nested under
+	 * track = 'top', can still be executed while tracked.
+	 */
+	if (jstate && jstate->clocations_count > 0)
+		yb_pgss_mark_needs_normalization(query->queryId);
+
 	/* Safety check... */
 	if (!pgss || !pgss_hash || !pgss_enabled(exec_nested_level))
 		return;
@@ -1482,8 +1490,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
-	{
-		yb_pgss_mark_needs_normalization(query->queryId);
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1497,7 +1503,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   jstate,
 				   false /* yb_is_sensitive_stmt */ ,
 				   NULL /* yb_stats */ );
-	}
 }
 
 /*
@@ -1729,6 +1734,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 
+	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
+
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
 	 * where the statement contains an optimizable statement for which a
@@ -1833,7 +1840,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * For BACKFILL INDEX commands, generate a normalized query string so
 		 * that all backfill calls for the same index are aggregated.
 		 */
-		if (IsA(parsetree, YbBackfillIndexStmt))
+		if (yb_is_backfill)
 		{
 			char	   *norm_query;
 			int			norm_query_len;

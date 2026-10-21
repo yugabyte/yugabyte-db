@@ -1160,9 +1160,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = provider.getUuid().toString();
-                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
                 // Append the path to copy the gFlag file from local to remote host
                 subcommand.add("--local_gflag_files_path");
                 subcommand.add(localGflagFilePath.toString());
@@ -1979,8 +1977,8 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = provider.getCloudCode();
 
-          if (cloudType.equals(Common.CloudType.aws)) {
-            // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.oci)) {
+            // aws / oci use instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
@@ -2711,6 +2709,7 @@ public class NodeManager extends DevopsBase {
   }
 
   // OCI Flex shapes require shapeConfig.ocpus on launch and UpdateInstance.
+  // DenseIO/HPC Flex included: those cores and memory come from the YAML min SKU.
   private void addOciFlexShapeConfigArgs(
       List<String> commandArgs, Provider provider, String instanceTypeCode) {
     if (provider.getCloudCode() != Common.CloudType.oci

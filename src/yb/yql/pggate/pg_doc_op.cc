@@ -323,6 +323,12 @@ Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
   return rows_affected_count_;
 }
 
+Result<PgsqlResponsePB::PgsqlOnConflictOutcome> PgDocOp::GetOnConflictOutcome() const {
+  RETURN_NOT_OK(exec_status_);
+  DCHECK(end_of_data_);
+  return on_conflict_outcome_;
+}
+
 void PgDocOp::ResetResultStream() {
   if (result_stream_) {
     result_stream_->ResetOps();
@@ -467,6 +473,8 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
 
   rows_affected_count_ = 0;
+  on_conflict_outcome_ = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+
   for (const auto& op : ActiveOps()) {
     auto* op_response = op->response();
     if (!op_response) {
@@ -478,6 +486,9 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
     }
 
     rows_affected_count_ += op_response->rows_affected_count();
+    if (op_response->has_on_conflict_outcome()) {
+      on_conflict_outcome_ = op_response->on_conflict_outcome();
+    }
     if (!op_response->has_rows_data_sidecar()) {
       continue;
     }

@@ -76,8 +76,6 @@ class TabletServerIf : public LocalTabletServer {
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
 
-  virtual uint32_t get_oid_cache_invalidations_count() const = 0;
-
   // use_cache: on the master implementation, when true and the heartbeat catalog version cache
   // is enabled, read from the cache instead of disk. Stale-tolerant callers (Read RPCs) can opt
   // in for the fast path; callers that need authoritative versions (e.g. WaitForYsqlBackends
@@ -102,6 +100,12 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
+
+  // Records that this node now has a cached sys table prefetch for db_oid at catalog_version, so
+  // that a backend starting up can read the catalog at that version locally instead of fetching it
+  // from the master leader. Ignored for a database this node has no catalog version slot for, and
+  // never moves the recorded version backwards.
+  virtual void SetYsqlDbLastPrefetchedCatalogVersion(uint32_t db_oid, uint64_t catalog_version) = 0;
 
   // Asynchronously triggers an internal superuser PG connection that rebuilds the relcache init
   // file for `req.database_name()`. The callback is invoked once the operation finishes (or fails)

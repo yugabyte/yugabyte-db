@@ -36,10 +36,10 @@
 
 #include <vector>
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/scope_exit.h"
@@ -157,7 +157,7 @@ Status EasyCurl::DoRequest(
   CurlSlistPtr http_header_list;
   if (content_type) {
     auto list =
-        curl_slist_append(NULL, strings::Substitute("Content-Type: $0", *content_type).c_str());
+        curl_slist_append(NULL, Format("Content-Type: $0", *content_type).c_str());
 
     if (!list) {
       return STATUS(InternalError, "Unable to set Content-Type header field");
@@ -187,7 +187,7 @@ Status EasyCurl::DoRequest(
   long rc; // NOLINT(runtime/int) curl wants a long
   RETURN_NOT_OK(TranslateError(curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &rc)));
   if (rc != 200) {
-    return STATUS(RemoteError, strings::Substitute("HTTP $0", rc));
+    return STATUS(RemoteError, Format("HTTP $0", rc));
   }
 
   return Status::OK();

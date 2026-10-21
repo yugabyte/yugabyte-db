@@ -53,6 +53,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class JedisClusterTest extends BaseYBClassForJedis {
   private static Jedis node1;
   private static Jedis node2;

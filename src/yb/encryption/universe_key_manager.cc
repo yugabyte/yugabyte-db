@@ -48,7 +48,7 @@ Result<EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
   auto universe_keys = universe_key_registry_.universe_keys();
   auto it = universe_keys.find(version_id);
   if (it == universe_keys.end()) {
-    return STATUS_SUBSTITUTE(
+    return STATUS_FORMAT(
         InvalidArgument, "Key with version number $0 does not exist", version_id);
   }
   return EncryptionParams::FromEncryptionParamsPB(it->second);

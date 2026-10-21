@@ -336,8 +336,9 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
 
   /** Helper class to run DML statements concurrently. */
   public class DMLRunner extends SQLRunner {
+    // ON CONFLICT: a retry after the update fails must not fail on the already-committed insert.
     private final String insert_sql =
-        "INSERT INTO concurrent_test_tbl(k, v1, v2) " + "VALUES(%d, %d, %d)";
+        "INSERT INTO concurrent_test_tbl(k, v1, v2) " + "VALUES(%d, %d, %d) ON CONFLICT DO NOTHING";
     private final String update_sql = "UPDATE concurrent_test_tbl SET v1 = v1 + 1 WHERE v1 = %d";
 
     public DMLRunner(

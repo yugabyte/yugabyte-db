@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { ResizeUpdateOption } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import type { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
+  effectiveMasterDeviceInfo,
   getK8sResizeOptions,
   onlyVolumeSizeIncreased,
   toClusterStorageSpec,
+  toResizeStorageSpec,
   type NormalizedStorage
 } from './EditHardwareStorageUtils';
 
@@ -106,6 +108,93 @@ describe('toClusterStorageSpec', () => {
     const spec = toClusterStorageSpec(null, currentSpec);
     expect(spec.disk_iops).toBe(3000);
     expect(spec.throughput).toBe(125);
+  });
+
+  it('omits stale IOPS/throughput when storage type does not support them even if form left numbers', () => {
+    // Form forgot to null them out (e.g. partial merge); storage type wins.
+    const spec = toClusterStorageSpec(
+      {
+        volumeSize: 100,
+        numVolumes: 1,
+        diskIops: 3000,
+        throughput: 125,
+        storageType: 'GP2'
+      },
+      currentSpec
+    );
+
+    expect(spec.storage_type).toBe('GP2');
+    expect(spec).not.toHaveProperty('disk_iops');
+    expect(spec).not.toHaveProperty('throughput');
+  });
+
+  it('keeps current IOPS when form leaves the field undefined (untouched)', () => {
+    const spec = toClusterStorageSpec(
+      {
+        volumeSize: 200,
+        numVolumes: 1,
+        storageType: 'GP3'
+      },
+      currentSpec
+    );
+
+    expect(spec.volume_size).toBe(200);
+    expect(spec.disk_iops).toBe(3000);
+    expect(spec.throughput).toBe(125);
+  });
+});
+
+describe('toResizeStorageSpec', () => {
+  const currentSpec = {
+    volume_size: 100,
+    num_volumes: 1,
+    disk_iops: 3000,
+    throughput: 125,
+    storage_type: 'GP3' as const
+  };
+
+  it('omits cleared IOPS/throughput instead of resurrecting universe values', () => {
+    const spec = toResizeStorageSpec(
+      {
+        volumeSize: 200,
+        numVolumes: 1,
+        diskIops: null,
+        throughput: null,
+        storageType: 'GP3'
+      },
+      currentSpec
+    );
+
+    expect(spec.volume_size).toBe(200);
+    expect(spec).not.toHaveProperty('disk_iops');
+    expect(spec).not.toHaveProperty('throughput');
+  });
+
+  it('keeps current IOPS when form leaves the field undefined', () => {
+    const spec = toResizeStorageSpec({ volumeSize: 200, numVolumes: 1 }, currentSpec);
+    expect(spec.volume_size).toBe(200);
+    expect(spec.disk_iops).toBe(3000);
+    expect(spec.throughput).toBe(125);
+  });
+});
+
+describe('effectiveMasterDeviceInfo', () => {
+  it('uses tserver deviceInfo when keepMasterTserverSame is true', () => {
+    const deviceInfo = { volumeSize: 100, numVolumes: 1, storageType: 'GP2', diskIops: null };
+    const masterDeviceInfo = {
+      volumeSize: 100,
+      numVolumes: 1,
+      storageType: 'GP3',
+      diskIops: 3000,
+      throughput: 125
+    };
+    expect(
+      effectiveMasterDeviceInfo({
+        keepMasterTserverSame: true,
+        deviceInfo: deviceInfo as any,
+        masterDeviceInfo: masterDeviceInfo as any
+      })
+    ).toBe(deviceInfo);
   });
 });
 

@@ -364,7 +364,7 @@ public class HashicorpEARServiceUtil {
     LOG.info("testEncryptDecrypt called for connfigUUID {}", configUUID);
     try {
       byte[] randomUniverseKey = new byte[32];
-      SecureRandom.getInstanceStrong().nextBytes(randomUniverseKey);
+      new SecureRandom().nextBytes(randomUniverseKey);
       LOG.info("Testing encrypt");
       byte[] randomEncryptedBytes = vaultSecretEngine.encryptString(engineKey, randomUniverseKey);
       // Test if able to decrypt.

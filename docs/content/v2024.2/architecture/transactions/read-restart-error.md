@@ -97,19 +97,16 @@ You can handle and mitigate read restart errors using the following techniques:
   SELECT * FROM large_table;
   COMMIT;
   ```
-
-- Set `yb_read_after_commit_visibility` to `deferred` to avoid read restart errors and still keep the _read-after-commit-visibility_ guarantee. The statement waits out the maximum clock skew before it reads ([max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec), 500ms by default). Use this when the statement is not a read-only serializable transaction.
+- When the statement is not read only, or is part of a read-write transaction, but the additional latency is acceptable, set `yb_read_after_commit_visibility` to `deferred` (available in {{<release "2024.2.6.0">}} and later). Like DEFERRABLE, this waits out the maximum clock skew (`max_clock_skew_usec`) to avoid read restart errors, but it isn't limited to READ ONLY transactions and applies to any isolation level and to statements that write. The parameter can't be set inside a transaction block, so set it before `BEGIN`, at the session level, or with `ALTER ROLE` or `ALTER DATABASE`.
 
   ```sql
   SET yb_read_after_commit_visibility TO deferred;
-  SELECT * FROM large_table;
+  UPDATE large_table SET v = v + 1 WHERE k > 100;
   ```
 
-  Starting in v2024.2.6.0, deferred mode also applies to writes that can raise a read restart error.
+  Read-write SERIALIZABLE transactions and single-row (fast-path) writes don't face read restart errors, so they don't wait.
 
-  Deferred mode does not apply to read-write serializable transactions, or to single-shard writes that run outside a transaction block. Those statements do not raise read restart errors. Set the parameter before you start a transaction block. You cannot change it inside a transaction block.
-
-- If waiting out the clock skew is not acceptable, try increasing the value of `ysql_output_buffer_size`.
+- If an additional 500ms of latency is not acceptable, or you are running a release earlier than {{<release "2024.2.6.0">}}, try increasing the value of `ysql_output_buffer_size`.
 
   This will enable YugabyteDB to retry the query internally on behalf of the user. As long as the output of a statement hasn't crossed ysql_output_buffer_size to result in flushing partial data to the external client, the YSQL query layer retries read restart errors for all statements in a Read Committed transaction block, for the first statement in a Repeatable Read transaction block, and for any standalone statement outside a transaction block. As a tradeoff, increasing the buffer size also increases the memory consumed by the YSQL backend processes, resulting in a higher risk of out-of-memory errors.
 

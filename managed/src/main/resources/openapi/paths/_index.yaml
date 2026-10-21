@@ -430,6 +430,81 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+/customers:
+  post:
+    operationId: registerCustomer
+    summary: Register a customer
+    description: 'Creates a customer and its primary user, and returns an API token for that user. The first customer on a YBA instance can be registered without authentication, and its user becomes a SuperAdmin. Further customers can only be registered by a SuperAdmin on a multi-tenant YBA instance (yb.multiTenant), and their users are Admins.'
+    tags:
+      - Customer
+    requestBody:
+      $ref: "../components/requestBodies/CustomerRegistrationReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CustomerRegistrationResp.yaml"
+      '400':
+        description: 'Invalid input, such as a password that violates the password policy'
+      '401':
+        description: Customers already exist and the request has no valid API token
+      '403':
+        description: Customers already exist and the caller is not a SuperAdmin
+      '409':
+        description: 'A customer already exists on a single-tenant or SSO-enabled YBA instance, or a user with this email already exists'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Customer
+      auditTargetId: obj.getCustomerUuid().toString()
+      auditActionType: Register
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/api-token':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  put:
+    operationId: generateApiToken
+    summary: Generate an API token
+    description: 'Generates a new API token for the calling user and returns it. The previous token stops working. The caller authenticates with an API token or a session token (from login), and must belong to the customer.'
+    tags:
+      - Customer
+    requestBody:
+      $ref: "../components/requestBodies/ApiTokenReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UserApiTokenResp.yaml"
+      '401':
+        description: The request has no valid API or session token
+      '403':
+        description: The caller does not belong to this customer
+      '404':
+        description: Customer not found
+      '409':
+        description: 'api_token_version is not the caller''s current API token version, e.g. because the token was rotated concurrently'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Customer
+      auditTargetId: cUUID.toString()
+      auditActionType: GenerateApiToken
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/customer-configs/page':
   parameters:
     - name: cUUID
@@ -2410,7 +2485,9 @@
   get:
     operationId: getUniverse
     summary: Get a YugabyteDB Universe
-    description: Get details of a single YugabyteDB Universe.
+    description: |-
+      Get details of a single YugabyteDB Universe.
+      Early access: when the runtime flag yb.api.conditional_get.enabled is set, this endpoint supports conditional requests. Send a previously returned ETag in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields derived from related resources (for example DR configs or pricing) may be stale in that case.
     tags:
       - Universe
     responses:
@@ -2432,6 +2509,9 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-conditional-get:
+      provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+      resourcePathSegment: universes
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
   put:
@@ -2447,6 +2527,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2464,6 +2546,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
   delete:
@@ -2479,6 +2562,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2496,6 +2581,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes':
@@ -2617,6 +2703,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2634,6 +2722,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/clusters/{clsUUID}':
@@ -2683,6 +2772,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2700,6 +2791,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/fetch-universe-resources':
@@ -2777,6 +2869,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2795,6 +2889,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2.20.2.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software':
@@ -2830,6 +2925,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2847,6 +2944,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/finalize':
@@ -2882,6 +2980,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2899,6 +2999,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
   get:
@@ -2961,6 +3062,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -2978,6 +3081,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/node-agent':
@@ -3016,6 +3120,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3033,6 +3139,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.7.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/rollback':
@@ -3068,6 +3175,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3085,6 +3194,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/resume-canary':
@@ -3120,6 +3230,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3137,6 +3249,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck':
@@ -3172,6 +3285,8 @@
         $ref: "../components/responses/UniverseSoftwareUpgradePrecheckResponse.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3186,6 +3301,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/restart':
@@ -3221,6 +3337,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3238,6 +3356,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/systemd':
@@ -3277,6 +3396,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input or the universe is already is already using systemd services
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3294,6 +3415,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit':
@@ -3331,6 +3453,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3348,6 +3472,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit/rotate':
@@ -3383,6 +3508,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3400,6 +3527,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/kubernetes-overrides':
@@ -3441,6 +3569,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3458,6 +3588,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/detach':
@@ -3489,6 +3620,8 @@
         $ref: "../components/responses/DetachUniverseResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3504,6 +3637,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
   delete:
@@ -3531,6 +3665,8 @@
         description: Successfully rolled back detach universe operation
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3546,6 +3682,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach':
@@ -3577,6 +3714,8 @@
         description: Successfully attached universe.
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3592,6 +3731,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-multipart: true
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
@@ -3622,6 +3762,8 @@
         description: Successfully deleted attach/detach metadata of universe
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3637,6 +3779,7 @@
         resourceLocation:
           path: universes
           sourceType: endpoint
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/query-log-config':
@@ -3674,6 +3817,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3691,6 +3836,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/metrics-export-config':
@@ -3724,6 +3870,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3741,6 +3889,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: deprecated
 '/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
@@ -3775,6 +3924,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3792,6 +3943,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: preview
   get:
@@ -3900,6 +4052,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -3917,6 +4071,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
@@ -4008,7 +4163,7 @@
       '400':
         description: Invalid input or feature not enabled
       '403':
-        description: Feature not enabled for this universe
+        description: 'Feature not enabled for this universe, or resource is controlled by the Kubernetes operator'
       '500':
         description: Server error
     security:
@@ -4021,6 +4176,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections':
@@ -4066,7 +4222,7 @@
       '400':
         description: Invalid input or feature not enabled
       '403':
-        description: Feature not enabled for this universe or not accessed from localhost
+        description: 'Feature not enabled for this universe or not accessed from localhost, or resource is controlled by the Kubernetes operator'
       '500':
         description: Server error
     security:
@@ -4083,6 +4239,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download':
@@ -4148,7 +4305,7 @@
       '400':
         description: Collection not found or already cleaned up
       '403':
-        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost'
+        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost, or resource is controlled by the Kubernetes operator'
       '404':
         description: Collection not found
       '500':
@@ -4167,6 +4324,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}':
@@ -4228,7 +4386,7 @@
       '400':
         description: Collection not found or already cleaned up
       '403':
-        description: API not called from localhost or feature not enabled
+        description: 'API not called from localhost or feature not enabled, or resource is controlled by the Kubernetes operator'
       '404':
         description: Collection not found
       '500':
@@ -4247,6 +4405,7 @@
           path: UNIVERSES
           sourceType: ENDPOINT
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/proxy-config':
@@ -4285,6 +4444,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '404':
         description: Customer or Universe or Cluster not found
       '500':
@@ -4304,6 +4465,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
@@ -4341,6 +4503,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -4358,6 +4522,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/validate-kubernetes-overrides':
@@ -4487,6 +4652,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: Resource is controlled by the Kubernetes operator
       '500':
         description: Server error
     security:
@@ -4504,6 +4671,7 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-block-operator-resource: universe
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 /yba-info:

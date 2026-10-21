@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
@@ -30,11 +31,29 @@ func (s State) ValidateReconfig() error {
 		return fmt.Errorf("cannot change as_root from %t", s.Config.AsRoot)
 	}
 
+	if viper.GetBool("fips.enabled") != s.Config.FipsEnabled {
+		return fmt.Errorf("cannot change fips.enabled from %t: an existing YugabyteDB Anywhere "+
+			"cannot be converted to or from FIPS mode. Set fips.enabled back to %t in %s",
+			s.Config.FipsEnabled, s.Config.FipsEnabled, common.InputFile())
+	}
+
 	if err := ValidatePrometheusScrapeConfig(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// ValidateReinstall is called before installing over a soft-cleaned install. Its data is still in
+// place, so FIPS mode cannot change any more than it can on a running install.
+func (s State) ValidateReinstall() error {
+	if s.CurrentStatus != SoftCleanStatus || viper.GetBool("fips.enabled") == s.Config.FipsEnabled {
+		return nil
+	}
+	return fmt.Errorf("fips.enabled is %t, but the data kept by the previous yba-ctl clean "+
+		"belongs to an install with fips.enabled %t. Install with fips.enabled: %t, or remove "+
+		"that data first with yba-ctl clean --all",
+		!s.Config.FipsEnabled, s.Config.FipsEnabled, s.Config.FipsEnabled)
 }
 
 // ValidatePrometheusScrapeConfig validates the prometheus scrape config.

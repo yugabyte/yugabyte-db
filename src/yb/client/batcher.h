@@ -32,12 +32,14 @@
 #pragma once
 
 #include <unordered_map>
+#include <set>
 #include <vector>
 
 #include "yb/ash/ash_fwd.h"
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/request_id_allocator.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
@@ -89,14 +91,6 @@ struct InFlightOpsGroupsWithMetadata {
   InFlightOpsTransactionMetadata metadata;
 };
 
-struct RequestDetails {
-  RetryableRequestId min_running_request_id;
-
-  explicit RequestDetails(RetryableRequestId min_running_request_id_) :
-      min_running_request_id(min_running_request_id_) {}
-};
-
-using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
 
 class TxnBatcherIf {
  public:
@@ -220,6 +214,16 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // associated transaction (if any) already expects them.
   void FlushAsync(StatusFunctor callback, IsWithinTransactionRetry is_within_transaction_retry);
 
+  // Lets local calls of this batcher time out at the deadline. holder keeps alive the data that
+  // the ops reference, apart from what the batcher owns.
+  void SetBuffersHolder(std::shared_ptr<void> holder) {
+    buffers_holder_ = std::move(holder);
+  }
+
+  bool local_calls_can_time_out() const {
+    return buffers_holder_ != nullptr;
+  }
+
   CoarseTimePoint deadline() const {
     return deadline_;
   }
@@ -250,30 +254,19 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const std::string& proxy_uuid() const;
 
-  const ClientId& client_id() const;
-
   MicrosTime rpcs_start_time_micros() const { return rpcs_start_time_micros_; }
 
   server::Clock* Clock() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+  internal::RequestIdAllocation NextRequestIdAndMinRunningRequestId();
+
+  void RegisterRequest(const internal::RequestIdAllocation& request) {
+    retryable_requests_.insert(request);
+  }
 
   void RequestsFinished();
 
-  void RegisterRequest(
-      RetryableRequestId id, RetryableRequestId min_running_id) {
-    retryable_requests_.emplace(id, RequestDetails(min_running_id));
-  }
-
-  void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
-
-  const RequestDetails& GetRequestDetails(RetryableRequestId id) {
-    const auto it = retryable_requests_.find(id);
-    if (PREDICT_FALSE(it == retryable_requests_.end())) {
-      LOG(FATAL) << "Cannot find retryable request detail of id " << id;
-    }
-    return it->second;
-  }
+  void MoveRequestFrom(const BatcherPtr& other, const internal::RequestIdAllocation& request);
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
     rejection_score_source_ = rejection_score_source;
@@ -367,7 +360,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void Run() override;
 
-  std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+  std::pair<std::map<PartitionKey, Status>, std::map<internal::RequestIdAllocation, Status>>
       CollectOpsErrors();
 
   void HandleAsyncWriteResponse(
@@ -425,14 +418,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   RejectionScoreSourcePtr rejection_score_source_;
 
-  // Map to store retryable request ids used in current batcher.
-  // retryable_request_id => { min_running_request_id }
-  // When creating WriteRpc, new ids will be registered into this map.
-  // If the batcher has requests to be retried, request id is removed from current batcher
-  // and transmit to the retry batcher.
-  // At destruction of the batcher, all request ids in the map will be removed from the client
-  // running requests.
-  BatcherRequestsMap retryable_requests_;
+  // The retryable requests of the write RPCs of this batcher. A request moves to the retry
+  // batcher with the ops of a failed RPC, and the batcher finishes the ones left when destroyed.
+  std::set<internal::RequestIdAllocation> retryable_requests_;
 
   // Stores the time at which the read/write rpcs of this batcher are created. 'start_time_micros'
   // of launched WriteRpc/ReadRpc requests is set to this batcher's 'rpcs_start_time_micros_'.
@@ -443,6 +431,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   const int64_t leader_term_;
 
   ThreadSafeArenaPtr arena_;
+
+  std::shared_ptr<void> buffers_holder_;
 
   // - For a session advisory lock request: the below points to
   //   the in-progress DocDB transaction, if any.

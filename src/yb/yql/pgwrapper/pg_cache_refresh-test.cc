@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -32,10 +33,8 @@ class PgCacheRefreshTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     // Tests here run DDLs concurrently with DMLs. Such behavior will not be possible
     // with table locks enabled.
-    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    ToggleDDLMode(opts->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(opts->extra_master_flags, /* use_legacy = */ true);
   }
 
  protected:

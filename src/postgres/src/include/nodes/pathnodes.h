@@ -61,6 +61,35 @@ typedef struct AggClauseCosts
 } AggClauseCosts;
 
 /*
+ * YB: What a scan copy costed as the input of a pushed-down Agg takes from
+ * the Agg (yb_make_agg_pushdown_info): the width of the partial-aggregate
+ * row DocDB returns per group from each read request, and the transition
+ * work DocDB does per scanned row.  Held on the path so that the scan's
+ * cost function needs nothing from the Agg's PlannerInfo, which is not the
+ * scan's own under a subquery.
+ */
+typedef struct YbAggPushdownInfo
+{
+	int32		result_width;
+	AggClauseCosts agg_costs;
+} YbAggPushdownInfo;
+
+/*
+ * YB: Who decides whether the scan below a plain Agg evaluates the Agg's
+ * aggregates in DocDB.  The zero value leaves it to ExecInitAgg, which
+ * checks the initialized scan state (yb_agg_pushdown_supported); that is
+ * every Agg planned without the YB cost model and every Agg not built from
+ * an AggPath.  An AggPath planned under the YB cost model records the
+ * planner's answer.
+ */
+typedef enum YbAggPushdownDecision
+{
+	YB_AGG_PUSHDOWN_BY_EXECUTOR = 0,	/* ExecInitAgg decides */
+	YB_AGG_PUSHDOWN_PLANNED_OFF,	/* planner: the Agg evaluates them */
+	YB_AGG_PUSHDOWN_PLANNED_ON,	/* planner: the scan evaluates them */
+} YbAggPushdownDecision;
+
+/*
  * This enum identifies the different types of "upper" (post-scan/join)
  * relations that we might deal with during planning.
  */
@@ -407,6 +436,8 @@ struct PlannerInfo
 	Relids		yb_cur_batched_relids;	/* valid if we are processing a
 										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
+	List	   *yb_cur_batched_groups;	/* yb_ppi_batched_groups for the
+										 * path being built */
 
 	/*
 	 * YB: List of Relids. Each element is a Bitmapset that encodes the batched
@@ -452,6 +483,13 @@ struct PlannerInfo
 	 * NULL when the query has no federated foreign tables.
 	 */
 	const char **yb_tserver_uuids;
+
+	/*
+	 * YB: LIMIT count + OFFSET when both fold to constants, else -1.
+	 * Unlike limit_tuples it is not cleared for grouping or DISTINCT;
+	 * yb_first_fetch_limit applies the executor's own pass-through rules.
+	 */
+	Cardinality yb_limit_tuples;
 };
 
 
@@ -1260,6 +1298,20 @@ typedef struct PathTarget
  * the same relation is referenced with a batched array elsewhere in the scan.
  * The join directly above the path applies them instead (see
  * get_joinrel_parampathinfo).  Like ppi_clauses, it is NIL in join cases.
+ *
+ * YB: yb_ppi_batched_groups lists the sets of batched outer relations that a
+ * single batched clause of this path references together.  Such a clause
+ * becomes one YbBatchedExpr, which createplan.c expands into an array using
+ * one batch index for every batched Var inside it, so element i is only
+ * meaningful when all of them come from the same outer tuple -- that is, when
+ * one batched nested loop join fills them.  A join that batches part of a set
+ * probes the diagonal of two independently advancing batches instead of their
+ * cross product and loses rows, so yb_batched_clause_final_check rejects it.
+ * Unlike ppi_clauses this list is carried up through join cases, because the
+ * clause it came from is not reachable from there.  Only sets of two or more
+ * are recorded: one batched relation constrains nothing, and an unbatched
+ * relation in the same expression supplies a scalar parameter that holds
+ * still for a whole rescan of this path.
  */
 typedef struct ParamPathInfo
 {
@@ -1272,6 +1324,7 @@ typedef struct ParamPathInfo
 	/* Yugabyte attributes */
 	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
 	List	   *yb_ppi_relegated_clauses;	/* clauses withheld from ppi_clauses */
+	List	   *yb_ppi_batched_groups;	/* outer rels to batch together */
 } ParamPathInfo;
 
 
@@ -1298,28 +1351,42 @@ typedef struct YbPathInfo
 	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
+/*
+ * Info propagated for YugabyteDB, for scans: what costing assumed about the
+ * scan's DocDB work, carried to the plan node for EXPLAIN (DEBUG) to help
+ * diagnose cost estimates.
+ *
+ * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
+ * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
+ * is not an estimate but derived from the query and plan shape.
+ */
 typedef struct YbPlanInfo
 {
-	double		estimated_num_nexts_prevs;
+	double		estimated_num_nexts;
+	double		estimated_num_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
 	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
-	double		estimated_num_bmscan_nexts_prevs;
+	double		estimated_num_bmscan_nexts;
+	double		estimated_num_bmscan_prevs;
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
+	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
 } YbPlanInfo;
 
 /*
  * YB: info used by YbIndexPathInfo.
  *
- * Holds info used for merge scans.
+ * Holds info used for merge scans.  'clause' is the column's SAOP or equality
+ * index condition, or NULL for a hash column with neither, which
+ * ybValidateMergeScanBinds reports.
  */
 typedef struct YbMergeScanStreamColInfo
 {
 	NodeTag		type;
-	Expr	   *clause;			/* the SAOP */
+	Expr	   *clause;			/* SAOP, equality index cond, or NULL */
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
@@ -1330,6 +1397,9 @@ typedef struct YbMergeScanStreamColInfo
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ *
+ * 'merge_scan_stream_cols' lists the merge stream keys in index column order
+ * (see yb_finalize_merge_scan_stream_cols).
  */
 typedef struct YbIndexPathInfo
 {
@@ -1369,6 +1439,13 @@ typedef struct YbIndexPathInfo
  * ordering of the path's output rows.
  *
  * 'yb_path_info' contains info propagated for YugabyteDB.
+ *
+ * YB: 'yb_agg_pushdown' is set on a copy of a scan path costed as the input
+ * of an Agg whose aggregates DocDB evaluates, one partial-aggregate row per
+ * read request, and holds what that costing takes from the Agg.  Only the
+ * copy a pushed-down Agg hangs on carries it (yb_agg_pushdown_subpath in
+ * pathnode.c); the original scan path in the relation's pathlist stays
+ * unmarked.
  */
 typedef struct Path
 {
@@ -1399,6 +1476,7 @@ typedef struct Path
 	uint32		ybUniqueId;		/* unique id of Path */
 	bool		ybIsHinted;		/* does this represent a hint path? */
 	bool		ybHasHintedUid; /* force this path using UID? */
+	YbAggPushdownInfo *yb_agg_pushdown;	/* costed as pushed-down Agg input */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1411,6 +1489,9 @@ typedef struct Path
 
 #define YB_PATH_NEEDS_BATCHED_RELS(path) \
 	!bms_is_empty(YB_PATH_REQ_OUTER_BATCHED(path))
+
+#define YB_PATH_BATCHED_GROUPS(path)  \
+	((path)->param_info ? ((path)->param_info->yb_ppi_batched_groups) : NIL)
 
 #define YB_PATH_REQ_OUTER_UNBATCHED(path)  \
 	(bms_difference(PATH_REQ_OUTER(path), YB_PATH_REQ_OUTER_BATCHED(path)))
@@ -2032,6 +2113,14 @@ typedef struct UpperUniquePath
  * This may involve plain grouping (but not grouping sets), using either
  * sorted or hashed grouping; for the AGG_SORTED case, the input must be
  * appropriately presorted.
+ *
+ * YB: 'yb_pushdown_decision' is the planner's aggregate pushdown decision
+ * under the YB cost model (see YbAggPushdownDecision); without it the
+ * executor decides.  When the scan below evaluates the aggregates in DocDB,
+ * one partial-aggregate row per read request, and has a YB cost function,
+ * the subpath is a copy of the scan path costed for that result stream
+ * (yb_agg_pushdown_subpath in pathnode.c) and the relation's pathlist keeps
+ * the original.
  */
 typedef struct AggPath
 {
@@ -2043,6 +2132,9 @@ typedef struct AggPath
 	uint64		transitionSpace;	/* for pass-by-ref transition data */
 	List	   *groupClause;	/* a list of SortGroupClause's */
 	List	   *qual;			/* quals (HAVING quals), if any */
+
+	/* YB fields */
+	YbAggPushdownDecision yb_pushdown_decision;
 } AggPath;
 
 /*

@@ -86,13 +86,13 @@ class PgDbCache::Impl {
     return future.get();
   }
 
-  void Invalidate(const std::unordered_set<uint32_t>& db_oids_deleted) {
-    if (db_oids_deleted.empty()) {
+  void Invalidate(const PgTableCacheInvalidationFilter::DroppedDbs& dropped_dbs) {
+    if (dropped_dbs.empty()) {
       return;
     }
-    VLOG(1) << "PgDbCache removing entries for dropped db " << yb::ToString(db_oids_deleted);
+    VLOG(1) << "PgDbCache removing entries for dropped db " << AsString(dropped_dbs);
     std::lock_guard lock(mutex_);
-    for (auto db_oid : db_oids_deleted) {
+    for (auto db_oid : dropped_dbs) {
       cache_.erase(db_oid);
     }
   }
@@ -133,8 +133,8 @@ Result<PgDbCache::ColocationInfo> PgDbCache::GetColocationInfo(uint32_t db_oid) 
   return impl_->GetColocationInfo(db_oid);
 }
 
-void PgDbCache::Invalidate(const std::unordered_set<uint32_t>& db_oids_deleted) {
-  impl_->Invalidate(db_oids_deleted);
+void PgDbCache::Invalidate(const PgTableCacheInvalidationFilter::DroppedDbs& dropped_dbs) {
+  impl_->Invalidate(dropped_dbs);
 }
 
 void PgDbCache::Clear() { impl_->Clear(); }

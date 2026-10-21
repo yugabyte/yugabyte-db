@@ -160,3 +160,34 @@ signature and the caller's obligation to close the body.
 
 Example:
 x-yba-api-stream-response: true
+
+10. x-yba-api-block-operator-resource (at operation level)
+Adds @BlockOperatorResource to the generated controller method so requests for resources owned by
+the Kubernetes operator are rejected before request-body parsing. Valid values are universe and
+provider.
+
+Example:
+x-yba-api-block-operator-resource: universe
+
+11. x-yba-api-conditional-get
+Optional. When present on a GET operation, the generated Play controller method is annotated with
+@ConditionalGet so HTTP conditional GET (If-None-Match → 304) runs via ConditionalGetAction after
+auth/RBAC and before the Imp body is built.
+
+Example:
+
+x-yba-api-conditional-get:
+  provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+  resourcePathSegment: universes
+
+generates:
+
+@ConditionalGet(
+    value = com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider.class,
+    resourcePathSegment = "universes")
+
+provider: Fully-qualified ResourceRevisionProvider implementation (required).
+resourcePathSegment: Path segment before the resource UUID (optional; defaults to "universes" on the
+  annotation if omitted).
+
+Gating by yb.api.conditional_get.enabled is handled inside ConditionalGetAction.

@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOCIImageEligibility;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -146,6 +147,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       }
     }
     addBasicPrecheckTasks();
+    createCheckOCIImageEligibilityTask(universe);
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
     Customer customer = Customer.get(universe.getCustomerId());
 
@@ -172,6 +174,47 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         enableEarlyoom = false;
       }
     }
+  }
+
+  private void createCheckOCIImageEligibilityTask(Universe universe) {
+    Set<NodeDetails> ociNodes =
+        toOrderedSet(getNodesToBeRestarted().asPair()).stream()
+            .filter(
+                n -> universe.getCluster(n.placementUuid).getProviderCloudType(n) == CloudType.oci)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+    Map<String, ImageSettings> imageSettingsMap = getImageSettingsForNodes(ociNodes);
+    Set<CheckOCIImageEligibility.BundleImage> targetImages = new LinkedHashSet<>();
+    Set<CheckOCIImageEligibility.BundleImage> currentImages = new LinkedHashSet<>();
+    for (NodeDetails node : ociNodes) {
+      ImageSettings imageSettings = imageSettingsMap.get(node.nodeName);
+      if (imageSettings == null) {
+        continue;
+      }
+      targetImages.add(
+          new CheckOCIImageEligibility.BundleImage(
+              imageSettings.imageBundleUUID, node.cloudInfo.region));
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+      UUID currentBundleUuid =
+          cluster.userIntent.getImageBundleUUIDForProvider(cluster.getProviderUUIDForNode(node));
+      if (currentBundleUuid != null) {
+        currentImages.add(
+            new CheckOCIImageEligibility.BundleImage(currentBundleUuid, node.cloudInfo.region));
+      }
+    }
+    if (targetImages.isEmpty()) {
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckOCIImageEligibility",
+        subTaskGroup -> {
+          CheckOCIImageEligibility.Params params = new CheckOCIImageEligibility.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.targetImages = new ArrayList<>(targetImages);
+          params.currentImages = new ArrayList<>(currentImages);
+          CheckOCIImageEligibility task = createTask(CheckOCIImageEligibility.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   @Override
@@ -265,6 +308,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               nodeSet,
               context,
               taskParams().isYbcInstalled());
+          // Having re-provisioned every node, the upgrade may decide the universe's node_exporter
+          // scheme.
+          Set<String> upgraded =
+              allNodesSet.stream().map(n -> n.nodeName).collect(Collectors.toSet());
+          if (universe.getNodes().stream().allMatch(n -> upgraded.contains(n.nodeName))) {
+            createUpdateNodeExporterTlsTask(universe);
+          }
 
           createPersistCpuCgroupConfiguredTask(universe);
 

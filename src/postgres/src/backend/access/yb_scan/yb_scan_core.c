@@ -1133,177 +1133,6 @@ ybcSetupScanKeys(YbOpaque ybScan, YbScanPlan scan_plan)
 	}
 }
 
-/* Return true if typid is one of the Object Identifier Types */
-static bool
-YbIsOidType(Oid typid)
-{
-	switch (typid)
-	{
-		case OIDOID:
-		case REGPROCOID:
-		case REGPROCEDUREOID:
-		case REGOPEROID:
-		case REGOPERATOROID:
-		case REGCLASSOID:
-		case REGTYPEOID:
-		case REGROLEOID:
-		case REGNAMESPACEOID:
-		case REGCONFIGOID:
-		case REGDICTIONARYOID:
-			return true;
-		default:
-			return false;
-	}
-}
-
-static int64
-YbDatumGetInt64(Datum value, Oid value_typid)
-{
-	switch (value_typid)
-	{
-		case INT2OID:
-			return DatumGetInt16(value);
-		case INT4OID:
-			return DatumGetInt32(value);
-		case INT8OID:
-			return DatumGetInt64(value);
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("not an integer type")));
-	}
-}
-
-static bool
-YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max)
-{
-	int64		val = YbDatumGetInt64(value, value_typid);
-
-	return val >= min && val <= max;
-}
-
-/*
- * Return true if a scan key column type is compatible with value type.
- */
-static bool
-YbIsScanCompatible(Oid column_typid,
-				   Oid value_typid,
-				   bool is_value_scalar,
-				   Datum value)
-{
-	if (column_typid == value_typid)
-		return true;
-
-	switch (column_typid)
-	{
-		case INT2OID:
-
-			/*
-			 * If column c0 has INT2OID type and value type is INT4OID, the
-			 * value may overflow INT2OID. For example, where clause condition
-			 * "c0 = 65539" would become "c0 = 3" and will unnecessarily fetch
-			 * a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer filtering will be subsequently
-			 * applied for equality/inequality conditions. For example, "c0 =
-			 * 65539" will be applied again to filter out this row.
-			 * We prefer to bind scan key c0 to account for the
-			 * common case where INT4OID value does not overflow INT2OID,
-			 * which happens in some system relation scan queries.
-			 *
-			 * For this purpose, specifically for when the value is scalar,
-			 * we return true when we are sure that
-			 * there isn't a data overflow. For instance, if column c0 has
-			 * INT2OID and value type is INT4OID, and its an inequality
-			 * strategy, we check if the actual value is within the
-			 * bounds of INT2OID. If yes, then we return true, otherwise false.
-			 */
-			return (!is_value_scalar ?
-					(value_typid == INT4OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX));
-		case INT4OID:
-			return (!is_value_scalar ?
-					(value_typid == INT2OID || value_typid == INT8OID) :
-					YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX));
-		case INT8OID:
-			return value_typid == INT2OID || value_typid == INT4OID;
-
-		case TEXTOID:
-		case BPCHAROID:
-		case VARCHAROID:
-			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
-					value_typid == VARCHAROID);
-
-		default:
-			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
-				return true;
-			/* Conservatively return false. */
-			return false;
-	}
-}
-
-/*
- * Determine whether an equality between two types needs further recheck.  For
- * now, this only flags cases where the storage column type is smaller than the
- * value type.
- *
- * TODO(jason): check if any other type combos need checking.  float4 and
- * float8 look suspicious.
- *
- * SELECT a.typname, b.typname
- *   FROM pg_operator
- *   JOIN pg_type a ON oprleft = a.oid
- *   JOIN pg_type b ON oprright = b.oid
- *  WHERE oprname = '=' AND oprleft != oprright;
- *    typname   |   typname
- * -------------+-------------
- *  name        | text
- *  int8        | int2
- *  int8        | int4
- *  int2        | int8
- *  int2        | int4
- *  int4        | int8
- *  int4        | int2
- *  text        | name
- *  xid         | int4
- *  float4      | float8
- *  float8      | float4
- *  date        | timestamp
- *  date        | timestamptz
- *  timestamp   | date
- *  timestamp   | timestamptz
- *  timestamptz | date
- *  timestamptz | timestamp
- * (17 rows)
- */
-static bool
-YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
-{
-	switch (column_typid)
-	{
-		case INT2OID:
-			if (value_typid == INT4OID)
-				return true;
-			yb_switch_fallthrough();
-		case INT4OID:
-			if (value_typid == INT8OID)
-				return true;
-			break;
-		default:
-			break;
-	}
-
-	return false;
-}
-
-static bool
-YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
-{
-	return (YbShouldRecheckEquality(col_typid, val_typid) &&
-			!YbIsIntegerInRange(val, val_typid,
-								col_typid == INT2OID ? SHRT_MIN : INT_MIN,
-								col_typid == INT2OID ? SHRT_MAX : INT_MAX));
-}
-
 static bool
 YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 					  int key_length, AttrNumber bind_key_attnums[])
@@ -1411,6 +1240,31 @@ YbCheckScanTypes(YbOpaque ybScan, YbScanPlan scan_plan, int i)
 							   !YbIsRowHeader(key) && !YbIsSearchArray(key),
 							   key->sk_argument) ||
 			IsPolymorphicType(valtypid));
+}
+
+/*
+ * Return whether some scan key is an equality to an integer that its column's
+ * type cannot hold.  The keys are ANDed, so no row matches such a scan,
+ * whether or not the key could bind.  Only a plain scalar key qualifies, not a
+ * NULL, IN array, row comparison, or hash code key.
+ */
+static bool
+ybHasOutOfRangeEquality(YbOpaque ybScan, YbScanPlan scan_plan)
+{
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+		Oid			col_typid;
+
+		if (key->sk_strategy != BTEqualStrategyNumber || key->sk_flags != 0 ||
+			!OidIsValid(key->sk_subtype))
+			continue;
+		col_typid = ybc_get_atttypid(scan_plan->bind_desc,
+									 scan_plan->bind_key_attnums[i]);
+		if (YbIsValueOutOfRange(col_typid, key->sk_subtype, key->sk_argument))
+			return true;
+	}
+	return false;
 }
 
 /*
@@ -2271,6 +2125,10 @@ ybMergeScanStreamColAttnum(Relation index,
  * yb_merge_scan_info->stream_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
  * return missing or misordered rows otherwise, so raise an error.
+ *
+ * If the executor ever turns an unbindable index condition into a filter
+ * inside the per-stream storage request, which runs before the streams are
+ * merged, this check must accept such a filter on the column.
  */
 static void
 ybValidateMergeScanBinds(YbOpaque ybScan, YbScanPlan scan_plan,
@@ -2278,8 +2136,26 @@ ybValidateMergeScanBinds(YbOpaque ybScan, YbScanPlan scan_plan,
 						 bool is_column_eq_or_in_bound[], int max_idx)
 {
 	ListCell   *lc;
+	List	   *unconditioned = NIL;
+	List	   *conditioned = NIL;
 
+	/*
+	 * Check the columns without a condition first.  When a hash column lacks
+	 * one, ybcSetupScanKeys leaves every hash column unbound, and the error
+	 * should name the column that lacks it.
+	 */
 	foreach(lc, yb_merge_scan_info->stream_cols)
+	{
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
+
+		if (info->clause)
+			conditioned = lappend(conditioned, info);
+		else
+			unconditioned = lappend(unconditioned, info);
+	}
+
+	foreach(lc, list_concat(unconditioned, conditioned))
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
@@ -2726,12 +2602,24 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				{
 					YbMergeScanStreamColInfo *info =
 						lfirst_node(YbMergeScanStreamColInfo, lc);
-					ScalarArrayOpExpr *pinned_saop =
-						castNode(ScalarArrayOpExpr, info->clause);
-					Const	   *pinned_array =
-						castNode(Const, lsecond(pinned_saop->args));
-					AttrNumber	attnum =
-						ybMergeScanStreamColAttnum(ybScan->index, info);
+					ScalarArrayOpExpr *pinned_saop;
+					Const	   *pinned_array;
+					AttrNumber	attnum;
+
+					/*
+					 * Only SAOPs pre-bind.  A single-value equality stream key
+					 * column binds through the ordinary priority loop, where a
+					 * Row IN on the same column outranks it, as it does on the
+					 * fold path, and the validation below then errors.
+					 * TODO(#32734): pre-bind declared equalities too once such
+					 * a plan is reachable.
+					 */
+					if (!info->clause || !IsA(info->clause, ScalarArrayOpExpr))
+						continue;
+
+					pinned_saop = (ScalarArrayOpExpr *) info->clause;
+					pinned_array = castNode(Const, lsecond(pinned_saop->args));
+					attnum = ybMergeScanStreamColAttnum(ybScan->index, info);
 
 					/*
 					 * Compare that the scan key and the pinned SAOP are on the
@@ -3602,11 +3490,20 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
-	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	/* Determine needs_recheck. */
-	(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
-						  true);	/* is_for_precheck */
+	/*
+	 * Determine needs_recheck, which stays false for a scan that no row can
+	 * match.  A runtime key holds (Datum) 0 until it is evaluated, which is in
+	 * range for every integer type.  So only a constant can make
+	 * ybHasOutOfRangeEquality return true here, and that answer holds at
+	 * execution too.
+	 */
+	if (!ybHasOutOfRangeEquality(&ybscan, &scan_plan))
+	{
+		ybcSetupScanKeys(&ybscan, &scan_plan);
+		(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
+							  true);	/* is_for_precheck */
+	}
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
@@ -3672,6 +3569,16 @@ YbBeginScan(Relation table,
 	YbScanPlanData scan_plan;
 
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
+
+	if (ybHasOutOfRangeEquality(ybScan, &scan_plan))
+	{
+		elog(DEBUG1, "skipping a scan due to an out-of-range equality");
+		ybScan->quit_scan = true;
+		bms_free(scan_plan.hash_key_cols);
+		bms_free(scan_plan.key_cols);
+		return ybScan;
+	}
+
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);

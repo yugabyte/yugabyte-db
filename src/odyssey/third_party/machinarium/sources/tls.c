@@ -183,6 +183,48 @@ static inline void mm_tls_error(mm_io_t *io, int ssl_rc, char *fmt, ...)
 		errno = EIO;
 }
 
+/* YB: See yb_mm_tls_get_server_cert_hash(). Returns -1 on failure. */
+static int yb_mm_tls_cert_hash(X509 *cert, unsigned char *buf, int *len)
+{
+	int algo_nid;
+	const EVP_MD *algo_type;
+	unsigned int hash_len;
+
+	*len = 0;
+	if (cert == NULL)
+		return -1;
+	/*
+	 * YB: The rest is lifted from be_tls_get_certificate_hash() in PG
+	 * (src/backend/libpq/be-secure-openssl.c), so the hash matches what a
+	 * direct Postgres connection would bind to.
+	 *
+	 * X509_get_signature_info() handles RSA-PSS but needs OpenSSL >= 1.1.1
+	 * and is absent in BoringSSL.
+	 */
+#if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER >= 0x10101000L)
+	if (!X509_get_signature_info(cert, &algo_nid, NULL, NULL, NULL))
+		return -1;
+#else
+	if (!OBJ_find_sigid_algs(X509_get_signature_nid(cert), &algo_nid, NULL))
+		return -1;
+#endif
+	switch (algo_nid) {
+	case NID_md5:
+	case NID_sha1:
+		algo_type = EVP_sha256();
+		break;
+	default:
+		algo_type = EVP_get_digestbynid(algo_nid);
+		if (algo_type == NULL)
+			return -1;
+		break;
+	}
+	if (!X509_digest(cert, algo_type, buf, &hash_len))
+		return -1;
+	*len = (int)hash_len;
+	return 0;
+}
+
 SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 {
 	mm_tls_ctx_t *ctx_container;
@@ -343,6 +385,16 @@ cache:
 	ctx_container = malloc(sizeof(*ctx_container));
 	ctx_container->key = io->tls;
 	ctx_container->tls_ctx = ctx;
+	ctx_container->yb_cert_hash_len = 0;
+	/*
+	 * YB: The certificate is fixed for the life of the context, so compute
+	 * its channel binding hash once here. A failure only means SCRAM channel
+	 * binding is not offered.
+	 */
+	if (!is_client)
+	    yb_mm_tls_cert_hash(SSL_CTX_get0_certificate(ctx),
+				ctx_container->yb_cert_hash,
+				&ctx_container->yb_cert_hash_len);
 
 	if (is_client) {
 		ctx_container->next = mm_self->client_tls_ctx;
@@ -538,6 +590,41 @@ int yb_mm_tls_get_peer_cert_der(mm_io_t *io, unsigned char **buf, int *len)
 
 	*len = der_len;
 	return 0;
+}
+
+/*
+ * YB: tls-server-end-point channel binding hash (RFC 5929 section 4.1) of the
+ * certificate this side presents on io's session. The digest selection must
+ * match PostgreSQL's be_tls_get_certificate_hash(), which client-side libpq
+ * mirrors: the certificate's signature digest, upgraded to SHA-256 when that
+ * is MD5 or SHA-1.
+ *
+ * The hash is computed once per server SSL_CTX, in mm_tls_get_context(), and
+ * looked up here, so a context rebuilt on config reload carries its own hash.
+ *
+ * buf must have room for EVP_MAX_MD_SIZE bytes. Returns 0 on a cache hit, 1
+ * when the hash was computed from the session's certificate instead, and -1 on
+ * failure.
+ */
+int yb_mm_tls_get_server_cert_hash(mm_io_t *io, unsigned char *buf, int *len)
+{
+	*len = 0;
+
+	for (mm_tls_ctx_t *c = mm_self->server_tls_ctx; c != NULL;
+	     c = c->next) {
+		if (c->key == io->tls && c->tls_ctx == SSL_get_SSL_CTX(io->tls_ssl)) {
+			if (c->yb_cert_hash_len <= 0)
+				break;
+			memcpy(buf, c->yb_cert_hash, c->yb_cert_hash_len);
+			*len = c->yb_cert_hash_len;
+			return 0;
+		}
+	}
+
+	/* Not cached (should not happen): hash the session's certificate. */
+	if (yb_mm_tls_cert_hash(SSL_get_certificate(io->tls_ssl), buf, len) == -1)
+		return -1;
+	return 1;
 }
 
 static void mm_tls_handshake_cb(mm_fd_t *handle)
@@ -851,4 +938,27 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 		return 0;
 	mm_tls_error(io, rc, "SSL_read()");
 	return -1;
+}
+
+/*
+ * YB: build the server context once at startup, as the postmaster does, so
+ * settings be_tls_init() rejects stop conn mgr from starting rather than fail
+ * every client handshake. Worker threads still build their own lazily.
+ */
+MACHINE_API int yb_machine_tls_validate_server_context(machine_tls_t *obj,
+						       char *err, int err_len)
+{
+	mm_io_t io;
+
+	/* The machinarium-managed path's errors need an SSL object; skip it. */
+	if (!yb_full_tls_handshake())
+		return 0;
+
+	memset(&io, 0, sizeof(io));
+	io.tls = mm_cast(mm_tls_t *, obj);
+	if (mm_tls_get_context(&io, 0) == NULL) {
+		mm_snprintf(err, err_len, "%s", io.tls_error_msg);
+		return -1;
+	}
+	return 0;
 }

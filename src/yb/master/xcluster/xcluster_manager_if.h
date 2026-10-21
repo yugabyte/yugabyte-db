@@ -23,6 +23,7 @@ namespace yb {
 class HybridTime;
 class IsOperationDoneResult;
 class JsonWriter;
+class XClusterGuardedInfoPB;
 
 namespace rpc {
 class RpcContext;
@@ -118,6 +119,10 @@ class XClusterManagerIf {
       const InsertHistoricalColocatedSchemaPackingRequestPB* req,
       InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch) = 0;
+
+  // Fills info with a copy of the xCluster-guarded information stamped with a version newer than
+  // that of any earlier copy.
+  virtual Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -46,18 +47,70 @@ type postgresDirectories struct {
 	dataDir             string
 	PgBin               string
 	LogFile             string
+	// OpenSSL config and module dir the server runs with in FIPS mode; see setUpFipsProvider.
+	OpenSSLConf    string
+	OpenSSLModules string
+	// Host CA bundle for LDAP auth over TLS; "" if none was found.
+	CACertFile string
 }
 
-func newPostgresDirectories() postgresDirectories {
+func newPostgresDirectories(version string) postgresDirectories {
 	return postgresDirectories{
 		SystemdFileLocation: common.SystemdDir + "/postgres.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/pgsql/conf",
 		templateFileName:    "yba-installer-postgres.yml",
 		MountPath:           common.GetBaseInstall() + "/data/pgsql/run/postgresql",
-		dataDir:             common.GetBaseInstall() + "/data/postgres",
+		dataDir:             postgresDataDir(version),
 		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
 		LogFile:             common.GetBaseInstall() + "/data/logs/postgresql",
+		OpenSSLConf:         common.GetSoftwareRoot() + "/pgsql/ssl/openssl-fips.cnf",
+		OpenSSLModules:      common.GetSoftwareRoot() + "/pgsql/lib/ossl-modules",
+		CACertFile:          common.SystemCABundle(),
 	}
+}
+
+// postgresDataDir returns the data directory for a postgres version. Version 14 clusters predate
+// major version upgrades and keep the unversioned directory.
+func postgresDataDir(version string) string {
+	dataDir := common.GetBaseInstall() + "/data/postgres"
+	if major := pgMajorVersion(version); major != 14 {
+		return fmt.Sprintf("%s-%d", dataDir, major)
+	}
+	return dataDir
+}
+
+func pgMajorVersion(version string) int {
+	major, _ := strconv.Atoi(strings.Split(version, ".")[0])
+	return major
+}
+
+// installedDataDir returns the data directory set in the active install's postgresql.conf.
+func installedDataDir() (string, error) {
+	confPath := filepath.Join(common.GetActiveSymlink(), "pgsql/conf/postgresql.conf")
+	contents, err := os.ReadFile(confPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s: %w", confPath, err)
+	}
+	// The last setting wins, as it does for postgres.
+	dataDir := ""
+	for _, line := range strings.Split(string(contents), "\n") {
+		if value, found := strings.CutPrefix(line, "data_directory ="); found {
+			dataDir = strings.Trim(strings.TrimSpace(value), "'")
+		}
+	}
+	if dataDir == "" {
+		return "", fmt.Errorf("data_directory is not set in %s", confPath)
+	}
+	return dataDir, nil
+}
+
+// clusterMajorVersion returns the major version from the PG_VERSION file of the cluster in dataDir.
+func clusterMajorVersion(dataDir string) (int, error) {
+	contents, err := os.ReadFile(filepath.Join(dataDir, "PG_VERSION"))
+	if err != nil {
+		return 0, fmt.Errorf("failed to read the postgres version of %s: %w", dataDir, err)
+	}
+	return strconv.Atoi(strings.TrimSpace(string(contents)))
 }
 
 // Component 1: Postgres
@@ -72,7 +125,7 @@ func NewPostgres(version string) Postgres {
 	return Postgres{
 		name:                "postgres",
 		version:             version,
-		postgresDirectories: newPostgresDirectories(),
+		postgresDirectories: newPostgresDirectories(version),
 	}
 }
 
@@ -107,6 +160,9 @@ func (pg Postgres) Install() error {
 	log.Info("Starting Postgres install")
 	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
+		return err
+	}
+	if err := pg.setUpFipsProvider(); err != nil {
 		return err
 	}
 	log.Info("Finished Postgres install")
@@ -294,32 +350,6 @@ func (pg Postgres) Uninstall(removeData bool) error {
 	return nil
 }
 
-func (pg Postgres) CreateBackup() {
-	log.Debug("starting postgres backup")
-	outFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	if _, err := os.Stat(outFile); !errors.Is(err, os.ErrNotExist) {
-		os.Remove(outFile)
-	}
-	file, err := os.Create(outFile)
-	if err != nil {
-		log.Fatal("failed to open file " + outFile + ": " + err.Error())
-	}
-	defer file.Close()
-
-	// We want the active install directory even during the upgrade workflow.
-	pg_dumpall := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dumpall")
-	args := []string{
-		"-p", viper.GetString("postgres.install.port"),
-		"-h", "localhost",
-		"-U", viper.GetString("service_username"),
-	}
-	out := shell.Run(pg_dumpall, args...)
-	if !out.SucceededOrLog() {
-		log.Fatal("postgres backup failed: " + out.Error.Error())
-	}
-	log.Debug("postgres backup comlete")
-}
-
 func (pg Postgres) CreateYugawareBackup(outFile string) {
 	log.Debug("Starting postgres yugaware database backup.")
 	pg_dump := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dump")
@@ -359,63 +389,194 @@ func (pg Postgres) RestoreBackup(backupPath string) {
 	log.Debug("postgres restore from backup complete")
 }
 
-// UpgradeMajorVersion will upgrade postgres and install it into the alt install directory.
-// Upgrade will NOT restart the service, the old version is expected to still be running
-// This function should be primarily used for major version changes for postgres.
-// TODO: we should gate this to only postgres.install.enabled = true
-func (pg Postgres) UpgradeMajorVersion() error {
-	log.Info("Starting Postgres major upgrade")
-	pg.CreateBackup()
-	pg.Stop()
-	pg.postgresDirectories = newPostgresDirectories()
-	template.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
-	if err := pg.extractPostgresPackage(); err != nil {
-		return err
-	}
-
-	if err := pg.createFilesAndDirs(); err != nil {
-		return err
-	}
-
-	if err := pg.runInitDB(); err != nil {
-		return err
-	}
-	if err := pg.copyConfFiles(); err != nil {
-		return err
-	}
-	if err := pg.modifyPostgresConf(); err != nil {
-		return err
-	}
-	pg.Start()
-	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	pg.RestoreBackup(backupFile)
-
-	log.Info("Completed Postgres major upgrade")
-	return nil
-}
-
-// Upgrade will do a minor version upgrade of postgres
+// Upgrade installs the new postgres version. A major version change moves the data into a new
+// cluster with pg_upgrade; otherwise clusters left behind by earlier major upgrades are removed.
 func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
-	pg.postgresDirectories = newPostgresDirectories()
-	if err := template.GenerateTemplate(pg); err != nil {
-		return err
-	}
+	pg.postgresDirectories = newPostgresDirectories(pg.version)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
-
-	if err := pg.copyConfFiles(); err != nil {
+	if err := pg.setUpFipsProvider(); err != nil {
 		return err
 	}
 
-	if err := pg.modifyPostgresConf(); err != nil {
-		return err
-	}
-
+	// Needs the installed postgres running, which a major upgrade stops.
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createTSDatabase()
 	}
+
+	oldDataDir, err := installedDataDir()
+	if err != nil {
+		return err
+	}
+	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	if err != nil {
+		return err
+	}
+	if oldMajorVersion != pgMajorVersion(pg.version) {
+		if strings.Compare(oldDataDir, pg.dataDir) == 0 {
+			return fmt.Errorf("cannot upgrade postgres from %d to %d in existing data directory %s",
+				oldMajorVersion, pgMajorVersion(pg.version), pg.dataDir)
+		}
+		if err := pg.majorversionUpgradeDataDir(oldDataDir); err != nil {
+			return err
+		}
+	} else if err := pg.removeOldDataDirs(oldDataDir); err != nil {
+		return err
+	}
+
+	if err := template.GenerateTemplate(pg); err != nil {
+		return err
+	}
+
+	if err := pg.copyConfFiles(); err != nil {
+		return err
+	}
+
+	return pg.modifyPostgresConf()
+}
+
+// majorversionUpgradeDataDir creates a new cluster in pg.dataDir and runs pg_upgrade from the cluster in
+// oldDataDir into it, leaving the old cluster unmodified. It stops the running postgres and leaves
+// it stopped, so it has to be called before the systemd unit is regenerated; the new cluster first
+// starts with the service restart after all components are upgraded.
+func (pg Postgres) majorversionUpgradeDataDir(oldDataDir string) error {
+	log.Info(fmt.Sprintf("Upgrading postgres data from %s to %s", oldDataDir, pg.dataDir))
+	// Clear out a cluster left behind by a previous failed upgrade, which may still be running.
+	if _, err := os.Stat(pg.dataDir); err == nil {
+		if err := pg.Stop(); err != nil {
+			return err
+		}
+		if err := common.RemoveAll(pg.dataDir); err != nil {
+			return err
+		}
+	}
+	if err := pg.createFilesAndDirs(); err != nil {
+		return err
+	}
+	if err := pg.runInitDB(); err != nil {
+		return err
+	}
+
+	oldBinDir := filepath.Join(common.GetActiveSymlink(), "pgsql/bin")
+	if err := pg.runPgUpgrade(oldBinDir, oldDataDir,
+		"--check", "--old-port", viper.GetString("postgres.install.port")); err != nil {
+		return err
+	}
+	if err := pg.Stop(); err != nil {
+		return err
+	}
+	if err := pg.runPgUpgrade(oldBinDir, oldDataDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+// runPgUpgrade runs pg_upgrade from the cluster in oldDataDir into the one in pg.dataDir.
+func (pg Postgres) runPgUpgrade(oldBinDir, oldDataDir string, extraArgs ...string) error {
+	// pg_upgrade needs write access to its working directory.
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if err := os.Chdir(common.GetDataRoot()); err != nil {
+		return err
+	}
+	defer os.Chdir(cwd)
+
+	cmdName := filepath.Join(pg.PgBin, "pg_upgrade")
+	args := append([]string{
+		"--old-bindir", oldBinDir,
+		"--new-bindir", pg.PgBin,
+		"--old-datadir", oldDataDir,
+		"--new-datadir", pg.dataDir,
+		"--username", pg.getPgUserName(),
+		"--socketdir", pg.MountPath,
+	}, extraArgs...)
+	var out *shell.Output
+	if common.HasSudoAccess() {
+		out = shell.RunAsUser(viper.GetString("service_username"), cmdName, args...)
+	} else {
+		out = shell.Run(cmdName, args...)
+	}
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("pg_upgrade failed: %w", out.Error)
+	}
+	for _, script := range []string{"delete_old_cluster.sh", "update_extensions.sql"} {
+		if err := common.RemoveAll(filepath.Join(common.GetDataRoot(), script)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// removeOldDataDirs removes clusters left behind by earlier major version upgrades.
+func (pg Postgres) removeOldDataDirs(activeDataDir string) error {
+	dataRoot := common.GetDataRoot()
+	dataDirs, err := filepath.Glob(filepath.Join(dataRoot, "postgres-*"))
+	if err != nil {
+		return err
+	}
+	dataDirs = append(dataDirs, filepath.Join(dataRoot, "postgres"))
+	for _, dataDir := range dataDirs {
+		if dataDir == filepath.Clean(activeDataDir) || dataDir == filepath.Clean(pg.dataDir) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, "PG_VERSION")); err != nil {
+			continue
+		}
+		log.Info("Removing old postgres data directory " + dataDir)
+		if err := common.RemoveAll(dataDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MaybeVacuumStats must be called before updating active symlink on upgrade
+func (pg Postgres) MaybeVacuumStats() error {
+	oldDataDir, err := installedDataDir()
+	if err != nil {
+		return err
+	}
+	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	if err != nil {
+		return err
+	}
+	if oldMajorVersion == pgMajorVersion(pg.version) {
+		log.Debug("Skipping vacuumdb stats because major version did not change")
+		return nil
+	}
+	return pg.vacuumStats()
+}
+
+func (pg Postgres) vacuumStats() error {
+	log.Info("Starting vacuumdb stats for postgres")
+	rf := func(cmd string, args ...string) *shell.Output {
+		if common.HasSudoAccess() {
+			return shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
+		}
+		return shell.Run(cmd, args...)
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-in-stages", "--missing-stats-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+
+	log.Info("Finished vacuumdb stats for postgres")
 	return nil
 }
 
@@ -427,6 +588,9 @@ func (pg Postgres) MigrateFromReplicated() error {
 	template.GenerateTemplate(pg)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
+	}
+	if err := pg.setUpFipsProvider(); err != nil {
+		return err
 	}
 
 	if err := pg.createFilesAndDirs(); err != nil {
@@ -487,6 +651,11 @@ func (pg Postgres) runInitDB() error {
 		"-D",
 		pg.dataDir,
 		"--locale=" + viper.GetString("postgres.install.locale"),
+	}
+	// pg_upgrade requires matching data checksum settings, and initdb enables them by default from
+	// PostgreSQL 18. Keep them off to match clusters created by earlier versions.
+	if pgMajorVersion(pg.version) >= 18 {
+		initDbArgs = append(initDbArgs, "--no-data-checksums")
 	}
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres
@@ -554,6 +723,8 @@ func (pg Postgres) modifyPostgresConf() error {
 		{Key: "log_filename", Value: "postgresql-%Y-%m-%d_%H%M%S.log", Quotes: true},
 		{Key: "log_rotation_age", Value: "1d", Quotes: false},
 		{Key: "log_rotation_size", Value: "10MB", Quotes: false},
+		// The FIPS provider has no MD5, so an MD5 setting would make every password change fail.
+		{Key: "password_encryption", Value: "scram-sha-256", Quotes: true},
 	}
 
 	updater := common.ConfUpdater{Entries: entries}
@@ -663,7 +834,7 @@ func (pg Postgres) createTSDatabase() {
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
 		"-p", viper.GetString("postgres.install.port"),
-		"ts",
+		common.PerfAdvisorDBName,
 	}
 	var out *shell.Output
 	if common.HasSudoAccess() {
@@ -754,4 +925,122 @@ func (pg Postgres) Reconfigure() error {
 	return nil
 }
 
-func (pg Postgres) PreUpgrade() error { return nil }
+// PreUpgrade re-hashes MD5 role passwords while the previous postgres is still running, before
+// the upgrade restarts it on the FIPS provider.
+func (pg Postgres) PreUpgrade() error {
+	if !viper.GetBool("fips.enabled") || !viper.GetBool("postgres.install.enabled") {
+		return nil
+	}
+	status, err := pg.Status()
+	if err != nil {
+		return err
+	}
+	if status.Status != common.StatusRunning {
+		log.Warn("postgres is not running, so MD5 role passwords cannot be checked before the " +
+			"upgrade. Any role with one will fail password authentication until it is reset.")
+		return nil
+	}
+	return pg.rehashMd5Passwords(filepath.Join(common.GetActiveSymlink(), "pgsql/bin/psql"))
+}
+
+// setUpFipsProvider writes the OpenSSL config that the postgres service uses in FIPS mode
+// (OPENSSL_CONF in its unit). fipsinstall has to run on every host the module is installed on:
+// it self-tests the module and records its checksum, so the result can't ship in the package.
+func (pg Postgres) setUpFipsProvider() error {
+	if !viper.GetBool("fips.enabled") {
+		return nil
+	}
+	module := filepath.Join(pg.OpenSSLModules, "fips.so")
+	if _, err := os.Stat(module); err != nil {
+		return fmt.Errorf("this postgres package has no OpenSSL FIPS provider at %s: %w", module, err)
+	}
+	sslDir := filepath.Dir(pg.OpenSSLConf)
+	if err := common.MkdirAll(sslDir, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", sslDir, err)
+	}
+	fipsModuleCnf := filepath.Join(sslDir, "fipsmodule.cnf")
+	out := shell.Run(filepath.Join(pg.PgBin, "openssl"), "fipsinstall", "-pedantic",
+		"-module", module, "-out", fipsModuleCnf)
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("openssl fipsinstall failed: %w: %s", out.Error, out.StderrString())
+	}
+	if err := os.WriteFile(pg.OpenSSLConf,
+		[]byte(common.PostgresOpenSSLFipsConfig(fipsModuleCnf)), 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", pg.OpenSSLConf, err)
+	}
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(sslDir, userName, userName, true); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %w", sslDir, err)
+		}
+	}
+	log.Info("Configured postgres to run on the OpenSSL FIPS provider via " + pg.OpenSSLConf)
+	return nil
+}
+
+// rehashMd5Passwords stores the install user's password as SCRAM-SHA-256 if it is still an MD5
+// hash, which installs from the postgres 9.6/10 days or migrated from Replicated can hold. The FIPS
+// provider can't verify an MD5 hash, so password logins for such a role would fail. Only that
+// password is known (yba-ctl.yml); other roles with MD5 hashes are reported for a manual reset.
+func (pg Postgres) rehashMd5Passwords(psql string) error {
+	connArgs := []string{
+		"-d", "postgres",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"-qAtX",
+	}
+	out := shell.Run(psql, append(connArgs,
+		"-c", "SELECT rolname FROM pg_authid WHERE rolpassword LIKE 'md5%' ORDER BY rolname")...)
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("failed to list roles with MD5 passwords: %w", out.Error)
+	}
+	var unresolved []string
+	for _, role := range strings.Fields(out.StdoutString()) {
+		password := viper.GetString("postgres.install.password")
+		if role != pg.getPgUserName() {
+			unresolved = append(unresolved, role)
+			continue
+		}
+		if password == "" {
+			log.Warn("postgres role " + role + " has an MD5 password hash, but postgres.install.password " +
+				"is empty in yba-ctl.yml, so it cannot be re-hashed. Set the password there and reset it " +
+				"(as SCRAM-SHA-256) for password logins to keep working in FIPS mode.")
+			continue
+		}
+		log.Info("Re-hashing the MD5 password of postgres role " + role + " as SCRAM-SHA-256")
+		sql := fmt.Sprintf("SET password_encryption = 'scram-sha-256';\nALTER ROLE %s PASSWORD %s;\n",
+			common.PgQuoteIdent(role), common.PgQuoteLiteral(password))
+		if err := runPsqlFile(psql, connArgs, sql); err != nil {
+			return fmt.Errorf("failed to re-hash the password of postgres role %s: %w", role, err)
+		}
+	}
+	if len(unresolved) > 0 {
+		log.Warn(fmt.Sprintf("postgres roles %s have MD5 password hashes, which FIPS mode can't "+
+			"verify. Reset their passwords (as SCRAM-SHA-256) for password logins to keep working.",
+			strings.Join(unresolved, ", ")))
+	}
+	return nil
+}
+
+// runPsqlFile runs sql from a private temp file rather than -c, so that a password in it reaches
+// neither the process list nor the command logged by shell.Run.
+func runPsqlFile(psql string, connArgs []string, sql string) error {
+	f, err := os.CreateTemp("", "yba-ctl-*.sql")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(sql); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	out := shell.Run(psql, append(connArgs, "-v", "ON_ERROR_STOP=1", "-f", f.Name())...)
+	if !out.Succeeded() {
+		return fmt.Errorf("%w: %s", out.Error, out.StderrString())
+	}
+	return nil
+}

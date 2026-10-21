@@ -262,6 +262,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             TaskType.AnsibleClusterServerCtl, // Stop master to be safe.
             TaskType.AnsibleConfigureServers) // Gflags upgrade for master
         .applyRound()
+        .addTask(TaskType.ConfigureNodeExporterTls, null)
         .addTask(TaskType.UpdateUniverseFields, null)
         .addSimultaneousTasks(TaskType.DeleteRootVolumes, nodeOrder.size())
         .addTask(TaskType.MarkUniverseForHealthScriptReUpload, null)
@@ -456,6 +457,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             TaskType.AnsibleClusterServerCtl, // Stop master to be safe.
             TaskType.AnsibleConfigureServers) // Gflags upgrade for master
         .applyRound()
+        .addTask(TaskType.ConfigureNodeExporterTls, null)
         .addTask(TaskType.UpdateUniverseFields, null)
         .addTask(TaskType.UpdateClusterUserIntent, null)
         .addSimultaneousTasks(TaskType.DeleteRootVolumes, defaultUniverse.getNodes().size())
@@ -646,6 +648,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             TaskType.AnsibleClusterServerCtl, // Stop master to be safe.
             TaskType.AnsibleConfigureServers) // Gflags upgrade for master
         .applyRound()
+        .addTask(TaskType.ConfigureNodeExporterTls, null)
         .addTask(TaskType.UpdateUniverseFields, null)
         .addTask(TaskType.UpdateClusterUserIntent, null)
         .addSimultaneousTasks(TaskType.DeleteRootVolumes, defaultUniverse.getNodes().size())

@@ -985,6 +985,22 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
+	/* YB: Test hook: name a file after this pid, then wait for a signal. */
+	if (getenv("FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir"))
+	{
+		char		pid_file[MAXPGPATH];
+		FILE	   *f;
+
+		snprintf(pid_file, sizeof(pid_file), "%s/%d",
+				 getenv("FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir"), (int) getpid());
+		if ((f = fopen(pid_file, "w")) == NULL)
+			pg_fatal("could not create file \"%s\": %m", pid_file);
+		fclose(f);
+		/* Exit if no signal comes, so that a failed test leaves no process. */
+		sleep(600);
+		exit(1);
+	}
+
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
@@ -6541,12 +6557,8 @@ getAggregates(Archive *fout, int *numAggs)
 		if (agginfo[i].aggfn.nargs == 0)
 			agginfo[i].aggfn.argtypes = NULL;
 		else
-		{
-			agginfo[i].aggfn.argtypes = (Oid *) pg_malloc(agginfo[i].aggfn.nargs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, i, i_proargtypes),
-						  agginfo[i].aggfn.argtypes,
-						  agginfo[i].aggfn.nargs);
-		}
+			agginfo[i].aggfn.argtypes = parseOidArray(PQgetvalue(res, i, i_proargtypes),
+													  agginfo[i].aggfn.nargs);
 		agginfo[i].aggfn.postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
@@ -6741,11 +6753,8 @@ getFuncs(Archive *fout, int *numFuncs)
 		if (finfo[i].nargs == 0)
 			finfo[i].argtypes = NULL;
 		else
-		{
-			finfo[i].argtypes = (Oid *) pg_malloc(finfo[i].nargs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, i, i_proargtypes),
-						  finfo[i].argtypes, finfo[i].nargs);
-		}
+			finfo[i].argtypes = parseOidArray(PQgetvalue(res, i, i_proargtypes),
+											  finfo[i].nargs);
 		finfo[i].postponed_def = false; /* might get set during sort */
 
 		/* Decide whether we want to dump it */
@@ -7847,13 +7856,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indreloptions = pg_strdup(PQgetvalue(res, j, i_indreloptions));
 			indxinfo[j].indstatcols = pg_strdup(PQgetvalue(res, j, i_indstatcols));
 			indxinfo[j].indstatvals = pg_strdup(PQgetvalue(res, j, i_indstatvals));
-			indxinfo[j].indkeys = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, j, i_indkey),
-						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
+			indxinfo[j].indkeys = parseIntArray(PQgetvalue(res, j, i_indkey),
+												indxinfo[j].indnattrs);
 			/* YB */
-			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnkeyattrs * sizeof(Oid));
-			parseOidArray(PQgetvalue(res, j, i_indoption),
-						  indxinfo[j].indoptions, indxinfo[j].indnkeyattrs);
+			indxinfo[j].indoptions = parseOidArray(PQgetvalue(res, j, i_indoption),
+												   indxinfo[j].indnkeyattrs);
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].indnullsnotdistinct = (PQgetvalue(res, j, i_indnullsnotdistinct)[0] == 't');
@@ -13185,12 +13192,10 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 
 	if (*protrftypes)
 	{
-		Oid		   *typeids = palloc(FUNC_MAX_ARGS * sizeof(Oid));
-		int			i;
+		Oid		   *typeids = parseOidArray(protrftypes, -1);
 
 		appendPQExpBufferStr(q, " TRANSFORM ");
-		parseOidArray(protrftypes, typeids, FUNC_MAX_ARGS);
-		for (i = 0; typeids[i]; i++)
+		for (int i = 0; typeids[i]; i++)
 		{
 			if (i != 0)
 				appendPQExpBufferStr(q, ", ");
@@ -18377,7 +18382,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 				appendPQExpBuffer(q, " (");
 				for (k = 0; k < indxinfo->indnkeyattrs; k++)
 				{
-					int			indkey = (int) indxinfo->indkeys[k];
+					int			indkey = indxinfo->indkeys[k];
 					const char *attname;
 
 					if (indkey == InvalidAttrNumber)
@@ -18394,7 +18399,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 				for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
 				{
-					int			indkey = (int) indxinfo->indkeys[k];
+					int			indkey = indxinfo->indkeys[k];
 					const char *attname;
 
 					if (indkey == InvalidAttrNumber)

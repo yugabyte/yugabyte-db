@@ -304,6 +304,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertEquals(DEFAULT_DISK_THROUGHPUT, restored.deviceInfo.throughput.intValue());
     // expectedUniverseVersion is disabled so the resubmit does not race.
     assertEquals(Integer.valueOf(-1), rollbackParams.expectedUniverseVersion);
+    // Azure cooldown clock for RollbackResizeNode precheck; same create time the submit gate used.
+    assertEquals(twoDaysAgo, rollbackParams.getFailedTaskCreateTime());
   }
 
   @Test

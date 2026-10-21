@@ -30,6 +30,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 
@@ -149,27 +150,34 @@ void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache
   std::string joined_names;
   joined_names.reserve(128);
   std::set<std::string_view> processed;
-  for (const auto& op : ops) {
-    const auto table_id_str = FetchTableId(*op);
-    if (table_id_str.empty()) {
-      continue;
-    }
-    const auto ipair = processed.insert(table_id_str);
-    if (!ipair.second) {
-      continue;
+  auto append_name = [&](Slice table_id_str) {
+    if (table_id_str.empty() || !processed.insert(table_id_str).second) {
+      return;
     }
     const PgObjectId table_id{table_id_str};
     if (!table_id.IsValid()) {
-      continue;
+      return;
     }
     const auto it = table_cache.find(table_id);
     if (it == table_cache.end() || !it->second) {
-      continue;
+      return;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
     joined_names += it->second->table_name().table_name();
+    joined_names += '(';
+    joined_names += table_id_str.ToBuffer();
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    append_name(FetchTableId(*op));
+    if (op->is_read()) {
+      const auto& read_req = down_cast<const PgsqlReadOp&>(*op).read_request();
+      if (read_req.has_index_request()) {
+        append_name(FetchTableId(read_req.index_request()));
+      }
+    }
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
@@ -736,10 +744,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
 
 Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
-  // When loading table description and yb_read_time is set, return the table properties even if the
-  // table is hidden. For instance, this is required for succesful return of yb_table_properties()
-  // when yb_read_time is set and the table was hidden at yb_read_time.
-  master::IncludeHidden include_hidden = master::IncludeHidden(yb_read_time != 0);
+  // When loading table description and yb_read_time/historical_read_context_ is set, return the
+  // table properties even if the table is hidden. For instance, this is required for succesful
+  // return of yb_table_properties() when yb_read_time/historical_read_context_ is set and the table
+  // was hidden at that time.
+  master::IncludeHidden include_hidden =
+      master::IncludeHidden(yb_read_time != 0 || historical_read_context_.has_value());
   return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_hidden);
 }
 
@@ -922,14 +932,15 @@ Status PgSession::SetReadTimeIfPresent(
     RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
   }
 
-  if (yb_read_time != 0) {
+  if (historical_read_context_) {
+    historical_read_context_->read_time.ToPB(
+        options.mutable_read_time_options()->mutable_read_time());
+  } else if (yb_read_time != 0) {
     RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
-    auto& read_time_pb = *options.mutable_read_time_options()->mutable_read_time();
-    if (yb_is_read_time_ht) {
-      ReadHybridTime::FromUint64(yb_read_time).ToPB(&read_time_pb);
-    } else {
-      ReadHybridTime::FromMicros(yb_read_time).ToPB(&read_time_pb);
-    }
+    const auto read_ht = yb_is_read_time_ht
+        ? ReadHybridTime::FromUint64(yb_read_time)
+        : ReadHybridTime::FromMicros(yb_read_time);
+    read_ht.ToPB(options.mutable_read_time_options()->mutable_read_time());
   }
   return Status::OK();
 }
@@ -958,6 +969,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       }
     }
     options.set_use_legacy_catalog_session(true);
+    // SetupPerformOptions sets this in the other branch.
+    options.set_connected_database_oid(pg_txn_manager_->connected_database_oid());
   } else {
     RETURN_NOT_OK(SetupPerformOptions(
         {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
@@ -965,6 +978,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         IsCatalogSnapshot(!YBCIsLegacyModeForCatalogOps() && ops_options.has_catalog_ops)));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
+    }
+  }
+
+  if (historical_read_context_) {
+    options.set_use_historical_read_session(true);
+    if (!historical_read_context_->transaction_id.empty()) {
+      auto txn_id = VERIFY_RESULT(
+          TransactionId::FromString(historical_read_context_->transaction_id));
+      options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
     }
   }
 
@@ -1028,6 +1050,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     auto& caching_info = *options.mutable_caching_info();
     caching_info.set_key_group(cache_options.key_group);
     caching_info.set_key_value(std::move(cache_options.key_value));
+    caching_info.set_catalog_version(cache_options.catalog_version);
+    caching_info.set_lookup_only(cache_options.lookup_only);
+    caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -1112,6 +1137,16 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   }
 }
 
+void PgSession::SetHistoricalReadContext(
+    const ReadHybridTime& read_time, std::string transaction_id) {
+  historical_read_context_ = HistoricalReadContext{
+      .read_time = read_time, .transaction_id = std::move(transaction_id)};
+}
+
+void PgSession::ResetHistoricalReadContext() {
+  historical_read_context_.reset();
+}
+
 Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options) {
   RSTATUS_DCHECK(
       pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
@@ -1126,11 +1161,14 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
       SkipReadTimeOptions::kTrue);
 }
 
-void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+void PgSession::SetupPerformOptionsForSeparateDdlTxn(
     tserver::PgPerformOptionsPB* options) const {
   if (pg_txn_manager_->ShouldDeferReadPoint()) {
     options->mutable_read_time_options()->set_defer_read_point(true);
   }
+  options->set_connected_database_oid(pg_txn_manager_->connected_database_oid());
+  // The RPC may be what creates the separate DDL transaction.
+  options->set_origination_ht(pg_txn_manager_->GetOriginationHt());
 }
 
 void PgSession::SetTransactionHasWrites() {

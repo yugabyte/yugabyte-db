@@ -57,7 +57,7 @@ void PgLocksTestBase::SetUp() {
   PgMiniTestBase::SetUp();
   InitTransactionManagerAndPool();
   // Wait for system.transactions to be created.
-  WaitForStatusTabletsVersion(1);
+  WaitForStatusTabletsVersionForCreate(0);
 
   InitTSProxies();
   InitPgClientProxies();

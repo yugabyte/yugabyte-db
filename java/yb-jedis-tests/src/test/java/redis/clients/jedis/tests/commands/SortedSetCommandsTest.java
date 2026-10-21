@@ -50,6 +50,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
   final byte[] bLexMinusInf = { 0x2D };
   final byte[] bLexPlusInf = { 0x2B };
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zadd() {
     long status = jedis.zadd("foo", 1d, "a");
@@ -79,6 +80,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zaddWithParams() {
     jedis.del("foo");
@@ -121,6 +123,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
     assertEquals(2L, status);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrange() {
     jedis.zadd("foo", 1d, "a");
@@ -244,6 +247,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
         bExpected, jedis.zrevrangeByLex(bfoo, bLexPlusInf, bLexMinusInf, 0, 2));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrevrange() {
     jedis.zadd("foo", 1d, "a");
@@ -281,6 +285,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrem() {
     jedis.zadd("foo", 1d, "a");
@@ -426,6 +431,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrangeWithScores() {
     jedis.zadd("foo", 1d, "a");
@@ -463,6 +469,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrevrangeWithScores() {
     jedis.zadd("foo", 1d, "a");
@@ -500,6 +507,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zcard() {
     jedis.zadd("foo", 1d, "a");
@@ -521,6 +529,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
 
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zscore() {
     jedis.zadd("foo", 1d, "a");
@@ -618,6 +627,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
     assertEquals(3, result);
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void zrangebyscore() {
     jedis.zadd("foo", 1d, "a");
@@ -1132,6 +1142,7 @@ public class SortedSetCommandsTest extends JedisCommandTestBase {
                  jedis.zrangeWithScores(SafeEncoder.encode("dst"), 0, 100));
   }
 
+  @Ignore("YEDIS is deprecated")
   @Test
   public void tupleCompare() {
     Tuple t1 = new Tuple("foo", 1d);

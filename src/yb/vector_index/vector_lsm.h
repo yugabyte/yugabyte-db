@@ -14,8 +14,10 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -27,6 +29,7 @@
 #include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
@@ -66,6 +69,11 @@ struct VectorLSMInsertContext {
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // When set, a non empty insert adds a hold on its chunk here. While held, the chunk is not saved,
+  // and therefore not merged. A merge drops the vectors whose reverse mappings it does not find, so
+  // the caller must keep the hold until the write that carries the reverse mappings of the inserted
+  // vectors is visible to readers, and should release it right after.
+  VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -150,16 +158,35 @@ class VectorLSM {
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
+  // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
+  // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
+  Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
+
+  // Applies `modify` to the frontiers of every chunk, and saves them as a single reset update in a
+  // new manifest file. Unlike adding a chunk, this can move the flushed frontier backwards. Fails
+  // when anything is unflushed. The caller keeps compactions off, so no compaction output can
+  // bring back frontiers computed before the change.
+  Status ModifyChunkFrontiers(const std::function<void(storage::UserFrontiers&)>& modify);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
   Result<size_t> TotalEntries() const;
 
+  // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
+  // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
+  // first to cover every vector inserted before the call.
+  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
+
   Status Flush(bool wait);
+  // Waits for insert tasks already allocated when the wait started (including those that raced
+  // onto a new chunk after DoFlush), then drains the flush queue. A waited insert can RollChunk
+  // and re-fill the queue. Leftover in-memory entries are not flushed here; CreateSplitChildTablet
+  // issues a second vector Flush before CreateCheckpoint. Inserts that allocate after the epoch
+  // advances are not waited, so continuous ingest cannot stall this.
   Status WaitForFlush();
 
   // Vector LSM starts with background compactions disabled, they must be enabled explicitly
@@ -242,6 +269,10 @@ class VectorLSM {
   Status RollChunk(
       size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
+  void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
+
+  // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
+  void ReleaseChunkHold(MutableChunk& chunk);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);

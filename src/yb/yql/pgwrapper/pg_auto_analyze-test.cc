@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
 
@@ -71,7 +72,6 @@ DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
 DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
@@ -1607,11 +1607,14 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
                                schema_name, table_name, num_rows));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 2 * num_rows));
+  // The service records analyze history only after ANALYZE has updated reltuples.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    last_analyze_info = VERIFY_RESULT((conn.FetchRow<std::optional<std::string>>(
+        Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
+               "WHERE relid = '$0'", table_oid))));
+    return last_analyze_info.has_value();
+  }, 30s * kTimeMultiplier, "Wait for last_analyze_info"));
   // Parse Json and Verify
-  last_analyze_info =
-    ASSERT_RESULT((conn.FetchRow<std::optional<std::string>>(
-      Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
-             "WHERE relid = '$0'", table_oid))));
   common::Jsonb jsonb;
   ASSERT_OK(jsonb.FromString(*last_analyze_info));
   rapidjson::Document doc;
@@ -1626,6 +1629,18 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_LT(start_time, history_event["timestamp"].GetInt64());
   // cooldown value is stored in microseconds and its flag value is in unit of miliseconds.
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
+
+  // Auto-analyze on this node should publish last_autoanalyze, not last_analyze.
+  auto [has_last_analyze, has_last_autoanalyze, analyze_count, autoanalyze_count] =
+      ASSERT_RESULT((conn.FetchRow<bool, bool, PGUint64, PGUint64>(
+          Format("SELECT last_analyze IS NOT NULL, last_autoanalyze IS NOT NULL, "
+                 "analyze_count, autoanalyze_count "
+                 "FROM pg_stat_user_tables WHERE schemaname = '$0' AND relname = '$1'",
+                 schema_name, table_name))));
+  ASSERT_FALSE(has_last_analyze);
+  ASSERT_TRUE(has_last_autoanalyze);
+  ASSERT_EQ(0, analyze_count);
+  ASSERT_GE(autoanalyze_count, 1);
 }
 
 // yb_stat_auto_analyze must keep reporting pg_class.oid after a rewrite, when
@@ -1831,28 +1846,8 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
-    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    options->extra_master_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_enable_concurrent_ddl");
-
-    // The test is specifically written for cases when txn ddl is disabled.
-    // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    // DDL savepoint and the in-txn-block write fastpath require transactional DDL, so keep
-    // these flags consistent.
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
-    options->extra_master_flags.emplace_back("--ysql_yb_enable_ddl_savepoint_support=false");
-    options->extra_master_flags.emplace_back(
-        "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
@@ -1900,6 +1895,44 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
     ASSERT_OK(conn2.Execute("CREATE TABLE test4(k INT PRIMARY KEY REFERENCES test3(k))"));
     thread_holder.JoinAll();
+
+    // Case: A long (auto) ANALYZE is not interrupted by DISCARD ALL
+    auto pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                       .host = ts2->bind_host(),
+                                                       .port = ts2->ysql_port(),
+                                                   })
+                                         .Connect());
+    thread_holder.AddThreadFunctor([&conn1]() -> void {
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+      ASSERT_OK(conn1.Execute("ANALYZE test1, test2"));
+      ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+    });
+    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+    for (int i = 0; i < 20; ++i) {
+      ASSERT_OK(pooler_conn.Execute("DISCARD ALL"));
+    }
+    thread_holder.JoinAll();
+
+    // Case: (auto) ANALYZE is not interrupted by a long DISCARD ALL. DISCARD ALL resets session
+    // GUCs before it commits, so the delay must come from a role default.
+    ASSERT_OK(conn2.Execute("CREATE ROLE pooler LOGIN"));
+    ASSERT_OK(conn2.Execute("ALTER ROLE pooler SET yb_test_delay_next_ddl=" + wait_time_str));
+    auto delayed_pooler_conn = ASSERT_RESULT(PGConnBuilder({
+                                                               .host = ts3->bind_host(),
+                                                               .port = ts3->ysql_port(),
+                                                               .user = "pooler",
+                                                           })
+                                                 .Connect());
+    thread_holder.AddThreadFunctor([&delayed_pooler_conn]() -> void {
+      ASSERT_OK(delayed_pooler_conn.Execute("DISCARD ALL"));
+    });
+    ASSERT_OK(LogWaiter(ts3, wait_string).WaitFor(30s));
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+    // Join before asserting: the thread is still using delayed_pooler_conn.
+    auto analyze_status = conn2.Execute("ANALYZE test1, test2");
+    thread_holder.JoinAll();
+    ASSERT_OK(analyze_status);
+    ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
 
     // Case: A long regular DDL cannot be interrupted by (auto) ANALYZE
     thread_holder.AddThreadFunctor(
@@ -2054,22 +2087,7 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     ts2->Shutdown(SafeShutdown::kFalse);
 }
 
-class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // The base class appends --ysql_yb_ddl_transaction_block_enabled=false, and gflags takes the
-    // last occurrence, so these must come after it to win.
-    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_master_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-  }
-};
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeTxnDDLMode) {
-  testConcurrentDDLAnalyze();
-}
-
-TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
   auto* ts1 = cluster_->tserver_daemons()[0];
   auto* ts2 = cluster_->tserver_daemons()[1];
 
@@ -2105,9 +2123,20 @@ TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
     }
   });
 
+  // A concurrent ANALYZE catalog version bump can legitimately cause a read restart on the DDL's
+  // catalog version read; retry only that error since query layer retries are disabled.
+  auto execute_ddl = [&conn2](const std::string& ddl) -> Status {
+    for (int attempt = 1;; ++attempt) {
+      auto s = conn2.Execute(ddl);
+      if (s.ok() || attempt >= 10 ||
+          s.message().ToBuffer().find("Restart read required") == std::string::npos) {
+        return s;
+      }
+    }
+  };
   for (int i = 1; i <= 20; i++) {
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 ADD COLUMN v1 INT"));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 DROP COLUMN v1"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 ADD COLUMN v1 INT"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 DROP COLUMN v1"));
   }
 
   thread_holder.Stop();

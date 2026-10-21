@@ -50,7 +50,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -58,6 +57,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/drive_io_stats.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -93,8 +93,6 @@ namespace yb::consensus {
 using log::Log;
 using log::LogOptions;
 using log::LogReader;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 const char* kTestTable = "TestTable";
 const char* kTestTablet = "TestTablet";
@@ -133,9 +131,9 @@ class RaftConsensusQuorumTest : public YBTest {
     // Build the fsmanagers and logs
     for (int i = 0; i < config_.peers_size(); i++) {
       shared_ptr<MemTracker> parent_mem_tracker =
-          MemTracker::CreateTracker(Substitute("peer-$0", i));
+          MemTracker::CreateTracker(Format("peer-$0", i));
       parent_mem_trackers_.push_back(parent_mem_tracker);
-      string test_path = GetTestPath(Substitute("peer-$0-root", i));
+      string test_path = GetTestPath(Format("peer-$0-root", i));
       FsManagerOpts opts;
       opts.parent_mem_tracker = parent_mem_tracker;
       opts.wal_paths = { test_path };
@@ -173,7 +171,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
       auto operation_factory = new TestOperationFactory();
 
-      string peer_uuid = Substitute("peer-$0", i);
+      string peer_uuid = Format("peer-$0", i);
 
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
       std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
@@ -301,7 +299,7 @@ class RaftConsensusQuorumTest : public YBTest {
     (**round).BindToTerm(peer->LeaderTerm());
     InsertOrDie(&syncs_, round->get(), sync.release());
     RETURN_NOT_OK_PREPEND(peer->TEST_Replicate(round->get()),
-                          Substitute("Unable to replicate to peer $0", peer_idx));
+                          Format("Unable to replicate to peer $0", peer_idx));
     return Status::OK();
   }
 
@@ -369,8 +367,8 @@ class RaftConsensusQuorumTest : public YBTest {
     // Gather the replica and leader operations for printing
     log::LogEntries replica_ops = GatherLogEntries(peer_idx, logs_[peer_idx]);
     log::LogEntries leader_ops = GatherLogEntries(leader_idx, logs_[leader_idx]);
-    SCOPED_TRACE(PrintOnError(replica_ops, Substitute("local peer ($0)", peer->peer_uuid())));
-    SCOPED_TRACE(PrintOnError(leader_ops, Substitute("leader (peer-$0)", leader_idx)));
+    SCOPED_TRACE(PrintOnError(replica_ops, Format("local peer ($0)", peer->peer_uuid())));
+    SCOPED_TRACE(PrintOnError(leader_ops, Format("leader (peer-$0)", leader_idx)));
     FAIL() << "Replica did not commit.";
   }
 
@@ -513,8 +511,8 @@ class RaftConsensusQuorumTest : public YBTest {
                      const log::LogEntries& replica_entries,
                      const string& leader_name,
                      const string& replica_name) {
-    SCOPED_TRACE(PrintOnError(leader_entries, Substitute("Leader: $0", leader_name)));
-    SCOPED_TRACE(PrintOnError(replica_entries, Substitute("Replica: $0", replica_name)));
+    SCOPED_TRACE(PrintOnError(leader_entries, Format("Leader: $0", leader_name)));
+    SCOPED_TRACE(PrintOnError(replica_entries, Format("Replica: $0", replica_name)));
 
     // Check that the REPLICATE messages come in the same order on both nodes.
     VerifyReplicateOrderMatches(leader_entries, replica_entries);
@@ -528,8 +526,8 @@ class RaftConsensusQuorumTest : public YBTest {
   string PrintOnError(const log::LogEntries& replica_entries,
                       const string& replica_id) {
     string ret = "";
-    SubstituteAndAppend(&ret, "$1 log entries for replica $0:\n",
-                        replica_id, replica_entries.size());
+    ret += Format("$1 log entries for replica $0:\n",
+                  replica_id, replica_entries.size());
     for (const auto& replica_entry : replica_entries) {
       StrAppend(&ret, "Replica log entry: ", replica_entry->ShortDebugString(), "\n");
     }
@@ -538,7 +536,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   // Read the ConsensusMetadata for the given peer from disk.
   std::unique_ptr<ConsensusMetadata> ReadConsensusMetadataFromDisk(int peer_index) {
-    string peer_uuid = Substitute("peer-$0", peer_index);
+    string peer_uuid = Format("peer-$0", peer_index);
     std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Load(fs_managers_[peer_index], kTestTablet, peer_uuid, &cmeta));
     return cmeta;
@@ -976,7 +974,7 @@ class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
     // nothing else in the process shares the counters.
     for (int i = 0; i < 3; ++i) {
       DriveIoStatsRegistry::Instance().Register(
-          GetTestPath(Substitute("peer-$0-root", i)), nullptr);
+          GetTestPath(Format("peer-$0-root", i)), nullptr);
     }
   }
 
@@ -995,7 +993,7 @@ class RaftConsensusWalSyncTest : public RaftConsensusQuorumTest {
 
   DriveIoStats* FollowerDriveStats() {
     return DriveIoStatsRegistry::Instance().Find(
-        GetTestPath(Substitute("peer-$0-root", kFollowerIdx)));
+        GetTestPath(Format("peer-$0-root", kFollowerIdx)));
   }
 };
 

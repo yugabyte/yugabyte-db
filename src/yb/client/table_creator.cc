@@ -26,6 +26,7 @@
 
 #include "yb/master/master_ddl.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -267,7 +268,7 @@ YBTableCreator& YBTableCreator::TEST_use_old_style_create_request() {
 Status YBTableCreator::Create() {
   const char *object_type = index_info_->has_indexed_table_id() ? "index" : "table";
   if (table_name_.table_name().empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Missing $0 name", object_type);
+    return STATUS_FORMAT(InvalidArgument, "Missing $0 name", object_type);
   }
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
   // and manage its memory withing here.
@@ -423,8 +424,8 @@ Status YBTableCreator::Create() {
       client_, req, *schema_, deadline, &table_id_);
 
   if (!s.ok() && !s.IsAlreadyPresent()) {
-      RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
-                                                   object_type, table_name_.ToString()));
+      RETURN_NOT_OK_PREPEND(s, Format("Error creating $0 $1 on the master",
+                                      object_type, table_name_.ToString()));
   }
 
   // A client is possible to send out duplicate CREATE TABLE requests to master due to network
@@ -434,8 +435,8 @@ Status YBTableCreator::Create() {
         client_, req, *schema_, deadline, &table_id_);
 
     if (!s.ok() && !s.IsAlreadyPresent()) {
-        RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
-                                                      object_type, table_name_.ToString()));
+        RETURN_NOT_OK_PREPEND(s, Format("Error creating $0 $1 on the master",
+                                         object_type, table_name_.ToString()));
     }
   }
 

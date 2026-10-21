@@ -464,6 +464,7 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(yb_skip_entities);
 	WRITE_NODE_FIELD(yb_update_affected_entities);
 	WRITE_BOOL_FIELD(no_row_trigger);
+	WRITE_BOOL_FIELD(ybInsertOnConflictPushdownPossible);
 }
 
 static void
@@ -870,6 +871,13 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
 
+	appendStringInfoString(str, " :innerHashExprs");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].innerHashExpr);
+	}
+
 	appendStringInfoString(str, " :outerParamExprs");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 	{
@@ -954,6 +962,7 @@ _outAgg(StringInfo str, const Agg *node)
 	WRITE_BITMAPSET_FIELD(aggParams);
 	WRITE_NODE_FIELD(groupingSets);
 	WRITE_NODE_FIELD(chain);
+	WRITE_ENUM_FIELD(yb_pushdown_decision, YbAggPushdownDecision);
 }
 
 static void
@@ -2269,6 +2278,7 @@ _outAggPath(StringInfo str, const AggPath *node)
 	WRITE_UINT64_FIELD(transitionSpace);
 	WRITE_NODE_FIELD(groupClause);
 	WRITE_NODE_FIELD(qual);
+	WRITE_ENUM_FIELD(yb_pushdown_decision, YbAggPushdownDecision);
 }
 
 static void

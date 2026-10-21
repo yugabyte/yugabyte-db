@@ -130,6 +130,19 @@ class TabletVectorIndexes :
 
   void LaunchBackfillsIfNecessary();
 
+  // Reloads TableInfo::vector_index_deactivated_ht of every index from the tablet metadata, after
+  // an alter changed the index map of an indexed table, and flushes the deactivated indexes.
+  void RefreshDeactivation() EXCLUDES(vector_indexes_mutex_);
+
+  // Flushes deactivated indexes holding unflushed rows. Nothing else flushes them since they get no
+  // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
+  void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
+
+  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
+  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
+  // replays all the log after it.
+  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
+
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.
   void ScheduleBackfillAfterRestore();
@@ -144,10 +157,16 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
-  std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
+  // Adds finished and failed vector index backfills to the tablet status.
+  void FillBackfillStatus(TabletStatusPB& tablet_status);
 
   docdb::DocVectorIndexPtr IndexForTable(
       const TableId& table_id) const EXCLUDES(vector_indexes_mutex_);
+
+  // Stamps `frontier` as flushed on every vector index, see
+  // DocVectorIndex::ModifyFlushedFrontier.
+  Status ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
@@ -156,7 +175,10 @@ class TabletVectorIndexes :
     return has_vector_indexes_.load();
   }
 
-  Status Verify();
+  // Checks the specified vector index, see CheckVectorIndex.
+  Result<VectorIndexCheckResultPB> Check(
+      const TableId& index_table_id, size_t max_inconsistencies, CoarseTimePoint deadline)
+      EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
@@ -194,6 +216,8 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
 
+  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
@@ -211,8 +235,14 @@ class TabletVectorIndexes :
   ShutdownController shutdown_controller_;
 
   rpc::Scheduler* scheduler_ = nullptr;
+  // Serializes ScheduledTaskTracker::Schedule, which aborts the pending task and overwrites its id
+  // without any synchronization of its own. Never held across CompleteShutdown, which waits for a
+  // running retry that takes this mutex itself.
+  std::mutex backfill_retry_mutex_;
   rpc::ScheduledTaskTracker backfill_retry_task_;
   std::atomic<bool> backfills_launched_{false};
+  // A backfill asked for a retry and no retry has evaluated the indexes since.
+  std::atomic<bool> backfill_retry_pending_{false};
 };
 
 }  // namespace yb::tablet

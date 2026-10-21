@@ -274,6 +274,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleUiV2Enabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.ui_v2_enabled",
+          ScopeType.GLOBAL,
+          "Enable Support Bundle V2 API in UI",
+          "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table)."
+              + " When false, the UI continues to use the v1 support bundle API. V1 and v2"
+              + " bundles are stored separately; toggling this flag switches which bundles"
+              + " appear in the UI list.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",
@@ -1621,6 +1632,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -2124,6 +2144,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCrossCloudFederatedIam =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_cross_cloud_federated_iam",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM",
+          "Exposes the cross-cloud federated IAM fields on the provider and backup storage"
+              + " configuration pages. Off by default while the feature is in preview; a provider"
+              + " or storage config that already has it set keeps working regardless.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",
@@ -2421,7 +2451,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
@@ -2459,4 +2488,40 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " terminating it",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> createYbStorageDb =
+      new ConfKeyInfo<>(
+          "yb.universe.create_yb_storage_db",
+          ScopeType.GLOBAL,
+          "Create yb_storage database on universe creation",
+          "When enabled, universe creation creates the yb_storage YSQL database used by the amp"
+              + " controller, if it does not already exist.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentHealthCheckerDisabled =
+      new ConfKeyInfo<>(
+          "yb.node_agent.health_checker.disabled",
+          ScopeType.GLOBAL,
+          "Node Agent Health Checker Disabled",
+          "Node agent checker offloaded to run asynchronously on its own schedule",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> conditionalGetEnabled =
+      new ConfKeyInfo<>(
+          "yb.api.conditional_get.enabled",
+          ScopeType.GLOBAL,
+          "HTTP conditional GET (ETag / 304)",
+          "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when"
+              + " the client sends a matching If-None-Match ETag, skipping heavy response"
+              + " construction. When disabled, those endpoints always return a full 200 body.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
 }

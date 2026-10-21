@@ -74,7 +74,7 @@ struct AsyncRpcData {
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
-  OpId pending_async_write_op_id = OpId::Invalid();
+  OpIds pending_async_write_op_ids = {};
 };
 
 struct FlushExtraResult {
@@ -110,6 +110,10 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy() const { return ts_proxy_; }
 
+  // Whether the call got a response. If not, the response must not be read: the handler of a timed
+  // out local call could still be filling it.
+  bool HasResponse() const;
+
  protected:
   void Finished(const Status& status) override;
 
@@ -132,6 +136,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   // Is this a local call?
   bool IsLocalCall() const;
+
+  rpc::RpcController* PrepareController() override;
 
   Status CheckResponseCount(
       const char* op, const char* name, size_t found, size_t expected);

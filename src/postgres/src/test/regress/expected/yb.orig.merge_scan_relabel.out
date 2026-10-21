@@ -24,9 +24,18 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
+-- Small response pages make the execution metrics of the plan variants
+-- distinct without growing the tables: at the default page size their rows
+-- come back in one read request either way.
+SET yb_fetch_row_limit = 16;
 -- Compare behavior between
 -- - regular index scan using columns considered redundant for being constant
 -- - merge index scan using SAOP stream columns
+-- The regular index scan is pinned with a hint: idx does not cover the
+-- queries, so a seq scan with the predicate pushed down otherwise wins on
+-- cost.  The 16-row pages from merge_scan_setup still separate the two
+-- scans' read request counts.
+\set off '/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/'
 SELECT $$= '1'$$ AS "R1" \gset
 SELECT $$IN ('1', '1')$$ AS "R2" \gset
 --
@@ -48,7 +57,7 @@ ANALYZE tv_tbl;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -62,14 +71,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -81,11 +90,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 24
                Storage Table Rows Scanned: 50
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 1
+               Storage Index Read Requests: 4
+               Storage Index Read Ops: 4
                Storage Index Rows Scanned: 50
 (15 rows)
 
@@ -103,11 +112,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
@@ -128,14 +137,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (20 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -145,7 +154,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
@@ -157,7 +166,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -171,14 +180,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -190,11 +199,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 24
                Storage Table Rows Scanned: 50
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 1
+               Storage Index Read Requests: 4
+               Storage Index Read Ops: 4
                Storage Index Rows Scanned: 50
 (15 rows)
 
@@ -212,11 +221,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, (v)::text, (t)::character varying
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
@@ -237,14 +246,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (20 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -254,7 +263,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
@@ -276,7 +285,7 @@ ANALYZE tv_tbl;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -290,14 +299,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -309,11 +318,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using idx on public.tv_tbl (actual rows=50 loops=1)
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 4
+               Storage Table Read Ops: 24
                Storage Table Rows Scanned: 50
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 1
+               Storage Index Read Requests: 4
+               Storage Index Read Ops: 4
                Storage Index Rows Scanned: 50
 (15 rows)
 
@@ -331,11 +340,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v, t
                Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.t = '1'::text))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
@@ -356,14 +365,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 4
                Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.t = ANY ('{1,1}'::text[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 13
-               Storage Table Rows Scanned: 50
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (20 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -373,7 +382,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
@@ -396,7 +405,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -410,14 +419,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -429,15 +438,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using idx on public.tv_tbl (actual rows=491 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 31
+               Storage Table Read Ops: 230
                Storage Table Rows Scanned: 491
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 1
+               Storage Index Read Requests: 31
+               Storage Index Read Ops: 31
                Storage Index Rows Scanned: 491
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -451,14 +460,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -470,11 +479,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          ->  Index Scan using idx on public.tv_tbl (actual rows=491 loops=1)
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 31
+               Storage Table Read Ops: 230
                Storage Table Rows Scanned: 491
-               Storage Index Read Requests: 1
-               Storage Index Read Ops: 1
+               Storage Index Read Requests: 31
+               Storage Index Read Ops: 31
                Storage Index Rows Scanned: 491
 (15 rows)
 
@@ -492,11 +501,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
@@ -517,11 +526,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 2
                Merge Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (20 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
@@ -538,11 +547,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Output: i2, i4, n, v
                Index Cond: ((tv_tbl.v)::text = '1'::text)
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (16 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
@@ -563,14 +572,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Merge Streams: 2
                Merge Cond: ((tv_tbl.v)::text = ANY ('{1,1}'::text[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 12
-               Storage Table Rows Scanned: 491
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 21
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 491
+               Storage Index Read Ops: 3
+               Storage Index Rows Scanned: 21
 (20 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -580,11 +589,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
   0 |  1 | 13010 | 1
 (5 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
@@ -593,5 +602,433 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
 (output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
+(output identical to previous)
+DROP INDEX idx;
+--
+-- Index 4: a relabeled expression column held at one value, before the stream
+-- column i2.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) ASC, i2 ASC, i4 ASC)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+\set query ':P :Q SELECT i4, n, v, i2 FROM tv_tbl WHERE v :R AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 2
+               Merge Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 4
+               Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 2
+               Merge Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 4
+               Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+ i4 |   n   | v | i2 
+----+-------+---+----
+  0 | 11702 | 1 |  2
+  0 | 14401 | 1 |  1
+  0 | 15802 | 1 |  2
+  0 | 16802 | 1 |  2
+  0 | 17301 | 1 |  1
+(5 rows)
+
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+DROP INDEX idx;
+--
+-- Index 5: the same as a hash column, which stays a stream key either way and
+-- shows its equality index condition under Merge Cond.
+--
+CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=99 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 7
+               Storage Table Read Ops: 49
+               Storage Table Rows Scanned: 99
+               Storage Index Read Requests: 7
+               Storage Index Read Ops: 7
+               Storage Index Rows Scanned: 99
+(15 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 2
+               Merge Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 4
+               Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 2
+               Merge Cond: (((tv_tbl.v)::text = '1'::text) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i4, n, v, i2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i4, n, v, i2
+         Sort Key: tv_tbl.i4, tv_tbl.n
+         Presorted Key: tv_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.tv_tbl (actual rows=7 loops=1)
+               Output: i4, n, v, i2
+               Index Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Merge Sort Key: tv_tbl.i4
+               Merge Stream Key: (tv_tbl.v)::text, tv_tbl.i2
+               Merge Streams: 4
+               Merge Cond: (((tv_tbl.v)::text = ANY ('{1,1}'::text[])) AND (tv_tbl.i2 = ANY ('{1,2}'::integer[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 8
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 10
+(20 rows)
+
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+ i4 |   n   | v | i2 
+----+-------+---+----
+  0 | 11702 | 1 |  2
+  0 | 14401 | 1 |  1
+  0 | 15802 | 1 |  2
+  0 | 16802 | 1 |  2
+  0 | 17301 | 1 |  1
+(5 rows)
+
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+(output identical to previous)
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
 (output identical to previous)
 DROP INDEX idx;

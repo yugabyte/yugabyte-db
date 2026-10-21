@@ -34,6 +34,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
@@ -63,6 +64,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tcmalloc_profile.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_pool.h"
 #include "yb/util/yb_partition.h"
@@ -79,6 +81,7 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -279,13 +282,16 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
   return Status::OK();
 }
 
-void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
+void YBCStartSysTablePrefetchingImpl(
+    std::optional<PrefetcherOptions::CachingInfo> caching_info,
+    YbcPgSysTablePrefetchKind kind) {
   const auto* flags = YBCGetGFlags();
   const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
   const auto max_size_limit = YBCGetMaxRpcResponseSize();
   pgapi->StartSysTablePrefetching({
       caching_info,
       *flags->ysql_catalog_prefetch_row_limit,
+      kind,
       configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit});
 }
 
@@ -300,6 +306,8 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode 
     case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
       LOG(ERROR) << "Emergency fallback prefetching cache mode is used";
       return PrefetchingCacheMode::RENEW_CACHE_HARD;
+    case YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY:
+      return PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY;
   }
   LOG(DFATAL) << "Unexpected YbcPgSysTablePrefetcherCacheMode value " << mode;
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
@@ -476,7 +484,7 @@ static bool yb_is_binary_upgrade = false;
 
 
 Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
-  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp, data.origination_time));
   RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
   RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
       data.read_from_followers_enabled, data.follower_read_staleness_ms));
@@ -528,6 +536,10 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid) {
   pgapi->SetupPgBackendCgroup(dboid);
+}
+
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid) {
+  pgapi->SetConnectedDatabaseOid(dboid);
 }
 
 void YBCDestroyPgGate() {
@@ -630,6 +642,14 @@ void YBCPgResetCatalogReadTime() {
   pgapi->ResetCatalogReadTime();
 }
 
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id) {
+  pgapi->SetHistoricalReadContext(MakeReadHybridTime(read_time), transaction_id);
+}
+
+void YBCPgResetHistoricalReadContext() {
+  pgapi->ResetHistoricalReadContext();
+}
+
 YbcReadHybridTime YBCGetPgCatalogReadTime() {
   return MakeYbcReadHybridTime(pgapi->GetCatalogReadTime());
 }
@@ -697,6 +717,10 @@ int64_t YBCGetTCMallocSamplingPeriod() { return GetTCMallocSamplingPeriod(); }
 
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   SetTCMallocSamplingPeriod(sample_period_bytes);
+}
+
+void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
+  TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
 YbcStatus YBCGetHeapSnapshot(
@@ -1302,6 +1326,19 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
   });
 }
 
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(
+      pgapi->GetTablegroupDiskSize(database_oid, tablegroup_oid, is_database_colocated),
+      [size, num_missing_tablets](auto value) {
+        *size = value.table_size;
+        *num_missing_tablets = value.num_missing_tablets;
+      });
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YbcStatus YBCPgNewCreateIndex(const char *database_name,
@@ -1534,6 +1571,12 @@ YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
   return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
 }
 
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns) {
+  return ToYBCStatus(pgapi->DmlANNBindKeyFilter(
+      handle, std::span(columns, static_cast<size_t>(ncolumns))));
+}
+
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
@@ -1561,6 +1604,13 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
 
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
+}
+
+YbcStatus YBCPgDmlGetOnConflictOutcome(YbcPgStatement handle, YbcPgOnConflictOutcome *outcome) {
+  auto pb_outcome = PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
+  auto* status = ToYBCStatus(pgapi->DmlGetOnConflictOutcome(handle, &pb_outcome));
+  *outcome = static_cast<YbcPgOnConflictOutcome>(pb_outcome);
+  return status;
 }
 
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
@@ -1648,6 +1698,22 @@ YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
 
 YbcStatus YBCPgInsertStmtSetUpsertMode(YbcPgStatement handle) {
   return ToYBCStatus(pgapi->InsertStmtSetUpsertMode(handle));
+}
+
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NONE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NONE),
+              "YB_PG_ON_CONFLICT_NONE does not match PGSQL_ON_CONFLICT_NONE");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_NOTHING) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_NOTHING),
+              "YB_PG_ON_CONFLICT_NOTHING does not match PGSQL_ON_CONFLICT_NOTHING");
+static_assert(static_cast<int>(YB_PG_ON_CONFLICT_UPDATE) ==
+              static_cast<int>(PgsqlWriteRequestPB::PGSQL_ON_CONFLICT_UPDATE),
+              "YB_PG_ON_CONFLICT_UPDATE does not match PGSQL_ON_CONFLICT_UPDATE");
+
+YbcStatus YBCPgInsertStmtSetOnConflictAction(
+    YbcPgStatement handle, YbcPgOnConflictAction action) {
+  return ToYBCStatus(pgapi->InsertStmtSetOnConflictAction(handle,
+      static_cast<PgsqlWriteRequestPB::PgsqlOnConflictAction>(action)));
 }
 
 YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t write_time) {
@@ -1918,8 +1984,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgBeginTransaction(int64_t start_time) {
-  return ToYBCStatus(pgapi->BeginTransaction(start_time));
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time, origination_time));
 }
 
 YbcStatus YBCPgRecreateTransaction() {
@@ -2088,9 +2154,14 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !YBCIsObjectLockingEnabled() || !FLAGS_ysql_enable_concurrent_ddl ||
-      YBCIsInitDbModeEnvVarSet() || YBCIsSysTablePrefetchingStarted() ||
-      pgapi->IsParallelWorker();
+  return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
+      !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
+      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+}
+
+bool YBCIsDdlTransactionBlockEnabled() {
+  return pgapi && yb_ddl_transaction_block_enabled &&
+      pgapi->IsTableLockingEnabledForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2261,12 +2332,22 @@ void YBCRefreshClusterReplicationInfo() {
   pgapi->replication_info_snapshot().Refresh();
 }
 
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad() {
+  return pgapi->GetSharedYsqlCatalogPrefetchLoad();
+}
+
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
 
 YbcStatus YBCGetSharedDBCatalogVersion(YbcPgOid db_oid, uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
+}
+
+YbcStatus YBCGetSharedDbLastPrefetchedCatalogVersion(
+    YbcPgOid db_oid, uint64_t* catalog_version) {
+  return ExtractValueFromResult(
+      pgapi->GetSharedDbLastPrefetchedCatalogVersion(db_oid), catalog_version);
 }
 
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
@@ -2502,21 +2583,24 @@ void* YBCPgGetThreadLocalErrStatus() {
   return PgGetThreadLocalErrStatus();
 }
 
-void YBCStartSysTablePrefetchingNoCache() {
-  YBCStartSysTablePrefetchingImpl(std::nullopt);
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(std::nullopt, kind);
 }
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo version_info,
-    YbcPgSysTablePrefetcherCacheMode cache_mode) {
-  YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
-      {
-          version_info.version,
-          MakeReadHybridTime(version_info.version_read_time),
-          version_info.is_db_catalog_version_mode
-      },
-      database_oid, YBCMapPrefetcherCacheMode(cache_mode)});
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(
+      PrefetcherOptions::CachingInfo{
+          {
+              version_info.version,
+              MakeReadHybridTime(version_info.version_read_time),
+              version_info.is_db_catalog_version_mode
+          },
+          database_oid, YBCMapPrefetcherCacheMode(cache_mode)},
+      kind);
 }
 
 void YBCStopSysTablePrefetching() {
@@ -2538,8 +2622,8 @@ void YBCRegisterSysTableForPrefetching(
       row_oid_filtering_attr, fetch_ybctid);
 }
 
-YbcStatus YBCPrefetchRegisteredSysTables() {
-  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
+YbcStatus YBCPrefetchRegisteredSysTables(bool completes_connection_prefetch) {
+  return ToYBCStatus(pgapi->PrefetchRegisteredSysTables(completes_connection_prefetch));
 }
 
 YbcStatus YBCPgCheckIfPitrActive(bool* is_active) {
@@ -3064,6 +3148,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       }
     }
 
+    const auto& docdb_txn_id = row_message_pb.transaction_id();
+    const bool has_docdb_txn_id = !docdb_txn_id.empty();
+
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -3071,12 +3158,21 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .commit_time = static_cast<uint64_t>(
             YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(commit_time_ht.GetPhysicalValueMicros())),
         .commit_time_ht = commit_time_ht.ToUint64(),
+        .record_time_ht =
+            row_message_pb.has_record_time() ? row_message_pb.record_time() : 0,
         .action = GetRowMessageAction(row_message_pb),
         .table_oid = table_oid,
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id(),
         .xrepl_origin_id =
-            row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0};
+            row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
+        .has_docdb_txn_id = has_docdb_txn_id,
+        .docdb_txn_id = {}};
+    if (has_docdb_txn_id) {
+      snprintf(
+          resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",
+          docdb_txn_id.c_str());
+    }
 
     min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
     max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
@@ -3181,7 +3277,13 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
             ? YBCPAllocStdString(tablet_metadata.tablet_state())
             : nullptr,
         .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
-                                                           : kPgInvalidOid
+                                                           : kPgInvalidOid,
+        .has_disk_size = tablet_metadata.has_sst_files_disk_size() ||
+                         tablet_metadata.has_wal_files_disk_size(),
+        .sst_files_disk_size = tablet_metadata.sst_files_disk_size(),
+        .wal_files_disk_size = tablet_metadata.wal_files_disk_size(),
+        .uncompressed_sst_files_disk_size = tablet_metadata.uncompressed_sst_files_disk_size(),
+        .vector_index_disk_size = tablet_metadata.vector_index_disk_size()
       };
       ++dest;
     }
@@ -3304,7 +3406,9 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
       PgObjectId(database_oid, table_relfilenode_oid)));
 }
 
-bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+bool YBCHasCronLease() { return pgapi->HasCronLease(); }
+
+bool YBCCanCronStartJobs() { return pgapi->CanCronStartJobs(); }
 
 int YBCGetXClusterRole(uint32_t db_oid) {
   auto result = pgapi->GetXClusterRole(db_oid);
@@ -3479,6 +3583,10 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
 
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
   return PgFlushDebugContext::YbcEndOfTopLevelStmt();
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers() {
+  return PgFlushDebugContext::YbcParallelWorkers();
 }
 
 // ---------------------------------------------------------------------------

@@ -20,16 +20,24 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -188,6 +196,21 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
     String mergeKeyValues = mergeCSVs(csv1, csv2, true);
     assertThat(mergeKeyValues, equalTo("key1=val1,key2=val2,qwe,key3=val3,qwe asd"));
+  }
+
+  @Test
+  public void testAreNewInstallGFlagsApplied() {
+    long customerId = ModelFactory.testCustomer().getId();
+    Universe vmUniverse =
+        ModelFactory.createUniverse("vm-universe", customerId, Common.CloudType.aws);
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(vmUniverse));
+
+    Universe k8sUniverse =
+        ModelFactory.createUniverse("k8s-universe", customerId, Common.CloudType.kubernetes);
+    assertFalse(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+    k8sUniverse.updateConfig(
+        ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
+    assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
   }
 
   @Test
@@ -996,5 +1019,193 @@ public class GFlagsUtilTest extends FakeDBApplication {
     assertEquals(
         "FIPS enabled YBAnywhere only supports FIPS enabled universe",
         exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsDisablingTheFipsGFlagInDeprecatedFields() {
+    for (ServerType serverType : List.of(ServerType.MASTER, ServerType.TSERVER)) {
+      UserIntent userIntent = new UserIntent();
+      userIntent.providerType = Common.CloudType.aws;
+      Map<String, String> gflags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+      if (serverType == ServerType.MASTER) {
+        userIntent.masterGFlags = gflags;
+      } else {
+        userIntent.tserverGFlags = gflags;
+      }
+
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+      assertEquals(
+          "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+          exception.getLocalizedMessage());
+    }
+  }
+
+  @Test
+  public void testValidateFipsCompliancyAcceptsFipsGFlagEnabledInDeprecatedFields() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.masterGFlags = new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true"));
+    userIntent.tserverGFlags = new HashMap<>(Map.of("max_log_size", "256"));
+
+    GFlagsUtil.validateFipsCompliancy(userIntent, true);
+  }
+
+  @Test
+  public void testProcessUserGFlagsKeepsFipsOnEvenWhenOverrideAllIsAllowed() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    for (boolean allowOverrideAll : List.of(false, true)) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false", "max_log_size", "100"));
+      Map<String, String> platformGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "256"));
+
+      GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, allowOverrideAll, null, null);
+
+      assertEquals(Map.of("max_log_size", "100"), userGFlags);
+    }
+  }
+
+  @Test
+  public void testProcessUserGFlagsLeavesFipsGFlagAloneOnNonFipsUniverse() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
+
+    assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsHelmOverridesDisablingTheFipsGFlag() {
+    // Helm overrides are merged over the generated gflags, so they are checked like specificGFlags.
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.kubernetes;
+    userIntent.universeOverrides = "gflags:\n  master:\n    openssl_require_fips: \"false\"\n";
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set master openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesChecksAzOverridesAndYamlBooleans() {
+    // A YAML boolean is as much a way to turn the flag off as the quoted string is.
+    Map<String, String> azOverrides =
+        Map.of("az-1", "gflags:\n  tserver:\n    openssl_require_fips: false\n");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("", azOverrides, true));
+    assertEquals(
+        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
+            + " set tserver openssl_require_fips to false",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesRejectsUnparseableYaml() {
+    // Overrides the check cannot read are not accepted, since the flag could be hidden in them.
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, true));
+    assertTrue(
+        exception.getLocalizedMessage(),
+        exception.getLocalizedMessage().startsWith("Kubernetes overrides are not valid YAML: "));
+    // Only a FIPS universe is checked.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, false);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyOfHelmOverridesAllowsOtherOverrides() {
+    String universeOverrides =
+        "gflags:\n  master:\n    openssl_require_fips: \"true\"\n"
+            + "  tserver:\n    ysql_enable_auth: \"true\"\n"
+            + "tserver:\n  podLabels:\n    env: test\n";
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(universeOverrides, null, true);
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(null, null, true);
+    // Nothing is checked on a non-FIPS YBA.
+    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
+        "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
+  }
+
+  private static Cluster lbCluster(Common.CloudType cloud, boolean enableLB, boolean managedLb) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloud;
+    userIntent.enableLB = enableLB;
+    if (managedLb) {
+      ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+      config.setEnablePrivate(true);
+      userIntent.setManagedLoadBalancer(config);
+    }
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithUserCreatedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, true, false)));
+  }
+
+  @Test
+  public void testGcpProxiesListenOnEveryAddressWithManagedLoadBalancer() {
+    assertTrue(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, true)));
+  }
+
+  @Test
+  public void testGcpProxiesKeepPrivateIpWithoutLoadBalancer() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.gcp, false, false)));
+  }
+
+  @Test
+  public void testAwsProxiesKeepPrivateIpWithLoadBalancers() {
+    assertFalse(
+        GFlagsUtil.listensOnLoadBalancerAddress(lbCluster(Common.CloudType.aws, true, true)));
+  }
+
+  @Test
+  public void testJwtJWKSPathByProvider() throws IOException {
+    Customer customer = ModelFactory.testCustomer();
+    String hbaConf = "host all all 0.0.0.0/0 jwt jwks={\"keys\":[]}";
+    Path localDir = Files.createTempDirectory("jwks");
+    try {
+      String k8sHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.kubernetesProvider(customer).getUuid().toString());
+      String awsHbaConf =
+          GFlagsUtil.updateJwtJWKSPath(
+              hbaConf, localDir, ModelFactory.awsProvider(customer).getUuid().toString());
+
+      String[] jwksFiles = localDir.toFile().list();
+      assertEquals(1, jwksFiles.length);
+      String jwksFile = jwksFiles[0];
+      assertEquals("{\"keys\":[]}", Files.readString(localDir.resolve(jwksFile)));
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/mnt/disk0/yw-data/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          k8sHbaConf);
+      assertEquals(
+          "host all all 0.0.0.0/0 jwt jwt_jwks_path=\"\"/home/yugabyte/tserver/conf/gflag_files/"
+              + jwksFile
+              + "\"\"",
+          awsHbaConf);
+    } finally {
+      FileUtils.deleteDirectory(localDir.toFile());
+    }
   }
 }

@@ -329,7 +329,14 @@ qpmReadFile()
 		YbQpmHashEntry entry;
 
 		if (fread(&entry, entrySize, 1, file) != 1)
-			return -1;
+		{
+			/* The entries read so far have no LRU slot yet, so drop them. */
+			for (int j = 0; j < cnt; j++)
+				(void) hash_search(qpmHashTable, &(entries[j]->key), HASH_REMOVE,
+								   NULL);
+			pfree(entries);
+			goto read_error;
+		}
 
 		/*
 		 * Insert the entry into the hash table.
@@ -1199,12 +1206,14 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			lruEntry = &(qpmLruClock->entries[lruSlot]);
 
-			if (qpmNumEntries() == yb_qpm_configuration.max_cache_size + 1)
+			/*
+			 * Evict when the clock hands back an occupied slot.  That
+			 * happens below max_cache_size too: a hole later in the sweep
+			 * does not stop an earlier !referenced row from being chosen.
+			 * An empty slot is reused without a hash remove.
+			 */
+			if (lruEntry->hashEntry != NULL)
 			{
-				/*
-				 * Delete the victim to keep the number
-				 * of entries == yb_qpm_configuration.max_cache_size.
-				 */
 				YbQpmHashEntry *removedEntry = hash_search(qpmHashTable,
 														   &(lruEntry->hashEntry->key),
 														   HASH_REMOVE,

@@ -63,7 +63,9 @@ Commit the resulting fixes -- amend Step 1's commit or add a new one -- before S
 
 ### Step 2: Base branch
 
-The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
+The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` defaults to `master`. Backports are not opened with this skill — use `/backport-commit` instead.
+
+**One exception: a stacked PR.** If the current branch is named `feature-stack/<feature>/<change>`, this change is a layer of a PR stack and its base is the layer below it. Don't pass `-b`; `create-pr.sh` reads the base from `gh stack`. See [Stacked PRs](#stacked-prs) before going further.
 
 ### Step 3: Gather PR metadata
 
@@ -128,7 +130,7 @@ git diff <upstream>/master...HEAD -- '*.md'   # doc prose; also skim added comme
 Land any resulting edits as a new commit before Step 5 — the script refuses to run against
 a dirty tree.
 
-### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
+### Step 5: Run `create-pr.sh` to lint, push, and open the PR
 
 > **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
@@ -147,7 +149,7 @@ Say **why**, always — a reviewer who has to reverse-engineer the motivation is
   -r <reviewers>
 ```
 
-The script rebases on `<upstream>/master`, runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
+The script runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
@@ -160,20 +162,21 @@ Inputs:
 
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.
-- `2` — rebase conflict; resolve, `git rebase --continue`, then re-run.
 - `3` — lint failed; fix as a NEW commit (do not amend a pushed commit, per `src/AGENTS.md`), then re-run.
+- `4` — the PR is ready for review and the push is not a fast-forward. Recover without rewriting, as the message says, then re-run. See [Pushing follow-up commits](#pushing-follow-up-commits). Never happens for a stack branch.
+- `5` — stack branch only: `gh stack push` failed; its message says why.
+- `6` — stack branch only: the PR was opened as a draft but `gh stack link` failed. The message names the command to retry.
 - `1` — pre-flight failure (dirty tree, missing remote, etc.).
 
 Confirm the title and body with the user before invoking the script.
 
-### Step 5b (optional): Auto-recover from trivial rebase conflicts and lint errors
+### Step 5b (optional): Auto-recover from lint errors
 
-If Step 5 exits `2` (rebase conflict) or `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
+If Step 5 exits `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
 
-- **Rebase conflicts** — only auto-resolve **trivial** conflicts (whitespace-only differences, adjacent-but-non-overlapping hunks, conflicts where both sides are byte-identical after whitespace normalization). For each such file, accept the resolution that preserves the branch's intent, `git add` it, and `git rebase --continue`. Anything involving renamed identifiers, signature changes, or refactors must be escalated to the user — do not guess.
 - **Lint errors** — if the linter reports auto-fixable issues (e.g. trailing whitespace, missing newlines), apply the fix as a **new commit** (`Fix lint`), not an amend. If the errors require judgment (logic changes, unused-variable removal that might be load-bearing), escalate.
 
-After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the conflict/lint output to the user.
+After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the lint output to the user.
 
 ### Step 6: Report back to the user
 
@@ -185,12 +188,41 @@ Output:
 
 Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-msg-<issue>.txt`, `/tmp/claude/pr-body-<issue>.md`).
 
+## Pushing follow-up commits
+
+This section is for ordinary PRs. A stack branch follows [Stacked PRs](#stacked-prs) instead.
+
+**Never rewrite a PR's history once it is ready for review** — no rebase, amend, reset, or force-push after the PR leaves draft. A rewrite renews the SHAs under reviewers' line comments, marking them "outdated", and destroys the diff-since-their-last-look. Add new commits instead. While the PR is a draft, nobody is reviewing it yet, so rewriting is fine.
+
+`git-push.sh` never rebases. For a ready PR it pushes only a fast-forward; with no PR, or a draft one, it force-pushes a rewritten branch with `--force-with-lease`.
+
+**On exit `4`,** follow the message. It distinguishes *the remote is ahead of you* (`git merge --ff-only`) from *the branch was rewritten* (put the published commits back with `git reset --soft` or `--hard`, then redo the change as new commits). There is no override; if a rewrite truly seems necessary, stop and ask the user.
+
+**To pick up newer `master` on a ready PR, merge — don't rebase:**
+
+```
+git merge upstream/master
+```
+
+The merge commit never reaches `master` (the repo squash-merges every PR), so it costs nothing. `git-push.sh` prints how far behind the branch is but deliberately won't merge for you — that's the author's call, mid-review.
+
+## Stacked PRs
+
+A stack is for a feature that splits into several dependent changes. Reach for it only when the user asks for one; a single PR is the default.
+
+**Load the `gh-stack` skill** (`gh skill install github/gh-stack gh-stack --scope user` if it is missing) and follow it for building, editing, rebasing, syncing, and merging the stack. This section only covers what this repo adds to it:
+
+- **Name every layer `feature-stack/<feature-name>/<change-name>`.** That prefix is the only one the rulesets exempt from `Block Creations`, `Require PR`, and `yb-required`, and stack branches must live in `yugabyte/yugabyte-db` because GitHub has no cross-fork stacks. `git-push.sh` warns on a name that isn't this two-segment shape but still pushes.
+- **The remote is the one pointing at `yugabyte/yugabyte-db`**, never your fork. Pass it wherever `gh stack` takes `--remote`.
+- **Push with `git-push.sh`, not `gh stack push`.** For a stack branch it lints the whole stack from the top layer, then runs `gh stack push`. The no-rewrite rule in [Pushing follow-up commits](#pushing-follow-up-commits) does not apply: GitHub merges a stack only when its history is linear, so cascading rebases and lease-protected force-pushes are the normal update, even mid-review. Never `git merge` the trunk or another layer into a stack branch.
+- **Open PRs with `create-pr.sh`, not `gh stack submit`**, one layer at a time from the bottom up, because `submit`'s generated titles fail the pr-title check. Don't pass `-b`. The script opens the PR as a draft, links it into the stack with `gh stack link`, and then marks it ready unless you passed `-D`.
+
 ## Notes
 
-- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
+- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
-- Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
-- CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
+- **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
+- Jenkins does not start on push: some `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`

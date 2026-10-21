@@ -398,6 +398,13 @@ ExchangeFuture<Data>::Result ExchangeFuture<Data>::get() {
   return *value_;
 }
 
+// True iff T has a generated TracingAttributes() (emitted only for (yb.rpc.trace)-tagged messages).
+template <class T, class = void>
+struct HasTracingAttributes : std::false_type {};
+template <class T>
+struct HasTracingAttributes<
+    T, std::void_t<decltype(std::declval<const T&>().TracingAttributes())>> : std::true_type {};
+
 template <class LWReqPB, class LWRespPB, class ResTp, tserver::PgSharedExchangeReqType ShExcReqType>
 struct PgClientData : public FetchBigDataCallback {
   using RequestType = LWReqPB;
@@ -426,6 +433,13 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
+    if constexpr (HasTracingAttributes<LWReqPB>::value) {
+      if (dist_trace::HasActiveContext()) {
+        for (auto& p : req.TracingAttributes()) {
+          dist_trace::AddPendingRpcStringAttr(std::move(p.first), std::move(p.second));
+        }
+      }
+    }
     otel_span = dist_trace::StartClientSpan(
         tserver::GetSharedMemSpanName(kSharedExchangeRequestType));
     if (otel_span) {
@@ -823,6 +837,10 @@ class PgClient::Impl : public BigDataFetcher {
     timeouts_.SetPGTimeoutAsGlobalDeadline(timeout_ms);
   }
 
+  void SetOriginationHt(uint64_t origination_ht) {
+    origination_ht_ = origination_ht;
+  }
+
   void ClearTimeout() {
     timeouts_.ClearGlobalDeadline();
   }
@@ -991,6 +1009,7 @@ class PgClient::Impl : public BigDataFetcher {
                              bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1013,6 +1032,7 @@ class PgClient::Impl : public BigDataFetcher {
                                    std::optional<bool> expected_is_called) {
     tserver::PgUpdateSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1042,6 +1062,7 @@ class PgClient::Impl : public BigDataFetcher {
                                                          bool cycle) {
     tserver::PgFetchSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
@@ -1085,6 +1106,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
     tserver::PgDeleteSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
 
@@ -1098,6 +1120,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status DeleteDBSequences(int64_t db_oid) {
     tserver::PgDeleteDBSequencesRequestPB req;
     req.set_session_id(session_id_);
+    req.set_origination_ht(origination_ht_);
     req.set_db_oid(db_oid);
 
     tserver::PgDeleteDBSequencesResponsePB resp;
@@ -1214,26 +1237,6 @@ class PgClient::Impl : public BigDataFetcher {
     const auto lock_type = static_cast<tserver::ObjectLockMode>(mode);
     req.set_lock_type(lock_type);
     req.set_is_session_lock(is_session_lock);
-
-    // Publish the details of AcquireObjectLock.
-    if (dist_trace::HasActiveContext()) {
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.database_oid", std::to_string(lock_id.db_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.relation_oid", std::to_string(lock_id.relation_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.object_oid", std::to_string(lock_id.object_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.object_sub_oid", std::to_string(lock_id.object_sub_oid));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.lock_mode", tserver::ObjectLockMode_Name(lock_type));
-      dist_trace::AddPendingRpcStringAttr(
-          "rpc.object_lock.is_session_lock", is_session_lock ? "true" : "false");
-      if (tablespace_oid) {
-        dist_trace::AddPendingRpcStringAttr(
-            "rpc.object_lock.tablespace_oid", std::to_string(*tablespace_oid));
-      }
-    }
 
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
@@ -1521,20 +1524,28 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Result<client::TableSizeInfo> GetTableDiskSize(
-      const PgObjectId& table_oid) {
+  Result<client::TableSizeInfo> GetTableDiskSizeFromRequest(
+      tserver::PgGetTableDiskSizeRequestPB& req) {
     tserver::PgGetTableDiskSizeResponsePB resp;
-
-    tserver::PgGetTableDiskSizeRequestPB req;
-    table_oid.ToPB(req.mutable_table_id());
-
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableDiskSize,
         req, resp, PggateRPC::kGetTableDiskSize));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
-
     return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSize(
+      const PgObjectId& table_oid) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    table_oid.ToPB(req.mutable_table_id());
+    return GetTableDiskSizeFromRequest(req);
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    req.set_yb_table_id(yb_table_id);
+    return GetTableDiskSizeFromRequest(req);
   }
 
   Result<bool> CheckIfPitrActive() {
@@ -2168,6 +2179,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;
+  uint64_t origination_ht_ = 0;
 
   rpc::Poller heartbeat_poller_;
   std::atomic<bool> heartbeat_running_{false};
@@ -2218,6 +2230,10 @@ void PgClient::Interrupt() {
 
 void PgClient::SetTimeout(int timeout_ms) {
   impl_->SetTimeout(timeout_ms);
+}
+
+void PgClient::SetOriginationHt(uint64_t origination_ht) {
+  impl_->SetOriginationHt(origination_ht);
 }
 
 void PgClient::ClearTimeout() {
@@ -2353,6 +2369,11 @@ Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {
 Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
     const PgObjectId& table_oid) {
   return impl_->GetTableDiskSize(table_oid);
+}
+
+Result<client::TableSizeInfo> PgClient::GetTableDiskSizeByYbTableId(
+    const TableId& yb_table_id) {
+  return impl_->GetTableDiskSizeByYbTableId(yb_table_id);
 }
 
 Status PgClient::InsertSequenceTuple(int64_t db_oid,
