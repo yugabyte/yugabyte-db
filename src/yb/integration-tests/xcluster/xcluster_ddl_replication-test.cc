@@ -45,6 +45,7 @@
 #include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
@@ -6485,6 +6486,35 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
 
   ASSERT_OK(WaitForRetriedRewrite());
+  ASSERT_NO_FATALS(VerifyVectorSearch());
+}
+
+// The rows applied after the backfill are not flushed to the index before an ungraceful restart.
+// Bootstrap must replay them into the index, although their hybrid time is below its own.
+TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedAfterBackfillBootstrap) {
+  ASSERT_OK(SetUpTableWithVectorIndex());
+  ASSERT_OK(RewriteAndFailFirstReplay());
+  ASSERT_OK(WaitForRetriedRewrite());
+  ReleaseRetryPoller();
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(consumer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  const auto table_name = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, /*schema_name=*/"", "t"));
+  for (const auto& peer : ListTableActiveTabletPeers(consumer_cluster(), table_name.table_id())) {
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  for (size_t i = 0; i != consumer_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(consumer_cluster()->mini_tablet_server(i)->Restart());
+  }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+  ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
   ASSERT_NO_FATALS(VerifyVectorSearch());
 }
 
