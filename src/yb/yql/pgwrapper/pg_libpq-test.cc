@@ -6553,6 +6553,16 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
+
+  Status ExecuteWithCatalogWritesAborted(
+      PGConn& conn, const std::string& query) {
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "1"));
+    auto status = conn.Execute(query);
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "0"));
+    return status;
+  }
 };
 
 // Test for #29871: SMgrRelation hashtable corrupted during DDL retry.
@@ -6608,6 +6618,34 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // The fact that this SELECT succeeds proves that the table exists in BOTH
   // the PostgreSQL catalog and DocDB (no split-brain corruption).
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
+}
+
+// #34751: a retried CREATE TABLE IF NOT EXISTS reused catalog cache entries
+// written by the failed attempt, so it skipped or failed on a table that was
+// never created.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+}
+
+// #34751, through an index.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE INDEX IF NOT EXISTS i ON t (k)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE INDEX i ON t (k)"));
 }
 
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
