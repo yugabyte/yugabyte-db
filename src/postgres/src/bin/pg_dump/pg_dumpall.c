@@ -602,6 +602,13 @@ main(int argc, char *argv[])
 	if (quote_all_identifiers)
 		executeCommand(conn, "SET quote_all_identifiers = true");
 
+	/*
+	 * YB: ysql_dumpall writes rolvaliduntil as text. ISO makes that
+	 * timestamp portable, so restore stores the same calendar date.
+	 * ysql_dump does this in setup_connection().
+	 */
+	executeCommand(conn, "SET DATESTYLE = ISO");
+
 	fprintf(OPF, "--\n-- YSQL database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
