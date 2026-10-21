@@ -115,7 +115,6 @@
 #include "commands/copy.h"
 #include "commands/explain.h"
 #include "commands/explain_state.h"
-#include "commands/variable.h"
 #include "commands/yb_analyze.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"

@@ -92,7 +92,6 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/explain.h"
 #include "commands/portalcmds.h"
-#include "commands/variable.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
