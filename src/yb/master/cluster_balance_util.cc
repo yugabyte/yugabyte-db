@@ -626,12 +626,18 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
 
-  // A placement that names a storage tier only gets load on servers with a disk on it.
-  if (!placement_.storage_tier().empty() &&
-      !ts_meta.descriptor->HasStorageTier(placement_.storage_tier())) {
-    VLOG(4) << "TS " << to_ts << " has no " << placement_.storage_tier()
-            << " disk, so cannot add tablet " << tablet_id;
-    return false;
+  // A placement that names a storage tier only gets load on servers with a disk on it, with two
+  // exceptions so a tier never blocks repair or a blacklist drain: a server whose tiers are
+  // unknown (registered none: an older binary, or not re-registered yet) is accepted, and a tier
+  // no live server has is not enforced, see IsStorageTierEnforced. Create-time placement stays
+  // strict in CatalogManager::GetTsDescsFromPlacementInfo.
+  if (IsStorageTierEnforced()) {
+    const auto tiers = ts_meta.descriptor->GetStorageTiers();
+    if (!tiers.empty() && !tiers.contains(placement_.storage_tier())) {
+      VLOG(4) << "TS " << to_ts << " has no " << placement_.storage_tier()
+              << " disk, so cannot add tablet " << tablet_id;
+      return false;
+    }
   }
 
   // We cannot add a tablet to a tablet server if it is already serving it.
@@ -729,6 +735,27 @@ size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_inf
   // own cloud info): only the replication factor bounds the placement.
   return FindWithDefault(
       placement_block_max_replicas_, cloud_info, implicit_cast<size_t>(placement_.num_replicas()));
+}
+
+bool PerTableLoadState::IsStorageTierEnforced() {
+  if (!storage_tier_enforced_.has_value()) {
+    const auto& tier = placement_.storage_tier();
+    bool enforced = false;
+    if (!tier.empty()) {
+      for (const auto& [_, ts_meta] : per_ts_meta_) {
+        if (!ts_meta.descriptor ||
+            (check_ts_liveness_ && !ts_meta.descriptor->IsLiveAndHasReported())) {
+          continue;
+        }
+        if (ts_meta.descriptor->HasStorageTier(tier)) {
+          enforced = true;
+          break;
+        }
+      }
+    }
+    storage_tier_enforced_ = enforced;
+  }
+  return *storage_tier_enforced_;
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {
