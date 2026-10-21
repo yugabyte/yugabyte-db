@@ -126,6 +126,8 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
         "CREATE TEMP TABLE tmp_obj_ref (a int REFERENCES tmp_obj_tbl)",
         "CREATE TEMP TABLE tmp_obj_ctas AS SELECT 1 AS a",
         "SELECT 1 AS a INTO TEMP tmp_obj_select_into",
+        "CREATE TEMP TABLE tmp_obj_part (k int) PARTITION BY RANGE (k)",
+        "CREATE TEMP TABLE tmp_obj_part1 PARTITION OF tmp_obj_part FOR VALUES FROM (0) TO (10)",
         "INSERT INTO tmp_obj_tbl (c) VALUES (1)",
         "ALTER TABLE tmp_obj_tbl ADD COLUMN d int",
         "ALTER TABLE tmp_obj_tbl RENAME COLUMN d TO e",
@@ -157,7 +159,7 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
         "DO $$ BEGIN "
         "CREATE TEMP SEQUENCE tmp_obj_seq5; TRUNCATE tmp_obj_ref; DROP SEQUENCE tmp_obj_seq5; "
         "END $$",
-        "DROP TABLE tmp_obj_ref, tmp_obj_tbl, tmp_obj_ctas2, tmp_obj_select_into",
+        "DROP TABLE tmp_obj_ref, tmp_obj_tbl, tmp_obj_ctas2, tmp_obj_select_into, tmp_obj_part",
         // DISCARD drops the remaining temp objects.
         "CREATE TEMP TABLE tmp_obj_discard (a serial)",
         "DISCARD TEMP",
@@ -184,10 +186,19 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   Status CheckMixedTempAndPermDdlsRefused(size_t node_index) {
     auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
     RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_tbl (a int)"));
+    // Not in RunTempObjectDdls, which also runs on the old version, where INHERITS is unsupported.
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_parent (a int)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_child () INHERITS (tmp_mixed_parent)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE tmp_mixed_seq"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP VIEW tmp_mixed_view AS SELECT 1 AS a"));
 
+    // A cascading drop of a temp sequence or view can reach permanent objects that depend on it.
     const auto stmts = {
         Format("TRUNCATE tmp_mixed_tbl, $0", kPermTable),
         Format("DROP TABLE tmp_mixed_tbl, $0", kPermTable),
+        Format("CREATE TEMP TABLE tmp_mixed_perm_child () INHERITS ($0)", kPermTable),
+        std::string("DROP SEQUENCE tmp_mixed_seq CASCADE"),
+        std::string("DROP VIEW tmp_mixed_view CASCADE"),
         Format("ALTER SEQUENCE $0 INCREMENT BY 2", kPermSequence),
         Format("DROP SEQUENCE $0", kPermSequence),
         std::string("CREATE SEQUENCE perm_seq2")};

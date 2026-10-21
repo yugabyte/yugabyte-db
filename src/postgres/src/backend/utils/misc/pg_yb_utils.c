@@ -3820,19 +3820,6 @@ YbAreAllRangeVarsTemp(List *relations)
 	return true;
 }
 
-static bool
-YbAreAllRelationNamesTemp(List *names)
-{
-	ListCell   *cell;
-
-	foreach(cell, names)
-	{
-		if (!YbIsRangeVarTempRelation(makeRangeVarFromNameList((List *) lfirst(cell))))
-			return false;
-	}
-	return true;
-}
-
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
@@ -4079,6 +4066,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				CreateStmt *stmt = castNode(CreateStmt, parsetree);
 
 				is_breaking_change = false;
+
+				/*
+				 * The parent of a temp partition is always temp too, while a temp
+				 * table can inherit from a permanent one.
+				 */
+				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP &&
+					YbAreAllRangeVarsTemp(stmt->inhRelations))
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
+					break;
+				}
+
 				/*
 				 * If a partition table is being created, this means pg_inherits
 				 * table that is being cached should be invalidated. If the cache
@@ -4125,16 +4126,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					break;
 				}
 
-				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
-				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
-				}
-				else
-				{
-					is_version_increment = should_increment_version_by_default;
-				}
+				is_version_increment = should_increment_version_by_default;
 				break;
 			}
 
@@ -4230,9 +4222,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 */
 					DropStmt   *stmt = castNode(DropStmt, parsetree);
 
+				/*
+				 * A permanent object can depend on a temp sequence, e.g. through
+				 * DEFAULT nextval(), so only a non-cascading drop of one is
+				 * temp-only.
+				 */
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
-					stmt->removeType == OBJECT_VIEW)
+					stmt->removeType == OBJECT_VIEW ||
+					(stmt->removeType == OBJECT_SEQUENCE &&
+					 stmt->behavior != DROP_CASCADE))
 				{
 					ListCell   *cell;
 
@@ -4256,13 +4255,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 						if (!is_version_increment)
 							is_altering_existing_data = true;
-					}
-					else if (stmt->removeType == OBJECT_SEQUENCE &&
-							 YbAreAllRelationNamesTemp(stmt->objects))
-					{
-						is_version_increment = false;
-						is_altering_existing_data = true;
-						YBMarkTxnUsesTempRelAndSetTxnId();
 					}
 				}
 				is_breaking_change = false;
