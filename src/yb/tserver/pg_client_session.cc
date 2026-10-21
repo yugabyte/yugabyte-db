@@ -4377,7 +4377,11 @@ class PgClientSession::Impl {
         session.SetReadPointOverride(std::move(restored));
         read_time_serial_no_ = read_time_serial_no;
       } else {
-        session.SetReadPointOverride(std::make_shared<ConsistentReadPoint>(clock()));
+        // UpdateReadTime decides what to keep from the current read point (e.g. restart info for
+        // restart_transaction), so start from a copy of it rather than from an empty one.
+        auto next = std::make_shared<ConsistentReadPoint>(clock());
+        next->SetMomento(current->GetMomento());
+        session.SetReadPointOverride(std::move(next));
       }
     }
     return Status::OK();
@@ -4538,6 +4542,12 @@ class PgClientSession::Impl {
     // txn ddl enabled.
     client::YBTransactionPtr txn_value;
     txn.swap(txn_value);
+    // Batches record restart info into the session's read point, not into the transaction's, so
+    // hand it over for YBTransaction's commit check.
+    if (const auto& read_point = Session(kind)->read_point_override();
+        read_point && read_point->IsRestartRequired()) {
+      txn_value->read_point().SetMomento(read_point->GetMomento());
+    }
     ClearTransaction(*Session(kind));
 
     auto metadata_cleanupper = ddl_txn_metadata_.transaction_id == txn_value->id()
