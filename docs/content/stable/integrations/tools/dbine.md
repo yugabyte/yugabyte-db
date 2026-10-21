@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[DBine](https://dbine.com) is a free, open source (MIT licensed) desktop database manager for Windows, macOS, and Linux, which works with 130+ databases and cloud services in the same window. DBine has a YugabyteDB connection type that connects to YugabyteDB YSQL using the PostgreSQL wire protocol.
+[DBine](https://dbine.com) is a free, open source (Apache 2.0 licensed) desktop database manager for Windows, macOS, and Linux, which works with 130+ databases and cloud services in the same window. DBine has a YugabyteDB connection type that connects to YugabyteDB YSQL using the PostgreSQL wire protocol.
 
 ![DBine query editor connected to YugabyteDB](/images/develop/tools/dbine/dbine-query-editor.png)
 
