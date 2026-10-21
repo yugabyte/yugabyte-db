@@ -13040,10 +13040,12 @@ validateForeignKeyConstraint(char *conname,
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
 	 *
-	 * YB: this query takes no row locks, so it is safe only if table locks
-	 * stop writers. Without concurrent DDL, YB table locks stop nothing:
-	 * ADD FOREIGN KEY could pass while a concurrent DELETE removes the
-	 * parent of a child row it checked, and leave that child orphaned.
+	 * YB: this query takes no row locks. VALIDATE is safe because the FK
+	 * triggers are already active. ADD FOREIGN KEY is safe only if its
+	 * ShareRowExclusiveLock stops writers, which YB table locks do only
+	 * with concurrent DDL. Without it, ADD FOREIGN KEY could pass while a
+	 * concurrent DELETE removes the parent of a child row it checked, and
+	 * leave that child orphaned.
 	 */
 	if ((!IsYBRelation(rel) || !YBCIsLegacyModeForCatalogOps()) &&
 		RI_Initial_Check(&trig, rel, pkrel))
