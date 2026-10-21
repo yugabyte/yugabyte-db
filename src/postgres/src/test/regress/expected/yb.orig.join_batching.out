@@ -4865,4 +4865,56 @@ SELECT count(*) FROM bnl_uniq t
     45
 (1 row)
 
+-- #35565: the same rule on BNL's other writes into its outer slot: the
+-- tuplestore batch (hashing off) and the left-join pass that returns
+-- unmatched outer rows. With t.v > 100 only the 15 even keys match one row
+-- each and the 15 odd keys come back unmatched, so the left joins must
+-- return 30; the inner join must still return 45.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+ count 
+-------
+    45
+(1 row)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
+         ->  Unique
+               ->  Sort
+                     Sort Key: bnl_uniq.k1, bnl_uniq.k2
+                     ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
+         ->  Index Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
+               Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
+               Storage Filter: (v > 100)
+(10 rows)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+ count 
+-------
+    30
+(1 row)
+
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+ count 
+-------
+    30
+(1 row)
+
 DROP TABLE bnl_uniq;

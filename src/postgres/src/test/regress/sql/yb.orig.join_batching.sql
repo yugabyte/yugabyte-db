@@ -1952,4 +1952,27 @@ SELECT count(*) FROM bnl_uniq t
 SELECT count(*) FROM bnl_uniq t
   JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
     ON t.k1 = d.k1 AND t.k2 = d.k2;
+-- #35565: the same rule on BNL's other writes into its outer slot: the
+-- tuplestore batch (hashing off) and the left-join pass that returns
+-- unmatched outer rows. With t.v > 100 only the 15 even keys match one row
+-- each and the 15 odd keys come back unmatched, so the left joins must
+-- return 30; the inner join must still return 45.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
 DROP TABLE bnl_uniq;
