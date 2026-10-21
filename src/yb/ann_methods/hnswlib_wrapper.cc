@@ -22,6 +22,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/ann_methods/hnswlib_graph_merge.h"
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
@@ -30,6 +31,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
+#include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -181,7 +183,8 @@ void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibIndex :
     public vector_index::IndexWrapperWithExternalPayload<
-        HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult> {
+        HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult>,
+    public vector_index::HnswGraphBuilderIf<Vector> {
  public:
   using Base = vector_index::IndexWrapperWithExternalPayload<
       HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult>;
@@ -288,6 +291,38 @@ class HnswlibIndex :
         options_.dimensions * sizeof(Scalar));
   }
 
+  vector_index::HnswGraphBuilderIf<Vector>* HnswGraphBuilder() override {
+    return this;
+  }
+
+  Status CopyGraph(vector_index::HnswGraphReaderIf<Vector>& source) override {
+    SCHECK_EQ(Size(), 0, IllegalState, "Graph could be copied only to empty index");
+    RETURN_NOT_OK(AppendGraph(source));
+    if (source.Size()) {
+      hnsw_->setEntryPoint(source.EntryPoint());
+    }
+    return Status::OK();
+  }
+
+  Status MergeGraph(
+      vector_index::HnswGraphReaderIf<Vector>& source, size_t ef,
+      const vector_index::ParallelForFunc& parallel_for) override {
+    SCHECK_GT(Size(), 0, IllegalState, "Graph could be merged only to non empty index");
+    const auto offset = narrow_cast<uint32_t>(Size());
+    RETURN_NOT_OK(AppendGraph(source));
+    if (source.Size() == 0) {
+      return Status::OK();
+    }
+    return MergeHnswlibGraph(
+        *hnsw_, options_.distance_kind, offset, offset + source.EntryPoint(), ef, parallel_for);
+  }
+
+  size_t MergeEf(size_t percentage) const override {
+    return std::max<size_t>(
+        2 * options_.num_neighbors_per_vertex,
+        ceil_div<size_t>(options_.ef_construction * percentage, 100));
+  }
+
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveIndex(const std::string& path) {
     return ImportYbHnsw<Vector, DistanceResult>(
         *hnsw_, path, block_cache_, options_, this->payloads());
@@ -389,6 +424,35 @@ class HnswlibIndex :
     });
   }
 
+  // Appends vectors and links of the source, keeping the order of vector numbers.
+  Status AppendGraph(vector_index::HnswGraphReaderIf<Vector>& source) {
+    SCHECK(hnsw_, IllegalState, "Index is not reserved");
+    const auto offset = narrow_cast<uint32_t>(Size());
+    const auto size = source.Size();
+    SCHECK_LE(offset + size, Capacity(), InvalidArgument, "Not enough capacity to append graph");
+    auto se = UpdateDataConsumptionOnExit();
+    std::vector<uint32_t> links;
+    for (uint32_t vector = 0; vector != size; ++vector) {
+      auto entry = source.GetEntry(vector);
+      SCHECK_EQ(
+          entry.vector.size(), options_.dimensions, InvalidArgument, "Wrong vector dimensions");
+      const auto level = source.Level(vector);
+      auto id = hnsw_->appendPoint(entry.vector.data(), entry.vector_id, narrow_cast<int>(level));
+      RETURN_NOT_OK(this->StorePayload(entry.vector_id, id, entry.payload.AsSlice()));
+      for (size_t layer = 0; layer <= level; ++layer) {
+        source.GetNeighbors(layer, vector, links);
+        SCHECK_LE(
+            links.size(), layer ? hnsw_->maxM_ : hnsw_->maxM0_, InvalidArgument,
+            Format("Too many neighbors of $0 on layer $1", vector, layer));
+        for (auto& link : links) {
+          link += offset;
+        }
+        hnsw_->setLinks(id, narrow_cast<int>(layer), links.data(), links.size());
+      }
+    }
+    return Status::OK();
+  }
+
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
   // Shared with HnswlibIndexTraits and all indexes it created.
@@ -425,6 +489,8 @@ class HnswlibVectorIterator
   }
 
   void Next() override { ++internal_iterator_; }
+
+  void Advance(size_t n) override { internal_iterator_ += n; }
 
   bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
     const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);

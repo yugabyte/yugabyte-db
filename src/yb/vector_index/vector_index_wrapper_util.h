@@ -112,6 +112,8 @@ class VectorIndexReaderAdapter
 
     void Next() override { ++source_iterator_; }
 
+    void Advance(size_t n) override { source_iterator_ += n; }
+
     bool NotEquals(const DestinationIterator& other)
         const override {
       const auto* other_adapter = down_cast<const VectorIteratorAdapter*>(&other);

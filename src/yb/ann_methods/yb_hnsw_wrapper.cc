@@ -43,6 +43,10 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
     ++index_;
   }
 
+  void Advance(size_t n) override {
+    index_ += n;
+  }
+
   ValueType Dereference() const override {
     const auto* coordinates = cache_.CoordinatesPtr(index_);
     ValueType result;
@@ -64,6 +68,72 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
   hnsw::SearchCacheScope cache_scope_;
   const size_t dimensions_;
   size_t index_;
+};
+
+template<IndexableVectorType Vector>
+class YbHnswGraphReader : public vector_index::HnswGraphReaderIf<Vector> {
+ public:
+  explicit YbHnswGraphReader(const hnsw::YbHnsw& hnsw)
+      : header_(hnsw.header()), cache_scope_(cache_, hnsw) {
+  }
+
+  size_t Size() const override {
+    return header_.layers.front().size;
+  }
+
+  uint32_t EntryPoint() const override {
+    return header_.entry;
+  }
+
+  size_t Level(uint32_t vector) const override {
+    // Vectors are numbered by decreasing level, so upper layers are prefixes of vector numbers.
+    size_t level = 0;
+    while (level < header_.max_level && vector < header_.layers[level + 1].size) {
+      ++level;
+    }
+    return level;
+  }
+
+  void GetNeighbors(size_t layer, uint32_t vector, std::vector<uint32_t>& out) override {
+    MaybeReleaseBlocks();
+    out.clear();
+    auto neighbors = layer ? cache_.GetNeighborsInNonBaseLayer(layer, vector)
+                           : cache_.GetNeighborsInBaseLayer(vector);
+    for (auto neighbor : neighbors) {
+      out.push_back(neighbor);
+    }
+  }
+
+  vector_index::VectorIndexEntry<Vector> GetEntry(uint32_t vector) override {
+    MaybeReleaseBlocks();
+    auto [vector_id, payload] = cache_.GetVectorIdAndPayload(vector);
+    vector_index::VectorIndexEntry<Vector> result {
+      .vector_id = vector_id,
+      .vector = Vector(header_.dimensions),
+      .payload = ValueBuffer(payload),
+    };
+    memcpy(result.vector.data(), cache_.CoordinatesPtr(vector),
+           header_.dimensions * sizeof(typename Vector::value_type));
+    return result;
+  }
+
+  std::pair<VectorId, Slice> GetVectorIdAndPayload(uint32_t vector) override {
+    MaybeReleaseBlocks();
+    return cache_.GetVectorIdAndPayload(vector);
+  }
+
+ private:
+  // Used blocks stay pinned until released, so release them to avoid pinning the whole file.
+  void MaybeReleaseBlocks() {
+    if (++num_accesses_ % 1024 == 0) {
+      cache_.Release();
+    }
+  }
+
+  const hnsw::Header& header_;
+  hnsw::SearchCache cache_;
+  hnsw::SearchCacheScope cache_scope_;
+  size_t num_accesses_ = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -143,6 +213,11 @@ class YbHnswIndex :
 
   std::string IndexStatsStr() const override {
     return index_.header().ToString();
+  }
+
+  std::unique_ptr<vector_index::HnswGraphReaderIf<Vector>> CreateHnswGraphReader()
+      const override {
+    return std::make_unique<YbHnswGraphReader<Vector>>(index_);
   }
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
