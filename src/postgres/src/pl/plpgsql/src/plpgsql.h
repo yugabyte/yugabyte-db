@@ -1010,11 +1010,6 @@ typedef struct PLpgSQL_function
 
 	/* this field changes when the function is used */
 	struct PLpgSQL_execstate *cur_estate;
-
-	/* YB */
-	uint64		yb_catalog_version; /* Catalog version when this function was
-									 * compiled */
-	bool		yb_invalid; /* this function is now invalid */
 } PLpgSQL_function;
 
 /*

@@ -34,9 +34,6 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/* YB includes */
-#include "pg_yb_utils.h"
-
 /* ----------
  * Our own local and global variables
  * ----------
@@ -118,129 +115,6 @@ plpgsql_compile(FunctionCallInfo fcinfo, bool forValidator)
 	 * Also, we don't need to make the cache key depend on composite result
 	 * type (at least for now).
 	 */
-	/*
-	 * YB_TODO_PG19MERGE: PG move function-cache logic into
-	 * cached_function_compile. Port YB's invalidation logic (yb_invalid,
-	 * yb_catalog_version freshness check, trigger-fn secondary-entry sweep)
-	 * into plpgsql_compile_callback / plpgsql_delete_callback or
-	 * cached_function_compile validity hook.
-	 * YB side of the conflict for reference:
-	 */
-#if 0
-	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
-	if (!HeapTupleIsValid(procTup))
-		elog(ERROR, "cache lookup failed for function %u", funcOid);
-	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
-
-	/*
-	 * See if there's already a cache entry for the current FmgrInfo. If not,
-	 * try to find one in the hash table.
-	 */
-	function = (PLpgSQL_function *) fcinfo->flinfo->fn_extra;
-
-recheck:
-	if (!function)
-	{
-		/* Compute hashkey using function signature and actual arg types */
-		compute_function_hashkey(fcinfo, procStruct, &hashkey, forValidator);
-		hashkey_valid = true;
-
-		/* And do the lookup */
-		function = plpgsql_HashTableLookup(&hashkey);
-	}
-
-	if (function)
-	{
-		/* We have a compiled function, but is it still valid? */
-		if (IsYugaByteEnabled() ?
-			(!function->yb_invalid && function->yb_catalog_version == YBGetActiveCatalogCacheVersion()) :
-			(function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
-			 ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
-			function_valid = true;
-		else
-		{
-			/*
-			 * A Trigger Function (a function that RETURNS TRIGGER) is like a template, when first
-			 * time created it is inserted into plpgsql_HashTable. Later when a trigger is fired,
-			 * a second entry will be inserted into plpgsql_HashTable. In a sense, this second entry
-			 * is like an "instantiation" of this trigger function so that its OLD/NEW are bound to
-			 * the table on which the trigger is fired. The condition function->yb_catalog_version <
-			 * YBGetActiveCatalogCacheVersion() indicates that the function is being replaced. When
-			 * ddl transaction block is enabled, during the CREATE (OR REPLACE) statement
-			 * YBGetActiveCatalogCacheVersion() will return the current catalog version + 1. After
-			 * the CREATE (OR REPLACE) statement YBGetActiveCatalogCacheVersion() will return the
-			 * current catalog version. If the current catalog version is equal to the value of
-			 * yb_catalog_version of those secondary entries, we would incorrectly accept them as
-			 * still valid. Therefore we need to also invalidate all those secondary entries of this
-			 * function in case it is a Trigger Function.
-			 */
-			bool yb_invalidate_trigger_fns =
-				function->fn_is_trigger != PLPGSQL_NOT_TRIGGER &&
-				IsYugaByteEnabled() && YBIsDdlTransactionBlockEnabled() &&
-				!function->yb_invalid &&
-				function->yb_catalog_version < YBGetActiveCatalogCacheVersion();
-
-			/*
-			 * Nope, so remove it from hashtable and try to drop associated
-			 * storage (if not done already).
-			 */
-			delete_function(function);
-
-			if (yb_invalidate_trigger_fns)
-			{
-				HASH_SEQ_STATUS status;
-				plpgsql_HashEnt *hentry;
-				hash_seq_init(&status, plpgsql_HashTable);
-				while ((hentry = hash_seq_search(&status)) != NULL)
-					if (hentry->function->fn_oid == funcOid)
-						hentry->function->yb_invalid = true;
-			}
-
-			/*
-			 * If the function isn't in active use then we can overwrite the
-			 * func struct with new data, allowing any other existing fn_extra
-			 * pointers to make use of the new definition on their next use.
-			 * If it is in use then just leave it alone and make a new one.
-			 * (The active invocations will run to completion using the
-			 * previous definition, and then the cache entry will just be
-			 * leaked; doesn't seem worth adding code to clean it up, given
-			 * what a corner case this is.)
-			 *
-			 * If we found the function struct via fn_extra then it's possible
-			 * a replacement has already been made, so go back and recheck the
-			 * hashtable.
-			 */
-			if (function->use_count != 0)
-			{
-				function = NULL;
-				if (!hashkey_valid)
-					goto recheck;
-			}
-		}
-	}
-
-	/*
-	 * If the function wasn't found or was out-of-date, we have to compile it
-	 */
-	if (!function_valid)
-	{
-		/*
-		 * Calculate hashkey if we didn't already; we'll need it to store the
-		 * completed function.
-		 */
-		if (!hashkey_valid)
-			compute_function_hashkey(fcinfo, procStruct, &hashkey,
-									 forValidator);
-
-		/*
-		 * Do the hard part.
-		 */
-		function = do_compile(fcinfo, procTup, function,
-							  &hashkey, forValidator);
-	}
-
-	ReleaseSysCache(procTup);
-#endif
 	function = (PLpgSQL_function *)
 		cached_function_compile(fcinfo,
 								fcinfo->flinfo->fn_extra,
@@ -391,7 +265,6 @@ plpgsql_compile_callback(FunctionCallInfo fcinfo,
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 	function->has_exception_block = false;
-	function->yb_catalog_version = YBGetActiveCatalogCacheVersion();
 
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The

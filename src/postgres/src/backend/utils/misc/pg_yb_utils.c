@@ -200,9 +200,27 @@ typedef struct YbSkipIntentsTxnState
 static YbSkipIntentsTxnState skip_intents_txn_state = {0};
 
 static bool YbHasDdlMadeChanges();
-static int YbGetNumCreateFunctionStmts();
-static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
+
+/*
+ * Added to the catalog version in YBGetActiveCatalogCacheVersion to
+ * invalidate cached functions (plpgsql_HashTable and the like) when a DDL
+ * transaction block changes a function definition that the catalog version
+ * does not yet reflect: each CREATE (OR REPLACE) FUNCTION/PROCEDURE in the
+ * block, and each rollback of a subtransaction or transaction that may undo
+ * one.  It is not reset at transaction end; the only decrement offsets this
+ * backend's own catalog version increment at commit.  So the active version
+ * never goes back, and a version a function was compiled at cannot recur
+ * after one of these events.
+ */
+static uint64_t function_cache_generation = 0;
+
+/*
+ * Set while YBCommitTransactionContainingDDL commits a transaction block that
+ * ran DDL. The DDL transaction state is cleared before the commit RPC, so this
+ * is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ */
+static bool ddl_txn_block_commit_in_progress = false;
 
 static void yb_maybe_test_fail_ddl(void);
 static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
@@ -217,15 +235,8 @@ YBGetActiveCatalogCacheVersion()
 		 * FUNCTION and CREATE (OR REPLACE) PROCEDURE.
 		 */
 		if (YBGetDdlNestingLevel() > 0 && YBIsCurrentStmtCreateFunction())
-			return yb_catalog_cache_version + 1;
-		if (YBIsDdlTransactionBlockEnabled())
-		{
-			uint64_t active_catalog_version = yb_catalog_cache_version +
-											  YbGetNumRollbackToSavepointStmts();
-			if (YBIsCurrentStmtCreateFunction())
-				active_catalog_version += YbGetNumCreateFunctionStmts();
-			return active_catalog_version;
-		}
+			return yb_catalog_cache_version + function_cache_generation + 1;
+		return yb_catalog_cache_version + function_cache_generation;
 	}
 	return yb_catalog_cache_version;
 }
@@ -1298,17 +1309,9 @@ typedef struct
 	CommandTag	breaking_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
+	/* Whether this transaction incremented function_cache_generation. */
+	bool		function_cache_generation_bumped;
 
-	/*
-	 * Number of create function or procedure statements in the current ddl
-	 * transaction block. Only used when ddl transaction block is enabled.
-	 */
-	int			num_create_function_stmts;
-	/*
-	 * Number of rollback to savepoint statements in the current ddl
-	 * transaction block. Only used when ddl transaction block is enabled.
-	 */
-	int			num_rollback_to_savepoint_stmts;
 	/*
 	 * This indicates whether we need to increment logical client version at
 	 * commit. This is needed by Connection Manager to handle `ALTER ... SET`
@@ -1407,6 +1410,12 @@ YBCAbortTransaction()
 	if (!IsYugaByteEnabled() || !YBTransactionsEnabled())
 		return;
 
+	/* The abort may undo a function definition change. */
+	if (ddl_transaction_state.use_regular_txn_block ||
+		ddl_txn_block_commit_in_progress)
+		++function_cache_generation;
+	ddl_txn_block_commit_in_progress = false;
+
 	if (ddl_transaction_state.use_regular_txn_block)
 		YBResetDdlState();
 
@@ -1499,6 +1508,13 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 			 id, YBCMessageAsCString(status));
 
 	YbInvalidateTableCacheForAlteredTables();
+
+	/* The rollback may undo a function definition change. */
+	if (ddl_transaction_state.use_regular_txn_block)
+	{
+		++function_cache_generation;
+		ddl_transaction_state.function_cache_generation_bumped = true;
+	}
 }
 
 static bool yb_connected_to_template_db = false;
@@ -2826,13 +2842,6 @@ YBAddDdlTxnState(YbDdlMode mode)
 		ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 
 		/*
-		 * Note that T_CreateFunctionStmt is for both CREATE (OR REPLACE) FUNCTION
-		 * and CREATE (OR REPLACE) PROCEDURE.
-		 */
-		ddl_transaction_state.num_create_function_stmts +=
-			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
-
-		/*
 		 * On a transaction restart, we need call YBCPgSetDdlStateInPlainTransaction()
 		 * again because it has been reset.
 		 */
@@ -2849,8 +2858,6 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * this YB DDL transaction.
 	 */
 	ddl_transaction_state.num_committed_pg_txns = 0;
-	ddl_transaction_state.num_create_function_stmts =
-		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(TopTransactionContext,
@@ -3015,18 +3022,6 @@ void
 YbIncrementPgTxnsCommitted()
 {
 	++ddl_transaction_state.num_committed_pg_txns;
-}
-
-static int
-YbGetNumCreateFunctionStmts()
-{
-	return ddl_transaction_state.num_create_function_stmts;
-}
-
-static int
-YbGetNumRollbackToSavepointStmts()
-{
-	return ddl_transaction_state.num_rollback_to_savepoint_stmts;
 }
 
 /*
@@ -3520,15 +3515,20 @@ YBCommitTransactionContainingDDL()
 	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
 	bool increment_logical_client_version =
 		ddl_transaction_state.increment_logical_client_version;
+	bool		function_cache_generation_bumped =
+		ddl_transaction_state.function_cache_generation_bumped;
+	const uint64_t prev_local_catalog_version = YbGetCatalogCacheVersion();
 
 	if (increment_logical_client_version)
 		YbIncrementMasterLogicalClientVersionTableEntry();
 
+	ddl_txn_block_commit_in_progress = use_regular_txn_block;
 	YBClearDdlTransactionState();
 
 	if (use_regular_txn_block)
 	{
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
+		ddl_txn_block_commit_in_progress = false;
 		/*
 		 * Next reads from catalog tables have to see changes made by the plain
 		 * transaction that contains DDL.
@@ -3585,6 +3585,17 @@ YBCommitTransactionContainingDDL()
 				 "database_oid: %u, "
 				 "local catalog version of db %u "
 				 "kept at %" PRIu64, database_oid, MyDatabaseId, YbGetCatalogCacheVersion());
+
+		/*
+		 * Functions compiled since this transaction last incremented
+		 * function_cache_generation saw the definitions it has just committed.
+		 * When the local version advanced by just this DDL's increment, keep
+		 * YBGetActiveCatalogCacheVersion unchanged so that they stay valid to
+		 * avoid unnecessary recompile.
+		 */
+		if (function_cache_generation_bumped &&
+			YbGetCatalogCacheVersion() == prev_local_catalog_version + 1)
+			--function_cache_generation;
 
 		if (YbIsClientYsqlConnMgr() ||
 			(YbIsYsqlConnMgrEnabled() &&
@@ -4480,8 +4491,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			{
 				TransactionStmt *stmt = castNode(TransactionStmt, parsetree);
 
-				if (YBIsDdlTransactionBlockEnabled() && stmt->kind == TRANS_STMT_ROLLBACK_TO)
-					++ddl_transaction_state.num_rollback_to_savepoint_stmts;
 				/*
 				 * We make a special case for YSQL upgrade, where we often use
 				 * DML statements writing to catalog tables directly under the GUC
@@ -4812,6 +4821,20 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 							 errhint("Consider enabling ysql_yb_enable_ddl_savepoint_support.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
+
+				/*
+				 * Bump before the statement runs so that its validator
+				 * recompiles the function instead of reusing the cached old
+				 * definition. This is done here rather than in YbGetDdlMode,
+				 * which yb_pg_metrics also calls, and after YBAddDdlTxnState so
+				 * that an abort from here on clears
+				 * function_cache_generation_bumped.
+				 */
+				if (IsA(GetActualStmtNode(pstmt), CreateFunctionStmt))
+				{
+					++function_cache_generation;
+					ddl_transaction_state.function_cache_generation_bumped = true;
+				}
 			}
 		}
 
