@@ -834,6 +834,9 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:
   bool use_external_mini_cluster() override { return true; }
+  // The tservers are killed moments after they register. With YSQL on, a kill that lands while
+  // postgres is still starting can orphan the postmaster, which stalls the next restart.
+  bool enable_ysql() override { return false; }
 
   Status RestartAndWipeWithFlags(
       std::vector<ExternalTabletServer*> tservers,
