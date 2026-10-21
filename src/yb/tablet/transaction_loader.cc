@@ -225,30 +225,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        // Older releases stored the apply state without the apply op id, but the remaining
-        // batches still need a valid op id in their frontier. The state was read from a flushed
-        // file (see Start), so the regular DB flushed op id is not less than the real apply op id,
-        // and using it claims nothing the regular DB does not already cover.
-        if (state->apply_op_id.empty()) {
-          if (!regular_flushed_op_id_) {
-            regular_flushed_op_id_ = docdb::MaxPersistentOpIdForDb(
-                regular_db_, /* invalid_if_no_new_data= */ false);
-          }
-          if (regular_flushed_op_id_->empty()) {
-            // Not expected: the file holding the state has a frontier. Without an op id the
-            // remaining batches cannot be written safely, so stop here.
-            LOG_WITH_PREFIX(FATAL)
-                << "Pending apply of " << *txn_id << " has no apply op id, and the regular DB "
-                << "has no flushed op id to resume it with. Finish the apply on the release that "
-                << "wrote it before upgrading.";
-          } else {
-            state->apply_op_id = *regular_flushed_op_id_;
-            // A test waits for this message.
-            LOG_WITH_PREFIX(INFO)
-                << "Pending apply of " << *txn_id << " has no apply op id, resuming it with op id "
-                << state->apply_op_id;
-          }
-        }
+        FillMissingApplyOpId(*txn_id, state.get_ptr());
 
         auto it = loader_.pending_applies_.emplace(*txn_id, *state).first;
 
@@ -265,6 +242,34 @@ class TransactionLoader::Executor {
       ROCKSDB_SEEK(regular_iterator_, Slice(seek_buffer));
     }
     return regular_iterator_->status();
+  }
+
+  // Older releases stored the apply state without the apply op id, but the remaining batches
+  // still need a valid op id in their frontier. The state was read from a flushed file (see
+  // Start), so the regular DB flushed op id is not less than the real apply op id, and using it
+  // claims nothing the regular DB does not already cover.
+  void FillMissingApplyOpId(const TransactionId& txn_id, docdb::ApplyStateWithCommitInfo* state) {
+    if (!state->apply_op_id.empty()) {
+      return;
+    }
+    if (!regular_flushed_op_id_) {
+      regular_flushed_op_id_ = docdb::MaxPersistentOpIdForDb(
+          regular_db_, /* invalid_if_no_new_data= */ false);
+    }
+    if (regular_flushed_op_id_->empty()) {
+      // Not expected: the file holding the state has a frontier. Without an op id the remaining
+      // batches cannot be written safely, so stop here.
+      LOG_WITH_PREFIX(FATAL)
+          << "Pending apply of " << txn_id << " has no apply op id, and the regular DB has no "
+          << "flushed op id to resume it with. Finish the apply on the release that wrote it "
+          << "before upgrading.";
+    } else {
+      state->apply_op_id = *regular_flushed_op_id_;
+      // A test waits for this message.
+      LOG_WITH_PREFIX(INFO)
+          << "Pending apply of " << txn_id << " has no apply op id, resuming it with op id "
+          << state->apply_op_id;
+    }
   }
 
   // id - transaction id to load.
