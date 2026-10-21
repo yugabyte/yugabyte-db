@@ -41,12 +41,15 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
-          if [[ "$BASE_REF" == master || "$BASE_REF" == feature-stack/* ]]; then
+          # Only release branches (e.g. 2025.2) take a target branch in the title; master and
+          # development branches such as feature-stack/* and pg19 do not.
+          RELEASE_BRANCH_RE='^[0-9]+(\.[0-9]+)+$'
+          if [[ ! "$BASE_REF" =~ $RELEASE_BRANCH_RE ]]; then
             if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
-              echo "::error ::Pull Request title should not specify target branch for master."
+              echo "::error ::Pull Request title should not specify target branch for $BASE_REF."
               exit 1
             fi
-            echo "Pull Request title is valid for master branch."
+            echo "Pull Request title is valid for $BASE_REF branch."
           else
             if [[ "$PR_TITLE" =~ $BACKPORT_RE ]]; then
               BACKPORT_BRANCH="${BASH_REMATCH[2]}"
