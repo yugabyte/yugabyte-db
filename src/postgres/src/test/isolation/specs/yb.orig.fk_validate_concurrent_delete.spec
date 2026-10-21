@@ -5,8 +5,7 @@
 # while s1 validates child_fk. VALIDATE must finish without waiting on s2
 # and mark child_fk valid, whether s2 then commits or rolls back.
 #
-# Not waiting must not mean not checking: a child row with no parent row
-# still fails VALIDATE.
+# VALIDATE must still fail when a child row has no parent row.
 #
 # ADD FOREIGN KEY has no FK triggers yet, so its check is safe only
 # because its table lock stops writers. It must wait for s2's open
