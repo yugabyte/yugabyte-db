@@ -29,6 +29,8 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAggPushdownDecision
+YbAggPushdownInfo
 YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack

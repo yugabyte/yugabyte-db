@@ -1572,6 +1572,20 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					}
 					ReleaseSysCache(typeTuple);
 				}
+
+				/*
+				 * These take ShareUpdateExclusiveLock, which doesn't conflict
+				 * with concurrent writers, and change nothing those writers
+				 * depend on. A schema version bump would fail them with a
+				 * non-retryable schema version mismatch inside a transaction
+				 * block.
+				 */
+				if (YBCIsObjectLockingEnabled() &&
+					(cmd->subtype == AT_ValidateConstraint ||
+					 cmd->subtype == AT_ValidateConstraintRecurse ||
+					 cmd->subtype == AT_SetStatistics))
+					break;
+
 				/*
 				 * For these cases a YugaByte metadata does not need to be updated
 				 * but we still need to increment the schema version.

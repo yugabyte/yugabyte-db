@@ -13,6 +13,7 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_agg_pushdown.o \
 	yb_merge_scan.o \
 	ybplan.o \
 	\

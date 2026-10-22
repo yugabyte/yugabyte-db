@@ -917,6 +917,48 @@ EXPLAIN (COSTS OFF) SELECT SUM(float_4 + 1) FROM (SELECT float_4 FROM ybaggtest 
          Index Cond: ((int_8 = 0) AND (int_2 = 0))
 (3 rows)
 
+-- The subquery orders by a column it does not output.
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4, int_4 DESC) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+-- A UNION ALL member left alone once the other is pruned: the aggregate
+-- argument is translated to the member's own column, also when another
+-- relation in the query shifts the member's relation number.
+EXPLAIN (COSTS OFF) SELECT SUM(x) FROM ((SELECT float_4 AS x FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4 FROM ybaggtest WHERE false)) u;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT SUM(x) FROM (SELECT 1 AS one) d, ((SELECT float_4 AS x FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4 FROM ybaggtest WHERE false)) u;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+-- OFFSET 0 builds no Limit node, and the executor decides on the final plan,
+-- where the Agg sits directly on the scan.
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 OFFSET 0) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
          QUERY PLAN          
@@ -950,6 +992,369 @@ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM pg_type WHERE oid = 21 AND oid < 0;
          Index Cond: ((oid < '0'::oid) AND (oid = '21'::oid))
 (3 rows)
 
+-- An outer qual the subquery cannot absorb keeps the Subquery Scan in the plan.
+EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4, random() AS r FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t WHERE r < 2;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Subquery Scan on t
+         Filter: (t.r < '2'::double precision)
+         ->  Index Only Scan Backward using ybaggtestindex on ybaggtest
+               Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(5 rows)
+
+-- A UNION ALL member that outputs a constant: the Agg reads it as a column of
+-- the scan's output row, which DocDB cannot supply.
+EXPLAIN (COSTS OFF) SELECT SUM(x) FROM (SELECT 1 AS x FROM ybaggtest UNION ALL SELECT 2 FROM ybaggtest WHERE false) u;
+         QUERY PLAN          
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)
+
+SELECT SUM(x) FROM (SELECT 1 AS x FROM ybaggtest UNION ALL SELECT 2 FROM ybaggtest WHERE false) u;
+ sum 
+-----
+ 100
+(1 row)
+
+-- The Subquery Scan of a UNION ALL member that emits fewer columns than its
+-- subquery stays in the plan.
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ((SELECT float_4, int_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4, int_4 FROM ybaggtest WHERE false)) u;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Subquery Scan on "*SELECT* 1"
+         ->  Index Only Scan using ybaggtestindex on ybaggtest
+               Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(4 rows)
+
+-- A UNION ALL member that outputs a primary key column the Index Only Scan
+-- decodes from the base table ybctid.
+CREATE TABLE ybaggtest_mpk (v int, k1 int, k2 int, PRIMARY KEY (k1 HASH, k2 ASC));
+CREATE INDEX NONCONCURRENTLY ybaggtest_mpk_v ON ybaggtest_mpk (v ASC);
+INSERT INTO ybaggtest_mpk SELECT i % 200, i % 40, i FROM generate_series(1, 2000) i;
+SET yb_enable_primary_key_decode_from_index = on;
+/*+ IndexOnlyScan(ybaggtest_mpk ybaggtest_mpk_v) */ EXPLAIN (COSTS OFF) SELECT SUM(x) FROM ((SELECT k2 AS x FROM ybaggtest_mpk WHERE v >= 0) UNION ALL (SELECT k2 FROM ybaggtest_mpk WHERE false)) u;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v >= 0)
+(3 rows)
+
+/*+ IndexOnlyScan(ybaggtest_mpk ybaggtest_mpk_v) */ SELECT SUM(x) FROM ((SELECT k2 AS x FROM ybaggtest_mpk WHERE v >= 0) UNION ALL (SELECT k2 FROM ybaggtest_mpk WHERE false)) u;
+   sum   
+---------
+ 2001000
+(1 row)
+
+-- Under the YB cost model the planner decides the pushdown on the paths: it
+-- looks through the Subquery Scans and Appends that setrefs.c removes, and
+-- translates the aggregate arguments to each layer's own columns.  OFFSET 0
+-- fences the subquery off from the Agg, as it does from pull-up.
+SET yb_enable_cbo = on;
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4, int_4 DESC) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(x) FROM ((SELECT float_4 AS x FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4 FROM ybaggtest WHERE false)) u;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(x) FROM (SELECT 1 AS one) d, ((SELECT float_4 AS x FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4 FROM ybaggtest WHERE false)) u;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 OFFSET 0) t;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(3 rows)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT SUM(float_4) FROM (SELECT float_4, random() AS r FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0 ORDER BY float_4) t WHERE r < 2;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Subquery Scan on t
+         Filter: (t.r < '2'::double precision)
+         ->  Index Only Scan Backward using ybaggtestindex on ybaggtest
+               Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(5 rows)
+
+/*+ SeqScan(ybaggtest) */ EXPLAIN (COSTS OFF) SELECT SUM(x) FROM (SELECT 1 AS x FROM ybaggtest UNION ALL SELECT 2 FROM ybaggtest WHERE false) u;
+         QUERY PLAN          
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)
+
+/*+ SeqScan(ybaggtest) */ SELECT SUM(x) FROM (SELECT 1 AS x FROM ybaggtest UNION ALL SELECT 2 FROM ybaggtest WHERE false) u;
+ sum 
+-----
+ 100
+(1 row)
+
+/*+ IndexOnlyScan(ybaggtest ybaggtestindex) */ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ((SELECT float_4, int_4 FROM ybaggtest WHERE int_8 = 0 AND int_2 = 0) UNION ALL (SELECT float_4, int_4 FROM ybaggtest WHERE false)) u;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Subquery Scan on "*SELECT* 1"
+         ->  Index Only Scan using ybaggtestindex on ybaggtest
+               Index Cond: ((int_8 = 0) AND (int_2 = 0))
+(4 rows)
+
+/*+ IndexOnlyScan(ybaggtest_mpk ybaggtest_mpk_v) */ EXPLAIN (COSTS OFF) SELECT SUM(x) FROM ((SELECT k2 AS x FROM ybaggtest_mpk WHERE v >= 0) UNION ALL (SELECT k2 FROM ybaggtest_mpk WHERE false)) u;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v >= 0)
+(3 rows)
+
+/*+ IndexOnlyScan(ybaggtest_mpk ybaggtest_mpk_v) */ SELECT SUM(x) FROM ((SELECT k2 AS x FROM ybaggtest_mpk WHERE v >= 0) UNION ALL (SELECT k2 FROM ybaggtest_mpk WHERE false)) u;
+   sum   
+---------
+ 2001000
+(1 row)
+
+-- A filter the index condition implies is dropped from the Index Scan, so the
+-- aggregate is pushed down, although DocDB cannot evaluate the filter (a
+-- PL/pgSQL function, which the planner cannot inline).
+CREATE FUNCTION ybaggtest_udf(int) RETURNS bool LANGUAGE plpgsql IMMUTABLE AS $$ BEGIN RETURN $1 > 0; END $$;
+/*+ IndexScan(ybaggtest ybaggtestindexsimple) */ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ybaggtest WHERE int_4 = 2147483647 AND (int_4 = 2147483647 OR ybaggtest_udf(int_2));
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 = 2147483647)
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexScan(ybaggtest ybaggtestindexsimple) */ SELECT COUNT(*) FROM ybaggtest WHERE int_4 = 2147483647 AND (int_4 = 2147483647 OR ybaggtest_udf(int_2));
+ count 
+-------
+    99
+(1 row)
+
+DROP FUNCTION ybaggtest_udf(int);
+-- setrefs.c keeps a single-child Append whose parallel awareness differs from
+-- the scan's.  With parallel Append off, a partition pruned to one child under
+-- a subquery kept by its WITH clause or by a security_barrier view, and a
+-- UNION ALL member kept as a subquery, put a layer that is never parallel
+-- aware between the Append and a parallel scan: the Append stays, and the Agg
+-- above it evaluates the aggregates.  With parallel Append on, the Append is
+-- parallel aware like the scan and goes.
+CREATE TABLE ybaggtest_part (k int, v int, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k);
+CREATE TABLE ybaggtest_part_1 PARTITION OF ybaggtest_part FOR VALUES FROM (0) TO (1000);
+CREATE TABLE ybaggtest_part_2 PARTITION OF ybaggtest_part FOR VALUES FROM (1000) TO (2000);
+INSERT INTO ybaggtest_part SELECT i, i % 10 FROM generate_series(0, 1999) i;
+ANALYZE ybaggtest_part;
+CREATE VIEW ybaggtest_part_sb WITH (security_barrier) AS SELECT k, v FROM ybaggtest_part WHERE k >= 1000;
+SET yb_parallel_range_rows = 100;
+SET max_parallel_workers_per_gather = 2;
+SET parallel_setup_cost = 0;
+SET enable_parallel_append = off;
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM (WITH w AS (SELECT 1) SELECT k, v FROM ybaggtest_part WHERE k >= 1000) s;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Append
+                     ->  Parallel Index Scan using ybaggtest_part_2_pkey on ybaggtest_part_2 ybaggtest_part_1
+                           Index Cond: (k >= 1000)
+(7 rows)
+
+SELECT COUNT(*) FROM (WITH w AS (SELECT 1) SELECT k, v FROM ybaggtest_part WHERE k >= 1000) s;
+ count 
+-------
+  1000
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ybaggtest_part_sb;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Append
+                     ->  Parallel Index Scan using ybaggtest_part_2_pkey on ybaggtest_part_2 ybaggtest_part_1
+                           Index Cond: (k >= 1000)
+(7 rows)
+
+SELECT COUNT(*) FROM ybaggtest_part_sb;
+ count 
+-------
+  1000
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT SUM(x) FROM ((WITH w AS (SELECT 1) SELECT k AS x FROM ybaggtest_part_2 WHERE k >= 1000) UNION ALL (SELECT k FROM ybaggtest_part_2 WHERE false)) u;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Append
+                     ->  Parallel Index Scan using ybaggtest_part_2_pkey on ybaggtest_part_2
+                           Index Cond: (k >= 1000)
+(7 rows)
+
+SELECT SUM(x) FROM ((WITH w AS (SELECT 1) SELECT k AS x FROM ybaggtest_part_2 WHERE k >= 1000) UNION ALL (SELECT k FROM ybaggtest_part_2 WHERE false)) u;
+   sum   
+---------
+ 1499500
+(1 row)
+
+RESET enable_parallel_append;
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM (WITH w AS (SELECT 1) SELECT k, v FROM ybaggtest_part WHERE k >= 1000) s;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Scan using ybaggtest_part_2_pkey on ybaggtest_part_2 ybaggtest_part_1
+                     Index Cond: (k >= 1000)
+                     Partial Aggregate: true
+(7 rows)
+
+RESET yb_parallel_range_rows;
+RESET max_parallel_workers_per_gather;
+RESET parallel_setup_cost;
+DROP VIEW ybaggtest_part_sb;
+DROP TABLE ybaggtest_part;
+-- The scan below a plain Aggregate shows the width of the rows DocDB returns
+-- to it: the partial-aggregate row under a pushdown, whatever columns the
+-- aggregates read, and ybctid when a filter DocDB cannot evaluate keeps the
+-- aggregate in PostgreSQL and the scan outputs no column (#20955).
+CREATE FUNCTION ybaggtest_widths(query text) RETURNS TABLE (node text, width int, partial_aggregate text) LANGUAGE plpgsql AS $$
+DECLARE
+  plan jsonb;
+BEGIN
+  EXECUTE 'EXPLAIN (FORMAT JSON) ' || query INTO plan;
+  RETURN QUERY SELECT n->>'Node Type', (n->>'Plan Width')::int, n->>'Partial Aggregate' FROM jsonb_path_query(plan, 'strict $.**?(exists (@."Node Type"))') n;
+END $$;
+CREATE FUNCTION ybaggtest_volatile() RETURNS bool LANGUAGE plpgsql AS $$ BEGIN RETURN true; END $$;
+SELECT * FROM ybaggtest_widths('/*+ SeqScan(ybaggtest) */ SELECT COUNT(*) FROM ybaggtest');
+   node    | width | partial_aggregate 
+-----------+-------+-------------------
+ Aggregate |     8 | 
+ Seq Scan  |     9 | true
+(2 rows)
+
+SELECT * FROM ybaggtest_widths('/*+ IndexOnlyScan(ybaggtest ybaggtestindexsimple) */ SELECT SUM(int_4) FROM ybaggtest');
+      node       | width | partial_aggregate 
+-----------------+-------+-------------------
+ Aggregate       |     8 | 
+ Index Only Scan |     9 | true
+(2 rows)
+
+SELECT * FROM ybaggtest_widths('/*+ SeqScan(ybaggtest) */ SELECT COUNT(*) FROM ybaggtest WHERE ybaggtest_volatile()');
+   node    | width | partial_aggregate 
+-----------+-------+-------------------
+ Aggregate |     8 | 
+ Seq Scan  |    11 | 
+(2 rows)
+
+DROP FUNCTION ybaggtest_volatile();
+DROP FUNCTION ybaggtest_widths(text);
+-- A cached plan that pushes the aggregate down below an Index Scan or an Index
+-- Only Scan evaluates it in PostgreSQL once yb_test_skip_binding_scan_keys,
+-- set after planning, makes the scan recheck its index condition, which a
+-- pushed-down aggregate row cannot take: both counts stay 100 (#20955).
+SET enable_seqscan = off;
+SET enable_bitmapscan = off;
+SET enable_indexonlyscan = off;
+PREPARE ybaggtest_mpk_is AS SELECT COUNT(*) FROM ybaggtest_mpk WHERE v < 10;
+EXPLAIN (COSTS OFF) EXECUTE ybaggtest_mpk_is;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v < 10)
+         Partial Aggregate: true
+(4 rows)
+
+RESET enable_indexonlyscan;
+SET enable_indexscan = off;
+PREPARE ybaggtest_mpk_ios AS SELECT COUNT(*) FROM ybaggtest_mpk WHERE v < 10;
+EXPLAIN (COSTS OFF) EXECUTE ybaggtest_mpk_ios;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v < 10)
+         Partial Aggregate: true
+(4 rows)
+
+SET yb_test_skip_binding_scan_keys = on;
+EXPLAIN (COSTS OFF) EXECUTE ybaggtest_mpk_is;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   ->  Index Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v < 10)
+(3 rows)
+
+EXECUTE ybaggtest_mpk_is;
+ count 
+-------
+   100
+(1 row)
+
+EXPLAIN (COSTS OFF) EXECUTE ybaggtest_mpk_ios;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtest_mpk_v on ybaggtest_mpk
+         Index Cond: (v < 10)
+(3 rows)
+
+EXECUTE ybaggtest_mpk_ios;
+ count 
+-------
+   100
+(1 row)
+
+RESET yb_test_skip_binding_scan_keys;
+DEALLOCATE ybaggtest_mpk_is;
+DEALLOCATE ybaggtest_mpk_ios;
+RESET enable_seqscan;
+RESET enable_bitmapscan;
+RESET enable_indexscan;
+RESET yb_enable_cbo;
+RESET yb_enable_primary_key_decode_from_index;
+DROP TABLE ybaggtest_mpk;
 --
 -- Test NULL rows are handled properly by COUNT.
 --

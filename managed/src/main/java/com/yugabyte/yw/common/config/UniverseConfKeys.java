@@ -1797,6 +1797,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Amount of space (in KB) we want as buffer for NFS precheck",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> k8sMasterPvcGcReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.master_pvc_gc_ready_timeout",
+          ScopeType.UNIVERSE,
+          "Kubernetes master volume cleanup ready timeout",
+          "How long removing unused master volumes after a Kubernetes edit waits for the master"
+              + " StatefulSet to have all its pods ready before failing the task",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",

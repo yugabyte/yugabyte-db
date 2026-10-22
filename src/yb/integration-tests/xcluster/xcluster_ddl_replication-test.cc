@@ -95,6 +95,7 @@ DECLARE_bool(xcluster_kill_ddl_queue_pg_connection_on_pause);
 DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
 DECLARE_bool(xcluster_enable_target_applied_filter);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
@@ -6292,12 +6293,12 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
   // The intents DB flushed OpId is advanced by the regular DB flush listener, which may run after
   // the flush returns. It must reach the vector index flushed OpId, so the advance is exercised,
   // but not go past it.
-  tablet::DocDbOpIds op_ids;
+  tablet::DocDbPersistentState state;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    op_ids = VERIFY_RESULT(consumer_tablet->MaxPersistentOpId());
-    return op_ids.vector_indexes.size() == 1 && op_ids.intents == op_ids.vector_indexes[0];
+    state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+    return state.vector_indexes.size() == 1 && state.intents == state.vector_indexes[0].op_id;
   }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
-  ASSERT_LT(op_ids.vector_indexes[0], op_ids.regular) << AsString(op_ids);
+  ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
   consumer_tablet.reset();
 
   DisableFlushOnShutdown(*consumer_cluster(), true);
@@ -6580,6 +6581,35 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
 
   ASSERT_OK(WaitForRetriedRewrite());
+  ASSERT_NO_FATALS(VerifyVectorSearch());
+}
+
+// The rows applied after the backfill are not flushed to the index before an ungraceful restart.
+// Bootstrap must replay them into the index, although their hybrid time is below its own.
+TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedAfterBackfillBootstrap) {
+  ASSERT_OK(SetUpTableWithVectorIndex());
+  ASSERT_OK(RewriteAndFailFirstReplay());
+  ASSERT_OK(WaitForRetriedRewrite());
+  ReleaseRetryPoller();
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(consumer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  const auto table_name = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, /*schema_name=*/"", "t"));
+  for (const auto& peer : ListTableActiveTabletPeers(consumer_cluster(), table_name.table_id())) {
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  for (size_t i = 0; i != consumer_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(consumer_cluster()->mini_tablet_server(i)->Restart());
+  }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+  ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
   ASSERT_NO_FATALS(VerifyVectorSearch());
 }
 
@@ -7819,6 +7849,33 @@ TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedP
       /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
   ASSERT_OK(terminated_log.WaitFor(kTimeout));
   ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// The ddl_queue poller must not be treated as stuck (a DFATAL in debug builds) when running long
+// running DDLs.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, LongRunningDdlIsNotStuck) {
+  const auto kStuckSecs = 2 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_poller_task_delay_considered_stuck_secs) = kStuckSecs;
+  // Keep the failure backoff of the data pollers below the stuck threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 8;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  StringWaiterLogSink stuck_log("XCluster Poller has not executed any tasks");
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  SleepFor(2s * kStuckSecs);
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
+
+  // Let the create finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure that the DDL was able to replicate without ddl_queue handler getting killed.
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kStuckTableName))));
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
 }
 
 // A replicated DROP TABLE blocks on the target while the target master removes the table from

@@ -30,7 +30,9 @@ import org.apache.commons.lang3.StringUtils;
  * image properties. So the upgrade fails before any node is taken down unless the image bundles
  * record both the target images and the images the nodes run now as not Marketplace-based, or the
  * universe level runtime config is set to skip this check. The UI reads the same bundle field, so a
- * missing value is looked up and stored in the bundle rather than only used here.
+ * missing value is looked up and stored in the bundle rather than only used here. Universes on
+ * Marketplace-based images change images through a full move instead: editing the universe's image
+ * bundle replaces every node.
  */
 @Slf4j
 public class CheckOCIImageEligibility extends UniverseTaskBase {
@@ -68,7 +70,6 @@ public class CheckOCIImageEligibility extends UniverseTaskBase {
         getUniverse(), UniverseConfKeys.ociAllowBootVolumeReplaceForMarketplaceBasedImages)) {
       return;
     }
-    // TODO(PLAT-22701): point the errors to the Marketplace image upgrade once it exists.
     for (BundleImage image : taskParams().targetImages) {
       checkNotMarketplaceBased(image, "Target");
     }
@@ -104,8 +105,10 @@ public class CheckOCIImageEligibility extends UniverseTaskBase {
           BAD_REQUEST,
           String.format(
               "%s image %s in region %s is an OCI Marketplace image or a custom image built from"
-                  + " one, which OCI boot volume replacement does not support. Set runtime config"
-                  + " %s to true if this is wrong.",
+                  + " one, which OCI boot volume replacement does not support. To move the"
+                  + " universe to a new image, change its image bundle by editing the universe"
+                  + " instead, which replaces every node with a new one. Set runtime config %s to"
+                  + " true if this is wrong.",
               kind, imageId, regionCode, configKey));
     }
   }

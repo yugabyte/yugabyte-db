@@ -1146,11 +1146,20 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     }
     role_counts_html << "</ul>";
 
-    html_table.AddRow(
+    auto& row = html_table.AddRow(
         EscapeForHtmlToString(info.namespace_name), EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
-        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files,
-        tables_disk_size_html, role_counts_html.str());
+        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files);
+    // The size cell is a multi-line list, which the page's sort script can only compare as text,
+    // so pass the displayed total as a numeric sort key. While that estimate is still unset the
+    // always-current active size stands in, so new tables sort by size too.
+    const auto& size_info = info.disk_size_info;
+    row.AddColumn(
+        tables_disk_size_html,
+        static_cast<size_t>(
+            size_info.total_on_disk_size > 0 ? size_info.total_on_disk_size
+                                             : size_info.active_on_disk_size));
+    row.AddColumn(role_counts_html.str());
   }
 
   html_table.Print();

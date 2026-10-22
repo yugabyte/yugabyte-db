@@ -98,6 +98,7 @@ class RaftConfigPB;
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class TierMigrationReconciler;
 
 using rocksdb::MemoryMonitor;
 
@@ -463,6 +464,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
+
+  TierMigrationReconciler* tier_migration_reconciler() { return tier_migration_reconciler_.get(); }
 
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
 
@@ -973,6 +976,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::unique_ptr<TierMigrationReconciler> tier_migration_reconciler_;
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;

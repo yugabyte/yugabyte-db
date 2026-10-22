@@ -61,6 +61,35 @@ typedef struct AggClauseCosts
 } AggClauseCosts;
 
 /*
+ * YB: What a scan copy costed as the input of a pushed-down Agg takes from
+ * the Agg (yb_make_agg_pushdown_info): the width of the partial-aggregate
+ * row DocDB returns per group from each read request, and the transition
+ * work DocDB does per scanned row.  Held on the path so that the scan's
+ * cost function needs nothing from the Agg's PlannerInfo, which is not the
+ * scan's own under a subquery.
+ */
+typedef struct YbAggPushdownInfo
+{
+	int32		result_width;
+	AggClauseCosts agg_costs;
+} YbAggPushdownInfo;
+
+/*
+ * YB: Who decides whether the scan below a plain Agg evaluates the Agg's
+ * aggregates in DocDB.  The zero value leaves it to ExecInitAgg, which
+ * checks the initialized scan state (yb_agg_pushdown_supported); that is
+ * every Agg planned without the YB cost model and every Agg not built from
+ * an AggPath.  An AggPath planned under the YB cost model records the
+ * planner's answer.
+ */
+typedef enum YbAggPushdownDecision
+{
+	YB_AGG_PUSHDOWN_BY_EXECUTOR = 0,	/* ExecInitAgg decides */
+	YB_AGG_PUSHDOWN_PLANNED_OFF,	/* planner: the Agg evaluates them */
+	YB_AGG_PUSHDOWN_PLANNED_ON,	/* planner: the scan evaluates them */
+} YbAggPushdownDecision;
+
+/*
  * This enum identifies the different types of "upper" (post-scan/join)
  * relations that we might deal with during planning.
  */
@@ -1410,6 +1439,13 @@ typedef struct YbIndexPathInfo
  * ordering of the path's output rows.
  *
  * 'yb_path_info' contains info propagated for YugabyteDB.
+ *
+ * YB: 'yb_agg_pushdown' is set on a copy of a scan path costed as the input
+ * of an Agg whose aggregates DocDB evaluates, one partial-aggregate row per
+ * read request, and holds what that costing takes from the Agg.  Only the
+ * copy a pushed-down Agg hangs on carries it (yb_agg_pushdown_subpath in
+ * pathnode.c); the original scan path in the relation's pathlist stays
+ * unmarked.
  */
 typedef struct Path
 {
@@ -1440,6 +1476,7 @@ typedef struct Path
 	uint32		ybUniqueId;		/* unique id of Path */
 	bool		ybIsHinted;		/* does this represent a hint path? */
 	bool		ybHasHintedUid; /* force this path using UID? */
+	YbAggPushdownInfo *yb_agg_pushdown;	/* costed as pushed-down Agg input */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -2076,6 +2113,14 @@ typedef struct UpperUniquePath
  * This may involve plain grouping (but not grouping sets), using either
  * sorted or hashed grouping; for the AGG_SORTED case, the input must be
  * appropriately presorted.
+ *
+ * YB: 'yb_pushdown_decision' is the planner's aggregate pushdown decision
+ * under the YB cost model (see YbAggPushdownDecision); without it the
+ * executor decides.  When the scan below evaluates the aggregates in DocDB,
+ * one partial-aggregate row per read request, and has a YB cost function,
+ * the subpath is a copy of the scan path costed for that result stream
+ * (yb_agg_pushdown_subpath in pathnode.c) and the relation's pathlist keeps
+ * the original.
  */
 typedef struct AggPath
 {
@@ -2087,6 +2132,9 @@ typedef struct AggPath
 	uint64		transitionSpace;	/* for pass-by-ref transition data */
 	List	   *groupClause;	/* a list of SortGroupClause's */
 	List	   *qual;			/* quals (HAVING quals), if any */
+
+	/* YB fields */
+	YbAggPushdownDecision yb_pushdown_decision;
 } AggPath;
 
 /*

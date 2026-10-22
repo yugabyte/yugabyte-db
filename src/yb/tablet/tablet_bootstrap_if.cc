@@ -154,7 +154,11 @@ Status BootstrapTablet(
   return Status::OK();
 }
 
-string DocDbOpIds::ToString() const {
+string VectorIndexPersistentState::ToString() const {
+  return YB_STRUCT_TO_STRING(op_id, hybrid_time);
+}
+
+string DocDbPersistentState::ToString() const {
   return YB_STRUCT_TO_STRING(regular, intents, vector_indexes);
 }
 

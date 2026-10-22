@@ -2491,6 +2491,9 @@ yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 	/* required for yb_parallel_cost */
 	bpath.path.parallel_aware = false;
 
+	/* the stack dummy is not zeroed; cost it as an ordinary scan */
+	bpath.path.yb_agg_pushdown = NULL;
+
 	/*
 	 * Check the cost of temporary path without considering parallelism.
 	 * Parallel bitmap heap path will be considered at later stage.

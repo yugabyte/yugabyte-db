@@ -168,8 +168,9 @@ class TabletVectorIndexes :
   Status ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
-  void FillMaxPersistentOpIds(
-      boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
+  void FillPersistentStates(
+      boost::container::small_vector_base<VectorIndexPersistentState>& out,
+      bool invalid_if_no_new_data);
 
   bool TEST_HasIndexes() const {
     return has_vector_indexes_.load();

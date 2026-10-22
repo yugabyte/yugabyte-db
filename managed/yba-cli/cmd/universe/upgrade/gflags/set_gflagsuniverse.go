@@ -256,7 +256,10 @@ var setGflagsUniverseCmd = &cobra.Command{
 			UpgradeOption:                  upgradeOption,
 			SleepAfterTServerRestartMillis: tserverDelay,
 			SleepAfterMasterRestartMillis:  masterDelay,
-			RollMaxBatchSize:               universeutil.RollMaxBatchSizeFromFlags(cmd, upgradeOption),
+			RollMaxBatchSize: universeutil.RollMaxBatchSizeFromFlags(
+				cmd,
+				upgradeOption,
+			),
 		}
 
 		rUpgrade, response, err := authAPI.UpgradeGFlags(universeUUID).
