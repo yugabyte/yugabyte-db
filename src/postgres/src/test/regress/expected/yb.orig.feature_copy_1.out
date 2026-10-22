@@ -530,6 +530,160 @@ select * from v ORDER BY a,b;
  1 | 10
 (6 rows)
 
+-- Row triggers whose function is declared with SET or SECURITY DEFINER (#34610):
+-- BEFORE ROW and AFTER ROW, with each kind of function, in two setups:
+--   copy_trig_*        a plain table, with the trigger on it; no partition
+--                      involved.
+--   copy_trig_*_part   a partitioned table; COPY loads this table.
+--   copy_trig_*_part1  copy_trig_*_part's only partition, with the trigger.
+-- Every COPY loads 3 rows with rows_per_transaction 2. In the plain setup, the
+-- table's own trigger turns batching off (hence the WARNING); in the
+-- partitioned setup, the 3 rows take 2 batches. Keep the 3 rows: the bug needs
+-- a trigger's function to run again after the per-row reset freed its cached
+-- state. That takes a second row for a BEFORE ROW trigger and a later batch for
+-- an AFTER ROW trigger.
+create or replace function copy_trig_set_fn() returns trigger
+  language plpgsql set work_mem = '64MB'
+  as $$begin raise notice '% %: a = %', tg_when, tg_table_name, new.a; return new; end$$;
+create or replace function copy_trig_secdef_fn() returns trigger
+  language plpgsql security definer
+  as $$begin raise notice '% %: a = %', tg_when, tg_table_name, new.a; return new; end$$;
+create table copy_trig_before_set (a int, b int);
+create trigger copy_trig_before_set_trig before insert on copy_trig_before_set
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_before_set from stdin with (rows_per_transaction 2);
+WARNING:  ROWS_PER_TRANSACTION is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+NOTICE:  BEFORE copy_trig_before_set: a = 1
+NOTICE:  BEFORE copy_trig_before_set: a = 2
+NOTICE:  BEFORE copy_trig_before_set: a = 3
+select * from copy_trig_before_set ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_before_set_part (a int, b int) partition by list (b);
+create table copy_trig_before_set_part1 partition of copy_trig_before_set_part for values in (1);
+create trigger copy_trig_before_set_part1_trig before insert on copy_trig_before_set_part1
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_before_set_part from stdin with (rows_per_transaction 2);
+NOTICE:  BEFORE copy_trig_before_set_part1: a = 1
+NOTICE:  BEFORE copy_trig_before_set_part1: a = 2
+NOTICE:  BEFORE copy_trig_before_set_part1: a = 3
+select * from copy_trig_before_set_part ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_before_secdef (a int, b int);
+create trigger copy_trig_before_secdef_trig before insert on copy_trig_before_secdef
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_before_secdef from stdin with (rows_per_transaction 2);
+WARNING:  ROWS_PER_TRANSACTION is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+NOTICE:  BEFORE copy_trig_before_secdef: a = 1
+NOTICE:  BEFORE copy_trig_before_secdef: a = 2
+NOTICE:  BEFORE copy_trig_before_secdef: a = 3
+select * from copy_trig_before_secdef ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_before_secdef_part (a int, b int) partition by list (b);
+create table copy_trig_before_secdef_part1 partition of copy_trig_before_secdef_part for values in (1);
+create trigger copy_trig_before_secdef_part1_trig before insert on copy_trig_before_secdef_part1
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_before_secdef_part from stdin with (rows_per_transaction 2);
+NOTICE:  BEFORE copy_trig_before_secdef_part1: a = 1
+NOTICE:  BEFORE copy_trig_before_secdef_part1: a = 2
+NOTICE:  BEFORE copy_trig_before_secdef_part1: a = 3
+select * from copy_trig_before_secdef_part ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_after_set (a int, b int);
+create trigger copy_trig_after_set_trig after insert on copy_trig_after_set
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_after_set from stdin with (rows_per_transaction 2);
+WARNING:  ROWS_PER_TRANSACTION is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+NOTICE:  AFTER copy_trig_after_set: a = 1
+NOTICE:  AFTER copy_trig_after_set: a = 2
+NOTICE:  AFTER copy_trig_after_set: a = 3
+select * from copy_trig_after_set ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_after_set_part (a int, b int) partition by list (b);
+create table copy_trig_after_set_part1 partition of copy_trig_after_set_part for values in (1);
+create trigger copy_trig_after_set_part1_trig after insert on copy_trig_after_set_part1
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_after_set_part from stdin with (rows_per_transaction 2);
+NOTICE:  AFTER copy_trig_after_set_part1: a = 1
+NOTICE:  AFTER copy_trig_after_set_part1: a = 2
+NOTICE:  AFTER copy_trig_after_set_part1: a = 3
+select * from copy_trig_after_set_part ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_after_secdef (a int, b int);
+create trigger copy_trig_after_secdef_trig after insert on copy_trig_after_secdef
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_after_secdef from stdin with (rows_per_transaction 2);
+WARNING:  ROWS_PER_TRANSACTION is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+NOTICE:  AFTER copy_trig_after_secdef: a = 1
+NOTICE:  AFTER copy_trig_after_secdef: a = 2
+NOTICE:  AFTER copy_trig_after_secdef: a = 3
+select * from copy_trig_after_secdef ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
+create table copy_trig_after_secdef_part (a int, b int) partition by list (b);
+create table copy_trig_after_secdef_part1 partition of copy_trig_after_secdef_part for values in (1);
+create trigger copy_trig_after_secdef_part1_trig after insert on copy_trig_after_secdef_part1
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_after_secdef_part from stdin with (rows_per_transaction 2);
+NOTICE:  AFTER copy_trig_after_secdef_part1: a = 1
+NOTICE:  AFTER copy_trig_after_secdef_part1: a = 2
+NOTICE:  AFTER copy_trig_after_secdef_part1: a = 3
+select * from copy_trig_after_secdef_part ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+(3 rows)
+
 -- Test various copy options
 create table copy_options (a int primary key, b int);
 -- skip
@@ -685,3 +839,11 @@ DROP TABLE v;
 DROP TABLE copy_options;
 DROP TABLE main_table;
 DROP TABLE ref_table;
+DROP TABLE copy_trig_before_set;
+DROP TABLE copy_trig_before_set_part;
+DROP TABLE copy_trig_before_secdef;
+DROP TABLE copy_trig_before_secdef_part;
+DROP TABLE copy_trig_after_set;
+DROP TABLE copy_trig_after_set_part;
+DROP TABLE copy_trig_after_secdef;
+DROP TABLE copy_trig_after_secdef_part;
