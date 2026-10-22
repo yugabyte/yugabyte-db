@@ -29,9 +29,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
-#ifdef HAVE_SYS_PRCTL_H
-#include <sys/prctl.h>
-#endif
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
@@ -2915,10 +2912,14 @@ YbAuthPrefetchKind()
 {
 	/*
 	 * Nothing in a connection proceeds until the pre-auth read lands, so the master admits it
-	 * ahead of prefetches that are merely waiting to begin. That is only worth asking for when
-	 * the large prefetch behind it will be served from this node instead of queueing at the
-	 * leader in turn; otherwise the connection waits either way, and the slot is better left to
-	 * someone who can finish.
+	 * ahead of prefetches that are merely waiting to begin. The grant pays for itself only when
+	 * the large prefetch behind it is served from this node rather than queueing at the leader
+	 * in turn, and this cannot tell: the kind is chosen before MyDatabaseId is known, so neither
+	 * the per-database cached version nor preload_rel_cache can be consulted. The GUC is the
+	 * whole of the test, which means a cluster that never opens the stale path -- the default
+	 * one, where preload_rel_cache is false -- still asks for the priority and gets no benefit
+	 * from it. The cost is bounded: the read carries a handful of small tables, and it is one
+	 * slot per connection start.
 	 */
 	return (yb_enable_stale_catalog_prefetch ?
 			YB_YQL_PREFETCH_KIND_HIGH_PRIORITY :
@@ -7125,45 +7126,6 @@ IsYbFdwUser(Oid member)
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_FDW);
 }
 
-void
-YBSetParentDeathSignal()
-{
-#ifdef HAVE_SYS_PRCTL_H
-	char	   *pdeathsig_str = getenv("YB_PG_PDEATHSIG");
-
-	if (pdeathsig_str)
-	{
-		char	   *end_ptr = NULL;
-		long int	pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
-
-		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str))
-		{
-			if (pdeathsig >= 1 && pdeathsig <= 31)
-			{
-				/*
-				 * TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into
-				 * portable ways to prevent orphans when parent is killed.
-				 */
-				prctl(PR_SET_PDEATHSIG, pdeathsig);
-			}
-			else
-			{
-				fprintf(stderr,
-						"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
-						pdeathsig);
-			}
-
-		}
-		else
-		{
-			fprintf(stderr,
-					"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
-					pdeathsig_str);
-		}
-	}
-#endif
-}
-
 Oid
 YbGetRelfileNodeId(Relation relation)
 {
@@ -9532,6 +9494,24 @@ YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 				return false;
 	}
 	return true;
+}
+
+/*
+ * Hand the result of applying invalidation messages to pggate. The messages set
+ * NeedInvalidateAllTableCache when one of them could not be narrowed to a relation, so a caller
+ * must clear that flag with YbResetNeedInvalidateAllTableCache() before it applies them and call
+ * this after -- the pairing spans the apply, and both callers are in other files.
+ */
+void
+YbUpdatePggateTableCacheAfterApply(void)
+{
+	if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
+	{
+		elog(LOG, "calling YBCPgInvalidateCache");
+		HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+	}
+	else
+		HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
 }
 
 bool

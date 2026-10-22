@@ -404,9 +404,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 }
 
 Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info) {
-  if (std::none_of(
-          placement_info.placement_blocks().begin(), placement_info.placement_blocks().end(),
-          [](const auto& block) { return block.has_max_num_replicas(); })) {
+  if (!PlacementInfoHasMaxNumReplicas(placement_info)) {
     return Status::OK();
   }
 
@@ -419,8 +417,7 @@ Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& p
   std::unordered_set<std::string> placement_ids;
   for (const auto& placement_block : placement_info.placement_blocks()) {
     const auto& cloud_info = placement_block.cloud_info();
-    if (!cloud_info.has_placement_cloud() || !cloud_info.has_placement_region() ||
-        !cloud_info.has_placement_zone()) {
+    if (IsWildcardCloudInfo(cloud_info)) {
       return STATUS_FORMAT(
           IllegalState,
           "max_num_replicas is not supported in combination with wildcard placement blocks: $0",

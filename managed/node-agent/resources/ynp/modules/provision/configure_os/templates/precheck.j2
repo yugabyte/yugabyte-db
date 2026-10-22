@@ -4,9 +4,30 @@ check_ulimit() {
     local resource=$1
     local expected_value=$2
     local current_value
+    local flag
 
-    # Get the current ulimit value for the resource
-    current_value=$(ulimit -a | grep "$resource" | awk '{print $NF}')
+    # Map the limits.conf item name to its ulimit flag. ulimit -a prints descriptive labels.
+    # Check ynp/configs/config.j2 for the keys.
+    case "$resource" in
+        core) flag="-c" ;;
+        data) flag="-d" ;;
+        fsize) flag="-f" ;;
+        sigpending) flag="-i" ;;
+        memlock) flag="-l" ;;
+        rss) flag="-m" ;;
+        nofile) flag="-n" ;;
+        msgqueue) flag="-q" ;;
+        stack) flag="-s" ;;
+        cpu) flag="-t" ;;
+        nproc) flag="-u" ;;
+        locks) flag="-x" ;;
+        *)
+            echo "[FAIL] $resource is not a supported limit"
+            add_result "$resource" "FAIL" "$resource is not a supported limit"
+            return
+            ;;
+    esac
+    current_value=$(ulimit $flag)
 
     # Use a large number for comparison if the value is 'unlimited'
     local unlimited_value=1000000000
@@ -60,10 +81,15 @@ verify_sysctl() {
 }
 
 # Verify ulimit settings
-for key in "${!limits[@]}"; do
-    key_name="$key"
-    check_ulimit "$key_name" "${limits[$key]}"
-done
+{% if is_preflight_check %}
+{% for key in limits %}
+check_ulimit "{{ key }}" "{{ limits[key] }}"
+{% endfor %}
+{% else %}
+# Right after provisioning, this shell predates the limits.conf changes, which only apply to new
+# PAM sessions. The standalone preflight check verifies them.
+echo "Skipping ulimit checks until a new session picks up /etc/security/limits.conf"
+{% endif %}
 
 # Determine the PLATFORM_ID e.g platform:el8
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
@@ -112,6 +138,7 @@ if [[ "$platform_el_version" -ge 8 ]]; then
             add_result "python libselinux check" "PASS" ""
         else
             echo "libselinux bindings are NOT installed or working for the system's default Python."
+            echo "Run 'python3 -m pip install selinux' to install if not already installed."
             add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
         fi
     fi

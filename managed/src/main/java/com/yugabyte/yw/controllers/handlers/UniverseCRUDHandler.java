@@ -1135,6 +1135,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
     // Only tasks write this state. Universe.create() below would save a copy sent by the client.
@@ -3207,6 +3208,30 @@ public class UniverseCRUDHandler {
               String.format(
                   "Invalid value for %s (accepted values: %s)",
                   userTag, StringUtils.join(acceptedValuesSet, ", ")));
+      }
+    }
+  }
+
+  private void validateTmpDirGflagConsistency(UniverseDefinitionTaskParams taskParams) {
+    for (Cluster cluster : taskParams.clusters) {
+      if (!cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.onprem)) {
+        continue;
+      }
+      for (UUID providerUuid : cluster.userIntent.getAllProviderUUIDs()) {
+        Provider provider = Provider.getOrBadRequest(providerUuid);
+        if (!provider.getCloudCode().equals(Common.CloudType.onprem)) {
+          continue;
+        }
+        if (confGetter.getConfForScope(
+            provider, ProviderConfKeys.skipTmpDirGflagConsistencyCheck)) {
+          continue;
+        }
+        String tmpDirErrMsg =
+            GFlagsUtil.checkTmpDirGflagConsistency(
+                confGetter, provider, cluster, taskParams.clusters);
+        if (tmpDirErrMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, tmpDirErrMsg);
+        }
       }
     }
   }

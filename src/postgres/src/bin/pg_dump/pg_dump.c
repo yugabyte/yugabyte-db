@@ -985,6 +985,22 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
+	/* YB: Test hook: name a file after this pid, then wait for a signal. */
+	if (getenv("FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir"))
+	{
+		char		pid_file[MAXPGPATH];
+		FILE	   *f;
+
+		snprintf(pid_file, sizeof(pid_file), "%s/%d",
+				 getenv("FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir"), (int) getpid());
+		if ((f = fopen(pid_file, "w")) == NULL)
+			pg_fatal("could not create file \"%s\": %m", pid_file);
+		fclose(f);
+		/* Exit if no signal comes, so that a failed test leaves no process. */
+		sleep(600);
+		exit(1);
+	}
+
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.

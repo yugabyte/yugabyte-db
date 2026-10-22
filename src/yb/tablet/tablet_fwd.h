@@ -72,11 +72,13 @@ class WriteQuery;
 class WriteQueryContext;
 
 struct CreateSnapshotData;
-struct DocDbOpIds;
+struct DocDbPersistentState;
+struct VectorIndexPersistentState;
 struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
+struct TierMigrationHooks;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 

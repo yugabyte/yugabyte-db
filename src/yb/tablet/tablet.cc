@@ -800,6 +800,7 @@ Tablet::Tablet(const TabletInitData& data)
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
           clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
+      tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
@@ -4496,21 +4497,21 @@ Result<bool> Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const {
+Result<DocDbPersistentState> Tablet::GetPersistentState(bool invalid_if_no_new_data) const {
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  DocDbOpIds result;
+  DocDbPersistentState result;
   result.regular = docdb::MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data);
   result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
-  vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
+  vector_indexes_->FillPersistentStates(result.vector_indexes, invalid_if_no_new_data);
   return result;
 }
 
 Result<int64_t> Tablet::EarliestNeededLogIndex(
     const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
   FlushIntentsDbIfNecessary(latest_log_entry_op_id);
-  auto max_persistent_op_id = VERIFY_RESULT(MaxPersistentOpId(true /* invalid_if_no_new_data */));
+  auto persistent_state = VERIFY_RESULT(GetPersistentState(true /* invalid_if_no_new_data */));
   int64_t min_index = std::numeric_limits<int64_t>::max();
   auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
     if (!op_id.valid()) {
@@ -4519,8 +4520,8 @@ Result<int64_t> Tablet::EarliestNeededLogIndex(
     min_index = std::min(min_index, op_id.index);
     add_factor(name, op_id.index, std::string());
   };
-  add_storage("max persistent regular op ID idx", max_persistent_op_id.regular);
-  add_storage("max persistent intents op ID idx", max_persistent_op_id.intents);
+  add_storage("max persistent regular op ID idx", persistent_state.regular);
+  add_storage("max persistent intents op ID idx", persistent_state.intents);
   return std::min(
       min_index,
       VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
@@ -4980,6 +4981,7 @@ struct TierMigrationPass {
   ScopedRWOperation op;
   std::string target_dir;
   uint32_t target_path_id = 0;
+  ReconcilerPass reconciler_pass = ReconcilerPass::kFalse;
 
   std::atomic<size_t> pending{0};
   std::atomic<uint32_t> moved{0};
@@ -5014,22 +5016,6 @@ std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& 
   return candidates;
 }
 
-Status Tablet::ClaimTierMigrationPass() {
-  std::lock_guard lock(tier_migration_mutex_);
-  auto& status = tier_migration_status_;
-  if (status.pass_in_flight) {
-    return STATUS(ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
-  }
-  status.pass_in_flight = true;
-  status.state = TierMigrationStatus::State::kInProgress;
-  status.files_total = 0;
-  status.files_moved = 0;
-  status.files_deferred = 0;
-  status.files_failed = 0;
-  status.obsoleted = 0;
-  return Status::OK();
-}
-
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
@@ -5057,7 +5043,10 @@ Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t t
   return Status::OK();
 }
 
-Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+Result<TierReconcileResult> Tablet::RunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+  using State = TierMigrationStatus::State;
+
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
@@ -5069,30 +5058,128 @@ Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
   const auto target_path_id = metadata()->target_tier_path_id();
   const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
-  RETURN_NOT_OK(ClaimTierMigrationPass());
+  TierReconcileResult result;
+  // Check if post-split compaction is needed
+  if (NeedPostSplitCompaction()) {
+    result.awaiting_post_split_compaction = true;
+    result.status = tier_migration_status();
+    VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
+    return result;
+  }
 
-  auto candidates = CollectTierMigrationCandidates(target_dir);
+  auto state_before = State::kNone;
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    if (status.pass_in_flight) {
+      return STATUS(
+          ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
+    }
+    if (reconciler_pass && status.state == State::kFailed) {
+      // Retries stopped; only a new AlterTabletTier restarts them.
+      result.status = status;
+      return result;
+    }
+    status.pass_in_flight = true;
+    state_before = status.state;
+  }
+
+  auto candidates = CollectTierMigrationCandidates(target_dir);
+  result.candidates = candidates.size();
+  // Lets a test change the target between the scan and the verdict on it.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RunTierMigrationPass:AfterScan");
+
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    // The target may have changed since the scan started, so the candidates are no longer valid.
+    if (metadata()->target_tier_path_id() != target_path_id) {
+      status.pass_in_flight = false;
+      result.candidates = 0;
+      result.target_changed = true;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      return result;
+    }
     if (candidates.empty()) {
       status.pass_in_flight = false;
+      status.files_total = 0;
+      status.files_moved = 0;
+      status.files_deferred = 0;
+      status.files_failed = 0;
+      status.obsoleted = 0;
       status.consecutive_failed_passes = 0;
       status.last_error = Status::OK();
-      return status;
+      // Every live SST is under the target directory, which is the definition of converged. Only
+      // the reconciler declares it: its scans keep running, so a file that a flush or compaction
+      // already in flight lands on the old disk after this scan is caught by a later one.
+      status.state = reconciler_pass ? State::kDone : State::kInProgress;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      if (result.state_changed && status.state == State::kDone) {
+        LOG_WITH_PREFIX(INFO) << "Tier migration converged: every live SST is under " << target_dir
+                              << " (path_id=" << target_path_id << ")";
+      }
+      return result;
     }
+    if (reconciler_pass && options.failed_pass_threshold > 0 &&
+        status.consecutive_failed_passes >= options.failed_pass_threshold) {
+      // The counters of the last failed pass stay as they were, for GetTierInfo.
+      status.pass_in_flight = false;
+      status.state = State::kFailed;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      LOG_WITH_PREFIX(WARNING) << "Tier migration to path_id=" << target_path_id
+                               << " stopped after " << status.consecutive_failed_passes
+                               << " consecutive failed passes, " << candidates.size()
+                               << " SST(s) still outside " << target_dir
+                               << "; last error: " << status.last_error
+                               << ". A new AlterTabletTier restarts it.";
+      return result;
+    }
+    status.state = State::kInProgress;
+    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    status.files_moved = 0;
+    status.files_deferred = 0;
+    status.files_failed = 0;
+    status.obsoleted = 0;
+    result.state_changed = status.state != state_before;
   }
 
   LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << target_path_id << "): scheduling "
                         << candidates.size() << " SST move(s) to " << target_dir;
 
+  result.scheduled = candidates.size();
   auto pass = std::make_shared<TierMigrationPass>();
   pass->op = std::move(scoped_operation);
   pass->target_dir = target_dir;
   pass->target_path_id = target_path_id;
+  pass->reconciler_pass = reconciler_pass;
   ScheduleTierMigrationFiles(std::move(pass), std::move(candidates));
 
+  std::lock_guard lock(tier_migration_mutex_);
+  result.status = tier_migration_status_;
+  return result;
+}
+
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+  auto result = VERIFY_RESULT(
+      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse));
+  // Nothing to move, or a scan the target change made moot: the verdict, or the new target, is
+  // the reconciler's to act on now. A pass that scheduled moves wakes it from
+  // FinishTierMigrationPass instead, and one waiting on the post-split compaction has nothing
+  // for it yet.
+  if (result.scheduled == 0 && !result.awaiting_post_split_compaction) {
+    WakeTierMigrationReconciler();
+  }
+  return result.status;
+}
+
+Result<TierReconcileResult> Tablet::RunTierReconcilePass(const TierReconcileOptions& options) {
+  return RunTierMigrationPass(options, ReconcilerPass::kTrue);
+}
+
+TierMigrationStatus Tablet::tier_migration_status() const {
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
@@ -5198,10 +5285,30 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
     }
   }
 
+  if (tier_migration_hooks_) {
+    if (tier_migration_hooks_->files_moved) {
+      tier_migration_hooks_->files_moved->IncrementBy(moved);
+    }
+    if (tier_migration_hooks_->files_failed) {
+      tier_migration_hooks_->files_failed->IncrementBy(hard_failed);
+    }
+  }
+
+  // Wake reconciler if this was a normal pass that didn't defer any files and didn't hard-fail any.
+  if (!pass->reconciler_pass && deferred == 0 && hard_failed == 0) {
+    WakeTierMigrationReconciler();
+  }
+
   LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << pass->target_path_id
                         << ") done: moved=" << moved << " deferred=" << deferred
                         << " obsoleted=" << obsoleted << " hard_failed=" << hard_failed
                         << (hard_error.ok() ? "" : Format(", first error: $0", hard_error));
+}
+
+void Tablet::WakeTierMigrationReconciler() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->wake_reconciler) {
+    tier_migration_hooks_->wake_reconciler();
+  }
 }
 
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
@@ -5613,15 +5720,10 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
 
   // SplitOperation rejects new WRITE_OPs once the split is pending, but ApplyIntents of
   // already-replicated commits is not fenced and can still vector-Insert on this parent.
-  // The first flush puts finished applies in the RocksDB snapshot. WaitForFlush then drains
-  // vector tasks those applies already allocated; leftover vectors sit in a new mutable chunk.
+  // CreateCheckpoint flushes the vector indexes after the regular DB checkpoint, so the children
+  // get the vectors of every row in it. Applies that have not finished yet are still in intents;
+  // children will apply them.
   RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
-  // Seal that leftover chunk so CreateCheckpoint can hard-link it. Applies that have not
-  // finished yet are still in intents; children will apply them. Vector-only: RocksDB was
-  // already flushed.
-  RETURN_NOT_OK(Flush(
-      FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
-      rocksdb::FlushReason::kSplitChildTabletCreation));
 
   auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));

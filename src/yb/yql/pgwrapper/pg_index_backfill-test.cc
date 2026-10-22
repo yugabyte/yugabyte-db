@@ -2263,13 +2263,17 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadlineNoTableLocks, ::testing::
 //   - BackfillIndex request
 TEST_P(PgIndexBackfillClientDeadlineNoTableLocks, DropBeforeBackfillRequest) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  // The drop removes the index from the indexed table's list when its transaction commits.  The
-  // index table stays DELETING, where the master still finds it, until every tablet replica
-  // reports its deletion.  Only a request in that window reaches the permission check.  The
-  // window is short on a healthy cluster and lasts as long as a tserver holding a replica is
-  // down, since the master retries the delete until it succeeds.  The flag stands in for the down
-  // tserver by not sending the deletes at all.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_tablet_deletion", "true"));
+  // The drop removes the index from the indexed table's list when its transaction commits and
+  // leaves the index table DELETING, where the master still finds it, until every tablet replica
+  // reports its deletion.  A request that no longer finds the table fails with NotFound instead of
+  // reaching the permission check.  Have every tserver refuse its DeleteTablet RPCs, so the
+  // master's delete tasks keep retrying and the table stays DELETING, as it does while a tserver
+  // holding a replica is down.  The table then never reaches DELETED, so the post-commit DDL
+  // verification wait in DROP INDEX would run to its deadline.  Turn the wait off so the drop
+  // returns at commit.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_rpc_delete_tablet_fail", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
   // Runs before the holder joins the create thread, so an assertion that fires while the thread
   // is blocked fails the test instead of hanging it.

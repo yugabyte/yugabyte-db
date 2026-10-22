@@ -61,13 +61,15 @@ METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_hits,
                       "PgClientService Response Cache Lookup Only Hits",
                       yb::MetricUnit::kCacheHits,
                       "Number of lookup-only queries to PgClientService response cache that were "
-                      "served, each one a backend that read the catalog at a version this node "
-                      "already held instead of fetching it from the master leader");
+                      "served from a catalog version this node already held rather than fetched "
+                      "from the master leader. A connection start issues one per prefetch "
+                      "request, so this counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_misses,
                       "PgClientService Response Cache Lookup Only Misses",
                       yb::MetricUnit::kCacheQueries,
                       "Number of lookup-only queries to PgClientService response cache that found "
-                      "nothing, each one a backend that fell back to a full catalog prefetch");
+                      "nothing cached, after which the connection falls back to a full catalog "
+                      "prefetch. Counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_queries,
                       "PgClientService Response Cache Queries",
                       yb::MetricUnit::kCacheQueries,
@@ -512,7 +514,11 @@ class PgResponseCache::Impl : private GarbageCollector {
     // A response another query is still filling is not one this can serve, since waiting for it
     // would mean registering as a waiter on an entry this query does not own.
     const auto* response = data ? data->ReadyResponse() : nullptr;
-    if (!response || PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
+    // An entry whose fill failed still holds a response, since Set stores it before recording the
+    // failure and ReadyResponse does not consult the state. Serving one counts a hit for something
+    // the caller cannot start from, and it falls back either way.
+    if (!response || !IsOk(*response) ||
+        PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request &&
                       cache_info->completes_connection_prefetch())) {
       lookup_only_misses_->Increment();

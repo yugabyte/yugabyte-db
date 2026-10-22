@@ -243,12 +243,21 @@ auto TemporaryClearInsignificantFields(LWPgsqlReadRequestPB& req) {
   const auto metrics_capture =
     req.has_metrics_capture() ? std::optional(req.metrics_capture()) : std::nullopt;
   req.clear_metrics_capture();
-  return ScopeExit([&req, stmt_id, metrics_capture] () {
+  // Unlike catalog_prefetch_kind above, this one is cleared. It says where the request falls in
+  // its own prefetch rather than what it asks for, and the same tables requested first by one
+  // prefetch and second by another must still share an entry.
+  const auto continuation = req.has_catalog_prefetch_continuation()
+      ? std::optional(req.catalog_prefetch_continuation()) : std::nullopt;
+  req.clear_catalog_prefetch_continuation();
+  return ScopeExit([&req, stmt_id, metrics_capture, continuation] () {
     if (stmt_id) {
       req.set_stmt_id(*stmt_id);
     }
     if (metrics_capture) {
       req.set_metrics_capture(*metrics_capture);
+    }
+    if (continuation) {
+      req.set_catalog_prefetch_continuation(*continuation);
     }
   });
 }
@@ -400,11 +409,12 @@ class Loader {
  public:
   Loader(PgSession* session, const std::shared_ptr<ThreadSafeArena>& arena,
          size_t estimated_size, const PrefetcherOptions& options,
-         bool completes_connection_prefetch)
+         bool completes_connection_prefetch, bool continuation)
       : session_(session),
         arena_(arena),
         options_(options),
-        completes_connection_prefetch_(completes_connection_prefetch) {
+        completes_connection_prefetch_(completes_connection_prefetch),
+        continuation_(continuation) {
     op_info_.reserve(estimated_size);
   }
 
@@ -435,6 +445,8 @@ class Loader {
     // master decides admission from the operations in pgsql_batch, so a copy on the index request
     // would be read by nobody.
     req.set_catalog_prefetch_kind(static_cast<YsqlCatalogPrefetchKindPB>(options_.kind));
+    // Set on the operation for the same reason as the kind: the master reads pgsql_batch.
+    req.set_catalog_prefetch_continuation(continuation_);
     // All catalog reads of one round go to the sys catalog tablet in a single RPC, and DocDB
     // checks each read's size limit against the whole RPC response. The same limit on every
     // read therefore caps the combined response of the round.
@@ -517,6 +529,7 @@ class Loader {
   std::shared_ptr<ThreadSafeArena> arena_;
   const PrefetcherOptions options_;
   const bool completes_connection_prefetch_;
+  const bool continuation_;
 };
 
 } // namespace
@@ -590,7 +603,7 @@ class PgSysTablePrefetcher::Impl {
               registered_for_loading_.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.table_id < rhs.table_id; });
     Loader loader(session, arena_, registered_for_loading_.size(), options_,
-                  completes_connection_prefetch);
+                  completes_connection_prefetch, served_a_request_);
     PgObjectId prev_table_id;
     for (const auto& item : registered_for_loading_) {
       // Load table once in spite of the fact it might be registered for preloading multiple times.
@@ -600,7 +613,12 @@ class PgSysTablePrefetcher::Impl {
       }
     }
     registered_for_loading_.clear();
-    return loader.Load(&data_);
+    RETURN_NOT_OK(loader.Load(&data_));
+    // Only after one has been served. A request that failed left nothing behind, and
+    // PgSysTablePrefetcher::Prefetch throws this object away on failure anyway, so the next
+    // attempt starts over and its opening request is a new prefetch again.
+    served_a_request_ = true;
+    return Status::OK();
   }
 
   const PrefetcherOptions& options() const {
@@ -612,6 +630,9 @@ class PgSysTablePrefetcher::Impl {
   boost::container::small_vector<RegisteredItem, 64> registered_for_loading_;
   DataContainer data_;
   const PrefetcherOptions options_;
+  // Whether a request of this prefetch has already been served, so the master can tell the
+  // opening request of a prefetch from the ones that continue work it has already admitted.
+  bool served_a_request_ = false;
 };
 
 PgSysTablePrefetcher::PgSysTablePrefetcher(const PrefetcherOptions& options)

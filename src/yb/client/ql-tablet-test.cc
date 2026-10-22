@@ -836,7 +836,7 @@ TEST_F(QLTabletTest, WaitFlush) {
       if (!tablet) {
         continue;
       }
-      auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+      auto flushed_op_id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
@@ -848,7 +848,7 @@ TEST_F(QLTabletTest, WaitFlush) {
     if (!tablet) {
       continue;
     }
-    auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
+    auto flushed_op_id = ASSERT_RESULT(tablet->GetPersistentState()).regular;
     ASSERT_GE(flushed_op_id.index, 100);
   }
 

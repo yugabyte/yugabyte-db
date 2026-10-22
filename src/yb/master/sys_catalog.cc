@@ -677,6 +677,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .admin_triggered_compaction_pool = nullptr,
       // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       // Metadata cache is not used on master.
       .metadata_cache = nullptr,
   };

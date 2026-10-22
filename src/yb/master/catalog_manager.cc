@@ -59,6 +59,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -2675,8 +2676,10 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   }
 
   // Before updating the tablespace placement map, validate the
-  // placement policies. If validation fails, mark the tablespace as invalid (nullopt) so that
-  // tables in this tablespace will fail to be placed, but other tablespaces continue to work.
+  // placement policies. If validation fails, mark the tablespace as invalid (nullopt). nullopt is
+  // indistinguishable from "no placement", so tables in it silently get the cluster placement.
+  // TablespaceParser repeats the placement-only checks at CREATE/ALTER TABLESPACE, but checks that
+  // depend on the cluster config (placement_uuid, read replicas) can only be done here.
   for (auto& iter : *tablespace_map) {
     if (iter.second) {
       auto status = ValidateTableReplicationInfo(iter.second.value());
@@ -10643,7 +10646,9 @@ Status CatalogManager::DeleteYsqlDBTables(
   }
 
   TabletInfoPtr sys_tablet_info;
-  std::vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
+  // Deque, not vector: base tables are pushed to the front while holding mutex_, which on a vector
+  // is O(n) per insert and quadratic over a large database.
+  std::deque<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
@@ -10683,7 +10688,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->IsColocationParentTable()) {
         colocation_parents.emplace_back(table, std::move(l));
       } else if (IsTable(l->pb)) {
-        tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
+        tables_and_locks.emplace_front(table, std::move(l));
       } else {
         tables_and_locks.emplace_back(table, std::move(l));
       }

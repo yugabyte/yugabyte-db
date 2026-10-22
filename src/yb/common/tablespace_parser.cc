@@ -116,6 +116,7 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
     }
 
     const auto& placements = replicas->placement_blocks();
+    const bool has_explicit_max = PlacementInfoHasMaxNumReplicas(*replicas);
 
     int64_t total_min_replicas = 0;
     int64_t total_max_replicas = 0;
@@ -123,6 +124,12 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
       if (i->min_num_replicas() <= 0) {
         return STATUS_FORMAT(
             Corruption, "min_num_replicas ($0) must be > 0", i->min_num_replicas());
+      }
+      if (has_explicit_max && IsWildcardCloudInfo(i->cloud_info())) {
+        return STATUS_FORMAT(
+            Corruption,
+            "max_num_replicas is not supported in combination with wildcard placement blocks: $0",
+            i->cloud_info().ShortDebugString());
       }
       // min_num_replicas > 0 is enforced above, so this also rejects non-positive maxima.
       if (i->has_max_num_replicas() && i->max_num_replicas() < i->min_num_replicas()) {

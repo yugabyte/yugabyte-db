@@ -1358,14 +1358,6 @@ extern const int yb_pushdown_funcs_to_constify_count;
 extern const int yb_pushdown_sqlvaluefunctions_count;
 
 /**
- * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
- * the current process in case the parent process dies. This is Linux-specific
- * and can only be done from the child process (the postmaster process). The
- * parent process here is yb-master or yb-tserver.
- */
-void		YBSetParentDeathSignal();
-
-/**
  * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
  * maps to the relation's DocDB table ID. Note: if the table has not
  * previously been rewritten, this function returns the OID of the table.
@@ -1750,6 +1742,7 @@ extern bool yb_default_collation_resolved;
  */
 extern bool YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
+extern void YbUpdatePggateTableCacheAfterApply(void);
 
 extern bool YbInvalidationMessagesTableExists();
 
