@@ -704,6 +704,9 @@ message SysCDCStreamEntryPB {
 
   // Set on INITIATED xCluster streams once their checkpoint has been written to cdc_state. Kept
   // after the stream turns ACTIVE, so that a target setup retried after a failure still finds it.
+  // A recorded checkpoint is never redone: the stream's table may have split since, and a new
+  // checkpoint of its current tablets could miss the parents' writes. Streams that are checkpointed
+  // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
 }
 
@@ -711,9 +714,8 @@ message XClusterStreamBootstrapInfoPB {
   // The source tablets whose cdc_state rows the stream's checkpoint wrote. The target starts
   // polling from exactly these tablets, which may since have been split (hidden), so that it
   // replicates their WAL up to the SPLIT_OP before moving on to the children. A tablet's start op
-  // id is its cdc_state checkpoint. Once the stream has polled all the children of a recorded split
-  // parent, the source replaces the parent with its children, so the record never names a tablet
-  // that the stream has finished reading.
+  // id is its cdc_state checkpoint. Only used to set up a target; a stream that a target has
+  // consumed cannot be used by another one.
   repeated bytes checkpointed_tablet_ids = 1;
 }
 

@@ -250,14 +250,13 @@ class XClusterSourceManager {
       bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback,
       const std::vector<TabletId>& op0_tablet_ids = {});
 
-  // Checkpoints the streams to OpId 0. Each stream is checkpointed on tablet_ids if given (the
-  // tablets of an earlier checkpoint of the same table, which may since have split; all
-  // table_streams must then belong to one table), else on its own recorded tablets if it has a
-  // record, else on the table's current tablets. The checkpointed tablets are recorded on
+  // Checkpoints the streams to OpId 0, on tablet_ids if given (the tablets of an earlier checkpoint
+  // of the same table, which may since have split; all table_streams must then belong to one
+  // table), else on the table's current tablets. The checkpointed tablets are recorded on
   // INITIATED streams while
-  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is set. Failing to
-  // record only logs a warning, unless a stream was checkpointed on earlier tablets, which the
-  // target must start from.
+  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is set, except for
+  // streams that MarkIndexBackfillCompleted checkpoints again. Failing to record only logs a
+  // warning, unless tablet_ids were given, since the target must then start from them.
   Status CheckpointStreamsToOp0(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
       const LeaderEpoch& epoch, StdStatusCallback user_callback,
@@ -266,47 +265,18 @@ class XClusterSourceManager {
   // Tablets recorded by RecordXClusterStreamBootstrapInfo, or empty if there are none.
   Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
 
-  // Locks the streams in StreamId order, applies mutate to each one's entry, and persists those
-  // for which it returns true. Streams that no longer exist are skipped.
-  Status UpdateXClusterStreamBootstrapInfo(
-      std::vector<xrepl::StreamId> stream_ids, const LeaderEpoch& epoch,
-      const std::function<bool(const xrepl::StreamId&, SysCDCStreamEntryPB&)>& mutate);
-
   // Writes the records without validating the tablets. Skips streams that are not INITIATED.
   Status WriteXClusterStreamBootstrapInfo(
       const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
 
-  // Clears the records of the streams, so that their tables cannot split while they are
-  // checkpointed again to the end of their WAL. Returns the streams that had a record.
-  Result<std::unordered_set<xrepl::StreamId>> ClearXClusterStreamBootstrapInfo(
-      const std::vector<xrepl::StreamId>& stream_ids, const LeaderEpoch& epoch);
-
-  // After streams are checkpointed again to the end of their WAL, deletes the cdc_state rows of
-  // the INITIATED ones among previously_recorded_streams on split tablets outside their new
-  // record, or on all split tablets if they could not be recorded again.
-  Status DeleteSplitTabletRowsOutsideRecord(
-      const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-      const std::unordered_set<xrepl::StreamId>& previously_recorded_streams);
-
-  // The end-of-WAL checkpoints of tablet_ids can be recorded: they cover the table exactly once,
-  // and none of them has split.
+  // The end-of-WAL checkpoints of tablet_ids can be recorded: they are tablets of the table, and
+  // none of them has split.
   Status ValidateEndOfWalBootstrapTablets(
       const TableId& table_id, const std::vector<TabletId>& tablet_ids) const;
 
-  // Stream -> split parent -> its children, to replace the parent with in the stream's record.
-  using TabletReplacements =
-      std::map<xrepl::StreamId, std::unordered_map<TabletId, std::vector<TabletId>>>;
-
-  Result<bool> HasStreamPolledAllChildren(
-      const xrepl::StreamId& stream_id, const std::vector<TabletId>& child_tablet_ids) const;
-
-  // The recorded split parents whose children their stream has polled.
-  Result<TabletReplacements> GetConsumedRecordedTablets(
-      const std::unordered_map<TabletId, HiddenTabletInfo>& hidden_tablets) const;
-
-  // Replaces split parents with their children in the streams' records, so that a record always
-  // names the tablets a new target setup should start from.
-  Status ReplaceXClusterStreamBootstrapTablets(const TabletReplacements& replacements);
+  // Whether MarkIndexBackfillCompleted checkpoints the stream again, to the end of its WAL, once
+  // its index is backfilled.
+  bool IsCheckpointedAgainAfterBackfill(const TableInfo& table, const CDCStreamInfo& stream) const;
 
   Status SetWALRetentionOnTables(const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
 

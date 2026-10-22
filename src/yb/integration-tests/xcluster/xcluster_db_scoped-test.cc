@@ -40,7 +40,6 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 
-DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
@@ -49,6 +48,7 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_return_legacy_universe_replication_info);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
+DECLARE_bool(TEST_xcluster_drop_bootstrap_producer_response);
 DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
@@ -139,23 +139,23 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   }
 
-  Result<xrepl::StreamId> GetProducerStreamId() {
+  Result<xrepl::StreamId> GetProducerStreamId(const TableId& table_id) {
     const auto streams =
         VERIFY_RESULT(GetAllXClusterStreams(VERIFY_RESULT(GetNamespaceId(producer_client()))));
     for (const auto& table_info : streams.table_infos()) {
-      if (table_info.table_id() == producer_table_->id()) {
+      if (table_info.table_id() == table_id) {
         return xrepl::StreamId::FromString(table_info.xrepl_stream_id());
       }
     }
-    return STATUS_FORMAT(NotFound, "No stream found for table $0", producer_table_->id());
+    return STATUS_FORMAT(NotFound, "No stream found for table $0", table_id);
   }
 
-  // The tablets recorded on the source stream of producer_table_ when it was checkpointed.
-  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
+  // The tablets recorded on the source stream of the table when it was checkpointed.
+  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets(const TableId& table_id) {
     auto& catalog_manager =
         VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-    auto stream =
-        VERIFY_RESULT(catalog_manager.GetXReplStreamInfo(VERIFY_RESULT(GetProducerStreamId())));
+    auto stream = VERIFY_RESULT(
+        catalog_manager.GetXReplStreamInfo(VERIFY_RESULT(GetProducerStreamId(table_id))));
     const auto stream_lock = stream->LockForRead();
     const auto& tablet_ids = stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
     std::vector<TabletId> result(tablet_ids.begin(), tablet_ids.end());
@@ -163,14 +163,21 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     return result;
   }
 
-  std::vector<TabletId> ProducerActiveTabletIds() {
+  Result<std::vector<TabletId>> GetProducerStreamBootstrapTablets() {
+    return GetProducerStreamBootstrapTablets(producer_table_->id());
+  }
+
+  std::vector<TabletId> ProducerActiveTabletIds(const TableId& table_id) {
     std::vector<TabletId> result;
-    for (const auto& peer :
-         ListTableActiveTabletLeadersPeers(producer_cluster(), producer_table_->id())) {
+    for (const auto& peer : ListTableActiveTabletLeadersPeers(producer_cluster(), table_id)) {
       result.push_back(peer->tablet_id());
     }
     std::sort(result.begin(), result.end());
     return result;
+  }
+
+  std::vector<TabletId> ProducerActiveTabletIds() {
+    return ProducerActiveTabletIds(producer_table_->id());
   }
 
   Result<HybridTime> TargetXClusterSafeTime() {
@@ -445,35 +452,12 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_NE(ProducerActiveTabletIds(), checkpointed_tablets);
   ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
 
-  {
-    // A target that mapped other bootstrap tablets than the recorded ones cannot mark the stream
-    // ACTIVE.
-    master::SysCDCStreamEntryPB entry;
-    entry.add_table_id(producer_table_->id());
-    entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
-    entry.mutable_xcluster_bootstrap_info()->add_checkpointed_tablet_ids(checkpointed_tablets[0]);
-    auto& catalog_manager =
-        ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-    auto status =
-        catalog_manager.UpdateCDCStreams({ASSERT_RESULT(GetProducerStreamId())}, {entry});
-    ASSERT_TRUE(status.IsTryAgain()) << status;
-  }
-
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(InsertRowsInProducer(100, 150));
   ASSERT_OK(VerifyWrittenRecords());
 
-  // Kept after the stream turns ACTIVE, for setups that are retried. Once the target has polled
-  // all the children of a split parent, the record moves on to them. A child counts as polled once
-  // a write to it has been replicated, so write to all of them.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
-  ASSERT_OK(InsertRowsInProducer(150, 1000));
-  ASSERT_OK(VerifyWrittenRecords());
-  ASSERT_OK(LoggedWaitFor(
-      [this]() -> Result<bool> {
-        return VERIFY_RESULT(GetProducerStreamBootstrapTablets()) == ProducerActiveTabletIds();
-      },
-      MonoDelta::FromSeconds(60 * kTimeMultiplier), "Wait for the record to reach the children"));
+  // Kept after the stream turns ACTIVE, for setups that are retried.
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), checkpointed_tablets);
 }
 
 // If the source fails to record the checkpointed tablets, the checkpoint still succeeds, and the
@@ -495,6 +479,41 @@ TEST_F(XClusterDBScopedTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(VerifyWrittenRecords());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = false;
+}
+
+// An attempt of the initial checkpoint that recorded its streams but then failed is not redone.
+TEST_F(XClusterDBScopedTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
+  ASSERT_OK(SetUpClusters());
+  // Every BootstrapProducer response is lost, so the checkpoint only completes if the retry skips
+  // the streams that the first attempt recorded.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_drop_bootstrap_producer_response) = true;
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_drop_bootstrap_producer_response) = false;
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets()), ProducerActiveTabletIds());
+
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+// An index stream that is checkpointed again after the backfill is only recorded by that
+// checkpoint, so that its index cannot split before it.
+TEST_F(XClusterDBScopedTest, IndexRecordedAfterBackfill) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(InsertRowsInProducer(0, 50));
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX key_idx ON $0 ($1 DESC)", producer_table_->name().table_name(),
+      kKeyColumnName));
+  const auto index_id =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", "key_idx")).table_id();
+  // The OpId-0 checkpoint did not record the stream (MarkIndexBackfillCompleted DFATALs if it did),
+  // and the post-backfill checkpoint recorded the index's tablets.
+  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets(index_id)),
+            ProducerActiveTabletIds(index_id));
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on

@@ -37,7 +37,6 @@
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_status.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/ysql_sequence_util.h"
 
 #include "yb/tserver/pg_create_table.h"
@@ -62,6 +61,10 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_wi
     "on, and allows tablet splits of the stream's table once that record exists. The target "
     "starts replicating from the recorded tablets and follows their splits. Unlike "
     "enable_tablet_split_of_xcluster_bootstrapping_tables, this does not skip any data.");
+
+DEFINE_test_flag(bool, xcluster_drop_bootstrap_producer_response, false,
+    "Fail end-of-WAL checkpoints of xCluster streams with TryAgain after BootstrapProducer "
+    "succeeds, as if its response was lost.");
 
 DEFINE_test_flag(bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
     "Simulate failure during EnsureSequenceUpdatesAreInWal RPC.");
@@ -676,77 +679,56 @@ Result<TabletInfoMap> GetTabletsIncludeInactive(const TableInfo& table) {
   return result;
 }
 
-// The tablets must be tablets of the table (hidden ones included) that together cover its whole
-// key range exactly once. A tserver whose meta cache spanned a split can report a parent together
-// with one of its children, and recording both would make the target replicate their rows twice.
-Status ValidateBootstrapTablets(
+Status CheckTabletsBelongToTable(
     const TableId& table_id, const TabletInfoMap& table_tablets,
     const std::vector<TabletId>& tablet_ids) {
-  std::map<std::string, KeyRange> tablet_keys;
   for (const auto& tablet_id : tablet_ids) {
-    auto it = table_tablets.find(tablet_id);
     SCHECK_FORMAT(
-        it != table_tablets.end(), NotFound, "Tablet $0 is not a tablet of table $1", tablet_id,
-        table_id);
-    const auto tablet_lock = it->second->LockForRead();
-    const auto& partition = tablet_lock->pb.partition();
-    SCHECK_FORMAT(
-        tablet_keys
-            .emplace(
-                tablet_id,
-                KeyRange{
-                    .start_key = partition.partition_key_start(),
-                    .end_key = partition.partition_key_end()})
-            .second,
-        InvalidArgument, "Tablet $0 is listed more than once", tablet_id);
+        table_tablets.contains(tablet_id), NotFound, "Tablet $0 is not a tablet of table $1",
+        tablet_id, table_id);
   }
-  RETURN_NOT_OK_PREPEND(
-      ValidateKeyRanges(tablet_keys),
-      Format("Invalid bootstrap tablets $0 for table $1", yb::ToString(tablet_ids), table_id));
   return Status::OK();
-}
-
-// The split descendants of tablet_ids (not including tablet_ids), parents before children.
-std::vector<TabletId> GetSplitDescendants(
-    const TabletInfoMap& table_tablets, const std::vector<TabletId>& tablet_ids) {
-  std::vector<TabletId> descendants;
-  std::unordered_set<TabletId> visited(tablet_ids.begin(), tablet_ids.end());
-  std::deque<TabletId> pending(tablet_ids.begin(), tablet_ids.end());
-  while (!pending.empty()) {
-    auto it = table_tablets.find(pending.front());
-    pending.pop_front();
-    if (it == table_tablets.end()) {
-      continue;
-    }
-    for (const auto& child_id : it->second->LockForRead()->pb.split_tablet_ids()) {
-      if (visited.insert(child_id).second) {
-        descendants.push_back(child_id);
-        pending.push_back(child_id);
-      }
-    }
-  }
-  return descendants;
 }
 
 std::vector<cdc::CDCStateTableEntry> GetOp0EntriesForTablets(
     const TabletInfoMap& table_tablets, const std::vector<TabletId>& tablet_ids,
     const xrepl::StreamId& stream_id) {
   std::vector<cdc::CDCStateTableEntry> entries;
+  std::unordered_set<TabletId> visited;
+  std::deque<TabletId> descendants;
+  const auto add_split_children = [&table_tablets, &descendants](const TabletId& tablet_id) {
+    auto it = table_tablets.find(tablet_id);
+    if (it == table_tablets.end()) {
+      return;
+    }
+    const auto tablet_lock = it->second->LockForRead();
+    const auto& split_tablet_ids = tablet_lock->pb.split_tablet_ids();
+    descendants.insert(descendants.end(), split_tablet_ids.begin(), split_tablet_ids.end());
+  };
+
   const auto now = GetCurrentTimeMicros();
   for (const auto& tablet_id : tablet_ids) {
     cdc::CDCStateTableEntry entry(tablet_id, stream_id);
     entry.checkpoint = OpId().Min();
     entry.last_replication_time = now;
     entries.push_back(std::move(entry));
+    visited.insert(tablet_id);
+    add_split_children(tablet_id);
   }
 
   // Streams created after a split never got child rows from UpdateCDCProducerOnTabletSplit, and
   // the producer does not replicate a parent's SPLIT_OP until the child rows exist. Add them in the
   // same shape: OpId 0 and no replication time, until the parent's SPLIT_OP is replicated.
-  for (const auto& tablet_id : GetSplitDescendants(table_tablets, tablet_ids)) {
+  while (!descendants.empty()) {
+    auto tablet_id = std::move(descendants.front());
+    descendants.pop_front();
+    if (!visited.insert(tablet_id).second) {
+      continue;
+    }
     cdc::CDCStateTableEntry entry(tablet_id, stream_id);
     entry.checkpoint = OpId().Min();
     entries.push_back(std::move(entry));
+    add_split_children(tablet_id);
   }
 
   return entries;
@@ -761,23 +743,18 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
   VLOG_WITH_FUNC(1) << yb::ToString(table_streams) << ", tablet_ids: " << yb::ToString(tablet_ids);
   std::vector<cdc::CDCStateTableEntry> entries;
   XClusterStreamTablets stream_tablets;
-  // Set when a stream is checkpointed on the tablets of an earlier checkpoint, which may since have
-  // split. The target must then start from those tablets, so the record is required.
+  // Set when the streams are checkpointed on the tablets of an earlier checkpoint, which may since
+  // have split. The target must then start from those tablets, so the record is required.
   bool must_record = false;
   for (const auto& [table_id, stream_id] : table_streams) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
     auto table = VERIFY_RESULT(catalog_manager_.FindTableById(stripped_table_id));
     const auto table_tablets = VERIFY_RESULT(GetTabletsIncludeInactive(*table));
-    // A retried checkpoint of a stream that is already recorded keeps its tablets: the table may
-    // have split since, and the children's WAL does not have the parents' writes.
-    auto earlier_tablet_ids =
-        tablet_ids.empty() ? VERIFY_RESULT(GetStreamBootstrapTablets(stream_id)) : tablet_ids;
-    const bool stream_must_record = !earlier_tablet_ids.empty();
+    const bool stream_must_record = !tablet_ids.empty();
     std::vector<TabletId> checkpoint_tablet_ids;
     if (stream_must_record) {
-      RETURN_NOT_OK(
-          ValidateBootstrapTablets(stripped_table_id, table_tablets, earlier_tablet_ids));
-      checkpoint_tablet_ids = std::move(earlier_tablet_ids);
+      RETURN_NOT_OK(CheckTabletsBelongToTable(stripped_table_id, table_tablets, tablet_ids));
+      checkpoint_tablet_ids = tablet_ids;
       must_record = true;
     } else {
       for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
@@ -785,10 +762,14 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
       }
     }
     // The record is only written while splits of bootstrapping tables are enabled, except when
-    // the stream must start from earlier tablets, which were recorded under the same flag.
+    // the stream must start from earlier tablets, which were recorded under the same flag. A stream
+    // that is checkpointed again after its index is backfilled is recorded then instead (see
+    // SysCDCStreamEntryPB.xcluster_bootstrap_info).
     const bool record_tablets =
-        FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets ||
-        stream_must_record;
+        stream_must_record ||
+        (FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets &&
+         !IsCheckpointedAgainAfterBackfill(
+             *table, *VERIFY_RESULT(catalog_manager_.GetXReplStreamInfo(stream_id))));
 
     auto stream_entries = GetOp0EntriesForTablets(table_tablets, checkpoint_tablet_ids, stream_id);
     entries.insert(
@@ -839,11 +820,8 @@ Status XClusterSourceManager::RecordXClusterStreamBootstrapInfo(
     SCHECK_FORMAT(
         stream->IsXClusterStream() && table_ids.size() == 1, InvalidArgument,
         "Stream $0 is not an xCluster stream", stream_id);
-    if (stream->LockForRead()->pb.state() != SysCDCStreamEntryPB::INITIATED) {
-      continue;
-    }
-
     // A stream that is not recorded keeps blocking splits, so skip it rather than fail the others.
+    // Streams that are no longer INITIATED are skipped when writing.
     auto status = ValidateEndOfWalBootstrapTablets(
         xcluster::StripSequencesDataAliasIfPresent(table_ids.Get(0)), tablet_ids);
     if (!status.ok()) {
@@ -861,7 +839,7 @@ Status XClusterSourceManager::ValidateEndOfWalBootstrapTablets(
     const TableId& table_id, const std::vector<TabletId>& tablet_ids) const {
   const auto table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
   const auto table_tablets = VERIFY_RESULT(GetTabletsIncludeInactive(*table));
-  RETURN_NOT_OK(ValidateBootstrapTablets(table_id, table_tablets, tablet_ids));
+  RETURN_NOT_OK(CheckTabletsBelongToTable(table_id, table_tablets, tablet_ids));
   // These checkpoints are at the end of each tablet's WAL. If a tablet split before its checkpoint
   // was read, the checkpoint can be past its SPLIT_OP, and a target starting there would never
   // move on to the children.
@@ -873,16 +851,13 @@ Status XClusterSourceManager::ValidateEndOfWalBootstrapTablets(
   return Status::OK();
 }
 
-Status XClusterSourceManager::UpdateXClusterStreamBootstrapInfo(
-    std::vector<xrepl::StreamId> stream_ids, const LeaderEpoch& epoch,
-    const std::function<bool(const xrepl::StreamId&, SysCDCStreamEntryPB&)>& mutate) {
-  // Lock the streams in StreamId order, like CatalogManager::UpdateCDCStreams, to avoid deadlocks.
-  std::sort(stream_ids.begin(), stream_ids.end());
-  stream_ids.erase(std::unique(stream_ids.begin(), stream_ids.end()), stream_ids.end());
-
+Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
+    const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch) {
+  // XClusterStreamTablets is ordered, so the streams are locked in StreamId order, like
+  // CatalogManager::UpdateCDCStreams, to avoid deadlocks.
   std::vector<CDCStreamInfoPtr> streams_to_update;
   std::vector<CDCStreamInfo::WriteLock> stream_locks;
-  for (const auto& stream_id : stream_ids) {
+  for (const auto& [stream_id, tablet_ids] : stream_tablets) {
     auto stream_result = catalog_manager_.GetXReplStreamInfo(stream_id);
     if (!stream_result.ok() && stream_result.status().IsNotFound()) {
       VLOG_WITH_FUNC(1) << "Stream " << stream_id << " no longer exists";
@@ -890,9 +865,17 @@ Status XClusterSourceManager::UpdateXClusterStreamBootstrapInfo(
     }
     auto stream = VERIFY_RESULT(std::move(stream_result));
     auto stream_lock = stream->LockForWrite();
-    if (!mutate(stream_id, stream_lock.mutable_data()->pb)) {
+    auto& pb = stream_lock.mutable_data()->pb;
+    if (pb.state() != SysCDCStreamEntryPB::INITIATED) {
+      VLOG_WITH_FUNC(1) << "Not recording bootstrap tablets of stream " << stream_id
+                        << " in state " << SysCDCStreamEntryPB::State_Name(pb.state());
       continue;
     }
+    auto& tablet_ids_pb = *pb.mutable_xcluster_bootstrap_info()->mutable_checkpointed_tablet_ids();
+    tablet_ids_pb.Clear();
+    tablet_ids_pb.Add(tablet_ids.begin(), tablet_ids.end());
+    LOG(INFO) << "Recording xCluster bootstrap tablets of stream " << stream_id << " for table "
+              << AsString(pb.table_id()) << ": " << yb::ToString(tablet_ids);
     stream_locks.push_back(std::move(stream_lock));
     streams_to_update.push_back(std::move(stream));
   }
@@ -903,191 +886,12 @@ Status XClusterSourceManager::UpdateXClusterStreamBootstrapInfo(
 
   RETURN_NOT_OK_PREPEND(
       sys_catalog_.Upsert(epoch, streams_to_update),
-      "Failed to update xCluster stream bootstrap tablets in sys-catalog");
+      "Failed to record xCluster stream bootstrap tablets in sys-catalog");
   for (auto& stream_lock : stream_locks) {
     stream_lock.Commit();
   }
 
   return Status::OK();
-}
-
-Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
-    const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch) {
-  std::vector<xrepl::StreamId> stream_ids;
-  for (const auto& [stream_id, _] : stream_tablets) {
-    stream_ids.push_back(stream_id);
-  }
-  return UpdateXClusterStreamBootstrapInfo(
-      std::move(stream_ids), epoch,
-      [&stream_tablets](const xrepl::StreamId& stream_id, SysCDCStreamEntryPB& pb) {
-        if (pb.state() != SysCDCStreamEntryPB::INITIATED) {
-          VLOG_WITH_FUNC(1) << "Not recording bootstrap tablets of stream " << stream_id
-                            << " in state " << SysCDCStreamEntryPB::State_Name(pb.state());
-          return false;
-        }
-        const auto& tablet_ids = stream_tablets.at(stream_id);
-        auto& tablet_ids_pb =
-            *pb.mutable_xcluster_bootstrap_info()->mutable_checkpointed_tablet_ids();
-        tablet_ids_pb.Clear();
-        tablet_ids_pb.Add(tablet_ids.begin(), tablet_ids.end());
-        LOG(INFO) << "Recording xCluster bootstrap tablets of stream " << stream_id
-                  << " for table " << AsString(pb.table_id()) << ": " << yb::ToString(tablet_ids);
-        return true;
-      });
-}
-
-Result<std::unordered_set<xrepl::StreamId>> XClusterSourceManager::ClearXClusterStreamBootstrapInfo(
-    const std::vector<xrepl::StreamId>& stream_ids, const LeaderEpoch& epoch) {
-  std::unordered_set<xrepl::StreamId> cleared;
-  RETURN_NOT_OK(UpdateXClusterStreamBootstrapInfo(
-      stream_ids, epoch,
-      [&cleared](const xrepl::StreamId& stream_id, SysCDCStreamEntryPB& pb) {
-        if (!pb.has_xcluster_bootstrap_info()) {
-          return false;
-        }
-        LOG(INFO) << "Clearing xCluster bootstrap tablets of stream " << stream_id
-                  << " before checkpointing it again: "
-                  << AsString(pb.xcluster_bootstrap_info().checkpointed_tablet_ids());
-        pb.clear_xcluster_bootstrap_info();
-        cleared.insert(stream_id);
-        return true;
-      }));
-  return cleared;
-}
-
-Status XClusterSourceManager::DeleteSplitTabletRowsOutsideRecord(
-    const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-    const std::unordered_set<xrepl::StreamId>& previously_recorded_streams) {
-  std::vector<cdc::CDCStateTableKey> entries_to_delete;
-  for (const auto& [table_id, stream_id] : table_streams) {
-    // Only streams that were recorded before can have rows on split tablets: splits are blocked
-    // while a bootstrapping stream has no record.
-    if (!previously_recorded_streams.contains(stream_id)) {
-      continue;
-    }
-    auto stream = VERIFY_RESULT(catalog_manager_.GetXReplStreamInfo(stream_id));
-    std::vector<TabletId> recorded_tablet_ids;
-    {
-      const auto stream_lock = stream->LockForRead();
-      // A target may already be polling an ACTIVE stream's rows. An INITIATED stream has no
-      // target yet: one that read the previous record fails to mark the stream ACTIVE (see
-      // CatalogManager::UpdateCDCStreams).
-      if (stream_lock->pb.state() != SysCDCStreamEntryPB::INITIATED) {
-        continue;
-      }
-      const auto& tablet_ids = stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
-      recorded_tablet_ids.assign(tablet_ids.begin(), tablet_ids.end());
-    }
-    const auto table = VERIFY_RESULT(
-        catalog_manager_.FindTableById(xcluster::StripSequencesDataAliasIfPresent(table_id)));
-    const auto table_tablets = VERIFY_RESULT(GetTabletsIncludeInactive(*table));
-    // The new checkpoint covers the recorded tablets, which may have split since, or, if it was
-    // not recorded, the table's current tablets. Rows the stream still has on other split tablets
-    // (from the previous checkpoint or from splits) are never read and would retain those tablets
-    // forever.
-    std::unordered_set<TabletId> in_use(recorded_tablet_ids.begin(), recorded_tablet_ids.end());
-    for (auto& tablet_id : GetSplitDescendants(table_tablets, recorded_tablet_ids)) {
-      in_use.insert(std::move(tablet_id));
-    }
-    for (const auto& [tablet_id, tablet] : table_tablets) {
-      if (!in_use.contains(tablet_id) &&
-          !tablet->LockForRead()->pb.split_tablet_ids().empty()) {
-        entries_to_delete.push_back({tablet_id, stream_id});
-      }
-    }
-  }
-
-  if (entries_to_delete.empty()) {
-    return Status::OK();
-  }
-  LOG(INFO) << "Deleting cdc_state rows of split tablets that are no longer checkpointed: "
-            << yb::ToString(entries_to_delete);
-  return cdc_state_table_->DeleteEntries(entries_to_delete);
-}
-
-Result<bool> XClusterSourceManager::HasStreamPolledAllChildren(
-    const xrepl::StreamId& stream_id, const std::vector<TabletId>& child_tablet_ids) const {
-  for (const auto& child_tablet_id : child_tablet_ids) {
-    auto entry = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-        {child_tablet_id, stream_id},
-        cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
-    if (!entry || !entry->last_replication_time) {
-      VLOG(2) << "The stream: " << stream_id
-              << ", has not started polling for the child tablet: " << child_tablet_id;
-      return false;
-    }
-  }
-  return true;
-}
-
-Result<XClusterSourceManager::TabletReplacements>
-XClusterSourceManager::GetConsumedRecordedTablets(
-    const std::unordered_map<TabletId, HiddenTabletInfo>& hidden_tablets) const {
-  TabletReplacements replacements;
-  std::unordered_set<TableId> table_ids;
-  for (const auto& [_, hidden_tablet] : hidden_tablets) {
-    table_ids.insert(hidden_tablet.table_id);
-  }
-  for (const auto& table_id : table_ids) {
-    for (const auto& stream : GetStreamsForTable(table_id)) {
-      std::vector<TabletId> recorded_tablet_ids;
-      {
-        const auto stream_lock = stream->LockForRead();
-        const auto& tablet_ids =
-            stream_lock->pb.xcluster_bootstrap_info().checkpointed_tablet_ids();
-        recorded_tablet_ids.assign(tablet_ids.begin(), tablet_ids.end());
-      }
-      for (const auto& tablet_id : recorded_tablet_ids) {
-        auto it = hidden_tablets.find(tablet_id);
-        if (it == hidden_tablets.end() || it->second.split_tablets.empty()) {
-          continue;
-        }
-        if (VERIFY_RESULT(
-                HasStreamPolledAllChildren(stream->StreamId(), it->second.split_tablets))) {
-          replacements[stream->StreamId()][tablet_id] = it->second.split_tablets;
-        }
-      }
-    }
-  }
-  return replacements;
-}
-
-Status XClusterSourceManager::ReplaceXClusterStreamBootstrapTablets(
-    const TabletReplacements& replacements) {
-  std::vector<xrepl::StreamId> stream_ids;
-  for (const auto& [stream_id, _] : replacements) {
-    stream_ids.push_back(stream_id);
-  }
-  return UpdateXClusterStreamBootstrapInfo(
-      std::move(stream_ids), catalog_manager_.GetLeaderEpochInternal(),
-      [&replacements](const xrepl::StreamId& stream_id, SysCDCStreamEntryPB& pb) {
-        if (!pb.has_xcluster_bootstrap_info()) {
-          return false;
-        }
-        const auto& children_of = replacements.at(stream_id);
-        auto& tablet_ids_pb =
-            *pb.mutable_xcluster_bootstrap_info()->mutable_checkpointed_tablet_ids();
-        std::vector<TabletId> tablet_ids;
-        bool changed = false;
-        for (const auto& tablet_id : tablet_ids_pb) {
-          auto it = children_of.find(tablet_id);
-          if (it == children_of.end()) {
-            tablet_ids.push_back(tablet_id);
-          } else {
-            tablet_ids.insert(tablet_ids.end(), it->second.begin(), it->second.end());
-            changed = true;
-          }
-        }
-        if (!changed) {
-          return false;
-        }
-        LOG(INFO) << "Moving the xCluster bootstrap tablets of stream " << stream_id
-                  << " past split parents it finished reading: " << AsString(tablet_ids_pb)
-                  << " -> " << AsString(tablet_ids);
-        tablet_ids_pb.Clear();
-        tablet_ids_pb.Add(tablet_ids.begin(), tablet_ids.end());
-        return true;
-      });
 }
 
 Result<std::vector<TabletId>> XClusterSourceManager::GetStreamBootstrapTablets(
@@ -1135,18 +939,6 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
   }
   SCHECK(ts_desc, IllegalState, "No valid tserver found to bootstrap from");
 
-  // A stream that was checkpointed before (for example an index stream after its backfill) may
-  // have a record, which lets its table split. A split during this checkpoint could leave a tablet
-  // checkpointed past its SPLIT_OP, so clear the record to block splits until it is rewritten.
-  // The old record is wrong after this checkpoint anyway, also for an ACTIVE stream, which is not
-  // recorded again: its target starts from the current tablets that this checkpoint covers.
-  std::vector<xrepl::StreamId> stream_ids;
-  for (const auto& [_, stream_id] : table_streams) {
-    stream_ids.push_back(stream_id);
-  }
-  auto previously_recorded_streams =
-      VERIFY_RESULT(ClearXClusterStreamBootstrapInfo(stream_ids, epoch));
-
   std::shared_ptr<cdc::CDCServiceProxy> proxy;
   RETURN_NOT_OK(ts_desc->GetProxy(&proxy));
 
@@ -1162,33 +954,17 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     SCHECK_EQ(
         bootstrap_resp->cdc_bootstrap_ids_size(), 0, IllegalState,
         "No new streams should have been created");
+    SCHECK(
+        !FLAGS_TEST_xcluster_drop_bootstrap_producer_response, TryAgain,
+        "Simulated loss of the BootstrapProducer response");
 
     return bootstrap_resp->bootstrap_required();
   };
 
   proxy->BootstrapProducerAsync(
       bootstrap_req, bootstrap_resp.get(), bootstrap_rpc.get(),
-      [this, user_callback = std::move(user_callback),
-       process_response = std::move(process_response), table_streams,
-       previously_recorded_streams = std::move(previously_recorded_streams)]() mutable {
-        auto result = process_response();
-        if (!result.ok() || previously_recorded_streams.empty()) {
-          user_callback(std::move(result));
-          return;
-        }
-        // The cdc_state delete below blocks, so it must not run on the RPC callback thread.
-        auto submit_status = catalog_manager_.AsyncTaskPool()->SubmitFunc(
-            [this, user_callback, result = std::move(result),
-             table_streams = std::move(table_streams),
-             previously_recorded_streams = std::move(previously_recorded_streams)]() {
-              WARN_NOT_OK(
-                  DeleteSplitTabletRowsOutsideRecord(table_streams, previously_recorded_streams),
-                  "Failed to delete cdc_state rows of earlier xCluster checkpoints");
-              user_callback(result);
-            });
-        if (!submit_status.ok()) {
-          user_callback(submit_status);
-        }
+      [user_callback = std::move(user_callback), process_response = std::move(process_response)]() {
+        user_callback(process_response());
       });
 
   return Status::OK();
@@ -1302,13 +1078,6 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
   }
   const auto now = master_.clock()->Now();
 
-  // A record must not name a split parent that its stream has read past: a new target setup
-  // would start that parent after its SPLIT_OP and never move on to the children. The parent's
-  // row may outlive that (below, a tablet waits for its own parent, and the parent waits for every
-  // stream), so advance the records separately.
-  RETURN_NOT_OK(ReplaceXClusterStreamBootstrapTablets(
-      VERIFY_RESULT(GetConsumedRecordedTablets(hidden_tablets))));
-
   std::unordered_set<TabletId> tablets_to_delete;
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
@@ -1412,15 +1181,6 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
   }
 
   if (!entries_to_delete.empty()) {
-    // Before the rows go, so that a record never names a tablet without a row for its stream.
-    TabletReplacements replacements;
-    for (const auto& entry : entries_to_delete) {
-      auto it = hidden_tablets.find(entry.tablet_id);
-      if (it != hidden_tablets.end()) {
-        replacements[entry.stream_id][entry.tablet_id] = it->second.split_tablets;
-      }
-    }
-    RETURN_NOT_OK(ReplaceXClusterStreamBootstrapTablets(replacements));
     RETURN_NOT_OK_PREPEND(
         cdc_state_table_->DeleteEntries(entries_to_delete),
         "Error deleting xCluster stream rows from cdc_state table");
@@ -1471,8 +1231,22 @@ Result<bool> XClusterSourceManager::ProcessSplitChildStreams(
 
     // This means there was an active stream for the source tablet. In which case if we see
     // that all children tablet entries have started streaming, we can delete the parent tablet.
-    const bool found_all_children =
-        VERIFY_RESULT(HasStreamPolledAllChildren(stream_id, hidden_tablet.split_tablets));
+    bool found_all_children = true;
+    for (auto& child_tablet_id : hidden_tablet.split_tablets) {
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          {child_tablet_id, stream_id},
+          cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+      if (!entry_opt || !entry_opt->last_replication_time) {
+        // Check checkpoint to ensure that there has been a poll for this tablet, or if the split
+        // has been reported.
+        VLOG(2) << "The stream: " << stream_id
+                << ", has not started polling for the child tablet: " << child_tablet_id
+                << ".Hence we will not delete the hidden parent tablet: " << tablet_id;
+        found_all_children = false;
+        break;
+      }
+    }
     if (found_all_children) {
       LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
                 << ". Reason: Consumer finished processing parent tablet after split.";
@@ -1707,6 +1481,22 @@ Status XClusterSourceManager::RemoveStreamsFromSysCatalog(
   return Status::OK();
 }
 
+bool XClusterSourceManager::IsCheckpointedAgainAfterBackfill(
+    const TableInfo& table, const CDCStreamInfo& stream) const {
+  // Skipped for:
+  //   - BiDirectional indexes: backfill happens before replication is set up.
+  //   - xcluster_use_target_applied_filter streams: the target relies on replicated backfill writes
+  //     instead of running its own local backfill.
+  //   - WAL_ANCHOR streams, which are never consumed.
+  if (!table.is_index() ||
+      master_.xcluster_manager()->IsTableBiDirectionallyReplicated(table.id())) {
+    return false;
+  }
+  const auto stream_lock = stream.LockForRead();
+  return !stream_lock->pb.xcluster_use_target_applied_filter() &&
+         !stream_lock->pb.xcluster_is_wal_anchor();
+}
+
 Status XClusterSourceManager::MarkIndexBackfillCompleted(
     const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
   // Clear any remaining xcluster_table_info information; only the xcluster_backfill_hybrid_time
@@ -1730,30 +1520,30 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
   }
 
   // Checkpoint xCluster streams of indexes after the backfill so the target's local backfill is
-  // not duplicated by replicated WAL entries. We skip this for:
-  //   - BiDirectional indexes: backfill happens before replication is set up.
-  //   - xcluster_use_target_applied_filter streams: the target relies on replicated backfill writes
-  //     instead of running its own local backfill
+  // not duplicated by replicated WAL entries. See IsCheckpointedAgainAfterBackfill for the streams
+  // this skips.
 
   // TODO(#33443): Advance the WAL_ANCHOR here and start new streams from its checkpoint.
   // Do not advance WAL_ANCHOR stream with the index's table streams.
   const auto anchor_stream_ids = GetWalAnchorStreamIds(index_ids);
+  std::unordered_map<TableId, TableInfoPtr> index_infos_by_id;
+  for (const auto& index_info : index_infos) {
+    index_infos_by_id.emplace(index_info->id(), index_info);
+  }
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
   {
     SharedLock l(tables_to_stream_map_mutex_);
     for (const auto& index_id : index_ids) {
-      if (tables_to_stream_map_.contains(index_id) &&
-          !master_.xcluster_manager()->IsTableBiDirectionallyReplicated(index_id)) {
+      auto index_info = index_infos_by_id.find(index_id);
+      if (tables_to_stream_map_.contains(index_id) && index_info != index_infos_by_id.end()) {
         for (const auto& stream : tables_to_stream_map_.at(index_id)) {
-          if (stream->LockForRead()->pb.xcluster_use_target_applied_filter()) {
-            LOG(INFO) << "Skipping past-backfill checkpoint of xCluster stream "
-                      << stream->StreamId() << " of index " << index_id
-                      << " because backfill writes are replicated to the target";
+          if (anchor_stream_ids.contains(stream->StreamId()) ||
+              !IsCheckpointedAgainAfterBackfill(*index_info->second, *stream)) {
             continue;
           }
-          if (anchor_stream_ids.contains(stream->StreamId())) {
-            continue;
-          }
+          LOG_IF(DFATAL, stream->LockForRead()->pb.has_xcluster_bootstrap_info())
+              << "xCluster stream " << stream->StreamId() << " of index " << index_id
+              << " was recorded before its post-backfill checkpoint";
           LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
                     << index_id << " to its end of WAL";
           table_streams.emplace_back(index_id, stream->StreamId());

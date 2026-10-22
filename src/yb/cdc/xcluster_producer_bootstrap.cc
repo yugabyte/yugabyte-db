@@ -134,14 +134,16 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
 
   LOG_WITH_FUNC(INFO) << "Updating cdc_state table with checkpoints.";
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
-  // Without a record the streams keep blocking tablet splits until they turn ACTIVE, which is safe.
-  WARN_NOT_OK(
-      RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 
   if (req_.check_if_bootstrap_required()) {
     LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
+
+  // Last, so that a recorded checkpoint is never rolled back. Without a record the streams keep
+  // blocking tablet splits until they turn ACTIVE, which is safe.
+  WARN_NOT_OK(
+      RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 
   PrepareResponse();
 
