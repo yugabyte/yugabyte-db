@@ -21,7 +21,7 @@ import java.util.Map;
 // This class runs all the tests from TestSecureCluster but all tservers in cluster are started
 // with extra argument 'use_node_hostname_for_local_tserver=true'
 @RunWith(value=YBTestRunner.class)
-public class TestSecureClusterLocalTServerHostName extends TestSecureCluster {
+public class TestSecureClusterLocalTServerHostName extends BaseSecureClusterTest {
   public TestSecureClusterLocalTServerHostName() throws Exception {
     super();
   }
