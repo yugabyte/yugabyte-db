@@ -123,21 +123,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * A read-replica-only edit carries no primary cluster; run() copies it into the task params only
-   * after the freeze. Without it the checkpoint records the primary as deleted and a rollback
-   * cannot rebuild the target. The primary is not edited, so take it from the pre-edit details.
+   * A read-replica-only edit carries no primary cluster, and run() copies it into the task params
+   * only after the freeze. Complete the checkpoint's target, or a rollback cannot rebuild it.
    */
   @Override
   protected void captureStateTransitionDelta(
       Universe universe,
       UniverseDefinitionTaskParams beforeUDTP,
       UniverseDefinitionTaskParams targetUDTP) {
-    Cluster beforePrimary = beforeUDTP.getPrimaryCluster();
-    if (targetUDTP.getPrimaryCluster() == null && beforePrimary != null) {
-      // Keep the primary first, as in the universe details, since the delta compares clusters by
-      // position.
-      targetUDTP.clusters.add(0, Json.fromJson(Json.toJson(beforePrimary), Cluster.class));
-    }
+    addPrimaryClusterIfMissing(targetUDTP, beforeUDTP);
     super.captureStateTransitionDelta(universe, beforeUDTP, targetUDTP);
   }
 

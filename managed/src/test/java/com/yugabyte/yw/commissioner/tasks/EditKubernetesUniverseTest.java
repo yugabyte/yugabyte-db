@@ -1405,6 +1405,30 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return failedEdit;
   }
 
+  /** Rolls back the failed read-replica-only edit and checks the universe is restored. */
+  private void rollBackReadReplicaOnlyEdit(TaskInfo failedEdit) throws InterruptedException {
+    doNothing()
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
+    // The rollback waits for the pre-edit pod count of each cluster: the primary's masters and
+    // tservers, and the read replica's single tserver (its helm release name ends in "-rr").
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenAnswer(
+            invocation ->
+                String.valueOf(invocation.<String>getArgument(1)).contains("-rr")
+                    ? tserverPods(1)
+                    : rollbackPods(3));
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    TaskInfo rollbackInfo = submitRollbackEditKubernetesUniverse(failedEdit, universe);
+    assertEquals(describeFailure(rollbackInfo), Success, rollbackInfo.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(1, universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.numNodes);
+    assertTrue(universe.getUniverseDetails().updateSucceeded);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
+  }
+
   @Test
   public void testRollbackEditKubernetesUniverseOfReadReplicaOnlyEdit()
       throws InterruptedException {
@@ -1417,52 +1441,33 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertNotNull(details.getTargetUniverseDetails().getPrimaryCluster());
     assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
 
-    doNothing()
-        .when(mockKubernetesManager)
-        .helmUpgrade(any(), any(), any(), any(), any(), any(), isNull());
-    // The rollback waits for the pre-edit pod count of each cluster: the primary's masters and
-    // tservers, and the read replica's single tserver (its helm release name ends in "-rr").
-    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
-        .thenAnswer(
-            invocation ->
-                String.valueOf(invocation.<String>getArgument(1)).contains("-rr")
-                    ? tserverPods(1)
-                    : rollbackPods(3));
-    TaskInfo rollbackInfo = submitRollbackEditKubernetesUniverse(failedEdit, universe);
-    assertEquals(describeFailure(rollbackInfo), Success, rollbackInfo.getTaskState());
-
-    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    assertEquals(1, universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.numNodes);
-    assertTrue(universe.getUniverseDetails().updateSucceeded);
-    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
-    assertNull(universe.getStateTransitionDetails());
+    rollBackReadReplicaOnlyEdit(failedEdit);
   }
 
   @Test
-  public void testRollbackEditKubernetesUniverseRejectsCheckpointWithoutPrimaryBeforeFreeze()
+  public void testRollbackEditKubernetesUniverseOfReadReplicaOnlyEditWithOlderCheckpoint()
       throws InterruptedException {
     TaskInfo failedEdit = failReadReplicaOnlyEdit();
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    // A checkpoint captured without the primary cluster, as an older version could have written.
+    // A checkpoint without the primary cluster, as an older build wrote it. The rollback must use
+    // the pre-edit primary instead of crashing after the freeze.
     StateTransitionDetails details = universe.getStateTransitionDetails();
     UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
     target.clusters.removeIf(
         c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY);
-    JsonNode brokenDelta =
+    JsonNode olderDelta =
         DeltaEvaluator.buildDeltaJsonTree(
             details.getBeforeUniverseDetails(), target, new NodeDetailsArrayComparator());
     Universe.saveDetails(
         universe.getUniverseUUID(),
-        u -> u.setStateTransitionDetails(new StateTransitionDetails(true, brokenDelta)));
+        u -> u.setStateTransitionDetails(new StateTransitionDetails(true, olderDelta)));
+    assertNull(
+        Universe.getOrBadRequest(universe.getUniverseUUID())
+            .getStateTransitionDetails()
+            .getTargetUniverseDetails()
+            .getPrimaryCluster());
 
-    TaskInfo rollbackInfo = submitRollbackEditKubernetesUniverse(failedEdit, universe);
-    assertEquals(Failure, rollbackInfo.getTaskState());
-    assertTrue(rollbackInfo.getErrorMessage().contains("no target primary cluster"));
-    // Rejected before the freeze: the universe is not left locked by the rollback.
-    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    assertFalse(universe.getUniverseDetails().updateInProgress);
-    assertEquals(failedEdit.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
-    assertNotNull(universe.getStateTransitionDetails());
+    rollBackReadReplicaOnlyEdit(failedEdit);
   }
 
   @Test

@@ -77,14 +77,6 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
       details = new StateTransitionDetails();
     }
     details.requireRollbackable();
-    // Fail before the freeze: a checkpoint without a target primary cannot be rolled back, and
-    // failing after the freeze would leave the universe locked by this rollback.
-    if (details.getTargetUniverseDetails().getPrimaryCluster() == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot roll back: state_transition_details has no target primary cluster. Retry the"
-              + " edit to drive it forward instead.");
-    }
   }
 
   @Override
@@ -113,6 +105,8 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
       details.requireRollbackable();
       UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
       UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+      // A read-replica-only edit checkpointed by an older build has no primary in its target.
+      addPrimaryClusterIfMissing(target, before);
       log.info(
           "RollbackEditKubernetesUniverse for {}: restoring pre-edit topology (primary tservers"
               + " {} -> {}); pods added by the failed edit within the safe window will be removed.",
@@ -131,7 +125,7 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
       PlacementInfo beforePrimaryPI = beforePrimary.placementInfo;
-      selectNumMastersAZ(beforePrimaryPI);
+      selectNumMastersAZ(beforePrimaryPI, beforePrimary);
       KubernetesPlacement beforePrimaryPlacement =
           new KubernetesPlacement(beforePrimaryPI, false /* isReadOnlyCluster */);
       String masterAddresses =
@@ -219,13 +213,8 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
     PlacementInfo beforePI = beforeCluster.placementInfo;
     PlacementInfo targetPI = targetCluster.placementInfo;
     if (!isReadOnlyCluster) {
-      selectNumMastersAZ(beforePI);
-      // The failed edit placed masters for its own RF and zones. selectNumMastersAZ(PlacementInfo)
-      // reads taskParams(), which run() has already switched to the pre-edit clusters.
-      PlacementInfoUtil.selectNumMastersAZ(
-          targetPI,
-          targetCluster.userIntent.replicationFactor,
-          PlacementInfoUtil.getZonesForMasters(targetCluster));
+      selectNumMastersAZ(beforePI, beforeCluster);
+      selectNumMastersAZ(targetPI, targetCluster);
     }
     KubernetesPlacement preEditPlacement = new KubernetesPlacement(beforePI, isReadOnlyCluster);
     KubernetesPlacement targetPlacement = new KubernetesPlacement(targetPI, isReadOnlyCluster);
