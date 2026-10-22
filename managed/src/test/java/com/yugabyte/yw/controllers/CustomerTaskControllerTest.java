@@ -929,15 +929,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         50.0);
   }
 
-  private void setOperatorOwned() {
-    Universe.saveDetails(
-        universe.getUniverseUUID(),
-        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-  }
-
   @Test
   public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
-    setOperatorOwned();
+    when(mockCommissioner.isOperatorOwnedUniverse(universe.getUniverseUUID())).thenReturn(true);
     UUID taskUUID = createFailedEditTask();
 
     Result result =
@@ -959,22 +953,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
     // Past the operator check: the request reaches the manager, which rejects a task that cannot
     // be rolled back.
-    assertThat(result.status(), is(BAD_REQUEST));
-    verify(mockCommissioner).getTaskParams(taskUUID);
-  }
-
-  @Test
-  public void testRollbackTaskNotBlockedWhenOperatorBlockIsOff() {
-    mutableConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    setOperatorOwned();
-    UUID taskUUID = createFailedEditTask();
-
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
-
     assertThat(result.status(), is(BAD_REQUEST));
     verify(mockCommissioner).getTaskParams(taskUUID);
   }

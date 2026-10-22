@@ -699,16 +699,8 @@ public class Commissioner {
                   .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
                   .add(id);
             });
-    Set<UUID> operatorOwnedTargets = new HashSet<>();
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
-        && Universe.getUniverseDetailsField(
-                String.class,
-                task.getTargetUUID(),
-                UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD)
-            .map(Boolean::parseBoolean)
-            .orElse(false)) {
-      operatorOwnedTargets.add(task.getTargetUUID());
-    }
+    Set<UUID> operatorOwnedTargets =
+        isOperatorOwnedUniverse(task.getTargetUUID()) ? Set.of(task.getTargetUUID()) : Set.of();
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
@@ -721,9 +713,18 @@ public class Commissioner {
   }
 
   /**
-   * The universes the operator owns, when the API block for operator-owned resources is on. Rolling
-   * one back through the API is blocked, since the operator would re-apply the edit.
+   * Whether rolling back a task of the universe through the API is blocked: the block for
+   * operator-owned resources is on and the operator owns the universe, so it would re-apply the
+   * edit. A UUID that is not a universe is not owned. Submit and the task list both use this rule.
    */
+  public boolean isOperatorOwnedUniverse(UUID universeUuid) {
+    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
+        && Universe.maybeGet(universeUuid)
+            .map(u -> u.getUniverseDetails().isKubernetesOperatorControlled)
+            .orElse(false);
+  }
+
+  /** The universes for which {@link #isOperatorOwnedUniverse} holds, in one query. */
   public Set<UUID> getOperatorOwnedUniverseUUIDs(
       Long customerId, @Nullable UUID specificTargetUuid) {
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)) {

@@ -477,9 +477,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
 
   @Test
   public void rollbackTask_operatorOwnedUniverse_throwsForbidden() {
-    Universe.saveDetails(
-        universe.getUniverseUUID(),
-        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    when(mockCommissioner.isOperatorOwnedUniverse(universe.getUniverseUUID())).thenReturn(true);
     UUID taskUUID = UUID.randomUUID();
     TaskInfo failed = new TaskInfo(TaskType.EditKubernetesUniverse, null);
     failed.setUuid(taskUUID);

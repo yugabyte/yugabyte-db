@@ -841,21 +841,11 @@ public class CustomerTaskManager {
     return false;
   }
 
-  /**
-   * The operator reconciles its universes to the CR spec, so a user rollback would just be
-   * re-applied. Same condition as {@code @BlockOperatorResource} on the edit APIs.
-   */
-  private boolean isOperatorOwned(CustomerTask customerTask) {
-    return confGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
-        && customerTask.getTargetType().isUniverseTarget()
-        && Universe.maybeGet(customerTask.getTargetUUID())
-            .map(u -> u.getUniverseDetails().isKubernetesOperatorControlled)
-            .orElse(false);
-  }
-
   public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    if (isOperatorOwned(customerTask)) {
+    // The operator reconciles its universes to the CR spec, so a user rollback would just be
+    // re-applied.
+    if (commissioner.isOperatorOwnedUniverse(customerTask.getTargetUUID())) {
       throw new PlatformServiceException(
           FORBIDDEN, "resource is controlled by kubernetes operator");
     }
