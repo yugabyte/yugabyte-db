@@ -200,6 +200,15 @@ public class NodeAgentRpcPayload {
         architecture);
   }
 
+  // A node-agent on another version may predate a newer input field and ignore it. Its upgrade is
+  // best-effort before each call, so it can still be on the old version here.
+  private static boolean isNodeAgentOnYbaVersion(NodeAgent nodeAgent) {
+    String ybaVersion = Util.getYbaVersion();
+    return ybaVersion != null
+        && nodeAgent.getVersion() != null
+        && Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
+  }
+
   private void setAwsCredentialsInBuilder(
       String accessKey, String secretKey, InstallOtelCollectorInput.Builder builder) {
     if (StringUtils.isNotEmpty(accessKey)) {
@@ -539,6 +548,7 @@ public class NodeAgentRpcPayload {
     // isn't actually installing/keeping otel-collector on the universe but we
     // still want audit-log setting changes to reach the node.
     boolean refreshScriptOnly = false;
+    boolean disableCollector = false;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
       telemetryConfig = params.telemetryConfig;
@@ -546,6 +556,20 @@ public class NodeAgentRpcPayload {
       queryLogConfig = params.getQueryLogConfig();
       gflags = params.gflags;
       refreshScriptOnly = !params.otelCollectorEnabled;
+      // Telemetry config is universe-wide, so no enabled export means every collector stops.
+      // Skipping the package keeps a broken package from blocking the disable. An older
+      // node-agent ignores disableCollector and runs the full install, which needs the package,
+      // so it keeps the full install path.
+      if (!refreshScriptOnly && !OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
+        disableCollector = isNodeAgentOnYbaVersion(nodeAgent);
+        if (!disableCollector) {
+          log.info(
+              "Node agent {} is on version {}, not {}. Disabling otel-collector by full install.",
+              nodeAgent.getIp(),
+              nodeAgent.getVersion(),
+              Util.getYbaVersion());
+        }
+      }
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       telemetryConfig = params.telemetryConfig;
@@ -563,6 +587,7 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
+    installOtelCollectorInputBuilder.setDisableCollector(disableCollector);
 
     // The purge script groups multi-line YSQL audit records using this pattern,
     // derived from the same log_line_prefix the collector uses. Set in both
@@ -582,7 +607,7 @@ public class NodeAgentRpcPayload {
     // Skip the (expensive) otel-collector package upload/extract in
     // refresh-only mode - node-agent's InstallOtelCollector.Handle takes an
     // early-return path that doesn't touch these bits.
-    if (!refreshScriptOnly) {
+    if (!refreshScriptOnly && !disableCollector) {
       String otelCollectorPackagePath =
           getThirdpartyPackagePath()
               + "/"
