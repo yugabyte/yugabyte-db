@@ -305,15 +305,22 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 }
 
 func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHome string) error {
-	otelCollectorConfigFile := filepath.Join(ybHome, "otel-collector", "config.yml")
-	otelColLogCleanupEnv := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
+	otelCollectorDir := filepath.Join(ybHome, "otel-collector")
+	otelCollectorConfigFile := filepath.Join(otelCollectorDir, "config.yml")
+	otelColLogCleanupEnv := filepath.Join(otelCollectorDir, "log_cleanup_env")
 	awsCredsFile := filepath.Join(ybHome, ".aws", "credentials")
-	gcpCredsFile := filepath.Join(ybHome, "otel-collector", "gcp_creds")
+	gcpCredsFile := filepath.Join(otelCollectorDir, "gcp_creds")
 
 	steps := []struct {
 		Desc string
 		Cmd  string
 	}{
+		// The disable path skips the package setup, which otherwise creates this directory, and
+		// can run on a node that never had the collector.
+		{
+			"ensure-otel-collector-dir",
+			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelCollectorDir, otelCollectorDir),
+		},
 		{
 			"remove-otel-collector-config-file-if-exists",
 			fmt.Sprintf(
