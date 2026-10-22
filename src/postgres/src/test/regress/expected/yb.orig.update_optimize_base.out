@@ -1816,10 +1816,10 @@ CREATE INDEX NONCONCURRENTLY json_table_v1 ON json_table (CAST((v1->>'a') AS INT
 CREATE UNIQUE INDEX NONCONCURRENTLY json_table_v2 ON json_table (CAST((v2->>'a') AS INT));
 -- Updating the subkey having an index should allow the 'skip redundant update' optimization to kick in.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}', to_jsonb(1)) WHERE k = 1;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1833,10 +1833,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{a}', to_jsonb(1)) WHERE k = 1;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1853,10 +1853,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}
 ERROR:  duplicate key value violates unique constraint "json_table_v2"
 -- Updating a subkey not having an index should allow the optimization to push down the DELETE + INSERT in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 110)) WHERE k = 1;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1871,10 +1871,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{b}', to_jsonb(k + 110)) WHERE k = 1;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 1)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1889,10 +1889,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{b}
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 120)), v2 = jsonb_set(v2, '{b}', to_jsonb(k + 120)) WHERE k = 2;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 2)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1917,10 +1917,10 @@ CREATE UNIQUE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST
 CREATE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v2->>'c') AS INT));
 -- Updating any subkey of a multi-subkey index should allow the optimization to push down the DELETE + INSERT in a single flush.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{d}', to_jsonb(k + 310)) WHERE k = 3;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 3)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1936,10 +1936,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{d}
 
 -- Updating any subkey should update the corresponding indexes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(k + 210)) WHERE k = 3;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Index Scan using json_table_pkey on json_table (actual rows=1.00 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Index Scan using json_table_pkey on "json_table" (actual rows=1.00 loops=1)
          Index Cond: (k = 3)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -1962,10 +1962,10 @@ SELECT * FROM json_table WHERE k IN (3, 4) ORDER BY k;
 
 -- Multi-row updates.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(v1->>'c')) WHERE k < 10;
-                       QUERY PLAN                        
----------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Seq Scan on json_table (actual rows=5.00 loops=1)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Seq Scan on "json_table" (actual rows=5.00 loops=1)
          Storage Filter: (k < 10)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
@@ -1980,10 +1980,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{c}', to_jsonb((v2->>'c')::INT + 1)) WHERE k < 10;
-                       QUERY PLAN                        
----------------------------------------------------------
- Update on json_table (actual rows=0.00 loops=1)
-   ->  Seq Scan on json_table (actual rows=5.00 loops=1)
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Update on "json_table" (actual rows=0.00 loops=1)
+   ->  Seq Scan on "json_table" (actual rows=5.00 loops=1)
          Storage Filter: (k < 10)
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
