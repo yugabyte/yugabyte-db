@@ -1298,6 +1298,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     JsonNode delta =
         DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
     universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+    auditService.updateTaskDiff(getTaskUUID(), DeltaEvaluator.generateOnlyDelta(delta));
   }
 
   /**
