@@ -447,6 +447,8 @@ SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 OR
 (5 rows)
 
 -- Test: aggregates on decoded PK columns (pushdown disabled)
+-- PG rewrites COUNT(id) to COUNT(*) when id is NOT NULL.
+-- Each tablet counts its own index rows and PG adds those counts.
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
@@ -456,15 +458,40 @@ $$ AS query \gset
 EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                               QUERY PLAN                              
 ----------------------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using t_range_v on t_range
          Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
  count 
 -------
     12
+(1 row)
+
+-- SUM(id) reads the decoded primary key. PG sums those ids itself.
+-- SUM(id) depends on yb_enable_primary_key_decode_from_index,
+-- unlike COUNT(*) and COUNT(id).
+-- The result is the sum of the ids.
+SELECT $$
+:P SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+(3 rows)
+
+SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+ sum 
+-----
+ 247
 (1 row)
 
 SELECT $$
@@ -919,6 +946,8 @@ SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER 
  10 | 975
 (4 rows)
 
+-- PG rewrites COUNT(h1) and COUNT(h2) to COUNT(*) when h1 and h2 are NOT NULL.
+-- Each tablet counts its own index rows and PG adds those counts.
 SELECT $$
 :P SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
 $$ AS query \gset
@@ -928,10 +957,11 @@ $$ AS query \gset
 EXPLAIN (COSTS OFF) SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using t_partial_include_v on t_partial_include
          Index Cond: ((v >= 20) AND (v < 30))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
  count | count 
@@ -1258,6 +1288,8 @@ SELECT a, b FROM t_composite WHERE v = 'v_15';
  1 | 5
 (1 row)
 
+-- PG rewrites COUNT(id) to COUNT(*) when id is NOT NULL, so this query does not read id.
+-- With primary-key decoding off the plan is an index-only scan.
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
@@ -1265,6 +1297,53 @@ $$ AS query \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+         Partial Aggregate: true
+(4 rows)
+
+SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+ count 
+-------
+    12
+(1 row)
+
+-- COUNT(*) and COUNT(id) above differ only when id can be NULL, because COUNT(id) skips nulls.
+-- id is NOT NULL, so both return the same count and both use an index-only scan.
+SELECT $$
+:P SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+         Partial Aggregate: true
+(4 rows)
+
+SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+ count 
+-------
+    12
+(1 row)
+
+-- With primary-key decoding off (yb_enable_primary_key_decode_from_index=off),
+-- the index cannot supply id, so this query reads the table.
+-- The result is the sum of the ids.
+SELECT $$
+:P SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Finalize Aggregate
@@ -1273,10 +1352,10 @@ EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'v
          Partial Aggregate: true
 (4 rows)
 
-SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
- count 
--------
-    12
+SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+ sum 
+-----
+ 247
 (1 row)
 
 SELECT $$

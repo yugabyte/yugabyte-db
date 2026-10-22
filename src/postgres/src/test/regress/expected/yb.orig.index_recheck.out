@@ -423,11 +423,12 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Seq Scan on t_int (actual rows=0.00 loops=1)
+   Disabled: true
    Storage Filter: ((i8)::numeric = '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(5 rows)
+(6 rows)
 
 -- these inequalities are out of range, so their key is not bound and recheck is
 -- required
@@ -491,21 +492,23 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Seq Scan on t_int (actual rows=0.00 loops=1)
+   Disabled: true
    Storage Filter: ((i8)::numeric > '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(5 rows)
+(6 rows)
 
 :explain_analyze SELECT * FROM t_int WHERE i8 < 9223372036854775809;
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Seq Scan on t_int (actual rows=4.00 loops=1)
+   Disabled: true
    Storage Filter: ((i8)::numeric < '9223372036854775809'::numeric)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(5 rows)
+(6 rows)
 
 -- the out-of-range element is dropped from the IN list, so no recheck is
 -- required
@@ -551,11 +554,12 @@ INSERT INTO t_int VALUES ( 32767,  2147483647,  9223372036854775807);
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Seq Scan on t_int (actual rows=2.00 loops=1)
+   Disabled: true
    Storage Filter: ((i8)::numeric = ANY ('{1,2,9223372036854775807,9223372036854775808}'::numeric[]))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(5 rows)
+(6 rows)
 
 -- in-range and out-of-range equality as a parameter of a generic plan
 SET plan_cache_mode = force_generic_plan;
@@ -636,10 +640,10 @@ SELECT count(*) FROM t_int WHERE s = 2147483648;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1.00 loops=1)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT* (actual rows=1.00 loops=1)
    ->  Index Only Scan using t_int_i4 on t_int (actual rows=0.00 loops=1)
-         Index Cond: (i4 = $0)
+         Index Cond: (i4 = (InitPlan expr_1).col1)
          Heap Fetches: 0
          Partial Aggregate: true
 (7 rows)
@@ -654,10 +658,10 @@ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Finalize Aggregate (actual rows=1.00 loops=1)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT* (actual rows=1.00 loops=1)
    ->  Index Scan using t_int_i4 on t_int (actual rows=0.00 loops=1)
-         Index Cond: (i4 = $0)
+         Index Cond: (i4 = (InitPlan expr_1).col1)
          Partial Aggregate: true
 (6 rows)
 
@@ -671,10 +675,10 @@ SELECT count(*) FROM t_int WHERE i4 = (SELECT 2147483648::int8);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Finalize Aggregate (actual rows=1.00 loops=1)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT* (actual rows=1.00 loops=1)
    ->  Index Scan using t_int_pkey on t_int (actual rows=0.00 loops=1)
-         Index Cond: (s = $0)
+         Index Cond: (s = (InitPlan expr_1).col1)
          Partial Aggregate: true
 (6 rows)
 
