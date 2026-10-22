@@ -487,7 +487,10 @@ func AddRollMaxBatchSizeFlags(cmd *cobra.Command) {
 }
 
 // RollMaxBatchSizeFromFlags builds RollMaxBatchSize from CLI flags when the upgrade is rolling.
-func RollMaxBatchSizeFromFlags(cmd *cobra.Command, upgradeOption string) *ybaclient.RollMaxBatchSize {
+func RollMaxBatchSizeFromFlags(
+	cmd *cobra.Command,
+	upgradeOption string,
+) *ybaclient.RollMaxBatchSize {
 	if !strings.EqualFold(upgradeOption, "Rolling") {
 		return nil
 	}
