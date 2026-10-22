@@ -380,6 +380,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
     flagMap.put("TEST_assert_no_future_catalog_version", "true");
+    // A new master leader waits out the lease TTL before it serves
+    // WaitForYsqlBackendsCatalogVersion, so with the 30 s default the first online CREATE INDEX
+    // in a fresh cluster waits until about 30 s after the election.
+    flagMap.put("master_ysql_operation_lease_ttl_ms",
+        BuildTypeUtil.isSanitizerBuild() ? "20000" : "10000");
     return flagMap;
   }
 
