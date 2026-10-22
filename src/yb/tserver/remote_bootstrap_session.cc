@@ -177,7 +177,8 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   kv_store->clear_rocksdb_files();
   auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_,
       tablet::CreateCheckpointIn::kSubDir,
-      tablet::TabletSnapshots::UseTryLock::kTrue);
+      tablet::TabletSnapshots::UseTryLock::kTrue,
+      tablet::TabletSnapshots::SkipVectorIndexFlush::kTrue);
   if (status.ok()) {
     auto max_retries = FLAGS_rbs_init_max_number_of_retries;
     if (max_retries != 0) {
