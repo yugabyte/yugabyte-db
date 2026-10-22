@@ -54,8 +54,9 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    If you get an error message mentioning "xCluster-guarded information leases" you'll have to wait a little longer.
    Those leases take 2 minutes to expire (based on the `xcluster_guarded_lease_duration_ms`, with default being `120000`).
 
-6. If later you want to re-install a YB-Tserver with the address of the failed YB-Tserver and re-join that server to your cluster,
-   you need to remove that address from the blacklist, as follows:
+6. As a final cleanup step you should now remove the failed server's address from the backlist.
+   If you skip this step and later re-install a YB-Tserver with the same address, that YB-Tserver will be blacklisted and will never be assigned any tablets.
+   To remove that address from the blacklist run this command:
 
    ```sh
    ~/master/bin/yb-admin --master_addresses $MASTERS change_blacklist REMOVE $OLD_IP:9100
