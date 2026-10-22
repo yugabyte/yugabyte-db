@@ -71,6 +71,7 @@ class OrphanedTabletCleanupTest : public PgMiniTestBase {
     auto db_conn = VERIFY_RESULT(ConnectToDB(kDatabaseName));
     RETURN_NOT_OK(db_conn.ExecuteFormat(
         "CREATE TABLE $0 (i int primary key) SPLIT INTO 1 TABLETS", kTableName));
+    table_id_ = VERIFY_RESULT(GetTableIDFromTableName(kTableName));
     return db_conn.ExecuteFormat(
         "INSERT INTO $0 VALUES (generate_series(0, $1))", kTableName, kNumValuesToWrite - 1);
   }
@@ -101,12 +102,15 @@ class OrphanedTabletCleanupTest : public PgMiniTestBase {
   }
 
   void VerifyTabletDataOnTserver(size_t num_expected_tablet_peers) {
-    // Ensure that the number of tablet peers present on tservers matches the expected count. As
-    // more tests are added to this class, we can make this a stronger condition.
-    auto tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    // Ensure that the number of tablet peers of the test table present on tservers matches the
+    // expected count. Only the test table's peers are counted: a system tablet that is still being
+    // remote bootstrapped onto a tserver has no tablet object yet, so the user-tablets-only filter
+    // of ListTabletPeers cannot tell it from a user tablet.
+    auto tablet_peers = ListTableTabletPeers(cluster_.get(), table_id_);
     ASSERT_EQ(tablet_peers.size(), num_expected_tablet_peers);
   }
 
+  TableId table_id_;
   const string kDatabaseName = "yugabyte";
   const string kTableName = "foo";
   const int kNumValuesToWrite = 10;
