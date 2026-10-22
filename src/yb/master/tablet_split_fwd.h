@@ -21,6 +21,7 @@ namespace master {
 
 class TabletSplitManager;
 
+struct SplitTableEligibility;
 struct SplitTabletIds;
 
 YB_STRONGLY_TYPED_BOOL(ManualSplit);

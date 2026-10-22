@@ -345,8 +345,19 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+  virtual Result<SplitTableEligibility> ComputeSplitTableEligibility(
+      const scoped_refptr<const TableInfo>& table, const TSDescriptorVector& ts_descs) const = 0;
+
+  // New automatic splits use this overload to re-read placement before registering children.
+  Result<SplitPhase> ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
+    return ShouldSplitValidCandidate(tablet_info, drive_info, nullptr);
+  }
+
+  // A null eligibility reads placement fresh; a supplied value is a pass-local scheduling hint.
   virtual Result<SplitPhase> ShouldSplitValidCandidate(
-      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info,
+      const SplitTableEligibility* table_eligibility) const = 0;
   virtual Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
 
