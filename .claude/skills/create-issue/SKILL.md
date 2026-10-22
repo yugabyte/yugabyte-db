@@ -3,7 +3,9 @@ name: create-issue
 description: >-
   Create a GitHub issue (or JIRA ticket) tracking a YugabyteDB change or bug.
   Use when the user needs a tracker reference and doesn't have one yet — e.g.
-  before opening a PR/diff, or to file a standalone bug/feature request.
+  before opening a PR/diff, or to file a standalone bug/feature request — and
+  whenever the user asks to file a JIRA ticket for DB code, which must go to
+  GitHub unless it is sensitive.
 allowed-tools: Bash(gh issue create *), Bash(gh issue view *), Bash(gh auth status), Read
 model: sonnet
 ---
@@ -67,14 +69,28 @@ For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
 
 ### Step 1: Decide the tracker — GitHub vs JIRA
 
-Pick the default from what the change touches; ask only if it's genuinely
-ambiguous:
+First decide whether the issue is **sensitive**: it can't be described without
+customer data, customer schema/queries, or an unfixed security vulnerability
+(see the Confidentiality section). Then:
 
 - Core DB code (`src/`, `java/`, `cmake_modules/`, `build-support/`, `.github/`,
-  `.claude/`) → **GitHub issue** in `yugabyte/yugabyte-db`.
+  `.claude/`):
+  - Not sensitive → **GitHub issue** in `yugabyte/yugabyte-db`, even if the
+    user asked for a JIRA ticket. GitHub issues sync to JIRA `DB` tickets
+    automatically, so filing in GitHub gets you a JIRA key too.
+  - Sensitive → **JIRA ticket** in `DB`, with the sensitive-information field
+    set to `Yes` (Step 3b).
 - YBA / platform code (`managed/`) → **JIRA ticket**.
 
-If the user has already stated a preference or named a project, honor it.
+If the user has already named a tracker or project, honor it, except for the
+`DB` rule in Step 3b.
+
+Why `DB` works this way: the GitHub ↔ JIRA sync never copies a JIRA
+description to GitHub. When a ticket is created in `DB` first, its summary and
+status show up on a new GitHub issue but the body is just a JIRA link. A
+non-sensitive `DB` ticket created in JIRA therefore becomes a blank public
+GitHub issue. Setting the sensitive-information field to `Yes` stops the GitHub
+issue from being created at all.
 
 ### Step 2: Gather title metadata
 
@@ -152,10 +168,19 @@ If the user has already stated a preference or named a project, honor it.
 1. Ask the user which project (e.g., `PLAT`) if not already known.
 2. Don't ask about the assignee. By default leave the ticket unassigned; only
    when the user has explicitly named an assignee, set it accordingly.
-3. Load the Atlassian tool via ToolSearch, then call
+3. **`DB` project only:** the field *"WARNING: Contains sensitive
+   information? (Selecting "Yes" will not create a GH issue)"*
+   (`customfield_11006`) is required. Pass it in `additional_fields`:
+   - Sensitive (the only reason to file a `DB` ticket in JIRA) →
+     `"customfield_11006": {"value": "Yes"}`.
+   - Never set it to `No` yourself. `No` publishes a GitHub issue with an
+     empty body. If the issue isn't sensitive, go back and file it with
+     Step 3a. Use `No` only if the user explicitly insists after you explain
+     this.
+4. Load the Atlassian tool via ToolSearch, then call
    `mcp__claude_ai_Atlassian__createJiraIssue` with the confirmed summary and
    description. **Confirm the summary/description with the user before creating.**
-4. Capture the resulting JIRA key.
+5. Capture the resulting JIRA key.
 
 ### Step 4: Report back
 
