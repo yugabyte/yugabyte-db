@@ -4145,20 +4145,13 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	ybcAttnumBmsDestroy(&required_attrs);
 
 	/*
-	 * YB_TODO_PG19MERGE: Scan is now `pg_node_attr(abstract)` in PG19 (see
-	 * plannodes.h Scan struct), so makeNode(Scan) no longer produces a valid
-	 * T_Scan nodetag. Build a SeqScan (which is just `Scan scan;` with no
-	 * extra fields) and return its embedded Scan. Callers only access Scan
-	 * fields, so the SeqScan tag is harmless here.
+	 * Create the Scan node.  TODO(jason): there should be a way to pass
+	 * targetlist to YbBeginScan in order to avoid forming a dummy Scan node.
 	 */
-	{
-		SeqScan    *seq_plan = makeNode(SeqScan);
-
-		scan_plan = &seq_plan->scan;
-		scan_plan->scanrelid = varno;
-		scan_plan->plan.targetlist = targetlist;
-		scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
-	}
+	scan_plan = (Scan *) makeNode(SeqScan);
+	scan_plan->scanrelid = varno;
+	scan_plan->plan.targetlist = targetlist;
+	scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
 
 	return scan_plan;
 }
