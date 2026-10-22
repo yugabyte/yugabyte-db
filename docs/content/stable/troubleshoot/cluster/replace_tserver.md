@@ -43,11 +43,16 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    ~/master/bin/yb-admin --master_addresses $MASTERS list_all_tablet_servers
    ```
 
-5. Because the replacement YB-TServer is running and is loaded with data, you can now remove the failed server from the server list by this command:
+5. In order to remove the failed server from the server list it needs to be dead and blacklisted.
+   You made sure of that in the previous steps. The last condition is that it holds no more leases.
+   Usually that should be the case at this point, so now the following command should remove the failed server:
 
    ```sh
    ~/master/bin/yb-admin --master_addresses $MASTERS remove_tablet_server <tserver-uuid>
    ```
+
+   If you get an error message mentioning "xCluster-guarded information leases" you'll have to wait a little longer.
+   Those leases take 2 minutes to expire (based on the `xcluster_guarded_lease_duration_ms`, with default being `120000`).
 
 6. If later you want to re-install a YB-Tserver with the address of the failed YB-Tserver and re-join that server to your cluster,
    you need to remove that address from the blacklist, as follows:
