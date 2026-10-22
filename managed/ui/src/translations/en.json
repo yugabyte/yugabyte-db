@@ -179,8 +179,9 @@
         "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
-        "title": "Manage encryption at-Rest",
-        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "title": "Edit Encryption at Rest",
+        "enableEAR": "Enable encryption at Rest for this Universe",
+        "keyRetentionNote": "<bold>Note!</bold> Encryption at rest requires the encryption key to be retained once <br /> enabled. This requirement remains after encryption is disabled.   <a>Learn more</a>",
         "kmsConfig": "Key management service config",
         "selectKMSConfig": "Select key management service config",
         "rotateKMSConfig": "Rotate key management service config",
@@ -4309,7 +4310,8 @@
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
           "kmsConfigPlaceHolder": "Select",
-          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption."
+          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption.",
+          "helpText": "<b>Note!</b> Encryption at rest requires the encryption key to be retained once enabled.<br/> This requirement remains after encryption is disabled. <a>Learn more</a>"
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",

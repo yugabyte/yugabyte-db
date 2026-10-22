@@ -42,7 +42,9 @@ const StyledRegionCard = styled('div')(({ theme }) => ({
   gap: '24px',
   border: `1px solid ${theme.palette.grey[300]}`,
   borderRadius: '8px',
-  width: '672px'
+  boxSizing: 'border-box',
+  width: '672px',
+  maxWidth: '100%'
 }));
 
 const StyledRegionHeader = styled('div')(({ theme }) => ({
@@ -126,7 +128,9 @@ export const RegionCard: FC<RegionCardProps> = ({
           }
         : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: AZ_NOT_PREFERRED };
 
-    setValue(`availabilityZones.${region.code}`, [...(az ?? []), newZone], { shouldValidate: true });
+    setValue(`availabilityZones.${region.code}`, [...(az ?? []), newZone], {
+      shouldValidate: true
+    });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
@@ -182,10 +186,7 @@ export const RegionCard: FC<RegionCardProps> = ({
         {(az ?? []).map((zone, i) => (
           <Box key={i} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {isNewAz(zone) ? (
-              <Box
-                sx={{ ml: '34px' }}
-                data-testid={`region-card-new-az-badge-${index}-${i}`}
-              >
+              <Box sx={{ ml: '34px' }} data-testid={`region-card-new-az-badge-${index}-${i}`}>
                 <YBTag size="small" variant="light" color="gradient">
                   {t('newRegionBadge')}
                 </YBTag>

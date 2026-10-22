@@ -97,11 +97,10 @@ export function CreateUniverse() {
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
     generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
-    t,
-    resilienceType,
-    isK8s
-  ]);
+  const steps = useMemo(
+    () => getCreateUniverseSteps(t, resilienceType, isK8s, false),
+    [t, resilienceType, isK8s]
+  );
   const currentStepRef = useRef<StepsRef>(null);
   // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
   const isNavigatingRef = useRef(false);
@@ -123,10 +122,7 @@ export function CreateUniverse() {
   }, [activeStep]);
 
   // Prefetch providers + DB versions in parallel so step 1 reuses the same cache.
-  const { isLoading } = useQuery(
-    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
-    fetchCreateUniverseProviders
-  );
+  const { isLoading } = useQuery(CREATE_UNIVERSE_PROVIDERS_QUERY_KEY, fetchCreateUniverseProviders);
   useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
@@ -216,7 +212,7 @@ export function CreateUniverse() {
                       minWidth: '856px',
                       width: '100%',
                       gap: 3,
-                      mr: 1,
+                      pr: '24px',
                       pb: 3
                     }}
                   >

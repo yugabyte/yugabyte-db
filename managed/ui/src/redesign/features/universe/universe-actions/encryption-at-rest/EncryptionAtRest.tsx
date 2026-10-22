@@ -1,9 +1,9 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
-import { Box, Divider, Typography } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { Box, Divider, Link, Typography } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { YBCheckboxField, YBModal, YBToggleField, YBTooltip } from '../../../../components';
 import {
@@ -23,6 +23,7 @@ import { YBLoading } from '../../../../../components/common/indicators';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { transitToUniverse } from '../../universe-form/utils/helpers';
 
 //EAR Component
 interface EncryptionAtRestProps {
@@ -32,6 +33,8 @@ interface EncryptionAtRestProps {
 }
 
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
+const ENCRYPTION_AT_REST_DOCS_URL =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/';
 
 export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, universeDetails }) => {
   const { t } = useTranslation();
@@ -50,10 +53,10 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     api.getKMSConfigs
   );
   //fetch kms history
-  const {
-    data: kmsHistory = [],
-    isLoading: isKMSHistoryLoading
-  } = useQuery(QUERY_KEY.getKMSHistory, () => api.getKMSHistory(universeId));
+  const { data: kmsHistory = [], isLoading: isKMSHistoryLoading } = useQuery(
+    QUERY_KEY.getKMSHistory,
+    () => api.getKMSHistory(universeId)
+  );
 
   //kms info
   const { encryptionAtRestEnabled, kmsConfigUUID } = encryptionAtRestConfig;
@@ -71,7 +74,17 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const { control, watch, handleSubmit, reset } = formMethods;
+
+  // Modal stays mounted in SecurityTab; defaultValues only apply on first mount.
+  useEffect(() => {
+    if (!open) return;
+    reset({
+      encryptionAtRestEnabled,
+      kmsConfigUUID: kmsConfigUUID ?? '',
+      rotateUniverseKey: false
+    });
+  }, [open, encryptionAtRestEnabled, kmsConfigUUID, reset]);
 
   //watch field values
   const earToggleEnabled = watch(EAR_FIELD_NAME);
@@ -99,6 +112,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     {
       onSuccess: () => {
         void queryClient.invalidateQueries(QUERY_KEY.getKMSHistory);
+        void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeId]);
 
         if (earToggleEnabled) {
           //enabling kms for the first time
@@ -117,7 +131,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
           //disabling kms
           toast.warn(t('universeActions.encryptionAtRest.earDisabedSuccess'), TOAST_OPTIONS);
         }
-
+        if (universeId) transitToUniverse(universeId);
         onClose();
       },
       onError: () => {
@@ -179,10 +193,27 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
             flexDirection="column"
             className={clsx(classes.enableEARContainer, classes.container)}
           >
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
+            <Box display="flex" alignItems="flex-start" justifyContent="space-between">
+              <Box flex={1} mr={2}>
                 <Typography variant="h6">
                   {t('universeActions.encryptionAtRest.enableEAR')}
+                </Typography>
+                <Typography variant="body2" className={classes.keyRetentionNote}>
+                  <Trans
+                    i18nKey="universeActions.encryptionAtRest.keyRetentionNote"
+                    components={{
+                      bold: <strong />,
+                      a: (
+                        <Link
+                          href={ENCRYPTION_AT_REST_DOCS_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          underline="always"
+                          className={classes.keyRetentionLink}
+                        />
+                      )
+                    }}
+                  />
                 </Typography>
               </Box>
               <Box>
