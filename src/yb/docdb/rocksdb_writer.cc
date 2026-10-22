@@ -62,6 +62,9 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
+DEFINE_test_flag(bool, store_apply_state_without_apply_op_id, false,
+                 "Store the apply state of a large transaction without its apply op id, as older "
+                 "releases did.");
 
 
 namespace yb::docdb {
@@ -767,7 +770,9 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
-  apply_op_id_.ToPB(pb.mutable_apply_op_id());
+  if (!FLAGS_TEST_store_apply_state_without_apply_op_id) {
+    apply_op_id_.ToPB(pb.mutable_apply_op_id());
+  }
   faststring encoded_pb;
   RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
