@@ -226,7 +226,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
         With `1`, the kernel doesn't refuse memory requests based on its estimate of free memory. If a node runs out of memory, the Linux OOM killer handles it.
 
         {{< warning title="ARM nodes that use 64 KiB memory pages" >}}
-Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes whose Linux kernel uses 64 KiB memory pages and is older than version 5.2. With the default setting (`0`), these kernels can refuse a memory request while about 8% of the node's memory is still free or in the page cache, and the YugabyteDB process that made the request stops. This happens because, with transparent huge pages enabled, a kernel that uses 64 KiB pages keeps a much larger memory reserve.
+Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes whose Linux kernel uses 64 KiB memory pages and is older than version 5.2. With the default setting (`0`), these kernels can refuse a memory request while about 8% of the node's memory is still free or in the page cache, and the YugabyteDB process that made the request stops. This happens because, with transparent hugepages enabled, a kernel that uses 64 KiB pages keeps a much larger memory reserve.
 
 This applies to:
 

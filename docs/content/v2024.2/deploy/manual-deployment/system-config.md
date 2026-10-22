@@ -209,17 +209,17 @@ If running on a virtual machine, execute the following to tune kernel settings:
     sysctl vm.max_map_count
     ```
 
-1. Configure the parameter `vm.overcommit_memory` as follows:
+On all nodes, including bare metal, configure the parameter `vm.overcommit_memory` as follows:
 
-    ```sh
-    sudo sysctl -w vm.overcommit_memory=1
-    sudo bash -c 'sysctl vm.overcommit_memory=1 >> /etc/sysctl.conf'
-    ```
+```sh
+sudo sysctl -w vm.overcommit_memory=1
+sudo bash -c 'sysctl vm.overcommit_memory=1 >> /etc/sysctl.conf'
+```
 
-    With `1`, the kernel doesn't refuse memory requests based on its estimate of free memory. If a node runs out of memory, the Linux OOM killer handles it.
+With `1`, the kernel doesn't refuse memory requests based on its estimate of free memory. If a node runs out of memory, the Linux OOM killer handles it.
 
-    {{< warning title="ARM nodes that use 64 KiB memory pages" >}}
-Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes whose Linux kernel uses 64 KiB memory pages and is older than version 5.2. With the default setting (`0`), these kernels can refuse a memory request while about 8% of the node's memory is still free or in the page cache, and the YugabyteDB process that made the request stops. This happens because, with transparent huge pages enabled, a kernel that uses 64 KiB pages keeps a much larger memory reserve.
+{{< warning title="ARM nodes that use 64 KiB memory pages" >}}
+Setting `vm.overcommit_memory=1` is especially important on ARM (aarch64) nodes whose Linux kernel uses 64 KiB memory pages and is older than version 5.2. With the default setting (`0`), these kernels can refuse a memory request while about 8% of the node's memory is still free or in the page cache, and the YugabyteDB process that made the request stops. This happens because, with transparent hugepages enabled, a kernel that uses 64 KiB pages keeps a much larger memory reserve.
 
 This applies to:
 
@@ -229,7 +229,7 @@ This applies to:
 Kernels 5.2 and later don't refuse requests this way, even with 64 KiB pages. This includes the optional `kernel-64k` kernel for Red Hat Enterprise Linux 9 and distributions based on it, the Unbreakable Enterprise Kernel Release 6 for ARM, and Ubuntu's `-64k` kernels.
 
 To check a node, run `getconf PAGESIZE`, which prints `65536` on a kernel that uses 64 KiB pages, and `uname -r`, which prints the kernel version.
-    {{< /warning >}}
+{{< /warning >}}
 
 ### Using systemd
 
