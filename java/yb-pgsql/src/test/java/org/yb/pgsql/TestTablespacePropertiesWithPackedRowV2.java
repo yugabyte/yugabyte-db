@@ -19,7 +19,7 @@ import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 @RunWith(value = YBTestRunner.class)
-public class TestTablespacePropertiesWithPackedRowV2 extends TestTablespaceProperties {
+public class TestTablespacePropertiesWithPackedRowV2 extends BaseTablespacePropertiesTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
