@@ -1530,7 +1530,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                     : UniverseDefinitionTaskParams.ClusterType.PRIMARY);
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
-                provider, universeFromDB, telemetryConfig, podPlacement, logLinePrefix);
+                provider,
+                universeFromDB,
+                telemetryConfig,
+                podPlacement,
+                logLinePrefix,
+                primaryClusterIntent);
         otelOverrides = new HashMap<>();
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());

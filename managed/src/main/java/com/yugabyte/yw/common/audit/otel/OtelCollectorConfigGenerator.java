@@ -898,6 +898,27 @@ public class OtelCollectorConfigGenerator {
       TelemetryConfig telemetryConfig,
       K8sPodPlacement podPlacement,
       String logLinePrefix) {
+    return getOtelColConfigK8s(
+        provider,
+        universe,
+        telemetryConfig,
+        podPlacement,
+        logLinePrefix,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent);
+  }
+
+  /**
+   * Same as above, with the API flags (enableYSQL/enableYCQL) read from {@code apiIntent}. Helm
+   * upgrades pass the task's target intent: ConfigureDBApisKubernetes stores the new flags only
+   * after the upgrade, so the persisted universe still has the old ones when this runs.
+   */
+  public K8sOtelConfig getOtelColConfigK8s(
+      Provider provider,
+      Universe universe,
+      TelemetryConfig telemetryConfig,
+      K8sPodPlacement podPlacement,
+      String logLinePrefix,
+      UniverseDefinitionTaskParams.UserIntent apiIntent) {
     AuditLogConfig auditLogConfig =
         telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
     QueryLogConfig queryLogConfig =
@@ -1096,6 +1117,7 @@ public class OtelCollectorConfigGenerator {
           universe,
           metricsExportConfig,
           podPlacement,
+          apiIntent,
           secretEnv,
           secretEnvProviderUuids);
     }
@@ -1270,9 +1292,11 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       MetricsExportConfig metricsExportConfig,
       K8sPodPlacement podPlacement,
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
-    Set<ScrapeConfigTargetType> scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    Set<ScrapeConfigTargetType> scrapeTargets =
+        getYugabyteScrapeTargetsForK8s(apiIntent, metricsExportConfig.getScrapeConfigTargets());
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2244,12 +2268,31 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
+   * Drops the YSQL/CQL targets when the universe does not run that API (PLAT-21847). Master and
+   * tserver pods share one collector config, so per-node gating as on VMs is not possible here.
+   */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
+      Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    if (!apiIntent.enableYSQL) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (!apiIntent.enableYCQL) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
+  }
+
+  /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847, PLAT-23125). The collector config is written during
-   * configure, before add/start node store isTserver, so tserver targets gate only on dedicatedTo
-   * and the API flags (ConfigureDBApis regenerates the config when it changes them). MASTER_EXPORT
-   * gates on isMaster: flows that store isMaster after configure rewrite the config afterwards
-   * (createOtelCollectorRefreshForNewMastersTasks), and edit universe stores it before configure.
+   * a closed port every interval (PLAT-21847, PLAT-23125). Add/start node write the collector
+   * config during configure, before they store isTserver, so tserver targets gate only on
+   * dedicatedTo and the API flags. MASTER_EXPORT gates on isMaster: master starts do not write the
+   * collector config during configure, so createStartMasterProcessTasks and AddNodeToUniverse
+   * rewrite it afterwards (createOtelCollectorMetricsRefreshTasks), as ConfigureDBApis does after
+   * an API change.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {

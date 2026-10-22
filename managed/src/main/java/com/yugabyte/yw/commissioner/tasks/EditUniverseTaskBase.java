@@ -673,6 +673,10 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               // Set isMaster to false before updating the addresses.
               createUpdateNodeProcessTasks(Collections.singleton(node), ServerType.MASTER, false)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+              if (node.state != NodeState.ToBeRemoved) {
+                // The node stays, so drop the master target from its collector config.
+                createOtelCollectorMetricsRefreshTasks(Collections.singleton(node));
+              }
               // Remove this node from subsequent address update as it's no longer a master.
               currentLiveMasters.remove(node);
               getOrCreateExecutionContext().removeMasterNode(node);

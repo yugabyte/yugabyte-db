@@ -1381,6 +1381,54 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     }
   }
 
+  // PLAT-21847 on K8s: drop the YSQL/CQL targets when the universe does not run that API. The
+  // target intent wins over the persisted universe, because ConfigureDBApisKubernetes stores the
+  // new API flags only after the helm upgrade that renders this config.
+  @Test
+  public void getOtelColConfigK8sMetricsGatesApiTargetsOnIntent() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder()
+            .metricsExportConfig(
+                createMetricsExportConfig(
+                    telemetryProvider.getUuid(),
+                    ImmutableMap.of(),
+                    15,
+                    10,
+                    MetricCollectionLevel.NORMAL))
+            .build();
+
+    UniverseDefinitionTaskParams.UserIntent ysqlOnly =
+        new UniverseDefinitionTaskParams.UserIntent();
+    ysqlOnly.enableYSQL = true;
+    ysqlOnly.enableYCQL = false;
+    String ysqlOnlyConfig =
+        generator
+            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ysqlOnly)
+            .getConfig();
+    assertThat(ysqlOnlyConfig, containsString("export_type: ysql_export"));
+    assertThat(ysqlOnlyConfig, not(containsString("export_type: cql_export")));
+
+    UniverseDefinitionTaskParams.UserIntent ycqlOnly =
+        new UniverseDefinitionTaskParams.UserIntent();
+    ycqlOnly.enableYSQL = false;
+    ycqlOnly.enableYCQL = true;
+    String ycqlOnlyConfig =
+        generator
+            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ycqlOnly)
+            .getConfig();
+    assertThat(ycqlOnlyConfig, containsString("export_type: cql_export"));
+    assertThat(ycqlOnlyConfig, not(containsString("export_type: ysql_export")));
+    // Master and tserver pods share this config, so both server targets stay.
+    assertThat(ycqlOnlyConfig, containsString("export_type: master_export"));
+    assertThat(ycqlOnlyConfig, containsString("export_type: tserver_export"));
+  }
+
   @Test
   public void getOtelColConfigK8sAuditAndQueryPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();

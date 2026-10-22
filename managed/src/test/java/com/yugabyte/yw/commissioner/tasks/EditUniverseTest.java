@@ -41,6 +41,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -66,7 +67,9 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
@@ -76,6 +79,10 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -105,6 +112,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
@@ -2983,6 +2991,148 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         beforeTags,
         true /* assertExpandMarkVsMblOrder */,
         null /* beforeReplicationFactor */);
+  }
+
+  // PLAT-23125: an RF increase starts masters on existing nodes. Their configure step only updates
+  // gflags, so their collector config has no master target until it is rewritten.
+  @Test
+  public void testIncreaseRfRefreshesOtelCollectorOnNewMasters() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    prepareUniverseForRfIncrease();
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              // ManageOtelCollector builds its install payload from the universe architecture.
+              u.getUniverseDetails().arch = Architecture.x86_64;
+              // RF 1: one master, so the RF increase starts masters on the other two nodes.
+              int firstIdx =
+                  u.getUniverseDetails().nodeDetailsSet.stream()
+                      .mapToInt(n -> n.nodeIdx)
+                      .min()
+                      .getAsInt();
+              u.getUniverseDetails()
+                  .nodeDetailsSet
+                  .forEach(n -> n.isMaster = n.nodeIdx == firstIdx);
+            });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableRFChange.getKey(), "true");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    Set<String> oldMasters =
+        universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    // The RF change steps the master leader down and waits for a different leader.
+    try {
+      LeaderStepDownResponse stepDownResponse = mock(LeaderStepDownResponse.class);
+      when(stepDownResponse.hasError()).thenReturn(false);
+      when(mockClient.masterLeaderStepDown()).thenReturn(stepDownResponse);
+      when(mockClient.getLeaderMasterUUID()).thenReturn("leader-1", "leader-2");
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+
+    TaskInfo taskInfo = submitTask(performIncreaseRf(universe, 3));
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    Set<String> newMasters =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getMasters().stream()
+            .map(n -> n.nodeName)
+            .filter(n -> !oldMasters.contains(n))
+            .collect(Collectors.toSet());
+    assertEquals(2, newMasters.size());
+    Set<String> refreshed =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toSet());
+    assertEquals(newMasters, refreshed);
+  }
+
+  // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
+  // tserver. Its collector config still has the master target, so the edit must rewrite it.
+  @Test
+  public void testMoveMasterRefreshesOtelCollectorOnDemotedMaster() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              // ManageOtelCollector builds its install payload from the universe architecture.
+              u.getUniverseDetails().arch = Architecture.x86_64;
+            });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    Set<String> oldMasters =
+        universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
+    // The setup above bumped the universe version.
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    Universe after = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Set<String> demoted =
+        oldMasters.stream()
+            .filter(n -> after.getNode(n) != null && !after.getNode(n).isMaster)
+            .collect(Collectors.toSet());
+    assertEquals(1, demoted.size());
+    Set<String> refreshed =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toSet());
+    assertTrue(refreshed.toString(), refreshed.containsAll(demoted));
   }
 
   @Test

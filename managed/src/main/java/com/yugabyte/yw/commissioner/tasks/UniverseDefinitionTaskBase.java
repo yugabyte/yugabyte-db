@@ -3075,27 +3075,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Rewrites the collector config on nodes that just became masters, so their master scrape target
-   * appears. Configure writes the config before UpdateNodeProcess stores isMaster, so the config
-   * written then has no master target (PLAT-23125).
+   * Rewrites the collector config on the given nodes when metrics export is on, so its scrape
+   * targets match the node's current roles and API flags. Callers use it after a change that the
+   * collector config does not otherwise pick up: a master start (its configure step only updates
+   * gflags, so the node keeps the config it got as a tserver, with no master target) and a DB API
+   * change. It is idempotent, so callers do not need to know whether the config is already current.
    */
-  protected void createOtelCollectorRefreshForNewMastersTasks(Collection<NodeDetails> nodes) {
+  protected void createOtelCollectorMetricsRefreshTasks(Collection<NodeDetails> nodes) {
     Universe universe = getUniverse();
     TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
-    if (!universe.getUniverseDetails().otelCollectorEnabled
+    if (nodes.isEmpty()
+        || !universe.getUniverseDetails().otelCollectorEnabled
         || !OtelCollectorUtil.isMetricsExportEnabledInUniverse(
             telemetryConfig.getMetricsExportConfig())) {
       return;
     }
-    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    createManageOtelCollectorTasks(
-        primaryCluster.userIntent,
-        new ArrayList<>(nodes),
-        false /* installOtelCollector */,
-        telemetryConfig,
-        node ->
-            GFlagsUtil.getGFlagsForNode(
-                node, ServerType.TSERVER, primaryCluster, universe.getUniverseDetails().clusters));
+    Map<UUID, List<NodeDetails>> nodesByCluster =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.placementUuid));
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
+      Cluster cluster = universe.getCluster(entry.getKey());
+      // The collector on Kubernetes is a sidecar that helm upgrades configure.
+      if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        continue;
+      }
+      createManageOtelCollectorTasks(
+          cluster.userIntent,
+          entry.getValue(),
+          false /* installOtelCollector */,
+          telemetryConfig,
+          node ->
+              GFlagsUtil.getGFlagsForNode(
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters));
+    }
   }
 
   /**
@@ -3115,8 +3126,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Mark the node process flags as true.
       createUpdateNodeProcessTasks(updatableNodes, ServerType.MASTER, true /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-      createOtelCollectorRefreshForNewMastersTasks(updatableNodes);
     }
+    // All nodes, not only updatableNodes: edit universe sets isMaster before this, and a retry
+    // re-reads isMaster=true, so neither is in updatableNodes but both still need the target.
+    createOtelCollectorMetricsRefreshTasks(nodesToBeStarted);
 
     // Wait for new masters to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.MASTER)
