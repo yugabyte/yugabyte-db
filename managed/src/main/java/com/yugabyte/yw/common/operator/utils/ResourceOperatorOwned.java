@@ -19,6 +19,10 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class ResourceOperatorOwned {
+  /** The 403 message for an API call blocked because the operator owns the resource. */
+  public static final String CONTROLLED_BY_OPERATOR_MESSAGE =
+      "resource is controlled by kubernetes operator";
+
   private final RuntimeConfGetter confGetter;
 
   @Inject
@@ -34,6 +38,10 @@ public class ResourceOperatorOwned {
    * Whether the API block for operator-owned resources applies to the universe: the block is on and
    * the operator owns the universe. A UUID that is not a universe is not blocked. It reads only the
    * one field, since the task status poll calls it.
+   *
+   * <p>{@code BlockOperatorResourceHandler} applies the same rule to every annotated API call. It
+   * reads the flag through {@code RuntimeConfigCache}, to avoid a runtime config read per request,
+   * and fails on a missing universe, so it does not call this.
    */
   public boolean isUniverseBlocked(UUID universeUuid) {
     return confGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)

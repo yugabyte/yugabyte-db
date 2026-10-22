@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.RollbackContext;
 import com.yugabyte.yw.common.rollback.RollbackSubmission;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
@@ -847,7 +848,7 @@ public class CustomerTaskManager {
     // re-applied.
     if (commissioner.isRollbackBlockedForOperatorOwnedUniverse(customerTask.getTargetUUID())) {
       throw new PlatformServiceException(
-          FORBIDDEN, "resource is controlled by kubernetes operator");
+          FORBIDDEN, ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE);
     }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = customerTask.getTaskInfo();
