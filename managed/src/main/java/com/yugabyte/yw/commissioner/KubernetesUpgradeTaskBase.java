@@ -808,22 +808,23 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           new KubernetesUpgradeCommonParams(universe, cluster, confGetter);
       // override the software version to the new version
       upgradeParams.setYbSoftwareVersion(softwareVersion);
+      // A read replica has its own helm releases and only tservers. Treating it as the primary
+      // makes POD_INFO replace the primary's nodes and the helm upgrade resize the primary.
+      boolean isReadOnlyCluster =
+          cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC;
       createSingleKubernetesExecutorTask(
-          universe.getName(),
-          CommandType.POD_INFO,
-          cluster.placementInfo,
-          false /*isReadOnlyCluster*/);
+          universe.getName(), CommandType.POD_INFO, cluster.placementInfo, isReadOnlyCluster);
       // Helm upgrade
       upgradePodsNonRestart(
           universe.getName(),
           upgradeParams.getPlacement(),
           upgradeParams.getMasterAddresses(),
-          ServerType.EITHER,
+          isReadOnlyCluster ? ServerType.TSERVER : ServerType.EITHER,
           upgradeParams.getYbSoftwareVersion(),
           upgradeParams.getUniverseOverrides(),
           upgradeParams.getAzOverrides(),
           upgradeParams.isNewNamingStyle(),
-          false /* isReadOnlyCluster */,
+          isReadOnlyCluster,
           upgradeParams.isEnableYbc(),
           upgradeParams.getYbcSoftwareVersion(),
           ysqlMajorVersionUpgradeState);

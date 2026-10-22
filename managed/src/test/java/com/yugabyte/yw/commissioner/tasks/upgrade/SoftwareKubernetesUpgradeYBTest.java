@@ -11,7 +11,10 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -19,14 +22,19 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
@@ -35,10 +43,12 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
+import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -281,5 +291,72 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testYsqlMajorUpgradeTreatsReadReplicaAsReadReplica() throws Exception {
+    // PLAT-23200: the YSQL major compatibility-flag helm step runs POD_INFO and a non-restart helm
+    // upgrade for every cluster. For the read replica it must pass isReadOnlyCluster=true;
+    // otherwise POD_INFO looks up the primary release with the read replica's placement and
+    // replaces the primary's nodes, and the helm upgrade resizes the primary release.
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(true, true);
+    useKubernetesNodeNames();
+    Cluster readReplica = addReadReplicaCluster();
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.waitAttemptsForMajorCatalogUpgrade.getKey(), "0");
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(any(), anyString()))
+        .thenReturn(false);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    // Catalog-upgrade subtasks use getClient(timeout) -> getClientWithConfig.
+    lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    lenient()
+        .when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenReturn(true);
+    lenient()
+        .when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    ReleaseManager.ReleaseMetadata rm =
+        ReleaseManager.ReleaseMetadata.create(YB_SOFTWARE_VERSION_NEW)
+            .withFilePath("yugabyte-" + YB_SOFTWARE_VERSION_NEW + "-centos-x86_64.tar.gz");
+    when(mockReleaseManager.getReleaseByVersion(anyString()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
+    lenient().when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
+    lenient()
+        .when(
+            mockKubernetesManager.executeCommandInPodContainer(
+                any(), nullable(String.class), nullable(String.class), anyString(), anyList()))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(4);
+              return Arrays.asList("uname", "-m").equals(cmd) ? "x86_64" : "";
+            });
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    // Adding the read replica bumped the universe version past what submitTask expects.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.SoftwareKubernetesUpgradeYB, taskParams));
+
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
   }
 }
