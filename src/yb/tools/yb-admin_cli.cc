@@ -628,6 +628,15 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
   constexpr size_t kMaxLineWidth = 100;
   // Only the full list is numbered, so an operation never has two different numbers.
   const auto number_width = std::to_string(matches.size()).size();
+  const auto name_column = 2 + number_width + 2;
+  // The full list shows a grouped operation's description instead of its syntax. A group whose
+  // names all leave room for a kMaxDescriptionLength description beside them is a table, with
+  // the descriptions in a column after its longest name. Any other group puts every description
+  // on the line below its name. Either way a group's rows share one shape and no line wraps, and
+  // since the shape depends only on names, editing a description cannot reshape a group.
+  constexpr size_t kStackedIndent = 4;
+  // Unset while printing a stacked group.
+  std::optional<size_t> description_column;
   size_t number = 0;
   auto print_entry = [&](const Command& command) {
     std::string line = "  ";
@@ -637,6 +646,16 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
       line += "* ";
     }
     line += command.name_;
+    if (filter.empty() && !command.metadata_.description.empty()) {
+      if (description_column) {
+        line.resize(*description_column, ' ');
+      } else {
+        out << line << endl;
+        line.assign(name_column + kStackedIndent, ' ');
+      }
+      out << line << command.metadata_.description << endl;
+      return;
+    }
     if (!command.usage_arguments_.empty()) {
       line += " " + command.usage_arguments_;
     }
@@ -668,14 +687,22 @@ size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string
   });
   const bool grouped = matches.front()->metadata_.group.has_value();
   std::optional<CommandGroup> current_group;
-  for (const auto* command : matches) {
-    const auto& group = command->metadata_.group;
+  for (auto it = matches.begin(); it != matches.end(); ++it) {
+    const auto& group = (*it)->metadata_.group;
     if (grouped && (number == 0 || group != current_group)) {
       // Operations without a group trail the grouped ones until every operation has a group.
       out << endl << (group ? GroupName(*group) : "Not yet grouped") << ":" << endl;
       current_group = group;
+      size_t longest_name = 0;
+      for (auto next = it; next != matches.end() && (*next)->metadata_.group == group; ++next) {
+        longest_name = std::max(longest_name, (*next)->name_.size());
+      }
+      description_column = name_column + longest_name + 2;
+      if (*description_column + kMaxDescriptionLength > kMaxLineWidth) {
+        description_column.reset();
+      }
     }
-    print_entry(*command);
+    print_entry(**it);
   }
   return matches.size();
 }
@@ -936,6 +963,8 @@ void ClusterAdminCli::Register(
     CHECK(google::GetCommandLineFlagInfo(flag.c_str(), &info))
         << cmd_name << " lists unknown flag " << flag;
   }
+  CHECK_LE(metadata.description.size(), kMaxDescriptionLength)
+      << cmd_name << " has a description too long for the help list";
   command_indexes_[cmd_name] = commands_.size();
   commands_.push_back(
       {std::move(cmd_name), cmd_args, std::move(action), hidden, std::move(metadata)});
@@ -3665,13 +3694,13 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Create a snapshot schedule for a YSQL database or YCQL keyspace"});
   REGISTER_COMMAND(list_snapshot_schedules, {
       .group = CommandGroup::kBackupAndSnapshot,
-      .description = "List all snapshot schedules, or one schedule, with their snapshots"});
+      .description = "List snapshot schedules, or one schedule, with their snapshots"});
   REGISTER_COMMAND(delete_snapshot_schedule, {
       .group = CommandGroup::kBackupAndSnapshot,
       .description = "Delete a snapshot schedule and all of its snapshots"});
   REGISTER_COMMAND(restore_snapshot_schedule, {
       .group = CommandGroup::kBackupAndSnapshot,
-      .description = "Rewind a database or keyspace to a point in time using its schedule",
+      .description = "Rewind a database or keyspace to a point in time by its schedule",
       .example = "restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s"});
   REGISTER_COMMAND(clone_namespace, {
       .group = CommandGroup::kBackupAndSnapshot,
@@ -3679,7 +3708,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .example = "clone_namespace ysql.yugabyte cloned_db minus 5m"});
   REGISTER_COMMAND(list_clones, {
       .group = CommandGroup::kBackupAndSnapshot,
-      .description = "List clone operations for a source YSQL database or YCQL keyspace"});
+      .description = "List clone operations for a YSQL database or YCQL keyspace"});
   REGISTER_COMMAND(edit_snapshot_schedule, {
       .group = CommandGroup::kBackupAndSnapshot,
       .description = "Edit the interval or retention of a snapshot schedule"});
@@ -3725,7 +3754,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Compare a key range of a source and a target table at one time"});
   REGISTER_COMMAND(verify_xcluster_group, {
       .group = CommandGroup::kXClusterAutomatic,
-      .description = "Check an inbound group's tables against the source (automatic mode only)"});
+      .description = "Check inbound tables against the source (automatic mode only)"});
 
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
@@ -3755,32 +3784,32 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   // xCluster Target commands
   REGISTER_COMMAND(setup_universe_replication, {
       .group = CommandGroup::kXClusterManual,
-      .description = "Set up replication of the specified tables from a source universe"});
+      .description = "Set up replication of the given tables from a source universe"});
   REGISTER_COMMAND(delete_universe_replication, {
       .group = CommandGroup::kXClusterGeneral,
       .description = "Delete a replication group on the target universe"});
   REGISTER_COMMAND(alter_universe_replication, {
       .group = CommandGroup::kXClusterManual,
-      .description = "Add or remove tables, or change source addresses, of a replication group"});
+      .description = "Add or remove tables, or change source addresses, of a group"});
   REGISTER_COMMAND(set_universe_replication_enabled, {
       .group = CommandGroup::kXClusterGeneral,
       .description = "Pause or resume a replication group on the target universe"});
   REGISTER_COMMAND(get_replication_status, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "Show replication status and errors for inbound replication groups"});
+      .description = "Show the status and errors of inbound replication groups"});
   REGISTER_COMMAND(get_xcluster_safe_time, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "Show the xCluster safe time per database, optionally with lag and skew"});
+      .description = "Show each database's xCluster safe time, optionally lag and skew"});
   REGISTER_COMMAND(list_universe_replications, {
       .group = CommandGroup::kXClusterGeneral,
-      .description = "List inbound replication groups on the target, optionally for one database"});
+      .description = "List inbound replication groups, optionally for one database"});
   REGISTER_COMMAND(get_universe_replication_info, {
       .group = CommandGroup::kXClusterGeneral,
       .description = "Show the details of an inbound replication group"});
   // xCluster common commands
   REGISTER_COMMAND(change_xcluster_role, {
       .group = CommandGroup::kXClusterManual,
-      .description = "Deprecated: does nothing, since xCluster roles no longer need to be set"});
+      .description = "Deprecated: does nothing, as xCluster roles need not be set"});
 
   // xCluster V2 commands
   REGISTER_COMMAND(create_xcluster_checkpoint, {
@@ -3791,7 +3820,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Check whether checkpointed databases need a backup and restore"});
   REGISTER_COMMAND(setup_xcluster_replication, {
       .group = CommandGroup::kXClusterAutomatic,
-      .description = "Set up replication from a checkpointed outbound replication group"});
+      .description = "Set up replication from a checkpointed outbound group"});
   REGISTER_COMMAND(drop_xcluster_replication, {
       .group = CommandGroup::kXClusterAutomatic,
       .description = "Drop an outbound replication group, and its target side if given"});
@@ -3818,7 +3847,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
       .description = "Show the details of an outbound replication group"});
   REGISTER_COMMAND(xcluster_failover, {
       .group = CommandGroup::kXClusterAutomatic,
-      .description = "Fail over a replication group on the target (automatic mode only)"});
+      .description = "Fail over an inbound replication group (automatic mode only)"});
   REGISTER_COMMAND(stop_persisting);
   REGISTER_COMMAND(start_persisting);
   REGISTER_COMMAND(get_persistence_block_map);
