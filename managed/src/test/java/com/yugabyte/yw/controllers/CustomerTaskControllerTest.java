@@ -20,8 +20,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
@@ -909,5 +912,53 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
           node == null ? null : node.asText(),
           equalTo(universeUUID.toString()));
     }
+  }
+
+  private String rollbackUrl(UUID taskUUID) {
+    return "/api/customers/" + customer.getUuid() + "/tasks/" + taskUUID + "/rollback";
+  }
+
+  @Test
+  public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    UUID taskUUID =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditKubernetesUniverse,
+            "Foo",
+            "Failure",
+            50.0);
+
+    Result result = doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken());
+
+    assertThat(result.status(), is(FORBIDDEN));
+    assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+    verify(mockCommissioner, never()).getTaskParams(any());
+  }
+
+  @Test
+  public void testRollbackTaskNotBlockedForUniverseNotOwnedByOperator() {
+    UUID taskUUID =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditKubernetesUniverse,
+            "Foo",
+            "Failure",
+            50.0);
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
+
+    // Past the operator check: the request reaches the manager, which rejects a task that cannot
+    // be rolled back.
+    assertThat(result.status(), is(BAD_REQUEST));
+    verify(mockCommissioner).getTaskParams(taskUUID);
   }
 }
