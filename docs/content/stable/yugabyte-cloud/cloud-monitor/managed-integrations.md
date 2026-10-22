@@ -9,6 +9,8 @@ menu:
     identifier: managed-integrations
     parent: cloud-monitor
     weight: 600
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -117,13 +119,40 @@ The [Grafana Mimir](https://grafana.com/docs/mimir/latest/) integration requires
 
 Grafana's managed Mimir has a public DNS record and is reachable on port 443. You don't need to change networking to export metrics to that endpoint.
 
-{{< note title="Self-hosted Grafana Mimir" >}}
+#### Self-hosted Grafana Mimir
 
-Self-hosted Grafana Mimir follows the same port rules as [Prometheus](#prometheus) and [VictoriaMetrics](#victoriametrics). Cluster nodes allow outbound traffic only on ports 80 and 443. The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`.
+Self-hosted Grafana Mimir is only available for clusters deployed on AWS or GCP. It has the same networking requirements as [Prometheus](#prometheus) and [VictoriaMetrics](#victoriametrics).
 
-You can save an endpoint that includes another port, such as `http://mimir.yourcompany.com:8080/otlp`. The nodes drop that traffic, and metrics are not exported. The default Grafana Mimir listen port (8080) is not supported. Configure Mimir to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Mimir to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Mimir. Allow inbound traffic on that port from the cluster. See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
+- Grafana Mimir instance
+  - Deployed in a VPC on AWS or GCP.
 
-{{< /note >}}
+  - VPC hosting the Grafana Mimir instance has the following Inbound Security Group rules:
+    - Allow HTTP inbound traffic on port 80 for the Grafana Mimir endpoint URL (HTTP).
+    - Allow HTTPS inbound traffic on port 443 for the Grafana Mimir endpoint URL (HTTPS).
+
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
+
+  - Endpoint URL that is publicly resolvable and maps to the private IP of the Grafana Mimir instance.
+
+    The endpoint URL must have a publicly accessible DNS record so that its hostname can be resolved globally. Typically, this involves adding the URL to a public DNS zone. For example, in AWS, you would add the endpoint URL to a Public Hosted Zone in Route 53.
+
+    To verify that the endpoint is publicly resolvable, you can use a tool such as nslookup.
+
+    The Grafana Mimir instance itself should not be publicly accessible, but must be reachable from your YugabyteDB Aeon cluster via VPC peering (see YugabyteDB Aeon requirements below).
+
+  - Grafana Mimir listening on the HTTP or HTTPS port that matches the endpoint URL you provide.
+
+    The Metrics Exporter connects using the port implied by the URL scheme: port 80 for `http://` and port 443 for `https://`. Cluster nodes allow outbound traffic only on those ports. The default Grafana Mimir listen port (8080) is not supported and export fails if Mimir is only reachable on 8080. You can save an endpoint that includes another port, such as `http://mimir.yourcompany.com:8080/otlp`, but the nodes drop that traffic and metrics are not exported. Configure Mimir to listen on port 80 or 443, or place a reverse proxy such as nginx in front of Mimir to terminate HTTP/HTTPS on 80 or 443 and forward traffic to Mimir.
+
+- YugabyteDB Aeon cluster from which you want to export metrics
+  - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
+  - VPCs are peered with the VPC hosting Grafana Mimir. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+
+    As each region of a cluster deployed in AWS has its own VPC, make sure that _all_ the VPCs are peered and allow inbound access from Grafana Mimir; this also applies to regions you add or change after deployment, and to read replicas. In GCP, clusters are deployed in a single VPC.
+
+  For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+
+#### Create configuration
 
 To create an export configuration, do the following:
 
@@ -145,7 +174,7 @@ To create an export configuration, do the following:
 
     Omit a custom port from the URL. The exporter targets port 80 for HTTP and port 443 for HTTPS. For a self-hosted instance, do not use the default port 8080.
 
-1. Enter the Authorization header value. The value must start with `Bearer ` or `Basic `, including the space. For example, `Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
+1. Enter the Authorization header value. The value must start with `Bearer ` or `Basic `, including the space. For example, `Bearer <token>` or `Basic <Base64-encoded username:password>`.
 1. Optionally, enter the Grafana Mimir organization ID. This is sent as the `X-Scope-OrgID` header. Leave the field blank if your Grafana Mimir instance isn't multi-tenant.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
@@ -325,7 +354,7 @@ To create an export configuration, do the following:
 The [Tsuga](https://www.tsuga.com/) integration requires the following:
 
 - Tsuga account
-- OTLP endpoint URL for your Tsuga intake
+- OTLP endpoint URL of your Tsuga intake endpoint
 - Tsuga API token; the token is sent as an `Authorization: Bearer` header
 
 To create an export configuration, do the following:
