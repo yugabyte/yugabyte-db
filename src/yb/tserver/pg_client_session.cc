@@ -4192,7 +4192,8 @@ class PgClientSession::Impl {
       RETURN_NOT_OK(txn->EnsureGlobal(deadline));
     }
 
-    RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, deadline, session->read_point()));
+    RETURN_NOT_OK(
+        UpdateReadPointForXClusterConsistentReads(options, deadline, session->read_point()));
 
     if (saved_priority_) {
       priority = *saved_priority_;

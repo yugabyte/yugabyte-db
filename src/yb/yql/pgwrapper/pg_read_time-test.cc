@@ -2092,8 +2092,8 @@ TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
 // a new statement, which in READ COMMITTED switches the session to a new read time. The outer scan
 // must still not see the rows committed after it started.
 TEST_F(PgReadTimeTest, PrefetchedPageKeepsReadTimeAcrossReadPointSwitch) {
-  constexpr auto kPrefetchDelay = 3s;
-  constexpr auto kLookupLatency = 3s;
+  const auto kPrefetchDelay = 3s * kTimeMultiplier;
+  const auto kLookupLatency = 3s * kTimeMultiplier;
   constexpr int kNumRows = 20;
 
   auto conn = ASSERT_RESULT(Connect());
