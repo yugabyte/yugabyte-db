@@ -61,6 +61,7 @@
 typedef size_t *YbAttrToColIdxMap;
 
 static void YbUpdateComputeIndexColumnReferences(const Relation rel,
+												 List *indexlist, Oid pkindex,
 												 const Bitmapset *maybe_modified_cols,
 												 const YbAttrToColIdxMap map,
 												 YbUpdateAffectedEntities *affected_entities,
@@ -858,12 +859,18 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 									 const Relation rel,
 									 Bitmapset *update_attrs)
 {
-	/* Fetch a list of candidate entities that may be impacted by the update. */
+	/*
+	 * Fetch a list of candidate entities that may be impacted by the update.
+	 * The index list and primary key must come from the accessors: a relcache
+	 * rebuild during planning leaves rd_indexlist and rd_pkindex unset.
+	 */
+	List	   *indexlist = RelationGetIndexList(rel);
+	Oid			pkindex = RelationGetPrimaryKeyIndex(rel);
 	List	   *fkeylist = copyObject(RelationGetFKeyList(rel));
 	List	   *fkeyreflist = YbRelationGetFKeyReferencedByList(rel);
 
-	const int	maxentities = (list_length(rel->rd_indexlist) +
-							   (rel->rd_pkindex != InvalidOid ? 1 : 0) +
+	const int	maxentities = (list_length(indexlist) +
+							   (OidIsValid(pkindex) ? 1 : 0) +
 							   (fkeylist ? fkeylist->length : 0) +
 							   (fkeyreflist ? fkeyreflist->length : 0));
 
@@ -887,7 +894,8 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	 * Compute a list of indexes (primary or secondary) that potentially need to
 	 * be updated.
 	 */
-	YbUpdateComputeIndexColumnReferences(rel, maybe_modified_cols, map,
+	YbUpdateComputeIndexColumnReferences(rel, indexlist, pkindex,
+										 maybe_modified_cols, map,
 										 affected_entities,
 										 modifyTable->yb_skip_entities,
 										 &nentities);
@@ -926,6 +934,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	bms_free(maybe_modified_cols);
 	list_free(fkeyreflist);
 	list_free(fkeylist);
+	list_free(indexlist);
 
 	return affected_entities;
 }
@@ -957,6 +966,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
  */
 static void
 YbUpdateComputeIndexColumnReferences(const Relation rel,
+									 List *indexlist, Oid pkindex,
 									 const Bitmapset *maybe_modified_cols,
 									 const YbAttrToColIdxMap map,
 									 YbUpdateAffectedEntities *affected_entities,
@@ -969,7 +979,7 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 	 * Add the primary key to the head of the entity list so that it gets
 	 * evaluated first.
 	 */
-	if (RelationGetPrimaryKeyIndex(rel) != InvalidOid)
+	if (OidIsValid(pkindex))
 	{
 		Bitmapset  *pkbms = RelationGetIndexAttrBitmap(rel,
 													   INDEX_ATTR_BITMAP_PRIMARY_KEY);
@@ -980,21 +990,20 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 			if (bms_is_member(attnum, maybe_modified_cols))
 			{
 				YbConsiderColumnAndEntityForUpdate(rel, affected_entities, map,
-												   attnum, rel->rd_pkindex,
+												   attnum, pkindex,
 												   SKIP_PRIMARY_KEY, nentities);
 				pk_maybe_modified = true;
 			}
 		}
 
 		if (!pk_maybe_modified)
-			YbAddEntityToSkipList(SKIP_PRIMARY_KEY, rel->rd_pkindex,
+			YbAddEntityToSkipList(SKIP_PRIMARY_KEY, pkindex,
 								  skip_entities);
 	}
 
-	List *index_list = RelationGetIndexList(rel);
 	ListCell   *lc = NULL;
 
-	foreach(lc, index_list)
+	foreach(lc, indexlist)
 	{
 		Oid			index_oid = lfirst_oid(lc);
 
@@ -1003,7 +1012,7 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 			continue;
 
 		/* Avoid adding the primary key again. */
-		if (index_oid == rel->rd_pkindex)
+		if (index_oid == pkindex)
 			continue;
 
 		Relation	indexDesc = RelationIdGetRelation(index_oid);
