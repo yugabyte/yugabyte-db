@@ -1967,6 +1967,9 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
   auto retire = ScopeExit([this] {
     TEST_SYNC_POINT_CALLBACK("VectorLSM::SaveChunk:BeforeRetirement", this);
     std::lock_guard lock(mutex_);
+    // Every path that schedules SaveChunk must have counted it; an underflow here would make
+    // FlushesRetiredUnlocked never true and hang flush waits and shutdown.
+    DCHECK_GT(pending_save_tasks_, 0);
     --pending_save_tasks_;
     updates_queue_empty_cv_.notify_all();
   });
@@ -2026,8 +2029,15 @@ void VectorLSM<Vector, DistanceResult>::ReleaseChunkHold(MutableChunk& chunk) {
   if (--chunk.num_tasks == 0) {
     // Holds are released on the write path, so save the chunk on the insert thread pool.
     DCHECK(chunk.save_callback);
-    options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
+    const bool queued = options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
     chunk.save_callback = {};
+    if (!queued) {
+      // DoFlush counted this save task; retire it here or shutdown waits for it forever.
+      std::lock_guard lock(mutex_);
+      --pending_save_tasks_;
+      RecordFailureUnlocked(
+          STATUS(ShutdownInProgress, "Vector flush executor is shutting down"));
+    }
   }
 }
 
@@ -2229,9 +2239,19 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
         order_no, VectorIndexPtr{}, std::move(user_frontiers), /* flush_promise= */ nullptr);
     immutable_chunks_.push_back(chunk);
     updates_queue_.emplace(order_no, chunk);
+    // SaveChunk retires one counted task; this is the third producer besides DoFlush and
+    // ReleaseChunkHold.
+    ++pending_save_tasks_;
   }
 
-  options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  const bool queued =
+      options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
+  if (!queued) {
+    std::lock_guard lock(mutex_);
+    --pending_save_tasks_;
+    RecordFailureUnlocked(STATUS(ShutdownInProgress, "Vector flush executor is shutting down"));
+    return failed_status_;
+  }
   return true;
 }
 
