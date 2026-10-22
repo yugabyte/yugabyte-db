@@ -74,13 +74,18 @@ enum class CommandGroup {
   kMeta,
 };
 
+// `help` lists a group's descriptions beside its names only if its names leave this many
+// characters within its 100-column lines; otherwise each description goes below its name.
+inline constexpr size_t kMaxDescriptionLength = 64;
+
 // Help metadata for one operation (#33449). It is data, not text in a print function, so that
 // help --json and shell completion can be generated from the same registry help prints.
 struct CommandMetadata {
   // Unset for operations not yet populated; they render as they did before groups existed.
   std::optional<CommandGroup> group = std::nullopt;
-  // One line, at most 80 characters, verb-first, no trailing period. An operation with a _by_id
-  // twin says how it identifies its target ("given its name"), since the twin says "by ID".
+  // One line, at most kMaxDescriptionLength characters, verb-first, no trailing period. An
+  // operation with a _by_id twin says how it identifies its target ("given its name"), since the
+  // twin says "by ID".
   std::string description = {};
   // Global gflags that change this operation's behavior. Register() CHECKs that each exists, so
   // a typo fails every test instead of silently dropping out of help.
