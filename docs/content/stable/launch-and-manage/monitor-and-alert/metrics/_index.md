@@ -23,15 +23,15 @@ For information on query tuning, refer to [Query tuning](../../../launch-and-man
 
 ## Analyze metrics with an AI coding agent
 
-If an AI coding agent (such as Claude Code, Cursor, or Codex) analyzes these metrics for you, install the official [yb-metrics-analysis skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-metrics-analysis) first. The skill supplies the Prometheus metrics and what they indicate, so the agent makes fewer errors.
+If an AI coding agent (such as Claude Code, Cursor, or Codex) analyzes these metrics for you, install the official [yb-perf skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) first. The skill checks Prometheus and YugabyteDB Anywhere metrics for node hotspots, leader and tablet skew, and resource pressure, along with the SQL-layer checks those metrics can miss, so the agent makes fewer errors.
 
 To install the skill, run the following command:
 
 ```sh
-npx skills add yugabyte/yugabytedb-skills -s yb-metrics-analysis
+npx skills add yugabyte/yugabytedb-skills -s yb-perf
 ```
 
-The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 ## Frequently used metrics
 

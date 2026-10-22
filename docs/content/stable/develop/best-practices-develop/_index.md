@@ -19,7 +19,19 @@ To install the skill, run the following command:
 npx skills add yugabyte/yugabytedb-skills -s ysql
 ```
 
-The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
+## Review a YSQL schema with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) reviews an existing YSQL schema for you, install the official [yb-model skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-model) first. The skill checks sharding, indexes, partitions, and statistics from a captured schema, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-model
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 ## YSQL
 

@@ -34,7 +34,7 @@ To install the skill, run the following command:
 npx skills add yugabyte/yugabytedb-skills -s yb-k8s-operator
 ```
 
-The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 {{< note title="YugabyteDB Anywhere operator only" >}}
 The skill targets the YugabyteDB Anywhere Kubernetes Operator. It does not fully apply to the [open source YugabyteDB Kubernetes Operator](../../../deploy/kubernetes/single-zone/oss/yugabyte-operator/).

@@ -20,15 +20,15 @@ type: indexpage
 
 ## Assess performance with an AI coding agent
 
-If an AI coding agent (such as Claude Code, Cursor, or Codex) assesses universe performance for you, install the official [yb-performance-assessment skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-performance-assessment) first. The skill runs cross-cutting checks, then hands off to the specialist skills, so the agent makes fewer errors.
+If an AI coding agent (such as Claude Code, Cursor, or Codex) assesses universe performance for you, install the official [yb-perf skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) first. The skill checks the SQL layer (slow queries, execution plans, locks, and Active Session History) and the metrics layer (Prometheus and YugabyteDB Anywhere), so the agent makes fewer errors.
 
 To install the skill, run the following command:
 
 ```sh
-npx skills add yugabyte/yugabytedb-skills -s yb-performance-assessment
+npx skills add yugabyte/yugabytedb-skills -s yb-perf
 ```
 
-The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 {{<index/block>}}
 

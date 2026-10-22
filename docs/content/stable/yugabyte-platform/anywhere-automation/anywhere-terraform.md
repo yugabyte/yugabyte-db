@@ -28,7 +28,7 @@ To install the skill, run the following command:
 npx skills add yugabyte/yugabytedb-skills -s yba-terraform
 ```
 
-The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository also describes other ways to install the skill, including a Claude Skills upload and the plugin marketplace.
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
