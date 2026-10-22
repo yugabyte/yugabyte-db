@@ -705,11 +705,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
+      // Callers pass the universe node set. Storage, AZ, and proxy checks are per cluster.
+      Set<NodeDetails> clusterNodes =
+          CollectionUtils.isEmpty(nodes)
+              ? Collections.emptySet()
+              : nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
       if (userIntent.isMulticloudSupport()) {
         Util.validateSpecificationsIfPresent(
             userIntent.dedicatedNodes, userIntent.providerSpecifications, false);
         Map<UUID, List<NodeDetails>> byAzUUID =
-            nodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
+            clusterNodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
         byAzUUID.forEach(
             (azUUID, nds) -> {
               UUID providerUUID = searchProviderUUIDByAz(azUUID).orElseThrow();
@@ -745,7 +750,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + "master and tserver are selected.");
       } else {
         validateDeviceInfo(
-            userIntent.providerType, userIntent.deviceInfo, userIntent.masterDeviceInfo, nodes);
+            userIntent.providerType,
+            userIntent.deviceInfo,
+            userIntent.masterDeviceInfo,
+            clusterNodes);
       }
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
@@ -761,7 +769,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
         userIntent.specificGFlags.validateConsistency();
       }
-      validateProxyConfig(userIntent, nodes);
+      validateProxyConfig(userIntent, clusterNodes);
     }
 
     public void validateProxyConfig(UserIntent userIntent, Collection<NodeDetails> nodeDetails) {
