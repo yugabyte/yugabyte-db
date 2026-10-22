@@ -354,7 +354,7 @@ To create an export configuration, do the following:
 The [Tsuga](https://www.tsuga.com/) integration requires the following:
 
 - Tsuga account
-- OTLP endpoint URL of your Tsuga intake endpoint
+- URL of your Tsuga OTLP endpoint
 - Tsuga API token; the token is sent as an `Authorization: Bearer` header
 
 To create an export configuration, do the following:
