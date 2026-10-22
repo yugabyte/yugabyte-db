@@ -434,26 +434,6 @@ class OtlpHttpCollector {
     return result;
   }
 
-  // True if ancestor_span_id is anywhere in span's parent chain.
-  bool IsDescendantOf(
-      const std::string& trace_id, const Span& span,
-      const std::string& ancestor_span_id) const EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    auto it = traces_.find(trace_id);
-    if (it == traces_.end()) return false;
-    std::unordered_map<std::string, std::string> parent_of;
-    for (const auto& s : it->second.spans) {
-      parent_of[s.span_id] = s.parent_span_id;
-    }
-    for (auto parent = span.parent_span_id; !parent.empty();) {
-      if (parent == ancestor_span_id) return true;
-      auto p = parent_of.find(parent);
-      if (p == parent_of.end()) return false;
-      parent = p->second;
-    }
-    return false;
-  }
-
   std::vector<Span> FindSpansByParent(
       const std::string& trace_id, const std::string& parent_span_id) const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
@@ -2662,6 +2642,8 @@ TEST_F(DistTraceRpcTest, TestExecuteSpanCoversPortalStart) {
 
   // A fresh backend has cold catalog caches, so the lookups happen inside this query.
   auto fresh_conn = ASSERT_RESULT(Connect(true /* simple_query_protocol */));
+  // The plan-id hash is only computed when plan tracking is on; pg19 defaults it to none.
+  ASSERT_OK(fresh_conn.Execute("SET yb_pg_stat_plans_track = 'all'"));
   auto tp = GenerateTraceparent();
   ASSERT_OK(fresh_conn.FetchFormat(
       "SELECT c_first, c_last, c_balance FROM customer "
@@ -2673,16 +2655,14 @@ TEST_F(DistTraceRpcTest, TestExecuteSpanCoversPortalStart) {
   auto execute_spans = collector_.FindSpansByName(tp.trace_id, "execute");
   ASSERT_EQ(execute_spans.size(), 1);
 
-  // The read RPC may sit under a plan-node span (e.g. "Index Scan") rather than directly under
-  // execute.
   size_t under_execute = 0;
   for (const auto& span : collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ")) {
     if (span.service_name != "ysql") continue;
     ASSERT_NE(span.parent_span_id, root.span_id)
         << span.op_name << " is a direct child of the root query span";
-    under_execute += collector_.IsDescendantOf(tp.trace_id, span, execute_spans.front().span_id);
+    under_execute += span.parent_span_id == execute_spans.front().span_id;
   }
-  ASSERT_GT(under_execute, 0) << "no RPC span under execute";
+  ASSERT_GT(under_execute, 0) << "no RPC span parented to execute";
 }
 
 TEST_F(DistTraceConnMgrTest,
