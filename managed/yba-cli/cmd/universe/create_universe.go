@@ -53,6 +53,22 @@ var createUniverseCmd = &cobra.Command{
 		}
 		initializeViper(config)
 
+		// The flags are gone, but viper still reads these keys from an old --config-template
+		// (e.g. "universe describe -o cli-yaml" output). Fail instead of silently creating
+		// an unencrypted universe.
+		for _, key := range []string{"enable-volume-encryption", "kms-config"} {
+			if v1.IsSet(key) {
+				logrus.Fatalln(
+					formatter.Colorize(
+						fmt.Sprintf("%s is no longer supported, use "+
+							"encryption-at-rest-kms-config or "+
+							"cloud-volume-encryption-kms-config (AWS only) instead\n", key),
+						formatter.RedColor,
+					),
+				)
+			}
+		}
+
 		universeName := v1.GetString("name")
 
 		if util.IsEmptyString(universeName) {
