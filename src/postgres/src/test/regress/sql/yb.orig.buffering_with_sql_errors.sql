@@ -586,3 +586,12 @@ INSERT INTO t_abort_buf_outer SELECT f_abort_buf(g) FROM generate_series(1, 3) g
 COMMIT;
 SELECT * FROM t_abort_buf_outer ORDER BY k;
 SELECT * FROM t_abort_buf ORDER BY k;
+
+-- A top-level abort doesn't clear the buffer itself until its end. The query
+-- wrapper's error handler (yb_exec_query_wrapper_one_attempt) resets it first,
+-- so the buffered duplicate (1, 1) is never flushed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+ROLLBACK;
+INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+SELECT * FROM t_abort_buf ORDER BY k;
