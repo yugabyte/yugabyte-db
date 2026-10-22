@@ -626,6 +626,15 @@ main(int argc, char *argv[])
 	/* Restore will need to write to the target cluster */
 	fprintf(OPF, "SET default_transaction_read_only = off;\n\n");
 
+	/*
+	 * YB: backup restore replays hashed role passwords. yb_binary_restore is
+	 * what lets AlterRole accept a verifier while yb_allow_prehashed_passwords
+	 * is off. Binary upgrade does not use this flag; that backend is already
+	 * in binary-upgrade mode, and setting this would skip authid OID preservation.
+	 */
+	if (include_yb_metadata)
+		fprintf(OPF, "SET yb_binary_restore = true;\n\n");
+
 	/* Replicate encoding and std_strings in output */
 	fprintf(OPF, "SET client_encoding = '%s';\n",
 			pg_encoding_to_char(encoding));
