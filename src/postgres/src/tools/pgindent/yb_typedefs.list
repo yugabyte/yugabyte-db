@@ -179,6 +179,7 @@ YbPlanStatePtr
 YbPrefetcherStarterFunctor
 YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
+YbProcState
 YbPushdownExprs
 YbQdPgssStoreKind
 YbQpmConfiguration

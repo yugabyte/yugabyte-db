@@ -1140,7 +1140,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 						IdleStatsUpdateTimeoutHandler);
 	}
 
-	MyProc->ybInitializationCompleted = true;
+	YbMyProcState->initialization_completed = true;
 
 	/*
 	 * If this is either a bootstrap process or a standalone backend, start up

@@ -2492,12 +2492,13 @@ process_pm_child_exit(void)
 			 * a process dies while holding a lock. Otherwise, we can do some
 			 * cleanup.
 			 */
-			if (proc->ybLWLockAcquired || proc->ybSpinLocksAcquired > 0)
+			if (proc->ybProcState.lwlock_acquired ||
+				proc->ybProcState.spinlocks_acquired > 0)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
-								"acquiring %s", proc->ybLWLockAcquired ? "LWLock" : "SpinLock")));
+								"acquiring %s", proc->ybProcState.lwlock_acquired ? "LWLock" : "SpinLock")));
 				break;
 			}
 
@@ -2530,7 +2531,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (!proc->ybInitializationCompleted)
+			if (!proc->ybProcState.initialization_completed)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2539,7 +2540,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (proc->ybTerminationStarted)
+			if (proc->ybProcState.termination_started)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2548,7 +2549,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (proc->ybEnteredCriticalSection)
+			if (proc->ybProcState.entered_crit_section)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2944,8 +2945,9 @@ static bool
 YbCleanupKilledProcess(PGPROC *proc)
 {
 	Assert(proc->backendType != B_BG_WORKER &&
-		   proc->ybInitializationCompleted && !proc->ybTerminationStarted &&
-		   !proc->ybEnteredCriticalSection);
+		   proc->ybProcState.initialization_completed &&
+		   !proc->ybProcState.termination_started &&
+		   !proc->ybProcState.entered_crit_section);
 
 	if (YbIsAuxiliaryProc(proc))
 	{
