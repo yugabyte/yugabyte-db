@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
@@ -56,7 +57,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -104,6 +104,8 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
+  private final ResourceOperatorOwned resourceOperatorOwned;
+
   // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
   private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
 
@@ -114,6 +116,7 @@ public class Commissioner {
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
+      ResourceOperatorOwned resourceOperatorOwned,
       Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
@@ -121,6 +124,7 @@ public class Commissioner {
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.resourceOperatorOwned = resourceOperatorOwned;
     this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
@@ -714,39 +718,18 @@ public class Commissioner {
   }
 
   /**
-   * Whether rolling back a task of the universe through the API is blocked. That needs both the
-   * block for operator-owned resources to be on and the operator to own the universe, whose edit it
-   * would re-apply. So it is false for an owned universe while the block is off, and for a UUID
-   * that is not a universe. Submit and the task list both use this rule.
+   * Whether rolling back a task of the universe through the API is blocked: the operator owns the
+   * universe, whose edit it would re-apply, and the block for operator-owned resources is on. See
+   * {@link ResourceOperatorOwned#isUniverseBlocked}. Submit and the task list both use this rule.
    */
   public boolean isRollbackBlockedForOperatorOwnedUniverse(UUID universeUuid) {
-    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
-        && Universe.getUniverseDetailsField(
-                String.class,
-                universeUuid,
-                UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD)
-            .map(Boolean::parseBoolean)
-            .orElse(false);
+    return resourceOperatorOwned.isUniverseBlocked(universeUuid);
   }
 
-  /**
-   * The universes for which {@link #isRollbackBlockedForOperatorOwnedUniverse} holds, in one query.
-   */
+  /** The universes for which {@link #isRollbackBlockedForOperatorOwnedUniverse} holds. */
   public Set<UUID> getRollbackBlockedUniverseUUIDs(
       Long customerId, @Nullable UUID specificTargetUuid) {
-    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)) {
-      return Collections.emptySet();
-    }
-    return Universe.getUniverseDetailsFields(
-            String.class,
-            customerId,
-            UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD,
-            specificTargetUuid)
-        .entrySet()
-        .stream()
-        .filter(e -> Boolean.parseBoolean(e.getValue()))
-        .map(Map.Entry::getKey)
-        .collect(Collectors.toSet());
+    return resourceOperatorOwned.getBlockedUniverseUUIDs(customerId, specificTargetUuid);
   }
 
   // Returns a map of target to updating task UUID.

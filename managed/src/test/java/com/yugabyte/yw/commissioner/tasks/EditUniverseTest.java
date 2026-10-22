@@ -1695,31 +1695,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testIsRollbackBlockedForOperatorOwnedUniverse() {
-    UUID universeUuid = defaultUniverse.getUniverseUUID();
-    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
-
-    Universe.saveDetails(
-        universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-    assertTrue(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
-    // Not a universe, for example the target of a backup task.
-    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(UUID.randomUUID()));
-
-    // The rollback API is only blocked while the block for operator-owned resources is on.
-    factory
-        .globalRuntimeConf()
-        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
-  }
-
-  @Test
-  public void testGetRollbackBlockedUniverseUUIDs() {
+  public void testRollbackBlockedUniverseLookupsDelegateToTheOperatorRule() {
     UUID universeUuid = defaultUniverse.getUniverseUUID();
     Long customerId = defaultCustomer.getId();
+    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
     assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
 
     Universe.saveDetails(
         universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    assertTrue(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
     assertEquals(
         Set.of(universeUuid), commissioner.getRollbackBlockedUniverseUUIDs(customerId, null));
     assertEquals(
@@ -1727,11 +1711,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         commissioner.getRollbackBlockedUniverseUUIDs(customerId, universeUuid));
     assertTrue(
         commissioner.getRollbackBlockedUniverseUUIDs(customerId, UUID.randomUUID()).isEmpty());
-
-    factory
-        .globalRuntimeConf()
-        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
   }
 
   @Test
