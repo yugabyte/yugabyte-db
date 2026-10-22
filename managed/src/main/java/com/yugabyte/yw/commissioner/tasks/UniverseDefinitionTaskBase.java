@@ -4157,10 +4157,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (finalizeCatalogUpgrade) {
         createFinalizeYsqlMajorCatalogUpgradeTask();
       }
-      // Promote all auto flags upto class External.
+      // Promote all auto flags upto class External. A master refusal fails Finalize.
+      // PromoteAutoFlags ignores only "nothing to promote" (error code 6).
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
-          true /* ignoreErrors */,
+          false /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
       if (upgradeSystemCatalog) {

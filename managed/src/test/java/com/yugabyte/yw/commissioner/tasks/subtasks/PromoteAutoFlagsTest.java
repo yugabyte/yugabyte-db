@@ -122,6 +122,32 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testPromoteAutoFlagAlreadyPresentSucceeds() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = false;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(masterRefusedPromoteAutoFlagsResponse(ErrorCode.ALREADY_PRESENT));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testPromoteAutoFlagIgnoreErrorsSwallowsMasterRefusal() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = true;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(masterRefusedPromoteAutoFlagsResponse(ErrorCode.ILLEGAL_STATE));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
   public void testPromoteAutoFlagSuccess() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
@@ -133,5 +159,24 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
     task.initialize(params);
     task.run();
+  }
+
+  private static PromoteAutoFlagsResponse masterRefusedPromoteAutoFlagsResponse(ErrorCode code) {
+    return new PromoteAutoFlagsResponse(
+        0,
+        "uuid",
+        PromoteAutoFlagsResponsePB.newBuilder()
+            .setError(
+                MasterErrorPB.newBuilder()
+                    .setStatus(
+                        AppStatusPB.newBuilder()
+                            .setCode(code)
+                            .setMessage(
+                                "Cannot promote AutoFlags before all yb-tservers have been"
+                                    + " upgraded to the current version")
+                            .build())
+                    .setCode(Code.UNKNOWN_ERROR)
+                    .build())
+            .build());
   }
 }

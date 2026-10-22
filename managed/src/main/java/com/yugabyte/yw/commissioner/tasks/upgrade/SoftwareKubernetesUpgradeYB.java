@@ -231,9 +231,10 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 YsqlMajorVersionUpgradeState.UPGRADE_COMPLETE);
           }
 
+          // A master refusal fails the upgrade. Error code 6 is ignored in PromoteAutoFlags.
           createPromoteAutoFlagTask(
               taskParams().getUniverseUUID(),
-              true /* ignoreErrors*/,
+              false /* ignoreErrors*/,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
           if (taskParams().isEnableYbc()) {

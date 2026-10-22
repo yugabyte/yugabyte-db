@@ -527,9 +527,10 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       createYbcInstallTask(universe, new ArrayList<>(ctx.allNodes), ctx.newVersion);
     }
     createCheckSoftwareVersionTask(ctx.allNodes, ctx.newVersion);
+    // A master refusal fails the upgrade. Error code 6 is ignored in PromoteAutoFlags.
     createPromoteAutoFlagTask(
         universe.getUniverseUUID(),
-        true /* ignoreErrors */,
+        false /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(

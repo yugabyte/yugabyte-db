@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
@@ -48,6 +49,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
+import org.yb.WireProtocol.AppStatusPB;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
@@ -60,6 +63,8 @@ import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterTypes.MasterErrorPB;
+import org.yb.master.MasterTypes.MasterErrorPB.Code;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -151,6 +156,54 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeFailsWhenMasterRefusesAutoFlagPromotion() throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(masterRefusedPromoteAutoFlagsResponse());
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.PromoteAutoFlags
+                        && task.getTaskState() == Failure));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  private static PromoteAutoFlagsResponse masterRefusedPromoteAutoFlagsResponse() {
+    return new PromoteAutoFlagsResponse(
+        0,
+        "uuid",
+        PromoteAutoFlagsResponsePB.newBuilder()
+            .setError(
+                MasterErrorPB.newBuilder()
+                    .setStatus(
+                        AppStatusPB.newBuilder()
+                            .setCode(ErrorCode.ILLEGAL_STATE)
+                            .setMessage(
+                                "Cannot promote AutoFlags before all yb-tservers have been"
+                                    + " upgraded to the current version")
+                            .build())
+                    .setCode(Code.UNKNOWN_ERROR)
+                    .build())
+            .build());
   }
 
   @Test
