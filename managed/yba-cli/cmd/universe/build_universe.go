@@ -956,8 +956,6 @@ func getProviderType() {
 func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 	opType := ""
 
-	oldKMSUsed := true
-
 	kmsConfigs, err := authAPI.GetListOfKMSConfigs(
 		"Universe",
 		"Create - Get KMS Configurations",
@@ -974,7 +972,6 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 			)
 			cveKMSConfigUUID = ""
 		} else {
-			oldKMSUsed = false
 			cveKMSConfigs := earutil.KMSConfigNameAndCodeFilter(cveKMSConfigName, "", kmsConfigs)
 			if len(cveKMSConfigs) == 1 {
 				cveKMSConfigUUID = cveKMSConfigs[0].ConfigUUID
@@ -997,7 +994,6 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 
 	earKMSConfigName := v1.GetString("encryption-at-rest-kms-config")
 	if !util.IsEmptyString(earKMSConfigName) {
-		oldKMSUsed = false
 		earKMSConfigs := earutil.KMSConfigNameAndCodeFilter(earKMSConfigName, "", kmsConfigs)
 		if len(earKMSConfigs) == 1 {
 			opType = util.EnableOpType
@@ -1023,42 +1019,5 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 		}
 	}
 
-	if oldKMSUsed {
-		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
-		if enableVolumeEncryption {
-			opType = util.EnableOpType
-			kmsConfigName := v1.GetString("kms-config")
-			// find kmsConfigUUID from the name
-			if util.IsEmptyString(kmsConfigName) {
-				logrus.Fatalf(formatter.Colorize(
-					"No kms config name found to create universe, "+
-						"use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config\n",
-					formatter.RedColor,
-				))
-			}
-			kmsConfigsName := earutil.KMSConfigNameAndCodeFilter(kmsConfigName, "", kmsConfigs)
-			if len(kmsConfigsName) == 1 {
-				kmsConfigUUID = kmsConfigsName[0].ConfigUUID
-				logrus.Info(
-					"Using kms config: ",
-					fmt.Sprintf(
-						"%s %s",
-						kmsConfigName,
-						formatter.Colorize(kmsConfigUUID, formatter.GreenColor),
-					),
-					"\n",
-				)
-			} else if len(kmsConfigsName) > 1 {
-				logrus.Fatalf(
-					formatter.Colorize(
-						fmt.Sprintf("Multiple kms configurations with same name %s found", kmsConfigName),
-						formatter.RedColor))
-			} else {
-				logrus.Fatalf(formatter.Colorize(
-					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor,
-				))
-			}
-		}
-	}
 	return opType
 }
