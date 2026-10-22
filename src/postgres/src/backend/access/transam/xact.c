@@ -5733,6 +5733,9 @@ AbortSubTransaction(void)
 
 	s->state = TRANS_ABORT;
 
+	if (IsYugaByteEnabled())
+		YBCPgClearSessionState();
+
 	/*
 	 * Reset user ID which might have been changed transiently.  (See notes in
 	 * AbortTransaction.)
