@@ -19,22 +19,25 @@ import java.util.TreeMap;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.AsyncYBClient;
+import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
-import org.yb.client.TestYBClient;
 import org.yb.client.YBClient;
 import org.yb.util.Timeouts;
 import static org.yb.AssertionWrappers.assertFalse;
 
 @RunWith(value=YBTestRunner.class)
-public class TestSSLClient extends TestYBClient {
+public class TestSSLClient extends BaseYBClientTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSSLClient.class);
 
   public enum TestMode {
     TLS, MUTUAL_TLS_NO_CLIENT_VERIFY, MUTUAL_TLS_CLIENT_VERIFY
   }
 
   private void setup(TestMode mode) throws Exception {
-    destroyMiniCluster();
+    destroyClientAndMiniCluster();
 
     certFile = String.format("%s/%s", certsDir(), "ca.crt");
     useIpWithCertificate = true;
