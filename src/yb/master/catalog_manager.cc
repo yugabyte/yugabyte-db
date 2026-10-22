@@ -12592,10 +12592,13 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   Status s;
   std::unordered_set<TableInfo*> ok_status_tables;
   Result<std::vector<PlacementCandidates>> candidates = std::vector<PlacementCandidates>();
+  TableInfoPtr table;
   if (!deferred.needs_create_rpc.empty()) {
-    candidates = BuildPlacementCandidates(deferred.needs_create_rpc.front()->table(), ts_descs);
+    table = deferred.needs_create_rpc.front()->table();
+    candidates = BuildPlacementCandidates(table, ts_descs);
   }
   for (const TabletInfoPtr& tablet : deferred.needs_create_rpc) {
+    DCHECK_EQ(tablet->table(), table);
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
@@ -12840,6 +12843,8 @@ Status CatalogManager::SelectReplicasForTablet(
 Status CatalogManager::SelectReplicasForPlacement(
     const TSDescriptorVector& ts_descs, const PlacementCandidates& placement,
     consensus::RaftConfigPB* config, CMPerTableLoadState* per_table_state) {
+  DCHECK_EQ(placement.all_allowed.size(), ts_descs.size());
+  DCHECK_EQ(per_table_state->sorted_by_load().size(), ts_descs.size());
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
   std::vector<bool> already_selected(ts_descs.size(), false);
@@ -12856,7 +12861,8 @@ Status CatalogManager::SelectReplicasForPlacement(
   // Replicas each block can still take after its minimums before reaching its maximum.
   std::vector<size_t> remaining_block_capacity;
   for (const auto& block : placement.blocks) {
-    // This works because currently we don't allow placement blocks to overlap.
+    // Cluster-level placements are validated not to overlap. Table-level ones may (duplicates or
+    // prefixes); a tserver taken by an earlier block is then unavailable to a later one.
     size_t num_replicas = min(block.min_num_replicas, block.num_allowed);
     min_replica_count_sum += block.min_num_replicas;
     RETURN_NOT_OK(SelectReplicas(
@@ -12878,7 +12884,8 @@ Status CatalogManager::SelectReplicasForPlacement(
     if (already_selected[idx]) {
       continue;
     }
-    // Placement blocks don't overlap, so the first block allowing the tserver is its block.
+    // The first block allowing the tserver is charged; blocks overlap only in table-level
+    // placements, see above.
     size_t b = 0;
     while (b < placement.blocks.size() && !placement.blocks[b].allowed[idx]) {
       ++b;
@@ -13124,6 +13131,7 @@ void CatalogManager::AddReplicaToConfig(
     const TSDescriptorVector& ts_descs, size_t idx, consensus::RaftConfigPB* config,
     std::vector<bool>* already_selected, PeerMemberType member_type,
     CMPerTableLoadState* per_table_state) {
+  DCHECK(!(*already_selected)[idx]);
   (*already_selected)[idx] = true;
   // Update the load state at global and table level.
   per_table_state->AddReplica(idx);
@@ -14357,17 +14365,18 @@ const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
 
 Status CatalogManager::InitializeTableLoadState(
     const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state) {
+  std::unordered_map<TabletServerId, uint32_t> table_load;
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_replica_load_[ts->permanent_uuid()];
+    table_load[ts->permanent_uuid()];
   }
 
   auto table_info = GetTableInfo(table_id);
 
   if (table_info) {
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(table_info, state));
+    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(table_info, &table_load));
   }
-  return state->Init(ts_descs);
+  return state->Init(ts_descs, table_load);
 }
 
 // TODO: consider unifying this code with the cluster balancer.
@@ -14392,7 +14401,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
         continue;
       }
     }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state));
+    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }

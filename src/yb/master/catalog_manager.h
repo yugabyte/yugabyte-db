@@ -1066,9 +1066,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
-  // Tservers one PlacementInfoPB of a table allows its replicas on. Built once per table and
-  // reused for every tablet of that table; the bool vectors are indexed like the ts_descs the
-  // candidates were built from.
+  // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
+  // replica). Built once per table and reused for every tablet of that table; the bool vectors
+  // are indexed like the ts_descs the candidates were built from.
   struct PlacementCandidates {
     struct Block {
       size_t min_num_replicas;
@@ -1091,7 +1091,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::vector<PlacementCandidates>> BuildPlacementCandidates(
       const TableInfoPtr& table, const TSDescriptorVector& ts_descs);
 
-  Result<PlacementCandidates> BuildPlacementCandidates(
+  static Result<PlacementCandidates> BuildPlacementCandidates(
       const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs,
       consensus::PeerMemberType member_type);
 
@@ -2079,6 +2079,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   friend class ObjectLockLoader;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasWithoutPlacementBlocks);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasPerBlockMinimums);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasBlockMaximumCapsLeftovers);
+  FRIEND_TEST(TestCatalogManager, PlaceReadReplicas);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasExcludesOtherPlacementUuids);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasBlockWithTooFewTservers);
+  FRIEND_TEST(TestCatalogManager, PlaceReplicasOverlappingBlocksFail);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -2298,20 +2305,20 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CMGlobalLoadState* global_state);
 
   // Places one placement's replicas: the minimum for each placement block first, then the rest
-  // anywhere in the placement.
-  Status SelectReplicasForPlacement(
+  // on the least loaded allowed tservers, up to each block's effective maximum.
+  static Status SelectReplicasForPlacement(
       const TSDescriptorVector& ts_descs, const PlacementCandidates& placement,
       consensus::RaftConfigPB* config, CMPerTableLoadState* per_table_state);
 
   // Adds 'nreplicas' peers of 'member_type' to 'config', least loaded tservers in 'allowed'
   // first, skipping and then marking the ones in 'already_selected'.
-  Status SelectReplicas(
+  static Status SelectReplicas(
       const TSDescriptorVector& ts_descs, const std::vector<bool>& allowed, size_t nreplicas,
       consensus::RaftConfigPB* config, std::vector<bool>* already_selected,
       consensus::PeerMemberType member_type, CMPerTableLoadState* per_table_state);
 
   // Adds tserver 'idx' as a replica of 'member_type' to 'config' and updates the load bookkeeping.
-  void AddReplicaToConfig(
+  static void AddReplicaToConfig(
       const TSDescriptorVector& ts_descs, size_t idx, consensus::RaftConfigPB* config,
       std::vector<bool>* already_selected, consensus::PeerMemberType member_type,
       CMPerTableLoadState* per_table_state);
