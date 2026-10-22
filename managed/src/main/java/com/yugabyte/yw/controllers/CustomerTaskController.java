@@ -9,8 +9,6 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
-import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.tasks.CustomerTaskHandler;
@@ -327,8 +325,6 @@ public class CustomerTaskController extends AuthenticatedController {
                 identifier = "tasks",
                 columnName = "uuid"))
   })
-  // The operator reconciles the CR spec, so a user rollback would just be re-applied.
-  @BlockOperatorResource(resource = OperatorResourceTypes.TASK)
   public Result rollbackTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     CustomerTask customerTask = customerTaskManager.rollbackCustomerTask(customerUUID, taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);

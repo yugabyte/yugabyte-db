@@ -90,6 +90,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+  public static final String IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD =
+      "isKubernetesOperatorControlled";
 
   public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
       ImmutableSet.of(

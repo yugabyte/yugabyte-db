@@ -56,6 +56,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -338,12 +339,16 @@ public class Commissioner {
    *     updatingTaskUUID plus placementModificationTaskUuid.
    * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
    *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
+   * @param operatorOwnedTargets the targets the operator owns, see {@link
+   *     #getOperatorOwnedUniverseUUIDs}. The rollback API is blocked for them, so they get no
+   *     rollback.
    */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, Set<String>> placementLockTasks,
+      Set<UUID> operatorOwnedTargets,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null) {
       return Optional.empty();
@@ -444,6 +449,9 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
+              if (operatorOwnedTargets.contains(task.getTargetUUID())) {
+                return false;
+              }
               // An edit's auto-rollback clears placementModificationTaskUuid but keeps
               // updatingTaskUUID so the task stays retryable. Checkpoint-based rollbacks must hold
               // the placement lock, as canRollbackTaskOnUniverse requires on submit.
@@ -691,6 +699,16 @@ public class Commissioner {
                   .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
                   .add(id);
             });
+    Set<UUID> operatorOwnedTargets = new HashSet<>();
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
+        && Universe.getUniverseDetailsField(
+                String.class,
+                task.getTargetUUID(),
+                UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD)
+            .map(Boolean::parseBoolean)
+            .orElse(false)) {
+      operatorOwnedTargets.add(task.getTargetUUID());
+    }
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
@@ -698,7 +716,29 @@ public class Commissioner {
         taskInfo.getSubTasks(),
         updatingTaskByTargetMap,
         placementLockByTargetMap,
+        operatorOwnedTargets,
         lastTaskByTargetMap);
+  }
+
+  /**
+   * The universes the operator owns, when the API block for operator-owned resources is on. Rolling
+   * one back through the API is blocked, since the operator would re-apply the edit.
+   */
+  public Set<UUID> getOperatorOwnedUniverseUUIDs(
+      Long customerId, @Nullable UUID specificTargetUuid) {
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)) {
+      return Collections.emptySet();
+    }
+    return Universe.getUniverseDetailsFields(
+            String.class,
+            customerId,
+            UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD,
+            specificTargetUuid)
+        .entrySet()
+        .stream()
+        .filter(e -> Boolean.parseBoolean(e.getValue()))
+        .map(Map.Entry::getKey)
+        .collect(Collectors.toSet());
   }
 
   // Returns a map of target to updating task UUID.

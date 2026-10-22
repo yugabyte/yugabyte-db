@@ -160,6 +160,7 @@ public class CustomerTaskHandler {
                 subTaskInfos.getOrDefault(task.getTaskUUID(), Collections.emptyList()),
                 taskOwners.updating(),
                 taskOwners.placementLock(),
+                taskOwners.operatorOwned(),
                 lastTaskByTargetMap)
             .ifPresent(
                 taskProgress -> {
@@ -192,6 +193,7 @@ public class CustomerTaskHandler {
             subTaskInfos,
             taskOwners.updating(),
             taskOwners.placementLock(),
+            taskOwners.operatorOwned(),
             lastTaskByTargetMap)
         .ifPresent(
             taskProgress -> {
@@ -223,6 +225,7 @@ public class CustomerTaskHandler {
                             subTaskInfos.getOrDefault(r.getTaskUUID(), Collections.emptyList()),
                             taskOwners.updating(),
                             taskOwners.placementLock(),
+                            taskOwners.operatorOwned(),
                             lastTaskByTargetMap)
                         .map(taskProgress -> buildCustomerTaskFromData(r, taskProgress))
                         .orElse(null))
@@ -320,10 +323,13 @@ public class CustomerTaskHandler {
   /**
    * Per universe, the task UUIDs that own it. {@code updating} (updatingTaskUUID plus
    * placementModificationTaskUuid) gates retry; {@code placementLock}
-   * (placementModificationTaskUuid only) gates checkpoint-based rollback.
+   * (placementModificationTaskUuid only) gates checkpoint-based rollback. {@code operatorOwned} are
+   * the universes whose rollback is blocked.
    */
   private record TaskOwners(
-      Map<UUID, Set<String>> updating, Map<UUID, Set<String>> placementLock) {}
+      Map<UUID, Set<String>> updating,
+      Map<UUID, Set<String>> placementLock,
+      Set<UUID> operatorOwned) {}
 
   private TaskOwners buildTaskOwners(Customer customer, @Nullable UUID targetUuid) {
     Map<UUID, Set<String>> updating = new HashMap<>();
@@ -340,7 +346,10 @@ public class CustomerTaskHandler {
               updating.computeIfAbsent(universeUUID, k -> new HashSet<>()).add(taskUUID);
               placementLock.computeIfAbsent(universeUUID, k -> new HashSet<>()).add(taskUUID);
             });
-    return new TaskOwners(updating, placementLock);
+    return new TaskOwners(
+        updating,
+        placementLock,
+        commissioner.getOperatorOwnedUniverseUUIDs(customer.getId(), targetUuid));
   }
 
   private TaskPagedQuery toPagedQuery(UUID cUUID, TaskPagedQuerySpec spec) {

@@ -7,10 +7,8 @@ import com.google.re2j.Matcher;
 import com.google.re2j.Pattern;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -70,28 +68,6 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
             && provider.getDetails().getCloudInfo().kubernetes.isKubernetesOperatorControlled) {
           log.warn(
               "blocking api call {}, provider is owned by kubernetes operator", request.path());
-          return CompletableFuture.completedFuture(
-              Results.forbidden("resource is controlled by kubernetes operator"));
-        }
-        return delegate.call(request);
-      case TASK:
-        // The path holds a task UUID, so find the universe the task belongs to.
-        Pattern taskRegex = Pattern.compile(String.format(".*/tasks/%s/?.*", UUID_PATTERN));
-        UUID taskUUID = getUUIDFromPath(taskRegex, request.path());
-        if (taskUUID == null) {
-          log.debug("No task UUID found, assuming resource is not owned by the operator");
-          return delegate.call(request);
-        }
-        CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
-        if (customerTask == null || !customerTask.getTargetType().isUniverseTarget()) {
-          return delegate.call(request);
-        }
-        Optional<Universe> taskUniverse = Universe.maybeGet(customerTask.getTargetUUID());
-        if (taskUniverse.isPresent()
-            && taskUniverse.get().getUniverseDetails().isKubernetesOperatorControlled) {
-          log.warn(
-              "blocking api call {}, universe of the task is owned by kubernetes operator",
-              request.path());
           return CompletableFuture.completedFuture(
               Results.forbidden("resource is controlled by kubernetes operator"));
         }

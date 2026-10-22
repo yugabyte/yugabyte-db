@@ -110,7 +110,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             status,
             percentComplete,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -781,7 +781,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         99.0,
         "TLS Toggle ON",
         responseJson);
-    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(any(), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
@@ -823,7 +823,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("retryable", false);
     responseJson.put("canRollback", false);
 
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -855,7 +855,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             10.0,
             responseJson);
     responseJson.put("originalTaskUUID", originalTaskUuid.toString());
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -918,22 +918,31 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     return "/api/customers/" + customer.getUuid() + "/tasks/" + taskUUID + "/rollback";
   }
 
-  @Test
-  public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
+  private UUID createFailedEditTask() {
+    return createTaskWithStatus(
+        universe.getUniverseUUID(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        TaskType.EditKubernetesUniverse,
+        "Foo",
+        "Failure",
+        50.0);
+  }
+
+  private void setOperatorOwned() {
     Universe.saveDetails(
         universe.getUniverseUUID(),
         u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-    UUID taskUUID =
-        createTaskWithStatus(
-            universe.getUniverseUUID(),
-            CustomerTask.TargetType.Universe,
-            CustomerTask.TaskType.Update,
-            TaskType.EditKubernetesUniverse,
-            "Foo",
-            "Failure",
-            50.0);
+  }
 
-    Result result = doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken());
+  @Test
+  public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
+    setOperatorOwned();
+    UUID taskUUID = createFailedEditTask();
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
 
     assertThat(result.status(), is(FORBIDDEN));
     assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
@@ -942,15 +951,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackTaskNotBlockedForUniverseNotOwnedByOperator() {
-    UUID taskUUID =
-        createTaskWithStatus(
-            universe.getUniverseUUID(),
-            CustomerTask.TargetType.Universe,
-            CustomerTask.TaskType.Update,
-            TaskType.EditKubernetesUniverse,
-            "Foo",
-            "Failure",
-            50.0);
+    UUID taskUUID = createFailedEditTask();
 
     Result result =
         assertPlatformException(
@@ -958,6 +959,22 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
     // Past the operator check: the request reaches the manager, which rejects a task that cannot
     // be rolled back.
+    assertThat(result.status(), is(BAD_REQUEST));
+    verify(mockCommissioner).getTaskParams(taskUUID);
+  }
+
+  @Test
+  public void testRollbackTaskNotBlockedWhenOperatorBlockIsOff() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
+    setOperatorOwned();
+    UUID taskUUID = createFailedEditTask();
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("POST", rollbackUrl(taskUUID), user.createAuthToken()));
+
     assertThat(result.status(), is(BAD_REQUEST));
     verify(mockCommissioner).getTaskParams(taskUUID);
   }

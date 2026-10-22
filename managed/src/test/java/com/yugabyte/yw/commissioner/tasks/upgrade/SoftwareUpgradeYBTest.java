@@ -1373,6 +1373,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             customerTask.getTaskInfo().getSubTasks(),
             ImmutableMap.of(customerTask.getTargetUUID(), owners),
             ImmutableMap.of(customerTask.getTargetUUID(), placementLockOwners),
+            Set.of() /* operatorOwnedTargets */,
             ImmutableMap.of(customerTask.getTargetUUID(), customerTask))
         .map(status -> status.get("canRollback").asBoolean())
         .orElseThrow();

@@ -8,6 +8,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Test;
+import play.libs.Json;
 
 public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
 
@@ -725,5 +727,19 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
 
     // Only a blank storage class means "not overriden"; a real one must still win.
     assertEquals("premium", UserIntent.mergeDeviceInfos(base, override).storageClass);
+  }
+
+  // Task listing reads this key out of universe_details_json with SQL, so it must match the
+  // serialized name of the field.
+  @Test
+  public void operatorControlledFieldNameMatchesSerializedKey() {
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.isKubernetesOperatorControlled = true;
+
+    JsonNode json = Json.toJson(params);
+
+    assertTrue(
+        json.path(UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD)
+            .asBoolean());
   }
 }

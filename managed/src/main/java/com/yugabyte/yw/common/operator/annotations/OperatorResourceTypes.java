@@ -4,8 +4,7 @@ package com.yugabyte.yw.common.operator.annotations;
 
 public enum OperatorResourceTypes {
   UNIVERSE("universe"),
-  PROVIDER("provider"),
-  TASK("task");
+  PROVIDER("provider");
 
   private final String type;
 

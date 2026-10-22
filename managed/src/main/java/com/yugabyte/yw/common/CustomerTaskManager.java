@@ -8,6 +8,7 @@ import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -840,8 +841,24 @@ public class CustomerTaskManager {
     return false;
   }
 
+  /**
+   * The operator reconciles its universes to the CR spec, so a user rollback would just be
+   * re-applied. Same condition as {@code @BlockOperatorResource} on the edit APIs.
+   */
+  private boolean isOperatorOwned(CustomerTask customerTask) {
+    return confGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
+        && customerTask.getTargetType().isUniverseTarget()
+        && Universe.maybeGet(customerTask.getTargetUUID())
+            .map(u -> u.getUniverseDetails().isKubernetesOperatorControlled)
+            .orElse(false);
+  }
+
   public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    if (isOperatorOwned(customerTask)) {
+      throw new PlatformServiceException(
+          FORBIDDEN, "resource is controlled by kubernetes operator");
+    }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);
