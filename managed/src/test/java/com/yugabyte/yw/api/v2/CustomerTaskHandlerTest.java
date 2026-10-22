@@ -44,6 +44,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -91,6 +92,34 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
     assertEquals(task.getTaskUUID(), resp.getEntities().get(0).getInfo().getUuid());
     assertEquals("Universe", resp.getEntities().get(0).getInfo().getTarget());
+  }
+
+  @Test
+  public void pageListTasks_passesRollbackBlockedUniversesToTaskStatus() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditKubernetesUniverse,
+            universe.getName(),
+            "Failure",
+            50.0,
+            responseJson);
+    Set<UUID> blocked = Set.of(universe.getUniverseUUID());
+    when(mockCommissioner.getRollbackBlockedUniverseUUIDs(any(), any())).thenReturn(blocked);
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    TaskPagedQuerySpec spec = new TaskPagedQuerySpec();
+    spec.offset(0).limit(10);
+    handler.pageListTasks(customer.getUuid(), spec);
+
+    // The list builds each task's status with the universes the commissioner reports as blocked.
+    verify(mockCommissioner).buildTaskStatus(eq(task), any(), any(), any(), eq(blocked), any());
   }
 
   @Test
@@ -477,7 +506,8 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
 
   @Test
   public void rollbackTask_operatorOwnedUniverse_throwsForbidden() {
-    when(mockCommissioner.isOperatorOwnedUniverse(universe.getUniverseUUID())).thenReturn(true);
+    when(mockCommissioner.isRollbackBlockedForOperatorOwnedUniverse(universe.getUniverseUUID()))
+        .thenReturn(true);
     UUID taskUUID = UUID.randomUUID();
     TaskInfo failed = new TaskInfo(TaskType.EditKubernetesUniverse, null);
     failed.setUuid(taskUUID);

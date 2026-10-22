@@ -845,7 +845,7 @@ public class CustomerTaskManager {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     // The operator reconciles its universes to the CR spec, so a user rollback would just be
     // re-applied.
-    if (commissioner.isOperatorOwnedUniverse(customerTask.getTargetUUID())) {
+    if (commissioner.isRollbackBlockedForOperatorOwnedUniverse(customerTask.getTargetUUID())) {
       throw new PlatformServiceException(
           FORBIDDEN, "resource is controlled by kubernetes operator");
     }

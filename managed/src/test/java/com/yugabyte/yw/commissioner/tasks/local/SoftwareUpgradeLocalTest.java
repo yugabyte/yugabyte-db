@@ -961,7 +961,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         taskInfo.getSubTasks(),
         updatingTasks,
         placementLockTasks,
-        Set.of() /* operatorOwnedTargets */,
+        Set.of() /* rollbackBlockedTargets */,
         lastTaskByTarget);
   }
 

@@ -339,16 +339,15 @@ public class Commissioner {
    *     updatingTaskUUID plus placementModificationTaskUuid.
    * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
    *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
-   * @param operatorOwnedTargets the targets the operator owns, see {@link
-   *     #getOperatorOwnedUniverseUUIDs}. The rollback API is blocked for them, so they get no
-   *     rollback.
+   * @param rollbackBlockedTargets the targets whose rollback is blocked for the operator, see
+   *     {@link #getRollbackBlockedUniverseUUIDs}. They get no rollback.
    */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, Set<String>> placementLockTasks,
-      Set<UUID> operatorOwnedTargets,
+      Set<UUID> rollbackBlockedTargets,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null) {
       return Optional.empty();
@@ -449,7 +448,7 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
-              if (operatorOwnedTargets.contains(task.getTargetUUID())) {
+              if (rollbackBlockedTargets.contains(task.getTargetUUID())) {
                 return false;
               }
               // An edit's auto-rollback clears placementModificationTaskUuid but keeps
@@ -699,8 +698,10 @@ public class Commissioner {
                   .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
                   .add(id);
             });
-    Set<UUID> operatorOwnedTargets =
-        isOperatorOwnedUniverse(task.getTargetUUID()) ? Set.of(task.getTargetUUID()) : Set.of();
+    Set<UUID> rollbackBlockedTargets =
+        isRollbackBlockedForOperatorOwnedUniverse(task.getTargetUUID())
+            ? Set.of(task.getTargetUUID())
+            : Set.of();
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
@@ -708,16 +709,17 @@ public class Commissioner {
         taskInfo.getSubTasks(),
         updatingTaskByTargetMap,
         placementLockByTargetMap,
-        operatorOwnedTargets,
+        rollbackBlockedTargets,
         lastTaskByTargetMap);
   }
 
   /**
-   * Whether rolling back a task of the universe through the API is blocked: the block for
-   * operator-owned resources is on and the operator owns the universe, so it would re-apply the
-   * edit. A UUID that is not a universe is not owned. Submit and the task list both use this rule.
+   * Whether rolling back a task of the universe through the API is blocked. That needs both the
+   * block for operator-owned resources to be on and the operator to own the universe, whose edit it
+   * would re-apply. So it is false for an owned universe while the block is off, and for a UUID
+   * that is not a universe. Submit and the task list both use this rule.
    */
-  public boolean isOperatorOwnedUniverse(UUID universeUuid) {
+  public boolean isRollbackBlockedForOperatorOwnedUniverse(UUID universeUuid) {
     return runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
         && Universe.getUniverseDetailsField(
                 String.class,
@@ -727,8 +729,10 @@ public class Commissioner {
             .orElse(false);
   }
 
-  /** The universes for which {@link #isOperatorOwnedUniverse} holds, in one query. */
-  public Set<UUID> getOperatorOwnedUniverseUUIDs(
+  /**
+   * The universes for which {@link #isRollbackBlockedForOperatorOwnedUniverse} holds, in one query.
+   */
+  public Set<UUID> getRollbackBlockedUniverseUUIDs(
       Long customerId, @Nullable UUID specificTargetUuid) {
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)) {
       return Collections.emptySet();

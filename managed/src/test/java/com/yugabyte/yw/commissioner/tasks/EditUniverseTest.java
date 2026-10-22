@@ -1638,7 +1638,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testCanTaskRollbackListingFalseForOperatorOwnedUniverse() {
+  public void testTaskStatusNoRollbackForOperatorOwnedUniverse() {
     clearAbortOrPausePositions();
     doAnswer(
             invocation -> {
@@ -1669,48 +1669,69 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             CustomerTask.TaskType.Edit,
             universe.getName());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    // The same failed edit is offered a rollback unless the operator owns the universe, where the
-    // rollback API is blocked.
-    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe, false /* operatorOwned */));
-    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe, true /* operatorOwned */));
+    // The predicate: the same failed edit is offered a rollback unless its universe is rollback
+    // blocked for the operator.
+    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe, false /* blocked */));
+    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe, true /* blocked */));
+
+    // The single-task status, with the real queries: the universe has to be marked as owned.
+    assertTrue(canRollbackInStatus(taskInfo));
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    assertFalse(canRollbackInStatus(taskInfo));
+    factory
+        .globalRuntimeConf()
+        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
+    assertTrue(canRollbackInStatus(taskInfo));
+  }
+
+  private boolean canRollbackInStatus(TaskInfo taskInfo) {
+    return commissioner
+        .mayGetStatus(taskInfo.getUuid())
+        .orElseThrow(() -> new AssertionError("expected task status"))
+        .get("canRollback")
+        .asBoolean();
   }
 
   @Test
-  public void testIsOperatorOwnedUniverse() {
+  public void testIsRollbackBlockedForOperatorOwnedUniverse() {
     UUID universeUuid = defaultUniverse.getUniverseUUID();
-    assertFalse(commissioner.isOperatorOwnedUniverse(universeUuid));
+    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
 
     Universe.saveDetails(
         universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-    assertTrue(commissioner.isOperatorOwnedUniverse(universeUuid));
+    assertTrue(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
     // Not a universe, for example the target of a backup task.
-    assertFalse(commissioner.isOperatorOwnedUniverse(UUID.randomUUID()));
+    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(UUID.randomUUID()));
 
     // The rollback API is only blocked while the block for operator-owned resources is on.
     factory
         .globalRuntimeConf()
         .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    assertFalse(commissioner.isOperatorOwnedUniverse(universeUuid));
+    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
   }
 
   @Test
-  public void testGetOperatorOwnedUniverseUUIDs() {
+  public void testGetRollbackBlockedUniverseUUIDs() {
     UUID universeUuid = defaultUniverse.getUniverseUUID();
     Long customerId = defaultCustomer.getId();
-    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, null).isEmpty());
+    assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
 
     Universe.saveDetails(
         universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
     assertEquals(
-        Set.of(universeUuid), commissioner.getOperatorOwnedUniverseUUIDs(customerId, null));
+        Set.of(universeUuid), commissioner.getRollbackBlockedUniverseUUIDs(customerId, null));
     assertEquals(
-        Set.of(universeUuid), commissioner.getOperatorOwnedUniverseUUIDs(customerId, universeUuid));
-    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, UUID.randomUUID()).isEmpty());
+        Set.of(universeUuid),
+        commissioner.getRollbackBlockedUniverseUUIDs(customerId, universeUuid));
+    assertTrue(
+        commissioner.getRollbackBlockedUniverseUUIDs(customerId, UUID.randomUUID()).isEmpty());
 
     factory
         .globalRuntimeConf()
         .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, null).isEmpty());
+    assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
   }
 
   @Test
@@ -3268,8 +3289,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   /**
-   * Mirrors listing {@code canRollback}: builds the allow-retry/placement map from in-memory
-   * universe details (H2 unit tests cannot run {@code getUniverseDetailsField} JSONB SQL).
+   * Mirrors listing {@code canRollback}: builds the ownership sets from the in-memory universe
+   * details and calls {@code buildTaskStatus} directly, without the queries that fill them in
+   * production.
    */
   private boolean listingCanRollback(
       CustomerTask customerTask, TaskInfo taskInfo, Universe universe) {
