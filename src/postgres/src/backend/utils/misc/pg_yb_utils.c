@@ -1047,6 +1047,32 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+/*
+ * Whether pg_partman uses transactional DDL and table level locks.  This
+ * requires all of:
+ * - ysql_yb_pg_partman_use_native_txn_ddl_and_locks.
+ * - YBIsDdlTransactionBlockEnabled(), which is true only when transactional
+ *   DDL is on and table level locks are enabled.
+ * - DDL savepoint support (ysql_yb_enable_ddl_savepoint_support and its infra
+ *   auto flag), because several pg_partman functions run DDL inside plpgsql
+ *   EXCEPTION blocks, which are savepoints.
+ * Advisory locks are not checked: ysql_yb_enable_advisory_locks is a tserver
+ * runtime flag whose current value postgres can't see, and with it off, the
+ * pg_partman functions that take advisory locks fail instead of falling back.
+ * A missing prerequisite returns false rather than raising, so pg_partman
+ * keeps working, without these features, where one of them is off.
+ */
+Datum
+yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
+{
+	const YbcPgGFlagsAccessor *gflags = YBCGetGFlags();
+
+	PG_RETURN_BOOL(*gflags->ysql_yb_pg_partman_use_native_txn_ddl_and_locks &&
+				   YBIsDdlTransactionBlockEnabled() &&
+				   *gflags->ysql_yb_enable_ddl_savepoint_support &&
+				   yb_enable_ddl_savepoint_infra);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {

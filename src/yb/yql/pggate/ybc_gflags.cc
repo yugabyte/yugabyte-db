@@ -206,6 +206,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -332,6 +333,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_catalog_prefetch_minimize_index_scans,
       .ysql_enable_startup_client_connection_check =
           &FLAGS_ysql_enable_startup_client_connection_check,
+      .ysql_yb_pg_partman_use_native_txn_ddl_and_locks =
+          &FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
   };
   // clang-format on
   return &accessor;

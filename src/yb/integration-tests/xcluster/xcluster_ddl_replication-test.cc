@@ -5319,7 +5319,11 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PartmanExtension) {
       p_interval => 'monthly',
       p_premake => 1);)#"));
 
-  int64_t expected_table_count = 4;
+  // On pg_partman's native path, the default in release builds, create_parent also creates a
+  // default partition.
+  const auto native = ASSERT_RESULT(producer_conn_->FetchRow<bool>(
+      "SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()"));
+  int64_t expected_table_count = native ? 5 : 4;
 
   auto validate_table_count = [this, &expected_table_count]() {
     const auto select_table_names =
