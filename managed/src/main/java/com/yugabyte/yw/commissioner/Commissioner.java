@@ -719,8 +719,11 @@ public class Commissioner {
    */
   public boolean isOperatorOwnedUniverse(UUID universeUuid) {
     return runtimeConfGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources)
-        && Universe.maybeGet(universeUuid)
-            .map(u -> u.getUniverseDetails().isKubernetesOperatorControlled)
+        && Universe.getUniverseDetailsField(
+                String.class,
+                universeUuid,
+                UniverseDefinitionTaskParams.IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD)
+            .map(Boolean::parseBoolean)
             .orElse(false);
   }
 

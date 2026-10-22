@@ -1694,6 +1694,26 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testGetOperatorOwnedUniverseUUIDs() {
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+    Long customerId = defaultCustomer.getId();
+    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, null).isEmpty());
+
+    Universe.saveDetails(
+        universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    assertEquals(
+        Set.of(universeUuid), commissioner.getOperatorOwnedUniverseUUIDs(customerId, null));
+    assertEquals(
+        Set.of(universeUuid), commissioner.getOperatorOwnedUniverseUUIDs(customerId, universeUuid));
+    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, UUID.randomUUID()).isEmpty());
+
+    factory
+        .globalRuntimeConf()
+        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
+    assertTrue(commissioner.getOperatorOwnedUniverseUUIDs(customerId, null).isEmpty());
+  }
+
+  @Test
   public void testCanTaskRollbackFalseWhenAbortedAtPrecheck() {
     // PLAT-22685: an edit aborted before the freeze/checkpoint captures no state_transition_details
     // (and never took placement ownership), so submit eligibility must be false - matching listing
