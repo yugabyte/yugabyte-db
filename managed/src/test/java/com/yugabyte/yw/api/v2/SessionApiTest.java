@@ -133,6 +133,8 @@ public class SessionApiTest extends FakeDBApplication {
     SessionManagementHandler handler = app.injector().instanceOf(SessionManagementHandler.class);
     LoginSpec spec = new LoginSpec().email(EMAIL).password(PASSWORD);
     Http.Request request = Helpers.fakeRequest("POST", "/api/v2/login").build();
+    // Earlier tests in this JVM (e.g. via TestUtils.setFakeHttpContext) can leave a user here.
+    RequestContext.clean(Set.of(TokenAuthenticator.USER));
 
     handler.login(request, spec);
     // Nothing clears RequestContext after this controller, so login must not put a user there.
