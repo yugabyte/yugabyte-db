@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -34,11 +37,16 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -271,6 +279,69 @@ public class GFlagsUtilTest extends FakeDBApplication {
     k8sUniverse.updateConfig(
         ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
     assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+  }
+
+  @Test
+  public void testDefaultGFlagsMergeQueryLogPgConfWithNewInstallPgConf() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    Universe universe = ModelFactory.createUniverse("pg-conf-universe", customer.getId());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              Cluster primary = details.getPrimaryCluster();
+              primary.userIntent.provider = provider.getUuid().toString();
+              primary.userIntent.enableYSQL = true;
+              NodeDetails node = ApiUtils.getDummyNodeDetails(1);
+              node.azUuid = az.getUuid();
+              node.placementUuid = primary.uuid;
+              node.isTserver = true;
+              details.nodeDetailsSet = new HashSet<>(Set.of(node));
+              u.setUniverseDetails(details);
+            });
+    PerProcessFlags newInstallGFlags = new PerProcessFlags();
+    newInstallGFlags.value.put(
+        ServerType.TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+    universe.setNewInstallGFlags(newInstallGFlags);
+    universe.save();
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        "yb_enable_cbo=on",
+        universe.getNewInstallGFlags(ServerType.TSERVER).get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.azUuid = az.getUuid();
+    params.placementUuid = node.placementUuid;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = "/mnt/d0";
+    params.enableYSQL = true;
+    params.setProperty("processType", ServerType.TSERVER.toString());
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+
+    Map<String, String> gflags =
+        GFlagsUtil.getAllDefaultGFlags(
+            params,
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            false /* useHostname */,
+            app.injector().instanceOf(RuntimeConfGetter.class));
+
+    String pgConfCsv = gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
   }
 
   @Test
@@ -1139,6 +1210,36 @@ public class GFlagsUtilTest extends FakeDBApplication {
     GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
 
     assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
+  }
+
+  @Test
+  public void testProcessUserGFlagsTelemetryPgConfWinsOverUserPgConf() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all,yb_enable_cbo=off"));
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.mergeCSVs(
+                    GFlagsUtil.getYsqlPgConfCsv(params), "yb_enable_cbo=on", true)));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, false, null, params);
+
+    String pgConfCsv = userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("log_statement=all"));
+    // User entries still win over non-telemetry platform defaults.
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=off"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
   }
 
   @Test

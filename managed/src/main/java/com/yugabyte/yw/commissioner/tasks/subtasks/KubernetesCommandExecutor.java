@@ -1502,15 +1502,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // Only audit/query logging contribute PostgreSQL settings; don't touch the gflag for
       // metrics-only or log-only (master/tserver glog) configs.
       if (telemetryConfig.requiresYsqlPgConfCsv()) {
+        // Telemetry entries win over user and new install entries on key conflicts.
         String combinedPGConfCSV =
             GFlagsUtil.mergeCSVs(
-                tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
                 GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getAuditLogConfig()),
+                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getQueryLogConfig()),
                 true);
         combinedPGConfCSV =
             GFlagsUtil.mergeCSVs(
                 combinedPGConfCSV,
-                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getQueryLogConfig()),
+                tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
                 true);
         tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
       }
