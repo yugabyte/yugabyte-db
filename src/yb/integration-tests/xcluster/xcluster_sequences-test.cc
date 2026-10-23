@@ -391,7 +391,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingAndSafeTime) {
   ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/true));
   ASSERT_OK(
       StringWaiterLogSink("Replication is paused from the producer for stream").WaitFor(300s));
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow(namespaces_to_replicate));
 
   ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/false));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
@@ -429,7 +429,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingIsolation) {
 
     std::vector<NamespaceName> paused_namespaces = {namespace_to_pause};
     std::vector<NamespaceName> unpaused_namespaces = {other_namespace};
-    ASSERT_NOK(WaitForSafeTimeToAdvanceToNow(paused_namespaces));
+    ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow(paused_namespaces));
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow(unpaused_namespaces));
 
     LOG(INFO) << "***** Unpausing namespace: " << namespace_to_pause

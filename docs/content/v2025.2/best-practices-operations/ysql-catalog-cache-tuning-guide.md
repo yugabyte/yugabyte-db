@@ -475,12 +475,15 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 
 - [Use connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables).
+- In v2025.2.8.0 and later, the YB-Master leader limits how many catalog prefetches it serves at once. See [Prefetch admission on the YB-Master leader](#prefetch-admission).
 
 ### High memory usage on PostgreSQL backends
 
 On the flip side, automatic preloading of caches may result in higher memory usage of PostgreSQL backends than desired.
 
-**Possible solution**
+In v2025.2.8.0 and later, that cost is lower in two places: peak memory while a connection is starting, and the memory the PostgreSQL backend holds after startup. See [Memory during catalog preload](#catalog-preload-memory).
+
+**Possible solutions**
 
 - [Minimal catalog cache preloading](#minimal-catalog-cache-preloading).
 
@@ -498,7 +501,7 @@ To set up connection pooling, explore the following approaches:
 
 ### Preload additional system tables {#preload-additional-system-tables}
 
-When enabled, all catalog cache entries corresponding to specific PostgreSQL catalog tables are preloaded (both on regular PostgreSQL backend startup and after a schema change). This decreases warm up time for these caches, thereby decreasing the latency impact of initial queries on new connections. The downside is that it causes more memory consumption on all backends.
+When enabled, all catalog cache entries corresponding to specific PostgreSQL catalog tables are preloaded (both on regular PostgreSQL backend startup and after a schema change). This decreases warm up time for these caches, thereby decreasing the latency impact of initial queries on new connections. The downside is that it causes more memory consumption on all backends. In v2025.2.8.0 and later, [preload uses less memory](#catalog-preload-memory) while a connection is starting and after it is idle.
 
 To preload system tables, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags)  `--ysql_catalog_preload_additional_tables=true` to preload caches for the following tables:
 
@@ -521,11 +524,48 @@ For example:
 --ysql_catalog_preload_additional_table_list=pg_operator,pg_amop,pg_cast,pg_aggregate
 ```
 
+### Memory during catalog preload {#catalog-preload-memory}
+
+In v2025.2.8.0 and later, enabling catalog preload uses less memory in two places:
+
+- Peak memory while a connection is starting.
+- Idle memory of the PostgreSQL backend after startup.
+
 ### Minimal catalog cache preloading {#minimal-catalog-cache-preloading}
 
 When enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results, but can increase the initial query latency when [additional tables are preloaded](#preload-additional-system-tables).
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
+
+### Prefetch admission on the YB-Master leader {#prefetch-admission}
+
+When a PostgreSQL backend starts, or refreshes its catalog cache, it prefetches whole catalog tables from the YB-Master leader. A DDL invalidates those cached results on every node, so a fleet-wide event can send a prefetch from every YB-TServer to the leader at the same time. Serving a prefetch is CPU bound, so past the leader's capacity every prefetch slows in proportion to how many are in flight, and connections begin to time out.
+
+In v2025.2.8.0 and later, the leader admits only a bounded number of prefetches at a time and rejects the rest. The client retries a rejected prefetch against the same leader on an exponential backoff. Each admitted prefetch then runs at the speed the leader can actually serve. Ordinary catalog reads are never bounded, because they happen inside a query that is already running.
+
+This is on by default. On an upgraded universe it takes effect only after the upgrade is finalized. See [enable_ysql_catalog_prefetch_admission](../../reference/configuration/yb-master/#enable-ysql-catalog-prefetch-admission).
+
+To see whether the bound is being reached, watch the following YB-Master metrics on the leader:
+
+| Metric | Description |
+| :--- | :--- |
+| ysql_catalog_prefetches_in_progress | Prefetches the leader is currently serving. |
+| ysql_catalog_prefetch_rejections | Prefetches rejected because the limit was reached. A rising count means the bound is binding, and clients are retrying. |
+
+Two flags tune the bound. Change them only if the metrics show a problem.
+
+| Flag | Default | Effect |
+| :--- | :--- | :--- |
+| [master_max_concurrent_ysql_catalog_prefetches](../../reference/configuration/yb-master/#master-max-concurrent-ysql-catalog-prefetches) | `-1`, resolved at startup to `max(8, 2 * cores)` | How many prefetches the leader serves at once. `0` means no limit. |
+| [master_new_ysql_catalog_prefetch_percent](../../reference/configuration/yb-master/#master-new-ysql-catalog-prefetch-percent) | `50` | The share of that limit available to a prefetch that is just starting. A prefetch already under way, and one refreshing a catalog cache, use the full limit. |
+
+Set the limit generously if you set it by hand. A limit above what the leader can serve never binds, but a limit below it rejects prefetches the leader could have served. A client rejected repeatedly runs out its RPC deadline, 10 minutes by default, and the connection fails rather than merely starting slowly.
+
+In v2025.2.8.0 and later, a version-bumping DDL also waits before it runs when the leader's prefetch load is high. The session waits only for the prefetch wave that its own DDL causes, and the wait does not fail the statement. How long it waits is the YSQL configuration parameter `yb_ddl_wait_for_master_prefetch_drain_ms`.
+
+| Parameter | Default | Effect |
+| :--- | :--- | :--- |
+| `yb_ddl_wait_for_master_prefetch_drain_ms` | `30000` (30 seconds) | How long the session waits for the leader to drain catalog prefetches before a version-bumping DDL. The maximum is one day. Set it to `0` to skip the wait and restore the previous behavior. |
 
 ## Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
 
