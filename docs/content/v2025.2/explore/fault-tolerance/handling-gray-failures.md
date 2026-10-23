@@ -66,7 +66,7 @@ For more information, see [Replication](../../../architecture/docdb-replication/
 
 ### Leader election and failover
 
-Every tablet has a single Raft leader that coordinates writes. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership, including when local storage writes are failing.
+Every tablet has a single Raft leader that coordinates writes. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its write-ahead log (WAL) is stalled keeps leadership.
 
 This is especially important when a gray failure affects the current leader:
 
@@ -176,7 +176,7 @@ A node is alive, but pauses frequently because of disk contention, CPU starvatio
 Typical outcome:
 
 - Requests to tablets led by that node show higher tail latency.
-- Leadership may move away if stalls become severe enough.
+- Leadership moves if the stalls cause missed heartbeats.
 - If the condition persists, the node may eventually be treated as unavailable.
 
 ## Failure timeline: slow leader during a partial network partition
@@ -303,13 +303,17 @@ Effects:
 
 From the application perspective, this often appears as increased latency followed by transient write errors.
 
-### T2: Heartbeats are missed, or they are not
+### T2: Heartbeats decide whether leadership moves  
 
-Followers start an election only when heartbeats are missed. A storage stall can delay heartbeats past the failure detector. Then a follower starts a Raft election, and `R2` or `R3` requests votes from the other replicas.
+Followers start an election only when heartbeats are missed. The leader heartbeat timer does not wait on the local write-ahead log (WAL).  
 
-If `R1` keeps heartbeating while its WAL is stalled, it keeps leadership. Writes to `T2` stay on that leader. A failed WAL append crashes the process, which stops the heartbeats.
+If `R1` keeps heartbeating while its WAL is stalled, it keeps leadership. Writes to `T2` stay on that leader. This tablet does not go through the leadership change below.  
+
+If heartbeats are missed, a follower starts a Raft election, and `R2` or `R3` requests votes from the other replicas. A failed WAL append crashes the process, which stops the heartbeats, so a failed append follows this same path.  
 
 ### T3: Leadership changes
+
+This step is the missed-heartbeat path.
 
 Suppose `R2` on node B becomes the new leader.
 

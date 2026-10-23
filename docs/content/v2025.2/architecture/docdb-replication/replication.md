@@ -91,7 +91,7 @@ The recovery point objective (RPO) for each of these tablets is 0, meaning no da
 
 ## Partial failures
 
-A node can be unhealthy without being down. A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership, including when local storage writes are failing.
+A node can be unhealthy without being down. A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its write-ahead log (WAL) is stalled keeps leadership. A failed WAL append crashes the process, and the heartbeats stop with it.
 
 Timelines for these cases are in [Handle gray failures](../../../explore/fault-tolerance/handling-gray-failures/).
 
