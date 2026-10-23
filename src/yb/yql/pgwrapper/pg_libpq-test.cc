@@ -6506,8 +6506,9 @@ TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
 // 4. Lower ysql_upgrade_migration_max_retries to 1, so the two injected failures exhaust it. The
 //    upgrade then fails with the injected error and does not record the migration.
 //
-// Because the test re-applies whichever migration is newest, a new migration that is not
-// idempotent also fails here.
+// Because the test re-applies whichever migration is newest, a new migration that errors when
+// re-run also fails here. TestYsqlUpgrade.upgradeIsIdempotent is what checks that a re-run leaves
+// the catalog, including OIDs, unchanged.
 TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
   constexpr auto kDbName = "upgrade_retry_db";
 

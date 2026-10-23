@@ -35,7 +35,7 @@ using namespace std::literals;
 DEFINE_RUNTIME_int32(ysql_upgrade_migration_max_retries, 10,
     "Maximum number of times YSQL upgrade re-runs a migration script that failed with a "
     "serialization failure (SQLSTATE 40001), such as a read restart or a conflict caused by "
-    "concurrent DDL.");
+    "concurrent DDL. 0 disables retries.");
 
 DEFINE_test_flag(int32, ysql_upgrade_fail_migration_attempts, 0,
     "Make the first N attempts of each migration script fail: after the script's own statements "
