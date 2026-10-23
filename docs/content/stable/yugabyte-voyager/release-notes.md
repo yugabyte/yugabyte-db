@@ -29,6 +29,19 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.10.2 - October 27, 2026
+
+### Enhancements
+
+- Improved schema drift diagnosis: [schema detect-drift](../reference/schema-migration/detect-drift/) now sets each change's severity, impact, and recommended action based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover. Changes that can go either way, such as NOT NULL set or dropped and a partition attached or detached, are now reported as separate types.
+- Live migration now identifies columns with types not supported by YugabyteDB or Debezium, and prompts you to choose whether those columns should be filtered out, or the migration should fail on those columns.
+
+### Bug fixes
+
+- Fixed an issue where non-ASCII characters were written as `?` during live migration export when the host locale was not UTF-8, such as `LANG=C`.
+- Fixed an issue where a time value of `24:00:00` was migrated as `00:00:00` during live migration.
+- Fixed an issue where [assess-migration](../reference/assess-migration/) failed with a `UNIQUE constraint failed: column_statistics ...` error on schemas with inherited tables after `ANALYZE` was run on the source.
+
 ## v2026.10.1 - October 13, 2026
 
 ### Enhancements

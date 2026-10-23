@@ -229,7 +229,7 @@ The console shows a summary of the comparison window, stored captures, intervals
 
 The HTML report shows the migration as a timeline, from export schema to the live read of the source taken when the command runs. Each change is listed in the interval in which it happened, labeled with what the migration was doing at the time, such as "export data: running".
 
-Every change has a severity (such as, Breaks the migration: unrecoverable, Breaks the migration: recoverable, Potential impact, or Advisory), a description of its impact on the migration, and the corrective step. The JSON report carries the same information for scripts.
+Every change has a severity (such as, Breaks the migration: unrecoverable, Breaks the migration: recoverable, Potential impact, or Advisory), a description of its impact on the migration, and the corrective step. The severity, impact, and recommended action are set based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover. Changes that can go either way, such as NOT NULL set or dropped and a partition attached or detached, are reported as separate types. The JSON report carries the same information for scripts.
 
 ## Example
 
