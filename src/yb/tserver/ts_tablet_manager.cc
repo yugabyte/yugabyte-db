@@ -86,6 +86,7 @@
 #include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/poller.h"
 
 #include "yb/tablet/metadata.pb.h"
@@ -1852,9 +1853,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
     // A source that registered several addresses is only unreachable once every one of them
     // has failed. The session ends here either way, so the record is what carries the failure
     // to the bootstrap the master issues next, which then starts on another address. Only a
-    // network error says anything about the address; every other failure came back over a
+    // connect failure says anything about the address; every other failure came back over a
     // connection that worked.
-    if (start_status.IsNetworkError()) {
+    if (rpc::NetworkError(start_status) == rpc::NetworkErrorCode::kConnectFailed) {
       std::lock_guard lock(mutex_);
       failed_remote_sources_.MarkFailed(bootstrap_peer_addr);
     }
@@ -1971,12 +1972,12 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString,
       [this] { return IsShutdownStarted(); });
 
-  // Download and persist the remote superblock. As in StartRemoteBootstrap, a network error
+  // Download and persist the remote superblock. As in StartRemoteBootstrap, a connect failure
   // records the address so the transfer issued next starts on another one the source reported.
   auto start_status = remote_snapshot_client->Start(
       &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir);
   if (!start_status.ok()) {
-    if (start_status.IsNetworkError()) {
+    if (rpc::NetworkError(start_status) == rpc::NetworkErrorCode::kConnectFailed) {
       std::lock_guard lock(mutex_);
       failed_remote_sources_.MarkFailed(source_addr);
     }

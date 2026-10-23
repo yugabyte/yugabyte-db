@@ -193,9 +193,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Signals that a heartbeat response was received from the peer.
   void ProcessHeartbeatResponse(const Status& status);
 
-  // Returns true if there are more pending ops to process, false otherwise.
+  // Returns true if there are more pending ops to process, false otherwise. sent_to is the
+  // address the request went to.
   bool ProcessResponseWithStatus(const Status& status,
-                                 LWConsensusResponsePB* response);
+                                 LWConsensusResponsePB* response,
+                                 const HostPort& sent_to);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -207,8 +209,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Handle RPC callback from initiating remote bootstrap.
   void ProcessRemoteBootstrapResponse();
 
-  // Signals there was an error sending the request to the peer.
-  void ProcessResponseError(const Status& status);
+  // Signals there was an error sending the request to the peer at sent_to.
+  void ProcessResponseError(const Status& status, const HostPort& sent_to);
 
   // Returns true if the peer is closed and the calling function should return.
   std::unique_lock<simple_spinlock> StartProcessingUnlocked();
@@ -279,9 +281,9 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // on a per tserver level
   MultiRaftHeartbeatBatcherPtr multi_raft_batcher_;
 
-  // Set once the proxy moves to another of the peer's addresses. The batcher is shared and
-  // keyed by the address it was built for, so it stays behind and heartbeats go through the
-  // proxy instead.
+  // Whether the proxy is on another address than the one multi_raft_batcher_ was built for. The
+  // batcher is shared and keyed by that address, so it cannot follow the proxy; heartbeats go
+  // through the proxy while this is set and through the batcher again once the proxy is back.
   std::atomic<bool> batcher_address_stale_{false};
 
   // Thread pool used to construct requests to this peer.
@@ -344,12 +346,24 @@ class PeerProxy {
     LOG(DFATAL) << "Not implemented";
   }
 
-  // Moves to another of the addresses the peer registered, after the one in use could not be
-  // connected to, and reports whether there was one. A proxy that reaches its peer some other
-  // way than by one of its registered addresses has none to move to, which is the answer this
-  // default gives, as PeerProxyFactory::messenger does for a factory that has no messenger.
-  virtual bool FailToNextAddress() {
+  // Records that failed, one of the addresses the peer registered, could not be connected to,
+  // moves off it if requests still go there, and reports whether they now go to another address
+  // that has not failed. A proxy that reaches its peer some other way than by one of its
+  // registered addresses has none to move to, which is the answer this default gives, as
+  // PeerProxyFactory::messenger does for a factory that has no messenger.
+  virtual bool FailToNextAddress(const HostPort& failed) {
     return false;
+  }
+
+  // The address the last UpdateAsync went to, which is the one its failure is about. Requests
+  // can move to another address while it is in flight, so this is not the current address.
+  virtual HostPort UpdateHostPort() const {
+    return HostPort();
+  }
+
+  // The address requests go to now.
+  virtual HostPort CurrentHostPort() const {
+    return HostPort();
   }
 
   virtual ~PeerProxy() {}
@@ -401,10 +415,11 @@ class RpcPeerProxy : public PeerProxy {
                                        rpc::RpcController* controller,
                                        const rpc::ResponseCallback& callback) override;
 
-  bool FailToNextAddress() override EXCLUDES(mutex_);
+  bool FailToNextAddress(const HostPort& failed) override EXCLUDES(mutex_);
 
-  // The address the current proxy was built on.
-  HostPort TEST_HostPort() const EXCLUDES(mutex_);
+  HostPort UpdateHostPort() const override EXCLUDES(mutex_);
+
+  HostPort CurrentHostPort() const override EXCLUDES(mutex_);
 
   virtual ~RpcPeerProxy();
 
@@ -413,9 +428,8 @@ class RpcPeerProxy : public PeerProxy {
   // flight keeps its proxy alive across a move to another address.
   std::shared_ptr<ConsensusServiceProxy> proxy() const EXCLUDES(mutex_);
 
-  // Builds the proxy for the first address of the peer that has not failed, and reports
-  // whether there was one.
-  bool BuildProxyUnlocked() REQUIRES(mutex_);
+  // Builds the proxy for the first address of the peer that has not failed.
+  void BuildProxyUnlocked() REQUIRES(mutex_);
 
   rpc::ProxyCache* const proxy_cache_;
   const RaftPeerPB peer_pb_;
@@ -424,6 +438,7 @@ class RpcPeerProxy : public PeerProxy {
   mutable rw_spinlock mutex_;
   FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
   HostPort hostport_ GUARDED_BY(mutex_);
+  HostPort update_hostport_ GUARDED_BY(mutex_);
   std::shared_ptr<ConsensusServiceProxy> consensus_proxy_ GUARDED_BY(mutex_);
 };
 

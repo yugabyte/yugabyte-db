@@ -63,6 +63,9 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
                          ConsensusResponsePB* response,
                          HeartbeatResponseCallback callback);
 
+  // The address the batches go to, which MultiRaftManager keys this batcher by.
+  const HostPort& hostport() const;
+
   void Shutdown();
 
  private:

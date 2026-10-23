@@ -42,6 +42,7 @@
 
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/remote_method.h"
@@ -319,7 +320,13 @@ void Proxy::HandleResolve(const Result<IpAddress>& result) {
 void Proxy::ResolveDone(const Result<IpAddress>& result) {
   if (!result.ok()) {
     LOG(WARNING) << "Resolve " << remote_.host() << " failed: " << result.status();
-    NotifyAllFailed(result.status());
+    // A name that does not resolve leaves the call no server to reach, the failure kConnectFailed
+    // names for an address that cannot be connected to.
+    auto status = result.status();
+    if (status.IsNetworkError() && !NetworkError::ValueFromStatus(status)) {
+      status = status.CloneAndAddErrorCode(NetworkError(NetworkErrorCode::kConnectFailed));
+    }
+    NotifyAllFailed(status);
     return;
   }
 

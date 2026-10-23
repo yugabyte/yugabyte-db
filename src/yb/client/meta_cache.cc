@@ -218,25 +218,45 @@ SelectedHostPort RemoteTabletServer::PickCandidateUnlocked(
   return FirstUsable(CandidatesUnlocked(connect_from), failed_addresses_);
 }
 
-bool RemoteTabletServer::FailToNextAddress(const CloudInfoPB& connect_from) {
+void RemoteTabletServer::BuildProxyUnlocked(YBClient& client) {
+  if (!dns_resolve_stats_) {
+    auto metric_entity = client.metric_entity();
+    if (metric_entity) {
+      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+          metric_entity);
+    }
+  }
+
+  auto selected = PickCandidateUnlocked(client.data_->cloud_info_pb_);
+  auto hostport = HostPortFromPB(selected.host_port);
+  CHECK(!hostport.host().empty());
+  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
+  proxy_ = std::make_shared<TabletServerServiceProxy>(
+      client.data_->proxy_cache_.get(), hostport,
+      client.data_->ProtocolFor(selected.used_broadcast, cloud_info_pb_));
+  proxy_endpoint_ = hostport;
+}
+
+bool RemoteTabletServer::FailToNextAddress(const HostPort& failed, YBClient& client) {
   std::lock_guard lock(mutex_);
   if (proxy_endpoint_.host().empty()) {
     return false;
   }
-  failed_addresses_.MarkFailed(proxy_endpoint_);
+  failed_addresses_.MarkFailed(failed);
 
-  // Drop the proxy so the next ObtainProxy picks again, whether that lands on an address that
-  // has not failed or back on the preferred one once every address has. Picking again either
-  // way is what lets a record expire; a proxy left on the address that just failed would
-  // outlive every record that could move it. proxy_endpoint_ keeps naming the address that
-  // was dialed until then, because a Proxy built from a blank HostPort calls the service on
-  // the local messenger rather than on this server.
-  proxy_.reset();
+  // An RPC past InitProxy reads proxy() again to send, so the proxy is replaced in place and never
+  // left empty. It is replaced whether or not an address is left, because that is what lets a
+  // record expire: with every address failed the pick is the preferred one again, where a proxy
+  // left on the address that just failed would outlive every record that could move it.
+  if (proxy_endpoint_ == failed) {
+    BuildProxyUnlocked(client);
+  }
 
-  // PickCandidateUnlocked returns the preferred address once every one of them has failed, so
-  // whether the address it picks now has failed is whether any address is left to try.
-  return !failed_addresses_.Failed(
-      HostPortFromPB(PickCandidateUnlocked(connect_from).host_port));
+  // The pick falls back to the preferred address once every one of them has failed, so whether
+  // the proxy is now on another address that has not failed is whether one is left to try.
+  // Comparing with the failed one also covers retry_failed_address_ms=0, under which no address
+  // counts as failed and the pick is the address that just failed.
+  return proxy_endpoint_ != failed && !failed_addresses_.Failed(proxy_endpoint_);
 }
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
@@ -261,24 +281,7 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
     return proxy_;
   }
 
-  if (!dns_resolve_stats_) {
-    auto metric_entity = client.metric_entity();
-    if (metric_entity) {
-      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
-          metric_entity);
-    }
-  }
-
-  const auto& connect_from = client.data_->cloud_info_pb_;
-  auto selected = PickCandidateUnlocked(connect_from);
-  auto hostport = HostPortFromPB(selected.host_port);
-  CHECK(!hostport.host().empty());
-  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  proxy_ = std::make_shared<TabletServerServiceProxy>(
-      client.data_->proxy_cache_.get(), hostport,
-      client.data_->ProtocolFor(selected.used_broadcast, cloud_info_pb_));
-  proxy_endpoint_ = hostport;
-
+  BuildProxyUnlocked(client);
   return proxy_;
 }
 

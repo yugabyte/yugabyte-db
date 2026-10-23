@@ -24,6 +24,7 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/proxy_context.h"
 
@@ -525,9 +526,10 @@ void RetryingMasterRpcTask::DoRpcCallback() {
                              << rpc_.status().ToString();
     // A master that registered several addresses is only unreachable once every one of them
     // has failed, so the next attempt tries the next address. ResetProxies runs on each
-    // attempt and reads the record. Only a network error says anything about the address;
+    // attempt and reads the record. Only a connect failure says anything about the address;
     // every other failure came back over a connection that worked.
-    if (rpc_.status().IsNetworkError() && master_cluster_proxy_) {
+    if (rpc::NetworkError(rpc_.status()) == rpc::NetworkErrorCode::kConnectFailed &&
+        master_cluster_proxy_) {
       failed_addresses_.MarkFailed(master_cluster_proxy_->proxy().remote());
     }
   } else if (state() != MonitoredTaskState::kAborted) {
@@ -601,11 +603,11 @@ void RetryingTSRpcTask::DoRpcCallback() {
                              << rpc_.status().ToString();
     // A server that registered several addresses is only unreachable once every one of them
     // has failed, so the next attempt tries the next address before anything treats the
-    // server as down. Only a network error says anything about the address; every other
+    // server as down. Only a connect failure says anything about the address; every other
     // failure came back over a connection that worked. Every proxy of this task was built
     // against the same address, so any of them names the one that failed.
-    if (rpc_.status().IsNetworkError() && target_ts && ts_proxy_ &&
-        target_ts->FailToNextAddress(ts_proxy_->proxy().remote())) {
+    if (rpc::NetworkError(rpc_.status()) == rpc::NetworkErrorCode::kConnectFailed && target_ts &&
+        ts_proxy_ && target_ts->FailToNextAddress(ts_proxy_->proxy().remote())) {
       LOG_WITH_PREFIX(INFO) << "Retrying " << target_ts->id()
                             << " on another registered address";
     }

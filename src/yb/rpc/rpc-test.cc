@@ -634,6 +634,58 @@ TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(TestServerShutsDown)) {
   }
 }
 
+// A call that never reached the server carries kConnectFailed, which a caller that can reach the
+// server at another address reads as a failure of the address. A call on a connection that was
+// established and then broke carries no such code, because the server was reached there.
+TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(ConnectFailedOnlyWhenNeverConnected)) {
+  auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
+
+  {
+    // Nothing listens on the port once its socket is closed, so the connect is refused.
+    HostPort server_addr;
+    Socket listen_sock;
+    ASSERT_OK(StartFakeServer(&listen_sock, &server_addr));
+    ASSERT_OK(listen_sock.Close());
+    Proxy p(client_messenger.get(), server_addr);
+    auto s = DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod());
+    ASSERT_TRUE(s.IsNetworkError()) << s;
+    ASSERT_EQ(NetworkError(s).value(), NetworkErrorCode::kConnectFailed) << s;
+  }
+
+  {
+    HostPort server_addr;
+    Socket listen_sock;
+    ASSERT_OK(StartFakeServer(&listen_sock, &server_addr));
+    Proxy p(client_messenger.get(), server_addr);
+
+    rpc_test::AddRequestPB req;
+    req.set_x(1);
+    req.set_y(2);
+    rpc_test::AddResponsePB resp;
+    RpcController controller;
+    CountDownLatch latch(1);
+    p.AsyncRequest(
+        CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp,
+        &controller, latch.CountDownCallback());
+
+    // The call's bytes arriving is what shows the connection was established; then the server
+    // drops it without answering.
+    Socket server_sock;
+    Endpoint remote;
+    ASSERT_OK(listen_sock.Accept(&server_sock, &remote, 0));
+    uint8_t buf[1];
+    auto received = ASSERT_RESULT(server_sock.Recv(buf, sizeof(buf)));
+    ASSERT_GT(received, 0);
+    ASSERT_OK(listen_sock.Close());
+    ASSERT_OK(server_sock.Close());
+
+    latch.Wait();
+    auto s = controller.status();
+    ASSERT_TRUE(s.IsNetworkError()) << s;
+    ASSERT_EQ(NetworkError(s).value(), NetworkErrorCode::kNone) << s;
+  }
+}
+
 TEST_F(TestRpc, TestSendingReceivingMemTrackers) {
   // Set up server.
   HostPort server_addr;
@@ -1272,6 +1324,25 @@ void TestSimple(CalculatorServiceProxy* proxy) {
 
 TEST_F(TestRpcSecure, TLS) {
   RunSecureTest(&TestSimple);
+}
+
+// A server whose certificate does not name the address dialed fails the handshake, so the call
+// never reaches it, and the failure is about that address.
+TEST_F(TestRpcSecure, EndpointMismatchIsConnectFailed) {
+  secure_context_ = std::make_unique<SecureContext>(
+      RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+  ASSERT_OK(secure_context_->TEST_GenerateKeys(2048, "127.0.0.2", MatchingCertKeyPair::kTrue));
+  RunSecureTest([](CalculatorServiceProxy* proxy) {
+    RpcController controller;
+    controller.set_timeout(5s * kTimeMultiplier);
+    rpc_test::AddRequestPB req;
+    req.set_x(10);
+    req.set_y(20);
+    rpc_test::AddResponsePB resp;
+    auto s = proxy->Add(req, &resp, &controller);
+    ASSERT_TRUE(s.IsNetworkError()) << s;
+    ASSERT_EQ(NetworkError(s).value(), NetworkErrorCode::kConnectFailed) << s;
+  });
 }
 
 TEST_F(TestRpcSecure, Timeout) {

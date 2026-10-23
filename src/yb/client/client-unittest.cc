@@ -62,6 +62,7 @@
 #include "yb/util/test_macros.h"
 
 DECLARE_string(node_to_node_encryption_scope);
+DECLARE_int32(retry_failed_address_ms);
 
 namespace yb {
 namespace client {
@@ -250,7 +251,7 @@ TEST(ClientUnitTest, RemoteTabletServerCandidateOrder) {
     // Same zone, so use_private_ip=zone would prefer the private address. The default is
     // never, meaning the broadcast address is preferred whenever one was advertised.
     internal::RemoteTabletServer ts(MakeTSInfo({"private1"}, {"broadcast1"}, "zone1"));
-    EXPECT_EQ((std::vector<std::string>{"broadcast1", "private1"}),
+    ASSERT_EQ((std::vector<std::string>{"broadcast1", "private1"}),
               Hosts(ts.TEST_Candidates(here)));
   }
 
@@ -258,7 +259,7 @@ TEST(ClientUnitTest, RemoteTabletServerCandidateOrder) {
     // Nothing was broadcast, so the private address is both the preference and the only
     // candidate, and it must not appear twice.
     internal::RemoteTabletServer ts(MakeTSInfo({"private1"}, {}, "zone1"));
-    EXPECT_EQ((std::vector<std::string>{"private1"}), Hosts(ts.TEST_Candidates(here)));
+    ASSERT_EQ((std::vector<std::string>{"private1"}), Hosts(ts.TEST_Candidates(here)));
   }
 
   {
@@ -266,10 +267,63 @@ TEST(ClientUnitTest, RemoteTabletServerCandidateOrder) {
     // not repeated, then the rest private before broadcast.
     internal::RemoteTabletServer ts(
         MakeTSInfo({"private1", "private2"}, {"broadcast1", "broadcast2"}, "zone1"));
-    EXPECT_EQ(
+    ASSERT_EQ(
         (std::vector<std::string>{"broadcast1", "private1", "private2", "broadcast2"}),
         Hosts(ts.TEST_Candidates(here)));
   }
+}
+
+namespace {
+
+// A client that resolves no leader master, which is all a RemoteTabletServer needs to build its
+// proxies.
+Result<std::unique_ptr<YBClient>> ClientWithoutLeader(rpc::Messenger* messenger) {
+  return YBClientBuilder()
+      .add_master_server_addr("127.0.0.1")
+      .set_skip_master_leader_resolution(true)
+      .Build(messenger);
+}
+
+} // namespace
+
+// RPCs in flight on a server share its proxy and read it again to send, so a connect failure
+// replaces it in place. One RPC can report its failure after another already moved the proxy;
+// that failure is about an address the proxy left, and moves it nowhere.
+TEST(ClientUnitTest, RemoteTabletServerFailsOnlyTheAddressDialed) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto first = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_EQ("private1", first.host());
+
+  ASSERT_TRUE(ts.FailToNextAddress(first, *client));
+  ASSERT_NE(ts.proxy(), nullptr);
+  const auto second = ts.proxy()->proxy().remote();
+  ASSERT_EQ("private2", second.host());
+
+  ASSERT_TRUE(ts.FailToNextAddress(first, *client));
+  ASSERT_EQ(second, ts.proxy()->proxy().remote());
+
+  // The last address leaves nothing to move to, and the proxy is back on the preferred one.
+  ASSERT_FALSE(ts.FailToNextAddress(second, *client));
+  ASSERT_EQ(first, ts.proxy()->proxy().remote());
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// proxy on the preferred address and reports the server unreachable.
+TEST(ClientUnitTest, RemoteTabletServerFallbackDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_FALSE(ts.FailToNextAddress(preferred, *client));
+  ASSERT_EQ(preferred, ts.proxy()->proxy().remote());
 }
 
 } // namespace client

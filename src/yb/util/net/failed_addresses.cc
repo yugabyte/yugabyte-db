@@ -17,9 +17,10 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(retry_failed_address_ms, 3600 * 1000,
+DEFINE_RUNTIME_int32(retry_failed_address_ms, 3600 * 1000,
     "Time in milliseconds to wait for before retrying an address of a node that could not be "
-    "connected to, while the node's other addresses are used instead.");
+    "connected to, while the node's other addresses are used instead. At 0 a node is only "
+    "dialed at its preferred address.");
 
 namespace yb {
 

@@ -75,6 +75,10 @@ MultiRaftHeartbeatBatcher::MultiRaftHeartbeatBatcher(
       current_batch_(std::make_shared<MultiRaftConsensusData>()),
       running_calls_(running_calls) {}
 
+const HostPort& MultiRaftHeartbeatBatcher::hostport() const {
+  return consensus_proxy_->proxy().remote();
+}
+
 void MultiRaftHeartbeatBatcher::Start() {
   std::weak_ptr<MultiRaftHeartbeatBatcher> weak_self = shared_from_this();
   batch_sender_ = PeriodicTimer::Create(

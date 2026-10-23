@@ -23,6 +23,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/network_error.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
 
@@ -186,6 +187,7 @@ void TabletInvoker::Reset() {
   tablet_id_.clear();
   tablet_.reset();
   current_ts_ = nullptr;
+  proxy_.reset();
   followers_.clear();
   assign_new_leader_ = false;
 }
@@ -289,16 +291,18 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
   }
 
   // Make sure we have a working proxy before sending out the RPC.
-  auto status = current_ts_->InitProxy(client_);
+  proxy_.reset();
+  auto proxy = current_ts_->ObtainProxy(*client_);
 
   // Fail to a replica in the event of a DNS resolution failure.
-  if (!status.ok()) {
-    status = FailToNewReplica(status);
+  if (!proxy.ok()) {
+    auto status = FailToNewReplica(proxy.status());
     if (!status.ok()) {
       command_->Finished(status);
     }
     return;
   }
+  proxy_ = std::move(*proxy);
 
   VLOG(2) << "Tablet " << tablet_id_ << ": Sending " << command_->ToString() << " to replica "
           << current_ts_->ToString();
@@ -354,8 +358,8 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     // A server that advertised several addresses is only unreachable once every one of them
     // has failed, so exhaust them before demoting it. Only a connect failure says anything
     // about the address; any other error came back over a working connection.
-    if (rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed &&
-        current_ts_->FailToNextAddress(client_->data_->cloud_info_pb_)) {
+    if (rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed && proxy_ &&
+        current_ts_->FailToNextAddress(proxy_->proxy().remote(), *client_)) {
       YB_LOG_EVERY_N_SECS(INFO, 1) << "Retrying " << current_ts_->ToString()
                                    << " on another advertised address after " << reason;
       return retrier_->DelayedRetry(command_, reason);
@@ -592,11 +596,11 @@ bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
 }
 
 std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const {
-  return current_ts_->proxy();
+  return proxy_;
 }
 
 ::yb::HostPort TabletInvoker::ProxyEndpoint() const {
-  return current_ts_->ProxyEndpoint();
+  return proxy_ ? proxy_->proxy().remote() : ::yb::HostPort();
 }
 
 void TabletInvoker::LookupTabletCb(

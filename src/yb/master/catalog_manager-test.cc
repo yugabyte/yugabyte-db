@@ -35,6 +35,10 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 
+#include "yb/util/flags.h"
+
+DECLARE_int32(retry_failed_address_ms);
+
 namespace yb {
 namespace master {
 
@@ -147,6 +151,29 @@ TEST(TestTSDescriptor, TestAddressFallback) {
   auto host_port = ASSERT_RESULT(ts->GetHostPort());
   ASSERT_EQ(kExpectedOrder.front(), host_port.host());
   ASSERT_TRUE(ts->FailToNextAddress(host_port));
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// server on its preferred address and reports it unreachable.
+TEST(TestTSDescriptor, TestAddressFallbackDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue));
+
+  auto host_port = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_EQ("broadcast1", host_port.host());
+  ASSERT_FALSE(ts->FailToNextAddress(host_port));
+  ASSERT_EQ(host_port, ASSERT_RESULT(ts->GetHostPort()));
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {

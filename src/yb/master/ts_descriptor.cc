@@ -395,9 +395,12 @@ bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
   proxies_.reset();
 
   // SelectEndpointUnlocked returns the preferred address once every one of them has failed,
-  // so whether the address it selects now has failed is whether any address is left to try.
+  // so whether it now selects another address that has not failed is whether one is left to
+  // try. Comparing with host_port also covers retry_failed_address_ms=0, under which no address
+  // counts as failed and the selection is the address that just failed.
   auto selected = SelectEndpointUnlocked();
-  return selected.ok() && !failed_addresses_.Failed(selected->host_port);
+  return selected.ok() && selected->host_port != host_port &&
+         !failed_addresses_.Failed(selected->host_port);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {

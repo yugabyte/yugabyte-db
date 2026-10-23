@@ -160,14 +160,16 @@ class RemoteTabletServer {
 
   HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
 
-  // Moves to another of the addresses this server advertised, after the one the current proxy
-  // uses could not be connected to, and reports whether there was one.
+  // Records that failed, an address this server advertised, could not be connected to, moves
+  // the proxy off it if the proxy is still there, and reports whether the proxy now uses another
+  // address that has not failed. RPCs in flight share the proxy, so one can report its failure
+  // after another already moved the proxy; that report leaves the proxy where it is.
   //
   // This is the address-level counterpart of RemoteTablet::MarkReplicaFailed, and TabletInvoker
   // fails to a new replica only once this has run out of addresses. A server that cannot be
   // reached one way may still be reachable another, so the replica is only demoted once every
   // way of reaching it has failed.
-  bool FailToNextAddress(const CloudInfoPB& connect_from);
+  bool FailToNextAddress(const HostPort& failed, YBClient& client);
 
   yb::CloudInfoPB cloud_info_pb() const {
     SharedLock<rw_spinlock> lock(mutex_);
@@ -184,6 +186,8 @@ class RemoteTabletServer {
       REQUIRES_SHARED(mutex_);
   SelectedHostPort PickCandidateUnlocked(const CloudInfoPB& connect_from) const
       REQUIRES_SHARED(mutex_);
+  // Builds the proxy for the first address that has not failed.
+  void BuildProxyUnlocked(YBClient& client) REQUIRES(mutex_);
 
   mutable rw_spinlock mutex_;
   const std::string uuid_;
