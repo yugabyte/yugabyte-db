@@ -7,7 +7,7 @@ properties:
     type: string
     readOnly: true
   vpc_id:
-    description: VPC of the instance. Comma-separated if its network interfaces are in several VPCs.
+    description: VPC of the instance's primary network interface
     type: string
     readOnly: true
   private_ip:

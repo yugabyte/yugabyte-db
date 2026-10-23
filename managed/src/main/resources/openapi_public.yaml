@@ -635,11 +635,9 @@ paths:
         '200':
           $ref: '#/components/responses/HostCloudInfoResp'
         '401':
-          description: The request has no valid API or session token
-        '403':
-          description: The caller has no read permission on this customer
-        '404':
-          description: Customer not found
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no read permission on the customer
         '500':
           description: Server error
       security:
@@ -5479,8 +5477,7 @@ components:
           type: string
           readOnly: true
         vpc_id:
-          description: VPC of the instance. Comma-separated if its network interfaces
-            are in several VPCs.
+          description: VPC of the instance's primary network interface
           type: string
           readOnly: true
         private_ip:

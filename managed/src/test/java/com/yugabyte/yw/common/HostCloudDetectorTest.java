@@ -28,8 +28,9 @@ public class HostCloudDetectorTest {
   private HttpServer metadataServer;
   private String metadataUrl;
   private final AtomicInteger requests = new AtomicInteger();
-  // Which requests the fake metadata service answers with 200.
+  // Which requests the fake metadata service answers with 200, and which with 401; others get 404.
   private Predicate<HttpExchange> answers = e -> false;
+  private Predicate<HttpExchange> rejects = e -> false;
 
   @Before
   public void setUp() throws IOException {
@@ -43,7 +44,7 @@ public class HostCloudDetectorTest {
           if (ok && exchange.getRequestURI().getPath().startsWith("/computeMetadata")) {
             exchange.getResponseHeaders().add("Metadata-Flavor", "Google");
           }
-          exchange.sendResponseHeaders(ok ? 200 : 404, -1);
+          exchange.sendResponseHeaders(ok ? 200 : rejects.test(exchange) ? 401 : 404, -1);
           exchange.close();
         });
     metadataServer.start();
@@ -121,6 +122,14 @@ public class HostCloudDetectorTest {
   @Test
   public void awsFromImdsV1() {
     answers = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
+
+    assertEquals(Optional.of(CloudType.aws), detect());
+  }
+
+  @Test
+  public void awsFromImdsV1WhenImdsV2IsRequired() {
+    // The IMDSv2 token response doesn't reach YBA, and IMDSv1 is disabled.
+    rejects = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
 
     assertEquals(Optional.of(CloudType.aws), detect());
   }

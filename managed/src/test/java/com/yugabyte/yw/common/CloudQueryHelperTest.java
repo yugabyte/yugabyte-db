@@ -149,20 +149,30 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetHostInfoFailureIsNotCached() {
+  public void testGetHostInfoFailureIsCachedForAWhile() {
     runCommand(defaultRegion.getUuid(), true, CommandType.host_info);
+    JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
+    assertErrorNodeValue(
+        json, "YBCloud command query (current-host) failed to execute. Unknown error occurred");
+    verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testGetHostInfoIsRetriedOnceAFailureExpires() {
+    cloudQueryHelper.hostInfoFailureTtl = Duration.ZERO;
     // ybops reports an unreachable metadata service as a string.
     ShellResponse unreachable = new ShellResponse();
     unreachable.code = 0;
     unreachable.message = "\"Unable to auto-discover AWS provider information\"";
     when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(unreachable);
+    when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
     assertEquals(
         "Unable to auto-discover AWS provider information",
         cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws).asText());
     JsonNode json = runCommand(defaultRegion.getUuid(), false, CommandType.host_info);
     assertValue(json, "foo", "bar");
-    verify(shellProcessHandler, times(3)).run(anyList(), any(ShellProcessContext.class));
+    verify(shellProcessHandler, times(2)).run(anyList(), any(ShellProcessContext.class));
   }
 
   @Test

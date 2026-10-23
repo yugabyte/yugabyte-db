@@ -2,6 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_IMDSV2_TOKEN_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_IMDSV2_TOKEN_TTL_HEADER;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_INSTANCE_ID_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_INSTANCE_ID_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_METADATA_FLAVOR;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_METADATA_FLAVOR_HEADER;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.METADATA_IP;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -29,8 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HostCloudDetector {
   private static final Path DMI_DIR = Paths.get("/sys/devices/virtual/dmi/id");
-  // AWS, GCP and Azure all serve instance metadata on this address.
-  private static final String METADATA_URL = "http://169.254.169.254";
+  private static final String METADATA_URL = "http://" + METADATA_IP;
   private static final String AZURE_CHASSIS_ASSET_TAG = "7783-7084-3265-9085-8269-3286-77";
   private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(1);
   // An undetected host is probed again after this long, in case the metadata service was only
@@ -55,6 +62,8 @@ public class HostCloudDetector {
     this.metadataUrl = metadataUrl;
     this.httpClient =
         HttpClient.newBuilder()
+            // YBA's default ProxySelector sends hosts not in no_proxy through http_proxy.
+            .proxy(HttpClient.Builder.NO_PROXY)
             .connectTimeout(PROBE_TIMEOUT)
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
@@ -94,24 +103,30 @@ public class HostCloudDetector {
 
   private Optional<CloudType> fromMetadataServices() {
     // GCP and Azure are recognized by their responses. AWS is checked last: the IMDSv1 paths are
-    // also served by EC2-compatible clouds. IMDSv1 covers instances whose IMDSv2 token response
-    // can't reach YBA, e.g. a container behind a hop limit of 1.
+    // also served by EC2-compatible clouds. The IMDSv1 path covers instances whose IMDSv2 token
+    // response can't reach YBA, e.g. a container behind a hop limit of 1: it answers 200 if IMDSv1
+    // is enabled, and 401 if IMDSv2 is required.
     CompletableFuture<Boolean> gcp =
         probe(
-            get("/computeMetadata/v1/").header("Metadata-Flavor", "Google"),
-            r -> r.statusCode() == 200 && r.headers().allValues("Metadata-Flavor").contains("Google"));
+            get(GCP_INSTANCE_ID_PATH).header(GCP_METADATA_FLAVOR_HEADER, GCP_METADATA_FLAVOR),
+            r ->
+                r.statusCode() == 200
+                    && r.headers()
+                        .allValues(GCP_METADATA_FLAVOR_HEADER)
+                        .contains(GCP_METADATA_FLAVOR));
     CompletableFuture<Boolean> azu =
         probe(
             get("/metadata/instance?api-version=2021-02-01").header("Metadata", "true"),
             r -> r.statusCode() == 200);
     CompletableFuture<Boolean> awsV2 =
         probe(
-            request("/latest/api/token")
-                .header("X-aws-ec2-metadata-token-ttl-seconds", "60")
+            request(AWS_IMDSV2_TOKEN_PATH)
+                .header(AWS_IMDSV2_TOKEN_TTL_HEADER, "60")
                 .PUT(HttpRequest.BodyPublishers.noBody()),
             r -> r.statusCode() == 200);
     CompletableFuture<Boolean> awsV1 =
-        probe(get("/latest/meta-data/instance-id"), r -> r.statusCode() == 200);
+        probe(
+            get(AWS_INSTANCE_ID_PATH), r -> r.statusCode() == 200 || r.statusCode() == 401);
     if (gcp.join()) {
       return Optional.of(CloudType.gcp);
     }
