@@ -841,6 +841,12 @@ Tablet::Tablet(const TabletInitData& data)
           data.waiting_txn_registry, client_future_, clock(),
           DCHECK_NOTNULL(tablet_metrics_entity_), std::move(wq_token), data.messenger));
     }
+    // Created here rather than when the tablet peer is initialized, so the intents DB flush filter
+    // can post regular DB flushes during bootstrap as well.
+    if (data.intent_cleanup_pool) {
+      cleanup_intent_files_token_ =
+          data.intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    }
   }
 
   LOG_IF(FATAL, has_index && !metadata_cache_)
@@ -1102,14 +1108,8 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       if (state->NeedFlush(idx, memtable_index)) {
         VLOG_WITH_PREFIX_AND_FUNC(2) << "Force flush";
         if (idx == 0) {
-          rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
-          options.wait = false;
-          // This runs under the intents DB mutex, which the regular DB's flush listeners take. So
-          // never wait for the regular DB's writers here: a parked writer is only woken after those
-          // listeners run.
-          options.wait_for_writers = false;
           DEBUG_ONLY_TEST_SYNC_POINT("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush");
-          RETURN_NOT_OK(regular_db_->Flush(options));
+          RETURN_NOT_OK(RequestRegularDbFlushForIntentsFlush());
         } else {
           RETURN_NOT_OK((*state->vector_indexes)[idx - 1]->Flush());
         }
@@ -1470,15 +1470,8 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(
-    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+void Tablet::SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
-
-  if (!transaction_participant_) {
-    return;
-  }
-
-  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1553,6 +1546,60 @@ HybridTime Tablet::GetMinStartHTRunningTxnsForCDCLogCallback() const {
 
   VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
   return min_start_ht_running_txns;
+}
+
+Status Tablet::RequestRegularDbFlushForIntentsFlush() {
+  // This runs inside the intents DB flush job, under the intents DB mutex. Flushing the regular DB
+  // from here would take its write thread, and the current write leader may be parked in a write
+  // stall until a regular DB flush completes. That flush's completion listeners read the intents
+  // DB under the mutex this job holds, and the parked writer is only woken after they return:
+  // a deadlock. So the flush is posted to a pool thread instead, and this job returns without
+  // flushing the intents memtable; the retries of the intents flush pick it up once the regular
+  // data is flushed, as for any other regular DB flush in progress.
+  //
+  // The scoped operation holds the shutdown pause of StartShutdownStorages, and so the token reset
+  // in CompleteShutdown, until this returns. Without a token (a tablet created without
+  // TabletInitData::intent_cleanup_pool) the regular DB is flushed right here, which keeps the
+  // hazard above for such tablets.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  if (!scoped_operation.ok() || !cleanup_intent_files_token_) {
+    rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
+    options.wait = false;
+    return regular_db_->Flush(options);
+  }
+  // The intents flush job runs this filter again after
+  // rocksdb_nothing_in_memtable_to_flush_sleep_ms for as long as its memtable is deferred; one
+  // posted flush at a time is enough.
+  if (regular_db_flush_for_intents_posted_.exchange(true)) {
+    return Status::OK();
+  }
+  auto status =
+      cleanup_intent_files_token_->SubmitFunc([this] { FlushRegularDbForIntentsFlush(); });
+  if (!status.ok()) {
+    regular_db_flush_for_intents_posted_ = false;
+    // A failed filter makes the flush job flush the intents memtable ahead of the regular data it
+    // depends on, so the failure to post, which only happens while the pool shuts down, is not
+    // returned. A post the closing pool accepts and drops has the same outcome.
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.IsShutdownInProgress())
+        << "Failed to post the regular DB flush: " << status;
+  }
+  return Status::OK();
+}
+
+void Tablet::FlushRegularDbForIntentsFlush() {
+  // Not the counter that blocks RocksDB shutdown start: this flush can wait in the write thread
+  // behind a writer parked in a write stall, and at shutdown only StartShutdownStorages, which
+  // runs after that counter drains, wakes the writer.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  if (scoped_operation.ok()) {
+    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush");
+    rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
+    options.wait = false;
+    auto status = regular_db_->Flush(options);
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to flush the regular DB: " << status;
+  }
+  regular_db_flush_for_intents_posted_ = false;
 }
 
 void Tablet::DoCleanupIntentFiles() {

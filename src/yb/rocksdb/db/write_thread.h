@@ -257,13 +257,7 @@ class WriteThread {
   // REQUIRES: db mutex held
   void EnterUnbatched(Writer* w, InstrumentedMutex* mu);
 
-  // Like EnterUnbatched, but never waits: registers w as the currently proceeding writer only when
-  // no writer is queued, and returns whether it did. On success the caller must ExitUnbatched(w).
-  //
-  // REQUIRES: db mutex held
-  bool TryEnterUnbatched(Writer* w);
-
-  // Completes a Writer begun with EnterUnbatched or TryEnterUnbatched, unblocking subsequent
+  // Completes a Writer begun with EnterUnbatched, unblocking subsequent
   // writers.
   void ExitUnbatched(Writer* w);
 

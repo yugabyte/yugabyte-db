@@ -2251,7 +2251,7 @@ namespace {
 // Thread markers for the sync point callbacks below, which get no other way to tell the threads
 // they are interested in from unrelated ones.
 thread_local bool tl_intents_flush_deadlock_writer = false;
-thread_local bool tl_intents_flush_deadlock_filter = false;
+thread_local bool tl_intents_flush_deadlock_flush_task = false;
 
 } // namespace
 
@@ -2275,16 +2275,16 @@ class IntentsFlushDeadlockTest : public QLTransactionTest {
 //   1. A regular DB writer parked in DBImpl::DelayWrite as the write-group leader, because the
 //      regular DB's immutable memtables exceed db_max_flushing_bytes and writes are stopped until
 //      a flush brings them back under it.
-//   2. An intents DB flush job that, in Tablet::IntentsDbFlushFilter, force-flushes the regular DB
-//      while holding the intents DB mutex. DBImpl::FlushMemTable enters the regular write thread
-//      behind the parked leader and waits for it.
+//   2. An intents DB flush job that, in Tablet::IntentsDbFlushFilter, used to force-flush the
+//      regular DB while holding the intents DB mutex. DBImpl::FlushMemTable entered the regular
+//      write thread behind the parked leader and waited for it.
 //   3. The regular DB flush that ends the stall. Its OnFlushCompleted listener calls
 //      TransactionParticipant::ProcessRecentlyAppliedTransactions, which holds the participant
 //      mutex and reads the intents DB frontier under the intents DB mutex held by (2). The parked
 //      writer is only signalled after the listener returns.
 // The intents flush job must have checked the regular DB's flush ability before the regular
-// memtable was switched, and must issue its flush after the writer parked; the sync point in the
-// filter holds it in that window.
+// memtable was switched, and must request its flush after the writer parked; the sync point in
+// the filter holds it in that window.
 TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWriter)) {
   const auto kTimeout = 30s * kTimeMultiplier;
 
@@ -2311,7 +2311,7 @@ TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWrite
     existing_value = iter->value().ToBuffer();
   }
 
-  CountDownLatch filter_at_gate(1), filter_gate(1), filter_parked(1);
+  CountDownLatch filter_at_gate(1), filter_gate(1), flush_task_parked(1);
   CountDownLatch flush_at_gate(1), flush_gate(1);
   CountDownLatch writer_stalled(1);
   std::atomic<bool> pause_next_flush{true};
@@ -2327,16 +2327,20 @@ TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWrite
     flush_gate.CountDown();
     sync_point.ClearAllCallBacks();
   });
-  // (2) Hold the intents flush job between its flush-ability check and its regular DB flush. It
-  // keeps the intents DB mutex meanwhile.
+  // (2) Hold the intents flush job between its flush-ability check and its regular DB flush
+  // request. It keeps the intents DB mutex meanwhile.
   sync_point.SetCallBack("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush", [&](void*) {
-    tl_intents_flush_deadlock_filter = true;
     filter_at_gate.CountDown();
     filter_gate.Wait();
   });
+  // The requested flush runs on a pool thread; mark it so the next callback can tell it apart.
+  sync_point.SetCallBack("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush", [&](void*) {
+    tl_intents_flush_deadlock_flush_task = true;
+  });
   sync_point.SetCallBack("WriteThread::EnterUnbatched:Wait", [&](void*) {
-    if (tl_intents_flush_deadlock_filter) {
-      filter_parked.CountDown();
+    if (tl_intents_flush_deadlock_flush_task) {
+      tl_intents_flush_deadlock_flush_task = false;
+      flush_task_parked.CountDown();
     }
   });
   // (3) Hold this tablet's regular flush with the DB mutex released and its result not installed,
@@ -2399,33 +2403,36 @@ TEST_F(IntentsFlushDeadlockTest, YB_DEBUG_ONLY_TEST(ForceFlushBehindStalledWrite
     writer_state->status = regular_db->Write(write_options, &batch);
     writer_state->done.CountDown();
   });
+  // If an assertion below fails while the writer is parked, wake it the way shutdown would and
+  // let it go, so that teardown can proceed.
+  auto writer_guard = ScopeExit([&] {
+    if (writer.joinable()) {
+      regular_db->StartShutdown();
+      writer.detach();
+    }
+  });
   ASSERT_TRUE(writer_stalled.WaitFor(kTimeout)) << "regular DB writer did not stall";
 
-  // (2) queues behind (1) on code that flushes the regular DB from inside the filter. Code that no
-  // longer enters the regular write thread from there never parks, so this is not the verdict;
-  // the writer's completion below is.
+  // (2) requests the regular DB flush and returns, releasing the intents DB mutex. The requested
+  // flush queues behind (1) on a pool thread. Code that flushed the regular DB from inside the
+  // filter parked the intents flush job here instead, with the mutex held.
   filter_gate.CountDown();
-  if (!filter_parked.WaitFor(1s * kTimeMultiplier)) {
-    LOG(INFO) << "Intents flush filter did not queue behind the writer";
-  }
+  ASSERT_TRUE(flush_task_parked.WaitFor(kTimeout))
+      << "requested regular DB flush did not queue behind the writer";
 
-  // (3) completes and lifts the stall, but its listener needs the intents DB mutex before the
+  // (3) completes and lifts the stall. Its listener takes the intents DB mutex, now free, and the
   // writer is signalled.
   flush_gate.CountDown();
 
   const bool writer_done = writer_state->done.WaitFor(kTimeout);
-  if (!writer_done) {
-    // Wake the parked writer the way shutdown would, so teardown can proceed.
-    regular_db->StartShutdown();
-    writer.detach();
-  } else {
+  if (writer_done) {
     writer.join();
   }
   ASSERT_TRUE(writer_done) << "regular DB writer never resumed: tablet is deadlocked";
   ASSERT_OK(writer_state->status);
 
-  // The filter's flush request must still be carried out: the regular DB flushes the writer's
-  // memtable, after which the intents memtable is flushable.
+  // The requested flush must still be carried out: the regular DB flushes the writer's memtable,
+  // after which the intents memtable is flushable.
   ASSERT_OK(WaitFor(
       [&] { return regular_flushes.load() >= 2; }, kTimeout, "requested regular DB flush"));
   ASSERT_OK(WaitFor(
