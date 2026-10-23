@@ -1582,9 +1582,10 @@ void Tablet::FlushRegularDbForIntentsFlush() {
     return;
   }
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush");
-  rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
-  options.wait = false;
-  auto status = regular_db_->Flush(options);
+  // Tablet::Flush skips a regular DB that a failed truncate or restore left closed.
+  auto status = Flush(
+      FlushMode::kAsync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
+      rocksdb::FlushReason::kIntentsApply);
   LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
       << "Failed to flush the regular DB: " << status;
 }
