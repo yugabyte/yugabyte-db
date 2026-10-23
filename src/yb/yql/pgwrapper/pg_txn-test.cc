@@ -1353,4 +1353,33 @@ TEST_F(PgTxnTest, PlpgsqlSimpleExprRetryAfterPlanInvalidation) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT f()")), 1);
 }
 
+// A query-layer retry must leave the session as an abort plus a replay of
+// the command would. AbortTransaction restores the user id that a SECURITY
+// DEFINER function switched to; the retry did not, so the caller kept the
+// definer's privileges. Scenario: alice calls a superuser-owned SECURITY
+// DEFINER function that raises a retriable kAborted (YB001) on its first
+// attempt only; after the retried SELECT, current_user must be alice.
+TEST_F(PgTxnTest, SecurityDefinerRetryRestoresUser) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute("CREATE ROLE alice"));
+  ASSERT_OK(conn.Execute("GRANT USAGE ON SEQUENCE attempt TO alice"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION sd() RETURNS INT LANGUAGE plpgsql "
+      "SECURITY DEFINER AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+  ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION sd() TO alice"));
+  ASSERT_OK(conn.Execute("SET ROLE alice"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT sd()")), 1);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_user::text")),
+      "alice");
+}
+
 } // namespace yb::pgwrapper

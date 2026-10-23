@@ -2371,6 +2371,14 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
+	 * Control may have escaped a SECURITY DEFINER function, which leaves
+	 * undoing its user switch to the abort; without this the retry runs with
+	 * the definer's privileges.
+	 */
+	SetUserIdAndSecContext(CurrentTransactionState->prevUser,
+						   CurrentTransactionState->prevSecContext);
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
