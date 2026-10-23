@@ -1,0 +1,43 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_add_fk s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id);
+ <waiting ...>
+step s2_commit: COMMIT;
+step s1_add_fk: <... completed>
+ERROR:  insert or update on table "child" violates foreign key constraint "child_fk"
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname = 'child_fk';
+
+conname|convalidated
+-------+------------
+(0 rows)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_add_fk s2_rollback s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id);
+ <waiting ...>
+step s2_rollback: ROLLBACK;
+step s1_add_fk: <... completed>
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname = 'child_fk';
+
+conname |convalidated
+--------+------------
+child_fk|t           
+(1 row)
+
