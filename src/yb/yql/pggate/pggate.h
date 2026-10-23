@@ -913,7 +913,8 @@ class PgApiImpl {
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
-  bool IsCronLeader() const;
+  bool HasCronLease() const;
+  bool CanCronStartJobs() const;
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 

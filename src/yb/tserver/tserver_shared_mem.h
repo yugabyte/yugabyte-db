@@ -151,11 +151,21 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-    cron_leader_lease_ = cron_leader_lease_end;
+  void SetCronLeaseEnd(MonoTime lease_end) {
+    cron_lease_end_ = lease_end;
   }
 
-  bool IsCronLeader() const;
+  void SetCronCanStartJobs(bool can_start) {
+    cron_can_start_jobs_ = can_start;
+  }
+
+  // Whether this node holds a valid (unexpired) pg_cron leader lease. Remains true while draining
+  // after a step down, until the lease expires.
+  bool HasCronLease() const;
+
+  // Whether this node is the active pg_cron leader (holds a valid lease and has not stepped down).
+  // Only the active leader starts new job runs.
+  bool CanCronStartJobs() const;
 
   void SetPid(pid_t pid) {
     pid_ = pid;
@@ -182,7 +192,11 @@ class TServerSharedData {
   // See same variable comments in CatalogManager.
   std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
 
-  std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
+  std::atomic<MonoTime> cron_lease_end_{MonoTime::kUninitialized};
+
+  // Set while this node is the pg_cron leader, cleared when it steps down. CanCronStartJobs()
+  // requires this flag and an unexpired lease: only then may the node start new job runs.
+  std::atomic<bool> cron_can_start_jobs_{false};
 
   // pid of the local TServer
   pid_t pid_;
