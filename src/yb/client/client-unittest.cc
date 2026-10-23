@@ -61,7 +61,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/test_macros.h"
 
-DECLARE_string(node_to_node_encryption_scope);
+DECLARE_string(use_node_to_node_plaintext);
 
 namespace yb {
 namespace client {
@@ -150,12 +150,12 @@ master::TSInfoPB TabletServerIn(const std::string& host, const std::string& zone
 
 } // namespace
 
-// A client reaches a tablet server unencrypted only when it applies the encryption scope. One that
-// does not, like the client XClusterRemoteClientHolder builds for another universe, stays on the
-// messenger's default transport even toward a server whose placement names match its own.
-TEST(ClientUnitTest, EncryptionScopeAppliesOnlyToClientsThatApplyIt) {
+// A client reaches a tablet server in plaintext only when it applies use_node_to_node_plaintext.
+// One that does not, like the client XClusterRemoteClientHolder builds for another universe, stays
+// on the messenger's default transport even toward a server whose placement names match its own.
+TEST(ClientUnitTest, NodeToNodePlaintextAppliesOnlyToClientsThatApplyIt) {
   google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "zone";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "zone";
 
   // A messenger holding the secure transport, keys generated in process as rpc's SecureTest
   // builds one.
@@ -176,12 +176,12 @@ TEST(ClientUnitTest, EncryptionScopeAppliesOnlyToClientsThatApplyIt) {
   ASSERT_NE(encrypted, unencrypted);
 
   for (bool apply : {false, true}) {
-    SCOPED_TRACE(apply ? "applies the scope" : "does not apply the scope");
+    SCOPED_TRACE(apply ? "applies the flag" : "does not apply the flag");
     auto client = ASSERT_RESULT(YBClientBuilder()
         .add_master_server_addr("127.0.0.1")
         .set_skip_master_leader_resolution(true)
         .set_cloud_info_pb(Placement("zone1"))
-        .apply_encryption_scope(apply)
+        .apply_node_to_node_plaintext(apply)
         .Build(messenger.get()));
 
     internal::RemoteTabletServer same_zone(TabletServerIn("ts-same-zone", "zone1"));

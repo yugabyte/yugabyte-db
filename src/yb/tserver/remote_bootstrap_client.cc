@@ -202,8 +202,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   // Set up RPC proxies for the RemoteBootstrapService. The uncompressed proxy is used to download
   // SST files (which are already Snappy compressed). The other files use the compressed proxy.
-  // Both carry the encryption the caller decided from the address it selected, so bootstrap
-  // traffic sits inside node_to_node_encryption_scope like every other connection between two
+  // Both carry the encryption the caller decided from the address it selected, so
+  // use_node_to_node_plaintext governs bootstrap traffic like every other connection between two
   // nodes; it is the bulk of that traffic.
   auto* context = proxy_cache->GetContext();
   auto clamped = context->ClampEncryption(encrypted);

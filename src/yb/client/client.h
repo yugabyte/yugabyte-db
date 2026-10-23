@@ -249,11 +249,11 @@ class YBClientBuilder {
   // Sets the cloud info for the client, indicating where the client is located.
   YBClientBuilder& set_cloud_info_pb(const CloudInfoPB& cloud_info_pb);
 
-  // Has node_to_node_encryption_scope decide the transport of this client's connections, by
+  // Has use_node_to_node_plaintext decide the transport of this client's connections, by
   // comparing its cloud info with each destination's. Only a client of the universe it connects
   // to can do that: placement names mean nothing across universes and can coincide, so a client
   // of another universe keeps the messenger's default transport.
-  YBClientBuilder& apply_encryption_scope(bool should_apply = true);
+  YBClientBuilder& apply_node_to_node_plaintext(bool should_apply = true);
 
   // Sets metric entity to be used for emitting metrics. Optional.
   YBClientBuilder& set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);

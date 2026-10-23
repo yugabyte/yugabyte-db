@@ -94,8 +94,8 @@ class YBClientBuilder::Data {
   // Placement information for the client.
   CloudInfoPB cloud_info_pb_;
 
-  // See YBClientBuilder::apply_encryption_scope.
-  bool apply_encryption_scope_ = false;
+  // See YBClientBuilder::apply_node_to_node_plaintext.
+  bool apply_node_to_node_plaintext_ = false;
 
   // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
   // aid in detecting local tservers.

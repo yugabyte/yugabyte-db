@@ -429,8 +429,8 @@ YBClientBuilder& YBClientBuilder::set_num_reactors(int32_t num_reactors) {
   return *this;
 }
 
-YBClientBuilder& YBClientBuilder::apply_encryption_scope(bool should_apply) {
-  data_->apply_encryption_scope_ = should_apply;
+YBClientBuilder& YBClientBuilder::apply_node_to_node_plaintext(bool should_apply) {
+  data_->apply_node_to_node_plaintext_ = should_apply;
   return *this;
 }
 
@@ -535,7 +535,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
 
   // Set before the first leader master lookup, whose proxies take their transport from both.
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
-  c->data_->apply_encryption_scope_ = data_->apply_encryption_scope_;
+  c->data_->apply_node_to_node_plaintext_ = data_->apply_node_to_node_plaintext_;
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.

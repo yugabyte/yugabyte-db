@@ -61,28 +61,28 @@ DEFINE_UNKNOWN_string(use_private_ip, "never",
                   "region and zone."
               "never - would never use private IP if broadcast address is specified.");
 
-DEFINE_NON_RUNTIME_string(node_to_node_encryption_scope, "never",
-              "When node to node encryption is enabled, which connections to encrypt. "
-              "Scoped like use_private_ip: "
-              "cloud - would not encrypt if destination node is located in the same cloud. "
-              "region - would not encrypt if destination node is located in the same cloud and "
-                  "region. "
-              "zone - would not encrypt if destination node is located in the same cloud, region "
-                  "and zone. "
-              "never - would encrypt every connection. "
-              "The exemption applies only to connections that stay on the destination's "
-              "private address, unless node_to_node_encryption_required_on_broadcast is "
-              "turned off, and never to connections to another universe, such as xCluster's. "
+DEFINE_NON_RUNTIME_string(use_node_to_node_plaintext, "never",
+              "When to use plaintext for node to node connections. "
+              "Applies while use_node_to_node_encryption is on. "
+              "cloud - would use plaintext if destination node is located in the same cloud. "
+              "region - would use plaintext if destination node is located in the same cloud "
+                  "and region. "
+              "zone - would use plaintext if destination node is located in the same cloud, "
+                  "region and zone. "
+              "never - would never use plaintext. "
+              "Plaintext applies only to connections that stay on the destination's private "
+              "address, unless node_to_node_encryption_required_on_broadcast is turned off, "
+              "and never to connections to another universe, such as xCluster's. "
               "The nodes receiving these connections must run with "
               "allow_insecure_connections, which is what lets a listener accept one that "
               "carries no TLS.");
 
 DEFINE_NON_RUNTIME_bool(node_to_node_encryption_required_on_broadcast, true,
               "Whether a connection that does not stay on the destination's private address "
-              "is encrypted whatever node_to_node_encryption_scope says. use_private_ip "
+              "is encrypted whatever use_node_to_node_plaintext says. use_private_ip "
               "decides which address a connection uses, and it names a boundary of its own "
-              "that need not be the one the scope names; where they disagree this keeps the "
-              "connection that left the private address encrypted. "
+              "that need not be the one use_node_to_node_plaintext names; where they disagree "
+              "this keeps the connection that left the private address encrypted. "
               "A tserver reaching a master races every address that master's configuration "
               "names, so that connection could be on either of the master's address lists "
               "and is treated as not private. "
@@ -440,8 +440,8 @@ Result<UsePrivateIpMode> GetPrivateIpMode() {
   return ParseScope("use_private_ip", FLAGS_use_private_ip);
 }
 
-Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope() {
-  return ParseScope("node_to_node_encryption_scope", FLAGS_node_to_node_encryption_scope);
+Result<UsePrivateIpMode> GetNodeToNodePlaintextMode() {
+  return ParseScope("use_node_to_node_plaintext", FLAGS_use_node_to_node_plaintext);
 }
 
 // Whether connect_to lies outside the scope named by mode, as seen from connect_from.
@@ -480,7 +480,7 @@ bool UseEncryption(
     return true;
   }
   return OutsideScope(
-      ScopeOrDefault(GetNodeToNodeEncryptionScope()), connect_to, connect_from);
+      ScopeOrDefault(GetNodeToNodePlaintextMode()), connect_to, connect_from);
 }
 
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {

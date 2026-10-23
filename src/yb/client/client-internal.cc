@@ -2801,7 +2801,7 @@ void YBClient::Data::GetTableLocations(
 
 const rpc::Protocol* YBClient::Data::ProtocolFor(
     UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to) const {
-  if (!apply_encryption_scope_) {
+  if (!apply_node_to_node_plaintext_) {
     return nullptr;
   }
   return &proxy_cache_->GetContext()->ProtocolFor(
