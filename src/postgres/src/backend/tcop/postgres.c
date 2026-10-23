@@ -5167,8 +5167,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
+		{
 			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
 												true /* is_retry */ );
+			/* The refresh may have moved past the catalog read time. */
+			YbInvalidateCatalogSnapshot();
+		}
 
 		*need_retry = true;
 	}
