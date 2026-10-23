@@ -40,6 +40,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -191,6 +192,9 @@ class RpcRetrier {
 
   std::atomic<RpcRetrierState> state_{RpcRetrierState::kIdle};
 
+  // Trace context active when this retrier was constructed -- the caller's parent span.
+  dist_trace::TraceParent trace_parent_;
+
   DISALLOW_COPY_AND_ASSIGN(RpcRetrier);
 };
 
@@ -219,7 +223,7 @@ class Rpc : public RpcCommand {
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
-  RpcController* PrepareController() {
+  virtual RpcController* PrepareController() {
     return retrier_.PrepareController();
   }
 

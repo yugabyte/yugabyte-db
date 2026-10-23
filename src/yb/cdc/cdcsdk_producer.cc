@@ -666,9 +666,13 @@ Result<size_t> DoPopulatePackedRows(
   for (size_t i = 0; i != packing.columns(); ++i) {
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
+    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
+    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        col.marked_for_deletion()) {
+      continue;
+    }
 
     auto pv = VERIFY_RESULT(UnpackPrimitiveValue(column_value, column_data.data_type));
-    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
     modified_columns->insert(col.name());
 
     if (column_value.IsNull()) {
@@ -791,7 +795,8 @@ Result<TableName> GetColocatedTableName(
 Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, uint64 read_hybrid_time,
     SchemaDetailsMap* cached_schema_details, client::YBClient* client, const TableId& req_table_id,
-    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics,
+    bool emit_ddl_record = true) {
   auto iter = cached_schema_details->find(req_table_id);
   if (iter != cached_schema_details->end()) {
     return iter->second;
@@ -834,7 +839,9 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    if (emit_ddl_record) {
+      FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    }
 
     return schema_details;
   }
@@ -888,30 +895,20 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
   }
 }
 
-bool SchemaPackingStorageContainsVersion(
-    SchemaPackingStorage* schema_packing_storage, uint32_t schema_version) {
-  auto result = schema_packing_storage->GetPacking(schema_version);
-  if (!result.ok()) {
-    DCHECK(result.status().IsNotFound());
-    return false;
-  }
-  return true;
-}
-
 Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
     SchemaPackingStorage* schema_packing_storage, bool is_packed_row, Slice packed_row,
     client::YBClient* client, GetChangesResponsePB* resp,
-    CDCThroughputMetrics* throughput_metrics) {
+    CDCThroughputMetrics* throughput_metrics, bool emit_ddl_record = true) {
   bool update_schema_packing_storage = false;
   if (is_packed_row) {
     auto pr_schema_version = VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row));
     // Check if packed row schema version is present in the schema_packing_storage. If not
     // present, invalidate the cached_schema_details so that we fetch schema with required
     // version from sys catalog.
-    update_schema_packing_storage = !SchemaPackingStorageContainsVersion(
-        schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version));
+    update_schema_packing_storage =
+        !schema_packing_storage->HasVersion(narrow_cast<SchemaVersion>(pr_schema_version));
 
     // The cached entry holds a single schema version per table, but with transactional DDL, a
     // transaction containing DDL writes rows under more than one version. A schema from a different
@@ -928,7 +925,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
 
   const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
       tablet_peer, read_hybrid_time, cached_schema_details, client, table_id, resp,
-      throughput_metrics));
+      throughput_metrics, emit_ddl_record));
   auto schema_version = schema_details.schema_version;
   auto schema = *schema_details.schema;
 
@@ -937,6 +934,24 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   }
 
   return std::make_pair(schema_version, *schema_details.schema);
+}
+
+bool IsColumnIdNotFound(const Status& status) {
+  return status.IsInvalidArgument() &&
+         status.message().ToBuffer().find("Column id ") == 0;
+}
+
+Result<std::pair<SchemaVersion, Schema>> ReloadSchemaAtIntentTime(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
+    uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details, client::YBClient* client,
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
+  VLOG(1) << "Cached schema for table " << table_id
+          << " is missing a column id, reading sys catalog at hybrid time " << read_hybrid_time;
+  cached_schema_details->erase(table_id);
+  return GetSchemaAndVersion(
+      tablet_peer, table_id, read_hybrid_time, cached_schema_details,
+      /*schema_packing_storage=*/nullptr, /*is_packed_row=*/false, Slice(), client, resp,
+      throughput_metrics, /*emit_ddl_record=*/false);
 }
 
 Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
@@ -1228,8 +1243,15 @@ Status PopulateCDCSDKIntentRecord(
         RETURN_NOT_OK(decoded_value.Decode(intent.value_buf));
 
         if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId) {
-          const ColumnSchema& col =
-              VERIFY_RESULT(schema.column_by_id(column_id_opt->GetColumnId()));
+          auto column = schema.column_by_id(column_id_opt->GetColumnId());
+          if (!column.ok() && FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+              IsColumnIdNotFound(column.status())) {
+            std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
+                tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),
+                cached_schema_details, client, resp, throughput_metrics));
+            column = schema.column_by_id(column_id_opt->GetColumnId());
+          }
+          const ColumnSchema& col = VERIFY_RESULT(std::move(column));
           modified_columns.insert(col.name());
 
           auto it = null_value_columns.find(col.name());
@@ -3128,6 +3150,30 @@ Status GetChangesForCDCSDK(
               checkpoint_updated = true;
               break;
             }
+            // A vector index lives in its indexed table's tablets, so schema changes of the index
+            // (e.g. ALTER INDEX RENAME) show up here. The index has no rows of its own on this
+            // stream, and the code below would cache its schema under the indexed table's id.
+            // Vector indexes are the only tables with a colocation id in a non-colocated tablet.
+            const auto& colocated_table_id =
+                msg->change_metadata_request().schema().colocated_table_id();
+            if (!tablet_ptr->metadata()->colocated() && colocated_table_id.has_colocation_id() &&
+                colocated_table_id.colocation_id() != kColocationIdNotSet) {
+              auto table_info =
+                  tablet_ptr->metadata()->GetTableInfo(colocated_table_id.colocation_id());
+              RSTATUS_DCHECK(
+                  !table_info.ok() || (*table_info)->IsVectorIndex(), IllegalState,
+                  "Table with colocation id $0 in non-colocated tablet $1 is not a vector index",
+                  colocated_table_id.colocation_id(), tablet_id);
+              VLOG(1) << "Skipping CHANGE_METADATA_OP for vector index "
+                      << msg->change_metadata_request().alter_table_id().ToBuffer()
+                      << " on tablet " << tablet_id;
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
@@ -3142,6 +3188,16 @@ Status GetChangesForCDCSDK(
                 // stream for it.
                 LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
                           << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
+              if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, stream_metadata)) {
+                VLOG(1) << "Skipping CHANGE_METADATA_OP for table " << table_info->table_id
+                        << " that is not part of the stream on tablet " << tablet_id;
                 AcknowledgeStreamedMsg(
                     msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
                     &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
@@ -3183,8 +3239,7 @@ Status GetChangesForCDCSDK(
             }
 
             auto schema_packing_storage = &schema_packing_storages->at(table_id);
-            if (!SchemaPackingStorageContainsVersion(
-                    schema_packing_storage, changed_schema_version)) {
+            if (!schema_packing_storage->HasVersion(changed_schema_version)) {
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 

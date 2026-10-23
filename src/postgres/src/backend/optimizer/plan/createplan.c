@@ -294,7 +294,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 												 List *joinclauses, List *otherclauses, List *nestParams,
 												 Plan *lefttree, Plan *righttree,
 												 JoinType jointype, bool inner_unique,
-												 double first_batch_factor, size_t num_hashClauseInfos,
+												 int first_batch_size, size_t num_hashClauseInfos,
 												 YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 							   List *joinclauses, List *otherclauses,
@@ -359,7 +359,8 @@ static Group *make_group(List *tlist, List *qual, int numGroupCols,
 						 Plan *lefttree);
 static Unique *make_unique_from_sortclauses(Plan *lefttree, List *distinctList);
 static Unique *make_unique_from_pathkeys(Plan *lefttree,
-										 List *pathkeys, int numCols);
+										 List *pathkeys, int numCols,
+										 Relids yb_relids);
 static Gather *make_gather(List *qptlist, List *qpqual,
 						   int nworkers, int rescan_param, bool single_copy, Plan *subplan);
 static SetOp *make_setop(SetOpCmd cmd, SetOpStrategy strategy, Plan *lefttree,
@@ -380,7 +381,11 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
+/* YB declarations */
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
+static bool yb_agg_pushdown_subplan_ok(Plan *subplan);
+static Plan *yb_plan_below_removed_levels(Plan *plan);
+static int	yb_plan_docdb_result_width(Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
@@ -2734,6 +2739,9 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 	Unique	   *plan;
 	Plan	   *subplan;
 
+	/* YB declarations */
+	Relids		yb_relids = best_path->subpath->parent->relids;
+
 	/*
 	 * Unique doesn't project, so tlist requirements pass through; moreover we
 	 * need grouping columns to be labeled.
@@ -2743,7 +2751,8 @@ create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path, int flag
 
 	plan = make_unique_from_pathkeys(subplan,
 									 best_path->path.pathkeys,
-									 best_path->numkeys);
+									 best_path->numkeys,
+									 yb_relids);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -2790,6 +2799,36 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 					subplan);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
+
+	/*
+	 * YB: the pushdown planned on the paths assumes that no plan node ends
+	 * up between the Agg and the scan; withdraw it where one does.
+	 */
+	plan->yb_pushdown_decision = best_path->yb_pushdown_decision;
+	if (plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON &&
+		!yb_agg_pushdown_subplan_ok(subplan))
+		plan->yb_pushdown_decision = YB_AGG_PUSHDOWN_PLANNED_OFF;
+
+	/*
+	 * YB: label the scan below a plain Agg with the width of the rows DocDB
+	 * returns to it where its target list does not give that width: under
+	 * a pushdown the scan returns the partial-aggregate row, and when the
+	 * Agg reads no column the target list is empty although DocDB still
+	 * returns something for each row (yb_get_docdb_result_width).  The YB
+	 * cost model charges the transfer from DocDB by this width, a cost PG
+	 * does not have.  A plain Agg never reads its input's plan_width; only
+	 * a hashing Agg sizes its hash table from it.
+	 */
+	if (plan->aggstrategy == AGG_PLAIN)
+	{
+		Plan	   *input = yb_plan_below_removed_levels(subplan);
+		int			width = yb_plan_docdb_result_width(input);
+
+		if (width > 0 &&
+			(plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON ||
+			 input->plan_width == 0))
+			input->plan_width = width;
+	}
 
 	return plan;
 }
@@ -4272,6 +4311,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybColumnRefs = column_refs;
 	plan->no_row_trigger = no_row_trigger;
 	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
+	plan->ybInsertOnConflictPushdownPossible = YbIocPushdownPossible(root, plan);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -4673,12 +4713,8 @@ create_indexscan_plan(PlannerInfo *root,
 		 * base-table attnums that DocDB cannot evaluate.
 		 */
 		if (indexonly && best_path->indexinfo->yb_num_decoded_pk_cols > 0)
-		{
-			IndexOptInfo *idxinfo = best_path->indexinfo;
-			int			phys_natts = idxinfo->ncolumns - idxinfo->yb_num_decoded_pk_cols;
-			for (int i = phys_natts; i < idxinfo->ncolumns; i++)
-				decoded_pk_attnums = bms_add_member(decoded_pk_attnums, idxinfo->indexkeys[i]);
-		}
+			decoded_pk_attnums =
+				yb_get_non_pushable_attnums(best_path->indexinfo);
 
 		/*
 		 * First, include other clauses from the bitmap branch (if any) as index
@@ -4764,14 +4800,7 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
-	YbMergeScanInfo *yb_merge_scan_info = NULL;
-
-	if (best_path->yb_index_path_info.merge_scan_saop_cols)
-	{
-		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->saop_cols =
-			best_path->yb_index_path_info.merge_scan_saop_cols;
-	}
+	YbMergeScanInfo *yb_merge_scan_info = yb_make_merge_scan_info(best_path);
 
 	/* Finally ready to build the plan node */
 	if (indexonly)
@@ -4829,25 +4858,25 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (yb_merge_scan_info)
 	{
-		Bitmapset  *yb_saop_col_idxs = NULL;
+		Bitmapset  *yb_stream_col_idxs = NULL;
 		ListCell   *yb_lc;
 		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
-		foreach(yb_lc, yb_merge_scan_info->saop_cols)
+		foreach(yb_lc, yb_merge_scan_info->stream_cols)
 		{
-			YbMergeScanSaopColInfo *yb_saop_col_info =
-				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
+			YbMergeScanStreamColInfo *yb_stream_col_info =
+				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
 
-			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
-											  yb_saop_col_info->indexcol);
+			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
+												yb_stream_col_info->indexcol);
 		}
 
 		yb_sort_info->type = T_YbSortInfo;
 		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
 									   best_path->path.pathkeys,
 									   best_path->path.parent->relids,
-									   yb_saop_col_idxs,
+									   yb_stream_col_idxs,
 									   &yb_sort_info->numCols,
 									   &yb_sort_info->sortColIdx,
 									   &yb_sort_info->sortOperators,
@@ -6260,7 +6289,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		saveOuterRels = root->curOuterRels;
 
 	bool		yb_is_batched;
-	double		yb_first_batch_factor = 1.0;
+	int			yb_first_batch_size = 0;
 	size_t		yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 
@@ -6488,10 +6517,23 @@ create_nestloop_plan(PlannerInfo *root,
 			   batched_outerrelids,
 			   inner_relids));
 
-		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
-		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		if (yb_enable_base_scans_cost_model)
 		{
+			if (best_path->yb_first_batch_size > 0 &&
+				best_path->yb_first_batch_size < yb_bnl_batch_size &&
+				root->limit_tuples > 0)
+				yb_first_batch_size = best_path->yb_first_batch_size;
+		}
+		else if (yb_bnl_optimize_first_batch && root->limit_tuples > 0)
+		{
+			/*
+			 * Legacy mode keeps its own sizing.  The path's yb_first_batch_size
+			 * is rounded and clamped to [1, yb_bnl_batch_size]; the legacy
+			 * ratio is not, and deriving it from the path would change
+			 * legacy-mode plans.
+			 */
 			SemiAntiJoinFactors semifactors;
+			double		output_tuple_per_outer_tuple;
 
 			compute_semi_anti_join_factors(root, best_path->jpath.path.parent,
 										   best_path->jpath.outerjoinpath->parent,
@@ -6500,10 +6542,16 @@ create_nestloop_plan(PlannerInfo *root,
 										   NULL,
 										   best_path->jpath.joinrestrictinfo,
 										   &semifactors);
-			double		output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
-														semifactors.match_count);
+			output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
+											semifactors.match_count);
+			if (output_tuple_per_outer_tuple > 0)
+			{
+				double		fbs = ceil(root->limit_tuples /
+									   output_tuple_per_outer_tuple);
 
-			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
+				if (fbs >= 1.0 && fbs < yb_bnl_batch_size)
+					yb_first_batch_size = (int) fbs;
+			}
 		}
 	}
 
@@ -6551,7 +6599,7 @@ create_nestloop_plan(PlannerInfo *root,
 															 inner_plan,
 															 best_path->jpath.jointype,
 															 best_path->jpath.inner_unique,
-															 yb_first_batch_factor,
+															 yb_first_batch_size,
 															 yb_num_hashClauseInfos,
 															 yb_hashClauseInfos);
 
@@ -7128,6 +7176,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
 		List	   *batched_elems = NIL;
 
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Every batched Var below shares root->yb_cur_batch_no, so one
+		 * batched nested loop join has to fill all of them (see
+		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
+		 * enclosing such join.  yb_batched_clause_final_check keeps paths
+		 * that would span two of them out, and a violation here has no
+		 * symptom other than lost rows, so fail loudly instead.
+		 */
+		Relids		batched_vars =
+			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
+						  root->yb_cur_batched_relids);
+
+		if (!bms_is_empty(batched_vars))
+		{
+			bool		one_join = false;
+			ListCell   *lc;
+
+			foreach(lc, root->yb_availBatchedRelids)
+			{
+				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+				{
+					one_join = true;
+					break;
+				}
+			}
+
+			Assert(one_join);
+		}
+#endif
+
 		/*
 		 * Populate batched_elems with each batched instance of
 		 * bexpr->orig_expr's contents.
@@ -7393,21 +7473,22 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
-	 * well.
+	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
+	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
 	{
-		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
 
 		if (info->derived)
 		{
 			Node	   *clause;
 
-			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			stripped_indexquals = lappend(stripped_indexquals, info->clause);
 			/* For now, row-array-compare merge scan is not supported. */
 			clause = fix_indexqual_clause(root, index, info->indexcol,
-										  (Node *) info->saop,
+										  (Node *) info->clause,
 										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
@@ -8471,7 +8552,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
-					   double first_batch_factor,
+					   int first_batch_size,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -8486,7 +8567,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
-	node->first_batch_factor = first_batch_factor;
+	node->first_batch_size = first_batch_size;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 
@@ -9263,9 +9344,20 @@ make_unique_from_sortclauses(Plan *lefttree, List *distinctList)
 
 /*
  * as above, but use pathkeys to identify the sort columns and semantics
+ *
+ * YB: 'yb_relids' is the set of rels scanned by 'lefttree', passed on so that
+ * find_ec_member_matching_expr() also considers child equivalence members of
+ * those rels. YB puts a Unique node directly above a baserel's distinct index
+ * scan (see yb_create_distinct_index_path); when that baserel is an appendrel
+ * child, its pathkeys are canonicalized against the parent appendrel's
+ * equivalence classes, in which the member matching the child's targetlist is a
+ * child member. PG's own callers build this node over a whole scan/join or
+ * upper relation, never over a single appendrel child, so a non-child member
+ * always matches there and the relids make no difference.
  */
 static Unique *
-make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
+make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols,
+						  Relids yb_relids)
 {
 	Unique	   *node = makeNode(Unique);
 	Plan	   *plan = &node->plan;
@@ -9328,7 +9420,7 @@ make_unique_from_pathkeys(Plan *lefttree, List *pathkeys, int numCols)
 			foreach(j, plan->targetlist)
 			{
 				tle = (TargetEntry *) lfirst(j);
-				em = find_ec_member_matching_expr(ec, tle->expr, NULL);
+				em = find_ec_member_matching_expr(ec, tle->expr, yb_relids);
 				if (em)
 				{
 					/* found expr already in tlist */
@@ -9734,6 +9826,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->yb_skip_entities = NULL;
 	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
+	node->ybInsertOnConflictPushdownPossible = false;
 	return node;
 }
 
@@ -9853,4 +9946,158 @@ is_projection_capable_plan(Plan *plan)
 			break;
 	}
 	return true;
+}
+
+/*
+ * yb_fix_indexqual_references
+ *	  fix_indexqual_references for callers outside this file that need an
+ *	  index path's quals in the form the executor's indexqual machinery
+ *	  takes.
+ */
+void
+yb_fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
+							List **stripped_indexquals_p,
+							List **fixed_indexquals_p)
+{
+	fix_indexqual_references(root, index_path, stripped_indexquals_p,
+							 fixed_indexquals_p);
+}
+
+/*
+ * yb_make_merge_scan_info
+ *	  Build the YbMergeScanInfo an IndexScan or IndexOnlyScan plan carries
+ *	  for 'index_path', or NULL when the path streams no merge scan column.
+ *
+ * Only 'stream_cols' is filled; create_indexscan_plan adds 'sort_cols' once
+ * the plan node exists.  The entries are copied because setrefs.c repoints
+ * each entry's clause.  The planner's aggregate pushdown decision builds the
+ * stand-in scan node of its recheck dry run with this function too, so that
+ * the dry run binds the same stream columns the plan does.
+ */
+YbMergeScanInfo *
+yb_make_merge_scan_info(IndexPath *index_path)
+{
+	YbMergeScanInfo *merge_scan_info;
+	ListCell   *lc;
+
+	if (index_path->yb_index_path_info.merge_scan_stream_cols == NIL)
+		return NULL;
+
+	merge_scan_info = makeNode(YbMergeScanInfo);
+	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
+	{
+		YbMergeScanStreamColInfo *info = makeNode(YbMergeScanStreamColInfo);
+
+		*info = *lfirst_node(YbMergeScanStreamColInfo, lc);
+		merge_scan_info->stream_cols = lappend(merge_scan_info->stream_cols,
+											   info);
+	}
+
+	return merge_scan_info;
+}
+
+/*
+ * yb_plan_docdb_result_width
+ *	  The estimated width of the rows DocDB returns to a YB scan node, as its
+ *	  cost function recorded it; 0 for any other node.
+ */
+static int
+yb_plan_docdb_result_width(Plan *plan)
+{
+	YbPlanInfo *info;
+
+	switch (nodeTag(plan))
+	{
+		case T_YbSeqScan:
+			info = &((YbSeqScan *) plan)->yb_plan_info;
+			break;
+		case T_IndexScan:
+			info = &((IndexScan *) plan)->yb_plan_info;
+			break;
+		case T_IndexOnlyScan:
+			info = &((IndexOnlyScan *) plan)->yb_plan_info;
+			break;
+		case T_YbBitmapTableScan:
+			info = &((YbBitmapTableScan *) plan)->yb_plan_info;
+			break;
+		default:
+			return 0;
+	}
+
+	return info->estimated_docdb_result_width;
+}
+
+/*
+ * yb_agg_pushdown_subplan_ok
+ *	  Whether the Agg's input, once setrefs.c has removed the plan levels it
+ *	  removes, is a scan node that takes aggregates and evaluates no qual of
+ *	  its own: one built from a path yb_agg_pushdown_eligible accepts, whose
+ *	  state YbPlanStateTryGetAggrefs hands aggregates to.
+ *
+ * yb_agg_pushdown_subpath looked through those levels on the paths; whether
+ * a SubqueryScan goes depends on the target lists the plan ends up with, and
+ * any other node createplan.c puts in between makes the Agg evaluate the
+ * aggregates itself.  The quals are read off the plan node, as
+ * yb_agg_pushdown_supported reads them off the scan state: a pushed-down
+ * aggregate row satisfies none, and a bitmap table scan evaluates its
+ * fallback quals itself once the bitmap exceeds work_mem.  Its recheck quals
+ * apply to a lossy bitmap only, and the path is accepted only when it
+ * predicts no recheck while it has any.
+ */
+static bool
+yb_agg_pushdown_subplan_ok(Plan *subplan)
+{
+	Plan	   *scan = yb_plan_below_removed_levels(subplan);
+
+	switch (nodeTag(scan))
+	{
+		case T_YbSeqScan:
+		case T_IndexScan:
+		case T_IndexOnlyScan:
+		case T_TidScan:
+			break;
+		case T_YbBitmapTableScan:
+			if (((YbBitmapTableScan *) scan)->fallback_local_quals != NIL)
+				return false;
+			break;
+		default:
+			return false;
+	}
+
+	return scan->qual == NIL;
+}
+
+/*
+ * yb_plan_below_removed_levels
+ *	  The node that takes the place of 'plan' once set_plan_references has
+ *	  removed a SubqueryScan that trivial_subqueryscan accepts and an Append
+ *	  with one child whose parallel awareness, after the child's own
+ *	  removals, is the Append's.
+ *
+ * A MergeAppend needs no step: yb_agg_pushdown_subpath never looks through a
+ * MergeAppendPath.
+ */
+static Plan *
+yb_plan_below_removed_levels(Plan *plan)
+{
+	for (;;)
+	{
+		if (IsA(plan, SubqueryScan) &&
+			trivial_subqueryscan((SubqueryScan *) plan))
+			plan = ((SubqueryScan *) plan)->subplan;
+		else if (IsA(plan, Append) &&
+				 list_length(((Append *) plan)->appendplans) == 1)
+		{
+			Plan	   *child = linitial(((Append *) plan)->appendplans);
+
+			child = yb_plan_below_removed_levels(child);
+			if (child->parallel_aware != plan->parallel_aware)
+				break;
+			plan = child;
+		}
+		else
+			break;
+	}
+
+	return plan;
 }

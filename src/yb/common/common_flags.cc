@@ -36,6 +36,7 @@ TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "04_2024");
+DEPRECATE_FLAG(bool, ysql_yb_disable_ddl_transaction_block_for_read_committed, "09_2026");
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
@@ -176,12 +177,6 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTra
     "block instead of their separate transactions. Ensure DDL atomicity is "
     "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
-    "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
-    "instead of the as part of the enclosing transaction block even if "
-    "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
-    "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
-
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
@@ -235,59 +230,83 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
 
+DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+    kEnableObjectLockingForTableLocks,
+    "When this is true and transactional DDL, table level locks, and DDL savepoint support are "
+    "all in effect, pg_partman uses those features and advisory locks, which lets it create "
+    "default partitions and run undo_partition. Otherwise pg_partman behaves as if this were "
+    "false. If ysql_yb_enable_advisory_locks is false, the pg_partman functions that take "
+    "advisory locks fail. If partition sets have default partitions, then before turning this "
+    "off, or turning off one of those features, move the rows out of those default partitions "
+    "with partition_data_time or partition_data_id and drop them. Otherwise run_maintenance skips "
+    "those sets, retention included, and rows collect in their default partitions. Once this is "
+    "in effect again, run_maintenance fails with \"updated partition constraint for default "
+    "partition ... would be violated by some row\" until partition_data_time or partition_data_id "
+    "moves those rows out.");
+
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
     "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
     "support.] Use this flag to toggle support for concurrent DDLs.");
 DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(
-            FLAGS_master_ts_rpc_timeout_ms, FLAGS_refresh_waiter_timeout_ms),
+            FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms),
+            FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Requires master_ts_rpc_timeout_ms to be >= refresh_waiter_timeout_ms"),
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+        !_value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+            FINAL_FLAG_VALUE(pg_client_use_shared_memory),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
 
 DEFINE_validator(pg_client_use_shared_memory,
     FLAG_DELAYED_COND_VALIDATOR(
-      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      _value || !FINAL_FLAG_VALUE(enable_object_lock_fastpath) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
       "enable_object_lock_fastpath on"));
 
 DEFINE_validator(enable_object_lock_fastpath,
     FLAG_DELAYED_COND_VALIDATOR(
-      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      !_value || FINAL_FLAG_VALUE(pg_client_use_shared_memory) ||
+          !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks),
       "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
       "enable_object_locking_for_table_locks is on"));
 
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
-        (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
+        (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-        ::yb::flags_internal::compare_less_equal(_value, FLAGS_master_ts_rpc_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+        ::yb::flags_internal::compare_less_equal(
+            _value, FINAL_FLAG_VALUE(master_ts_rpc_timeout_ms)),
         "Must be <= master_ts_rpc_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_validator(master_ts_rpc_timeout_ms,
     FLAG_DELAYED_COND_VALIDATOR(
-        !FLAGS_enable_object_locking_for_table_locks ||
-            ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
+        !FINAL_FLAG_VALUE(enable_object_locking_for_table_locks) ||
+            ::yb::flags_internal::compare_greater_equal(
+                _value, FINAL_FLAG_VALUE(refresh_waiter_timeout_ms)),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,

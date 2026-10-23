@@ -10,6 +10,7 @@ public class Filters extends DefaultHttpFilters {
   @Inject
   public Filters(
       AccessLogFilter accessLogFilter,
+      ApiUsageFilter apiUsageFilter,
       CSRFFilter csrfFilter,
       CORSFilter corsFilter,
       RequestLoggingFilter requestLoggingFilter,
@@ -17,9 +18,11 @@ public class Filters extends DefaultHttpFilters {
       HSTSFilter hstsFilter,
       HAApiFilter haApiFilter,
       CustomHTTPHeader customHTTPHeader,
+      ShutdownRejectFilter shutdownRejectFilter,
       BlockAllRequestsFilter blockAllRequestsFilter) {
     super(
         accessLogFilter,
+        apiUsageFilter,
         corsFilter,
         csrfFilter,
         requestLoggingFilter,
@@ -27,6 +30,7 @@ public class Filters extends DefaultHttpFilters {
         hstsFilter,
         haApiFilter,
         customHTTPHeader,
+        shutdownRejectFilter,
         blockAllRequestsFilter);
   }
 }

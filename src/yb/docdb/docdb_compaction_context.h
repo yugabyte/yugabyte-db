@@ -119,6 +119,7 @@ struct CompactionSchemaInfo {
   ColumnIds deleted_cols;
   std::optional<dockv::PackedRowVersion> packed_row_version;
   bool table_owns_vector_reverse_mapping = false;
+  bool table_writes_vector_reverse_mapping = true;
 
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
 

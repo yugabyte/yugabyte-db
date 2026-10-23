@@ -29,7 +29,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.junit.After;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -80,9 +79,10 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR)
+    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR) {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+    }
   }
 
   @Override
@@ -260,9 +260,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testProfilesOnOldDbVersion() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
-
     /*
     * Test that profiles work on the oldest available pg15 snapshot.
     */
@@ -281,9 +278,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanChangeUserProfile() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
-
     assertEquals(PROFILE_1_NAME, getProfileName(USERNAME));
 
     exceedAttempts(PRF_1_FAILED_ATTEMPTS, USERNAME);
@@ -308,9 +302,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testRegularUserCanFailLoginManyTimes() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
-
     for (int i = 0; i < 10; i++) {
       attemptLogin(TEST_PG_USER, "wrong", AUTHENTICATION_FAILED_RE);
     }
@@ -319,9 +310,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanUnlockAfterLockout() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
-
     exceedAttempts(PRF_1_FAILED_ATTEMPTS, USERNAME);
     assertProfileStateForUser(USERNAME, PRF_1_FAILED_ATTEMPTS, false);
 
@@ -336,9 +324,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanLockAndUnlock() throws Exception {
-    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
-
     /* Make one failed attempt. */
     attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED_RE);
     assertProfileStateForUser(USERNAME, 1, true);

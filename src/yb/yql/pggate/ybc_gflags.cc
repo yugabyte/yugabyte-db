@@ -92,6 +92,22 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_row_limit, 0,
+    "Maximum number of rows returned by each catalog prefetch request. 0 means no limit.");
+
+DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
+    "Maximum combined response size in bytes of each catalog prefetch round. Capped at the safe "
+    "maximum RPC response size. 0 uses that safe maximum.");
+
+// Backs the yb_enable_stale_catalog_prefetch GUC: pg_wrapper writes this into postgresql.conf
+// under the name without the ysql_ prefix, and a runtime change reloads it.
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_stale_catalog_prefetch, true,
+    "Whether a connection starting while the master leader reports that it is shedding catalog "
+    "prefetches may read the catalog at a version this node already has cached, instead of "
+    "fetching the whole catalog from the leader. Also decides the admission priority of the read "
+    "a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
+    "waiting to begin; off, it takes the ordinary priority.");
+
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
     "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
     "before client authentication. Authentication reads pg_authid by role name "
@@ -108,6 +124,9 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
+
+DEFINE_NON_RUNTIME_bool(ysql_catalog_prefetch_minimize_index_scans, true,
+    "Read system table during catalog prefetching without index scan (if possible)");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
@@ -138,6 +157,11 @@ DEPRECATE_FLAG(bool, ysql_enable_pg_export_snapshot, "01_2026");
 DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
+
+DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
+    "When enabled, a non-zero client_connection_check_interval in ysql_pg_conf_csv will also "
+    "check for client disconnects during backend initialization.");
+TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
@@ -182,9 +206,11 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -297,8 +323,18 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .TEST_ysql_yb_enable_replication_slot_transactional_ddl =
+          &FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl,
       .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
           &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+      .ysql_catalog_prefetch_row_limit = &FLAGS_ysql_catalog_prefetch_row_limit,
+      .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
+      .ysql_catalog_prefetch_minimize_index_scans =
+          &FLAGS_ysql_catalog_prefetch_minimize_index_scans,
+      .ysql_enable_startup_client_connection_check =
+          &FLAGS_ysql_enable_startup_client_connection_check,
+      .ysql_yb_pg_partman_use_native_txn_ddl_and_locks =
+          &FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
   };
   // clang-format on
   return &accessor;

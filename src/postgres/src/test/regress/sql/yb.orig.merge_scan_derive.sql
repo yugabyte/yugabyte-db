@@ -81,6 +81,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
@@ -123,6 +124,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
@@ -165,6 +167,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 
 -- Parent
 \set query ':P :Q SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;'
@@ -192,6 +195,7 @@ SPLIT AT VALUES (
     (2, 2, 2),
     (2, 2, 2, 2),
     (3));
+ANALYZE r5n;
 CREATE INDEX NONCONCURRENTLY ON parent ((yb_hash_code(r2, r3) % 3) ASC, r2, r3)
 SPLIT AT VALUES (
     (1),
@@ -199,6 +203,7 @@ SPLIT AT VALUES (
     (2, 2),
     (2, 2, 2),
     (3));
+ANALYZE parent;
 
 -- Derive from r5n
 \set query ':P :Q SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;'

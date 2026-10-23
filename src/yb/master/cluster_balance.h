@@ -221,6 +221,15 @@ class ClusterLoadBalancer {
   Result<bool> HandleAddIfWrongPlacement(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
+  // Moves a replica from a placement block above its maximum to one with remaining capacity, for
+  // tablets that are neither missing replicas nor over-replicated (those are owned by their own
+  // paths; see tablets_over_max_placements_). Like HandleAddIfWrongPlacement, this adds the
+  // destination replica first, temporarily over-replicating the tablet; the remove path then drops
+  // a replica from the offending block. Runs after HandleAddIfWrongPlacement (draining blacklisted
+  // or wrongly-placed servers unblocks node decommissioning) and before normal load balancing.
+  Result<bool> HandleAddIfOverMaxPlacement(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
+
   // If we find a tablet with peers that violate the placement information, we first over-replicate
   // the peer group, in the add portion of the algorithm. We then eventually remove extra replicas
   // on the remove path, here.
@@ -384,7 +393,12 @@ class ClusterLoadBalancer {
   // Goes over all table states and returns a priority-sorted list of under-replicated tablets.
   std::vector<UnderReplicatedTabletInfo> CollectUnderReplicatedTablets();
 
-  // Checks if we are at our RBS or overreplicated tablets limit.
+  // Checks if we are at our RBS limit. Used by adds to tablets below RF, which skip the
+  // overreplicated tablets limit.
+  Status CheckRemoteBootstrapLimits();
+
+  // Checks if we are at our RBS or overreplicated tablets limit. Used by any add that
+  // over-replicates a tablet.
   Status CanAddReplicas();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.

@@ -30,7 +30,7 @@ class SharedMemoryAllocatorImpl;
 
 template<typename T>
 struct SharedMemoryDeleter {
-  void operator()(T* p) const noexcept;
+  void operator()(std::remove_extent_t<T>* p) const noexcept;
 
   SharedMemoryBackingAllocator* allocator;
 };
@@ -96,10 +96,23 @@ class SharedMemoryBackingAllocator {
   }
 
   template<typename T, typename... Args>
+  requires (!std::is_unbounded_array_v<T>)
   Result<SharedMemoryUniquePtr<T>> MakeUnique(Args&&... args) {
-    auto ptr = VERIFY_RESULT(Allocate(sizeof(T)));
+    auto* ptr = VERIFY_RESULT(Allocate(sizeof(T)));
     return SharedMemoryUniquePtr<T>(
         new (ptr) T (std::forward<Args>(args)...),
+        SharedMemoryDeleter<T>{.allocator = this});
+  }
+
+  template<typename T>
+  requires (std::is_unbounded_array_v<T>)
+  Result<SharedMemoryUniquePtr<T>> MakeUnique(size_t size) {
+    using Element = std::remove_extent_t<T>;
+    // For arrays, we store size in the 8 bytes before the returned pointer.
+    auto* ptr = VERIFY_RESULT(Allocate(sizeof(size_t) + sizeof(Element[size])));
+    new (ptr) size_t (size);
+    return SharedMemoryUniquePtr<T>(
+        new (pointer_cast<size_t*>(ptr) + 1) Element[size] (),
         SharedMemoryDeleter<T>{.allocator = this});
   }
 
@@ -115,9 +128,21 @@ class SharedMemoryBackingAllocator {
 };
 
 template<typename T>
-void SharedMemoryDeleter<T>::operator()(T* p) const noexcept {
-  p->~T();
-  allocator->Deallocate(p, sizeof(T));
+void SharedMemoryDeleter<T>::operator()(std::remove_extent_t<T>* p) const noexcept {
+  if constexpr (std::is_unbounded_array_v<T>) {
+    using Element = std::remove_extent_t<T>;
+    // Size is stored in the 8 bytes before data. std::launder is necessary since this is not the
+    // size_t pointer directly returned by placement new.
+    size_t* size_ptr = std::launder(pointer_cast<size_t*>(p) - 1);
+    size_t size = *size_ptr;
+    for (size_t i = 0; i < size; ++i) {
+      p[i].~Element();
+    }
+    allocator->Deallocate(size_ptr, sizeof(size_t) + sizeof(Element[size]));
+  } else {
+    p->~T();
+    allocator->Deallocate(p, sizeof(T));
+  }
 }
 
 // The allocator has to store pointer to Impl, not SharedMemoryBackingAllocator, because

@@ -1,0 +1,6 @@
+comment = 'subtrans_infos:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = 'subtrans_infos'
+relocatable = false
+superuser = true
+trusted = false

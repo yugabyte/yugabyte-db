@@ -269,6 +269,11 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+// The tserver response cache was asked for an entry it does not hold, under lookup_only.
+bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
+  return StatusWrapper(s)->IsIncomplete();
+}
+
 bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
@@ -513,6 +518,24 @@ uint32_t YBCWaitEventForWaitingOnTServer() {
   return std::to_underlying(ash::WaitStateCode::kWaitingOnTServer);
 }
 
+YbcAshAuxKind YBCGetWaitEventAuxKind(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  switch (static_cast<ash::WaitStateCode>(wait_event_info & kWaitEventMask)) {
+    case ash::WaitStateCode::kWaitingOnTServer:
+      return YB_ASH_AUX_PGGATE_RPC;
+    case ash::WaitStateCode::kCatalogRead: [[fallthrough]];
+    case ash::WaitStateCode::kCatalogWrite: [[fallthrough]];
+    case ash::WaitStateCode::kStorageFlush: [[fallthrough]];
+    case ash::WaitStateCode::kTableRead: [[fallthrough]];
+    case ash::WaitStateCode::kTableWrite: [[fallthrough]];
+    case ash::WaitStateCode::kIndexRead: [[fallthrough]];
+    case ash::WaitStateCode::kIndexWrite:
+      return YB_ASH_AUX_RELATION_OID;
+    default:
+      return YB_ASH_AUX_NONE;
+  }
+}
+
 // Get a random integer between a and b
 int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
@@ -537,7 +560,10 @@ int YBCGetCircularBufferSizeInKiBs() {
 }
 
 const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
-  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
+  // A sample may catch a backend between the aux and the wait event write, so
+  // check for safety
+  const auto rpc = static_cast<ash::PggateRPC>(pggate_rpc_enum_value);
+  return ash::ToCString(rpc) ? NoPrefixName(rpc) : "";
 }
 
 uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set) {
@@ -922,8 +948,25 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
+// False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
+// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
+// to the tserver never comes from the unset value: PgTxnManager reads it through
+// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
+// only issued while a statement runs. The PG side does read it earlier, at least from
+// YBCIsLegacyModeForCatalogOps during sys table prefetching, where
+// YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
+static bool object_locking_infra_for_curr_txn = false;
+
+void YBCSetObjectLockingInfraForCurrTxn() {
+  object_locking_infra_for_curr_txn = enable_object_locking_infra;
+}
+
+bool YBCIsObjectLockingInfraEnabled() {
+  return object_locking_infra_for_curr_txn;
+}
+
 bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

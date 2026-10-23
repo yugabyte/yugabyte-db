@@ -108,11 +108,13 @@ struct PgClientSessionMetrics {
   EventStatsPtr vector_index_fetch_us;
   EventStatsPtr vector_index_collect_us;
   EventStatsPtr vector_index_reduce_us;
+  EventStatsPtr vector_index_partitions_queried;
 };
 
 struct PgClientSessionDbHistoryRetentionPin {
   PgOid db_oid = kPgInvalidOid;
   HybridTime read_time;
+  pid_t pid = -1;
 };
 
 struct PgClientSessionContext {
@@ -136,7 +138,8 @@ struct PgClientSessionContext {
   PgClientServiceMockImpl* TEST_mock_service = nullptr;
 };
 
-using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
+using RequestProcessingPreconditionWaiter =
+    LWFunction<Status(const ::yb::tserver::LWPgRequestSequenceNumPB&, CoarseTimePoint)>;
 
 class PgClientSession final {
  private:
@@ -156,6 +159,10 @@ class PgClientSession final {
   ~PgClientSession();
 
   uint64_t id() const;
+  pid_t pid() const;
+
+  // The database recorded for the session's backend; kInvalidOid if none yet.
+  PgOid TEST_database_oid() const;
 
   struct SharedDataDescriptor {
     PgSessionObjectLockData& object_lock;

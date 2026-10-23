@@ -14,8 +14,10 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
+#include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -27,6 +29,7 @@
 #include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
@@ -43,17 +46,34 @@ namespace yb::vector_index {
 class VectorLSMFileMetaData;
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
-template<IndexableVectorType Vector>
-struct VectorLSMInsertEntry {
-  VectorId vector_id;
-  Vector   vector;
+struct VectorLSMChunkFileSizes {
+  uint64_t index_file = 0;
+
+  // Size of the vector payload file, 0 when the chunk has no payload file.
+  uint64_t payload_file = 0;
+
+  uint64_t total() const {
+    return index_file + payload_file;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(index_file, payload_file);
+  }
 };
+
+template<IndexableVectorType Vector>
+using VectorLSMInsertEntry = VectorIndexEntry<Vector>;
 
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
   size_t chunk_size = 0;
   rocksdb::Cache::ReservationMode reservation_mode =
       rocksdb::Cache::ReservationMode::kAlways;
+  // When set, a non empty insert adds a hold on its chunk here. While held, the chunk is not saved,
+  // and therefore not merged. A merge drops the vectors whose reverse mappings it does not find, so
+  // the caller must keep the hold until the write that carries the reverse mappings of the inserted
+  // vectors is visible to readers, and should release it right after.
+  VectorLSMChunkHolds* chunk_holds = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -71,7 +91,9 @@ class VectorLSMMergeRegistry;
 class VectorLSMMergeFilter {
  public:
   virtual ~VectorLSMMergeFilter() = default;
-  virtual storage::FilterDecision Filter(VectorId vector_id) = 0;
+
+  // payload is attached to the vector, empty when the vector has no payload.
+  virtual storage::FilterDecision Filter(VectorId vector_id, Slice payload) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 
@@ -94,6 +116,9 @@ struct VectorLSMOptions {
   std::string file_extension;
   MetricEntityPtr metric_entity;
   size_t block_cache_capacity = 0;
+
+  // Whether newly created chunks store payloads attached to vectors, see StoreVectorPayload.
+  vector_index::StoreVectorPayload store_vector_payload = vector_index::StoreVectorPayload::kFalse;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -133,16 +158,35 @@ class VectorLSM {
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
+  // Records `frontiers` as flushed without a chunk file, when nothing is unflushed: the mutable
+  // chunk has no entries and every chunk is in the manifest. Returns false when skipped.
+  Result<bool> AdvanceFlushedFrontier(const storage::UserFrontiers& frontiers);
+
+  // Applies `modify` to the frontiers of every chunk, and saves them as a single reset update in a
+  // new manifest file. Unlike adding a chunk, this can move the flushed frontier backwards. Fails
+  // when anything is unflushed. The caller keeps compactions off, so no compaction output can
+  // bring back frontiers computed before the change.
+  Status ModifyChunkFrontiers(const std::function<void(storage::UserFrontiers&)>& modify);
+
   // Returns an estimate, derived from the underlying vector index implementation, of the number
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
-  Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
   Result<size_t> TotalEntries() const;
 
+  // Returns the indexes of the chunks in the manifest, keeping them alive even if compacted away
+  // meanwhile. Such chunks accept no inserts, so they can be iterated. Flush and WaitForFlush
+  // first to cover every vector inserted before the call.
+  Result<std::vector<VectorIndexPtr>> ManifestIndexes() const EXCLUDES(mutex_);
+
   Status Flush(bool wait);
+  // Waits for insert tasks already allocated when the wait started (including those that raced
+  // onto a new chunk after DoFlush), then drains the flush queue. A waited insert can RollChunk
+  // and re-fill the queue. Leftover in-memory entries are not flushed here; CreateSplitChildTablet
+  // issues a second vector Flush before CreateCheckpoint. Inserts that allocate after the epoch
+  // advances are not waited, so continuous ingest cannot stall this.
   Status WaitForFlush();
 
   // Vector LSM starts with background compactions disabled, they must be enabled explicitly
@@ -163,6 +207,14 @@ class VectorLSM {
   // Returns the total size in bytes of the immutable chunk files currently on disk.
   uint64_t OnDiskSize() const EXCLUDES(mutex_);
 
+  // Returns the minimum serial_no among manifested chunks that have actual data (file != null).
+  // Returns std::nullopt if there are no data chunks.
+  std::optional<uint64_t> MinSerialNo() const EXCLUDES(mutex_);
+
+  // Returns the serial_no that was assigned to the most recently created chunk.
+  // New chunks will get serial_no > this value.
+  uint64_t LastSerialNo() const EXCLUDES(mutex_);
+
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
@@ -171,6 +223,9 @@ class VectorLSM {
 
   // Test helper method to get the size of the latest chunk (highest serial number).
   uint64_t TEST_LatestChunkSize() const;
+
+  // Test helper method to get the file sizes of the latest chunk (highest serial number).
+  VectorLSMChunkFileSizes TEST_LatestChunkFileSizes() const EXCLUDES(mutex_);
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
@@ -214,6 +269,10 @@ class VectorLSM {
   Status RollChunk(
       size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
+  void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
+
+  // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
+  void ReleaseChunkHold(MutableChunk& chunk);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
@@ -236,7 +295,7 @@ class VectorLSM {
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
   Result<WritableFile*> RollManifest() REQUIRES(mutex_);
 
-  Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
+  Result<VectorLSMChunkFileSizes> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(
@@ -249,10 +308,9 @@ class VectorLSM {
 
   // Creates new file metadata for the vector index file and attaches to the one.
   VectorLSMFileMetaDataPtr CreateVectorLSMFileMetaData(
-      VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk);
+      VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);

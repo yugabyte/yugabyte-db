@@ -1,15 +1,17 @@
 import { YBButton } from '../../../common/forms/fields';
 import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { getSupportBundlePermissions } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
-export const FirstStep = ({ onCreateSupportBundle, universeUUID }) => {
+export const FirstStep = ({ onCreateSupportBundle, universeUUID, useV2Api = false }) => {
+  const supportBundlePermissions = getSupportBundlePermissions(useV2Api);
+
   return (
     <div className="universe-support-bundle-step-one">
       <i className="fa fa-file-archive-o first-step-icon" aria-hidden="true" />
       <RbacValidator
         isControl
         accessRequiredOn={{
-          ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE,
+          ...supportBundlePermissions.create,
           onResource: {
             UNIVERSE: universeUUID
           }

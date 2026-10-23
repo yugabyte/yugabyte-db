@@ -176,6 +176,15 @@ Build options:
     https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
     Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
     Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
+  --pgo-instrument-type <ir|csir>
+    With the prof_gen build type: instrument the build for profile-guided optimization (PGO) with
+    IR or context-sensitive IR profiles. A benchmark run with --cxx-benchmark in such a build
+    writes its profile to <build_root>/pgo-profiles/<instrumentation type>/.
+  --pgo-data-path <profdata_file>
+    Compile and link with the given merged llvm-profdata profile (-fprofile-use). Works with any
+    build type; the release pipeline uses it with --full-lto. The build root remembers the profile:
+    later builds without this flag keep using it, giving a different path re-runs CMake and
+    rebuilds, and building without a profile again needs a different build root or --clean.
   --no-initdb, --skip-initdb
     Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
@@ -211,6 +220,15 @@ Test options:
     Use the given filter to select Google Test tests to run. Uses with --cxx-test.
   --test-args
     Extra arguments to pass to the test. Used with --cxx-test.
+
+  --cxx-benchmark, --cb <cxx_benchmark_program_name>
+    Build and run the given C++ microbenchmark (added with ADD_YB_BENCHMARK). Only that program and
+    what it links are built. In an LTO build (--full-lto or --thin-lto) this builds and runs the
+    statically linked, whole-program-optimized <name>-lto variant, which is linked the way release
+    server binaries are; with --skip-final-lto-link the dynamically linked program is used instead.
+  --benchmark-args
+    Extra arguments to pass to the benchmark, e.g. '--benchmark_filter=AbslMutex'. Used with
+    --cxx-benchmark.
 
   --sanitizer-extra-options, --extra-sanitizer-options
     Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
@@ -347,6 +365,9 @@ set_default_yb_build_args() {
   no_tcmalloc=false
   must_use_tcmalloc=false
   cxx_test_name=""
+  cxx_benchmark_name=""
+  cxx_benchmark_program_name=""
+  benchmark_args=()
   test_existence_check=true
   object_files_to_delete=()
   should_run_ctest=false
@@ -576,6 +597,19 @@ parse_yb_build_cmd_line() {
       --test-args)
         ensure_option_has_arg "$@"
         export YB_EXTRA_GTEST_FLAGS+=" $2"
+        shift
+      ;;
+      --cxx-benchmark|--cb)
+        ensure_option_has_arg "$@"
+        cxx_benchmark_name=$2
+        build_java=false
+        shift
+      ;;
+      --benchmark-args)
+        ensure_option_has_arg "$@"
+        # Split on whitespace, like --test-args.
+        read -r -a extra_benchmark_args <<< "$2"
+        benchmark_args+=( "${extra_benchmark_args[@]}" )
         shift
       ;;
       --java-test|--jt)

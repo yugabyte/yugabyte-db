@@ -129,6 +129,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      // No-op unless the universe is registered with a PA Collector.
+      createUnregisterUniverseFromPaCollectorTask(universe.getUniverseUUID())
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
       if (universe.getUniverseDetails().useNewHelmNamingStyle) {
         createPodDisruptionBudgetPolicyTask(true /* deletePDB */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingPodDisruptionBudgetPolicy);

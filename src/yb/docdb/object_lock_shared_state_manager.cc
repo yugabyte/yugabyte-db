@@ -15,7 +15,6 @@
 
 #include <atomic>
 #include <mutex>
-#include <unordered_map>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -83,6 +82,14 @@ class ObjectLockOwnerRegistry::Impl {
     owners_.erase(i);
   }
 
+  void UpdateRegistrationStatusTablet(const RegistrationGuard& guard, const TabletId& tablet_id) {
+    std::lock_guard l1(mutex_);
+    const auto i = owners_.find(guard.txn_id());
+    DCHECK(i != owners_.end());
+    std::lock_guard l2((*i)->status_tablet_mutex);
+    (*i)->status_tablet = tablet_id;
+  }
+
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const {
     std::lock_guard lock(mutex_);
     const auto i = owners_.find(id);
@@ -131,6 +138,11 @@ ObjectLockOwnerRegistry::~ObjectLockOwnerRegistry() = default;
 ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
     ObjectLockSharedState& shared, TransactionId id, const TabletId& status_tablet) {
   return impl_->Register(shared, id, status_tablet);
+}
+
+void ObjectLockOwnerRegistry::UpdateRegistrationStatusTablet(
+    const RegistrationGuard& guard, const TabletId& tablet_id) {
+  impl_->UpdateRegistrationStatusTablet(guard, tablet_id);
 }
 
 std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
@@ -187,22 +199,24 @@ ObjectLockSharedStateManager::ObjectLockSharedStateManager(
   }
 }
 
-void ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
+Status ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
   {
     std::lock_guard lock(mutex_);
     DCHECK(!allocator_);
     allocator_ = &allocator;
     stopped_ = false;
+    exclusive_intents_ = VERIFY_RESULT(ObjectLockExclusiveIntents::Make(*allocator_, write_locks_));
     VLOG(1) << "Set up ObjectLockSharedStateManager";
   }
   start_cond_.notify_all();
+  return Status::OK();
 }
 
 Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
   UniqueLock lock(mutex_);
   WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
   auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
-      *allocator_, write_locks_));
+      *allocator_, exclusive_intents_));
   auto* ptr = state.get();
   shared_states_.insert(std::move(state));
   return ObjectLockSharedStateHolder{*this, *ptr};
@@ -248,6 +262,7 @@ void ObjectLockSharedStateManager::Stop() {
       state->Shutdown();
     }
     stopped_ = true;
+    write_locks_.clear();
     VLOG(1) << "Stopped ObjectLockSharedStateManager";
   }
 }
@@ -275,7 +290,7 @@ void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
   }
 }
 
-void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
+Status ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
   std::lock_guard lock(mutex_);
@@ -284,15 +299,24 @@ void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
         LockStateToSharedWriteLockState(IntentTypeSetAdd(key_and_intent->intent_types));
   }
 
+  if (!allocator_) {
+    return Status::OK();
+  }
+
   ParentProcessGuard g;
+  // Old array must be kept alive until all shared states have switched to the new one.
+  ObjectLockExclusiveIntents old_intents = std::exchange(
+      exclusive_intents_,
+      VERIFY_RESULT(ObjectLockExclusiveIntents::Make(*allocator_, write_locks_)));
   for (auto& state : shared_states_) {
     CallWithRequestConsumer(
         *state,
-        [&state, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
-          state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
+        [this, &state](auto&& c) PARENT_PROCESS_ONLY REQUIRES(mutex_) {
+          state->ConsumeAndResetExclusiveLockIntentsTo(c, exclusive_intents_);
         },
         consume);
   }
+  return Status::OK();
 }
 
 void ObjectLockSharedStateManager::DropPendingSharedLockRequests(TransactionId txn_id) {
@@ -313,9 +337,22 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     write_locks_.erase(iter);
   }
 
+  if (!allocator_) {
+    return;
+  }
+
   ParentProcessGuard g;
+  auto new_intents = ObjectLockExclusiveIntents::Make(*allocator_, write_locks_);
+  if (!new_intents.ok()) {
+    LOG(DFATAL) << "Failed to make exclusive intents array: " << new_intents.status();
+    return;
+  }
+
+  // Old array must be kept alive until all shared states have switched to the new one.
+  ObjectLockExclusiveIntents old_intents = std::exchange(
+      exclusive_intents_, std::move(*new_intents));
   for (auto& state : shared_states_) {
-    state->ReleaseExclusiveLockIntent(object_id, lock_state);
+    state->ResetExclusiveLockIntentsTo(exclusive_intents_);
   }
 }
 
@@ -348,7 +385,12 @@ template<typename ConsumeMethod>
 void ObjectLockSharedStateManager::CallWithRequestConsumer(
     ObjectLockSharedState& shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
   auto owner_info = registry_.GetOwnerInfo(shared);
-  auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request) {
+  std::optional<std::lock_guard<std::mutex>> lock;
+  if (owner_info) {
+    lock.emplace(owner_info->status_tablet_mutex);
+  }
+  auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request)
+      NO_THREAD_SAFETY_ANALYSIS {
     if (!owner_info) {
       return;
     }

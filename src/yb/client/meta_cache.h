@@ -209,6 +209,7 @@ using TabletServerMap = UnorderedStringMap<TabletServerId, std::unique_ptr<Remot
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
+YB_STRONGLY_TYPED_BOOL(MarkStaleOnFailure);
 
 struct ReplicasCount {
   ReplicasCount(int expected_live_replicas, int expected_read_replicas) {
@@ -263,11 +264,15 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
       const TabletServerMap& tservers,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB_ReplicaPB>& replicas);
 
-  // Update this tablet's replica locations with raft_config from a Tablet Server.
+  // Returns OK if consensus_state is newer than what this tablet has cached.
+  template <class ConsensusPB>
+  Status CheckRaftConfigIsNewer(const ConsensusPB& consensus_state) const EXCLUDES(mutex_);
+
+  // Update this tablet's replica locations from raft_config if it is newer than what is cached.
   template <class RaftPB, class ConsensusPB>
-  Status RefreshFromRaftConfig(
+  Status RefreshFromRaftConfigIfNewer(
       const TabletServerMap& tservers, const RaftPB& raft_config,
-      const ConsensusPB& consensus_state);
+      const ConsensusPB& consensus_state) EXCLUDES(mutex_);
 
   // Mark this tablet as stale, indicating that the cached tablet metadata is
   // out of date. Staleness is checked by the MetaCache when
@@ -320,6 +325,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // callers should always check the result against NULL.
   RemoteTabletServer* LeaderTServer() const;
 
+  /// Same as LeaderTServer(), but optionally marks the tablet as stale when there is no leader.
+  /// A failed replica is cleared only by a refresh from master, which a stale tablet forces.
+  RemoteTabletServer* LeaderTServer(MarkStaleOnFailure mark_stale_on_failure);
+
   // Writes this tablet's TSes (across all replicas) to 'servers' for all available replicas. If a
   // replica has failed recently, check if it is available now if it is local. For remote replica,
   // wait for some time (configurable) before retrying.
@@ -370,7 +379,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   int64_t lookups_without_new_replicas() const { return lookups_without_new_replicas_; }
 
-  int64_t raft_config_opid_index() const { return raft_config_opid_index_; }
+  int64_t raft_config_opid_index() const {
+    return raft_config_opid_index_.load();
+  }
 
   // The last version of the table's partition list that we know the tablet was serving data with.
   PartitionListVersion GetLastKnownPartitionListVersion() const;
@@ -386,6 +397,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   // Same as ReplicasAsString(), except that the caller must hold mutex_.
   std::string ReplicasAsStringUnlocked() const;
+
+  template <class ConsensusPB>
+  Status CheckRaftConfigIsNewerUnlocked(const ConsensusPB& consensus_state) const
+      REQUIRES_SHARED(mutex_);
 
   const std::string tablet_id_;
   const std::string log_prefix_;
@@ -407,7 +422,8 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // The opid of the latest committed raft config that we fetched from a tablet
   // server. Defaulted to kUnknownOpIdIndex so when it is first created, it will be
   // refreshed when we next try a partial update because of stale leadership or raft config.
-  int64_t raft_config_opid_index_;
+  // Written only under mutex_; atomic so it is readable without the lock.
+  std::atomic<int64_t> raft_config_opid_index_;
   // Can be updated only when remote tablet is refreshed after a lookup to master or via a
   // TabletConsensusInfo piggybacked from a response.
   std::vector<std::shared_ptr<RemoteReplica>> replicas_;
@@ -698,8 +714,15 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // the latest host/port info for a server.
   void UpdateTabletServerUnlocked(const master::TSInfoPB& pb) REQUIRES(mutex_);
 
-  template <class PB>
-  Status UpdateTabletServerWithRaftPeerUnlocked(const PB& pb) REQUIRES(mutex_);
+  // Refreshes the ts_cache_ entry of every peer of raft_config.
+  template <class RaftPB>
+  void UpdateCachedTabletServersWithRaftPeersUnlocked(const RaftPB& raft_config)
+      REQUIRES_SHARED(mutex_);
+
+  // Caches a RemoteTabletServer for every peer of raft_config not already in ts_cache_.
+  template <class RaftPB>
+  Status InsertMissingTabletServersFromRaftPeersUnlocked(const RaftPB& raft_config)
+      REQUIRES(mutex_);
 
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.
@@ -784,9 +807,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Given that the set of tablet servers is bounded by physical machines, we never
   // evict entries from this map until the MetaCache is destructed. So, no need to use
   // shared_ptr, etc.
-  //
-  // Protected by mutex_.
-  TabletServerMap ts_cache_;
+  TabletServerMap ts_cache_ GUARDED_BY(mutex_);
 
   // Local tablet server.
   RemoteTabletServer* local_tserver_ = nullptr;

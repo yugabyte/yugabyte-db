@@ -143,6 +143,7 @@
 #include "access/xact.h"
 #include "arpa/inet.h"
 #include "commands/async.h"
+#include "common/base64.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
@@ -2149,6 +2150,8 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
+	char	   *yb_client_cert = NULL;
+	char	   *yb_server_cert_hash_b64 = NULL;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
@@ -2479,6 +2482,12 @@ retry1:
 				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, YB_YCM_CLIENT_CERT) == 0)
+				yb_client_cert = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, YB_YCM_SERVER_CERT_HASH) == 0)
+				yb_server_cert_hash_b64 = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
 			{
 				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
@@ -2489,6 +2498,19 @@ retry1:
 									"yb_internal_conn_kind", valptr),
 							 errhint("Value must be one of the registered "
 									 "YbInternalConnKind wire names.")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_dist_traceparent") == 0)
+			{
+				/*
+				 * Not a registered GUC, so consume it here even when auth
+				 * passthrough discards it: it must not reach guc_options.
+				 */
+				if (!YbIsAuthPassthroughInProgress(port))
+				{
+					port->yb_dist_traceparent = pstrdup(valptr);
+					pg_clean_ascii(port->yb_dist_traceparent);
+				}
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -2606,6 +2628,78 @@ retry1:
 
 			port->yb_is_ssl_enabled_in_logical_conn =
 				yb_logical_conn_type == 'E';
+		}
+
+		if (yb_server_cert_hash_b64 != NULL)
+		{
+			int			b64len = strlen(yb_server_cert_hash_b64);
+			int			hashlen;
+			char	   *decoded;
+
+			/*
+			 * Like the client certificate, only the connection manager may
+			 * state which certificate it presented to the logical client;
+			 * SCRAM channel binding is checked against it.
+			 */
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("%s must only be provided when the client is "
+								"the connection manager",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			decoded = palloc(pg_b64_dec_len(b64len));
+			hashlen = pg_b64_decode(yb_server_cert_hash_b64, b64len, decoded,
+									pg_b64_dec_len(b64len));
+			if (hashlen <= 0 || hashlen > YB_SERVER_CERT_HASH_MAX_LEN)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid value for parameter \"%s\"",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			memcpy(port->yb_logical_conn_server_cert_hash, decoded, hashlen);
+			port->yb_logical_conn_server_cert_hash_len = hashlen;
+			pfree(decoded);
+			pfree(yb_server_cert_hash_b64);
+		}
+
+		if (yb_client_cert != NULL)
+		{
+			/*
+			 * Only the connection manager may state which certificate the
+			 * client presented. Without this a client could simply put
+			 * yb_ycm_internal_client_cert in its own startup packet and
+			 * claim any identity it likes.
+			 */
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("yb_ycm_internal_client_cert must only be provided "
+								"when the client is the connection manager")));
+
+#ifdef USE_SSL
+			if (be_tls_open_server(port, yb_client_cert) < 0)
+			{
+				/*
+				 * Cert-parse failures here are driven by client-controlled
+				 * content (embedded NUL in CN, DN that X509_NAME_print_ex
+				 * refuses, DER that d2i_X509 rejects). So this should follow
+				 * the standard way of reporting rejection error to logical client
+				 * done in ClientAuthentication() with connection manager.
+				 */
+				ereport(WARNING,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("could not parse client certificate forwarded by the connection manager")));
+				be_tls_close(port);
+				port->yb_forwarded_cert_parse_failed = true;
+			}
+			pfree(yb_client_cert);
+#else
+			pfree(yb_client_cert);
+			ereport(FATAL,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("client certificate forwarding is not supported when SSL is disabled")));
+#endif
 		}
 	}
 
@@ -4226,7 +4320,13 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(PgArchPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() && !take_action)
+	/*
+	 * YB: during shutdown fall through so pmState advances; otherwise a child
+	 * killed after the shutdown signal (e.g. the checkpointer after the
+	 * SIGKILL timeout) leaves the postmaster stuck in PM_SHUTDOWN.
+	 */
+	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() &&
+		!take_action && Shutdown == NoShutdown)
 		return;
 
 	/* We do NOT restart the syslogger */
@@ -4933,6 +5033,8 @@ BackendInitialize(Port *port)
 	port->yb_has_auth_passthrough_finished = false;
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
+	port->yb_forwarded_cert_parse_failed = false;
+	port->yb_logical_conn_server_cert_hash_len = 0;
 
 	/*
 	 * Initialize libpq and enable reporting of ereport errors to the client.

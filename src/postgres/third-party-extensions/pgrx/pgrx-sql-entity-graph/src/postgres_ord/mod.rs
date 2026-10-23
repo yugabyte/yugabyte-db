@@ -100,28 +100,39 @@ impl PostgresOrd {
 impl ToEntityGraphTokens for PostgresOrd {
     fn to_entity_graph_tokens(&self) -> TokenStream2 {
         let name = &self.name;
-        let sql_graph_entity_fn_name = format_ident!("__pgrx_internals_ord_{}", self.name);
+        let sql_graph_entity_fn_name = format_ident!("__pgrx_schema_ord_{}", self.name);
         let to_sql_config = &self.to_sql_config;
+        let to_sql_config_len = to_sql_config.section_len_tokens();
+        let payload_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#name))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(file!())
+                + ::pgrx::pgrx_sql_entity_graph::section::u32_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(stringify!(#name))
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(module_path!())
+                + ::pgrx::pgrx_sql_entity_graph::section::str_len(<#name as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+                + (#to_sql_config_len)
+        };
+        let total_len = quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::u32_len() + (#payload_len)
+        };
+        let writer = to_sql_config.section_writer_tokens(quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::EntryWriter::<{ #total_len }>::new()
+                .u32((#payload_len) as u32)
+                .u8(::pgrx::pgrx_sql_entity_graph::section::ENTITY_ORD)
+                .str(stringify!(#name))
+                .str(file!())
+                .u32(line!())
+                .str(stringify!(#name))
+                .str(module_path!())
+                .str(<#name as ::pgrx::pgrx_sql_entity_graph::metadata::SqlTranslatable>::TYPE_IDENT)
+        });
         quote! {
-            #[no_mangle]
-            #[doc(hidden)]
-            #[allow(nonstandard_style, unknown_lints, clippy::no_mangle_with_rust_abi)]
-            pub extern "Rust" fn  #sql_graph_entity_fn_name() -> ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity {
-                use core::any::TypeId;
-                extern crate alloc;
-                use alloc::vec::Vec;
-                use alloc::vec;
-                let submission = ::pgrx::pgrx_sql_entity_graph::PostgresOrdEntity {
-                    name: stringify!(#name),
-                    file: file!(),
-                    line: line!(),
-                    full_path: core::any::type_name::<#name>(),
-                    module_path: module_path!(),
-                    id: TypeId::of::<#name>(),
-                    to_sql_config: #to_sql_config,
-                };
-                ::pgrx::pgrx_sql_entity_graph::SqlGraphEntity::Ord(submission)
-            }
+            ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+                #sql_graph_entity_fn_name,
+                #total_len,
+                #writer.finish()
+            );
         }
     }
 }

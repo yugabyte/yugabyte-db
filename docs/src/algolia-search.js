@@ -9,6 +9,8 @@ import { getCookie } from 'browser-cookie-utils';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
 
+  let activeGroups = window.OnetrustActiveGroups || '';
+
   /**
    * Kapa modal Styling and add shadow on root.
    */
@@ -468,7 +470,11 @@ import { getCookie } from 'browser-cookie-utils';
 
         if (hits.length > 0 && sectionHTML !== '') {
           if (searchSummary !== null) {
-            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+            if (activeGroups.indexOf('C0002') > -1) {
+              searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+            } else {
+              searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>.`;
+            }
           }
 
           const btnSearchVal = document.querySelector('.yb-kapa-button .search-val');
@@ -478,11 +484,18 @@ import { getCookie } from 'browser-cookie-utils';
 
           setTimeout(() => {
             if (document.querySelector('.yb-kapa-button')) {
-              document.querySelector('.yb-kapa-button').style.display = 'block';
+              if (activeGroups.indexOf('C0002') > -1) {
+                document.querySelector('.yb-kapa-button').classList.remove('hidden');
+              } else {
+                document.querySelector('.yb-kapa-button').classList.add('hidden');
+              }
             }
           }, 500);
         } else {
-          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          let noResultMessage = `No results found for <b>"${searchedTerm}"</b>.`;
+          if (activeGroups.indexOf('C0002') > -1) {
+            noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          }
           if (searchSummary) {
             searchSummary.innerHTML = noResultMessage;
           } else {
@@ -490,7 +503,7 @@ import { getCookie } from 'browser-cookie-utils';
           }
 
           if (document.querySelector('.yb-kapa-button')) {
-            document.querySelector('.yb-kapa-button').style.display = 'none';
+            document.querySelector('.yb-kapa-button').classList.add('hidden');
           }
         }
 
@@ -522,7 +535,7 @@ import { getCookie } from 'browser-cookie-utils';
           </nav>`;
         }
 
-        if (searchResults) {
+        if (searchResults && activeGroups.indexOf('C0002') > -1) {
           searchResults.addEventListener('click', clickEvents);
           searchResults.addEventListener('contextmenu', clickEvents);
         }
@@ -573,6 +586,10 @@ import { getCookie } from 'browser-cookie-utils';
 
   addSearchEvents();
   kapaAskAI();
+
+  window.addEventListener('OneTrustGroupsUpdated', () => {
+    activeGroups = window.OnetrustActiveGroups;
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.target.nodeName === 'TEXTAREA') {

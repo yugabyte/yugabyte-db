@@ -39,9 +39,12 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.logging.LegacyLogArchiveCleanup;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
@@ -145,7 +148,9 @@ public class AppInit {
       UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
       SlowQueriesAggregator slowQueriesAggregator,
-      PACollectorSync paCollectorSync)
+      PACollectorSync paCollectorSync,
+      SettableRuntimeConfigFactory sConfigFactory,
+      LegacyLogArchiveCleanup legacyLogArchiveCleanup)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -156,6 +161,10 @@ public class AppInit {
       }
       log.info("YBA version: {}", displayVersion);
       if (!environment.isTest()) {
+        // Reapply persisted logging settings before anything else logs, since logback only reads
+        // them from system properties at parse time and would otherwise use the XML defaults.
+        LogUtil.applyPersistedLoggingConfig(sConfigFactory, config);
+
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
           threadDumpPublisher.start();
@@ -215,6 +224,10 @@ public class AppInit {
         }
         // yb.fixPaths has a specific, limited use case. This should run always.
         releasesUtils.releaseUploadPathFixup();
+        // Must run before importLocalReleases picks up restored uploads in the releases dir.
+        if (Util.restoreTaskInfoExists()) {
+          releasesUtils.restoredUploadPathFixup();
+        }
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
@@ -339,6 +352,7 @@ public class AppInit {
         queryAlerts.start();
         healthChecker.initialize();
         shellLogsManager.startLogsGC();
+        legacyLogArchiveCleanup.start();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
         autoMasterFailoverScheduler.init();

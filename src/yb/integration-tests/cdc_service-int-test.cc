@@ -832,7 +832,7 @@ TEST_F(CDCServiceTest, TestGetChangesFromGCedCheckpointWithNewerWal) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
   ASSERT_OK(peer->log()->WaitUntilAllFlushed());
   log::SegmentSequence segs;
-  auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+  auto log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segs));
   ASSERT_EQ(segs.size(), 3u);
   const auto& oldest = ASSERT_RESULT(segs.front()).get();
@@ -1026,8 +1026,11 @@ TEST_F(CDCServiceTest, YB_DISABLE_TEST_ON_MACOS(TestGetChangesWithDeadline)) {
   {
     // Get CDC changes. Note that the timeout value and read delay
     // should ensure that some, but not all records are read.
+    // The timeout also has to stay well clear of what answering one GetChanges costs: the server
+    // only reserves cdc_read_safe_deadline_ratio of it to stop reading, post-process and respond,
+    // which at 50ms left 15ms -- less than a cold call needs, so every attempt timed out.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_get_changes_read_loop_delay_ms) = 10 * kTimeMultiplier;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 50 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 500 * kTimeMultiplier;
 
     ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
         FLAGS_cdc_read_rpc_timeout_ms));

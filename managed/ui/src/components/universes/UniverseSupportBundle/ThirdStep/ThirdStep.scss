@@ -113,11 +113,22 @@
       color: #1A44A5;
     }
 
+    .aborted {
+      background: #F5F5F5;
+      color: #5D5D5D;
+    }
+
     .support-action-dropdown {
       z-index: 9999;
       padding: 0;
       border: none;
     }
+  }
+
+  .support-bundle-list-pagination {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
   }
 }
 

@@ -51,6 +51,13 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
 
+    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
+    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
+    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
+    if (gcsData.useGcpIam) {
+      return;
+    }
+
     // Should not contain neither or both json creds and use GCP IAM flag.
     if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();

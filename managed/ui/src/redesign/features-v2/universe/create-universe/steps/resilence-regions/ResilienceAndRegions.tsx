@@ -562,7 +562,7 @@ export const ResilienceAndRegions = forwardRef<
             components={{
               a: (
                 <a
-                  href="https://deploy-preview-33264--infallible-bardeen-164bc9.netlify.app/stable/yugabyte-platform/create-deployments/read-replicas/"
+                  href="https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/read-replicas/"
                   target="_blank"
                   rel="noopener noreferrer"
                 />

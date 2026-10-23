@@ -11,7 +11,12 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <atomic>
 #include <iostream>
+#include <map>
+#include <numeric>
+#include <ranges>
 #include <thread>
 #include <vector>
 
@@ -22,12 +27,24 @@
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
+#include "yb/rocksdb/cache.h"
+
+#include "yb/util/env.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
@@ -45,9 +62,12 @@
 
 #include "yb/tools/tool_arguments.h"
 
+DECLARE_bool(vector_index_enable_block_cache_reservation);
+
 namespace po = boost::program_options;
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 namespace yb::tools {
 
@@ -110,14 +130,21 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
-  std::string load_index_from_path;
   std::string query_vecs_path;
-  std::string save_index_to_path;
   ann_methods::ANNMethodKind ann_method;
+  std::string yb_hnsw_dir;
+  std::string yb_hnsw_variants = "yb_hnsw_reorder_vectors=false;yb_hnsw_reorder_vectors=true";
+  size_t block_cache_size_mb = 16384;
+  std::string ef_values_comma_sep;
+  size_t num_search_repeats = 0;
+  size_t search_time_ms = 1000;
 
   // Parsed version of k_values.
   std::set<size_t> k_values;
   size_t max_k = 0;
+
+  // Parsed version of ef_values.
+  std::set<size_t> ef_values;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
@@ -132,7 +159,13 @@ struct BenchmarkArguments {
         num_vectors_to_insert,
         query_vecs_path,
         report_num_keys,
-        validate_ground_truth
+        validate_ground_truth,
+        yb_hnsw_dir,
+        yb_hnsw_variants,
+        block_cache_size_mb,
+        ef_values_comma_sep,
+        num_search_repeats,
+        search_time_ms
     );
   }
 
@@ -155,6 +188,15 @@ struct BenchmarkArguments {
       return STATUS(InvalidArgument, "No values of k (size of top results list) specified");
     }
     max_k = *k_values.rbegin();
+    if (ef_values_comma_sep.empty()) {
+      ef_values = {hnsw_options.ef};
+    } else {
+      ef_values = VERIFY_RESULT((ParseCommaSeparatedListOfNumbers<size_t, std::set<size_t>>(
+          ef_values_comma_sep, /* lower_bound= */ static_cast<size_t>(1))));
+    }
+    if (!yb_hnsw_dir.empty() && num_index_shards != 1) {
+      return STATUS(InvalidArgument, "yb_hnsw_dir is not supported with multiple index shards");
+    }
     return Status::OK();
   }
 };
@@ -207,11 +249,6 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
        "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
-      (OPTIONAL_ARG_FIELD(save_index_to_path),
-       "Save the index to this path.")
-      (OPTIONAL_ARG_FIELD(load_index_from_path),
-       "Load the index from this path, or read it from disk without loading fully into memory, "
-       "if the index supports it. This supersedes the index build procedure.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
@@ -272,7 +309,24 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "result sets using brute-force precise nearest neighbor search. Could be slow.")
       (OPTIONAL_ARG_FIELD_WITH_LOWER_BOUND(num_index_shards, 1),
        "For experiments that try to take advantage of a large number of cores, this allows to "
-       "create multiple instances of the vector index and insert into them concurrently.");
+       "create multiple instances of the vector index and insert into them concurrently.")
+      (OPTIONAL_ARG_FIELD(yb_hnsw_dir),
+       "Directory to save the built index to as YbHnsw files, one per yb_hnsw_variants entry. "
+       "Saved indexes are benchmarked by the search benchmark and removed at the end.")
+      (OPTIONAL_ARG_FIELD(yb_hnsw_variants),
+       "A semicolon-separated list of YbHnsw variants. Each variant is a comma-separated list of "
+       "flag=value assignments applied while the variant is saved.")
+      (OPTIONAL_ARG_FIELD(block_cache_size_mb),
+       "Capacity of the block cache used by YbHnsw indexes, in megabytes. The in-memory index "
+       "does not reserve space in it.")
+      ("ef_values", po::value(&args.ef_values_comma_sep)->default_value(
+          args.ef_values_comma_sep),
+       "A comma-separated list of ef values used by the search benchmark. Defaults to ef.")
+      (OPTIONAL_ARG_FIELD(num_search_repeats),
+       "Number of times every index is measured by the search benchmark, in rotating order. "
+       "Reported values are medians across repeats. 0 disables the search benchmark.")
+      (OPTIONAL_ARG_FIELD(search_time_ms),
+       "Duration of a single search benchmark measurement.");
 
 #undef OPTIONAL_ARG_FIELD
 #undef BOOL_SWITCH_ARG_FIELD
@@ -309,7 +363,7 @@ std::unique_ptr<FloatVectorSource> CreateRandomFloatVectorSource(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using PreVectorIndexFactory = std::function<VectorIndexTraitsPtr<Vector, DistanceResult>(
-    const HNSWOptions& options)>;
+    const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache)>;
 
 // We instantiate this template as soon as we determine what coordinate type and distance result
 // type we are working with.
@@ -367,39 +421,41 @@ class BenchmarkTool {
 
     if (args_.num_index_shards > 1) {
       index_pre_factory_ = [pre_factory = index_pre_factory_, num_shards = args_.num_index_shards](
-          const HNSWOptions& options)
+          const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache)
           -> VectorIndexTraitsPtr<IndexedVector, IndexedDistanceResult> {
         return std::make_shared<ShardedVectorIndexTraits<IndexedVector, IndexedDistanceResult>>(
-            pre_factory(options), num_shards);
+            pre_factory(options, block_cache), num_shards);
       };
     }
 
-    vector_index_ = index_pre_factory_(hnsw_options())->Create(FactoryMode::kCreate);
+    if (!args_.yb_hnsw_dir.empty()) {
+      RETURN_NOT_OK(CreateBlockCache());
+    }
+
+    vector_index_ = index_pre_factory_(hnsw_options(), block_cache_)->Create(
+        FactoryMode::kCreate, StoreVectorPayload::kFalse);
 
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
         std::thread::hardware_concurrency(),
         std::thread::hardware_concurrency(),
         rocksdb::Cache::ReservationMode::kAlways));
-    if (!args_.load_index_from_path.empty()) {
-      LOG(INFO) << "Loading index from " << args_.load_index_from_path;
-      auto load_start_time = MonoTime::Now();
-      RETURN_NOT_OK(vector_index_->LoadFromFile(args_.load_index_from_path, 0));
-      LOG(INFO) << "Loaded index from " << args_.load_index_from_path
-                << " in " << MonoTime::Now().GetDeltaSince(load_start_time);
-    } else {
-      RETURN_NOT_OK(BuildIndex());
-      if (!args_.save_index_to_path.empty()) {
-        auto save_start_time = MonoTime::Now();
-        LOG(INFO) << "Saving index to " << args_.save_index_to_path;
-        RETURN_NOT_OK(vector_index_->SaveToFile(args_.save_index_to_path));
-        LOG(INFO) << "Saved index to " << args_.save_index_to_path
-                  << " in " << MonoTime::Now().GetDeltaSince(save_start_time);
-
-      }
-    }
+    RETURN_NOT_OK(BuildIndex());
 
     RETURN_NOT_OK(Validate());
+
+    if (!args_.yb_hnsw_dir.empty()) {
+      RETURN_NOT_OK(SaveYbHnswVariants());
+    }
+
+    if (args_.num_search_repeats) {
+      // With yb_hnsw_dir the index was saved above, so it is immutable and searched lock-free,
+      // like the YbHnsw variants.
+      benchmark_indexes_.emplace_back("memory", vector_index_);
+      RETURN_NOT_OK(BenchmarkSearches());
+    }
+
+    RETURN_NOT_OK(RemoveYbHnswVariants());
 
     // Print the configuration once again after a lot of output from the benchmark.
     PrintConfiguration();
@@ -528,7 +584,7 @@ class BenchmarkTool {
 
   Status Validate() {
     LOG(INFO) << "Index stats:\n" << vector_index_->IndexStatsStr();
-    std::vector<InputVector> query_vectors = VERIFY_RESULT(query_vector_source_->LoadVectors());
+    query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors());
 
     auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
         args_.hnsw_options.distance_kind);
@@ -557,7 +613,7 @@ class BenchmarkTool {
       GroundTruth<InputVector, InputDistanceResult> ground_truth(
           vertex_id_to_query_distance_fn,
           k,
-          query_vectors,
+          query_vectors_,
           loaded_ground_truth_,
           args_.validate_ground_truth,
           *reader,
@@ -568,7 +624,7 @@ class BenchmarkTool {
           // of vectors we've inserted.
           loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
 
-      LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors.size()
+      LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors_.size()
                 << " queries using " << args_.num_query_threads << " threads "
                 << (args_.validate_ground_truth ? "(also recomputing and validating provided"
                                                   " ground truth)"
@@ -579,10 +635,217 @@ class BenchmarkTool {
       auto elapsed_time = MonoTime::Now() - start_time;
       LOG(INFO) << "Validation finished in " << elapsed_time;
       for (size_t j = 0; j < result.size(); ++j) {
-        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << StringPrintf("%.10f", result[j]);
+        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << FixedPoint(result[j], 10);
       }
     }
     return Status::OK();
+  }
+
+  Status CreateBlockCache() {
+    // The cache is for YbHnsw blocks only, so the in-memory index must not reserve space in it.
+    RETURN_NOT_OK(SET_FLAG(vector_index_enable_block_cache_reservation, false));
+    rocksdb_cache_ = rocksdb::NewLRUCache(
+        args_.block_cache_size_mb * 1_MB, /* num_shard_bits= */ 6);
+    metric_entity_ = METRIC_ENTITY_server.Instantiate(&metric_registry_, "hnsw_tool");
+    block_cache_ = std::make_shared<hnsw::BlockCache>(
+        *Env::Default(), MemTracker::FindOrCreateTracker("vector_index_block_cache"),
+        metric_entity_, *rocksdb_cache_);
+    return Status::OK();
+  }
+
+  // Saves the same graph as YbHnsw with each variant, so variants differ only in the layout.
+  Status SaveYbHnswVariants() {
+    RETURN_NOT_OK(Env::Default()->CreateDirs(args_.yb_hnsw_dir));
+    for (const auto& variant : StringSplit(args_.yb_hnsw_variants, ';')) {
+      auto path = JoinPathSegments(args_.yb_hnsw_dir, Format("variant$0", yb_hnsw_paths_.size()));
+      std::vector<std::pair<std::string, std::string>> old_values;
+      auto se = ScopeExit([&old_values] {
+        for (const auto& [name, value] : std::views::reverse(old_values)) {
+          std::string unused, output_msg;
+          flags_internal::SetFlag(
+              name, value, flags_internal::SetFlagForce::kTrue, &unused, &output_msg);
+        }
+      });
+      for (const auto& assignment : StringSplit(variant, ',')) {
+        auto pos = assignment.find('=');
+        SCHECK_NE(pos, std::string::npos, InvalidArgument, Format("Bad flag: $0", assignment));
+        auto name = assignment.substr(0, pos);
+        std::string old_value, output_msg;
+        auto result = flags_internal::SetFlag(
+            name, assignment.substr(pos + 1), flags_internal::SetFlagForce::kTrue, &old_value,
+            &output_msg);
+        SCHECK_EQ(result, flags_internal::SetFlagResult::SUCCESS, InvalidArgument, output_msg);
+        old_values.emplace_back(std::move(name), std::move(old_value));
+      }
+      auto start_time = MonoTime::Now();
+      auto index = VERIFY_RESULT(vector_index_->SaveToFile(path));
+      SCHECK(index, IllegalState, "Index was not converted to YbHnsw");
+      LOG(INFO) << "Saved variant " << variant << " to " << path << " in "
+                << MonoTime::Now() - start_time;
+      yb_hnsw_paths_.push_back(std::move(path));
+      benchmark_indexes_.emplace_back(variant, std::move(index));
+    }
+    return Status::OK();
+  }
+
+  Status RemoveYbHnswVariants() {
+    benchmark_indexes_.clear();
+    for (const auto& path : yb_hnsw_paths_) {
+      RETURN_NOT_OK(Env::Default()->DeleteFile(path));
+    }
+    yb_hnsw_paths_.clear();
+    return Status::OK();
+  }
+
+  struct SearchSample {
+    double qps;
+    double mean_us;
+    double p50_us;
+    double p99_us;
+    double blocks;
+    uint64_t read_bytes;
+  };
+
+  // Every repeat measures all indexes for each ef and thread count, rotating the order of indexes,
+  // so drift of the machine state affects all indexes equally.
+  Status BenchmarkSearches() {
+    queries_.reserve(query_vectors_.size());
+    for (const auto& query : query_vectors_) {
+      queries_.push_back(vector_cast<IndexedVector>(query));
+    }
+    const std::set<size_t> thread_counts{1, args_.num_query_threads};
+    const auto num_indexes = benchmark_indexes_.size();
+
+    // The recall pass also warms up the block cache.
+    std::map<std::pair<size_t, size_t>, std::string> recalls;
+    for (size_t i = 0; i != num_indexes; ++i) {
+      for (auto ef : args_.ef_values) {
+        recalls[{i, ef}] = VERIFY_RESULT(Recall(*benchmark_indexes_[i].second, ef));
+      }
+    }
+
+    std::map<std::tuple<size_t, size_t, size_t>, std::vector<SearchSample>> samples;
+    for (size_t repeat = 0; repeat != args_.num_search_repeats; ++repeat) {
+      for (auto ef : args_.ef_values) {
+        for (auto num_threads : thread_counts) {
+          for (size_t j = 0; j != num_indexes; ++j) {
+            auto i = (j + repeat) % num_indexes;
+            auto sample = VERIFY_RESULT(MeasureSearch(
+                *benchmark_indexes_[i].second, ef, num_threads));
+            VLOG(1) << "Search sample: repeat: " << repeat << ", ef: " << ef << ", threads: "
+                    << num_threads << ", mean us: " << sample.mean_us << ", index: "
+                    << benchmark_indexes_[i].first;
+            samples[{i, ef, num_threads}].push_back(sample);
+          }
+        }
+      }
+    }
+
+    std::vector<std::string> lines;
+    for (size_t i = 0; i != num_indexes; ++i) {
+      for (auto ef : args_.ef_values) {
+        for (auto num_threads : thread_counts) {
+          const auto& index_samples = samples[{i, ef, num_threads}];
+          auto median = [&index_samples](auto field) {
+            std::vector<double> values;
+            for (const auto& sample : index_samples) {
+              values.push_back(sample.*field);
+            }
+            std::ranges::sort(values);
+            return values[values.size() / 2];
+          };
+          auto [min_mean, max_mean] = std::ranges::minmax(
+              index_samples | std::views::transform(&SearchSample::mean_us));
+          uint64_t read_bytes = 0;
+          for (const auto& sample : index_samples) {
+            read_bytes += sample.read_bytes;
+          }
+          lines.push_back(Format(
+              "ef: $0, threads: $1, recall@$2: $3, qps: $4, search us mean/p50/p99: $5, "
+              "blocks per search: $6, read MB: $7, index: $8",
+              ef, num_threads, args_.max_k, recalls[{i, ef}],
+              static_cast<size_t>(median(&SearchSample::qps)),
+              Format("$0/$1/$2, mean us min/max: $3/$4",
+                     FixedPoint(median(&SearchSample::mean_us), 1),
+                     FixedPoint(median(&SearchSample::p50_us), 1),
+                     FixedPoint(median(&SearchSample::p99_us), 1),
+                     FixedPoint(min_mean, 1), FixedPoint(max_mean, 1)),
+              FixedPoint(median(&SearchSample::blocks), 1), read_bytes / 1_MB,
+              benchmark_indexes_[i].first));
+        }
+      }
+    }
+    LOG(INFO) << "Search benchmark summary, medians of " << args_.num_search_repeats
+              << " repeats:\n" << JoinStrings(lines, "\n");
+    return Status::OK();
+  }
+
+  Result<std::string> Recall(
+      const VectorIndexReaderIf<IndexedVector, IndexedDistanceResult>& index, size_t ef) {
+    const auto k = args_.max_k;
+    const SearchOptions options { .max_num_results = k, .ef = ef };
+    size_t overlap = 0;
+    for (size_t i = 0; i != queries_.size(); ++i) {
+      auto result = VERIFY_RESULT(index.Search(queries_[i], options));
+      if (loaded_ground_truth_.empty()) {
+        continue;
+      }
+      const auto& expected = loaded_ground_truth_[i];
+      std::unordered_set<VectorId> expected_set(expected.begin(), expected.begin() + k);
+      for (const auto& entry : result) {
+        overlap += expected_set.contains(entry.vector_id);
+      }
+    }
+    if (loaded_ground_truth_.empty()) {
+      return "n/a";
+    }
+    return FixedPoint(overlap * 1.0 / (queries_.size() * k), 4);
+  }
+
+  // Searches with num_threads threads for search_time_ms.
+  Result<SearchSample> MeasureSearch(
+      const VectorIndexReaderIf<IndexedVector, IndexedDistanceResult>& index, size_t ef,
+      size_t num_threads) {
+    const SearchOptions options { .max_num_results = args_.max_k, .ef = ef };
+    std::vector<std::vector<int64_t>> thread_search_ns(num_threads);
+    std::atomic<size_t> next_query{0};
+    auto blocks_before = block_cache_ ? block_cache_->metrics().query->value() : 0;
+    auto read_before = block_cache_ ? block_cache_->metrics().read->value() : 0;
+    auto start_time = MonoTime::Now();
+    auto deadline = start_time + MonoDelta::FromMilliseconds(args_.search_time_ms);
+    // One item per thread, each searching until the deadline.
+    RETURN_NOT_OK(ProcessInParallel(
+        num_threads, static_cast<size_t>(0), num_threads,
+        [this, &index, &options, &thread_search_ns, &next_query, deadline](size_t t) -> Status {
+          auto& search_ns = thread_search_ns[t];
+          for (auto now = MonoTime::Now(); now < deadline;) {
+            const auto& query =
+                queries_[next_query.fetch_add(1, std::memory_order_relaxed) % queries_.size()];
+            RETURN_NOT_OK(index.Search(query, options));
+            auto finish = MonoTime::Now();
+            search_ns.push_back((finish - now).ToNanoseconds());
+            now = finish;
+          }
+          return Status::OK();
+        }));
+    auto elapsed = MonoTime::Now() - start_time;
+    auto blocks = block_cache_ ? block_cache_->metrics().query->value() - blocks_before : 0;
+    auto read = block_cache_ ? block_cache_->metrics().read->value() - read_before : 0;
+    std::vector<int64_t> search_ns;
+    for (const auto& thread_ns : thread_search_ns) {
+      search_ns.insert(search_ns.end(), thread_ns.begin(), thread_ns.end());
+    }
+    SCHECK(!search_ns.empty(), IllegalState, "No searches were executed");
+    std::ranges::sort(search_ns);
+    const auto n = search_ns.size();
+    return SearchSample {
+      .qps = n / elapsed.ToSeconds(),
+      .mean_us = std::accumulate(search_ns.begin(), search_ns.end(), 0.0) / n / 1000.0,
+      .p50_us = search_ns[n / 2] / 1000.0,
+      .p99_us = search_ns[n * 99 / 100] / 1000.0,
+      .blocks = blocks * 1.0 / n,
+      .read_bytes = static_cast<uint64_t>(read),
+    };
   }
 
   size_t max_num_vectors_to_insert() {
@@ -619,12 +882,12 @@ class BenchmarkTool {
     size_t remaining_points = max_num_vectors_to_insert() - num_inserted;
     auto keys_per_sec = num_inserted / elapsed_time_sec;
     LOG(INFO) << "n: " << num_inserted << ", "
-              << "elapsed time: " << StringPrintf("%.1f", elapsed_time_sec) << " sec, "
+              << "elapsed time: " << FixedPoint(elapsed_time_sec, 1) << " sec, "
               << "O(n*log(n)) constant: " << n_log_n_constant << ", "
               << "remaining points: " << remaining_points << ", "
               << "keys per second: " << static_cast<size_t>(keys_per_sec) << ", "
               << "time remaining: "
-              << StringPrintf("%.1f", keys_per_sec > 0 ? remaining_points / keys_per_sec : 0)
+              << FixedPoint(keys_per_sec > 0 ? remaining_points / keys_per_sec : 0, 1)
               << " sec";
     prev_elapsed_usec_ = elapsed_usec;
   }
@@ -659,7 +922,7 @@ class BenchmarkTool {
 
   Status InsertOneVector(VectorId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
-    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v));
+    Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v), Slice());
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
       ReportIndexingProgress(load_start_time, new_num_inserted);
@@ -742,9 +1005,23 @@ class BenchmarkTool {
 
   // Source for vectors to run validation queries on.
   std::unique_ptr<VectorSource<InputVector>> query_vector_source_;
+  std::vector<InputVector> query_vectors_;
 
   PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> index_pre_factory_;
+
+  // Block cache for YbHnsw indexes, only created when yb_hnsw_dir is specified.
+  MetricRegistry metric_registry_;
+  MetricEntityPtr metric_entity_;
+  std::shared_ptr<rocksdb::Cache> rocksdb_cache_;
+  hnsw::BlockCachePtr block_cache_;
+
   VectorIndexIfPtr<IndexedVector, IndexedDistanceResult> vector_index_;
+
+  // Search benchmark state.
+  std::vector<IndexedVector> queries_;
+  std::vector<std::pair<std::string, VectorIndexIfPtr<IndexedVector, IndexedDistanceResult>>>
+      benchmark_indexes_;
+  std::vector<std::string> yb_hnsw_paths_;
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
@@ -774,9 +1051,9 @@ std::optional<Status> BenchmarkExecuteHelper(
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
     PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> pre_index_factory =
-        [](const HNSWOptions& options) {
+        [](const HNSWOptions& options, const hnsw::BlockCachePtr& block_cache) {
       return CHECK_RESULT((ann_methods::ANNMethodTraits<ann_method_kind>::template
-          CreateIndexTraits<IndexedVector, IndexedDistanceResult>(options)));
+          CreateIndexTraits<IndexedVector, IndexedDistanceResult>(block_cache, options)));
     };
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
         args, pre_index_factory).Execute();
@@ -812,7 +1089,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     ((Usearch, InnerProduct, float,      float  ))        \
     ((Usearch, InnerProduct, uint8_t,    float  ))        \
     ((Hnswlib, InnerProduct, float,      float  ))        \
-    ((Hnswlib, InnerProduct, uint8_t,    uint8_t))
+    ((Hnswlib, InnerProduct, uint8_t,    float  ))
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
     if (auto status = BenchmarkExecuteHelper< \

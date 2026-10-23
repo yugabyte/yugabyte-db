@@ -144,6 +144,119 @@ struct ManualCompactionOptions {
       rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
 
+// Tiered storage: bookkeeping for one migration pass, from Tablet::StartTierMigrationPass to
+// Tablet::FinishTierMigrationPass.
+struct TierMigrationPass;
+
+// Where this replica stands relative to its persisted target tier
+// (RaftGroupMetadata::target_storage_tier() / target_tier_path_id()). In memory only: after a
+// restart the next migration pass rebuilds it from the persisted target and a scan of the live
+// SSTs.
+struct TierMigrationStatus {
+  enum class State {
+    kNone,        // Nothing has looked at this tablet since the process started.
+    kInProgress,  // A target is set; set by SetTierMigrationTarget and by every pass that
+                  // schedules a move.
+    // The two terminal states belong to the background reconciler: only its
+    // scans decide that a tablet has converged or that retrying is pointless.
+    kDone,        // A reconciler scan found every live SST under the target directory.
+    kFailed,      // Passes kept hitting hard errors without moving anything, so automatic
+                  // retries stopped. The next AlterTabletTier resets it.
+  };
+  State state = State::kNone;
+
+  // True while a migration pass still has moves outstanding. Independent of `state`: a tablet
+  // stays kInProgress between passes.
+  bool pass_in_flight = false;
+
+  // Counters of the most recent pass.
+  uint32_t files_total = 0;     // live SSTs its scan found outside the target directory
+  uint32_t files_moved = 0;     // now under the target directory (moved, or already there)
+  uint32_t files_deferred = 0;  // busy with a compaction at the time; the next pass retries them
+  uint32_t files_failed = 0;    // hit an unrecoverable error; see last_error
+  uint32_t obsoleted = 0;       // gone before the move ran (rewritten by a compaction)
+
+  // Passes in a row that hit a hard error without moving a single file. Any progress resets it.
+  uint32_t consecutive_failed_passes = 0;
+  Status last_error;
+};
+
+// Policy for one reconciler pass (Tablet::RunTierReconcilePass). The values are tserver flags;
+// the tablet only applies them.
+struct TierReconcileOptions {
+  // consecutive_failed_passes at which the reconciler stops retrying (kFailed); 0 never stops.
+  uint32_t failed_pass_threshold = 0;
+};
+
+// Outcome of one Tablet::RunTierReconcilePass.
+struct TierReconcileResult {
+  // Status right after the pass was scheduled, or after the state changed.
+  TierMigrationStatus status;
+  // Live SSTs the scan found outside the target directory.
+  size_t candidates = 0;
+  // Moves this pass scheduled.
+  size_t scheduled = 0;
+  // status.state differs from what it was before the pass.
+  bool state_changed = false;
+  // The target changed between the scan and the verdict on it, so the scan was discarded: nothing
+  // scheduled, nothing declared, candidates reported as 0. The next pass works on the new target.
+  bool target_changed = false;
+  // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
+  bool awaiting_post_split_compaction = false;
+};
+
+// What a migration pass reports back to the tserver's TierMigrationReconciler, which owns this
+// and hands it to each Tablet through TabletInitData; null where tablets are built without a
+// tserver (tests, the sys catalog).
+struct TierMigrationHooks {
+  // Counters every pass feeds from FinishTierMigrationPass, whoever scheduled it.
+  scoped_refptr<Counter> files_moved;
+  scoped_refptr<Counter> files_failed;
+  // Runs a reconciler pass as soon as its thread is free. A pass that AlterTabletTier started
+  // calls it when it ends with nothing left to retry, so the verdict does not wait for the
+  // reconciler's interval. Must be safe to call from any thread, and after shutdown.
+  std::function<void()> wake_reconciler;
+};
+
+// Whether a migration pass runs on behalf of the background reconciler, the only caller allowed
+// to move a tablet into TierMigrationStatus::State::kDone or kFailed.
+YB_STRONGLY_TYPED_BOOL(ReconcilerPass);
+
+// Per-path_id entry of Tablet::GetTierInfo: how many live regular-DB SSTs (and how many bytes)
+// currently sit under this disk.
+struct TierPathStats {
+  uint32_t path_id = 0;
+  std::string tier;
+  std::string path;
+  bool is_home = false;
+  uint32_t sst_count = 0;
+  // Both physical files of each split SST (the base .sst and its .sblock data file), since they
+  // always live together under this same path.
+  uint64_t total_bytes = 0;
+};
+
+// Result of Tablet::GetTierInfo: where this tablet replica's data currently lives, without
+// moving anything.
+struct TabletTierInfo {
+  // One entry per RaftGroupMetadata::tier_paths() entry, in path_id order.
+  std::vector<TierPathStats> tier_paths;
+  // The tier all live regular-DB SSTs currently sit on. Defaults to the home tier (path_id 0)
+  // when there are zero live SSTs yet (e.g. never flushed) -- an empty tablet is trivially "on"
+  // its home tier. Empty only when the tablet straddles more than one tier (e.g. mid-migration).
+  std::string current_tier;
+  // The tier this tablet is supposed to end up on -- the persisted placement intent
+  // set at creation from the tablespace or later via AlterTabletTier. Empty means no preference.
+  std::string target_tier;
+  // The last resolved disk (path_id) for this tablet. Only meaningful together
+  // with target_tier; ignore if target_tier is empty.
+  uint32_t target_tier_path_id = 0;
+  std::string wal_dir;
+  // Live SSTs whose directory matched no tier_paths entry. Should always be 0.
+  uint32_t unmatched_sst_count = 0;
+  // Where this replica stands relative to target_tier; see TierMigrationStatus.
+  TierMigrationStatus migration;
+};
+
 struct TabletScopedRWOperationPauses {
   ScopedRWOperationPause blocking_rocksdb_shutdown_start;
   ScopedRWOperationPause not_blocking_rocksdb_shutdown_start;
@@ -389,7 +502,8 @@ class Tablet : public AbstractTablet,
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
       const docdb::StorageSet& apply_to_storages,
-      bool skip_opid_update = false);
+      bool skip_opid_update = false,
+      docdb::XClusterTargetApplied xcluster_target_applied = docdb::XClusterTargetApplied::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -398,7 +512,8 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      const docdb::StorageSet& apply_to_storages);
+      const docdb::StorageSet& apply_to_storages,
+      docdb::XClusterTargetApplied xcluster_target_applied);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
@@ -471,12 +586,15 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
+  // Without include_intents it reads the regular DB only, for a read time no running transaction
+  // could have written at.
   Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kTrue) const;
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
@@ -598,11 +716,11 @@ class Tablet : public AbstractTablet,
   // Returns true if a RocksDB-backed tablet has any SSTables.
   Result<bool> HasSSTables() const;
 
-  // Returns the maximum persistent op id from all SSTables in RocksDB.
-  // First for regular records and second for intents.
+  // Returns the maximum persistent op ids of the regular DB, the intents DB and each vector index,
+  // plus the hybrid time of each vector index.
   // When invalid_if_no_new_data is true then function would return invalid op id when no new
   // data is present in corresponding db.
-  Result<DocDbOpIds> MaxPersistentOpId(bool invalid_if_no_new_data = false) const;
+  Result<DocDbPersistentState> GetPersistentState(bool invalid_if_no_new_data = false) const;
 
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
@@ -631,7 +749,7 @@ class Tablet : public AbstractTablet,
   docdb::DocReadContextPtr GetDocReadContext() const override;
   Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
-  Schema GetKeySchema(const std::string& table_id = "") const;
+  Result<Schema> GetKeySchema(const std::string& table_id = "") const;
 
 
   // Provide a way for write operations to wait when tablet schema is
@@ -666,6 +784,8 @@ class Tablet : public AbstractTablet,
 
   // If true, we should report, in our heartbeat to the master, that loadbalancer moves should be
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
+  // Same policy as the split check: vector-index leftover is ignored when
+  // vector_index_require_parent_data_compacted_before_split is false.
   bool ShouldDisableLbMove();
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
@@ -675,6 +795,40 @@ class Tablet : public AbstractTablet,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
           rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+
+  // Tiered storage. Records (target_tier, target_path_id) as this tablet's placement intent:
+  // persists it to the superblock (RaftGroupMetadata::SetTargetTier) and points new flushes and
+  // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
+  // the superblock write but still re-points the DB and resets the migration status.
+  // target_path_id must be a tier_paths slot the caller already resolved within target_tier
+  // (TSTabletManager::SelectPathIdForTier).
+  Status SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id);
+
+  // Tiered storage. Starts one migration pass toward the persisted target: schedules a DB path
+  // move for every live regular-DB SST outside the target directory and returns without waiting
+  // for them. The moves run on the compaction/flush thread pool and the pass ends in
+  // FinishTierMigrationPass once the last one reports; whatever it leaves behind (files busy
+  // with a compaction, hard errors, files a concurrent flush/compaction landed on the old disk)
+  // is for the next pass. Returns ServiceUnavailable while a pass is already in flight.
+  Result<TierMigrationStatus> StartTierMigrationPass();
+
+  // Tiered storage. The background reconciler's pass: StartTierMigrationPass plus the terminal
+  // states. A scan that finds nothing outside the target directory marks the tablet kDone. A
+  // tablet whose consecutive_failed_passes reached options.failed_pass_threshold is marked
+  // kFailed and left alone until the next AlterTabletTier. Otherwise moves are scheduled as in
+  // StartTierMigrationPass.
+  Result<TierReconcileResult> RunTierReconcilePass(const TierReconcileOptions& options);
+
+  // Tiered storage. Snapshot of the migration status; no DB scan.
+  TierMigrationStatus tier_migration_status() const;
+
+  // SetTierMigrationTarget followed by StartTierMigrationPass, except that a pass already in
+  // flight is not an error: the result then describes that pass. Backs the AlterTabletTier RPC.
+  Result<TierMigrationStatus> AlterTabletTier(
+      const std::string& target_tier, uint32_t target_path_id);
+
+  // Reports which tier(s) and directories this tablet replica's live SSTs currently occupy.
+  Result<TabletTierInfo> GetTierInfo() const;
 
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
@@ -710,9 +864,12 @@ class Tablet : public AbstractTablet,
 
   // Returns a set of split keys that split the tablet data into split_factor number of
   // approximately even partitions.
-  // - When the split_factor is 2, an approximate middle key is determined.
-  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
-  //   logic returns a set of split keys.
+  // - If FLAGS_use_cross_split_key_detection_algorithm is set, DoGetSplitKeysCross is used for
+  //   any split_factor and both hash and range partitioning.
+  // - Otherwise:
+  //   - split_factor == 2: an approximate middle key is determined.
+  //   - split_factor > 2 and hash-partitioning: hash-space arithmetic returns a set of split keys.
+  //   - split_factor > 2 and range-partitioning: not supported.
   Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
@@ -744,6 +901,21 @@ class Tablet : public AbstractTablet,
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
   std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() const;
   uint64_t GetCurrentVersionNumSSTFiles() const;
+
+  // Aggregate of the regular DB's per-file SST statistics; null unless the collector that produces
+  // them is enabled (--docdb_enable_sst_stats_collector).
+  //
+  // Returns a share of the aggregator rather than a raw pointer: Truncate and snapshot restore
+  // reopen the regular DB on a live tablet and install a new aggregator, and a caller must not be
+  // left reading the old one's mutex after it is freed. Holding the returned pointer keeps that
+  // instance alive; it stops being the tablet's current one, which only costs the caller a stale
+  // reading.
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats() const EXCLUDES(sst_stats_mutex_);
+
+  // Recomputes the aggregate from the whole live file set, correcting for the file-set changes the
+  // RocksDB listener does not see. Runs on a timer from TSTabletManager; no-op when the collector
+  // is disabled.
+  Status ResyncSstStats();
 
   void ListenNumSSTFilesChanged(std::function<void()> listener);
 
@@ -791,12 +963,8 @@ class Tablet : public AbstractTablet,
   // Flushes this tablet data onto disk before creating sub tablet.
   // Also updates flushed frontier for regular and intents DBs to match split_op_id and
   // split_op_hybrid_time.
-  // In case of error sub-tablet could be partially persisted on disk.
-  // NB! As of now the method is supposed to be used only for creation child tablets during
-  // splitting operation. For any other type of usage, the method must be verified and possibly
-  // updated to correctly handle split_op_id, split_op_hybrid_time, parent_data_compacted
-  // and post_split_compaction_file_number_upper_bound.
-  Result<RaftGroupMetadataPtr> CreateSubtablet(
+  // In case of error the child tablet could be partially persisted on disk.
+  Result<RaftGroupMetadataPtr> CreateSplitChildTablet(
       const TabletId& tablet_id, const dockv::Partition& partition,
       const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
       const HybridTime& split_op_hybrid_time);
@@ -808,11 +976,31 @@ class Tablet : public AbstractTablet,
   // Potentially takes a long time. Used for testing/debugging.
   Status ReadIntents(std::vector<std::string>* resp);
 
+  using LogIndexFactorCallback = std::function<
+      void(const std::string& name, int64_t index, const std::string& extra)>;
+
+  // Flushes storages idle for too long, then returns the lowest Raft index that is not yet
+  // flushed by some storage, so WAL entries from it on must be retained. Returns the max int64
+  // value when all storages are flushed. Reports each storage's bound via `add_factor`.
+  Result<int64_t> EarliestNeededLogIndex(
+      const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor);
+
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
 
+  // The vector index part of EarliestNeededLogIndex: the lowest Raft index some vector index holds
+  // only in memory. Along the way flushes every index whose oldest such operation is more than
+  // vector_index_num_raft_ops_to_force_flush behind the log tail, so an index that stopped
+  // receiving vectors does not retain WAL segments indefinitely.
+  Result<int64_t> EarliestNeededLogIndexForVectorIndexes(
+      const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor);
+
   // May modify the flushed op_id of intents db.
   Status MayModifyIntentsDbFlushedOpId();
+
+  // After a regular DB flush, advances the flushed OpId of deactivated vector indexes that hold
+  // nothing unflushed to the regular DB's.
+  Status MayAdvanceDeactivatedVectorIndexesFlushedOpId();
 
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
@@ -893,7 +1081,11 @@ class Tablet : public AbstractTablet,
 
   void InitRocksDBBaseOptions(rocksdb::Options* options);
 
-  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+  // See docdb::InitRocksDBOptionsWithoutTableFactory vs docdb::InitRocksDBOptions.
+  void InitRocksDBOptionsWithoutTableFactory(
+      rocksdb::Options* options, const std::string& log_prefix);
+  void InitRocksDBOptions(
+      rocksdb::Options* options, const std::string& log_prefix, docdb::StorageDbType db_type);
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -907,7 +1099,8 @@ class Tablet : public AbstractTablet,
   // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionIfNeeded(
+      rocksdb::CompactionReason reason, IncludeVectorIndexes include_vector_indexes);
 
   // Triggers an admin full compaction on this tablet.
   Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
@@ -1090,6 +1283,11 @@ class Tablet : public AbstractTablet,
     TEST_disable_flush_on_shutdown_ = value;
   }
 
+  // Tiered storage: stands in for the hooks TabletInitData carries on a tserver.
+  void TEST_SetTierMigrationHooks(std::shared_ptr<TierMigrationHooks> hooks) {
+    tier_migration_hooks_ = std::move(hooks);
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1180,14 +1378,41 @@ class Tablet : public AbstractTablet,
 
   Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
-  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const ManualCompactionOptions& options);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
       const rocksdb::CompactRangeOptions& intents_options);
 
+  // Tiered storage: directory pinned for path_id in tier_paths.
+  Result<std::string> LookupTierDir(uint32_t path_id) const;
+
+  // Tiered storage: returns the set of files that should be migrated to target_dir.
+  // i.e. file numbers of live regular-DB SSTs not under target_dir.
+  std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
+
+  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
+  Result<TierReconcileResult> RunTierMigrationPass(
+      const TierReconcileOptions& options, ReconcilerPass reconciler_pass);
+
+  // Tiered storage: schedules one ScheduleDBPathMove call per candidate file. Each callback may
+  // run inline, on this thread, if the pool rejects the task. Does not block.
+  void ScheduleTierMigrationFiles(
+      std::shared_ptr<TierMigrationPass> pass, std::vector<uint64_t> candidates);
+
+  // Tiered storage: callback for one file's move. May run inline on the scheduling thread, on a
+  // compaction-pool thread, or during tablet shutdown (RocksDB shutdown aborts queued moves).
+  void OnTierMigrationFileDone(
+      const std::shared_ptr<TierMigrationPass>& pass, const Status& status);
+
+  // Tiered storage: runs once every move of a pass has reported, and publishes the tallies.
+  void FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& pass);
+
+  // Tiered storage: TierMigrationHooks::wake_reconciler, when there is one.
+  void WakeTierMigrationReconciler();
+
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
-  Status OpenDbAndCheckIntegrity(const std::string& db_dir);
+  Status OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type);
 
   // Add or remove restoring operation filter if necessary.
   // If reset_split is true, also reset split state.
@@ -1197,9 +1422,16 @@ class Tablet : public AbstractTablet,
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
-  // Returns true if the tablet was created after a split but it has not yet had data from it's
-  // parent which are now outside of its key range removed.
+  // Split/LB policy: true when this tablet still has parent data that should block a further
+  // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
+  // counts only when vector_index_include_into_post_split_compaction and
+  // vector_index_require_parent_data_compacted_before_split are both true.
+  // Compaction retry uses NeedPostSplitCompaction() instead, which ignores the require flag.
   bool StillHasOrphanedPostSplitDataAbortable();
+
+  // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
+  // data still present, or with a vector index post-split compaction still required.
+  bool NeedPostSplitCompaction();
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
@@ -1216,6 +1448,26 @@ class Tablet : public AbstractTablet,
   // hash-based partitions only (to prevent additional memory copying), as partition middle key for
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Validates a RocksDB-produced candidate split key: rejects meta/internal records, trims to the
+  // DocKey prefix used as a partition boundary, and checks tablet/partition bounds.
+  // On success returns the encoded split key. For hash partitioning, optionally fills
+  // partition_split_key with the hash-code partition key.
+  Result<std::string> ValidateAndEncodeSplitKey(
+      std::string split_key, std::string* partition_split_key = nullptr) const;
+
+  // Returns split_factor - 1 split keys chosen so that each resulting range holds roughly the same
+  // amount of SST data, using RocksDB's Cross()/FindTargetKey() size estimates rather than key
+  // counts. Works for both partitioning schemes and any split_factor. Gated by
+  // FLAGS_use_cross_split_key_detection_algorithm.
+  Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
+
+  // Returns the first legal split boundary after encoded_key (an output of
+  // ValidateAndEncodeSplitKey) as {encoded key, partition key}: hash code + 1, or the next
+  // existing DocKey. nullopt if none is inside the tablet or it fails validation; errors only
+  // on read or encoding failure.
+  Result<std::optional<std::pair<std::string, std::string>>> NextSplitBoundary(
+      Slice encoded_key, Slice partition_key) const;
 
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
@@ -1476,6 +1728,16 @@ class Tablet : public AbstractTablet,
   std::function<void()> num_sst_files_changed_listener_
       GUARDED_BY(num_sst_files_changed_listener_mutex_);
 
+  // Created in OpenRegularDB when the SST statistics collector is enabled, and from then on
+  // maintained by RegularRocksDbListener. The aggregator locks internally; the mutex here guards
+  // only the pointer, which OpenRegularDB replaces on a truncate or a snapshot restore while
+  // readers are running.
+  mutable std::mutex sst_stats_mutex_;
+  std::shared_ptr<docdb::SstStatsAggregator> sst_stats_ GUARDED_BY(sst_stats_mutex_);
+  // The docdb_sst_* gauges over sst_stats_. CompleteShutdownStorages resets this before clearing
+  // the tablet's current aggregator so the entity cannot expose values from a destroyed DB.
+  std::unique_ptr<docdb::SstStatsMetrics> sst_stats_metrics_;
+
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
   std::shared_ptr<TabletRetentionPolicy> retention_policy_;
 
@@ -1494,6 +1756,18 @@ class Tablet : public AbstractTablet,
 
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;
+
+  // Tiered storage: guards tier_migration_status_, written from SetTierMigrationTarget,
+  // RunTierMigrationPass and the ScheduleDBPathMove callbacks, read from GetTierInfo.
+  mutable std::mutex tier_migration_mutex_;
+  TierMigrationStatus tier_migration_status_ GUARDED_BY(tier_migration_mutex_);
+  std::shared_ptr<TierMigrationHooks> tier_migration_hooks_;
+
+  // Tiered storage: serializes SetTierMigrationTarget's check + superblock write + SetOptions so
+  // the persisted target and the regular DB's target_path_id cannot diverge. Deliberately not
+  // tier_migration_mutex_: that one is taken by every move callback and by GetTierInfo, and must
+  // not be held across a superblock flush or a SetOptions call.
+  std::mutex tier_target_mutex_;
 
   // Pointer to shared admin triggered thread pool in TsTabletManager.
   ThreadPool* admin_triggered_compaction_pool_ = nullptr;

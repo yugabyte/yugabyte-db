@@ -67,6 +67,9 @@ typedef struct
 #include "libpq/hba.h"
 #include "libpq/pqcomm.h"
 
+/* YB includes */
+#include "common/pg_yb_conn_mgr_protocol.h"
+
 
 typedef enum CAC_state
 {
@@ -188,6 +191,28 @@ typedef struct Port
 	bool		yb_is_ssl_enabled_in_logical_conn;
 
 	/*
+	 * YB: Set when a client certificate forwarded by the connection manager
+	 * (yb_ycm_internal_client_cert) fails to parse in be_tls_open_server().
+	 */
+	bool		yb_forwarded_cert_parse_failed;
+
+	/*
+	 * YB: tls-server-end-point hash of the certificate the connection manager
+	 * presented on the logical connection (yb_ycm_internal_server_cert_hash).
+	 * The length is 0 when it was not provided.  Stored inline since the
+	 * auth passthrough startup packet is parsed in a transaction context.
+	 */
+	uint8		yb_logical_conn_server_cert_hash[YB_SERVER_CERT_HASH_MAX_LEN];
+	int			yb_logical_conn_server_cert_hash_len;
+
+	/*
+	 * YB: W3C traceparent from the "yb_dist_traceparent" startup-packet param
+	 * (set by the tserver). Root span for backend init; read in InitPostgres.
+	 * NULL when absent.
+	 */
+	char	   *yb_dist_traceparent;
+
+	/*
 	 * Authenticated identity.  The meaning of this identifier is dependent on
 	 * hba->auth_method; it is the identity (if any) that the user presented
 	 * during the authentication cycle, before they were assigned a database
@@ -290,9 +315,10 @@ extern int	be_tls_init(bool isServerStart);
 extern void be_tls_destroy(void);
 
 /*
- * Attempt to negotiate SSL connection.
+ * YB: Attempt to negotiate SSL connection. If yb_b64_client_cert_of_logical_conn is set,
+ * then only validate/parse the certificate of the logical connection created to conn mgr.
  */
-extern int	be_tls_open_server(Port *port);
+extern int	be_tls_open_server(Port *port, const char *yb_b64_client_cert_of_logical_conn);
 
 /*
  * Close SSL connection.

@@ -26,6 +26,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
@@ -35,7 +37,8 @@ namespace yb::pggate {
 class PgSession;
 
 YB_DEFINE_ENUM(PrefetchingCacheMode,
-               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD)
+               (TRUST_CACHE_LOOKUP_ONLY));
 
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
@@ -62,6 +65,8 @@ struct PrefetcherOptions {
 
   std::optional<CachingInfo> caching_info;
   uint64_t fetch_row_limit;
+  YbcPgSysTablePrefetchKind kind;
+  uint64_t fetch_size_limit;
 
   std::string ToString() const;
 };
@@ -80,7 +85,7 @@ class PgSysTablePrefetcher {
       bool fetch_ybctid);
 
   // Load registered tables
-  Status Prefetch(PgSession* session);
+  Status Prefetch(PgSession* session, bool completes_connection_prefetch);
 
   // GetData of previously registered table.
   [[nodiscard]] PrefetchedDataInfo GetData(

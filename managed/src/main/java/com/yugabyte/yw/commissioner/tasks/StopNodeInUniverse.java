@@ -166,6 +166,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
               false /* remove master from quorum */,
               true /* deconfigure */,
               false /* flushTablets */,
+              false /* ignoreStopError */,
               SubTaskGroupType.StoppingNodeProcesses);
           // Remove leader blacklist.
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);

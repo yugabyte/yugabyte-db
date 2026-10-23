@@ -14,8 +14,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -32,10 +34,12 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -54,6 +58,7 @@ import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -63,12 +68,17 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.nodeagent.HealthCheckInput;
+import com.yugabyte.yw.nodeagent.HealthCheckOutput;
 import io.ebean.Model;
 import jakarta.mail.MessagingException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -119,6 +129,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock Config mockConfigUniverseScope;
   @Mock private NodeUniverseManager mockNodeUniverseManager;
   @Mock private MaintenanceService mockMaintenanceService;
+  @Mock private NodeAgentClient mockNodeAgentClient;
 
   @Before
   public void setUp() {
@@ -169,6 +180,11 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
+    // Keep existing tests on the shell path; node-agent path is covered by dedicated tests.
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentHealthCheckerDisabled)))
+        .thenReturn(true);
+    // Default YBA health interval; node-agent schedule/idle are derived from this.
+    when(mockConfig.getLong("yb.health.check_interval_ms")).thenReturn(300_000L);
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
@@ -210,7 +226,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockFileHelperService,
             mockMaintenanceService,
             app.injector().instanceOf(YBClientService.class),
-            mockConfigHelper) {
+            mockConfigHelper,
+            mockNodeAgentClient) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig, (t, e) -> {});
@@ -230,7 +247,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    userIntent.accessKeyCode = accessKey.getKeyCode();
+    TestUtils.existingProviderInitializer(userIntent).setAccessCode(accessKey.getKeyCode());
     userIntent.numNodes = 3;
     return Universe.saveDetails(
         universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
@@ -306,7 +323,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(expectedEmail, false, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, false, expectedEmail));
+            u, defaultCustomer, true, false, false, expectedEmail, false /*runImmediately*/));
     verifyNodeUniverseManager(uploadCount, invocationsCount * u.getNodes().size());
 
     u.getNodes()
@@ -342,7 +359,8 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private void testSingleK8sUniverse(Universe u) {
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
     verifyK8sHealthManager();
   }
 
@@ -397,7 +415,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, true);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, true, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, false, true, false, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
     verifyNodeUniverseManager(6, 3);
 
     // Erase stored into DB data to avoid DuplicateKeyException.
@@ -407,7 +425,13 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
+            u,
+            defaultCustomer,
+            false,
+            false,
+            false,
+            YB_ALERT_TEST_EMAIL,
+            false /*runImmediately*/));
     verifyNodeUniverseManager(6, 6);
   }
 
@@ -553,7 +577,13 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, false, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
+            u,
+            defaultCustomer,
+            false,
+            false,
+            false,
+            YB_ALERT_TEST_EMAIL,
+            false /*runImmediately*/));
     // The health/metrics scripts (6 = 3 nodes x 2 scripts) are always refreshed on the nodes, even
     // when the universe is busy with a task, so they never go stale. The health check command
     // (3 = one per node) only runs when the universe is not busy.
@@ -570,7 +600,7 @@ public class HealthCheckerTest extends FakeDBApplication {
           UniverseDefinitionTaskParams details = univ.getUniverseDetails();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getPrimaryCluster().userIntent;
-          userIntent.provider = UUID.randomUUID().toString();
+          TestUtils.existingProviderInitializer(userIntent).setProviderUUID(UUID.randomUUID());
           univ.setUniverseDetails(details);
         });
     setupAlertingData(null, false, false);
@@ -691,7 +721,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
     ArgumentCaptor<List<String>> expectedCommand = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(4))
         .runCommand(any(), any(), expectedCommand.capture(), any());
@@ -743,7 +774,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
 
     ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
@@ -765,7 +797,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that metric is created.
@@ -786,7 +818,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(EmailFixtures.createSmtpData());
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     verify(report, times(1)).asHtml(eq(u), any(), anyBoolean());
@@ -852,7 +884,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -893,7 +925,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(9, StringUtils.EMPTY));
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
 
     HealthCheck results = HealthCheck.getLatest(u.getUniverseUUID());
     assertThat(results, notNullValue());
@@ -924,7 +956,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
     verifyNodeUniverseManager(0, 0);
     AssertHelper.assertMetricValue(
         metricService,
@@ -951,7 +984,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
     verifyNodeUniverseManager(0, 0);
     AssertHelper.assertMetricValue(
         metricService,
@@ -994,8 +1028,188 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(EmailFixtures.createSmtpData());
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, true, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, true, YB_ALERT_TEST_EMAIL, false /*runImmediately*/));
 
     verify(mockEmailHelper, times(0)).sendEmail(any(), any(), any(), any(), any());
+  }
+
+  private HealthCheckOutput successfulNodeAgentHealthCheckOutput() {
+    return HealthCheckOutput.newBuilder()
+        .setReportJson("{\"data\":[]}")
+        .setStartEpochSecs(1L)
+        .setEndEpochSecs(2L)
+        .build();
+  }
+
+  private void enableNodeAgentHealthChecker(long checkIntervalMs) {
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentHealthCheckerDisabled)))
+        .thenReturn(false);
+    when(mockConfig.getLong("yb.health.check_interval_ms")).thenReturn(checkIntervalMs);
+    // Rebuild so healthCheckIntervalMs() re-reads the mock (value is cached after initialize).
+    recreateHealthChecker();
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ddlAtomicityCheckEnabled)))
+        .thenReturn(false);
+    NodeAgent nodeAgent = mock(NodeAgent.class);
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString())).thenReturn(nodeAgent);
+    when(mockNodeAgentClient.runOrGetHealthCheck(any(), any(), anyString(), any()))
+        .thenReturn(successfulNodeAgentHealthCheckOutput());
+  }
+
+  /** Rebuild HealthChecker so a new check_interval_ms value is not blocked by the cached field. */
+  private void recreateHealthChecker() {
+    healthChecker =
+        new HealthChecker(
+            app.injector().instanceOf(Environment.class),
+            mockConfig,
+            mockPlatformScheduler,
+            report,
+            mockEmailHelper,
+            metricService,
+            mockruntimeConfigFactory,
+            mockConfGetter,
+            null,
+            mockNodeUniverseManager,
+            executorService,
+            executorService,
+            executorService,
+            executorService,
+            mockFileHelperService,
+            mockMaintenanceService,
+            app.injector().instanceOf(YBClientService.class),
+            mockConfigHelper,
+            mockNodeAgentClient) {
+          @Override
+          RuntimeConfig<Model> getRuntimeConfig() {
+            return new RuntimeConfig<>(mockRuntimeConfig, (t, e) -> {});
+          }
+        };
+    healthChecker.initialize();
+  }
+
+  private List<HealthCheckInput> runNodeAgentHealthCheck(Universe u, boolean runImmediately) {
+    setupAlertingData(null, false, false);
+    HealthCheck.keepOnlyLast(u.getUniverseUUID(), 0);
+    clearInvocations(mockNodeAgentClient);
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString())).thenReturn(mock(NodeAgent.class));
+    when(mockNodeAgentClient.runOrGetHealthCheck(any(), any(), anyString(), any()))
+        .thenReturn(successfulNodeAgentHealthCheckOutput());
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, false, false, false, null, runImmediately));
+    ArgumentCaptor<HealthCheckInput> inputCaptor = ArgumentCaptor.forClass(HealthCheckInput.class);
+    verify(mockNodeAgentClient, times(u.getNodes().size()))
+        .runOrGetHealthCheck(any(), inputCaptor.capture(), anyString(), any());
+    return inputCaptor.getAllValues();
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckInputDerivedFromHealthCheckInterval() {
+    long checkIntervalMs = Duration.ofMinutes(3).toMillis();
+    enableNodeAgentHealthChecker(checkIntervalMs);
+    Universe u = setupUniverse("univ-na-config");
+    int scheduleSecs = (int) (checkIntervalMs / 1000);
+    long beforeFloor = Instant.now().getEpochSecond() - scheduleSecs;
+    List<HealthCheckInput> inputs = runNodeAgentHealthCheck(u, false /*runImmediately*/);
+    long afterFloor = Instant.now().getEpochSecond() - scheduleSecs;
+
+    assertThat(inputs, hasSize(u.getNodes().size()));
+    long sharedFloor = inputs.get(0).getMinResultEpochSecs();
+    for (HealthCheckInput input : inputs) {
+      assertEquals(scheduleSecs, input.getScheduleIntervalSec());
+      // Idle keeps the on-node schedule across one missed YBA poll.
+      assertEquals(2 * scheduleSecs, input.getIdleTimeoutSec());
+      // Same cycle floor on every node (cycle_start - schedule_interval).
+      assertEquals(sharedFloor, input.getMinResultEpochSecs());
+      assertTrue(input.getMinResultEpochSecs() >= beforeFloor - 1);
+      assertTrue(input.getMinResultEpochSecs() <= afterFloor + 1);
+      assertFalse(input.getGenerationId().isEmpty());
+    }
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckInputIncludesYnpVersionWhenEnabled() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.<String, Object>of("ynp_version", "1.2.3"));
+    Universe u = setupUniverse("univ-na-ynp");
+    List<HealthCheckInput> inputs = runNodeAgentHealthCheck(u, false /*runImmediately*/);
+
+    for (HealthCheckInput input : inputs) {
+      assertEquals("1.2.3", input.getYbaYnpVersion());
+    }
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckInputOmitsYnpVersionWhenDisabled() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(false);
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.<String, Object>of("ynp_version", "1.2.3"));
+    Universe u = setupUniverse("univ-na-ynp-off");
+    List<HealthCheckInput> inputs = runNodeAgentHealthCheck(u, false /*runImmediately*/);
+
+    for (HealthCheckInput input : inputs) {
+      assertTrue(input.getYbaYnpVersion().isEmpty());
+    }
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckGenerationIdStableAcrossPolls() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    Universe u = setupUniverse("univ-na-stable");
+
+    Set<String> first =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+    Set<String> second =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    assertEquals(first, second);
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckGenerationIdChangesWithHealthCheckInterval() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    Universe u = setupUniverse("univ-na-reschedule");
+
+    Set<String> first =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    enableNodeAgentHealthChecker(Duration.ofMinutes(5).toMillis());
+    Set<String> second =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    assertTrue(Collections.disjoint(first, second));
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckRunImmediatelyUsesUniqueGenerationIds() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    Universe u = setupUniverse("univ-na-immediate");
+
+    Set<String> first =
+        runNodeAgentHealthCheck(u, true /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+    Set<String> second =
+        runNodeAgentHealthCheck(u, true /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    // Each node gets its own UUID generation for an on-demand run.
+    assertEquals(u.getNodes().size(), first.size());
+    assertEquals(u.getNodes().size(), second.size());
+    assertTrue(Collections.disjoint(first, second));
+    // UUID form, not the integer-hash generation used by scheduled polls.
+    assertTrue(first.iterator().next().contains("-"));
   }
 }

@@ -7,6 +7,8 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -177,7 +179,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   }
 
   private void validateNodeDiskSize(Cluster cluster, ServerType serverType) {
-    boolean isKubernetes = cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+    boolean isKubernetes = Util.isKubernetesBased(cluster);
 
     Function<NodeDetails, Boolean> serverTypeFilter =
         (nD) ->
@@ -205,6 +207,19 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
         (totalCurrentDiskUsage * taskParams().targetDiskUsagePercentage) / 100;
     // Additional disk size needed to distribute the surplus.
     double additionalDiskSizeNeeded = totalTargetDiskSizeNeeded - totalTargetDiskUsage;
+
+    log.info(
+        "For {}: current nodes: {}, target nodes: {}, average disk usage: {}, total current disk"
+            + " usage: {}, total target disk usage: {}, total target disk size needed: {},"
+            + " additional disk size needed: {}",
+        serverType,
+        totalCurrentNodes,
+        totalTargetNodes,
+        avgCurrentDiskUsage,
+        totalCurrentDiskUsage,
+        totalTargetDiskUsage,
+        totalTargetDiskSizeNeeded,
+        additionalDiskSizeNeeded);
     double avgDiskFreeSize = 0.0;
     if (cluster.userIntent.getAllCloudTypes().contains(CloudType.onprem)) {
       // Fetch the average free disk size per node. ToBeAdded nodes are automatically excluded as
@@ -218,6 +233,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
                       && cluster.getProviderCloudType(n) == CloudType.onprem);
       log.debug("Root mount points are {}", rootMounts);
       avgDiskFreeSize = fetchAvgDiskFreeSize(rootMounts);
+      log.info("Average free disk size for on-prem nodes is {} GB", avgDiskFreeSize);
     }
     // If the volumes already have some non-db data, total disk size cannot be used to compare.
     // It is better to compare the additional required disk size against the total free size.
@@ -235,11 +251,20 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
                 ? (avgDiskFreeSize + avgCurrentDiskUsage)
                 : fetchDiskSizeLocally(cluster, node);
       } else {
-        // Free size can become -ve if it is a downsize.
-        totalTargetDiskFreeSize +=
+        double freeDiskSize =
             (cloudType == CloudType.onprem)
                 ? avgDiskFreeSize
-                : (fetchDiskSizeLocally(cluster, node) - avgCurrentDiskUsage);
+                : fetchDiskSizeLocally(cluster, node) - avgCurrentDiskUsage;
+        if (freeDiskSize < 0) {
+          // Free size can become -ve if it is a downsize.
+          log.warn(
+              "For node {} (cloud = {}): Free disk size is negative ({} GB). This can happen if"
+                  + " metrics report a higher average disk usage than the actual disk size",
+              node.getNodeName(),
+              cloudType,
+              freeDiskSize);
+        }
+        totalTargetDiskFreeSize += freeDiskSize;
       }
     }
     String msg =
@@ -250,16 +275,23 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
     if (additionalDiskSizeNeeded > totalTargetDiskFreeSize) {
       String errMsg =
           String.format(
-              "For %s: Additional disk size of %,.2f GB is needed, but only %,.2f GB is available",
-              serverType, additionalDiskSizeNeeded, Math.max(0.0, totalTargetDiskFreeSize));
+              "For %s: Additional disk size of %,.2f GB is needed, but only %,.2f GB is available."
+                  + " If metrics are inflated, this can happen. To disable this check, set the"
+                  + " runtime config %s to 0",
+              serverType,
+              additionalDiskSizeNeeded,
+              Math.max(0.0, totalTargetDiskFreeSize),
+              UniverseConfKeys.targetNodeDiskUsagePercentage.getKey());
       throw new RuntimeException(errMsg);
     }
   }
 
   private double fetchDiskSizeLocally(Cluster cluster, NodeDetails node) {
     // The method getDeviceInfoForNode takes care of dedicated masters case
-    DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
-    return deviceInfo.volumeSize == null ? -1.0 : deviceInfo.volumeSize;
+    DeviceInfo deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
+    double diskSize = deviceInfo.volumeSize == null ? -1.0 : deviceInfo.volumeSize;
+    log.info("Disk size for node {} is {} GB", node.getNodeName(), diskSize);
+    return diskSize;
   }
 
   private Map<String, Set<String>> getOnpremNodeMountPoints(
@@ -270,7 +302,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
         .forEach(
             n -> {
               UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
-              DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(n);
+              DeviceInfo deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
               if (deviceInfo != null && StringUtils.isNotEmpty(deviceInfo.mountPoints)) {
                 nodeMountPoints.put(
                     n.getNodeName(),
@@ -285,9 +317,8 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     Cluster cluster = taskParams().getClusterByUuid(taskParams().clusterUuid);
-    CloudType cloudType = cluster.userIntent.providerType;
     boolean isDedicated = cluster.userIntent.dedicatedNodes;
-    if ((cloudType == CloudType.kubernetes) || isDedicated) {
+    if (Util.isKubernetesBased(cluster) || isDedicated) {
       if (taskParams().mastersChanged) {
         validateNodeDiskSize(cluster, ServerType.MASTER);
       }

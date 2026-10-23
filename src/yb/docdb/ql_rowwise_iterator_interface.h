@@ -83,8 +83,15 @@ class YQLRowwiseIteratorIf {
   // Seeks to first record after specified doc_key_prefix. Also accepts RocksDB-shortened doc key
   // (which could have last byte incremented, see rocksdb::ShortenedIndexBuilder).
   // Requirement is that doc_key_prefix could not be in the middle of rocksdb records belonging
-  // to the same DocDB row.
+  // to the same DocDB row. Empty doc_key_prefix seeks to the start of the table. The iterator
+  // becomes usable again even if a previous fetch has reached the end of the scan.
   virtual void SeekToDocKeyPrefix(Slice doc_key_prefix);
+
+  // Limits the following fetches to keys before upper_bound, which has the same format as the
+  // doc_key_prefix of SeekToDocKeyPrefix. Fetches do not scan past it, even when the keys after
+  // it belong to rows that are not visible, e.g. deleted ones. The limit can only narrow the
+  // scan's own upper bound, and an empty upper_bound restores that bound.
+  virtual void SetUpperBound(Slice upper_bound);
 
   virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 

@@ -495,6 +495,10 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
 
         RETURN_NOT_OK(master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc));
         if (resp->has_error()) {
+          // Master leadership may move or the lease may lapse on slow builds; retry.
+          if (resp->error().code() == master::MasterErrorPB::NOT_THE_LEADER) {
+            return false;
+          }
           return StatusFromPB(resp->error().status());
         }
 
@@ -536,7 +540,18 @@ Status XClusterTestBase::GetCDCStreamForTable(
       return false;
     }
     Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
-    return s.ok() && !resp->has_error() && resp->streams_size() == 1;
+    if (!s.ok() || resp->has_error()) {
+      return false;
+    }
+
+    // Remove the WAL anchor streams.
+    for (int i = resp->streams_size() - 1; i >= 0; --i) {
+      if (resp->streams(i).xcluster_is_wal_anchor()) {
+        resp->mutable_streams()->DeleteSubrange(i, 1);
+      }
+    }
+
+    return resp->streams_size() == 1;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
 }
 

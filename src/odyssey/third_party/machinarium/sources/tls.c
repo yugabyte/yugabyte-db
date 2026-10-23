@@ -8,6 +8,28 @@
 #include <machinarium.h>
 #include <machinarium_private.h>
 
+/* YB includes */
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include "yb_pg_tls_link_support.h"
+
+/* YB: Defined in be-secure-openssl.c when built under YB_CONN_MGR. */
+extern int be_tls_init(bool isServerStart);
+extern SSL_CTX *yb_be_tls_take_context(void);
+
+static bool yb_full_tls_handshake(void)
+{
+	static int cached = -1;
+	if (cached == -1) {
+		const char *v = getenv("YB_YSQL_CONN_MGR_FULL_TLS_HANDSHAKE");
+		/* Default to enabled when the env var is not set (matches gflag default). */
+		cached = (v == NULL || strcmp(v, "false") != 0) ? 1 : 0;
+	}
+	return cached != 0;
+}
+
 #if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 static pthread_mutex_t *mm_tls_locks = NULL;
@@ -161,6 +183,48 @@ static inline void mm_tls_error(mm_io_t *io, int ssl_rc, char *fmt, ...)
 		errno = EIO;
 }
 
+/* YB: See yb_mm_tls_get_server_cert_hash(). Returns -1 on failure. */
+static int yb_mm_tls_cert_hash(X509 *cert, unsigned char *buf, int *len)
+{
+	int algo_nid;
+	const EVP_MD *algo_type;
+	unsigned int hash_len;
+
+	*len = 0;
+	if (cert == NULL)
+		return -1;
+	/*
+	 * YB: The rest is lifted from be_tls_get_certificate_hash() in PG
+	 * (src/backend/libpq/be-secure-openssl.c), so the hash matches what a
+	 * direct Postgres connection would bind to.
+	 *
+	 * X509_get_signature_info() handles RSA-PSS but needs OpenSSL >= 1.1.1
+	 * and is absent in BoringSSL.
+	 */
+#if !USE_BORINGSSL && (OPENSSL_VERSION_NUMBER >= 0x10101000L)
+	if (!X509_get_signature_info(cert, &algo_nid, NULL, NULL, NULL))
+		return -1;
+#else
+	if (!OBJ_find_sigid_algs(X509_get_signature_nid(cert), &algo_nid, NULL))
+		return -1;
+#endif
+	switch (algo_nid) {
+	case NID_md5:
+	case NID_sha1:
+		algo_type = EVP_sha256();
+		break;
+	default:
+		algo_type = EVP_get_digestbynid(algo_nid);
+		if (algo_type == NULL)
+			return -1;
+		break;
+	}
+	if (!X509_digest(cert, algo_type, buf, &hash_len))
+		return -1;
+	*len = (int)hash_len;
+	return 0;
+}
+
 SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 {
 	mm_tls_ctx_t *ctx_container;
@@ -176,12 +240,59 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 	}
 	// Cached context not found - we must create ctx
 
-	SSL_CTX *ctx;
+	SSL_CTX *ctx = NULL;
 	SSL_METHOD *ssl_method = NULL;
-	if (is_client)
+
+	/*
+	 * YB: From Client to conn mgr: Postgres be_tls_init() owns the SSL_CTX.
+	 * From conn mgr to Postgres: unchanged machinarium client setup.
+	 *
+	 * be_tls_init() reads process-wide Postgres GUC globals and installs the
+	 * context it builds into the process-wide SSL_context, but the cache
+	 * above is per worker thread, so several workers can reach this point at
+	 * once.  Hold the lock across bind -> init -> take so a second worker
+	 * cannot overwrite the globals mid-init or free a context another worker
+	 * is about to claim.
+	 */
+	if (is_client) {
 		ssl_method = (SSL_METHOD *)SSLv23_client_method();
-	else
+	}
+	else {
+		if (yb_full_tls_handshake()) {
+			int rc;
+
+			pthread_mutex_lock(&yb_pg_tls_link_support_lock);
+			if (io->tls)
+				yb_mm_tls_bind_pg_ssl_globals(io->tls);
+			yb_pg_tls_set_current_io(io);
+			rc = be_tls_init(true);
+			if (rc == 0) {
+				ctx = yb_be_tls_take_context();
+				if (ctx == NULL)
+					yb_pg_tls_report_error(
+						"be_tls_init() produced no SSL_CTX");
+			} else if (!io->tls_error) {
+				yb_pg_tls_report_error("be_tls_init() failed");
+			}
+			yb_pg_tls_set_current_io(NULL);
+			pthread_mutex_unlock(&yb_pg_tls_link_support_lock);
+
+			if (ctx == NULL)
+				goto error;
+			SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+			SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+			SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS);
+			/*
+			* No SSL_CTX_set_session_id_context() or
+			* SSL_OP_CIPHER_SERVER_PREFERENCE here: be_tls_init() already sets
+			* SSL_SESS_CACHE_OFF and SSL_OP_NO_TICKET, and re-applies
+			* SSL_OP_CIPHER_SERVER_PREFERENCE itself when
+			* ssl_prefer_server_ciphers is on.  Do not re-add them.
+			*/
+			goto cache;
+		}
 		ssl_method = (SSL_METHOD *)SSLv23_server_method();
+	}
 	ctx = SSL_CTX_new(ssl_method);
 	if (ctx == NULL) {
 		return NULL;
@@ -270,11 +381,20 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 
 		SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 	}
-	// Place new ctx on top of cache
-
+cache:
 	ctx_container = malloc(sizeof(*ctx_container));
 	ctx_container->key = io->tls;
 	ctx_container->tls_ctx = ctx;
+	ctx_container->yb_cert_hash_len = 0;
+	/*
+	 * YB: The certificate is fixed for the life of the context, so compute
+	 * its channel binding hash once here. A failure only means SCRAM channel
+	 * binding is not offered.
+	 */
+	if (!is_client)
+	    yb_mm_tls_cert_hash(SSL_CTX_get0_certificate(ctx),
+				ctx_container->yb_cert_hash,
+				&ctx_container->yb_cert_hash_len);
 
 	if (is_client) {
 		ctx_container->next = mm_self->client_tls_ctx;
@@ -439,6 +559,72 @@ error:
 	if (common_name)
 		free(common_name);
 	return -1;
+}
+
+/*
+ * YB: Export the peer's leaf certificate in DER form.
+ *
+ * A peer that sent no certificate is not an error: *buf is left NULL and 0 is
+ * returned. When a certificate is present but cannot be encoded, -1 is
+ * returned and the reason is recorded on io. The caller owns *buf and must
+ * release it with OPENSSL_free().
+ */
+int yb_mm_tls_get_peer_cert_der(mm_io_t *io, unsigned char **buf, int *len)
+{
+	*buf = NULL;
+	*len = 0;
+
+	X509 *cert = SSL_get_peer_certificate(io->tls_ssl);
+	if (cert == NULL)
+		return 0;
+
+	/* *buf == NULL: i2d_X509 allocates with OPENSSL_malloc. */
+	int der_len = i2d_X509(cert, buf);
+	X509_free(cert);
+	if (der_len <= 0) {
+		mm_tls_error(io, 0, "i2d_X509()");
+		OPENSSL_free(*buf);
+		*buf = NULL;
+		return -1;
+	}
+
+	*len = der_len;
+	return 0;
+}
+
+/*
+ * YB: tls-server-end-point channel binding hash (RFC 5929 section 4.1) of the
+ * certificate this side presents on io's session. The digest selection must
+ * match PostgreSQL's be_tls_get_certificate_hash(), which client-side libpq
+ * mirrors: the certificate's signature digest, upgraded to SHA-256 when that
+ * is MD5 or SHA-1.
+ *
+ * The hash is computed once per server SSL_CTX, in mm_tls_get_context(), and
+ * looked up here, so a context rebuilt on config reload carries its own hash.
+ *
+ * buf must have room for EVP_MAX_MD_SIZE bytes. Returns 0 on a cache hit, 1
+ * when the hash was computed from the session's certificate instead, and -1 on
+ * failure.
+ */
+int yb_mm_tls_get_server_cert_hash(mm_io_t *io, unsigned char *buf, int *len)
+{
+	*len = 0;
+
+	for (mm_tls_ctx_t *c = mm_self->server_tls_ctx; c != NULL;
+	     c = c->next) {
+		if (c->key == io->tls && c->tls_ctx == SSL_get_SSL_CTX(io->tls_ssl)) {
+			if (c->yb_cert_hash_len <= 0)
+				break;
+			memcpy(buf, c->yb_cert_hash, c->yb_cert_hash_len);
+			*len = c->yb_cert_hash_len;
+			return 0;
+		}
+	}
+
+	/* Not cached (should not happen): hash the session's certificate. */
+	if (yb_mm_tls_cert_hash(SSL_get_certificate(io->tls_ssl), buf, len) == -1)
+		return -1;
+	return 1;
 }
 
 static void mm_tls_handshake_cb(mm_fd_t *handle)
@@ -752,4 +938,27 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 		return 0;
 	mm_tls_error(io, rc, "SSL_read()");
 	return -1;
+}
+
+/*
+ * YB: build the server context once at startup, as the postmaster does, so
+ * settings be_tls_init() rejects stop conn mgr from starting rather than fail
+ * every client handshake. Worker threads still build their own lazily.
+ */
+MACHINE_API int yb_machine_tls_validate_server_context(machine_tls_t *obj,
+						       char *err, int err_len)
+{
+	mm_io_t io;
+
+	/* The machinarium-managed path's errors need an SSL object; skip it. */
+	if (!yb_full_tls_handshake())
+		return 0;
+
+	memset(&io, 0, sizeof(io));
+	io.tls = mm_cast(mm_tls_t *, obj);
+	if (mm_tls_get_context(&io, 0) == NULL) {
+		mm_snprintf(err, err_len, "%s", io.tls_error_msg);
+		return -1;
+	}
+	return 0;
 }

@@ -32,7 +32,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
@@ -411,12 +410,13 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
   return doc_op_->ExecuteInit(params);
 }
 
-void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
-  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, /* keep_order */ false));
+void PgDmlRead::SetRequestedYbctids(
+    std::reference_wrapper<const std::vector<Slice>> ybctids, bool keep_order) {
+  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, keep_order));
 }
 
-void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator) {
-  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), false);
+void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator, bool keep_order) {
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), keep_order);
   ybctid_holder->Reserve(generator.capacity);
   while (true) {
     const auto ybctid = generator.next();
@@ -441,6 +441,10 @@ Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
 Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   read_req_->mutable_vector_idx_options()->mutable_hnsw_options()->set_ef_search(ef_search);
   return Status::OK();
+}
+
+void PgDmlRead::ANNAddPartitionKeyPrefix(Slice prefix) {
+  read_req_->mutable_vector_idx_options()->add_dup_partition_key_prefixes(prefix);
 }
 
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {

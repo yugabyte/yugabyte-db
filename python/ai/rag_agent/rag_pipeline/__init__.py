@@ -67,6 +67,10 @@ _LAZY_EXPORTS = {
     "DocumentPreprocessor": (
         "rag_pipeline.document_preprocessor", "DocumentPreprocessor",
     ),
+    "AutoColumnEmbeddingProcessor": (
+        "rag_pipeline.auto_column_embedding_processor",
+        "AutoColumnEmbeddingProcessor",
+    ),
 }
 
 __all__ = list(_LAZY_EXPORTS.keys())

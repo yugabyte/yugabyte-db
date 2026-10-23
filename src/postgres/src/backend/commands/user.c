@@ -38,9 +38,9 @@
 #include "utils/fmgroids.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
-
 /* YB includes */
 #include "catalog/pg_yb_role_profile.h"
+#include "catalog/yb_password_history.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -53,6 +53,9 @@ Oid			binary_upgrade_next_pg_authid_oid = InvalidOid;
 /* GUC parameter */
 int			Password_encryption = PASSWORD_TYPE_SCRAM_SHA_256;
 
+/* YB: GUC parameter, in minutes. Zero means no expiration policy. */
+int			yb_password_validity = 0;
+
 /* Hook to check passwords in CreateRole() and AlterRole() */
 check_password_hook_type check_password_hook = NULL;
 
@@ -62,6 +65,24 @@ static void AddRoleMems(const char *rolename, Oid roleid,
 static void DelRoleMems(const char *rolename, Oid roleid,
 						List *memberSpecs, List *memberIds,
 						bool admin_opt);
+
+/*
+ * YB: Compute the pg_authid.rolvaliduntil implied by the yb_password_validity
+ * policy for a password that is being stored right now.
+ * Returns false when no policy in effect.
+ */
+static bool
+YbComputePasswordValidUntil(bool has_valid_until_clause,
+							Datum *validUntil_datum)
+{
+	if (has_valid_until_clause || yb_password_validity == 0)
+		return false;
+
+	*validUntil_datum =
+		TimestampTzGetDatum(GetCurrentTimestamp() +
+							yb_password_validity * USECS_PER_MINUTE);
+	return true;
+}
 
 
 /* Check if current user has createrole privileges */
@@ -87,6 +108,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	ListCell   *item;
 	ListCell   *option;
 	char	   *password = NULL;	/* user password */
+	char	   *shadow_pass = NULL; /* YB: encrypted form of the above */
 	bool		issuper = false;	/* Make the user a superuser? */
 	bool		inherit = true; /* Auto inherit privileges? */
 	bool		createrole = false; /* Can this user create roles? */
@@ -333,6 +355,11 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 		validUntil_null = true;
 	}
 
+	/* YB: apply the policy early so later hooks see the expiration we store. */
+	if (password && password[0] != '\0' &&
+		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		validUntil_null = false;
+
 	/*
 	 * Call the password checking hook if there is one defined
 	 */
@@ -362,8 +389,9 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 
 	if (password)
 	{
-		char	   *shadow_pass;
 		const char *logdetail = NULL;
+
+		YbCheckPreHashedPasswordAllowed(password);
 
 		/*
 		 * Don't allow an empty password. Libpq treats an empty password the
@@ -424,6 +452,15 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	new_record[Anum_pg_authid_oid - 1] = ObjectIdGetDatum(roleid);
 
 	tuple = heap_form_tuple(pg_authid_dsc, new_record, new_record_nulls);
+
+	/*
+	 * YB: record the new secret under the new role's windows, as for an admin
+	 * reset in AlterRole(): the creator's windows would decide whether it is
+	 * recorded at all.
+	 */
+	if (shadow_pass)
+		(void) YbApplyPasswordHistory(roleid, stmt->role, password, shadow_pass,
+									  false);
 
 	/*
 	 * Insert new record in the pg_authid table
@@ -571,6 +608,8 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	ListCell   *option;
 	char	   *rolename;
 	char	   *password = NULL;	/* user password */
+	char	   *yb_shadow_pass = NULL; /* YB: encrypted form of the above */
+	bool		yb_update_authid;	/* YB: pg_authid row will be written */
 	int			connlimit = -1; /* maximum connections allowed */
 	char	   *validUntil = NULL;	/* time the login is valid until */
 	Datum		validUntil_datum;	/* same, as timestamptz Datum */
@@ -813,6 +852,11 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 										   &validUntil_null);
 	}
 
+	/* YB: apply the policy before the hook so it sees the expiration we store. */
+	if (password && password[0] != '\0' &&
+		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		validUntil_null = false;
+
 	/*
 	 * Call the password checking hook if there is one defined
 	 */
@@ -884,8 +928,9 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	/* password */
 	if (password)
 	{
-		char	   *shadow_pass;
 		const char *logdetail = NULL;
+
+		YbCheckPreHashedPasswordAllowed(password);
 
 		/* Like in CREATE USER, don't allow an empty password. */
 		if (password[0] == '\0' ||
@@ -898,10 +943,10 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 		else
 		{
 			/* Encrypt the password to the requested format. */
-			shadow_pass = encrypt_password(Password_encryption, rolename,
+			yb_shadow_pass = encrypt_password(Password_encryption, rolename,
 										   password);
 			new_record[Anum_pg_authid_rolpassword - 1] =
-				CStringGetTextDatum(shadow_pass);
+				CStringGetTextDatum(yb_shadow_pass);
 		}
 		new_record_repl[Anum_pg_authid_rolpassword - 1] = true;
 	}
@@ -926,6 +971,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 
 	new_tuple = heap_modify_tuple(tuple, pg_authid_dsc, new_record,
 								  new_record_nulls, new_record_repl);
+
 	/*
 	 * YB: The new_record_repl means which attribute of the tuple this ALTER
 	 * ROLE statement has provided a value, new_record_repl[i] is true does not
@@ -934,10 +980,32 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	 * attribute as changed even if it no value is provided in the ALTER ROLE
 	 * statement (e.g., for Anum_pg_authid_rolvaliduntil). So we do the deep
 	 * comparison to check whether there is any real change in new_tuple.
+	 *
+	 * The reuse check must run even when that comparison finds no change. MD5
+	 * of the same password and role name is the same string, so an unchanged
+	 * verifier would otherwise skip the check and accept a password the
+	 * policy still protects. A history write updates pg_authid too, including
+	 * when the verifier is unchanged: that row conflict serializes two
+	 * password changes.
+	 *
+	 * Only the authenticated user's own password is checked against the
+	 * session windows. An admin reset runs with the admin's session GUCs,
+	 * which may differ from the target role's and would prune history that
+	 * role's policy still protects; it records and prunes under the target's
+	 * windows instead, without a reuse check. The authenticated user id is
+	 * fixed at login; SET ROLE and SET SESSION AUTHORIZATION do not reload
+	 * the target's GUCs.
 	 */
-	if (!IsYugaByteEnabled() ||
+	yb_update_authid = !IsYugaByteEnabled() ||
 		!yb_enable_nop_alter_role_optimization ||
-		!YbIsPgAuthTupleEqual(pg_authid_dsc, tuple, new_tuple))
+		!YbIsPgAuthTupleEqual(pg_authid_dsc, tuple, new_tuple);
+
+	if (yb_shadow_pass &&
+		YbApplyPasswordHistory(roleid, rolename, password, yb_shadow_pass,
+							   roleid == GetAuthenticatedUserId()))
+		yb_update_authid = true;
+
+	if (yb_update_authid)
 		CatalogTupleUpdate(pg_authid_rel, &tuple->t_self, new_tuple);
 
 	InvokeObjectPostAlterHook(AuthIdRelationId, roleid, 0);
@@ -999,6 +1067,18 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		 * meantime.
 		 */
 		shdepLockAndCheckObject(AuthIdRelationId, roleid);
+
+		/*
+		 * YB: Password validity is not applicable to roles that cannot log in.
+		 * TODO: GH-33903 tracks support for password validity in login profiles
+		 * (ie. a group of users sharing a common login policy).
+		 */
+		if (!roleform->rolcanlogin && stmt->setstmt->name &&
+			strcmp(stmt->setstmt->name, "yb_password_validity") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+					 errmsg("parameter \"%s\" cannot be set for a role that "
+							"cannot log in", stmt->setstmt->name)));
 
 		/*
 		 * To mess with a superuser you gotta be superuser; else you need
@@ -1172,6 +1252,15 @@ DropRole(DropRoleStmt *stmt)
 		 */
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 			YbRemoveRoleProfileForRoleIfExists(roleid);
+
+		/*
+		 * YB: Purge the role's password history unconditionally, so that a
+		 * later role reusing this OID does not inherit it.
+		 */
+		if (YbDeletePasswordHistory(roleid) > 0)
+			ereport(LOG,
+					(errmsg("password history deleted because role \"%s\" was dropped",
+							role)));
 
 		/*
 		 * Remove the role from the pg_authid table
@@ -1374,6 +1463,14 @@ RenameRole(const char *oldname, const char *newname)
 		ereport(NOTICE,
 				(errmsg("MD5 password cleared because of role rename")));
 	}
+
+	/*
+	 * YB: Truncate entire password history because the old name is no longer valid.
+	 * SCRAM secrets carry their own salt, but we need to be consistent across hash method handling.
+	 */
+	if (YbDeletePasswordHistory(roleid) > 0)
+		ereport(NOTICE,
+				(errmsg("password history deleted because of role rename")));
 
 	newtuple = heap_modify_tuple(oldtuple, dsc, repl_val, repl_null, repl_repl);
 	CatalogTupleUpdate(rel, &oldtuple->t_self, newtuple);

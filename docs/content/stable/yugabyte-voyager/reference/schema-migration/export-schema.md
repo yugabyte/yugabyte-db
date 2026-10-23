@@ -79,6 +79,14 @@ export-schema:
 ```
 
 | Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --disable-schema-snapshot-capture |
+
+```yaml{.nocopy}
+export-schema:
+  disable-schema-snapshot-capture:
+```
+
+| Turn off recording of source schema snapshots, which [schema detect-drift](../detect-drift/) reads. Recording is best effort: a failed capture is logged and never fails the export. PostgreSQL only. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-type |
 
 ```yaml{.nocopy}
@@ -223,6 +231,22 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 | --start-clean | — | Starts a fresh schema export after clearing the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help for schema. |
 | -y, --yes | — | Answer "yes" to all prompts during the export schema operation. <br>Default: false |

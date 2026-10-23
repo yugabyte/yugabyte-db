@@ -17,48 +17,35 @@ mod anyarray;
 mod anyelement;
 mod array;
 mod borrow;
-mod date;
-pub mod datetime_support;
 mod from;
 mod geo;
 mod inet;
 mod internal;
-mod interval;
 mod into;
 mod json;
 pub mod numeric;
 pub mod numeric_support;
 #[deny(unsafe_op_in_unsafe_fn)]
 mod range;
-mod time;
-mod time_stamp;
-mod time_stamp_with_timezone;
-mod time_with_timezone;
 mod tuples;
 mod unbox;
 mod uuid;
 mod varlena;
-mod with_typeid;
 
-pub use self::time::*;
 pub use self::uuid::*;
+pub use crate::datetime::support as datetime_support;
+pub use crate::datetime::*;
 pub use anyarray::*;
 pub use anyelement::*;
 pub use array::*;
 pub use borrow::*;
-pub use date::*;
-pub use datetime_support::*;
 pub use from::*;
 pub use inet::*;
 pub use internal::*;
-pub use interval::*;
 pub use into::*;
 pub use json::*;
 pub use numeric::{AnyNumeric, Numeric};
 pub use range::*;
-pub use time_stamp::*;
-pub use time_stamp_with_timezone::*;
-pub use time_with_timezone::*;
 pub use unbox::*;
 pub use varlena::*;
 
@@ -66,9 +53,6 @@ use crate::memcx::MemCx;
 use crate::pg_sys;
 use core::marker::PhantomData;
 use core::ptr;
-#[doc(hidden)]
-pub use with_typeid::nonstatic_typeid;
-pub use with_typeid::{WithArrayTypeIds, WithSizedTypeIds, WithTypeIds, WithVarlenaTypeIds};
 
 /// How Postgres represents datatypes
 ///
@@ -171,7 +155,7 @@ impl<'src> DatumWithOid<'src> {
     ///
     /// [`Oid`]: pg_sys::Oid
     pub unsafe fn new<T: IntoDatum>(value: T, oid: pg_sys::Oid) -> Self {
-        Self::new_from_datum(value.into_datum().map(|d| Datum(d, PhantomData::default())), oid)
+        Self::new_from_datum(value.into_datum().map(|d| Datum(d, PhantomData)), oid)
     }
 
     /// Construct a `DatumWithOid` given an optional [`Datum`] and [`Oid`].
@@ -196,7 +180,7 @@ impl<'src> DatumWithOid<'src> {
 
     /// Returns an [`Option<Datum>`].
     pub fn datum(&self) -> Option<Datum<'src>> {
-        self.datum.as_ref().map(|d| Datum(d.0, PhantomData::default()))
+        self.datum.as_ref().map(|d| Datum(d.0, PhantomData))
     }
 
     /// Returns an [`Oid`].

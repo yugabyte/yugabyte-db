@@ -8,8 +8,8 @@
 -- Every method is pinned with a Leading((s r)) hint so s is always the outer
 -- and r (ce.r or ce.rC, aliased r) the inner; the inner/outer alias and the
 -- realized join node type are validated (method_ok / leading_ok) once, up
--- front.  All four methods return the same rows, so actual_rows must agree per
--- query.
+-- front, from a plain non-executing EXPLAIN (join_plans).  All four methods
+-- return the same rows, so actual_rows must agree per query.
 --
 -- Each query prints the deterministic run-time work every plan actually did
 -- (EXPLAIN ANALYZE, DEBUG, DIST, SUMMARY ON):
@@ -17,8 +17,6 @@
 --                 trips -- the dominant latency factor for probe-bound plans)
 --   rows_scanned  query-level "Storage Rows Scanned" (dominant for the
 --                 scan-bound LIMIT plans, where round trips are cheap)
---   seeks         query-level rocksdb seeks
---   nexts         query-level rocksdb iterator next + prev steps
 --   table_reads,
 --   index_reads   read requests split by side (sum over scan nodes)
 -- Wall-clock timings vary run to run and are NOT printed; the predicates are
@@ -34,14 +32,19 @@
 --              The choice reflects the golden-generation environment (single
 --              node, sub-ms round trips); on a real network round trips
 --              weigh far more relative to rows.
--- (read_reqs, rows_scanned) is sufficient to rank run time here; seeks and
--- nexts are printed for information only.  On these freshly loaded,
--- insert-only tables nexts is rows_scanned plus a few per request (no
--- tombstones to skip), and seeks amount to a few per request plus one per
--- batched key -- each ~1000x cheaper than a round trip, never enough to
--- reorder methods separated on the ranked metrics.  No query does seek- or
--- next-heavy work against few scanned rows (e.g. DISTINCT skip-scans, or
--- scans over deleted rows), which is what would break this.
+-- (read_reqs, rows_scanned) is sufficient to rank run time here.  The
+-- rocksdb seek/next counters stay in join_costs but are NOT printed in the
+-- 1xx-3xx sections: they depend on the memtable/SST layout at execution time
+-- (the Java harness runs 1 MB memstores, so flush boundaries move run to
+-- run), and a backward scan trades a next for an extra seek at each layout
+-- boundary -- a +-1 flap per scan.  They also cannot reorder those methods:
+-- on insert-only tables nexts tracks rows_scanned, and seeks amount to a few
+-- per request plus one per batched key -- each ~1000x cheaper than a round
+-- trip.  The 4xx DISTINCT section is the exception: its skip scans do a seek
+-- per group against one scanned row per group, which (read_reqs,
+-- rows_scanned) cannot rank, so it ranks by read_reqs and then by the work
+-- key nexts + 3 seeks, with a tolerance that absorbs the flap (see the
+-- section and the setup's seek_weight / work_slack).
 -- Labels tied on a ranking's keys are joined with '=' (e.g. 'BNL=NL MJ HJ');
 -- keys compare exactly, so any real movement breaks a tie visibly.
 -- Cost columns list their values in cost_rank order, work columns in
@@ -75,6 +78,10 @@
 --           shrinks the first value list to values that are all absent from the
 --           inner, gets an empty first scan, then falls back to a full batch
 --           that scans far more rows than the LIMIT needs.
+--
+-- The 4xx section (#18943) records no defect: it ranks DISTINCT joins whose
+-- inner is a distinct index scan against the same joins with the plain inner
+-- ('/p' methods), by requests and storage work.
 \c bnl_cost_parity_test
 set client_min_messages to 'warning';
 
@@ -176,6 +183,46 @@ base(qid, descr, tmpl) as (
     -- mis-costed 3rd, a #30580-style case), so it would not illustrate HJ-best.
     (203, '30565 hj-best',
         'select s.id from ce.s s join @R@ r on r.c = s.v::bpchar where r.e <= 600'),
+    -- Trailing mismatches
+    -- #33001: MJ stops as soon as finding a mismatch
+    --   <= on outer
+    (210, 'id <= 1500',
+        'select s.id from ce.s s join @R@ r on s.id = r.pk where s.id <= 1500 order by s.id'),
+    (211, 'xx <= 150',
+        'select s.xx from ce.s s join @R@ r on s.xx = r.pk where s.xx <= 150 order by s.xx'),
+    (212, 'x <= 1500',
+        'select s.x from ce.s s join @R@ r on s.x = r.pk where s.x <= 1500 order by s.x'),
+    --   <= on inner
+    (220, 'pk <= 1500',
+        'select r.pk from ce.s s join @R@ r on s.x = r.pk where r.pk <= 1500 order by r.pk'),
+    (221, 'a <= 3950',
+        'select r.a from ce.s s join @R@ r on s.x = r.a where r.a <= 3950 order by r.a'),
+    (222, 'b <= 1500',
+        'select r.b from ce.s s join @R@ r on s.x = r.b where r.b <= 1500 order by r.b'),
+    -- backward scan
+    --   >= on outer
+    (230, 'id >= 1500',
+        'select s.id from ce.s s join @R@ r on s.id = r.pk where s.id >= 1500 order by s.id desc'),
+    (231, 'xx >= 150, pk <= 512',
+        'select s.xx from ce.s s join @R@ r on s.xx = r.pk where s.xx >= 150 and r.pk <= 512 order by s.xx desc'),
+    (232, 'x >= 1500',
+        'select s.x from ce.s s join @R@ r on s.x = r.pk where s.x >= 1500 order by s.x desc'),
+    --   >= on inner
+    (240, '1500 <= pk <= 5120',
+        'select r.pk from ce.s s join @R@ r on s.x = r.pk where r.pk >= 1500 and r.pk <= 5120 order by r.pk desc'),
+    (241, 'a >= 4800',
+        'select r.a from ce.s s join @R@ r on s.x = r.a where r.a >= 4800 order by r.a desc'),
+    (242, '1500 <= b <= 5120',
+        'select r.b from ce.s s join @R@ r on s.x = r.b where r.b >= 1500 and r.b <= 5120 order by r.b desc'),
+    -- forward scan, leading mismatches: the same inner bounds as 24x but read
+    -- ascending, so the bound moves the merge's start instead of its end
+    --   >= on inner
+    (250, '1500 <= pk <= 5120 fwd',
+        'select r.pk from ce.s s join @R@ r on s.x = r.pk where r.pk >= 1500 and r.pk <= 5120 order by r.pk'),
+    (251, 'a >= 4800 fwd',
+        'select r.a from ce.s s join @R@ r on s.x = r.a where r.a >= 4800 order by r.a'),
+    (252, '1500 <= b <= 5120 fwd',
+        'select r.b from ce.s s join @R@ r on s.x = r.b where r.b >= 1500 and r.b <= 5120 order by r.b'),
     -- #30738: same forward-scanned join, with LIMIT.  Two families:
     --   skip   -- "s.y >= 3836": the first 50 outer values (3836..3885) are all
     --             absent from r.a, then matches at y >= 3886.  NL walks the
@@ -210,27 +257,54 @@ from base b, rels r
 -- qid 203 (HJ-best control) is non-colocated only; see its comment above.
 where not (b.qid = 203 and r.rel = 'ce.rC');
 
+-- 4xx (#18943): DISTINCT joins whose inner can be a distinct index scan on
+-- r.a (10 rows per value) or r.a5 (5 rows per value); flagged distinct_inner
+-- so the '/p' methods (distinct pushdown off) run for them too.  401/402: the
+-- shuffled 1024-row outer of the #30580 rows, one BNL batch of spread keys.
+-- 403: a 200-row outer, small enough for the plain inner's rows to fit one
+-- response like the skip scan's.  404/405: the outer driven by the y index
+-- over the inner's whole key range, matching from the first row (405 is the
+-- DISTINCT twin of 202).
+insert into queries (qid, descr, query, distinct_inner)
+with rels(rel, qoff) as (
+    values ('ce.r', 0), ('ce.rC', 1000)
+),
+base(qid, descr, tmpl) as (
+    values
+    (401, 'distinct a  z<=1024',
+        'select distinct s.y from ce.s s join @R@ r on r.a = s.y where s.z <= 1024 order by s.y'),
+    (402, 'distinct a5 z<=1024',
+        'select distinct s.y from ce.s s join @R@ r on r.a5 = s.y where s.z <= 1024 order by s.y'),
+    (403, 'distinct a5 z<=200',
+        'select distinct s.y from ce.s s join @R@ r on r.a5 = s.y where s.z <= 200 order by s.y'),
+    (404, 'distinct a5 y<=2469',
+        'select distinct s.y from ce.s s join @R@ r on r.a5 = s.y where s.y <= 2469 order by s.y'),
+    (405, 'distinct a  y>=3886',
+        'select distinct s.y from ce.s s join @R@ r on r.a = s.y where s.y >= 3886 order by s.y')
+)
+select b.qid + r.qoff, b.descr || ' [' || r.rel || ']', replace(b.tmpl, '@R@', r.rel), true
+from base b, rels r;
+
 select qid, query from queries order by qid;
 
 ------------------------------------------------------------------------------
 -- Plan validation: every (query, method) pair must have realized the intended
 -- join method (method_ok) with s outer and r inner (leading_ok).  Expect no
 -- rows -- if any appear, the hints failed and the cost/run-time comparison
--- below would be meaningless.
+-- below would be meaningless.  join_plans only plans the queries (plain
+-- EXPLAIN), so nothing is executed here.
 ------------------------------------------------------------------------------
 select qid, label, join_node_type, outer_alias, inner_alias, method_ok, leading_ok
-from join_costs
+from join_plans
 where not (method_ok and leading_ok)
 order by qid, label;
 
 ------------------------------------------------------------------------------
 -- The full report is produced twice: once at the default BNL batch size
 -- (1024, set explicitly so the golden does not depend on the cluster default)
--- and once at 512.  Only the BNL plan is affected by the batch size (the NL
--- hint pins its own size of 1; HJ/MJ ignore it), so the HJ/MJ/NL columns are
--- the same in both passes -- the BNL column is what moves.  At 512 each query
--- needs twice as many batches, which roughly doubles BNL's per-batch inner
--- work (and, for #30580, splits the single-batch point-probe into two).
+-- and once at 512.  At 512 each query needs twice as many batches, which
+-- roughly doubles BNL's per-batch inner work (and, for #30580, splits the
+-- single-batch point-probe into two).
 ------------------------------------------------------------------------------
 set yb_bnl_batch_size = 1024;
 select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
@@ -258,7 +332,7 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            table_reads, index_reads,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by read_reqs, rows_scanned)  rt_rank
@@ -273,8 +347,6 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        string_agg(round(table_reads)::bigint::text, ' ' order by rt_rank, label) table_reads,
        string_agg(round(index_reads)::bigint::text, ' ' order by rt_rank, label) index_reads,
        max(actual_rows)                                                          actual_rows
@@ -296,10 +368,34 @@ order by qid;
 -- and joint-fewest read requests), and the cost model ranks it first too --
 -- cost_rank and rt_rank agree, both led by HJ.  It confirms the misorderings
 -- above are specific to BNL, not noise in the harness.
+--
+-- #33001 (qid ...210-...252): a range bound on either join key limits how much
+-- of the other input the merge has to read.  On the ascending rows
+-- (...210-...212 bound the outer, ...220-...222 the inner) MJ is costed first
+-- throughout, and leads rt_rank as well except on ...210 and ...212, where BNL
+-- issues the same number of requests and scans fewer rows -- it point-probes
+-- the bounded outer in a single batch.
+--
+-- ...230-...242 are the descending companions ("order by ... desc", planned as
+-- backward index scans on both inputs).  Read descending, the bounds swap
+-- roles: a lower bound stops the merge early and an upper bound moves its
+-- start, and mergejoinscansel() folds them in the same way.  On ...240 and
+-- ...242 the lower bound stops the merge early, so MJ scans 7717 rows to
+-- HJ's 8741; counting that puts MJ ahead of HJ by cost, as by the work.
+-- Costed as reading to the statistical extreme, the backward scans would
+-- rank HJ first.  On ...230 and ...232 BNL leads both rankings.
+--
+-- ...250-...252 read the ...240-...242 bounds forward.  Ascending, a lower
+-- bound moves the merge's start, not its end: the outer rows below it are read
+-- and discarded before the first match, so MJ scans what HJ and BNL scan and
+-- the bound buys no round trips (rt_rank ties them).  Descending, the same
+-- bounds stop the merge early instead -- 7717 rows on ...240 against 8741
+-- here.  The clamp charges the discarded rows to startup rather than claiming
+-- a saving it does not get.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by read_reqs, rows_scanned)  rt_rank
     from join_costs
@@ -314,8 +410,6 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        max(actual_rows)                                                          actual_rows
 from m
 group by qid, descr
@@ -335,7 +429,7 @@ order by qid;
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            table_reads, index_reads,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by rows_scanned, read_reqs)  rt_rank
@@ -351,8 +445,6 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        string_agg(round(table_reads)::bigint::text, ' ' order by rt_rank, label) table_reads,
        string_agg(round(index_reads)::bigint::text, ' ' order by rt_rank, label) index_reads,
        max(actual_rows)                                                          actual_rows
@@ -361,8 +453,40 @@ group by qid, descr
 order by qid;
 
 ------------------------------------------------------------------------------
--- Second pass: identical report at yb_bnl_batch_size = 512.  HJ/MJ/NL are
--- unaffected (same numbers); compare the BNL column against the 1024 pass.
+-- 4xx (#18943): DISTINCT joins whose inner is a distinct index scan.  Every
+-- join method runs twice: with the skip-scan inner, and with distinct
+-- pushdown off ('/p' labels), where the inner is the plain index scan and
+-- the DISTINCT is resolved above the join.  Under BNL the skip scan carries
+-- the batched IN-list (one group per matched value), under HJ/MJ it is the
+-- full skip scan (a seek per group), under NL either a one-value probe or a
+-- materialized full scan behind a join filter, whose per-row comparisons no
+-- storage counter sees (rt_rank flatters that plan).
+--
+-- A skip scan does a seek per group against one scanned row per group, so
+-- rows_scanned undercounts it; rt_rank here ranks by read_reqs and then by
+-- work = nexts + seek_weight() * seeks (see the setup), with ties within
+-- work_slack() so the layout flap cannot move a rank; work is printed masked
+-- like the costs, one '#' per digit.  Column a has 10 rows per value and a5
+-- has 5: at 5 a skip pays a seek and 3 nexts where the plain scan pays 5
+-- nexts.
+------------------------------------------------------------------------------
+select qid, descr,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
+       string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
+       string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
+       string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
+       string_agg(cost_mask(work), ' ' order by rt_rank, label)                  work,
+       max(actual_rows)                                                          actual_rows
+from distinct_join_ranks
+group by qid, descr
+order by qid;
+
+------------------------------------------------------------------------------
+-- Second pass: identical report at yb_bnl_batch_size = 512.  Compare the BNL
+-- column against the 1024 pass.
 ------------------------------------------------------------------------------
 set yb_bnl_batch_size = 512;
 select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
@@ -370,7 +494,7 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 -- #30580 at batch size 512 (see the 1024 pass above for the explanation).
 with m as (
     select qid, descr, label, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            table_reads, index_reads,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by read_reqs, rows_scanned)  rt_rank
@@ -385,8 +509,6 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        string_agg(round(table_reads)::bigint::text, ' ' order by rt_rank, label) table_reads,
        string_agg(round(index_reads)::bigint::text, ' ' order by rt_rank, label) index_reads,
        max(actual_rows)                                                          actual_rows
@@ -397,7 +519,7 @@ order by qid;
 -- #30565 at batch size 512.
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by read_reqs, rows_scanned)  rt_rank
     from join_costs
@@ -412,8 +534,6 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        max(actual_rows)                                                          actual_rows
 from m
 group by qid, descr
@@ -422,7 +542,7 @@ order by qid;
 -- #30738 at batch size 512.
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
-           read_reqs, rows_scanned, seeks, nexts,
+           read_reqs, rows_scanned,
            table_reads, index_reads,
            rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
            rank() over (partition by qid order by rows_scanned, read_reqs)  rt_rank
@@ -438,12 +558,25 @@ select qid, descr,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
-       string_agg(round(seeks)::bigint::text, ' ' order by rt_rank, label)       seeks,
-       string_agg(round(nexts)::bigint::text, ' ' order by rt_rank, label)       nexts,
        string_agg(round(table_reads)::bigint::text, ' ' order by rt_rank, label) table_reads,
        string_agg(round(index_reads)::bigint::text, ' ' order by rt_rank, label) index_reads,
        max(actual_rows)                                                          actual_rows
 from m
+group by qid, descr
+order by qid;
+
+-- 4xx at batch size 512.
+select qid, descr,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
+       string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
+       string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
+       string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
+       string_agg(cost_mask(work), ' ' order by rt_rank, label)                  work,
+       max(actual_rows)                                                          actual_rows
+from distinct_join_ranks
 group by qid, descr
 order by qid;
 

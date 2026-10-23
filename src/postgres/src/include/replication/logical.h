@@ -131,8 +131,23 @@ typedef struct LogicalDecodingContext
 	 * commit_time.
 	 *
 	 * The entry (value) remains unused i.e. this is used like a set.
+	 *
+	 * If TEST_ysql_yb_enable_replication_slot_transactional_ddl is true, this
+	 * is unused.
 	 */
 	HTAB	   *yb_needs_relcache_invalidation;
+
+
+	/*
+	 * YB: True if the transaction block contains a DDL. We invalidate the
+	 * catalog caches before reorder-buffer replay only in that case, because
+	 * decode-time lookups after the DDL would otherwise be reused for earlier
+	 * DMLs. Invalidating on every commit is expensive.
+	 *
+	 * Only used when TEST_ysql_yb_enable_replication_slot_transactional_ddl is
+	 * true.
+	 */
+	bool		yb_inval_catalog_on_decode_commit;
 } LogicalDecodingContext;
 
 

@@ -120,6 +120,33 @@ public class UniverseTableHandler {
       boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly) {
+    return listTables(
+        customerUUID,
+        universeUUID,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly,
+        false /* includeMatviewTables */);
+  }
+
+  /**
+   * Same as {@link #listTables(UUID, UUID, boolean, boolean, boolean, boolean)}, but lets the
+   * caller ask for materialized views to be counted as xCluster supported. Only relevant when
+   * {@code xClusterSupportedOnly} is set; materialized views take part in replication only for
+   * configs in automatic DDL mode on YBDB versions that replicate them, so the caller is
+   * responsible for deciding that. See {@link
+   * com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(
+   * com.yugabyte.yw.models.XClusterConfig)}.
+   */
+  public List<TableInfoResp> listTables(
+      UUID customerUUID,
+      UUID universeUUID,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly,
+      boolean includeMatviewTables) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -140,7 +167,9 @@ public class UniverseTableHandler {
         includeParentTableInfo,
         excludeColocatedTables,
         includeColocatedParentTables,
-        xClusterSupportedOnly);
+        xClusterSupportedOnly,
+        false /* includePostgresSystemTables */,
+        includeMatviewTables);
   }
 
   public List<TableInfoResp> getTableInfoRespFromTableInfo(
@@ -181,6 +210,33 @@ public class UniverseTableHandler {
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly,
       boolean includePostgresSystemTables) {
+    return getTableInfoRespFromTableInfo(
+        universe,
+        tableInfoList,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly,
+        includePostgresSystemTables,
+        false /* matviewSupported */);
+  }
+
+  /**
+   * Same as {@link #getTableInfoRespFromTableInfo(Universe, List, boolean, boolean, boolean,
+   * boolean, boolean)}, but lets the caller state whether materialized views count as xCluster
+   * supported. Only relevant when {@code xClusterSupportedOnly} is set; see {@link
+   * com.yugabyte.yw.common.XClusterUtil#isMatviewReplicationSupported(
+   * com.yugabyte.yw.models.XClusterConfig)}.
+   */
+  public List<TableInfoResp> getTableInfoRespFromTableInfo(
+      Universe universe,
+      List<TableInfo> tableInfoList,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly,
+      boolean includePostgresSystemTables,
+      boolean matviewSupported) {
     if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -321,7 +377,9 @@ public class UniverseTableHandler {
     if (xClusterSupportedOnly) {
       tableInfoRespList =
           tableInfoRespList.stream()
-              .filter(XClusterConfigTaskBase::isXClusterSupported)
+              .filter(
+                  tableInfoResp ->
+                      XClusterConfigTaskBase.isXClusterSupported(tableInfoResp, matviewSupported))
               .collect(Collectors.toList());
     }
     return tableInfoRespList;

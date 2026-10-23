@@ -14,11 +14,10 @@ void od_backend_close_connection(od_server_t *);
 void od_backend_close(od_server_t *);
 void yb_evict_prep_stmt_by_keyhash(od_server_t *, char *, yb_od_hash_64_t);
 void od_backend_evict_server_hashmap(od_server_t *, char *, char *, uint32_t);
-void yb_backend_register_close_prep_stmt(od_server_t *, char *, char *, uint32_t);
-void yb_backend_unregister_close_prep_stmt(od_server_t *, char *, char *);
 int yb_backend_update_prep_stmt(od_server_t *, char *, char *, uint32_t,
 				YbParseType *);
-void yb_backend_drain_close_prep_stmts(od_server_t *, char *);
+void yb_backend_handle_close_complete(od_server_t *, char *);
+void yb_backend_handle_query_ack(od_server_t *, char *);
 void od_backend_error(od_server_t *, char *, char *, uint32_t);
 
 int od_backend_update_parameter(od_server_t *, char *, char *, uint32_t, int);
@@ -29,5 +28,7 @@ od_retcode_t od_backend_query_send(od_server_t *server, char *context,
 				   char *query, char *param, int len);
 od_retcode_t od_backend_query(od_server_t *, char *, char *, char *, int,
 			      uint32_t, uint32_t);
+
+char *yb_encode_server_cert_hash(od_client_t *, int *encoded_cert_len);
 
 #endif /* ODYSSEY_BACKEND_H */

@@ -98,6 +98,7 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
+| `pg_stat_statements.yb_max_query_text_length` | integer | -1 | Maximum length, in bytes, of the query text stored for each statement. Longer texts are truncated without splitting a character and end with `...`. This limits the memory used to read the `pg_stat_statements` view when the workload has very long statements, such as large batched inserts. -1 stores texts in full. The limit applies to statements recorded after it is set; existing entries keep their text until they are evicted or the statistics are reset. |
 | `yb_enable_pg_stat_statements_rpc_stats` | boolean | true (from v2026.1.1.0) | Enables RPC execution time statistics for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_read_rpcs`, `docdb_write_rpcs`, `docdb_read_operations`, `docdb_write_operations`, `docdb_wait_time`, `catalog_wait_time`. This is a runtime flag that can be changed without restarting the server. |
 | `yb_enable_pg_stat_statements_docdb_metrics` | boolean | true (from v2026.1.1.0) | Enables DocDB metrics collection for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_seeks`, `docdb_nexts`, `docdb_prevs`, `docdb_read_time`, `docdb_write_time`, `docdb_obsolete_rows_scanned`. This is a runtime flag that can be changed without restarting the server. |
 
@@ -580,3 +581,4 @@ docdb_write_operations          | 1
 
 - [Latency histogram and P99 latencies](../../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
 - [Active Session History](../../../../explore/observability/active-session-history)
+- [Cluster-wide database views](../../../../explore/observability/cluster-wide-db-views/) to query `pg_stat_statements` across every live YB-TServer from a single session (`gv$pg_stat_statements`)

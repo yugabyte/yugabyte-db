@@ -7,7 +7,7 @@
 # Note that "PG_MAJOR_VER" build arg in the build step must match the
 # "--features pgXX" in the run step
 
-ARG FEDORA_VER=40
+ARG FEDORA_VER=42
 FROM fedora:${FEDORA_VER}
 ARG FEDORA_VER
 ENV FEDORA_VER=${FEDORA_VER}

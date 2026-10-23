@@ -1,4 +1,5 @@
 FormData_pg_yb_migration
+FormData_pg_yb_password_history
 FormData_pg_yb_profile
 FormData_pg_yb_role_profile
 FormData_pg_yb_tablegroup
@@ -6,6 +7,7 @@ FormData_yb_pg_catalog_version
 FormData_yb_pg_invalidation_messages
 FormData_yb_pg_logical_client_version
 Form_pg_yb_migration
+Form_pg_yb_password_history
 Form_pg_yb_profile
 Form_pg_yb_role_profile
 Form_pg_yb_tablegroup
@@ -27,6 +29,9 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAggPushdownDecision
+YbAggPushdownInfo
+YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
 YbAshTrackNestedQueries
@@ -59,6 +64,8 @@ YbCatNamePfId
 YbCatalogCacheTable
 YbCatalogMessageList
 YbCatalogModificationAspects
+YbCatalogPrefetchLoad
+YbCatalogPreloadCacheList
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
@@ -78,9 +85,11 @@ YbDdlMode
 YbDdlModeOptional
 YbDdlOriginalStmtState
 YbDdlTransactionState
+YbDefaultOpClassScanState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
+YbDocdbOidToRelidEntry
 YbDoubleCounters
 YbDropProfileStmt
 YbEndFn_t
@@ -114,16 +123,19 @@ YbIndexCorruptionErrors
 YbIndexErrorInfo
 YbIndexInconsistencyLogStore
 YbIndexPathInfo
-YbIndexProcessorState
+YbIndiciesHTABEntry
+YbIndiciesHTABEntryData
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
+YbInt8TransTypeData
 YbIntCounters
 YbInternalConnKind
 YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
@@ -131,7 +143,7 @@ YbLockRowsStateInfo
 YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
-YbMergeScanSaopColInfo
+YbMergeScanStreamColInfo
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
@@ -169,6 +181,7 @@ YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
+YbPrefetcherStarterNoCache
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
@@ -193,6 +206,7 @@ YbRange
 YbReCacheInfo
 YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
+YbRemovedAclKind
 YbResetBatchFn_t
 YbRowBounds
 YbRunWithPrefetcherContext
@@ -210,6 +224,7 @@ YbSkippableEntityType
 YbSortArrayContext
 YbSortInfo
 YbSplitType
+YbStatExtListEntry
 YbStatLabel
 YbStatLabelData
 YbStatementType
@@ -239,7 +254,6 @@ YbTerminatedQueriesBuffer
 YbTerminatedQuery
 YbTraceparentResult
 YbTruncateType
-YbTserverUuidClauseResult
 YbTupleBitmap
 YbTupleCache
 YbTupleCacheEntry
@@ -254,6 +268,7 @@ YbVirtualWalRecord
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
 YbcAshAcquireBufferLock
+YbcAshAuxKind
 YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata
@@ -327,6 +342,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
@@ -341,6 +358,7 @@ YbcPgSkipIntentsOptimizationInfo
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns
+YbcPgSysTablePrefetchKind
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTableLocalityInfo
@@ -356,6 +374,7 @@ YbcPgUuid
 YbcPgVectorDistType
 YbcPgVectorIdxOptions
 YbcPgVectorIdxType
+YbcPgVectorKeyColumn
 YbcPgXLogRecPtr
 YbcPgYBTupleIdDescriptor
 YbcPgYbrowidMode

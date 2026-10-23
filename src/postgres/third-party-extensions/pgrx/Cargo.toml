@@ -9,77 +9,62 @@
 #LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "cargo-pgrx",
     "pgrx",
+    "pgrx-bench",
     "pgrx-macros",
     "pgrx-pg-config",
     "pgrx-pg-sys",
     "pgrx-sql-entity-graph",
     "pgrx-tests",
+    "pgrx-unit-tests",
     "pgrx-bindgen",
-]
-exclude = [
-    # "pgrx-examples/*",
-    "pgrx-examples/aggregate",
-    "pgrx-examples/arrays",
-    "pgrx-examples/bad_ideas",
-    "pgrx-examples/bgworker",
-    "pgrx-examples/bytea",
-    "pgrx-examples/composite_type",
-    "pgrx-examples/custom_libname",
-    "pgrx-examples/custom_types",
-    "pgrx-examples/custom_sql",
-    "pgrx-examples/datetime",
-    "pgrx-examples/wal_decoder",
-    "pgrx-examples/errors",
-    "pgrx-examples/nostd",
-    "pgrx-examples/numeric",
-    "pgrx-examples/pgtrybuilder",
-    "pgrx-examples/operators",
-    "pgrx-examples/range",
-    "pgrx-examples/schemas",
-    "pgrx-examples/shmem",
-    "pgrx-examples/spi",
-    "pgrx-examples/spi_srf",
-    "pgrx-examples/srf",
-    "pgrx-examples/strings",
-    "pgrx-examples/triggers",
-    "pgrx-examples/versioned_custom_libname_so",
-    "pgrx-examples/versioned_so",
+    "pgrx-examples/*",
+    "tools/version-updater",
 ]
 
+[workspace.package]
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+# TODO: all crates should use this version rather than copy it
+#   See https://github.com/pgcentralfoundation/pgrx/pull/2100 comments
+version = "0.18.1"
 
 [workspace.metadata.local-install]
 cargo-pgrx = { path = "cargo-pgrx" }
 
 [workspace.dependencies]
-pgrx-macros = { path = "./pgrx-macros", version = "=0.14.1" }
-pgrx-pg-sys = { path = "./pgrx-pg-sys", version = "=0.14.1" }
-pgrx-sql-entity-graph = { path = "./pgrx-sql-entity-graph", version = "=0.14.1" }
-pgrx-pg-config = { path = "./pgrx-pg-config", version = "=0.14.1" }
-pgrx-bindgen = { path = "./pgrx-bindgen", version = "=0.14.1" }
+pgrx-bench = { path = "./pgrx-bench", version = "=0.18.1" }
+pgrx-macros = { path = "./pgrx-macros", version = "=0.18.1" }
+pgrx-pg-sys = { path = "./pgrx-pg-sys", version = "=0.18.1" }
+pgrx-sql-entity-graph = { path = "./pgrx-sql-entity-graph", version = "=0.18.1" }
+pgrx-pg-config = { path = "./pgrx-pg-config", version = "=0.18.1" }
+pgrx-bindgen = { path = "./pgrx-bindgen", version = "=0.18.1" }
 
 cargo_metadata = "0.18.0"
 cargo-edit = "=0.13.2" # format-preserving edits to cargo.toml
 cargo_toml = "0.22" # used for building projects
 clap-cargo = { version = "0.14.0", features = ["cargo_metadata"] }
-eyre = "~0.6.12" # simplifies error-handling
+eyre = "~0.6.8" # simplifies error-handling
 libc = "0.2" # FFI compat
-owo-colors = { version = "4.2", features = ["supports-colors"] } # for output highlighting
-proc-macro2 = { version = "1.0.94", features = ["span-locations"] }
+owo-colors = { version = "4.0", features = ["supports-color"] } # for output highlighting
+proc-macro2 = { version = "1.0.101", features = ["span-locations"] }
 quote = "1.0.40"
-regex = "1.11" # used for build/test
+regex = "1.7" # used for build/test
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-shlex = "1.3" # shell lexing, also used by many of our deps
+shlex = "2.0" # shell lexing, also used by many of our deps
 syn = { version = "2", features = ["extra-traits", "full", "parsing", "visit-mut"] }
-toml = "0.8" # our config files
-toml_edit = "0.22.24" # format-preserving edits to toml files, used with cargo-edit
-thiserror = "2"
+toml = "0.5.11" # our config files
+toml_edit = "0.22.27" # format-preserving edits to toml files, used with cargo-edit
+thiserror = "1"
 unescape = "0.1.0" # for escaped-character-handling
-url = "2.5.4" # the non-existent std::web
+url = "2.5.2" # the non-existent std::web
 walkdir = "2" # directory recursion
 
 [profile.dev]

@@ -47,7 +47,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -117,9 +119,6 @@ DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_bool(TEST_pause_before_enabling_db_connections);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 
@@ -880,8 +879,7 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
 class PgCloneObjectLocksTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };
@@ -1848,12 +1846,13 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
 TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
   // Regression test for GitHub issue #29335.
   // Create a partitioned table with many partitions, an index, and CHECK constraints
-  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // in the source DB.  ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
   // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
-  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
-  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // GetNewObjectId.  This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range.  This should be invalidated after
   // the clone so if any objects are dropped and recreated, they will get a new OID instead of
-  // colliding with the hidden objects.
+  // colliding with the hidden objects.  The partitions and constraints make the cached range
+  // overlap enough explicit OIDs that the recreated relations hit hidden ones.
   auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute(
         "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "
@@ -2213,7 +2212,7 @@ class SysCatalogRestoreWithWritePipeliningTest : public PgCloneInitiallyEmptyDBT
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
     // Run both DDLs in one multi-statement transaction so its writes span the restore.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ToggleDDLMode(/* use_legacy = */ false);
     PgCloneInitiallyEmptyDBTest::SetUp();
   }
 };

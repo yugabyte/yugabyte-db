@@ -32,6 +32,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -171,7 +172,13 @@ using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
 
 using PerformResultFuture = pg_client::internal::ResultFuture<pg_client::internal::PerformData>;
 
-using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
+using WaitEventWatcher =
+    std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC, uint32_t)>;
+
+// The deadline pggate applies to a request when no tighter timeout is in force -- in particular to
+// an object lock acquisition when postgres' lock_timeout is disabled. A caller that wants to report
+// the expiry itself must arm a timer that fires before this deadline does.
+MonoDelta DefaultRpcTimeout();
 
 class PgClient {
  public:
@@ -195,6 +202,8 @@ class PgClient {
   void ClearTimeout();
 
   void SetLockTimeout(int lock_timeout_ms);
+
+  void SetOriginationHt(uint64_t origination_ht);
 
   uint64_t SessionID() const;
 
@@ -268,15 +277,19 @@ class PgClient {
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id);
+
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_using_table_locks,
                              int64_t last_val,
                              bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_using_table_locks,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -285,6 +298,7 @@ class PgClient {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
+                                                         bool is_using_table_locks,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -293,7 +307,7 @@ class PgClient {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      std::optional<uint64_t> read_time = std::nullopt);
+      bool is_using_table_locks, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 

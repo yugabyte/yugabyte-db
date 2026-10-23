@@ -162,7 +162,7 @@ DEFINE_RUNTIME_int32(cdc_create_stream_alter_table_dispatch_delay_ms, 50,
     "cdc_create_stream_alter_table_dispatch_batch_size per-table AlterTable calls during CDC "
     "stream creation.");
 
-DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs, 10,
+DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs, 0,
     "Maximum number of concurrent outstanding AsyncAlterTable RPCs the master will allow in "
     "flight. 0 disables the throttle entirely. Positive values are used as the absolute global "
     "cap. If its value is < 0 then the max_concurrent_alter_table_rpcs_per_tserver gflag and the "
@@ -3838,17 +3838,20 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
       cdc_state_table_->DeleteEntries(entries_to_delete),
       "Error deleting XRepl stream rows from cdc_state table");
 
-  std::vector<CDCStreamInfo::WriteLock> locks;
-  locks.reserve(streams.size());
   std::vector<CDCStreamInfo*> streams_to_delete;
   streams_to_delete.reserve(streams.size());
-
   for (auto& stream : streams) {
-    locks.push_back(stream->LockForWrite());
     streams_to_delete.push_back(stream.get());
   }
 
+  // Must be done before locking the streams: outbound replication groups are locked before streams.
   RETURN_NOT_OK(xcluster_manager_->RemoveStreamsFromSysCatalog(epoch, streams_to_delete));
+
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  locks.reserve(streams.size());
+  for (auto& stream : streams) {
+    locks.push_back(stream->LockForWrite());
+  }
 
   bool TEST_fail = false;
   TEST_SYNC_POINT_CALLBACK("CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", &TEST_fail);
@@ -4076,6 +4079,8 @@ Status CatalogManager::GetCDCStream(
   stream_info->set_xcluster_use_target_applied_filter(
       stream_lock->pb.xcluster_use_target_applied_filter());
 
+  stream_info->set_xcluster_is_wal_anchor(stream_lock->pb.xcluster_is_wal_anchor());
+
   return Status::OK();
 }
 
@@ -4258,6 +4263,8 @@ Status CatalogManager::ListCDCStreams(
         ltm->pb.detect_publication_changes_implicitly());
 
     stream->set_xcluster_use_target_applied_filter(ltm->pb.xcluster_use_target_applied_filter());
+
+    stream->set_xcluster_is_wal_anchor(ltm->pb.xcluster_is_wal_anchor());
   }
   return Status::OK();
 }
@@ -4338,8 +4345,10 @@ Status CatalogManager::UpdateCDCStreams(
     }
     auto& pb = stream_lock.mutable_data()->pb;
     const bool preserve_use_target_applied_filter = pb.xcluster_use_target_applied_filter();
+    const bool preserve_is_wal_anchor = pb.xcluster_is_wal_anchor();
     pb.CopyFrom(entry);
     pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
+    pb.set_xcluster_is_wal_anchor(preserve_is_wal_anchor);
 
     for (auto it = pb.mutable_options()->begin(); it != pb.mutable_options()->end(); ++it) {
       if (it->key() == cdc::kStreamState) {
@@ -6602,14 +6611,15 @@ Status CatalogManager::CreateCdcStateTableIfNotFound(const LeaderEpoch& epoch) {
 }
 
 Result<scoped_refptr<CDCStreamInfo>> CatalogManager::InitNewXReplStream() {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-
   auto stream_id = GenerateNewXreplStreamId();
   auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
 
-  cdc_stream_map_[stream_id] = stream;
+  {
+    LockGuard lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    cdc_stream_map_[stream_id] = stream;
+  }
 
   return stream;
 }

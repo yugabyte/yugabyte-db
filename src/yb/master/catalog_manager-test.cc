@@ -32,8 +32,10 @@
 
 #include "yb/common/constants.h"
 #include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace master {
@@ -42,7 +44,6 @@ using std::shared_ptr;
 using std::make_shared;
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 // Test of the tablet assignment algorithm for splits done at table creation time.
 // This tests that when we define a split, the tablet lands on the expected
@@ -68,7 +69,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
     // Calculate the tablet id and start key.
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
-    string tablet_id = Substitute("tablet-$0-$1", start_key, end_key);
+    string tablet_id = Format("tablet-$0-$1", start_key, end_key);
 
     // Query using the start key.
     GetTableLocationsRequestPB req;
@@ -599,6 +600,99 @@ TEST(TestCatalogManagerEnterprise, TestLoadBalancedReadOnlySameAz) {
   ts2->set_num_live_replicas(8);
   ts3->set_num_live_replicas(4);
   ASSERT_NOK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+namespace {
+
+std::vector<TabletServerId> SortedUuids(const CMPerTableLoadState& state) {
+  std::vector<TabletServerId> result;
+  for (size_t idx : state.sorted_by_load()) {
+    result.push_back(state.uuid(idx));
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(TestCatalogManager, PerTableLoadStateOrder) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 5}, {"1111", 3}, {"2222", 3}, {"3333", 9}};
+  CMPerTableLoadState state(&global_state);
+  state.per_ts_replica_load_ = {{"0000", 2}, {"1111", 2}, {"2222", 2}, {"3333", 0}};
+  ASSERT_OK(state.Init(ts_descs));
+
+  // Table load first, then global load, then uuid.
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"3333", "1111", "2222", "0000"}));
+}
+
+TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}};
+  CMPerTableLoadState state(&global_state);
+  state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}};
+  ASSERT_OK(state.Init(ts_descs));
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"0000", "1111", "2222", "3333"}));
+
+  // The tserver that gained a replica moves behind every tserver with equal load.
+  state.AddReplica("0000");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "2222", "3333", "0000"}));
+  state.AddReplica("2222");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica("2222");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica("1111");
+  state.AddReplica("3333");
+  ASSERT_EQ(SortedUuids(state), (std::vector<TabletServerId>{"0000", "1111", "3333", "2222"}));
+
+  // The global load follows the picks.
+  ASSERT_EQ(2, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("2222")));
+  ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
+}
+
+TEST(TestCatalogManager, PerTableLoadStateInitRequiresEveryTs) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
+  {
+    CMPerTableLoadState state(&global_state);
+    state.per_ts_replica_load_ = {{"0000", 0}};
+    ASSERT_NOK_STR_CONTAINS(state.Init(ts_descs), "per_ts_replica_load_ does not contain 1111");
+  }
+  {
+    CMGlobalLoadState partial_global_state;
+    partial_global_state.per_ts_replica_load_ = {{"0000", 0}};
+    CMPerTableLoadState state(&partial_global_state);
+    state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
+    ASSERT_NOK_STR_CONTAINS(state.Init(ts_descs), "Could not locate tablet server 1111");
+  }
+}
+
+TEST(TestCatalogManager, ValidateVectorIndexBackend) {
+  SysTablesEntryPB table;
+  table.set_name("vi");
+  ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+
+  auto& options = *table.mutable_index_info()->mutable_vector_idx_options();
+  options.set_idx_type(PgVectorIndexType::HNSW);
+  for (auto backend : {HnswBackend::YB_HNSW_USEARCH, HnswBackend::YB_HNSW_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+  }
+
+  // An unset backend reads as DEPRECATED_USEARCH: such indexes predate block-based backends.
+  options.mutable_hnsw()->clear_backend();
+  auto status = ValidateVectorIndexBackend("table_id", table);
+  ASSERT_TRUE(status.IsNotSupported()) << status;
+  for (auto backend : {HnswBackend::DEPRECATED_USEARCH, HnswBackend::DEPRECATED_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    status = ValidateVectorIndexBackend("table_id", table);
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "no longer supported");
+  }
 }
 
 }  // namespace master

@@ -24,6 +24,9 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/dist_trace.h"
+#include "yb/util/dist_trace_test_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -632,5 +635,315 @@ TEST_F(ThreadPoolTest, TestCgroupTaggedPools) {
 }
 
 #endif // __linux__
+
+namespace dist_trace_hops {
+
+using dist_trace::MakeTestSpanContext;
+
+class ThreadPoolTraceTest : public ThreadPoolTest {
+ private:
+  dist_trace::ScopedTestDistTrace dist_trace_;
+};
+
+// Records the trace context active on the worker thread while Run() executes.
+class ContextObservingTask : public ThreadPoolTask {
+ public:
+  explicit ContextObservingTask(CountDownLatch* latch) : latch_(latch) {}
+
+  const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
+
+ private:
+  void Run() override { observed_ = dist_trace::GetActiveSpanContext(); }
+
+  void Done(const Status&) override { latch_->CountDown(); }
+
+  CountDownLatch* latch_;
+  std::optional<dist_trace::trace::SpanContext> observed_;
+};
+
+// Same, as a StrandTask.
+class ContextObservingStrandTask : public StrandTask {
+ public:
+  explicit ContextObservingStrandTask(CountDownLatch* latch) : latch_(latch) {}
+
+  const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
+
+ private:
+  void Run() override { observed_ = dist_trace::GetActiveSpanContext(); }
+
+  void Done(const Status&) override { latch_->CountDown(); }
+
+  CountDownLatch* latch_;
+  std::optional<dist_trace::trace::SpanContext> observed_;
+};
+
+// Enqueue under an active trace context: the worker thread runs the task under that context.
+TEST_F(ThreadPoolTraceTest, TraceContextCarriedToWorker) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = 1,
+  });
+
+  const auto expected = MakeTestSpanContext(0x11);
+  CountDownLatch latch(1);
+  ContextObservingTask task(&latch);
+  {
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(pool.Enqueue(&task));
+    ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+  }
+
+  ASSERT_TRUE(task.observed().has_value());
+  ASSERT_EQ(task.observed()->trace_id(), expected.trace_id());
+  ASSERT_EQ(task.observed()->span_id(), expected.span_id());
+}
+
+// Enqueue with no active trace context: the worker thread runs the task with none.
+TEST_F(ThreadPoolTraceTest, NoTraceContextCarriedWhenNoneActive) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = 1,
+  });
+
+  CountDownLatch latch(1);
+  ContextObservingTask task(&latch);
+  ASSERT_TRUE(pool.Enqueue(&task));
+  ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+
+  ASSERT_FALSE(task.observed().has_value());
+}
+
+// Same, enqueued on a Strand.
+TEST_F(ThreadPoolTraceTest, TraceContextCarriedToStrand) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = strand::kPoolTotalWorkers,
+  });
+  Strand strand(&pool);
+
+  const auto expected = MakeTestSpanContext(0x22);
+  CountDownLatch latch(1);
+  ContextObservingStrandTask task(&latch);
+  {
+    dist_trace::ScopedAdoptSpan scope(expected);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(strand.Enqueue(&task));
+    ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+  }
+  strand.Shutdown();
+
+  ASSERT_TRUE(task.observed().has_value());
+  ASSERT_EQ(task.observed()->trace_id(), expected.trace_id());
+  ASSERT_EQ(task.observed()->span_id(), expected.span_id());
+}
+
+// Same, blocking in Run() so another task can be queued behind it in the same drain batch.
+class BlockingContextObservingStrandTask : public StrandTask {
+ public:
+  BlockingContextObservingStrandTask(
+      CountDownLatch* started, CountDownLatch* resume, CountDownLatch* done)
+      : started_(started), resume_(resume), done_(done) {}
+
+  const std::optional<dist_trace::trace::SpanContext>& observed() const { return observed_; }
+
+ private:
+  void Run() override {
+    observed_ = dist_trace::GetActiveSpanContext();
+    started_->CountDown();
+    CHECK(resume_->WaitFor(30s * kTimeMultiplier));
+  }
+
+  void Done(const Status&) override { done_->CountDown(); }
+
+  CountDownLatch* started_;
+  CountDownLatch* resume_;
+  CountDownLatch* done_;
+  std::optional<dist_trace::trace::SpanContext> observed_;
+};
+
+// A traced task and an untraced one drained by the same strand invocation: the untraced task must
+// not inherit the traced task's context.
+TEST_F(ThreadPoolTraceTest, StrandDoesNotLeakContextToUntracedTask) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = strand::kPoolTotalWorkers,
+  });
+  Strand strand(&pool);
+
+  const auto first_context = MakeTestSpanContext(0x55);
+  CountDownLatch started(1);
+  CountDownLatch resume(1);
+  CountDownLatch done(2);
+  BlockingContextObservingStrandTask first_task(&started, &resume, &done);
+  ContextObservingStrandTask second_task(&done);
+
+  {
+    dist_trace::ScopedAdoptSpan scope(first_context);
+    ASSERT_TRUE(dist_trace::HasActiveContext());
+    ASSERT_TRUE(strand.Enqueue(&first_task));
+  }
+
+  // Queue the second task with no context active while the first is still running, so that both are
+  // drained by the same Strand::Task::Done invocation.
+  ASSERT_TRUE(started.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(dist_trace::HasActiveContext());
+  ASSERT_TRUE(strand.Enqueue(&second_task));
+  resume.CountDown();
+
+  ASSERT_TRUE(done.WaitFor(10s * kTimeMultiplier));
+  strand.Shutdown();
+
+  ASSERT_TRUE(first_task.observed().has_value());
+  ASSERT_EQ(first_task.observed()->trace_id(), first_context.trace_id());
+  ASSERT_FALSE(second_task.observed().has_value());
+}
+
+// Two tasks enqueued under different trace contexts: each runs under its own.
+TEST_F(ThreadPoolTraceTest, TraceContextIsPerTask) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = 1,
+  });
+
+  const auto first_context = MakeTestSpanContext(0x33);
+  const auto second_context = MakeTestSpanContext(0x44);
+  CountDownLatch latch(2);
+  ContextObservingTask first_task(&latch);
+  ContextObservingTask second_task(&latch);
+  {
+    dist_trace::ScopedAdoptSpan scope(first_context);
+    ASSERT_TRUE(pool.Enqueue(&first_task));
+  }
+  {
+    dist_trace::ScopedAdoptSpan scope(second_context);
+    ASSERT_TRUE(pool.Enqueue(&second_task));
+  }
+  ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+
+  ASSERT_EQ(first_task.observed()->trace_id(), first_context.trace_id());
+  ASSERT_EQ(second_task.observed()->trace_id(), second_context.trace_id());
+}
+
+} // namespace dist_trace_hops
+
+namespace idle_reclaim {
+
+constexpr size_t kMaxWorkers = 32;
+const auto kIdleTimeout = 200ms * kTimeMultiplier;
+constexpr int kNumIdleTimeouts = 10;
+
+// Grows the pool to kMaxWorkers, then runs one short task at a time for kNumIdleTimeouts idle
+// timeouts. Returns the number of workers still alive at the end.
+size_t LiveWorkersAfterTrickle(WorkerWakeOrder wake_order) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "idle_reclaim",
+    .max_workers = kMaxWorkers,
+    .idle_timeout = MonoDelta(kIdleTimeout),
+    .wake_order = wake_order,
+  });
+
+  CountDownLatch all_started(kMaxWorkers);
+  CountDownLatch release(1);
+  CountDownLatch all_done(kMaxWorkers);
+  for (size_t i = 0; i != kMaxWorkers; ++i) {
+    CHECK(pool.EnqueueFunctor([&all_started, &release, &all_done] {
+      all_started.CountDown();
+      release.Wait();
+      all_done.CountDown();
+    }));
+  }
+  CHECK(all_started.WaitFor(10s * kTimeMultiplier));
+  CHECK_EQ(pool.NumWorkers(), kMaxWorkers);
+  release.CountDown();
+  CHECK(all_done.WaitFor(10s * kTimeMultiplier));
+
+  auto deadline = CoarseMonoClock::now() + kIdleTimeout * kNumIdleTimeouts;
+  size_t tasks = 0;
+  while (CoarseMonoClock::now() < deadline) {
+    CountDownLatch done(1);
+    CHECK(pool.EnqueueFunctor([&done] { done.CountDown(); }));
+    CHECK(done.WaitFor(10s * kTimeMultiplier));
+    ++tasks;
+    std::this_thread::sleep_for(1ms);
+  }
+  auto live = pool.NumWorkers();
+  LOG(INFO) << wake_order << ": " << live << " of " << kMaxWorkers << " workers alive after "
+            << tasks << " sequential tasks, " << pool.TEST_NumWorkersCreated()
+            << " workers created in total";
+  pool.Shutdown();
+  return live;
+}
+
+// Grows the pool to max_workers, then runs a trickle of one task at a time. Returns the live worker
+// count after each idle timeout.
+std::vector<size_t> LiveWorkersPerIdleTimeout(
+    WorkerWakeOrder wake_order, size_t max_workers, int idle_timeouts) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "reclaim_speed",
+    .max_workers = max_workers,
+    .idle_timeout = MonoDelta(kIdleTimeout),
+    .wake_order = wake_order,
+  });
+  CountDownLatch all_started(max_workers);
+  CountDownLatch release(1);
+  CountDownLatch all_done(max_workers);
+  for (size_t i = 0; i != max_workers; ++i) {
+    CHECK(pool.EnqueueFunctor([&all_started, &release, &all_done] {
+      all_started.CountDown();
+      release.Wait();
+      all_done.CountDown();
+    }));
+  }
+  CHECK(all_started.WaitFor(30s * kTimeMultiplier));
+  release.CountDown();
+  CHECK(all_done.WaitFor(30s * kTimeMultiplier));
+  std::vector<size_t> live;
+  for (int i = 0; i != idle_timeouts; ++i) {
+    auto deadline = CoarseMonoClock::now() + kIdleTimeout;
+    while (CoarseMonoClock::now() < deadline) {
+      CountDownLatch done(1);
+      CHECK(pool.EnqueueFunctor([&done] { done.CountDown(); }));
+      CHECK(done.WaitFor(10s * kTimeMultiplier));
+      std::this_thread::sleep_for(100us);
+    }
+    live.push_back(pool.NumWorkers());
+  }
+  LOG(INFO) << wake_order << ": live workers after each idle timeout, starting from "
+            << max_workers << ": " << AsString(live);
+  pool.Shutdown();
+  return live;
+}
+
+} // namespace idle_reclaim
+
+// With one task in flight at a time, all but about one worker should idle out.
+TEST_F(ThreadPoolTest, IdleReclaimLifo) {
+  ASSERT_LE(idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kLifo),
+            idle_reclaim::kMaxWorkers / 2);
+}
+
+TEST_F(ThreadPoolTest, IdleReclaimMixed) {
+  ASSERT_LE(idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kMixed),
+            idle_reclaim::kMaxWorkers / 2);
+}
+
+// Mixed holds back up to 16 workers per refill, so a large pool shrinks by about 16 per idle
+// timeout; the bound allows half that.
+TEST_F(ThreadPoolTest, ReclaimSpeedLargePool) {
+  constexpr size_t kNumWorkers = 512;
+  constexpr int kNumTimeouts = 15;
+  auto lifo = idle_reclaim::LiveWorkersPerIdleTimeout(
+      WorkerWakeOrder::kLifo, kNumWorkers, kNumTimeouts);
+  ASSERT_LE(lifo.back(), kNumWorkers / 2);
+  auto mixed = idle_reclaim::LiveWorkersPerIdleTimeout(
+      WorkerWakeOrder::kMixed, kNumWorkers, kNumTimeouts);
+  ASSERT_LE(mixed.back(), kNumWorkers - 8 * kNumTimeouts);
+}
+
+// FIFO rotates through every parked worker, so none idles out. Logged for comparison only.
+TEST_F(ThreadPoolTest, IdleReclaimFifo) {
+  idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kFifo);
+}
 
 } // namespace yb::rpc

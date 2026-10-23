@@ -56,10 +56,14 @@
       "recommended": "Recommended",
       "reviewAndCreate": "Next: Review and Create",
       "duration": {
-        "seconds": "Seconds",
-        "minutes": "Minutes",
-        "hours": "Hours",
-        "days": "Days"
+        "seconds_one": "second",
+        "seconds_other": "seconds",
+        "minutes_one": "minute",
+        "minutes_other": "minutes",
+        "hours_one": "hour",
+        "hours_other": "hours",
+        "days_one": "day",
+        "days_other": "days"
       },
       "unitAbbreviation": {
         "milliseconds": "ms",
@@ -97,11 +101,21 @@
         "error": {
           "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
         }
+      },
+      "rollMaxBatchSize": {
+        "label": "Max batch size: ",
+        "tooltip": "Refers to the number of nodes that can be unavailable during upgrade process per AZ. This can possibly affect the performance of the cluster till the upgrade is finished",
+        "lockedTooltip": "Batching isn't available for this universe."
       }
     },
     "toast": {
       "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
-      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed",
+      "retryUniverseUpdateTaskFailedLabel": "Failed to retry universe update task",
+      "retryUniverseUpdateTaskSuccess": "Universe updated",
+      "retryUniverseRollbackTaskFailedLabel": "Failed to retry universe rollback task",
+      "rollbackUniverseUpdateTaskFailedLabel": "Failed to roll back universe update task",
+      "rollbackUniverseUpdateTaskSuccess": "Universe rolled back to a stable state."
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -175,8 +189,9 @@
         "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
-        "title": "Manage encryption at-Rest",
-        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "title": "Edit Encryption at Rest",
+        "enableEAR": "Enable encryption at Rest for this Universe",
+        "keyRetentionNote": "<bold>Note!</bold> Encryption at rest requires the encryption key to be retained once <br /> enabled. This requirement remains after encryption is disabled.   <a>Learn more</a>",
         "kmsConfig": "Key management service config",
         "selectKMSConfig": "Select key management service config",
         "rotateKMSConfig": "Rotate key management service config",
@@ -269,7 +284,7 @@
       "helmOverrides": {
         "title": "Kubernetes Overrides",
         "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
-        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:",
         "addAvailabilityZone": "Add Availability Zone",
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
@@ -504,59 +519,63 @@
             "retry": "Retry"
           },
           "precheckInProgress": {
-            "title": "Upgrade pre-check in progress.",
+            "title": "Database upgrade pre-check in progress.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "precheckIssuesFound": {
-            "title": "Upgrade pre-check found issues.",
-            "description": "Universe does not meet DB upgrade requirements.",
+            "title": "Database upgrade pre-check found issues.",
+            "description": "Universe does not meet database upgrade requirements.",
             "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
           },
           "precheckPassed": {
             "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
             "descriptionPg15": "Universe is ready for PG15 upgrade.",
-            "description": "Universe is ready for DB upgrade."
+            "description": "Universe is ready for database upgrade."
           },
           "upgradingSoftware": {
-            "title": "Upgrading software.",
+            "title": "Upgrading database.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "softwareUpgradeFailed": {
-            "title": "Software upgrade failed."
+            "title": "Database upgrade failed."
           },
           "upgradePausedForMonitoring": {
-            "title": "Upgrade paused for monitoring.",
+            "title": "Database upgrade paused for monitoring.",
             "description": "Review universe health, then resume or roll back."
           },
           "finalizeOrRollBack": {
-            "title": "Finalize or Roll Back Upgrade.",
+            "title": "Finalize or roll back database upgrade.",
             "description": "Assess universe performance and finalize or roll back.",
             "rollBack": "Roll Back",
             "finalizeUpgradeNow": "Finalize Upgrade Now"
           },
           "upgradeAborted": {
-            "title": "Upgrade aborted.",
+            "title": "Database upgrade aborted.",
+            "description": "The upgrade was stopped by a user."
+          },
+          "upgradeCanceled": {
+            "title": "Database upgrade canceled.",
             "description": "Upgrade was canceled because universe does not meet upgrade requirements."
           },
           "rollingBack": {
-            "title": "Rolling back upgrade.",
+            "title": "Rolling back database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "rollbackFailed": {
-            "title": "Failed to roll back."
+            "title": "Database upgrade failed to roll back."
           },
           "finalizing": {
-            "title": "Finalizing upgrade.",
+            "title": "Finalizing database upgrade.",
             "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
             "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
           },
           "finalizeFailed": {
-            "title": "Failed to finalize upgrade."
+            "title": "Failed to finalize database upgrade."
           },
           "upgradeCompleted": {
-            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "title": "Database upgrade completed. Universe is now on {{targetDbVersion}}.",
             "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
           }
         }
@@ -574,8 +593,6 @@
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
         "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "After the upgrade is done, you can monitor performance and ",
         "footerMsg2": "if you detect any problems.",
         "footerMsg3": "Before upgrading, perform a full backup of your universe.",
@@ -636,17 +653,18 @@
         "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
         "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
         "enableAdvancedObservability": "Enable Advanced Observability",
-        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This adds a Performance tab to the console for Cluster Load, Top SQL, SQL details drilldown.",
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
-        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This removes a Performance tab from the console.",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
         "modeLabel": "Collection mode",
-        "modeBasic": "Basic - collect and store performance data on this YugabyteDB Anywhere",
-        "modeAdvanced": "Advanced observability - also export universe metrics to Prometheus",
+        "modeBasic": "Basic - collects performance data and exports it with Support Bundle",
+        "modeAdvanced": "Advanced observability - adds a Performance tab to the console for Cluster Load, Top SQL, SQL details drilldown",
         "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
         "onlineDestinationLabel": "Destination",
-        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled."
+        "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled.",
+        "advancedObservabilityLicenseNotice": "<strong>Advanced Observability is a licensed feature.</strong> Please confirm your organization has an Advanced Observability license. If not, contact your Yugabyte account team."
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -930,8 +948,6 @@
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
-        "numNodesToRollingUpgrade": "Max batch size: ",
-        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "pgGroupWarning": "You can't change the disabled fields because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
@@ -944,7 +960,9 @@
         "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
-        "yamlErrorsTitle": "Errors in helm YAML"
+        "yamlErrorsTitle": "Errors in helm YAML",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between pods/batches:"
       },
       "azOverrides": {
         "modalTitle": "AZ Resource Overrides",
@@ -1975,6 +1993,7 @@
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
+            "matview": "Materialized View",
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
             "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",
@@ -3038,8 +3057,10 @@
           "taskAbortFailed": "Task abort failed",
           "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed",
+          "taskRetryCompleted": "Task retry completed successfully",
           "taskRollbackSuccess": "Task rollback started",
-          "taskRollbackFailed": "Task rollback failed"
+          "taskRollbackFailed": "Task rollback failed",
+          "taskRollbackCompleted": "Task rollback completed successfully"
         }
       },
       "info": {
@@ -3061,6 +3082,10 @@
         "Aborted": "Aborted",
         "Paused": "Paused"
       },
+      "originalTask": {
+        "label": "Original Task",
+        "loading": "Loading..."
+      },
       "progress": {
         "title": "Progress",
         "complete": "{{progress}}% Completed",
@@ -3074,11 +3099,58 @@
       "banner": {
         "viewDetails": "View Details",
         "retry": "Retry",
+        "abortedDescription": "The upgrade was stopped by a user.",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
         "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
         "rollbackUpgrade": "Rollback Upgrade"
+      },
+      "editUniverseTaskBanner": {
+        "inProgress": {
+          "title": "Updating universes...",
+          "description": "Some operations are not available while the operation is in progress."
+        },
+        "succeeded": {
+          "title": "Universe updated."
+        },
+        "failed": {
+          "title": "Failed to update universe."
+        },
+        "aborted": {
+          "title": "Universe update aborted.",
+          "description": "The update was stopped by a user."
+        },
+        "actions": {
+          "viewDetails": "View Details",
+          "retry": "Retry",
+          "rollBack": "Roll Back",
+          "rollBackHelperText": "Restores stable state"
+        },
+        "rollbackConfirmModal": {
+          "title": "Confirm Rollback",
+          "message": "This rollback won't affect your existing database servers. It only removes newly created resources that haven't been put into use.",
+          "submitLabel": "Roll Back"
+        }
+      },
+      "editUniverseRollbackTaskBanner": {
+        "inProgress": {
+          "title": "Rolling back universe update...",
+          "description": "Restoring the Universe to its state before the update."
+        },
+        "failed": {
+          "title": "Failed to roll back universe update.",
+          "description": "The universe update failed, and the rollback attempt also failed. No other operations can run until the universe is restored to a stable state."
+        },
+        "precheckFailed": {
+          "title": "Rollback pre-check found issues.",
+          "description": "The universe update failed, and the rollback pre-flight check also found issues. No other operations can run until the universe is restored to a stable state."
+        },
+        "actions": {
+          "viewDetails": "View Details",
+          "retryRollback": "Retry Rollback",
+          "retryUniverseUpdate": "Retry Universe Update"
+        }
       },
       "simple": {
         "viewDetails": "View Details"
@@ -3193,7 +3265,7 @@
         "button": {
           "remove": "Remove"
         },
-        "backupIntervalValue": "Every {{backupFrequencyMinutes}} minutes",
+        "backupIntervalValue": "Every {{backupFrequency}} {{unit}}",
         "noRecentBackupError": "No backups have been created in the past 24 hours."
       },
       "configureContinuousBackupModal": {
@@ -3212,8 +3284,8 @@
         },
         "error": {
           "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
-          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
-          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+          "backupFrequencyBelowMinimum": "Minimum {{min}} {{unit}}.",
+          "backupFrequencyAboveMaximum": "Maximum {{max}} {{unit}}."
         },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
@@ -3503,6 +3575,46 @@
           "disableRequestFailed": "Metrics export disable request failed:",
           "updateRequestFailed": "Metrics export update request failed:"
         }
+      },
+      "s3": {
+        "advanced": "Advanced",
+        "bucket": "S3 Bucket",
+        "bucketTooltip": "Name of the S3 bucket where logs will be written.",
+        "bucketPlaceholder": "my-telemetry-bucket",
+        "region": "Region",
+        "regionTooltip": "AWS region of the S3 bucket (for example, us-west-2).",
+        "regionPlaceholder": "us-west-2",
+        "accessKey": "Access Key",
+        "accessKeyTooltip": "AWS access key ID used to authenticate to S3.",
+        "secretKey": "Secret Key",
+        "secretKeyTooltip": "AWS secret access key used to authenticate to S3.",
+        "directoryPrefix": "Directory Prefix",
+        "directoryPrefixTooltip": "Root directory (key prefix) inside the bucket. Defaults to yb-logs/.",
+        "directoryPrefixPlaceholder": "yb-logs/",
+        "filePrefix": "File Prefix",
+        "filePrefixTooltip": "Prefix prepended to each exported object name. Defaults to yb-otel-.",
+        "filePrefixPlaceholder": "yb-otel-",
+        "partition": "Partition",
+        "partitionTooltip": "Time granularity for partition directories under the prefix.",
+        "partitionHour": "Hour",
+        "partitionMinute": "Minute",
+        "marshaler": "Marshaler",
+        "marshalerTooltip": "Encoding for exported objects. Defaults to OTLP JSON. Sumo Logic IC is for logs only.",
+        "marshalerOtlpJson": "OTLP JSON",
+        "marshalerSumoIc": "Sumo Logic IC",
+        "roleArn": "Role ARN",
+        "roleArnTooltip": "Optional IAM role ARN to assume when writing to the bucket. Must start with arn:.",
+        "roleArnPlaceholder": "arn:aws:iam::123456789012:role/example",
+        "endpoint": "Endpoint",
+        "endpointTooltip": "Optional endpoint override for S3-compatible object stores. If omitted, the endpoint is derived from region and bucket.",
+        "endpointPlaceholder": "https://",
+        "disableSSL": "Disable SSL",
+        "disableSSLTooltip": "Connect to the endpoint over plain HTTP instead of HTTPS.",
+        "forcePathStyle": "Force Path Style",
+        "forcePathStyleTooltip": "Use path-style addressing (bucket in the path). Required by most S3-compatible stores.",
+        "includeUniverseAndNodeInPrefix": "Include Universe and Node in Prefix",
+        "includeUniverseAndNodeInPrefixTooltip": "Append the universe UUID and node name to the directory prefix (for example, yb-logs/<universe-uuid>/<node-name>).",
+        "validationFieldRequired": "This field is required"
       }
     },
     "userAuth": {
@@ -3912,8 +4024,8 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Provider",
-        "providerconfiguration": "Provider Configuration",
+        "cloudProvider": "Infrastructure Provider",
+        "providerconfiguration": "Infrastructure Provider Config",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Integrations → Infrastructure</b>. You may need admin privileges to complete this step.",
         "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
@@ -4246,7 +4358,8 @@
         "pgCompatibility": {
           "label": "Enhanced Postgres Compatibility",
           "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
-          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
+          "YSQLWarn": "Enable YSQL first to use Postgres Compatibility."
         }
       },
       "securitySettings": {
@@ -4262,7 +4375,8 @@
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
           "kmsConfigPlaceHolder": "Select",
-          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption."
+          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption.",
+          "helpText": "<b>Note!</b> Encryption at rest requires the encryption key to be retained once enabled.<br/> This requirement remains after encryption is disabled. <a>Learn more</a>"
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
@@ -4480,6 +4594,8 @@
         "clusterId": "Cluster ID",
         "provider": "Provider",
         "providerConfig": "Provider Config",
+        "infrastructureProvider": "Infrastructure Provider",
+        "providerConfiguration": "Infrastructure Provider Config",
         "totalNodes": "Total Nodes",
         "totalPods": "Total Pods",
         "node": "node",
@@ -4499,6 +4615,12 @@
         "cpuArch": "CPU Architecture",
         "linuxVersion": "Linux Version",
         "defaultInstanceType": "Default Instance Type",
+        "instanceType": "Instance Type",
+        "regionsAndPlacement": "Regions and Placement",
+        "hardware": "Hardware",
+        "viewMorePlacement": "View more in Placement page",
+        "viewMoreHardware": "View more in Hardware page",
+        "sameAsPrimaryCluster": "Same as Primary Cluster",
         "region": "Region",
         "az": "AZ",
         "primary": "Primary",
@@ -4543,13 +4665,13 @@
         "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
-          "summary": "Summary of instance configuration changes:",
+          "summary": "Summary of placement changes:",
           "current": "Current",
           "new": "New",
-          "faultTolerance": "Fault Tolerance:",
-          "replicationFactor": "Replication Factor:",
-          "totalNodes": "Total Nodes:",
-          "totalPods": "Total Pods:",
+          "faultTolerance": "Resilience :",
+          "replicationFactor": "Replication Factor :",
+          "totalNodes": "Total Nodes :",
+          "totalPods": "Total Pods :",
           "node": "node",
           "pod": "pod",
           "rank": "Rank {{rank}}",
@@ -4588,7 +4710,9 @@
         "memory": "Memory",
         "memoryValue": "{{memory}} GiB",
         "storageClass": "Storage class",
-        "ebsType": "ebs type",
+        "ebsType": "EBS Type",
+        "ssdType": "SSD Type",
+        "storageType": "Storage type",
         "iops": "provisioned IOPS / Node",
         "iopsPod": "provisioned IOPS / Pod",
         "throughput": "provisioned throughput / Node",
@@ -4625,7 +4749,7 @@
           "fasterAndRecommended": "Faster and Recommended",
           "rollingRestartDescription": "No data migration is required. The universe will remain online and available throughout.",
           "rollingRestartRf1Warning": "<strong>Note!</strong> The universe won’t be available for reads and writes during the restart.",
-          "fullMoveInfo": "<strong>Note!</strong> This operation will migrate all data to a new set of nodes with new IP addresses. The universe will remain online and accessible throughout.",
+          "fullMoveInfo": "<strong>Note!</strong> This operation will migrate all data to <strong>a new set of nodes</strong> with new IP addresses. The universe will remain online and accessible throughout.",
           "nonRestartInfo": "<strong>Note!</strong> This operation will resize the current nodes without requiring a restart.",
           "delayBetweenNodes": "Delay between nodes:",
           "seconds": "seconds",
@@ -4650,7 +4774,10 @@
           "volumeSizeGib": "Volume Size (Gib)",
           "storageClass": "Storage Class",
           "addAvailabilityZone": "Add Availability Zone",
-          "applyingChanges": "Applying changes..."
+          "applyingChanges": "Applying changes...",
+          "note": "Note!",
+          "futureGlobalChange": "Future changes to global storage settings will not apply to nodes with storage overrides.",
+          "storageChangeExcludedZones": "Changes to storage volume, size, and class will not apply to availability zones with storage overrides:"
         }
       },
       "security": {

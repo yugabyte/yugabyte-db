@@ -18,3 +18,11 @@ properties:
     format: double
     example: 12.3
     x-yba-api-visibility: internal
+  load_balancers:
+    description: The load balancers that YBA created for this cluster.
+    type: array
+    items:
+      $ref: "./ManagedLoadBalancerInfo.yaml"
+    readOnly: true
+    x-yba-api-since: 2.31.0.0
+    x-yba-api-visibility: preview

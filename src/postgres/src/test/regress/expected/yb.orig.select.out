@@ -517,6 +517,69 @@ EXECUTE myplan(1);
  1 | 1
 (1 row)
 
+DEALLOCATE myplan;
+-- Tests parameterized limit and offset clauses
+set plan_cache_mode = 'force_generic_plan';
+PREPARE myplan AS SELECT * FROM reverse_scan_test LIMIT $1 OFFSET $2;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(null, 0);
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit (actual rows=14 loops=1)
+   ->  Seq Scan on reverse_scan_test (actual rows=14 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 14
+(5 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(null, 1);
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit (actual rows=13 loops=1)
+   ->  Seq Scan on reverse_scan_test (actual rows=14 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 14
+(5 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(8, 2);
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit (actual rows=8 loops=1)
+   ->  Seq Scan on reverse_scan_test (actual rows=10 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+(5 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(5, 3);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Seq Scan on reverse_scan_test (actual rows=8 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 8
+(5 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(2, 4);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Limit (actual rows=2 loops=1)
+   ->  Seq Scan on reverse_scan_test (actual rows=6 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 6
+(5 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, DIST ON) EXECUTE myplan(0, 5);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Seq Scan on reverse_scan_test (never executed)
+(2 rows)
+
+DEALLOCATE myplan;
+reset plan_cache_mode;
 --
 -- For https://github.com/YugaByte/yugabyte-db/issues/10254
 --

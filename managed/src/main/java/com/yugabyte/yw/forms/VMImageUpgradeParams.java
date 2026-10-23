@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -172,6 +173,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 "VM image upgrade is only supported for cloud providers, got: "
                     + provider.getCloudCode());
+          }
+          // The OCI image precheck reads what YBA knows about an image from its image bundle.
+          if (cluster.getProviderCloudType(node) == CloudType.oci) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST, "Use imageBundles for VM image upgrade of OCI universes.");
           }
           if (!machineImages.containsKey(region.getUuid())) {
             throw new PlatformServiceException(

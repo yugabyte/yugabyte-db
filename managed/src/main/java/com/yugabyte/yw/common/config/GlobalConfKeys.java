@@ -274,6 +274,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleUiV2Enabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.ui_v2_enabled",
+          ScopeType.GLOBAL,
+          "Enable Support Bundle V2 API in UI",
+          "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table)."
+              + " When false, the UI continues to use the v1 support bundle API. V1 and v2"
+              + " bundles are stored separately; toggling this flag switches which bundles"
+              + " appear in the UI list.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> supportBundleExtraYbAdminCommands =
       new ConfKeyInfo<>(
           "yb.support_bundle.extra_yb_admin_commands",
@@ -1071,6 +1082,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ociFailFastMultiVolumeInstanceTypeChange =
+      new ConfKeyInfo<>(
+          "yb.oci.fail_fast_multi_volume_instance_type_change",
+          ScopeType.GLOBAL,
+          "Fail fast OCI instance type change with multiple volumes",
+          "When enabled, ResizeNode precheck fails instance type changes if the node has more than"
+              + " one data volume. OCI UpdateInstance allows at most one boot volume and one"
+              + " secondary volume.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1522,6 +1543,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> readGcpInstanceTemplate =
+      new ConfKeyInfo<>(
+          "yb.gcp.read_instance_template",
+          ScopeType.GLOBAL,
+          "Read GCP instance templates",
+          "Read the instance template configured on a GCP region and carry its settings over to"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " compute.instanceTemplates.get, which is not needed to pass the template to"
+              + " instance creation as a source.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
       new ConfKeyInfo<>(
           "yb.provider.oci_provider_validation",
@@ -1598,6 +1630,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow users to enable or disable connection pooling",
           "If this flag is enabled, user will be able to enable/disable connection pooling on"
               + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
@@ -2055,6 +2096,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " rollback API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAddNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_add_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Add Node Tasks",
+          "Allow rolling back a failed add-node-to-universe task via the task rollback API."
+              + " Rollback is limited to the window before tserver start / raft join; Kubernetes"
+              + " is out of scope.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowResizeNodeRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_resize_node_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Resize Node Tasks",
+          "Allow rolling back a failed resize node task via the task rollback API. Kubernetes"
+              + " and disk-size shrink are out of scope; IOPS/throughput revert during the cloud"
+              + " disk-modify cooldown window is rejected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipResizeNodeRollbackCooldown =
+      new ConfKeyInfo<>(
+          "yb.task.skip_resize_node_rollback_cooldown",
+          ScopeType.GLOBAL,
+          "Skip Cloud Disk-modify Cooldown Check on Resize Node Rollback",
+          "Bypass the cloud disk-modify cooldown gate when submitting or executing a resize node"
+              + " rollback. The cooldown protects against cloud-side rejection of IOPS/throughput"
+              + " reverts; enable only when the operator has independently confirmed the window"
+              + " has expired or the cloud will accept the reverse modify.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
@@ -2072,6 +2144,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCrossCloudFederatedIam =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_cross_cloud_federated_iam",
+          ScopeType.GLOBAL,
+          "Enable Cross-Cloud Federated IAM",
+          "Exposes the cross-cloud federated IAM fields on the provider and backup storage"
+              + " configuration pages. Off by default while the feature is in preview; a provider"
+              + " or storage config that already has it set keeps working regardless.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_s3_backup_proxy",
@@ -2369,13 +2451,77 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
           "yb.ui.enable_new_universe_experience_for_all_users",
           ScopeType.GLOBAL,
-          "Whether to enable new universe experience for all users",
-          "Whether to enable new universe experience for all users",
+          "Enable new universe experience for all users",
+          "Enable new universe experience for all users",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeAgentDescribeMaxOutputBufferLines =
+      new ConfKeyInfo<>(
+          "yb.node_agent.max_describe_output_buffer_lines",
+          ScopeType.GLOBAL,
+          "Node Agent Max Describe Output Buffer Lines",
+          "Maximum number of lines to buffer in memory for node agent describe output",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipStorageConfigValidation =
+      new ConfKeyInfo<>(
+          "yb.storage_config.skip_validation",
+          ScopeType.GLOBAL,
+          "Skip storage config validation",
+          "Skip the storage config validators that reach out to the backup storage to check"
+              + " credentials and bucket access, on config create and edit. Escape hatch for"
+              + " storage that YBA itself cannot reach. Field level validation, the config name"
+              + " conflict and the read-only backup location check still apply, and non-storage"
+              + " configs are unaffected.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
+      new ConfKeyInfo<>(
+          "yb.task_executor.shutdown_max_wait_time",
+          ScopeType.GLOBAL,
+          "Task Executor Shutdown Max Wait Time",
+          "Maximum time to wait for task executor to shutdown gracefully before forcefully"
+              + " terminating it",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> createYbStorageDb =
+      new ConfKeyInfo<>(
+          "yb.universe.create_yb_storage_db",
+          ScopeType.GLOBAL,
+          "Create yb_storage database on universe creation",
+          "When enabled, universe creation creates the yb_storage YSQL database used by the amp"
+              + " controller, if it does not already exist.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentHealthCheckerDisabled =
+      new ConfKeyInfo<>(
+          "yb.node_agent.health_checker.disabled",
+          ScopeType.GLOBAL,
+          "Node Agent Health Checker Disabled",
+          "Node agent checker offloaded to run asynchronously on its own schedule",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> conditionalGetEnabled =
+      new ConfKeyInfo<>(
+          "yb.api.conditional_get.enabled",
+          ScopeType.GLOBAL,
+          "HTTP conditional GET (ETag / 304)",
+          "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when"
+              + " the client sends a matching If-None-Match ETag, skipping heavy response"
+              + " construction. When disabled, those endpoints always return a full 200 body.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
 }

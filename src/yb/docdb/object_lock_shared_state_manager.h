@@ -16,7 +16,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
+#include <map>
 
 #include "yb/common/transaction.h"
 #include "yb/common/object_lock_tracker.h"
@@ -75,13 +75,18 @@ class ObjectLockOwnerRegistry {
 
     ObjectLockSharedState* shared;
     TransactionId txn_id;
-    TabletId status_tablet;
+
+    mutable std::mutex status_tablet_mutex;
+    TabletId status_tablet GUARDED_BY(status_tablet_mutex);
   };
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
   RegistrationGuard Register(
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
+
+  void UpdateRegistrationStatusTablet(
+      const RegistrationGuard& guard, const TabletId& tablet_id);
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
 
@@ -117,7 +122,7 @@ class ObjectLockSharedStateManager {
       std::shared_ptr<ObjectLockTracker> object_lock_tracker,
       const MetricEntityPtr& metric_entity);
 
-  void SetupShared(SharedMemoryBackingAllocator& allocator);
+  Status SetupShared(SharedMemoryBackingAllocator& allocator);
 
   Result<ObjectLockSharedStateHolder> AllocateShared();
 
@@ -137,7 +142,7 @@ class ObjectLockSharedStateManager {
   void ConsumePendingSharedLockRequests(
       const LockRequestConsumer& consume, TransactionId txn_id = TransactionId::Nil());
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  Status ConsumeAndAcquireExclusiveLockIntents(
       const LockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries);
 
@@ -170,7 +175,8 @@ class ObjectLockSharedStateManager {
   mutable std::mutex mutex_;
   bool stopped_ GUARDED_BY(mutex_) = true;
   std::condition_variable start_cond_;
-  std::unordered_map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
+  std::map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
+  ObjectLockExclusiveIntents exclusive_intents_ GUARDED_BY(mutex_);
 
   PointerUnorderedSet<SharedMemoryUniquePtr<ObjectLockSharedState>>
       shared_states_ GUARDED_BY(mutex_);

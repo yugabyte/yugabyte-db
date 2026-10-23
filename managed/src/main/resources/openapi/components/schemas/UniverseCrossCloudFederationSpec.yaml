@@ -1,0 +1,12 @@
+title: UniverseCrossCloudFederationSpec
+description: |
+  UniverseCrossCloudFederationSpec
+
+  Payload to enable or disable cross-cloud federated IAM on an existing universe.
+type: object
+required:
+  - enabled
+properties:
+  enabled:
+    description: 'When true, configure cross-cloud federated IAM on all nodes of the universe (the provider must have federated IAM enabled with an audience set). When false, tear it down on all nodes.'
+    type: boolean

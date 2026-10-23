@@ -27,6 +27,11 @@ export function fetchUniversesList() {
 export type UniverseTableFilters = {
   includeParentTableInfo?: boolean;
   xClusterSupportedOnly?: boolean;
+  /**
+   * Materialized views are xCluster supported only for configs in automatic DDL mode running on a
+   * YBDB version that replicates them. Only meaningful alongside `xClusterSupportedOnly`.
+   */
+  includeMatviewTables?: boolean;
 };
 export function fetchTablesInUniverse(
   universeUUID: string | undefined,

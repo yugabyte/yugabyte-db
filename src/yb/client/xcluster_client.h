@@ -36,6 +36,7 @@ class CDCStreamOptionsPB;
 class InsertHistoricalColocatedSchemaPackingResponsePB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
+class SysPersistenceBlockMapEntryPB;
 }  // namespace master
 
 namespace rpc {
@@ -117,11 +118,13 @@ class XClusterClient {
       CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
       const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
-  // If source_table_ids is not provided, then all tables for the namespace are returned.
+  // If source_table_ids is not provided, then all tables for the namespace are returned. If
+  // create_stream_if_missing is also specified, then this will create streams for tables with
+  // existing WAL_ANCHOR streams, and return those new streams.
   Status GetXClusterStreams(
       CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id, const std::vector<TableName>& source_table_ids,
-      GetXClusterStreamsCallback callback);
+      bool create_stream_if_missing, GetXClusterStreamsCallback callback);
 
   // Starts the creation of Db scoped inbound replication group from a outbound replication group.
   // IsCreateXClusterReplicationDone must be called in order to wait for the operation to complete.
@@ -149,6 +152,12 @@ class XClusterClient {
   // complete.
   Status AddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
+
+  // See XClusterManager::StopPersisting and StartPersisting.
+  Status StopPersisting(const std::vector<NamespaceId>& namespace_ids);
+  Status StartPersisting(const std::vector<NamespaceId>& namespace_ids);
+
+  Result<master::SysPersistenceBlockMapEntryPB> GetPersistenceBlockMap();
 
   // Starts the addition of namespace to inbound replication group.
   // IsAlterXClusterReplicationDone must be called in order to wait for the operation to complete.
@@ -178,6 +187,10 @@ class XClusterClient {
   Status RepairOutboundXClusterReplicationGroupRemoveTable(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
 
+  Status DeleteXClusterWalAnchorStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<TableId>& source_table_ids);
+
   Result<xrepl::StreamId> CreateXClusterStream(
       const TableId& table_id, bool active, cdc::StreamModeTransactional transactional);
 
@@ -201,7 +214,8 @@ class XClusterClient {
 
   struct XClusterInboundReplicationGroupInfo {
     XClusterReplicationType replication_type = XClusterReplicationType::XCLUSTER_NON_TRANSACTIONAL;
-    std::string source_master_addrs;
+    std::string deprecated_source_master_addresses;
+    std::vector<HostPort> source_master_addrs;
     // Map of target namespace id to source namespace id. Only used in db scope replication.
     std::unordered_map<NamespaceId, NamespaceId> db_scope_namespace_id_map;
     bool automatic_ddl_mode = false;
@@ -235,7 +249,8 @@ class XClusterClient {
 
   Status GetXClusterTableCheckpointInfos(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      const std::vector<TableId>& table_ids, BootstrapProducerCallback user_callback);
+      const std::vector<TableId>& table_ids, bool create_stream_if_missing,
+      BootstrapProducerCallback user_callback);
 
   virtual Status AddNamespaceToDbScopedUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id,

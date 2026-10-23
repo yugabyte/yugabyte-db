@@ -114,10 +114,23 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return promise.get_future().get();
   }
 
-  // Cleanup streams marked for deletion and get the list of xcluster streams.
-  std::unordered_set<xrepl::StreamId> CleanupAndGetAllXClusterStreams() {
+  // Cleanup streams marked for deletion and get the list of non-anchor xCluster streams.
+  Result<std::unordered_set<xrepl::StreamId>> CleanupAndGetAllXClusterStreams() {
     catalog_manager_->RunXReplBgTasks(epoch_);
-    return catalog_manager_->GetAllXReplStreamIds();
+    ListCDCStreamsRequestPB req;
+    ListCDCStreamsResponsePB resp;
+    RETURN_NOT_OK(catalog_manager_->ListCDCStreams(&req, &resp));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+
+    std::unordered_set<xrepl::StreamId> result;
+    for (const auto& stream : resp.streams()) {
+      if (!stream.xcluster_is_wal_anchor()) {
+        result.insert(VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id())));
+      }
+    }
+    return result;
   }
 
   void VerifyNamespaceCheckpointInfo(
@@ -127,7 +140,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     ASSERT_EQ(resp.initial_bootstrap_required(), UseAutomaticMode());
     ASSERT_EQ(resp.table_infos_size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
 
-    auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
+    auto all_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
     ASSERT_EQ(all_xcluster_streams.size(), all_xcluster_streams_count);
 
     std::set<TableId> table_ids;
@@ -184,7 +197,9 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
     RETURN_NOT_OK(XClusterClient().GetXClusterStreams(
         CoarseMonoClock::Now() + kDeadline, replication_group_id, namespace_id, table_ids,
-        [&promise](const auto& resp) { promise.set_value(resp); }));
+        /*create_stream_if_missing=*/false, [&promise](const auto& resp) {
+          promise.set_value(resp);
+        }));
 
     return promise.get_future().get();
   }
@@ -242,6 +257,15 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SemiMode, XClusterOutboundReplicationGroupParameterized, ::testing::Values(false));
 
+// Automatic mode only, for tests where a semi-automatic run would add no coverage: the APIs they
+// check run the same code in both modes, and the parameterized tests in this file already create
+// and delete groups in semi-automatic mode.
+class XClusterOutboundReplicationGroupAutomaticModeTest
+    : public XClusterOutboundReplicationGroupTest {
+ public:
+  bool UseAutomaticMode() override { return true; }
+};
+
 TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
@@ -289,7 +313,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   // We should have 0 streams now.
-  auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
+  auto all_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
   ASSERT_TRUE(all_xcluster_streams.empty());
 }
 
@@ -309,7 +333,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
 
   // We should have 2 normal streams now.
   size_t stream_count = 2 + OverheadStreamsCount();
-  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), 2 + OverheadStreamsCount());
 
   // Make sure invalid namespace id is handled correctly.
@@ -343,7 +367,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
 
   // We should only have only the streams from second namespace.
   {
-    auto new_xcluster_streams = CleanupAndGetAllXClusterStreams();
+    auto new_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
     ASSERT_EQ(new_xcluster_streams.size(), 2 + OverheadStreamsCount());
 
     // new_xcluster_streams and all_xcluster_streams should not overlap.
@@ -355,7 +379,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
   ASSERT_OK(XClusterClient().DeleteOutboundReplicationGroup(
       kReplicationGroupId, /*target_master_addresses=*/{}));
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
-  auto final_xcluster_streams = CleanupAndGetAllXClusterStreams();
+  auto final_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
   ASSERT_TRUE(final_xcluster_streams.empty());
 }
 
@@ -367,7 +391,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddTable) {
 
   ASSERT_OK(CreateOutboundReplicationGroupSync());
 
-  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), 1 + OverheadStreamsCount());
 
   ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
@@ -456,11 +480,11 @@ TEST_P(
   size_t stream_count = 2 + OverheadStreamsCount();
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, resp));
 
-  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, Repair) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -556,7 +580,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
   }
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, RepairWithYbAdmin) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -592,7 +616,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
 
 // Validate the GetXClusterOutboundReplicationGroupInfo, and
 // GetXClusterOutboundReplicationGroups RPCs.
-TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, TestListAPIs) {
   // Create two DBs with different table counts.
   ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
 

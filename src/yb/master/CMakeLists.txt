@@ -37,11 +37,11 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES
-      master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
+      master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
       master_backup.proto master_test.proto master_ysql_lease.proto
   MESSAGES_PROTO_FILES
-      master_ddl.proto
+      master_ddl.proto master_client.proto master_admin.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
       catalog_entity_info.proto master_types.proto)
 set(MASTER_YRPC_LIBS
@@ -146,6 +146,7 @@ set(MASTER_SRCS
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/handle_new_schema_for_automatic_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
+  xcluster/persistence_block_map.cc
   xcluster/xcluster_bootstrap_helper.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
@@ -160,6 +161,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_wal_anchor_deletion_task.cc
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   xrepl_catalog_manager.cc
@@ -259,6 +261,7 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)

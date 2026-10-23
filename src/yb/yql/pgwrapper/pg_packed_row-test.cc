@@ -15,6 +15,7 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/consensus/log.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -50,8 +51,6 @@ DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -79,7 +78,9 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
 
   void TestCompaction(size_t num_keys, const std::string& expr_suffix);
   void TestColocated(size_t num_keys, int num_expected_records);
-  void TestSstDump(bool specify_metadata, std::string* output);
+  void TestSstDump(
+      bool specify_metadata, std::string* output, std::string* tool_stderr = nullptr,
+      const std::string& command = "scan");
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
   void TestSimple();
@@ -93,9 +94,7 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
 class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
  protected:
   void SetUp() override {
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
+    ToggleDDLMode(/* use_legacy = */ true);
     PgPackedRowTest::SetUp();
   }
 
@@ -1095,7 +1094,9 @@ class TestKVFormatter : public tablet::KVFormatter {
   mutable std::string entries_;
 };
 
-void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
+void PgPackedRowTest::TestSstDump(
+    bool specify_metadata, std::string* output, std::string* tool_stderr,
+    const std::string& command) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
@@ -1133,7 +1134,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
     "./sst_dump",
     Format("--file=$0", fname),
     "--output_format=decoded_regulardb",
-    "--command=scan",
+    Format("--command=$0", command),
   };
 
   if (specify_metadata) {
@@ -1147,14 +1148,31 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
 
   TestKVFormatter formatter;
   rocksdb::SSTDumpTool tool(&formatter);
-  ASSERT_FALSE(tool.Run(narrow_cast<int>(usage.size()), usage.data()));
+  // sst_dump keeps stdout for the dump and puts diagnostics on stderr, so that is what we check.
+  testing::internal::CaptureStderr();
+  auto failed = tool.Run(narrow_cast<int>(usage.size()), usage.data());
+  auto captured = testing::internal::GetCapturedStderr();
+  ASSERT_FALSE(failed);
 
   *output = formatter.entries();
+  if (tool_stderr) {
+    *tool_stderr = captured;
+  }
 }
+
+// Substrings of the note sst_dump prints when it was given no packing schemas; see
+// PrintMissingTabletMetadataNote in sst_dump_tool.cc. Losing any one of them leaves a reader who
+// hit this without something they need, so all three are checked.
+constexpr auto kNoMetadataReason = "--formatter_tablet_metadata was not specified";
+constexpr auto kNoMetadataRendering = "PACKED_ROW_V<n>[<schema_version>](<hex>)";
+constexpr auto kNoMetadataRemedy = "yb-data/tserver/tablet-meta";
 
 TEST_P(PgPackedRowTest, SstDump) {
   std::string output;
-  ASSERT_NO_FATALS(TestSstDump(true, &output));
+  std::string tool_stderr;
+  ASSERT_NO_FATALS(TestSstDump(true, &output, &tool_stderr));
+
+  ASSERT_STR_NOT_CONTAINS(tool_stderr, kNoMetadataReason);
 
   constexpr auto kV1 = kFirstColumnIdRep + 1;
   constexpr auto kV2 = kV1 + 1;
@@ -1175,7 +1193,13 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = false;
 
   std::string output;
-  ASSERT_NO_FATALS(TestSstDump(false, &output));
+  std::string tool_stderr;
+  ASSERT_NO_FATALS(TestSstDump(false, &output, &tool_stderr));
+
+  // Every row below renders as opaque hex, so the dump has to say why.
+  ASSERT_STR_CONTAINS(tool_stderr, kNoMetadataReason);
+  ASSERT_STR_CONTAINS(tool_stderr, kNoMetadataRendering);
+  ASSERT_STR_CONTAINS(tool_stderr, kNoMetadataRemedy);
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       R"#(
@@ -1188,6 +1212,17 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
               PACKED_ROW_V1[1](060000000A00000053746872656553747269)
       )#"),
       output);
+}
+
+// Only scan prints values, so the note would be describing a rendering that never happens under
+// any other command -- including an omitted --command, which behaves like check.
+TEST_P(PgPackedRowTest, SstDumpCheckCommandHasNoNote) {
+  std::string output;
+  std::string tool_stderr;
+  ASSERT_NO_FATALS(TestSstDump(false, &output, &tool_stderr, "check"));
+
+  ASSERT_STR_NOT_CONTAINS(tool_stderr, kNoMetadataReason);
+  ASSERT_EQ(output, "");
 }
 
 std::string PackedRowVersionToString(

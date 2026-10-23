@@ -54,12 +54,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   private static final String T_K2_INDEX_NAME = "t_k2_idx";
   private static final double SEEK_FAULT_TOLERANCE_OFFSET = 1;
   private static final double SEEK_FAULT_TOLERANCE_RATE = 0.2;
-  private static final double SEEK_LOWER_BOUND_FACTOR = 1 - SEEK_FAULT_TOLERANCE_RATE;
-  private static final double SEEK_UPPER_BOUND_FACTOR = 1 + SEEK_FAULT_TOLERANCE_RATE;
-  private static final double NEXT_FAULT_TOLERANCE_OFFSET = 2;
-  private static final double NEXT_FAULT_TOLERANCE_RATE = 0.5;
-  private static final double NEXT_LOWER_BOUND_FACTOR = 1 - NEXT_FAULT_TOLERANCE_RATE;
-  private static final double NEXT_UPPER_BOUND_FACTOR = 1 + NEXT_FAULT_TOLERANCE_RATE;
+  // The estimate is deterministic, so it is checked with a much tighter band than the measured
+  // count whenever the two are decoupled.
+  private static final double SEEK_ESTIMATE_TOLERANCE_RATE = 0.02;
+  private static final double NEXT_PREV_FAULT_TOLERANCE_OFFSET = 2;
+  private static final double NEXT_PREV_FAULT_TOLERANCE_RATE = 0.5;
+  private static final double NEXT_PREV_LOWER_BOUND_FACTOR = 1 - NEXT_PREV_FAULT_TOLERANCE_RATE;
+  private static final double NEXT_PREV_UPPER_BOUND_FACTOR = 1 + NEXT_PREV_FAULT_TOLERANCE_RATE;
   private static final String METRIC_NUM_DB_SEEK = "rocksdb_number_db_seek";
   private static final String METRIC_NUM_DB_NEXT = "rocksdb_number_db_next";
 
@@ -82,18 +83,22 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   }
 
   private ValueChecker<Double> expectedSeeksRange(double expected_seeks) {
-    double expected_lower_bound = expected_seeks * SEEK_LOWER_BOUND_FACTOR
+    return expectedSeeksRange(expected_seeks, SEEK_FAULT_TOLERANCE_RATE);
+  }
+
+  private ValueChecker<Double> expectedSeeksRange(double expected_seeks, double tolerance_rate) {
+    double expected_lower_bound = expected_seeks * (1 - tolerance_rate)
         - SEEK_FAULT_TOLERANCE_OFFSET;
-    double expected_upper_bound = expected_seeks * SEEK_UPPER_BOUND_FACTOR
+    double expected_upper_bound = expected_seeks * (1 + tolerance_rate)
         + SEEK_FAULT_TOLERANCE_OFFSET;
     return Checkers.closed(expected_lower_bound, expected_upper_bound);
   }
 
-  private ValueChecker<Double> expectedNextsRange(double expected_nexts) {
-    double expected_lower_bound = expected_nexts * NEXT_LOWER_BOUND_FACTOR
-        - NEXT_FAULT_TOLERANCE_OFFSET;
-    double expected_upper_bound = expected_nexts * NEXT_UPPER_BOUND_FACTOR
-        + NEXT_FAULT_TOLERANCE_OFFSET;
+  private ValueChecker<Double> expectedNextsOrPrevsRange(double expected_nexts_or_prevs) {
+    double expected_lower_bound = expected_nexts_or_prevs * NEXT_PREV_LOWER_BOUND_FACTOR
+        - NEXT_PREV_FAULT_TOLERANCE_OFFSET;
+    double expected_upper_bound = expected_nexts_or_prevs * NEXT_PREV_UPPER_BOUND_FACTOR
+        + NEXT_PREV_FAULT_TOLERANCE_OFFSET;
     return Checkers.closed(expected_lower_bound, expected_upper_bound);
   }
 
@@ -191,13 +196,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 // TODO(#28919): Fix cost model to take into account changes in DocDB seek/next behaviour made by
 // https://github.com/yugabyte/yugabyte-db/issues/28618 and uncomment this line:
 //                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+                  .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .readMetrics(makeMetricsBuilder()
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsOrPrevsRange(expected_nexts))
                     .build())
                   .totalCost(Checkers.greater(0))
                   .build())
@@ -218,10 +223,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       .nodeType(NODE_BITMAP_INDEX_SCAN)
       .indexName(index_name)
       .estimatedSeeks(expectedSeeksRange(expected_seeks))
-      .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+      .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
       .readMetrics(makeMetricsBuilder()
         .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-        .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+        .metric(METRIC_NUM_DB_NEXT, expectedNextsOrPrevsRange(expected_nexts))
         .build())
       .build();
   }
@@ -235,7 +240,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       .nodeType(NODE_BITMAP_INDEX_SCAN)
       .indexName(index_name)
       .estimatedSeeks(expectedSeeksRange(expected_seeks))
-      .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+      .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
       .estimatedTableRoundtrips(JsonUtil.absenceCheckerOnNull(null))
       .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
       .build();
@@ -248,20 +253,37 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       double expected_nexts,
       Integer expected_docdb_result_width,
       ObjectChecker bitmap_index_checker) throws Exception {
+    testSeekAndNextEstimationBitmapScanHelper(stmt, query, table_name, expected_seeks,
+        expected_seeks, expected_nexts, expected_docdb_result_width, bitmap_index_checker);
+  }
+
+  // TODO(#28919): Fix cost model to take into account the seeks DocDB saves by using nexts
+  // instead, and drop expected_actual_seeks, which decouples the measured seek count from the
+  // estimate while the model does not account for those savings.
+  private void testSeekAndNextEstimationBitmapScanHelper(
+      Statement stmt, String query,
+      String table_name,
+      double expected_seeks,
+      double expected_actual_seeks,
+      double expected_nexts,
+      Integer expected_docdb_result_width,
+      ObjectChecker bitmap_index_checker) throws Exception {
     try {
       testExplainDebug(stmt, query,
           makeTopLevelBuilder()
               .plan(makePlanBuilder()
                   .nodeType(NODE_YB_BITMAP_TABLE_SCAN)
                   .relationName(table_name)
-                  .estimatedSeeks(expectedSeeksRange(expected_seeks))
+                  .estimatedSeeks(expected_actual_seeks == expected_seeks
+                      ? expectedSeeksRange(expected_seeks)
+                      : expectedSeeksRange(expected_seeks, SEEK_ESTIMATE_TOLERANCE_RATE))
 // TODO(#28919): Fix cost model to take into account changes in DocDB seek/next behaviour made by
 // https://github.com/yugabyte/yugabyte-db/issues/28616 and uncomment this line:
-//                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+//                   .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .readMetrics(makeMetricsBuilder()
-                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_actual_seeks))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsOrPrevsRange(expected_nexts))
                     .build())
                   .plans(bitmap_index_checker)
                   .build())
@@ -288,7 +310,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .nodeType(NODE_YB_BITMAP_TABLE_SCAN)
                   .relationName(table_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+                  .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .totalCost(Checkers.greater(0))
                   .plans(bitmap_index_checker)
@@ -319,7 +341,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .relationName(table_name)
                   .indexName(index_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+                  .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
@@ -347,12 +369,12 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .nodeType(NODE_SEQ_SCAN)
                   .relationName(table_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+                  .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(0))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .readMetrics(makeMetricsBuilder()
-                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsOrPrevsRange(expected_nexts))
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                     .build())
                   .totalCost(Checkers.greater(0))
@@ -379,7 +401,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .nodeType(NODE_SEQ_SCAN)
                   .relationName(table_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+                  .estimatedNexts(expectedNextsOrPrevsRange(expected_nexts))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .totalCost(Checkers.greater(0))
@@ -410,14 +432,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                           .relationName(outer_table_name)
                           .nodeType(outer_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(outer_expected_seeks))
-                          .estimatedNextsAndPrevs(expectedNextsRange(outer_expected_nexts))
+                          .estimatedNexts(expectedNextsOrPrevsRange(outer_expected_nexts))
                           .totalCost(Checkers.greater(0))
                           .build(),
                       makePlanBuilder()
                           .relationName(inner_table_name)
                           .nodeType(inner_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(inner_expected_seeks))
-                          .estimatedNextsAndPrevs(expectedNextsRange(inner_expected_nexts))
+                          .estimatedNexts(expectedNextsOrPrevsRange(inner_expected_nexts))
                           .totalCost(Checkers.greater(0))
                           .build())
                       .build())
@@ -1006,7 +1028,11 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 80 AND k2 <= 80"),
-        T_NO_PKEY_NAME, 8000, 8160, 10,
+        // TODO(#28919): The estimate is 8000, one seek per ybctid, but DocDB uses nexts instead of
+        // a seek when the next ybctid is 2 or 3 rows ahead in key order, which at this 80% density
+        // saves 19.2% of the seeks: 6464 = 8000 * (1 - 0.192). Gaps of 1 row are not saved because
+        // of #28635, which has to land before the model is fixed.
+        T_NO_PKEY_NAME, 8000, 6464, 8160, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
 
       // If the two sets of ybctids are not similar sizes, it doesn't make sense

@@ -472,6 +472,15 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
             "stream: $1",
             tablet_id, stream_id_));
 
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
+      DCHECK(tablet_checkpoint_pair.has_tablet_locations());
+      DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
+      if (!IsTabletEligibleForVWAL(
+        tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
+          continue;
+        }
+    }
+
     // Skip adding the tablet to the polling list if it is expired / not-of-interest, as this will
     // render the slot useless.
     if (cdc_service_->CheckTabletExpiredOrNotOfInterest(tablet_info, *entry_opt->active_time)) {
@@ -487,15 +496,6 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
                               "unqualified for stream: $1. To skip adding this tablet and proceed "
                               "enable the flag cdc_skip_unqualified_tables_for_polling.",
                               tablet_id, stream_id_));
-      }
-    }
-
-    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
-      DCHECK(tablet_checkpoint_pair.has_tablet_locations());
-      DCHECK(tablet_checkpoint_pair.tablet_locations().has_partition());
-      if (!IsTabletEligibleForVWAL(
-              tablet_id, tablet_checkpoint_pair.tablet_locations().partition())) {
-        continue;
       }
     }
 
@@ -763,10 +763,16 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         break;
       }
       // When detecting DDL from catalog DML, eligible pg_class/pg_attribute records fall through
-      // so they can be converted into synthetic DDL records below. All other sys-catalog records
-      // are skipped as before.
-      if (!IsDmlOnPgCatalogTableForDetectingDDL(record) ||
-          !VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record))) {
+      // so they can be converted into synthetic DDL records below. We also allow BEGIN/COMMIT
+      // from sys-catalog tables to fall through too otherwise in some cases, the synthetic DDL
+      // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
+      // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
+      // sent to the walsender.
+      if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+          !(record->row_message().op() == RowMessage_Op_BEGIN ||
+            record->row_message().op() == RowMessage_Op_COMMIT ||
+            (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
+             VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record))))) {
         continue;
       }
     }

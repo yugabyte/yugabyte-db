@@ -57,6 +57,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -83,6 +84,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -178,7 +180,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
             n.state = NodeState.Live;
             if (n.cloudInfo != null) {
@@ -215,7 +217,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         universeUuid,
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = "c5.4xlarge";
+          TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
           List<NodeDetails> nodes =
               univ.getUniverseDetails().nodeDetailsSet.stream().collect(Collectors.toList());
           for (int i = 0; i < nodes.size(); i++) {
@@ -440,6 +442,32 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
           intent.dedicatedNodes = true;
           intent.masterInstanceType = "m5.large";
           intent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+          UUID azUUID =
+              univ.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .getOverallPlacement()
+                  .azStream()
+                  .map(az -> az.uuid)
+                  .findFirst()
+                  .get();
+          UniverseDefinitionTaskParams.UserIntentOverrides o =
+              new UniverseDefinitionTaskParams.UserIntentOverrides();
+          UniverseDefinitionTaskParams.AZOverrides az =
+              new UniverseDefinitionTaskParams.AZOverrides();
+          az.updatePerProcess(ServerType.TSERVER, ppd -> ppd.setInstanceType("overriden"));
+          o.setAzOverrides(Map.of(azUUID, az));
+
+          UniverseDefinitionTaskParams.PerProcessDetails ppd =
+              new UniverseDefinitionTaskParams.PerProcessDetails();
+          ppd.setDeviceInfo(intent.masterDeviceInfo);
+          o.setPerProcess(
+              Map.of(
+                  ServerType.TSERVER,
+                  new UniverseDefinitionTaskParams.PerProcessDetails(),
+                  ServerType.MASTER,
+                  ppd));
+          intent.setUserIntentOverrides(o);
           univ.setUniverseDetails(univ.getUniverseDetails());
         },
         false);
@@ -473,6 +501,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(primaryCluster.userIntent.dedicatedNodes, is(false));
     assertThat(primaryCluster.userIntent.masterInstanceType, is(nullValue()));
     assertThat(primaryCluster.userIntent.masterDeviceInfo, is(nullValue()));
+    assertTrue(
+        MapUtils.isEmpty(primaryCluster.userIntent.getUserIntentOverrides().getPerProcess()));
   }
 
   @Test
@@ -783,7 +813,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = curIntent.clone();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
-    userIntent.deviceInfo.numVolumes = 1;
+    TestUtils.updateDeviceInfo(
+        userIntent, ServerType.TSERVER, deviceInfo -> deviceInfo.numVolumes = 1);
     PlacementInfo pi = rf3Placement(region);
     universe =
         Universe.saveDetails(

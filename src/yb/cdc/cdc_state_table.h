@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <memory>
 #include <optional>
@@ -170,6 +171,10 @@ class CDCStateTable {
   Result<CDCStateTableRange> GetTableRangeAsync(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
+  // Returns whether the CDC state table exists. Unlike GetTableRange, doesn't wait for the table to
+  // be created or take mutex_, which GetTable() holds exclusively while waiting.
+  Result<bool> TableExists();
+
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
       const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);
@@ -202,6 +207,7 @@ class CDCStateTable {
   std::shared_future<client::YBClient*> client_future_;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
+  std::atomic<bool> table_opened_{false};
   bool created_ GUARDED_BY(mutex_) = false;
   std::shared_ptr<ShutDownState> shutdown_;
 };

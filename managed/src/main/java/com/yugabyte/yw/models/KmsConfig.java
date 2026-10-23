@@ -125,7 +125,20 @@ public class KmsConfig extends Model {
 
   public static KmsConfig createKMSConfig(
       UUID customerUUID, KeyProvider keyProvider, ObjectNode authConfig, String name) {
+    return createKMSConfig(customerUUID, keyProvider, authConfig, name, null /* configUUID */);
+  }
+
+  /** {@code configUUID} may be pre-minted by the caller; null lets Ebean assign one. */
+  public static KmsConfig createKMSConfig(
+      UUID customerUUID,
+      KeyProvider keyProvider,
+      ObjectNode authConfig,
+      String name,
+      UUID configUUID) {
     KmsConfig kmsConfig = new KmsConfig();
+    if (configUUID != null) {
+      kmsConfig.setConfigUUID(configUUID);
+    }
     kmsConfig.setKeyProvider(keyProvider);
     kmsConfig.setCustomerUUID(customerUUID);
     kmsConfig.setAuthConfig(authConfig);

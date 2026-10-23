@@ -62,6 +62,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -70,13 +71,15 @@
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_bool(openssl_require_fips);
+DECLARE_bool(enable_qos);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
 DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
-        _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
+        _value.empty() ||
+            !yb::tserver::TServerCgroupManagementEnabled(FINAL_FLAG_VALUE(enable_qos)),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 
@@ -99,6 +102,10 @@ DEFINE_test_flag(bool, pg_collation_enabled, true,
 
 DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
+
+DEFINE_test_flag(string, ysql_pg_upgrade_dump_pid_dir, "",
+                 "If set, each ysql_dump that pg_upgrade runs creates a file named after its pid "
+                 "in this directory, then waits for a signal instead of dumping.");
 
 // Default to 5MB
 DEFINE_NON_RUNTIME_string(pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -218,6 +225,10 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPe
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
     "Enable using the DocDB Vector type from YSQL.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_xcluster_analyze_replication, kExternal, false, true,
+    "If true, an xCluster automatic mode source records each relation it analyzes in ddl_queue so "
+    "that the target refreshes that relation's statistics.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
@@ -275,6 +286,9 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ioc_do_nothing_pushdown, false,
+    "Push INSERT ... ON CONFLICT DO NOTHING conflict resolution down to DocDB.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
@@ -372,6 +386,45 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_catalog_preload_cache_list, "",
+    "If set, a comma separated list of the catalog caches YSQL fills whenever it preloads the "
+    "catalog. An item is a catalog (pg_proc, for all its caches), a catalog cache (ATTNAME), or "
+    "the index of a catalog cache as the CatalogCacheMisses metric labels it "
+    "(pg_attribute_relid_attnam_index). Setting it turns on catalog preloading, at connection "
+    "start-up and on every full catalog cache refresh, as ysql_catalog_preload_additional_tables "
+    "does. If set, ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list are ignored for prefetch and prefill. The core "
+    "catalogs and the catalogs of the listed caches are prefetched; only the listed caches are "
+    "filled, plus the caches the catalog preload looks up itself, which are always filled. Items "
+    "that name no preloadable catalog cache are ignored with a warning in the postgres log. A "
+    "change applies to new connections and to the next full catalog cache refresh of existing "
+    "ones. For testing only.");
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, hidden);
+TAG_FLAG(ysql_yb_test_catalog_preload_cache_list, unsafe);
+
+// Accepts only names made of letters, digits and underscores, separated by commas. Postgres always
+// parses such a list, so a value that passes cannot keep postgres from starting; postgres ignores
+// the names it does not know.
+static bool ValidateCatalogPreloadCacheList(const char* flag_name, const std::string& value) {
+  if (std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isspace(c); })) {
+    return true;
+  }
+  std::vector<std::string> items;
+  boost::split(items, value, boost::is_any_of(","));
+  for (auto& item : items) {
+    boost::trim(item);
+    if (item.empty() || !std::all_of(item.begin(), item.end(), [](unsigned char c) {
+          return std::isalnum(c) || c == '_';
+        })) {
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Expected a comma separated list of catalog, catalog cache or index names";
+      return false;
+    }
+  }
+  return true;
+}
+DEFINE_validator(ysql_yb_test_catalog_preload_cache_list, &ValidateCatalogPreloadCacheList);
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
     "Sampling is disabled if this is set to 0.");
@@ -410,14 +463,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_conn_mgr_selective_deallocate, true,
-    "When enabled, DEALLOCATE commands sent via YSQL Connection Manager only drop prepared "
-    "statements whose cached plans are invalid (e.g. stale due to schema changes or "
-    "search_path drift), while preserving valid statements that may be shared across "
-    "logical connections on the same backend. SQL-level statements (from PREPARE) are "
-    "always dropped since they make the connection sticky. When disabled, standard "
-    "PostgreSQL DEALLOCATE behavior is used: DEALLOCATE ALL unconditionally drops all "
-    "statements, and DEALLOCATE <name> will fail for protocol-level prepared statements");
+DEPRECATE_FLAG(bool, ysql_yb_conn_mgr_selective_deallocate, "07_2026");
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
@@ -456,6 +502,13 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_log_heap_snapshot_on_exit_threshold, -1,
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
+    "When a backend finishes connection startup, if the TCMalloc page heap holds at least this "
+    "much free memory in KB, return that memory to the operating system. Connection startup "
+    "frees most of the memory it allocates (fetched catalog data, relation cache build scratch), "
+    "and without this the freed pages stay resident for the life of the connection. "
+    "Set to 0 (the default) to always release, or -1 to disable the release.");
+
 const char* const AUTH_METHOD_MD5 = "md5";
 const char* const AUTH_METHOD_SCRAM = "scram-sha-256";
 const char* const AUTH_METHOD_TRUST = "trust";
@@ -481,6 +534,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "Time in milliseconds for which the notifications poller process waits before polling again "
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
+    "Fraction (0 to 1) of YSQL protocol cycles (simple query, Parse, Bind, Execute) that arrive "
+    "without a traceparent and are distributed-traced. Each cycle is drawn independently and "
+    "starts its own trace. 0 disables sampling. A traceparent with the sampled flag clear (-00) "
+    "is honoured: the query is not traced. Connections the tserver opens internally are not "
+    "sampled. Requires otel_collector_traces_endpoint.");
+DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
@@ -549,13 +610,21 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
 }
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
+  // Runtime flag callbacks reach this from a reactor thread, which disallows IO.
+  ThreadRestrictions::ScopedAllowIO allow_io;
+
+  // Build in a temporary file and publish with an atomic rename. A runtime PG flag change rewrites
+  // these files while the postmaster may be concurrently parsing them (at startup or on SIGHUP);
+  // an in-place truncate+rewrite lets it observe a partial file and silently drop settings such as
+  // shared_preload_libraries.
+  const string tmp_path = path + ".tmp";
   std::ofstream conf_file;
-  conf_file.open(path, std::ios_base::out | std::ios_base::trunc);
+  conf_file.open(tmp_path, std::ios_base::out | std::ios_base::trunc);
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to write ysql config file '%s': errno=$0: $1",
-        path,
+        "Failed to write ysql config file '$0': errno=$1: $2",
+        tmp_path,
         errno,
         ErrnoToString(errno));
   }
@@ -567,7 +636,7 @@ Status WriteConfigFile(const string& path, const vector<string>& lines) {
 
   conf_file.close();
 
-  return Status::OK();
+  return Env::Default()->RenameFile(tmp_path, path);
 }
 
 void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
@@ -1081,7 +1150,7 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
@@ -1158,6 +1227,8 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1232,8 +1303,16 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
+  Subprocess pg_upgrade(program_path, args);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
+  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
+  if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
+    pg_upgrade.SetEnv(
+        "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
+  }
   RETURN_NOT_OK_PREPEND(
-      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      pg_upgrade.Run(/*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";

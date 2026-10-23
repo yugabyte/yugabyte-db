@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
@@ -257,8 +259,9 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
+    TestUtils.existingProviderInitializer(ui)
+        .setProviderUUID(
+            Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid());
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
     u =
         Universe.saveDetails(
@@ -304,6 +307,29 @@ public class SwamperHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testNodeTargetsSchemeFollowsNodeExporterHttps() throws IOException {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
+    Universe u = createUniverse(defaultCustomer.getId());
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    String nodeFilePath = SWAMPER_TMP_PATH + "node." + u.getUniverseUUID() + ".json";
+
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    ArrayNode groups =
+        (ArrayNode) Json.parse(FileUtils.readFileToString(new File(nodeFilePath), "UTF-8"));
+    groups.forEach(group -> assertFalse(group.get("labels").has("__scheme__")));
+
+    // With exporter TLS on, every node of the universe is scraped over HTTPS.
+    u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true"));
+    u.save();
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    groups = (ArrayNode) Json.parse(FileUtils.readFileToString(new File(nodeFilePath), "UTF-8"));
+    groups.forEach(group -> assertEquals("https", group.get("labels").get("__scheme__").asText()));
+  }
+
+  @Test
   public void testWriteUniverseTargetOffJson() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
     when(mockConfGetter.getConfForScope(
@@ -312,8 +338,11 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
-    ui.provider =
-        Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid().toString();
+
+    TestUtils.existingProviderInitializer(ui)
+        .setProviderUUID(
+            Provider.get(defaultCustomer.getUuid(), Common.CloudType.aws).get(0).getUuid());
+
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     File targetFile = new File(SWAMPER_TMP_PATH + "yugabyte." + u.getUniverseUUID() + ".json");

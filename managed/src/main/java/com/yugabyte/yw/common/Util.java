@@ -21,6 +21,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -79,13 +81,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
@@ -100,6 +102,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -178,6 +181,12 @@ public class Util {
    * a schema rule -- it must not be relaxed without auditing every interpolation site.
    */
   public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
+
+  public static final int POSTGRES_PASSWORD_LENGTH = 20;
+
+  /** Safe-set of characters for generated Postgres passwords. */
+  public static final String POSTGRES_PASSWORD_ALLOWED_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@^*0123456789";
 
   public static final double EPSILON = 0.000001d;
 
@@ -270,6 +279,11 @@ public class Util {
   @VisibleForTesting
   public static void resetYbaShutdownStarted() {
     YBA_SHUTDOWN_STARTED = false;
+  }
+
+  @VisibleForTesting
+  public static void setYbaShutdownStarted(boolean started) {
+    YBA_SHUTDOWN_STARTED = started;
   }
 
   /**
@@ -915,6 +929,20 @@ public class Util {
     return nodeInUniverse.cloudInfo.private_ip;
   }
 
+  /**
+   * Returns the node's private and secondary IPs, skipping unset ones. The master may report a
+   * dual-NIC server by its secondary IP: secondary-IP mode binds it first, and legacy dual-net
+   * tservers broadcast it.
+   */
+  public static Set<String> getNodeIps(NodeDetails node) {
+    if (node == null || node.cloudInfo == null) {
+      return Set.of();
+    }
+    return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
+        .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
+        .collect(Collectors.toSet());
+  }
+
   // Generate a deterministic node UUID from the universe UUID and the node name.
   public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
     return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
@@ -1040,6 +1068,10 @@ public class Util {
     }
   }
 
+  public static boolean checkAnyProviderMatches(Cluster cluster, Predicate<CloudType> predicate) {
+    return cluster.userIntent.getAllCloudTypes().stream().anyMatch(predicate);
+  }
+
   public static boolean checkAnyProviderMatches(
       UniverseDefinitionTaskParams params, Predicate<Provider> predicate) {
     return params.clusters.stream()
@@ -1094,37 +1126,373 @@ public class Util {
         .collect(Collectors.toSet());
   }
 
+  public static Collection<Provider> getAllProviders(UniverseDefinitionTaskParams taskParams) {
+    return taskParams.clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .distinct()
+        .map(Provider::getOrBadRequest)
+        .collect(Collectors.toSet());
+  }
+
   /**
-   * Filling old fields from provider specifications if not present (for compatibility with old UI)
+   * For V1 API responses: when a cluster has exactly one {@link
+   * UniverseDefinitionTaskParams.ProviderSpecification}, project it onto the legacy flat UserIntent
+   * fields and clear {@code providerSpecifications} so clients see the old schema.
    *
-   * @param userIntent
+   * <p>No-op for multi-provider intents. Mutates {@code userIntent} in place - callers must clone
+   * before invoking if the intent is shared with persisted universe state.
    */
-  public static void fillIntentFromProviderSpecifications(UserIntent userIntent) {
+  public static void convertSingleProviderSpecToOldSchema(
+      RuntimeConfGetter confGetter, UserIntent userIntent) {
+    if (userIntent == null
+        || userIntent.providerSpecifications == null
+        || userIntent.providerSpecifications.size() != 1
+        || !Util.isMulticloudEnabled(confGetter, userIntent.getAllCloudTypes().iterator().next())) {
+      return;
+    }
+    UniverseDefinitionTaskParams.ProviderSpecification spec =
+        userIntent.providerSpecifications.get(0);
+    fillOldSchemaFieldsFromProviderSpecification(userIntent, spec);
+    userIntent.providerSpecifications = null;
+  }
+
+  /** Applies {@link #convertSingleProviderSpecToOldSchema} to every cluster in {@code params}. */
+  public static void convertSingleProviderSpecsToOldSchema(
+      RuntimeConfGetter confGetter, UniverseDefinitionTaskParams params) {
+    if (params == null || params.clusters == null) {
+      return;
+    }
+    for (Cluster cluster : params.clusters) {
+      if (cluster != null && cluster.userIntent != null) {
+        convertSingleProviderSpecToOldSchema(confGetter, cluster.userIntent);
+      }
+    }
+  }
+
+  /**
+   * For V1 API write paths: convert a legacy single-provider UserIntent into a
+   * ProviderSpecification. If the intent already has a single ProviderSpecification, missing old
+   * fields are filled from it first, then the Spec is rebuilt from the (possibly request-updated)
+   * old fields so inbound flat updates are not ignored by dual-read Spec accessors.
+   *
+   * <p>No-op when there are multiple providers already in {@code providerSpecifications}.
+   */
+  public static void convertOldSchemaToProviderSpecification(
+      RuntimeConfGetter confGetter, UserIntent userIntent) {
     if (userIntent == null) {
       return;
     }
-    if (userIntent.isMulticloudSupport() && userIntent.provider == null) {
-      // Filling with the first provider from the list.
-      UniverseDefinitionTaskParams.ProviderSpecification firstSpec =
-          userIntent.providerSpecifications.stream()
-              .sorted(Comparator.comparing(p -> p.getProviderUUID().toString()))
-              .findFirst()
-              .get();
-      firstSpec.validate(false);
-      userIntent.provider = firstSpec.getProviderUUID().toString();
-      userIntent.providerType = firstSpec.getProviderType();
-      userIntent.accessKeyCode = firstSpec.getAccessKeyCode();
-      userIntent.deviceInfo = userIntent.getBaseDeviceInfo(firstSpec.getProviderUUID());
-      userIntent.imageBundleUUID = firstSpec.getImageBundleUUID();
-      userIntent.instanceTags = new HashMap<>(firstSpec.getInstanceTags());
-      userIntent.awsArnString = firstSpec.getAwsInstanceProfile();
-      if (userIntent.dedicatedNodes) {
-        HierarchicalNodesSpec.NodeSpec masterSpecification =
-            firstSpec.getNodesSpecs().getMasterSpecification();
-        if (masterSpecification != null) {
-          userIntent.masterInstanceType = masterSpecification.getInstanceType();
-          userIntent.masterDeviceInfo = masterSpecification.getDeviceInfo();
+    // Should not have provider specifications.
+    if (userIntent.isMulticloudSupport()) {
+      return;
+    }
+    if (StringUtils.isBlank(userIntent.provider)) {
+      // If there is no provider - cannot convert.
+      return;
+    }
+    if (userIntent.providerType == null) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      userIntent.providerType = provider.getCloudCode();
+    }
+    if (!Util.isMulticloudEnabled(confGetter, userIntent.providerType)) {
+      return;
+    }
+    UUID providerUUID = UUID.fromString(userIntent.provider);
+    UniverseDefinitionTaskParams.ProviderSpecification spec =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    spec.setProviderUUID(providerUUID);
+    spec.setProviderType(userIntent.providerType);
+    spec.setAccessKeyCode(userIntent.accessKeyCode);
+    spec.setAwsInstanceProfile(userIntent.awsArnString);
+    spec.setImageBundleUUID(userIntent.imageBundleUUID);
+    if (userIntent.instanceTags != null) {
+      spec.setInstanceTags(new HashMap<>(userIntent.instanceTags));
+    }
+    spec.setEnableLoadBalancer(userIntent.enableLB);
+    spec.setExposingServiceState(userIntent.enableExposingService);
+    spec.setHelmOverrides(userIntent.universeOverrides);
+    if (userIntent.azOverrides != null) {
+      spec.setAzHelmOverrides(new HashMap<>(userIntent.azOverrides));
+    }
+
+    HierarchicalNodesSpec.NodeSpec tserverSpec =
+        HierarchicalNodesSpec.NodeSpec.builder()
+            .instanceType(userIntent.instanceType)
+            .deviceInfo(userIntent.deviceInfo == null ? null : userIntent.deviceInfo.clone())
+            .cgroupSize(userIntent.getCgroupSize())
+            .backupProxyConfig(
+                userIntent.getProxyConfig() == null ? null : userIntent.getProxyConfig().clone())
+            .k8SNodeResourceSpec(
+                userIntent.tserverK8SNodeResourceSpec == null
+                    ? null
+                    : userIntent.tserverK8SNodeResourceSpec.clone())
+            .build();
+    HierarchicalNodesSpec.NodeSpec masterSpec = null;
+    if (userIntent.masterInstanceType != null
+        || userIntent.masterDeviceInfo != null
+        || userIntent.masterK8SNodeResourceSpec != null) {
+      masterSpec =
+          HierarchicalNodesSpec.NodeSpec.builder()
+              .instanceType(userIntent.masterInstanceType)
+              .deviceInfo(
+                  userIntent.masterDeviceInfo == null ? null : userIntent.masterDeviceInfo.clone())
+              .k8SNodeResourceSpec(
+                  userIntent.masterK8SNodeResourceSpec == null
+                      ? null
+                      : userIntent.masterK8SNodeResourceSpec.clone())
+              .build();
+    }
+    // Root-level per-process overrides (legacy) fold into root node specs.
+    if (userIntent.getUserIntentOverrides() != null
+        && MapUtils.isNotEmpty(userIntent.getUserIntentOverrides().getPerProcess())) {
+      Map<UniverseTaskBase.ServerType, UniverseDefinitionTaskParams.PerProcessDetails> perProcess =
+          userIntent.getUserIntentOverrides().getPerProcess();
+      UniverseDefinitionTaskParams.PerProcessDetails tserverPerProcess =
+          perProcess.get(UniverseTaskBase.ServerType.TSERVER);
+      if (tserverPerProcess != null) {
+        applyPerProcessDetailsToNodeSpec(tserverPerProcess, tserverSpec);
+      }
+      UniverseDefinitionTaskParams.PerProcessDetails masterPerProcess =
+          perProcess.get(UniverseTaskBase.ServerType.MASTER);
+      if (masterPerProcess != null) {
+        if (masterSpec == null) {
+          masterSpec = HierarchicalNodesSpec.NodeSpec.empty();
         }
+        applyPerProcessDetailsToNodeSpec(masterPerProcess, masterSpec);
+      }
+    }
+
+    HierarchicalNodesSpec.RootNodesSpec rootNodesSpec =
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(tserverSpec)
+            .masterSpecification(masterSpec)
+            .build();
+    if (userIntent.getUserIntentOverrides() != null
+        && MapUtils.isNotEmpty(userIntent.getUserIntentOverrides().getAzOverrides())) {
+      for (Map.Entry<UUID, UniverseDefinitionTaskParams.AZOverrides> entry :
+          userIntent.getUserIntentOverrides().getAzOverrides().entrySet()) {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
+        HierarchicalNodesSpec.RegionNodesSpec regionNodesSpec =
+            rootNodesSpec.getOrCreateDescendant(az.getRegion().getCode());
+        HierarchicalNodesSpec.AzNodesSpec azNodesSpec =
+            regionNodesSpec.getOrCreateDescendant(az.getCode());
+        applyAzOverridesToNodesSpec(entry.getValue(), azNodesSpec);
+      }
+    }
+    rootNodesSpec.clean();
+    rootNodesSpec.clearEmptyDescendants();
+    spec.setNodesSpecs(rootNodesSpec);
+    userIntent.providerSpecifications = new ArrayList<>();
+    userIntent.providerSpecifications.add(spec);
+    cleanOldProviderFields(userIntent);
+  }
+
+  private static void cleanOldProviderFields(UserIntent userIntent) {
+    userIntent.provider = null;
+    userIntent.providerType = null;
+    userIntent.accessKeyCode = null;
+    userIntent.awsArnString = null;
+    userIntent.imageBundleUUID = null;
+    userIntent.instanceTags = null;
+    userIntent.instanceType = null;
+    userIntent.masterInstanceType = null;
+    userIntent.deviceInfo = null;
+    userIntent.masterDeviceInfo = null;
+    userIntent.universeOverrides = null;
+    userIntent.azOverrides = null;
+    userIntent.masterK8SNodeResourceSpec = null;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    userIntent.setUserIntentOverrides(null);
+  }
+
+  /**
+   * Applies {@link #convertOldSchemaToProviderSpecification} to every cluster in {@code params}.
+   */
+  public static void convertOldSchemaToProviderSpecifications(
+      RuntimeConfGetter confGetter, UniverseDefinitionTaskParams params) {
+    if (params == null || params.clusters == null) {
+      return;
+    }
+    for (Cluster cluster : params.clusters) {
+      if (cluster != null) {
+        convertOldSchemaToProviderSpecification(confGetter, cluster.userIntent);
+      }
+    }
+  }
+
+  /** Copies ProviderSpecification fields onto the legacy flat UserIntent fields. */
+  private static void fillOldSchemaFieldsFromProviderSpecification(
+      UserIntent userIntent, UniverseDefinitionTaskParams.ProviderSpecification spec) {
+    spec.validate(false);
+    UUID providerUUID = spec.getProviderUUID();
+    userIntent.provider = providerUUID.toString();
+    userIntent.providerType = spec.getProviderType();
+    userIntent.accessKeyCode = spec.getAccessKeyCode();
+    userIntent.imageBundleUUID = spec.getImageBundleUUID();
+    userIntent.instanceTags =
+        spec.getInstanceTags() == null ? new HashMap<>() : new HashMap<>(spec.getInstanceTags());
+    userIntent.awsArnString = spec.getAwsInstanceProfile();
+    userIntent.enableLB = spec.isEnableLoadBalancer();
+    userIntent.enableExposingService = spec.getExposingServiceState();
+    userIntent.universeOverrides = spec.getHelmOverrides();
+
+    userIntent.azOverrides =
+        spec.getAzHelmOverrides() == null ? null : new HashMap<>(spec.getAzHelmOverrides());
+
+    HierarchicalNodesSpec.RootNodesSpec nodesSpecs = spec.getNodesSpecs();
+    HierarchicalNodesSpec.NodeSpec tserverSpec =
+        nodesSpecs == null ? null : nodesSpecs.getTserverSpecification();
+    if (tserverSpec != null) {
+      userIntent.instanceType = tserverSpec.getInstanceType();
+      userIntent.deviceInfo =
+          tserverSpec.getDeviceInfo() == null ? null : tserverSpec.getDeviceInfo().clone();
+      userIntent.setCgroupSize(tserverSpec.getCgroupSize());
+      userIntent.setProxyConfig(
+          tserverSpec.getBackupProxyConfig() == null
+              ? null
+              : tserverSpec.getBackupProxyConfig().clone());
+      userIntent.tserverK8SNodeResourceSpec =
+          tserverSpec.getK8SNodeResourceSpec() == null
+              ? null
+              : tserverSpec.getK8SNodeResourceSpec().clone();
+    }
+    HierarchicalNodesSpec.NodeSpec masterSpec =
+        nodesSpecs == null ? null : nodesSpecs.getMasterSpecification();
+    if (masterSpec != null) {
+      userIntent.masterInstanceType = masterSpec.getInstanceType();
+      userIntent.masterDeviceInfo =
+          masterSpec.getDeviceInfo() == null ? null : masterSpec.getDeviceInfo().clone();
+
+      userIntent.masterK8SNodeResourceSpec =
+          masterSpec.getK8SNodeResourceSpec() == null
+              ? null
+              : masterSpec.getK8SNodeResourceSpec().clone();
+    }
+
+    if (nodesSpecs != null) {
+      UniverseDefinitionTaskParams.UserIntentOverrides overrides =
+          userIntent.getUserIntentOverrides() == null
+              ? new UniverseDefinitionTaskParams.UserIntentOverrides()
+              : userIntent.getUserIntentOverrides();
+      // Region-level specs expand onto all AZs in the region; AZ-level specs overwrite.
+      if (nodesSpecs.getRegionNodesSpecs() != null) {
+        Provider provider = Provider.getOrBadRequest(providerUUID);
+        for (HierarchicalNodesSpec.RegionNodesSpec regionNodesSpec :
+            nodesSpecs.getRegionNodesSpecs()) {
+          Region region = Region.getByCode(provider, regionNodesSpec.getRegionCode());
+          if (region == null) {
+            continue;
+          }
+          boolean hasRegionLevelNodeSpecs =
+              (regionNodesSpec.getTserverSpecification() != null
+                      && !regionNodesSpec.getTserverSpecification().isEmpty())
+                  || (regionNodesSpec.getMasterSpecification() != null
+                      && !regionNodesSpec.getMasterSpecification().isEmpty());
+          if (hasRegionLevelNodeSpecs) {
+            for (AvailabilityZone az : region.getAllZones()) {
+              applyNodesSpecToAzOverrides(overrides, az.getUuid(), regionNodesSpec);
+            }
+          }
+          if (regionNodesSpec.getAzNodesSpecs() != null) {
+            for (HierarchicalNodesSpec.AzNodesSpec azNodesSpec :
+                regionNodesSpec.getAzNodesSpecs()) {
+              AvailabilityZone.maybeGetByCode(provider, azNodesSpec.getAzCode())
+                  .ifPresent(
+                      zone -> {
+                        applyNodesSpecToAzOverrides(overrides, zone.getUuid(), azNodesSpec);
+                      });
+            }
+          }
+        }
+      }
+      if (overrides.allNull()) {
+        userIntent.setUserIntentOverrides(null);
+      } else {
+        userIntent.setUserIntentOverrides(overrides);
+      }
+    }
+  }
+
+  private static void applyNodesSpecToAzOverrides(
+      UniverseDefinitionTaskParams.UserIntentOverrides overrides,
+      UUID azUUID,
+      HierarchicalNodesSpec.NodesSpec nodesSpec) {
+    if (nodesSpec == null) {
+      return;
+    }
+    HierarchicalNodesSpec.NodeSpec tserver = nodesSpec.getTserverSpecification();
+    HierarchicalNodesSpec.NodeSpec master = nodesSpec.getMasterSpecification();
+    boolean tserverEmpty = tserver == null || tserver.isEmpty();
+    boolean masterEmpty = master == null || master.isEmpty();
+    if (tserverEmpty && masterEmpty) {
+      return;
+    }
+    overrides.updateAZOverride(
+        azUUID,
+        azOverrides -> {
+          if (!tserverEmpty) {
+            azOverrides.setInstanceType(tserver.getInstanceType());
+            azOverrides.setDeviceInfo(
+                tserver.getDeviceInfo() == null ? null : tserver.getDeviceInfo().clone());
+            azOverrides.setCgroupSize(tserver.getCgroupSize());
+            azOverrides.setProxyConfig(
+                tserver.getBackupProxyConfig() == null
+                    ? null
+                    : tserver.getBackupProxyConfig().clone());
+          }
+          if (!masterEmpty
+              && (master.getInstanceType() != null || master.getDeviceInfo() != null)) {
+            azOverrides.updatePerProcess(
+                UniverseTaskBase.ServerType.MASTER,
+                perProcess -> {
+                  perProcess.setInstanceType(master.getInstanceType());
+                  perProcess.setDeviceInfo(
+                      master.getDeviceInfo() == null ? null : master.getDeviceInfo().clone());
+                });
+          }
+        });
+  }
+
+  private static void applyPerProcessDetailsToNodeSpec(
+      UniverseDefinitionTaskParams.PerProcessDetails details,
+      HierarchicalNodesSpec.NodeSpec nodeSpec) {
+    if (details.getInstanceType() != null) {
+      nodeSpec.setInstanceType(details.getInstanceType());
+    }
+    if (details.getDeviceInfo() != null) {
+      nodeSpec.setDeviceInfo(details.getDeviceInfo().clone());
+    }
+  }
+
+  private static void applyAzOverridesToNodesSpec(
+      UniverseDefinitionTaskParams.AZOverrides azOverrides,
+      HierarchicalNodesSpec.AzNodesSpec azNodesSpec) {
+    if (azOverrides == null || azOverrides.allNull()) {
+      return;
+    }
+    HierarchicalNodesSpec.NodeSpec tserver = azNodesSpec.getOrCreateTserverSpec();
+    if (azOverrides.getInstanceType() != null) {
+      tserver.setInstanceType(azOverrides.getInstanceType());
+    }
+    if (azOverrides.getDeviceInfo() != null) {
+      tserver.setDeviceInfo(azOverrides.getDeviceInfo().clone());
+    }
+    if (azOverrides.getCgroupSize() != null) {
+      tserver.setCgroupSize(azOverrides.getCgroupSize());
+    }
+    if (azOverrides.getProxyConfig() != null) {
+      tserver.setBackupProxyConfig(azOverrides.getProxyConfig().clone());
+    }
+    if (MapUtils.isNotEmpty(azOverrides.getPerProcess())) {
+      UniverseDefinitionTaskParams.PerProcessDetails tserverPerProcess =
+          azOverrides.getPerProcess().get(UniverseTaskBase.ServerType.TSERVER);
+      if (tserverPerProcess != null) {
+        applyPerProcessDetailsToNodeSpec(tserverPerProcess, tserver);
+      }
+      UniverseDefinitionTaskParams.PerProcessDetails masterPerProcess =
+          azOverrides.getPerProcess().get(UniverseTaskBase.ServerType.MASTER);
+      if (masterPerProcess != null) {
+        applyPerProcessDetailsToNodeSpec(masterPerProcess, azNodesSpec.getOrCreateMasterSpec());
       }
     }
   }
@@ -1332,6 +1700,24 @@ public class Util {
     }
   }
 
+  public static boolean isLocal(Cluster cluster) {
+    return isLocal(cluster.userIntent);
+  }
+
+  public static boolean isLocal(UserIntent userIntent) {
+    // Local should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.local);
+  }
+
+  public static boolean isKubernetesBased(Cluster cluster) {
+    return isKubernetesBased(cluster.userIntent);
+  }
+
+  public static boolean isKubernetesBased(UserIntent userIntent) {
+    // Kubernetes should be the only cloud type.
+    return userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+  }
+
   public static boolean isKubernetesBasedUniverse(Universe universe) {
     return isKubernetesBasedUniverse(universe.getUniverseDetails());
   }
@@ -1339,12 +1725,10 @@ public class Util {
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
     boolean isKubernetesUniverse = false;
     if (params.getPrimaryCluster() != null) {
-      isKubernetesUniverse =
-          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesBased(params.getPrimaryCluster());
     }
     for (Cluster cluster : params.getReadOnlyClusters()) {
-      isKubernetesUniverse =
-          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+      isKubernetesUniverse = isKubernetesUniverse || isKubernetesBased(cluster);
     }
     return isKubernetesUniverse;
   }
@@ -1380,8 +1764,7 @@ public class Util {
    * @param cluster
    * @return
    */
-  public static Function<NodeDetails, Provider> getProviderGetter(
-      UniverseDefinitionTaskParams.Cluster cluster) {
+  public static Function<NodeDetails, Provider> getProviderGetter(Cluster cluster) {
     // Caching by AZ.
     Map<UUID, Provider> providerMap = new HashMap<>();
     return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
@@ -1606,6 +1989,18 @@ public class Util {
     return AvailabilityZone.getOrBadRequest(azUuid).getProvider();
   }
 
+  public static Map<UUID, List<NodeDetails>> splitTserversByProviders(Universe universe) {
+    Map<UUID, List<NodeDetails>> byProvider = new HashMap<>();
+    for (NodeDetails nodeDetails : universe.getTServers()) {
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      UUID providerUUID = cluster.getProviderUUIDForNode(nodeDetails);
+      List<NodeDetails> lst = byProvider.getOrDefault(providerUUID, new ArrayList<>());
+      lst.add(nodeDetails);
+      byProvider.put(providerUUID, lst);
+    }
+    return byProvider;
+  }
+
   /**
    * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
    *
@@ -1625,7 +2020,7 @@ public class Util {
       // creation itself.
       // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
-        String mountPoints = cluster.userIntent.getDeviceInfoForNode(node).mountPoints;
+        String mountPoints = cluster.userIntent.evaluateDeviceInfoForNode(node).mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
         log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
@@ -1876,9 +2271,8 @@ public class Util {
   }
 
   public static String getPostgresCompatiblePassword() {
-    String allowedCharsInPassword =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@$^*0123456789";
-    return RandomStringUtils.secureStrong().next(20, allowedCharsInPassword);
+    return RandomStringUtils.secureStrong()
+        .next(POSTGRES_PASSWORD_LENGTH, POSTGRES_PASSWORD_ALLOWED_CHARS);
   }
 
   public static void writeRestoreTaskInfo(CustomerTask customerTask, TaskInfo taskInfo) {
@@ -1894,6 +2288,14 @@ public class Util {
     } catch (IOException e) {
       log.warn("Could not write restore task info, will not show up in task info.");
     }
+  }
+
+  // True on the first start after a YBA restore, until CustomerTaskManager.handleRestoreTask
+  // deletes the files.
+  public static boolean restoreTaskInfoExists() {
+    return Files.exists(Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_TASK_FILE))
+        && Files.exists(
+            Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE));
   }
 
   // Helper method to throw unchecked exception.
@@ -2060,7 +2462,7 @@ public class Util {
       SetMultimap<Object, UUID> mmap =
           valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
       mmap.put(value, p.getUuid());
-      if (mmap.keys().size() > 1) {
+      if (mmap.keySet().size() > 1) {
         List<String> list =
             mmap.entries().stream()
                 .map(e -> e.getValue().toString() + " has " + e.getKey())
@@ -2116,5 +2518,69 @@ public class Util {
       }
     }
     return pathToUUID;
+  }
+
+  /**
+   * Creates a provider initializer for userIntent which should already have some reference to some
+   * provider (for multicloud case that could be different provider)
+   *
+   * @param userIntent
+   * @param providerUUID
+   * @return
+   */
+  public static ProviderInitializer providerInitializerForExistingIntent(
+      UserIntent userIntent, UUID providerUUID) {
+    if (userIntent.isMulticloudSupport()) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID);
+    } else {
+      if (userIntent.provider == null
+          || !Objects.equals(userIntent.provider, providerUUID.toString())) {
+        throw new IllegalStateException(
+            "UserIntent already has a provider different from "
+                + "provided one: "
+                + userIntent.provider
+                + " vs "
+                + providerUUID);
+      }
+      return new IntentProviderInitializer(userIntent, providerUUID);
+    }
+  }
+
+  /**
+   * Creates a provider initializer for an empty userIntent.
+   *
+   * @param providerUUID
+   * @param userIntent
+   * @param confGetter
+   * @return
+   */
+  public static ProviderInitializer newProviderInitializer(
+      UserIntent userIntent, UUID providerUUID, CloudType cloudType, RuntimeConfGetter confGetter) {
+    if (userIntent.provider != null
+        || CollectionUtils.isNotEmpty(userIntent.providerSpecifications)) {
+      throw new IllegalStateException("Expected userIntent to have no provider references");
+    }
+    if (isMulticloudEnabled(confGetter, cloudType)) {
+      return new SpecificationProviderInitializer(userIntent, providerUUID)
+          .setProviderType(cloudType);
+    }
+    return new IntentProviderInitializer(userIntent, providerUUID).setProviderType(cloudType);
+  }
+
+  public static boolean isMulticloudEnabled(RuntimeConfGetter confGetter, CloudType cloudType) {
+    if (cloudType == CloudType.kubernetes) {
+      return false;
+    }
+    if (confGetter == null) { // Tests
+      return false;
+    }
+    return confGetter.getGlobalConf(GlobalConfKeys.multicloudEnabled);
+  }
+
+  public static NodeDetails findByName(Collection<NodeDetails> nodes, String nodeName) {
+    if (nodeName == null || nodes == null) {
+      return null;
+    }
+    return nodes.stream().filter(n -> n.nodeName.equals(nodeName)).findFirst().orElse(null);
   }
 }

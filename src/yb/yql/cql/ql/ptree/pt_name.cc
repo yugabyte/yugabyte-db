@@ -15,11 +15,10 @@
 // Treenode definitions for all name nodes.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 
 #include "yb/common/redis_constants_common.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
@@ -98,16 +97,16 @@ Status PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType ob
       }
       if (ptnames_.front()->name() == common::kRedisKeyspaceName) {
         return sem_context->Error(this,
-                                  strings::Substitute("$0 is a reserved keyspace name",
-                                                      common::kRedisKeyspaceName).c_str(),
+                                  Format("$0 is a reserved keyspace name",
+                                         common::kRedisKeyspaceName).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       return Status::OK();
     case ObjectType::ROLE:
       if (ptnames_.size() != 1) {
         return sem_context->Error(this,
-                                  strings::Substitute("Invalid $0 name",
-                                                      ObjectTypeName(object_type)).c_str(),
+                                  Format("Invalid $0 name",
+                                         ObjectTypeName(object_type)).c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
       return Status::OK();
@@ -116,8 +115,8 @@ Status PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType ob
     case ObjectType::INDEX:
       if (ptnames_.size() > 2) {
         return sem_context->Error(this,
-                                  strings::Substitute("Invalid $0 name",
-                                                      ObjectTypeName(object_type)).c_str(),
+                                  Format("Invalid $0 name",
+                                         ObjectTypeName(object_type)).c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
       if (ptnames_.size() == 2) {
@@ -150,8 +149,8 @@ Status PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType ob
       }
       if (ptnames_.front()->name() == common::kRedisKeyspaceName) {
         return sem_context->Error(this,
-                                  strings::Substitute("$0 is a reserved keyspace name",
-                                                      common::kRedisKeyspaceName).c_str(),
+                                  Format("$0 is a reserved keyspace name",
+                                         common::kRedisKeyspaceName).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
 

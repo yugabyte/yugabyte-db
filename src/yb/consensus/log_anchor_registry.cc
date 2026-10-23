@@ -35,14 +35,14 @@
 #include <string>
 
 #include "yb/consensus/opid_util.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace log {
 
 using consensus::kInvalidOpIdIndex;
 using std::string;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 LogAnchorRegistry::LogAnchorRegistry() {
 }
@@ -104,10 +104,10 @@ std::string LogAnchorRegistry::DumpAnchorInfo() const {
     const LogAnchor* anchor = entry.second;
     DCHECK(anchor->is_registered);
     if (!buf.empty()) buf += ", ";
-    SubstituteAndAppend(&buf, "LogAnchor[index=$0, age=$1s, owner=$2]",
-                        anchor->log_index,
-                        now.GetDeltaSince(anchor->when_registered).ToSeconds(),
-                        anchor->owner);
+    buf += Format("LogAnchor[index=$0, age=$1s, owner=$2]",
+                  anchor->log_index,
+                  SimpleDtoa(now.GetDeltaSince(anchor->when_registered).ToSeconds()),
+                  anchor->owner);
   }
   return buf;
 }
@@ -143,8 +143,8 @@ Status LogAnchorRegistry::UnregisterUnlocked(LogAnchor* anchor) {
       ++iter;
     }
   }
-  return STATUS(NotFound, Substitute("Anchor with index $0 and owner $1 not found",
-                                     anchor->log_index, anchor->owner));
+  return STATUS(NotFound, Format("Anchor with index $0 and owner $1 not found",
+                                 anchor->log_index, anchor->owner));
 }
 
 LogAnchor::LogAnchor()

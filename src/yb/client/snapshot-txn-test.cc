@@ -799,7 +799,11 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
     auto se = ScopeExit([] {
       LOG(INFO) << "Read done";
     });
-    auto session = CreateSession();
+    // Read at an explicit read time taken from the client clock. Otherwise the read time is the
+    // tablet's safe time, which could lag behind the commit time of the transaction that wrote the
+    // key while leadership moves due to restarts, making the committed row invisible.
+    auto session = CreateSession(nullptr /* transaction */, clock_);
+    session->SetForceConsistentRead(ForceConsistentRead::kTrue);
     for (;;) {
       std::unique_ptr<KeyToCheck> key(keys_to_check.Pop());
       if (key == nullptr) {
@@ -812,6 +816,7 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
       SCOPED_TRACE(Format("Reading $0, written with: $1", key->value, key->txn_id));
       YBqlReadOpPtr op;
       for (;;) {
+        session->RestartNonTxnReadPoint(Restart::kTrue);
         op = ReadRow(session, key->value);
         auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {

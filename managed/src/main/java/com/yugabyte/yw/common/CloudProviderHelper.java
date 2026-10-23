@@ -31,6 +31,8 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.Config;
@@ -423,7 +425,8 @@ public class CloudProviderHelper {
     }
     switch (provider.getCloudCode()) {
       case aws:
-      case azu: // Fall through to the common code.
+      case azu:
+      case oci: // Fall through to the common code.
         // TODO: Add this validation. But there is a bad test.
         //  if (anyProviderRegion == null || anyProviderRegion.isEmpty()) {
         //    throw new YWServiceException(BAD_REQUEST, "Must have at least one region");
@@ -467,6 +470,10 @@ public class CloudProviderHelper {
       AzureCloudInfo azuCloudInfo = CloudInfoInterface.get(provider);
       azuCloudInfo.setAzuHostedZoneId(hostedZoneId);
       azuCloudInfo.setAzuHostedZoneName(hostedZoneData.asText());
+    } else if (provider.getCloudCode().equals(CloudType.oci)) {
+      OCICloudInfo ociCloudInfo = CloudInfoInterface.get(provider);
+      ociCloudInfo.setOciHostedZoneId(hostedZoneId);
+      ociCloudInfo.setOciHostedZoneName(hostedZoneData.asText());
     }
   }
 
@@ -1006,8 +1013,16 @@ public class CloudProviderHelper {
     }
     if (provider.getCloudCode() == CloudType.onprem) {
       editProviderReq.validateInstanceTypeMountPoints(provider.getInstanceTypes());
+      // ynpManaged is internal - it is set once by YNP when it creates the provider and an edit
+      // can never turn it on or off, whoever makes the edit.
+      OnPremCloudInfo editOnPremCloudInfo = CloudInfoInterface.get(editProviderReq);
+      editOnPremCloudInfo.ynpManaged = provider.isYnpManaged();
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+    if (editProviderReq.getCloudCode() == CloudType.gcp) {
+      maybeUpdateGCPProject(editProviderReq);
+    }
+    maybeUpdateVPC(editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
     long universeCount = provider.getUniverseCount();
@@ -1050,10 +1065,6 @@ public class CloudProviderHelper {
         }
       }
     }
-    if (editProviderReq.getCode().equalsIgnoreCase("gcp")) {
-      maybeUpdateGCPProject(editProviderReq);
-    }
-    maybeUpdateVPC(editProviderReq);
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null && !cloudAPI.isValidCreds(editProviderReq)) {

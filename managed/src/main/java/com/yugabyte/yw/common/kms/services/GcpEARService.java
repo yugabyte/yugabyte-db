@@ -244,11 +244,9 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     }
     // Add the GCP project ID to the key metadata as well.
     // This is useful info to the user.
-    if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
-        && authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).has("project_id")) {
-      keyMetadata.set(
-          "project_id",
-          authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).get("project_id"));
+    String projectId = getGcpEarServiceUtil().getConfigProjectId(authConfig);
+    if (projectId != null) {
+      keyMetadata.put("project_id", projectId);
     }
     // Add key_provider field.
     keyMetadata.put("key_provider", KeyProvider.GCP.name());

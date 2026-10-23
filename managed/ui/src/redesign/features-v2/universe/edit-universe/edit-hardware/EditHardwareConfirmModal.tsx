@@ -48,15 +48,27 @@ import {
 } from './ReviewHardwareChangesModal';
 import {
   NormalizedStorage,
+  effectiveMasterDeviceInfo,
+  getK8sResizeOptions,
   normalizeClusterStorage,
   normalizeDeviceInfo,
+  showInstanceStorageOverrideNote,
   toClusterStorageSpec,
   toResizeStorageSpec
 } from './EditHardwareStorageUtils';
-import { DeviceInfo, K8NodeSpec } from '../../../../features/universe/universe-form/utils/dto';
+import {
+  getStorageOverrideZoneChips,
+  hasStorageOverrides
+} from './storageOverridesUtils';
+import { StorageOverrideNote } from './StorageOverridesModal';
+import {
+  CloudType,
+  DeviceInfo,
+  InstanceType,
+  K8NodeSpec
+} from '../../../../features/universe/universe-form/utils/dto';
 import { useQuery } from 'react-query';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
-import { InstanceType } from '../../../../features/universe/universe-form/utils/dto';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { buildRRInstanceSettingsFromCluster } from '../../read-replica/readReplicaUtils';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
@@ -212,6 +224,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : undefined;
 
   const storageSpec = targetCluster?.node_spec.storage_spec;
+  const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
   const toast = useYBToast();
 
   const { data: instanceTypes } = useQuery(
@@ -276,11 +289,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       const currentMasterStorage = toComparableSpecStorage(
         targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
       );
-      const nextMasterStorage = toComparableStorage(
-        settings.keepMasterTserverSame
-          ? settings.deviceInfo
-          : (settings.masterDeviceInfo ?? settings.deviceInfo)
-      );
+      const nextMasterStorage = toComparableStorage(effectiveMasterDeviceInfo(settings));
       const tserverStorageChanged = !isEqual(currentTserverStorage, nextTserverStorage);
       const masterStorageChanged = !isEqual(currentMasterStorage, nextMasterStorage);
 
@@ -324,7 +333,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     const currentMasterStorage = toComparableSpecStorage(
       targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
     );
-    const nextMasterStorage = toComparableStorage(settings.masterDeviceInfo ?? settings.deviceInfo);
+    const nextMasterStorage = toComparableStorage(effectiveMasterDeviceInfo(settings));
     const nextMasterInstance = settings.masterInstanceType ?? settings.instanceType ?? null;
 
     const masterChanged =
@@ -397,7 +406,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
             pending.keepMasterTserverSame
               ? pending.tserverK8SNodeResourceSpec
               : (pending.masterK8SNodeResourceSpec ?? pending.tserverK8SNodeResourceSpec),
-            pending.masterDeviceInfo ?? pending.deviceInfo
+            effectiveMasterDeviceInfo(pending)
           )
         : mCurrent;
 
@@ -449,8 +458,10 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     );
     const mNext = pending
       ? summaryFromDeviceInfo(
-          pending.masterInstanceType ?? pending.instanceType,
-          pending.masterDeviceInfo ?? pending.deviceInfo,
+          pending.keepMasterTserverSame
+            ? pending.instanceType
+            : (pending.masterInstanceType ?? pending.instanceType),
+          effectiveMasterDeviceInfo(pending),
           formatInstanceTypeLabel
         )
       : mCurrent;
@@ -509,9 +520,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterDeviceInfo = settings.keepMasterTserverSame
-      ? settings.deviceInfo
-      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
     const masterStorageSpec = toResizeStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
     const masterChanged =
       masterInstanceType !== currentMasterInstance ||
@@ -578,9 +587,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       if (dedicatedNodes) {
         const currentMasterStorageSpec =
           targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-        const masterDeviceInfo = settings.keepMasterTserverSame
-          ? settings.deviceInfo
-          : (settings.masterDeviceInfo ?? settings.deviceInfo);
+        const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
         const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
         const masterInstanceType = settings.keepMasterTserverSame
           ? tserverInstanceType
@@ -613,9 +620,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterDeviceInfo = settings.keepMasterTserverSame
-      ? settings.deviceInfo
-      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterDeviceInfo = effectiveMasterDeviceInfo(settings);
     const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
 
     const dedicatedNodeSpec: ClusterNodeSpec = {
@@ -704,13 +709,23 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
   };
 
   /**
-   * K8s hardware edits typically yield UPDATE (not in ResizeUpdateOption), so the API
-   * can return []. Force migrate-only → editUniverse. Same fallback on empty/error.
-   * Never invent SMART_RESIZE for K8s. While loading (non-K8s), pass undefined so radios stay disabled.
+   * K8s: classify locally (skip check-resize). Volume ↑ / CPU·mem → smart resize (not full
+   * move); storage class / numVolumes / similar → full move. Non-K8s uses check-resize.
    */
   const effectiveResizeOptions = useMemo((): ResizeUpdateOption[] | undefined => {
     if (isK8s) {
-      return [ResizeUpdateOption.FULL_MOVE];
+      if (!pendingInstanceSettings) return [ResizeUpdateOption.FULL_MOVE];
+      const currentTserverK8s = getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'tserver');
+      const currentMasterK8s =
+        getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'master') ?? currentTserverK8s;
+      return getK8sResizeOptions({
+        settings: pendingInstanceSettings,
+        targetCluster,
+        dedicatedNodes: !!useDedicatedNodes,
+        mode: effectiveMode,
+        currentTserverK8s,
+        currentMasterK8s
+      });
     }
     if (isLoadingResizeOptions) {
       return undefined;
@@ -719,16 +734,23 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       return [ResizeUpdateOption.FULL_MOVE];
     }
     return resizeOptions;
-  }, [isK8s, isLoadingResizeOptions, resizeOptions]);
+  }, [
+    isK8s,
+    isLoadingResizeOptions,
+    resizeOptions,
+    pendingInstanceSettings,
+    targetCluster,
+    useDedicatedNodes,
+    effectiveMode
+  ]);
 
   useEffect(() => {
     if (!reviewModalOpen || !pendingInstanceSettings || !universeUUID || !targetCluster?.uuid) {
       return;
     }
 
-    // K8s never supports smart resize in the API mapping; skip the round-trip.
+    // K8s options come from getK8sResizeOptions via effectiveResizeOptions — no API call.
     if (isK8s) {
-      setResizeOptions([ResizeUpdateOption.FULL_MOVE]);
       setIsLoadingResizeOptions(false);
       return;
     }
@@ -802,6 +824,17 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
 
     if (!rollingAllowed) {
       toast.error(t('unableToApplyChanges'));
+      return;
+    }
+
+    // K8s SMART_RESIZE (CPU/mem/instance) is a rolling editUniverse, not /resize-nodes.
+    // Volume-only SMART_RESIZE_NON_RESTART still uses /resize-nodes (PVC expand).
+    if (
+      isK8s &&
+      effectiveResizeOptions?.includes(ResizeUpdateOption.SMART_RESIZE) &&
+      !effectiveResizeOptions?.includes(ResizeUpdateOption.SMART_RESIZE_NON_RESTART)
+    ) {
+      submitEditUniverse(pendingInstanceSettings);
       return;
     }
 
@@ -880,8 +913,23 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         targetCluster?.node_spec?.master?.storage_spec?.mount_points ?? storageSpec?.mount_points
     },
     tserverK8SNodeResourceSpec: tserverK8sResourceSpec,
-    masterK8SNodeResourceSpec: masterK8sResourceSpec
+    masterK8SNodeResourceSpec: masterK8sResourceSpec,
+    enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
+    ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid || null
   } as InstanceSettingProps;
+
+  const storageOverrideChips =
+    isK8s && hasStorageOverrides(targetCluster) ? getStorageOverrideZoneChips(targetCluster) : [];
+  const showStorageOverrideNote =
+    storageOverrideChips.length > 0 &&
+    !!pendingInstanceSettings &&
+    showInstanceStorageOverrideNote(
+      effectiveMode,
+      normalizeDeviceInfo(defaultInstanceSettings.deviceInfo),
+      normalizeDeviceInfo(pendingInstanceSettings.deviceInfo),
+      normalizeDeviceInfo(defaultInstanceSettings.masterDeviceInfo),
+      normalizeDeviceInfo(effectiveMasterDeviceInfo(pendingInstanceSettings))
+    );
 
   // For the read-replica edit modal, when the user toggles "Keep RR same as primary T-Server",
   // we replace the form defaults with values derived from the primary cluster's T-Server
@@ -1056,6 +1104,20 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
               ref={instanceSettingsRef}
             />
           </CreateUniverseContext.Provider>
+          {showStorageOverrideNote && (
+            <StorageOverrideNote
+              dataTestId="EditHardwareConfirmModal-StorageOverrideNote"
+              chips={storageOverrideChips}
+              message={
+                <>
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    {tHw('storageOverrides.note')}
+                  </Box>{' '}
+                  {tHw('storageOverrides.storageChangeExcludedZones')}
+                </>
+              }
+            />
+          )}
         </Box>
       </YBModal>
       <ReviewHardwareChangesModal
@@ -1066,6 +1128,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         isLoadingOptions={isLoadingResizeOptions}
         replicationFactor={targetCluster.replication_factor}
         isK8s={isK8s}
+        isAws={providerCode === CloudType.aws}
         onClose={() => setReviewModalOpen(false)}
         onConfirm={confirmResizeNodes}
       />
