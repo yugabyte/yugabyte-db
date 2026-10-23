@@ -1393,7 +1393,7 @@ TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
 namespace {
 
 std::optional<SchemaVersion> GetMinPrimarySchemaVersion(rocksdb::DB* db) {
-  std::unordered_map<Uuid, SchemaVersion> versions;
+  docdb::CotableSchemaVersionMap versions;
   {
     auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
     if (smallest) {
