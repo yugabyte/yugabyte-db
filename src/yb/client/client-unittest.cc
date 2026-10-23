@@ -311,8 +311,6 @@ TEST(ClientUnitTest, RemoteTabletServerFailsOnlyTheAddressDialed) {
   ASSERT_EQ(first, ts.proxy()->proxy().remote());
 }
 
-// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
-// proxy on the preferred address and reports the server unreachable.
 // A proxy moves off an address only when that address fails, so one that fell back goes back to
 // the preferred address once the window that kept it off has passed, the next time an RPC
 // obtains it.
@@ -335,6 +333,40 @@ TEST(ClientUnitTest, RemoteTabletServerReturnsToPreferredAddress) {
   ASSERT_EQ(preferred, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
 }
 
+// An RPC that dialed an address before the proxy moved off it reports its failure afterwards,
+// which keeps the address failed for longer than the move alone would. The proxy goes back once
+// that later record expires: not while it holds, and not a whole window after it.
+TEST(ClientUnitTest, RemoteTabletServerReturnsWhenLateFailureExpires) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto moved_at = MonoTime::Now();
+  const auto fallback = ts.proxy()->proxy().remote();
+  ASSERT_NE(preferred, fallback);
+
+  SleepFor(500ms);
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto failed_late_at = MonoTime::Now();
+  SleepFor(500ms);
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_EQ(fallback, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+
+  SleepUntil(failed_late_at + window + 100ms);
+  ASSERT_EQ(preferred, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// proxy on the preferred address and reports the server unreachable.
 TEST(ClientUnitTest, RemoteTabletServerFallbackDisabled) {
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;

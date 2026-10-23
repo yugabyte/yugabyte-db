@@ -443,13 +443,11 @@ Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() co
                          permanent_uuid(), registration.ShortDebugString());
   }
 
-  auto host_port = HostPortFromPB(selected.host_port);
-  const bool fell_back = host_port != HostPortFromPB(candidates.front().host_port);
   return SelectedEndpoint {
-    .host_port = std::move(host_port),
+    .host_port = HostPortFromPB(selected.host_port),
     .encrypted = rpc::Encrypted(UseEncryption(
         selected.used_broadcast, registration.cloud_info(), local_master_cloud_info_)),
-    .fell_back = fell_back,
+    .pick = PickOf(candidates, selected),
   };
 }
 
@@ -457,11 +455,15 @@ bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
   std::lock_guard l(mutex_);
   failed_addresses_.MarkFailed(host_port);
 
-  // Drop the cached proxies so the next GetProxies selects again, the same way re-registration
-  // drops them when the addresses may have changed. Selecting again happens whether or not an
-  // address is left, because that is what lets a record expire: proxies left on the address
-  // that just failed would outlive every record that could move them.
-  ResetProxiesUnlocked();
+  // A task that dialed an address before the proxies moved off it reports its failure late, and
+  // that moves them nowhere. Proxies still on the address that failed are dropped so the next
+  // GetProxies selects again, the same way re-registration drops them when the addresses may
+  // have changed. Selecting again happens whether or not an address is left, because that is
+  // what lets a record expire: proxies left on the address that just failed would outlive every
+  // record that could move them.
+  if (proxies_endpoint_ && proxies_endpoint_->host_port == host_port) {
+    ResetProxiesUnlocked();
+  }
 
   // SelectEndpointUnlocked returns the preferred address once every one of them has failed,
   // so whether it now selects another address that has not failed is whether one is left to

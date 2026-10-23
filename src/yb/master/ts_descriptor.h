@@ -413,8 +413,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct SelectedEndpoint {
     HostPort host_port;
     rpc::Encrypted encrypted;
-    // Whether an earlier address was passed over because it had failed.
-    bool fell_back;
+    // The earlier addresses passed over because they had failed, which say when to select again.
+    AddressPick pick;
   };
 
   // Uses DNS to resolve registered hosts to a single endpoint.
@@ -536,9 +536,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   ProxyTuple proxies_;
 
-  // The endpoint every cached proxy was built against, and when it was selected.
+  // The endpoint every cached proxy was built against.
   std::optional<SelectedEndpoint> proxies_endpoint_ GUARDED_BY(mutex_);
-  AddressPick proxies_pick_ GUARDED_BY(mutex_);
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_ GUARDED_BY(mutex_);
@@ -549,14 +548,13 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 template <class... TProxies>
 Status TSDescriptor::GetProxies(std::shared_ptr<TProxies>*... proxies) {
   std::lock_guard l(mutex_);
-  if (!proxies_endpoint_ || proxies_pick_.Due()) {
+  if (!proxies_endpoint_ || proxies_endpoint_->pick.Due(failed_addresses_)) {
     auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
     if (proxies_endpoint_ && (selected.host_port != proxies_endpoint_->host_port ||
                               selected.encrypted != proxies_endpoint_->encrypted)) {
       ResetProxiesUnlocked();
     }
-    proxies_endpoint_ = selected;
-    proxies_pick_.Record(selected.fell_back);
+    proxies_endpoint_ = std::move(selected);
   }
   (GetOrCreateProxyUnlocked(proxies), ...);
   return Status::OK();

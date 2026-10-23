@@ -575,6 +575,18 @@ SelectedHostPort FirstUsable(
   return candidates.front();
 }
 
+AddressPick PickOf(
+    const std::vector<SelectedHostPort>& candidates, const SelectedHostPort& selected) {
+  std::vector<HostPort> passed_over;
+  for (const auto& candidate : candidates) {
+    if (HasSameHostPort(candidate.host_port, selected.host_port)) {
+      break;
+    }
+    passed_over.push_back(HostPortFromPB(candidate.host_port));
+  }
+  return AddressPick(std::move(passed_over));
+}
+
 UsedBroadcastAddress UsesBroadcastAddress(
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const HostPortPB& host_port) {

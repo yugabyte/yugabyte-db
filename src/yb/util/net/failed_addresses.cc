@@ -13,6 +13,8 @@
 
 #include "yb/util/net/failed_addresses.h"
 
+#include <algorithm>
+
 #include "yb/util/flags.h"
 
 using namespace std::literals;
@@ -41,14 +43,13 @@ void FailedAddresses::Clear() {
   last_failed_.clear();
 }
 
-void AddressPick::Record(bool fell_back) {
-  picked_at_ = CoarseMonoClock::Now();
-  fell_back_ = fell_back;
-}
+AddressPick::AddressPick(std::vector<HostPort> passed_over)
+    : passed_over_(std::move(passed_over)) {}
 
-bool AddressPick::Due() const {
-  return fell_back_ &&
-         CoarseMonoClock::Now() - picked_at_ >= FLAGS_retry_failed_address_ms * 1ms;
+bool AddressPick::Due(const FailedAddresses& failed) const {
+  return std::any_of(
+      passed_over_.begin(), passed_over_.end(),
+      [&failed](const HostPort& host_port) { return !failed.Failed(host_port); });
 }
 
 }  // namespace yb

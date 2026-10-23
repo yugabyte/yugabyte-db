@@ -728,7 +728,7 @@ void RpcPeerProxy::BuildProxyUnlocked() {
   auto candidates = CandidateHostPorts(peer_pb_, from_);
   auto selected = FirstUsable(candidates, *failed_addresses_);
   hostport_ = HostPortFromPB(selected.host_port);
-  pick_.Record(hostport_ != HostPortFromPB(candidates.front().host_port));
+  pick_ = PickOf(candidates, selected);
   consensus_proxy_ = std::make_shared<ConsensusServiceProxy>(
       proxy_cache_, hostport_,
       &proxy_cache_->GetContext()->ProtocolFor(
@@ -772,12 +772,12 @@ bool RpcPeerProxy::FailToNextAddress(const HostPort& failed) {
 bool RpcPeerProxy::ReturnToEarlierAddress() {
   {
     SharedLock lock(mutex_);
-    if (!pick_.Due()) {
+    if (!pick_.Due(*failed_addresses_)) {
       return false;
     }
   }
   std::lock_guard lock(mutex_);
-  if (!pick_.Due()) {
+  if (!pick_.Due(*failed_addresses_)) {
     return false;
   }
   const auto previous = hostport_;

@@ -13,6 +13,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <vector>
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -42,22 +43,28 @@ class FailedAddresses {
   std::unordered_map<HostPort, MonoTime, HostPortHash> last_failed_ GUARDED_BY(mutex_);
 };
 
-// When a dialer last picked one of a node's addresses, and whether the pick fell back past an
-// earlier one that had failed. A dialer moves off an address only when that address fails, so
-// one that fell back would stay on the fallback for as long as the fallback works; once
-// retry_failed_address_ms has passed since such a pick, the address it fell back past is worth
-// trying again and the dialer picks again. A pick that fell back past nothing is never due, so
-// a dialer on its preferred address pays nothing for this.
+// The addresses a dialer's pick passed over because they had failed, the ones ahead of it in
+// the dialer's order. A dialer moves off an address only when that address fails, so one that
+// fell back would stay on the fallback for as long as the fallback works; the pick is due again
+// once an address it passed over no longer counts as failed, and the dialer picks again.
+//
+// Due reads the record the pick was made from rather than timing the pick, because the record
+// can outlast the pick: a call that dialed the address before the dialer moved reports its
+// failure afterwards, and another dialer sharing the record can mark the address again. A clock
+// of the pick's own would come due while the address still counts as failed, and the pick made
+// then would hold the fallback for another whole window. A pick that passed over nothing is
+// never due, so a dialer on its preferred address pays nothing for this.
 //
 // The dialer holds the lock that guards its address.
 class AddressPick {
  public:
-  void Record(bool fell_back);
-  bool Due() const;
+  AddressPick() = default;
+  explicit AddressPick(std::vector<HostPort> passed_over);
+
+  bool Due(const FailedAddresses& failed) const;
 
  private:
-  CoarseTimePoint picked_at_;
-  bool fell_back_ = false;
+  std::vector<HostPort> passed_over_;
 };
 
 }  // namespace yb

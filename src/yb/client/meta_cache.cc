@@ -232,7 +232,7 @@ void RemoteTabletServer::BuildProxyUnlocked(YBClient& client) {
       client.data_->proxy_cache_.get(), hostport,
       client.data_->ProtocolFor(selected.used_broadcast, cloud_info_pb_));
   proxy_endpoint_ = hostport;
-  proxy_pick_.Record(hostport != HostPortFromPB(candidates.front().host_port));
+  proxy_pick_ = PickOf(candidates, selected);
 }
 
 bool RemoteTabletServer::FailToNextAddress(const HostPort& failed, YBClient& client) {
@@ -266,7 +266,7 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
   {
     SharedLock lock(mutex_);
 
-    if (proxy_ && !proxy_pick_.Due()) {
+    if (proxy_ && !proxy_pick_.Due(failed_addresses_)) {
       // Already have a proxy created.
       return proxy_;
     }
@@ -274,13 +274,13 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
 
   std::lock_guard lock(mutex_);
 
-  if (proxy_ && !proxy_pick_.Due()) {
+  if (proxy_ && !proxy_pick_.Due(failed_addresses_)) {
     // Already have a proxy created.
     return proxy_;
   }
 
-  // Either there is no proxy yet, or it fell back past an address that may work again, which
-  // nothing else would move it back to.
+  // Either there is no proxy yet, or an address it fell back past no longer counts as failed,
+  // and nothing else would move it back there.
   BuildProxyUnlocked(client);
   return proxy_;
 }

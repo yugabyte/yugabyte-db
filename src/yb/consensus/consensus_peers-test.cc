@@ -496,8 +496,6 @@ TEST_F(ConsensusPeersTest, TestAddressFallbackSharedByFactory) {
   ASSERT_EQ(preferred, other_factory.NewProxy(PeerWithSeveralAddresses())->CurrentHostPort());
 }
 
-// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
-// proxy on the preferred address and reports the peer unreachable.
 // A proxy moves off an address only when that address fails, so one that fell back goes back on
 // its own once the window that kept the address it left off has passed, rather than staying on
 // the fallback for as long as the fallback works.
@@ -526,6 +524,42 @@ TEST_F(ConsensusPeersTest, TestAddressFallbackReturns) {
   ASSERT_EQ(preferred, proxy.CurrentHostPort());
 }
 
+// A heartbeat that dialed an address before the proxy moved off it reports its failure
+// afterwards, which keeps the address failed for longer than the move alone would. The proxy
+// goes back once that later record expires: not while it holds, and not a whole window after it.
+TEST_F(ConsensusPeersTest, TestAddressFallbackReturnsWhenLateFailureExpires) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto moved_at = MonoTime::Now();
+  const auto fallback = proxy.CurrentHostPort();
+  ASSERT_NE(preferred, fallback);
+
+  SleepFor(500ms);
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto failed_late_at = MonoTime::Now();
+  SleepFor(500ms);
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(fallback, proxy.CurrentHostPort());
+
+  SleepUntil(failed_late_at + window + 100ms);
+  ASSERT_TRUE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// proxy on the preferred address and reports the peer unreachable.
 TEST_F(ConsensusPeersTest, TestAddressFallbackDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
   rpc::ProxyCache proxy_cache(messenger_.get());

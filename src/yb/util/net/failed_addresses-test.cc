@@ -52,4 +52,28 @@ TEST(FailedAddressesTest, ExpiresAfterTheRetryWindow) {
   EXPECT_FALSE(failed.Failed(kFirst));
 }
 
+// A pick is due again once any address it passed over no longer counts as failed in the record
+// it is checked against, and never when it passed over nothing.
+TEST(FailedAddressesTest, PickIsDueOncePassedOverAddressRecovers) {
+  const HostPort kFirst("first.example.com", 9100);
+  const HostPort kSecond("second.example.com", 9100);
+
+  FailedAddresses both;
+  both.MarkFailed(kFirst);
+  both.MarkFailed(kSecond);
+  const AddressPick pick({kFirst, kSecond});
+  EXPECT_FALSE(pick.Due(both));
+  EXPECT_FALSE(AddressPick().Due(both));
+
+  // One of them recovering is enough: the dialer picks again and lands on it.
+  FailedAddresses second_only;
+  second_only.MarkFailed(kSecond);
+  EXPECT_TRUE(pick.Due(second_only));
+  EXPECT_FALSE(AddressPick().Due(second_only));
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  EXPECT_TRUE(pick.Due(both));
+}
+
 }  // namespace yb

@@ -220,6 +220,55 @@ TEST(TestTSDescriptor, TestProxiesShareOneAddress) {
   ASSERT_EQ(preferred, consensus_proxy->proxy().remote());
 }
 
+// A task that dialed an address before the proxies moved off it reports its failure afterwards.
+// That moves nothing and rebuilds nothing, as in the other dialers, but it keeps the address
+// failed for longer than the move alone would, and the proxies go back once that later record
+// expires: not while it holds, and not a whole window after it.
+TEST(TestTSDescriptor, TestLateFailureMovesNothing) {
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), &proxy_cache, RegisteredThroughHeartbeat::kTrue));
+
+  const auto preferred = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  std::shared_ptr<tserver::TabletServerServiceProxy> moved;
+  ASSERT_OK(ts->GetProxy(&moved));
+  const auto moved_at = MonoTime::Now();
+  ASSERT_NE(preferred, moved->proxy().remote());
+
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  const auto failed_late_at = MonoTime::Now();
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(moved, ts_proxy);
+  SleepFor(MonoDelta::FromMilliseconds(500));
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(moved->proxy().remote(), ts_proxy->proxy().remote());
+
+  SleepUntil(failed_late_at + window + MonoDelta::FromMilliseconds(100));
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(preferred, ts_proxy->proxy().remote());
+}
+
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {
   std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
   std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");

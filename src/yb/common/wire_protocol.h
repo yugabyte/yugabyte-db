@@ -56,8 +56,9 @@ using namespace std::literals;
 
 namespace yb {
 
-class faststring;
+class AddressPick;
 class FailedAddresses;
+class faststring;
 class HostPort;
 class Slice;
 
@@ -170,6 +171,11 @@ bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hos
 // one. Candidates come from CandidateHostPorts, which never returns an empty list.
 SelectedHostPort FirstUsable(
     const std::vector<SelectedHostPort>& candidates, const FailedAddresses& failed);
+
+// The candidates ahead of selected, which FirstUsable passed over because they had failed, as
+// the AddressPick that says when a dialer on selected picks again.
+AddressPick PickOf(
+    const std::vector<SelectedHostPort>& candidates, const SelectedHostPort& selected);
 
 // Whether reaching a node at this address leaves its private address, which is what decides
 // whether the connection is held to node_to_node_encryption_required_on_broadcast. The
