@@ -42,6 +42,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
@@ -417,6 +418,12 @@ class YBClient::Data {
                               const HostPort& host_port,
                               const ServerRegistrationPB& registration);
 
+  // The transport for a connection to a node placed at connect_to, reached at an address of the
+  // given provenance: the one node_to_node_encryption_scope names when this client applies the
+  // scope, and otherwise null, which a proxy takes as the messenger's default.
+  const rpc::Protocol* ProtocolFor(
+      UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to) const;
+
   // Asynchronously sets 'master_proxy_' to the leader master by
   // cycling through servers listed in 'master_server_addrs_' until
   // one responds with a Raft configuration that contains the leader
@@ -626,6 +633,9 @@ class YBClient::Data {
 
   // Cloud info indicating placement information of client.
   CloudInfoPB cloud_info_pb_;
+
+  // See YBClientBuilder::apply_encryption_scope.
+  bool apply_encryption_scope_ = false;
 
   // When the client is part of a CQL proxy, this denotes the uuid for the associated tserver to
   // aid in detecting local tservers.

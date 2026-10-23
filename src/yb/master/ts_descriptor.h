@@ -385,21 +385,18 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
 
-  // An address to reach this server at and which of its lists it came from, so a proxy can
-  // take both from one selection.
+  // An address to reach this server at and whether a connection to it is encrypted, as the
+  // master's own placement and the server's decide it. Both come from one read of the
+  // registration, so a re-registration cannot pair one registration's address with another's
+  // placement.
   struct SelectedEndpoint {
     HostPort host_port;
-    UsedBroadcastAddress used_broadcast;
+    rpc::Encrypted encrypted;
   };
 
   // Uses DNS to resolve registered hosts to a single endpoint.
   Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
-
-  // The transport for a connection to this server on the address that was selected for it,
-  // from the master's own placement.
-  const rpc::Protocol& ProtocolForUnlocked(
-      UsedBroadcastAddress used_broadcast) const REQUIRES_SHARED(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
@@ -521,7 +518,8 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
     auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
     if (!(*result_cache)) {
       *result_cache = std::make_shared<TProxy>(
-          proxy_cache_, selected.host_port, &ProtocolForUnlocked(selected.used_broadcast));
+          proxy_cache_, selected.host_port,
+          &proxy_cache_->GetContext()->ProtocolFor(selected.encrypted));
     }
     *result = *result_cache;
   }

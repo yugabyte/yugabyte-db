@@ -65,7 +65,7 @@ DEFINE_UNKNOWN_string(use_private_ip, "never",
                   "region and zone."
               "never - would never use private IP if broadcast address is specified.");
 
-DEFINE_UNKNOWN_string(node_to_node_encryption_scope, "never",
+DEFINE_NON_RUNTIME_string(node_to_node_encryption_scope, "never",
               "When node to node encryption is enabled, which connections to encrypt. "
               "Scoped like use_private_ip: "
               "cloud - would not encrypt if destination node is located in the same cloud. "
@@ -76,11 +76,12 @@ DEFINE_UNKNOWN_string(node_to_node_encryption_scope, "never",
               "never - would encrypt every connection. "
               "The exemption applies only to connections that stay on the destination's "
               "private address, unless node_to_node_encryption_required_on_broadcast is "
-              "turned off. The nodes receiving these connections must run with "
+              "turned off, and never to connections to another universe, such as xCluster's. "
+              "The nodes receiving these connections must run with "
               "allow_insecure_connections, which is what lets a listener accept one that "
               "carries no TLS.");
 
-DEFINE_UNKNOWN_bool(node_to_node_encryption_required_on_broadcast, true,
+DEFINE_NON_RUNTIME_bool(node_to_node_encryption_required_on_broadcast, true,
               "Whether a connection that does not stay on the destination's private address "
               "is encrypted whatever node_to_node_encryption_scope says. use_private_ip "
               "decides which address a connection uses, and it names a boundary of its own "
