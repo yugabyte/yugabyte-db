@@ -2009,6 +2009,10 @@ TEST_P(PgRestartReadTest, ConflictsWithClampDefer) {
     auto reader = ASSERT_RESULT(Connect());
     ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
     ASSERT_OK(reader.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
+    if (std::string_view(mode) == "relaxed") {
+      // #35522: by default, relaxed mode covers only READ ONLY transactions.
+      ASSERT_OK(reader.Execute("SET default_transaction_read_only = on"));
+    }
 
     TestThreadHolder threads;
     StartConcurrentInserts(&threads, "t", kWriterStartKey);
