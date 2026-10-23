@@ -245,12 +245,9 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
   auto hostport = HostPortFromPB(selected.host_port);
   CHECK(!hostport.host().empty());
   ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  auto* proxy_cache = client.data_->proxy_cache_.get();
   proxy_ = std::make_shared<TabletServerServiceProxy>(
-      proxy_cache, hostport,
-      &proxy_cache->GetContext()->ProtocolFor(
-          rpc::Encrypted(yb::UseEncryption(
-              selected.used_broadcast, cloud_info_pb_, connect_from))));
+      client.data_->proxy_cache_.get(), hostport,
+      client.data_->ProtocolFor(selected.used_broadcast, cloud_info_pb_));
   proxy_endpoint_ = hostport;
 
   return proxy_;

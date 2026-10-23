@@ -2786,6 +2786,15 @@ void YBClient::Data::GetTableLocations(
       callback, deadline);
 }
 
+const rpc::Protocol* YBClient::Data::ProtocolFor(
+    UsedBroadcastAddress used_broadcast, const CloudInfoPB& connect_to) const {
+  if (!apply_encryption_scope_) {
+    return nullptr;
+  }
+  return &proxy_cache_->GetContext()->ProtocolFor(
+      rpc::Encrypted(UseEncryption(used_broadcast, connect_to, cloud_info_pb_)));
+}
+
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                             const HostPort& host_port,
                                             const ServerRegistrationPB& registration) {
@@ -2801,10 +2810,8 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
       leader_master_hostport_ = host_port;
       // GetLeaderMasterRpc races every configured master address, so this address was not
       // selected and its provenance has to be recovered from what the leader reported.
-      const auto* protocol = &proxy_cache_->GetContext()->ProtocolFor(rpc::Encrypted(
-          UseEncryption(
-              UsesBroadcastAddress(registration, HostPortToPB(host_port)),
-              registration.cloud_info(), cloud_info_pb_)));
+      const auto* protocol = ProtocolFor(
+          UsesBroadcastAddress(registration, HostPortToPB(host_port)), registration.cloud_info());
       master_admin_proxy_ = std::make_shared<master::MasterAdminProxy>(
           proxy_cache_.get(), host_port, protocol);
       master_backup_proxy_ =
