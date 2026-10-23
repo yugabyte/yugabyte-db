@@ -851,9 +851,20 @@ static void yb_undo_parse_queue_entry(od_server_t *server,
 				  &value_ptr);
 		break;
 	}
+	case YB_PARSE_QUEUE_QUERY:
+		if (server->sync_request > server->sync_reply) {
+			server->sync_request--;
+		} else {
+			od_instance_t *instance = server->global->instance;
+			od_error(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "discarded Query with no pending sync request");
+		}
+		server->yb_unnamed_prep_stmt_client_id =
+			entry->prev_unnamed_client_id;
+		break;
 	case YB_PARSE_QUEUE_UNNAMED_PARSE:
 	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
-	case YB_PARSE_QUEUE_QUERY:
 		server->yb_unnamed_prep_stmt_client_id =
 			entry->prev_unnamed_client_id;
 		break;
