@@ -9,7 +9,9 @@ Migrations are run in a special YSQL upgrade mode that changes some expectations
 executed and allows some new grammar - see the next section for details.
 
 Migration scripts should be designed idempotent - i.e. in such a way so that re-running them
-multiple times would be okay. In particular, re-running a migration must not change any catalog
+multiple times would be okay. `upgrade_ysql` itself re-runs a whole script after a serialization
+failure (e.g. a read restart caused by concurrent DDL), so any prefix of a script may already have
+been committed when it runs. In particular, re-running a migration must not change any catalog
 OIDs: when a migration touches an object that already exists, modify it in place rather than
 dropping and recreating it (see "Note on modifying an existing catalog object" below).
 
