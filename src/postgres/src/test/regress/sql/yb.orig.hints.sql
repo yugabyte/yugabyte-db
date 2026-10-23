@@ -262,7 +262,6 @@ SET enable_partitionwise_join to true;
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
--- YB_TODO_PG19MERGE: hints force a parallel plan until #21733's deletion of the UNION ALL block is re-applied
 /*+ NestLoop(t1_1 t2_1) Leading(t2_1 t1_1) MergeJoin(t1 t2) Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) IndexScan(t2_1 iprt2_p2_b) */ explain (hints on, costs off) select count(*) from (select *
  from prt1_p1 t1, prt2_p1 t2 where t1.a+1=t2.b and t1.a=5 union all select * from prt1_p2 t1, prt2_p2 t2 where t1.a=t2.b and t1.a=10) dt;
 
@@ -467,11 +466,14 @@ set parallel_tuple_cost to 0;
 reset parallel_setup_cost;
 reset parallel_tuple_cost;
 
--- Without cheap parallel costs the serial Append is chosen.  Hard Parallel
--- is not used as intended.
+-- Hard Parallel gets the parallel plan at the default parallel costs too.
 /*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+
+-- pg_current_xact_id() is parallel unsafe, so the query cannot run in
+-- parallel.  Hard Parallel is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
 set pg_hint_plan.yb_bad_hint_mode to error;
-/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
 set pg_hint_plan.yb_bad_hint_mode to warn;
 reset yb_enable_base_scans_cost_model;
 reset yb_enable_parallel_append;

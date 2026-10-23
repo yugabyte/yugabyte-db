@@ -1052,33 +1052,30 @@ SET enable_partitionwise_join to true;
 (17 rows)
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
--- YB_TODO_PG19MERGE: hints force a parallel plan until #21733's deletion of the UNION ALL block is re-applied
 /*+ NestLoop(t1_1 t2_1) Leading(t2_1 t1_1) MergeJoin(t1 t2) Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) IndexScan(t2_1 iprt2_p2_b) */ explain (hints on, costs off) select count(*) from (select *
  from prt1_p1 t1, prt2_p1 t2 where t1.a+1=t2.b and t1.a=5 union all select * from prt1_p2 t1, prt2_p2 t2 where t1.a=t2.b and t1.a=10) dt;
                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                     
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Append
-               ->  Subquery Scan on unnamed_subquery
-                     ->  Merge Join
-                           Merge Cond: (((t1.a + 1)) = t2.b)
-                           ->  Sort
-                                 Sort Key: ((t1.a + 1))
-                                 ->  Index Scan using iprt1_p1_a on prt1_p1 t1
-                                       Index Cond: (a = 5)
-                           ->  Sort
-                                 Sort Key: t2.b
-                                 ->  Seq Scan on prt2_p1 t2
-               ->  Subquery Scan on unnamed_subquery_1
-                     ->  Nested Loop
-                           ->  Index Scan using iprt2_p2_b on prt2_p2 t2_1
-                                 Index Cond: (b = 10)
-                           ->  Index Only Scan using iprt1_p2_a on prt1_p2 t1_1
-                                 Index Cond: (a = 10)
+   ->  Append
+         ->  Subquery Scan on unnamed_subquery
+               ->  Merge Join
+                     Merge Cond: (((t1.a + 1)) = t2.b)
+                     ->  Sort
+                           Sort Key: ((t1.a + 1))
+                           ->  Index Scan using iprt1_p1_a on prt1_p1 t1
+                                 Index Cond: (a = 5)
+                     ->  Sort
+                           Sort Key: t2.b
+                           ->  Seq Scan on prt2_p1 t2
+         ->  Subquery Scan on unnamed_subquery_1
+               ->  Nested Loop
+                     ->  Index Scan using iprt2_p2_b on prt2_p2 t2_1
+                           Index Cond: (b = 10)
+                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 t1_1
+                           Index Cond: (a = 10)
  Generated hints: /*+   Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) SeqScan(t2) MergeJoin(t1 t2)   Leading((t2_1 t1_1)) IndexScan(t2_1 iprt2_p2_b) IndexOnlyScan(t1_1 iprt1_p2_a) NestLoop(t1_1 t2_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
-(21 rows)
+(19 rows)
 
 -- Turn off join partitioning and try hinting. Should work fine.
 SET enable_partitionwise_join to false;
@@ -2009,47 +2006,73 @@ set yb_enable_parallel_append to on;
 set parallel_setup_cost to 0;
 set parallel_tuple_cost to 0;
 /*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
-                     QUERY PLAN                     
-----------------------------------------------------
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
          Workers Planned: 2
          ->  Parallel Append
                ->  Noop Aggregate
-                     ->  Seq Scan on prt1_p1 prt1_1
+                     ->  Parallel Index Only Scan using iprt1_p1_a_asc on prt1_p1 prt1_1
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on prt1_p2 prt1_2
+                     ->  Parallel Index Only Scan using iprt1_p2_a on prt1_p2 prt1_2
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on prt1_p3 prt1_3
+                     ->  Parallel Index Only Scan using iprt1_p3_a on prt1_p3 prt1_3
                            Partial Aggregate: true
 (13 rows)
 
 reset parallel_setup_cost;
 reset parallel_tuple_cost;
--- Without cheap parallel costs the serial Append is chosen.  Hard Parallel
--- is not used as intended.
+-- Hard Parallel gets the parallel plan at the default parallel costs too.
 /*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  Noop Aggregate
+                     ->  Parallel Index Only Scan using iprt1_p1_a_asc on prt1_p1 prt1_1
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Parallel Index Only Scan using iprt1_p2_a on prt1_p2 prt1_2
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Parallel Index Only Scan using iprt1_p3_a on prt1_p3 prt1_3
+                           Partial Aggregate: true
+(13 rows)
+
+-- pg_current_xact_id() is parallel unsafe, so the query cannot run in
+-- parallel.  Hard Parallel is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
 WARNING:  Parallel hint not used as intended: Parallel(prt1 2 hard)
 WARNING:  unused hints, and/or hints causing errors, exist
-                  QUERY PLAN                  
-----------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Finalize Aggregate
    ->  Append
-         ->  Noop Aggregate
-               ->  Seq Scan on prt1_p1 prt1_1
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on prt1_p2 prt1_2
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on prt1_p3 prt1_3
-                     Partial Aggregate: true
-(11 rows)
+         Disabled: true
+         ->  Partial Aggregate
+               ->  Result
+                     One-Time Filter: (pg_current_xact_id() IS NOT NULL)
+                     ->  Seq Scan on prt1_p1 prt1_1
+                           Disabled: true
+         ->  Partial Aggregate
+               ->  Result
+                     One-Time Filter: (pg_current_xact_id() IS NOT NULL)
+                     ->  Seq Scan on prt1_p2 prt1_2
+                           Disabled: true
+         ->  Partial Aggregate
+               ->  Result
+                     One-Time Filter: (pg_current_xact_id() IS NOT NULL)
+                     ->  Seq Scan on prt1_p3 prt1_3
+                           Disabled: true
+(18 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to error;
-/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
 WARNING:  Parallel hint not used as intended: Parallel(prt1 2 hard)
 WARNING:  unused hints, and/or hints causing errors, exist
 ERROR:  errors found in hints, will fail

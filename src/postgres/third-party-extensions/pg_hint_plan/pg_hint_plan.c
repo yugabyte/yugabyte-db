@@ -6682,8 +6682,12 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/*
 	 * Even though UNION ALL node doesn't have particular name so usually it
 	 * is unhintable, turn on parallel when it contains parallel nodes.
+	 *
+	 * YB: not done.  A hint cannot name the UNION ALL, so the presence of a
+	 * hint is no reason to force its parallel plan; the choice stays with
+	 * cost.
 	 */
-	if (rel->rtekind == RTE_SUBQUERY)
+	if (!IsYugaByteEnabled() && rel->rtekind == RTE_SUBQUERY)
 	{
 		ListCell   *lc;
 		bool		inhibit_nonparallel = false;
