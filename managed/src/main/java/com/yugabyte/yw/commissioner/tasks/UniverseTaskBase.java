@@ -1041,7 +1041,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
-            universe.setStateTransitionDetails(null);
+            // A task allowed on a universe broken by another task keeps that task's checkpoint.
+            if (ownsPlacementLock(universeDetails)) {
+              universe.setStateTransitionDetails(null);
+            }
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               boolean pausedTask =
                   getTaskExecutor()
@@ -1311,6 +1314,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return true;
   }
 
+  /**
+   * Whether this task holds the placement lock, or no task does. Only then is the rollback
+   * checkpoint ({@code state_transition_details}) this task's to write or clear.
+   */
+  private boolean ownsPlacementLock(UniverseDefinitionTaskParams universeDetails) {
+    return universeDetails.placementModificationTaskUuid == null
+        || universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1441,7 +1453,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               originalCallback.accept(univ);
             }
             UniverseDefinitionTaskParams target = getTargetUniverseDetails();
-            if (target != null) {
+            // The freeze has already taken the placement lock if this task modifies placement.
+            if (target != null && ownsPlacementLock(univ.getUniverseDetails())) {
               captureStateTransitionDelta(univ, beforeDetails, target);
             }
           };
