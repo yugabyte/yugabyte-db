@@ -1083,7 +1083,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         }
         linklistsizeint *ll = get_linklist_at_level(internal_id, level);
         setListCount(ll, size);
-        memcpy(ll + 1, links, size * sizeof(tableint));
+        if (size) {
+            memcpy(ll + 1, links, size * sizeof(tableint));
+        }
     }
 
 

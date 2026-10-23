@@ -24,6 +24,8 @@
 
 #include "yb/util/cast.h"
 
+#include "yb/vector_index/index_wrapper_base.h"
+
 namespace yb::ann_methods {
 
 namespace {
@@ -47,10 +49,12 @@ class HnswlibGraphMerger {
       std::vector<std::pair<DistanceResult, hnswlib::tableint>>,
       typename HNSW::CompareByFirst>;
 
-  HnswlibGraphMerger(HNSW& hnsw, float prune_alpha, uint32_t offset, size_t ef)
-      : hnsw_(hnsw), prune_alpha_(prune_alpha), offset_(offset), ef_(ef) {}
+  HnswlibGraphMerger(HNSW& hnsw, uint32_t offset, const HnswlibGraphMergeOptions& options)
+      : hnsw_(hnsw), offset_(offset), options_(options),
+        prune_alpha_(PruneAlpha(options.distance_kind)) {}
 
-  Status Execute(uint32_t source_entry, const vector_index::ParallelForFunc& parallel_for) {
+  Status Execute(uint32_t source_entry) {
+    const auto ef = options_.ef;
     const auto end = narrow_cast<uint32_t>(hnsw_.getCurrentElementCount());
     const int old_max_level = hnsw_.maxlevel_;
     const uint32_t old_entry = hnsw_.enterpoint_node_;
@@ -65,15 +69,31 @@ class HnswlibGraphMerger {
       }
     }
 
+    // Reserve the memory used besides the graph, mostly by the vectors found on all layers and the
+    // backward links of the base layer.
+    size_t num_layer_vectors = 0;
+    for (const auto& vectors : layer_vectors) {
+      num_layer_vectors += vectors.size();
+    }
+    auto reservation = VERIFY_RESULT(vector_index::BlockCacheReservation::Create(
+        options_.block_cache,
+        sizeof(uint32_t) * (num_layer_vectors * (ef + 2) + layer_vectors[0].size() * ef +
+                            (end - offset_) + 3 * (offset_ + 1)),
+        options_.reservation_mode));
+
     // Forward search on all layers precedes the backward links, so it sees only the original
     // links of this graph. Searches skip the appended vectors, whose links are being replaced.
-    std::vector<std::vector<Candidates>> found(top_layer + 1);
+    // Vectors found by the i-th vector of a layer are stored from i * ef.
+    std::vector<std::vector<uint32_t>> found(top_layer + 1);
+    std::vector<std::vector<uint32_t>> found_sizes(top_layer + 1);
     std::vector<uint32_t> entries(end - offset_, kNoEntry);
     for (int layer = top_layer; layer >= 0; --layer) {
       const auto& vectors = layer_vectors[layer];
       auto& layer_found = found[layer];
-      layer_found.resize(vectors.size());
-      RETURN_NOT_OK(parallel_for(vectors.size(), [&](size_t i) {
+      auto& layer_found_sizes = found_sizes[layer];
+      layer_found.resize(vectors.size() * ef);
+      layer_found_sizes.resize(vectors.size());
+      RETURN_NOT_OK(options_.parallel_for(vectors.size(), [&](size_t i) {
         auto vector = vectors[i];
         auto& entry = entries[vector - offset_];
         int higher_layer = layer;
@@ -81,41 +101,59 @@ class HnswlibGraphMerger {
           entry = old_entry;
           higher_layer = old_max_level;
         }
-        layer_found[i] = SearchBelow(vector, entry, higher_layer, layer);
-        AddLinks(vector, layer, layer_found[i]);
+        auto candidates = SearchBelow(vector, entry, higher_layer, layer);
+        DCHECK_LE(candidates.size(), ef);
+        auto* vector_found = layer_found.data() + i * ef;
+        for (size_t j = 0; j != candidates.size(); ++j) {
+          vector_found[j] = candidates[j].second;
+        }
+        layer_found_sizes[i] = narrow_cast<uint32_t>(candidates.size());
+        AddLinks(
+            vector, layer, std::span(vector_found, candidates.size()),
+            [&candidates](size_t j) { return candidates[j].first; });
         return Status::OK();
       }));
     }
 
     // Lazy backward links: each found vector gets links to the source vectors that found it.
+    // Distances are not stored and computed only when links have to be selected.
     std::vector<uint32_t> starts(offset_ + 1);
     std::vector<uint32_t> targets;
     for (int layer = top_layer; layer >= 0; --layer) {
+      const auto& layer_found = found[layer];
+      const auto& layer_found_sizes = found_sizes[layer];
+      auto vector_found = [&layer_found, &layer_found_sizes, ef](size_t i) {
+        return std::span(layer_found.data() + i * ef, layer_found_sizes[i]);
+      };
       std::fill(starts.begin(), starts.end(), 0);
-      for (const auto& candidates : found[layer]) {
-        for (const auto& [distance, vector] : candidates) {
+      for (size_t i = 0; i != layer_found_sizes.size(); ++i) {
+        for (auto vector : vector_found(i)) {
           ++starts[vector + 1];
         }
       }
       std::partial_sum(starts.begin(), starts.end(), starts.begin());
-      Candidates backward(starts.back());
+      std::vector<uint32_t> backward(starts.back());
       auto positions = starts;
-      for (size_t i = 0; i != found[layer].size(); ++i) {
-        for (const auto& [distance, vector] : found[layer][i]) {
-          backward[positions[vector]++] = {distance, layer_vectors[layer][i]};
+      for (size_t i = 0; i != layer_found_sizes.size(); ++i) {
+        for (auto vector : vector_found(i)) {
+          backward[positions[vector]++] = layer_vectors[layer][i];
         }
       }
       found[layer] = {};
+      found_sizes[layer] = {};
       targets.clear();
       for (uint32_t vector = 0; vector != offset_; ++vector) {
         if (starts[vector + 1] != starts[vector]) {
           targets.push_back(vector);
         }
       }
-      RETURN_NOT_OK(parallel_for(targets.size(), [&](size_t i) {
+      RETURN_NOT_OK(options_.parallel_for(targets.size(), [&](size_t i) {
         auto vector = targets[i];
-        AddLinks(vector, layer, std::span(
-            backward.data() + starts[vector], backward.data() + starts[vector + 1]));
+        std::span<const uint32_t> sources(
+            backward.data() + starts[vector], backward.data() + starts[vector + 1]);
+        AddLinks(vector, layer, sources, [this, vector, sources](size_t j) {
+          return Distance(vector, sources[j]);
+        });
         return Status::OK();
       }));
     }
@@ -157,7 +195,7 @@ class HnswlibGraphMerger {
       }
     }
     auto top = hnsw_.searchBaseLayer(
-        current, hnsw_.getDataByInternalId(vector), layer, ef_, offset_);
+        current, hnsw_.getDataByInternalId(vector), layer, options_.ef, offset_);
     Candidates result;
     result.reserve(top.size());
     for (; !top.empty(); top.pop()) {
@@ -169,22 +207,23 @@ class HnswlibGraphMerger {
   }
 
   // Adds candidates to the links of the vector on the layer, selecting neighbors with the
-  // heuristic when there are too many.
-  void AddLinks(uint32_t vector, int layer, std::span<const Candidate> candidates) {
+  // heuristic when there are too many. distance(i) returns the distance to candidates[i].
+  template <class DistanceFunc>
+  void AddLinks(
+      uint32_t vector, int layer, std::span<const uint32_t> candidates,
+      const DistanceFunc& distance) {
     auto* list = hnsw_.get_linklist_at_level(vector, layer);
     auto* links = pointer_cast<hnswlib::tableint*>(list + 1);
     size_t count = hnsw_.getListCount(list);
     const size_t max_links = layer ? hnsw_.maxM_ : hnsw_.maxM0_;
     if (count + candidates.size() <= max_links) {
-      for (const auto& [distance, candidate] : candidates) {
-        links[count++] = candidate;
-      }
-      hnsw_.setListCount(list, count);
+      std::ranges::copy(candidates, links + count);
+      hnsw_.setListCount(list, count + candidates.size());
       return;
     }
     Heap heap;
-    for (const auto& candidate : candidates) {
-      heap.push(candidate);
+    for (size_t i = 0; i != candidates.size(); ++i) {
+      heap.emplace(distance(i), candidates[i]);
     }
     for (size_t i = 0; i != count; ++i) {
       heap.emplace(Distance(vector, links[i]), links[i]);
@@ -197,25 +236,22 @@ class HnswlibGraphMerger {
   }
 
   HNSW& hnsw_;
-  const float prune_alpha_;
   const uint32_t offset_;
-  const size_t ef_;
+  const HnswlibGraphMergeOptions& options_;
+  const float prune_alpha_;
 };
 
 } // namespace
 
 template <vector_index::ValidDistanceResultType DistanceResult>
 Status MergeHnswlibGraph(
-    hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>& hnsw,
-    vector_index::DistanceKind distance_kind, uint32_t offset, uint32_t source_entry, size_t ef,
-    const vector_index::ParallelForFunc& parallel_for) {
-  return HnswlibGraphMerger<DistanceResult>(hnsw, PruneAlpha(distance_kind), offset, ef).Execute(
-      source_entry, parallel_for);
+    hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>& hnsw, uint32_t offset,
+    uint32_t source_entry, const HnswlibGraphMergeOptions& options) {
+  return HnswlibGraphMerger<DistanceResult>(hnsw, offset, options).Execute(source_entry);
 }
 
 template Status MergeHnswlibGraph<float>(
-    hnswlib::HierarchicalNSW<float, vector_index::VectorId>& hnsw,
-    vector_index::DistanceKind distance_kind, uint32_t offset, uint32_t source_entry, size_t ef,
-    const vector_index::ParallelForFunc& parallel_for);
+    hnswlib::HierarchicalNSW<float, vector_index::VectorId>& hnsw, uint32_t offset,
+    uint32_t source_entry, const HnswlibGraphMergeOptions& options);
 
 }  // namespace yb::ann_methods

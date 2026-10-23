@@ -232,6 +232,7 @@ class HnswlibIndex :
     // strict mode without first allocating the memory it is intended to control.
     // TODO(vector_index): a specific signal may be needed to indicate that it would be not
     // possible to reserve the space even with empty block cache.
+    reservation_mode_ = reservation_mode;
     RETURN_NOT_OK(this->ReserveBlockCacheSpace(
         block_cache_ ? &block_cache_->cache() : nullptr,
         HNSWImpl::estimateBytesForNumVectors(
@@ -295,9 +296,11 @@ class HnswlibIndex :
     return this;
   }
 
-  Status CopyGraph(vector_index::HnswGraphReaderIf<Vector>& source) override {
+  Status CopyGraph(
+      vector_index::HnswGraphReaderIf<Vector>& source,
+      const vector_index::CheckpointFunc& checkpoint) override {
     SCHECK_EQ(Size(), 0, IllegalState, "Graph could be copied only to empty index");
-    RETURN_NOT_OK(AppendGraph(source));
+    RETURN_NOT_OK(AppendGraph(source, checkpoint));
     if (source.Size()) {
       hnsw_->setEntryPoint(source.EntryPoint());
     }
@@ -306,15 +309,21 @@ class HnswlibIndex :
 
   Status MergeGraph(
       vector_index::HnswGraphReaderIf<Vector>& source, size_t ef,
-      const vector_index::ParallelForFunc& parallel_for) override {
+      const vector_index::ParallelForFunc& parallel_for,
+      const vector_index::CheckpointFunc& checkpoint) override {
     SCHECK_GT(Size(), 0, IllegalState, "Graph could be merged only to non empty index");
     const auto offset = narrow_cast<uint32_t>(Size());
-    RETURN_NOT_OK(AppendGraph(source));
+    RETURN_NOT_OK(AppendGraph(source, checkpoint));
     if (source.Size() == 0) {
       return Status::OK();
     }
-    return MergeHnswlibGraph(
-        *hnsw_, options_.distance_kind, offset, offset + source.EntryPoint(), ef, parallel_for);
+    return MergeHnswlibGraph(*hnsw_, offset, offset + source.EntryPoint(), {
+      .distance_kind = options_.distance_kind,
+      .ef = ef,
+      .parallel_for = parallel_for,
+      .block_cache = block_cache_ ? &block_cache_->cache() : nullptr,
+      .reservation_mode = reservation_mode_,
+    });
   }
 
   size_t MergeEf(size_t percentage) const override {
@@ -425,7 +434,9 @@ class HnswlibIndex :
   }
 
   // Appends vectors and links of the source, keeping the order of vector numbers.
-  Status AppendGraph(vector_index::HnswGraphReaderIf<Vector>& source) {
+  Status AppendGraph(
+      vector_index::HnswGraphReaderIf<Vector>& source,
+      const vector_index::CheckpointFunc& checkpoint) {
     SCHECK(hnsw_, IllegalState, "Index is not reserved");
     const auto offset = narrow_cast<uint32_t>(Size());
     const auto size = source.Size();
@@ -433,6 +444,9 @@ class HnswlibIndex :
     auto se = UpdateDataConsumptionOnExit();
     std::vector<uint32_t> links;
     for (uint32_t vector = 0; vector != size; ++vector) {
+      if (vector % 1024 == 0) {
+        RETURN_NOT_OK(checkpoint());
+      }
       auto entry = source.GetEntry(vector);
       SCHECK_EQ(
           entry.vector.size(), options_.dimensions, InvalidArgument, "Wrong vector dimensions");
@@ -458,6 +472,8 @@ class HnswlibIndex :
   // Shared with HnswlibIndexTraits and all indexes it created.
   const std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+  // The mode the index was reserved with, also used to reserve memory for MergeGraph.
+  rocksdb::Cache::ReservationMode reservation_mode_ = rocksdb::Cache::ReservationMode::kAlways;
   IndexMemoryConsumption consumption_;
 };
 
@@ -522,6 +538,10 @@ class HnswlibIndexTraits :
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
+  }
+
+  bool BuildsFromHnswGraphs() const override {
+    return true;
   }
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {

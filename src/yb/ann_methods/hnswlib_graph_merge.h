@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/rocksdb/cache.h"
+
 #include "yb/util/status.h"
 
 #include "yb/vector_index/distance.h"
@@ -22,6 +24,16 @@
 
 namespace yb::ann_methods {
 
+/// Options of MergeHnswlibGraph. The memory it uses besides the graph is reserved in block_cache
+/// with reservation_mode.
+struct HnswlibGraphMergeOptions {
+  vector_index::DistanceKind distance_kind;
+  size_t ef;
+  vector_index::ParallelForFunc parallel_for;
+  rocksdb::Cache* block_cache;
+  rocksdb::Cache::ReservationMode reservation_mode;
+};
+
 /// Links vectors from offset to the end of the graph into the graph of the preceding vectors, as
 /// HNSW-Merger does (SIGMOD 2026, "Efficient Vector Index Merging in Vector Databases"): each
 /// such vector searches the preceding vectors for ef nearest ones to connect with, and the found
@@ -29,8 +41,7 @@ namespace yb::ann_methods {
 /// the entry point source_entry, which becomes the entry point when its graph is taller.
 template <vector_index::ValidDistanceResultType DistanceResult>
 Status MergeHnswlibGraph(
-    hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>& hnsw,
-    vector_index::DistanceKind distance_kind, uint32_t offset, uint32_t source_entry, size_t ef,
-    const vector_index::ParallelForFunc& parallel_for);
+    hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>& hnsw, uint32_t offset,
+    uint32_t source_entry, const HnswlibGraphMergeOptions& options);
 
 }  // namespace yb::ann_methods

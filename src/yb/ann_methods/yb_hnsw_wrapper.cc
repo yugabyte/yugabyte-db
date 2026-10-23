@@ -29,6 +29,21 @@ using vector_index::IndexableVectorType;
 using vector_index::VectorId;
 using vector_index::ValidDistanceResultType;
 
+// The payload of the returned entry is valid until the cache releases its blocks.
+template<IndexableVectorType Vector>
+vector_index::VectorIndexIteratorEntry<Vector> ReadEntry(
+    hnsw::SearchCache& cache, size_t vector, size_t dimensions) {
+  auto [vector_id, payload] = cache.GetVectorIdAndPayload(vector);
+  vector_index::VectorIndexIteratorEntry<Vector> result {
+    .vector_id = vector_id,
+    .vector = Vector(dimensions),
+    .payload = payload,
+  };
+  memcpy(result.vector.data(), cache.CoordinatesPtr(vector),
+         dimensions * sizeof(typename Vector::value_type));
+  return result;
+}
+
 template<IndexableVectorType Vector>
 class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
  public:
@@ -48,14 +63,7 @@ class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIterator
   }
 
   ValueType Dereference() const override {
-    const auto* coordinates = cache_.CoordinatesPtr(index_);
-    ValueType result;
-    auto [vector_id, payload] = cache_.GetVectorIdAndPayload(index_);
-    result.vector_id = vector_id;
-    result.vector.resize(dimensions_);
-    memcpy(result.vector.data(), coordinates, dimensions_ * sizeof(typename Vector::value_type));
-    result.payload = payload;
-    return result;
+    return ReadEntry<Vector>(cache_, index_, dimensions_);
   }
 
   bool NotEquals(const Base& other) const override {
@@ -106,15 +114,7 @@ class YbHnswGraphReader : public vector_index::HnswGraphReaderIf<Vector> {
 
   vector_index::VectorIndexEntry<Vector> GetEntry(uint32_t vector) override {
     MaybeReleaseBlocks();
-    auto [vector_id, payload] = cache_.GetVectorIdAndPayload(vector);
-    vector_index::VectorIndexEntry<Vector> result {
-      .vector_id = vector_id,
-      .vector = Vector(header_.dimensions),
-      .payload = ValueBuffer(payload),
-    };
-    memcpy(result.vector.data(), cache_.CoordinatesPtr(vector),
-           header_.dimensions * sizeof(typename Vector::value_type));
-    return result;
+    return ReadEntry<Vector>(cache_, vector, header_.dimensions).ToOwned();
   }
 
   std::pair<VectorId, Slice> GetVectorIdAndPayload(uint32_t vector) override {

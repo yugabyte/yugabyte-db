@@ -73,15 +73,16 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
 DEFINE_RUNTIME_bool(vector_index_compaction_graph_merge, false,
     "Build the vector index chunk produced by a compaction by merging the HNSW graphs of the "
     "compacted chunks (HNSW-Merger), instead of inserting all their vectors into an empty graph. "
-    "Applies when the output fits a single chunk.");
+    "Applies only to hnswlib vector indexes, when the output fits a single chunk.");
 
 DEFINE_RUNTIME_uint32(vector_index_compaction_graph_merge_ef_percentage, 25,
-    "Number of nearest vectors each vector of a merged graph searches for in the graph it is "
-    "merged into, as a percentage of ef_construction, but at least 2 * M. See "
-    "vector_index_compaction_graph_merge.");
+    "Percentage of ef_construction that gives the number of nearest vectors each vector of a "
+    "merged graph searches for in the graph it is merged into. The number is at least 2 * M. "
+    "See vector_index_compaction_graph_merge.");
 
 DEFINE_RUNTIME_uint64(vector_index_compaction_graph_merge_ef, 0,
-    "Overrides vector_index_compaction_graph_merge_ef_percentage when not 0.");
+    "Number of nearest vectors each vector of a merged graph searches for in the graph it is "
+    "merged into. Overrides vector_index_compaction_graph_merge_ef_percentage when not 0.");
 
 DEFINE_RUNTIME_uint64(vector_index_compaction_always_include_size_threshold, 64_MB,
     "Always include chunks of smaller or equal size in a compaction by size ratio.");
@@ -2764,6 +2765,75 @@ void PopulateMergeTasks(
   }
 }
 
+// Runs batches of a parallel loop on a thread pool, one batch per task run. A task is enqueued
+// again while batches are left, so other tasks of the pool run between the batches.
+class ParallelBatches {
+ public:
+  // run_batch runs the next batch and returns false when no batches are left.
+  ParallelBatches(
+      rpc::ThreadPool& thread_pool, std::function<Result<bool>()> run_batch, size_t num_tasks)
+      : thread_pool_(thread_pool), run_batch_(std::move(run_batch)), latch_(num_tasks),
+        tasks_(num_tasks) {
+    for (auto& task : tasks_) {
+      task.batches = this;
+    }
+  }
+
+  // Runs all batches, calling wait_callback periodically while waiting. Returns the first failure.
+  Status Run(const std::function<void()>& wait_callback) {
+    for (auto& task : tasks_) {
+      // Done is called with an error when the task could not be enqueued.
+      thread_pool_.Enqueue(&task);
+    }
+    while (!latch_.WaitFor(MonoDelta::FromMilliseconds(200))) {
+      wait_callback();
+    }
+    std::lock_guard lock(mutex_);
+    return status_;
+  }
+
+ private:
+  struct Task : public rpc::ThreadPoolTask {
+    void Run() override {
+      auto result = batches->run_batch_();
+      more = result.ok() && *result;
+      status = result.ok() ? Status::OK() : result.status();
+    }
+
+    void Done(const Status& pool_status) override {
+      batches->TaskDone(*this, pool_status.ok() ? status : pool_status);
+    }
+
+    ParallelBatches* batches = nullptr;
+    bool more = false;
+    Status status;
+  };
+
+  void TaskDone(Task& task, const Status& status) {
+    bool enqueue;
+    {
+      std::lock_guard lock(mutex_);
+      if (!status.ok() && status_.ok()) {
+        status_ = status;
+      }
+      enqueue = status_.ok() && task.more;
+    }
+    if (enqueue) {
+      thread_pool_.Enqueue(&task);
+      return;
+    }
+    // Must be the last access to this object, Run could return right after.
+    latch_.CountDown();
+  }
+
+  rpc::ThreadPool& thread_pool_;
+  const std::function<Result<bool>()> run_batch_;
+  CountDownLatch latch_;
+  std::mutex mutex_;
+  Status status_;
+  std::vector<Task> tasks_;
+};
+
 // Iterates vectors of the index that have the specified numbers, in increasing order.
 // Could be used as merge source instead of MergingIterator.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3038,6 +3108,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
   Result<std::optional<ImmutableChunkPtrs>> MergeGraphs(
       const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter,
       size_t max_vectors_per_output_chunk) {
+    if (!lsm_.options_.vector_index_traits->BuildsFromHnswGraphs()) {
+      return std::nullopt;
+    }
     std::vector<std::unique_ptr<GraphReader>> readers;
     readers.reserve(chunks.size());
     size_t input_size = 0;
@@ -3054,9 +3127,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     auto merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
         input_size, rocksdb::Cache::ReservationMode::kAlways));
     auto* builder = merged_index->HnswGraphBuilder();
-    if (!builder) {
-      return std::nullopt;
-    }
+    RSTATUS_DCHECK(builder, IllegalState, "Vector index could not be built from HNSW graphs");
 
     const auto start = MonoTime::Now();
     std::vector<std::vector<uint32_t>> kept(chunks.size());
@@ -3098,14 +3169,17 @@ class VectorLSM<Vector, DistanceResult>::Merger {
           ? FLAGS_vector_index_compaction_graph_merge_ef
           : builder->MergeEf(FLAGS_vector_index_compaction_graph_merge_ef_percentage);
       if (!graphs.empty()) {
-        RETURN_NOT_OK(builder->CopyGraph(*readers[graphs.front()]));
+        auto checkpoint = [this] {
+          MaybeYield();
+          return lsm_.RUNNING_STATUS();
+        };
+        RETURN_NOT_OK(builder->CopyGraph(*readers[graphs.front()], checkpoint));
         readers[graphs.front()].reset();
         auto parallel_for = [this](size_t count, const std::function<Status(size_t)>& fn) {
           return ParallelFor(count, fn);
         };
         for (auto it = graphs.begin() + 1; it != graphs.end(); ++it) {
-          RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-          RETURN_NOT_OK(builder->MergeGraph(*readers[*it], ef, parallel_for));
+          RETURN_NOT_OK(builder->MergeGraph(*readers[*it], ef, parallel_for, checkpoint));
           readers[*it].reset();
         }
         for (auto i : graphs) {
@@ -3180,48 +3254,33 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     return result;
   }
 
-  // Runs fn for numbers from 0 to count on the insert thread pool. Returns the first failure.
+  // Runs fn for numbers from 0 to count on the insert thread pool, in batches of
+  // vector_index_task_size, so inserts interleave with them. Returns the first failure.
   Status ParallelFor(size_t count, const std::function<Status(size_t)>& fn) {
     const size_t batch_size = FLAGS_vector_index_task_size;
-    auto& thread_pool = *lsm_.options_.insert_thread_pool;
     std::atomic<size_t> next = 0;
-    auto run = [this, count, batch_size, &fn, &next]() -> Status {
-      for (;;) {
-        auto begin = next.fetch_add(batch_size, std::memory_order::relaxed);
-        if (begin >= count) {
-          return Status::OK();
-        }
-        RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-        for (auto i = begin, end = std::min(begin + batch_size, count); i != end; ++i) {
-          RETURN_NOT_OK(fn(i));
-        }
+    auto run_batch = [this, count, batch_size, &fn, &next]() -> Result<bool> {
+      auto begin = next.fetch_add(batch_size, std::memory_order::relaxed);
+      if (begin >= count) {
+        return false;
       }
+      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+      for (auto i = begin, end = std::min(begin + batch_size, count); i != end; ++i) {
+        RETURN_NOT_OK(fn(i));
+      }
+      return true;
     };
-    const auto num_workers = std::min({
+    auto& thread_pool = *lsm_.options_.insert_thread_pool;
+    const auto num_tasks = std::min({
         ceil_div(count, batch_size), thread_pool.options().max_workers,
         merge_registry_.MaxCapacity()});
-    if (num_workers <= 1) {
-      return run();
-    }
-
-    std::vector<std::promise<Status>> promises(num_workers);
-    for (auto& promise : promises) {
-      if (!thread_pool.EnqueueFunctor([&run, &promise] { promise.set_value(run()); })) {
-        promise.set_value(STATUS(Aborted, "Failed to enqueue graph merge task"));
-      }
-    }
-    Status result;
-    for (auto& promise : promises) {
-      auto future = promise.get_future();
-      while (future.wait_for(200ms) != std::future_status::ready) {
+    if (num_tasks <= 1) {
+      while (VERIFY_RESULT(run_batch())) {
         MaybeYield();
       }
-      auto status = future.get();
-      if (result.ok()) {
-        result = std::move(status);
-      }
+      return Status::OK();
     }
-    return result;
+    return ParallelBatches(thread_pool, run_batch, num_tasks).Run([this] { MaybeYield(); });
   }
 
   // Saves the merged index to a new chunk file. The index could be replaced with the saved one.
