@@ -5061,18 +5061,22 @@ TEST_P(PgVectorIndexSingleServerTest, FailedVectorFlushRetiresIntentsAndAdmissio
   ASSERT_TRUE(vector_retiring.WaitFor(30s * kTimeMultiplier));
   ASSERT_TRUE(intents_failed.WaitFor(30s * kTimeMultiplier));
   ASSERT_TRUE(intents_db->WaitForFlush().IsIOError());
+  // The vector save task has not retired yet, so the batch still holds its admission.
   ASSERT_EQ(active->value(), 1);
   ASSERT_EQ(future.wait_for(20ms), std::future_status::timeout);
   ASSERT_TRUE(flusher.Submit({tablet}, request, CoarseMonoClock::Now() + 5s,
       [](const Status&, const TabletId&) {}).IsServiceUnavailable());
 
+  // Once the vector task retires, the batch completes even though the intents DB's failed job is
+  // still parked in its error cleanup: RocksDB drains that itself, and waiting here would also
+  // cover every later automatic flush.
   release_vector.CountDown();
   ASSERT_TRUE(index->WaitForFlush().IsIOError());
-  ASSERT_EQ(active->value(), 1);
-  ASSERT_EQ(future.wait_for(20ms), std::future_status::timeout);
-  release_intents.CountDown();
   ASSERT_EQ(future.wait_for(30s * kTimeMultiplier), std::future_status::ready);
   auto [status, failed_tablet_id] = future.get();
+  ASSERT_OK(WaitFor([&] { return active->value() == 0; }, 5s * kTimeMultiplier,
+                    "Admission released before error cleanup"));
+  release_intents.CountDown();
   ASSERT_TRUE(status.IsIOError()) << status;
   ASSERT_EQ(failed_tablet_id, tablet->tablet_id());
   ASSERT_EQ(active->value(), 0);

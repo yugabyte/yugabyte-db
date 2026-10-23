@@ -32,7 +32,7 @@ DECLARE_int32(snapshot_preflush_concurrency);
 
 DEFINE_RUNTIME_int32(tablet_flush_max_outstanding, 16,
     "Maximum admitted admin/local preflight flush jobs per tablet server, including jobs "
-    "reserved by a snapshot preflight, waiting for a worker, running, or retiring after failure. "
+    "reserved by a snapshot preflight, waiting for a worker, or running. "
     "Must exceed snapshot_preflush_concurrency so local reservations leave room for flush "
     "requests from other servers.");
 DEFINE_validator(tablet_flush_max_outstanding,
@@ -48,7 +48,7 @@ THREAD_POOL_METRICS_DEFINE(server, tablet_flush_preflight_pool,
     "Incoming snapshot preflight flush workers");
 METRIC_DEFINE_gauge_uint64(server, tablet_flush_active, "Admitted tablet flush jobs",
     yb::MetricUnit::kOperations,
-    "Flush jobs including reserved, queued, running, and retiring work", 0);
+    "Flush jobs including reserved, queued, and running work", 0);
 METRIC_DEFINE_counter(server, tablet_flush_expired_queued, "Tablet flush jobs expired in queue",
     yb::MetricUnit::kOperations,
     "Admitted flush jobs whose deadline passed before a worker picked them up");
@@ -95,7 +95,9 @@ class FlushBatch {
       }
     }
     // Even a failed Start/Wait can leave other DBs or indexes running. Keep the batch's
-    // reservations and guards until all possibly launched work, including cleanup, retires.
+    // reservations and guards until every launched flush has completed or failed. A failed job's
+    // RocksDB-side cleanup is not waited for: RocksDB drains its own jobs before shutdown, and a
+    // DB-wide wait would also cover every later automatic flush on a busy tablet.
     for (size_t i = 0; i != launched; ++i) {
       std::pair<tablet::Tablet*, Status> hook{tablets_[i].get(), Status::OK()};
       TEST_SYNC_POINT_CALLBACK("TabletFlusher::BeforeWait", &hook);
@@ -104,7 +106,6 @@ class FlushBatch {
       for (auto* db : dbs_[i]) {
         if (db) {
           Record(db->WaitForFlush(), i, failed_tablet_id);
-          db->WaitForFlushJobs();
         }
       }
       TEST_SYNC_POINT_CALLBACK("TabletFlusher::Flushed", tablets_[i].get());

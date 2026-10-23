@@ -23,7 +23,7 @@ class ThreadPool;
 namespace tserver {
 
 // Shared by local snapshot preflights and the admin FlushTablets RPC. Admission bounds
-// outstanding batches (reserved, queued, running, retiring) separately from worker count, so
+// outstanding batches (reserved, queued, running) separately from worker count, so
 // accepted work can wait for a worker instead of being rejected. Three lanes keep snapshot
 // preflights out of bulk admin flushes: reserved jobs (the leader's own leg) have a lane sized to
 // the preflight limit, and since a reservation is only ever held by an admitted preflight, each

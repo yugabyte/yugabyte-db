@@ -479,7 +479,6 @@ TEST_F(SnapshotPreflushServiceTest, GuardFailureDoesNotLaunchEarlierFlush) {
   ASSERT_TRUE(status.IsShutdownInProgress()) << status;
   ASSERT_EQ(id, second->tablet_id());
   ASSERT_OK(first->regular_db()->WaitForFlush());
-  first->regular_db()->WaitForFlushJobs();
   ASSERT_FALSE(started->load(std::memory_order_acquire));
   ASSERT_EQ(ActiveFlushes(), 0);
 }
@@ -492,7 +491,10 @@ TEST_F(SnapshotPreflushServiceTest, WaitFailureDrainsLaterFlush) {
   TestPartialFlushFailure(true);
 }
 
-TEST_F(SnapshotPreflushServiceTest, BackgroundErrorRetainsAdmissionUntilCleanup) {
+// A failed flush retires the batch as soon as WaitForFlush reports the error. RocksDB keeps the
+// failed job's cleanup under its own shutdown drain, so nothing needs the batch to wait for it,
+// and waiting would hold the slot for every later automatic flush on a busy tablet.
+TEST_F(SnapshotPreflushServiceTest, BackgroundErrorReleasesAdmissionBeforeCleanup) {
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
   ASSERT_OK(WriteSingleRow(kTabletId, 1, 11, "value"));
   CountDownLatch failed(1), release(1);
@@ -525,14 +527,18 @@ TEST_F(SnapshotPreflushServiceTest, BackgroundErrorRetainsAdmissionUntilCleanup)
   accepted = true;
   ASSERT_TRUE(failed.WaitFor(5s));
   ASSERT_NOK(tablet->regular_db()->WaitForFlush());
-  ASSERT_EQ(ActiveFlushes(), 1);
-  ASSERT_EQ(future.wait_for(20ms), std::future_status::timeout);
-  ASSERT_TRUE(flusher.Submit({tablet}, request, CoarseMonoClock::Now() + 5s,
-      [](const Status&, const TabletId&) {}).IsServiceUnavailable());
-  release.CountDown();
+  // The failed job is still parked in its error cleanup; the batch does not wait for it.
   ASSERT_EQ(future.wait_for(5s), std::future_status::ready);
   ASSERT_TRUE(future.get().IsIOError());
-  ASSERT_EQ(ActiveFlushes(), 0);
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Admission released"));
+  auto retry = std::make_shared<std::promise<Status>>();
+  auto retry_future = retry->get_future();
+  ASSERT_OK(flusher.Submit({tablet}, request, CoarseMonoClock::Now() + 5s,
+      [retry](const Status& status, const TabletId&) { retry->set_value(status); }));
+  ASSERT_EQ(retry_future.wait_for(5s), std::future_status::ready);
+  ASSERT_TRUE(retry_future.get().IsIOError());
+  release.CountDown();
+  ASSERT_OK(WaitFor([&] { return ActiveFlushes() == 0; }, 5s, "Retry released"));
 }
 
 TEST_F(SnapshotPreflushServiceTest, ReceiverRpcTimeoutRetainsAdmission) {

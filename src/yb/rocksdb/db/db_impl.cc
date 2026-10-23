@@ -3607,13 +3607,6 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
   return s;
 }
 
-void DBImpl::WaitForFlushJobs() {
-  InstrumentedMutexLock lock(&mutex_);
-  while (bg_flush_scheduled_ != 0 || unscheduled_flushes_ != 0) {
-    bg_cv_.Wait();
-  }
-}
-
 Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
   Status s;
   // Wait until the flush completes

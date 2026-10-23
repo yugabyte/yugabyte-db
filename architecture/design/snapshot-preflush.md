@@ -33,7 +33,7 @@ apply-time stalls, and is a policy change rather than a bug fix.
 | `snapshot_preflush_concurrency` | `4` | Startup; admitted preflights per server |
 | `tablet_flush_concurrency` | `4` | Startup; workers running admin flush jobs |
 | `tablet_flush_preflight_concurrency` | `4` | Startup; workers running other leaders' preflight flushes |
-| `tablet_flush_max_outstanding` | `16` | Runtime; admitted flush jobs: reserved, queued, running, retiring; must exceed `snapshot_preflush_concurrency` |
+| `tablet_flush_max_outstanding` | `16` | Runtime; admitted flush jobs: reserved, queued, running; must exceed `snapshot_preflush_concurrency` |
 
 Admission is non-waiting and excludes overlapping work for the same tablet. Overload is a
 retryable error. The leader reserves its own flush slot together with the preflight slot, before
@@ -57,9 +57,10 @@ server's in-flight snapshot RPC targets a tablet with a replica here; that is a 
 full placement skew, not expected load, but it is where the default of 16 stops covering clusters
 of roughly a dozen nodes. An RPC timeout does not stop a physical flush: receiver admission
 remains held until the job finishes, and late completions cannot submit an expired snapshot
-attempt. Partial failures stop further launches but retain the batch's reservations until
-already-started work and RocksDB flush-job cleanup retire. The first error and its tablet ID
-survive this draining phase.
+attempt. Partial failures stop further launches but retain the batch's reservations until every
+already-started flush has completed or failed; the first error and its tablet ID survive this
+draining phase. A failed RocksDB job's own cleanup is not waited for: RocksDB drains its jobs before
+shutdown, and a DB-wide wait would also cover every later automatic flush on a busy tablet.
 
 A terminal vector failure fails dependent intents flushes without bypassing durability ordering.
 Storage filter errors make the affected RocksDB read-only, even with paranoid checks disabled.

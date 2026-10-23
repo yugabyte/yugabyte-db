@@ -256,10 +256,6 @@ class StackableDB : public DB {
     return db_->WaitForFlush(column_family);
   }
 
-  void WaitForFlushJobs() override {
-    db_->WaitForFlushJobs();
-  }
-
   virtual Status SyncWAL() override {
     return db_->SyncWAL();
   }

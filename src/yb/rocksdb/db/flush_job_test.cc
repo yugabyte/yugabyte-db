@@ -116,7 +116,6 @@ class FlushJobTest : public RocksDBTest {
     ASSERT_EQ(status.code(), failure.code());
     ASSERT_STR_CONTAINS(status.ToString(), failure.message().ToBuffer());
     threads.JoinAll();
-    db->WaitForFlushJobs();
     ASSERT_TRUE(db->GetLiveFilesMetaData().empty());
     std::string value;
     ASSERT_OK(db->Get(ReadOptions(), "key", &value));
