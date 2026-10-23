@@ -843,10 +843,8 @@ Tablet::Tablet(const TabletInitData& data)
     }
     // Created here rather than when the tablet peer is initialized, so the intents DB flush filter
     // can post regular DB flushes during bootstrap as well.
-    if (data.intent_cleanup_pool) {
-      cleanup_intent_files_token_ =
-          data.intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
-    }
+    cleanup_intent_files_token_ =
+        DCHECK_NOTNULL(data.intent_cleanup_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
   LOG_IF(FATAL, has_index && !metadata_cache_)
@@ -1549,27 +1547,17 @@ HybridTime Tablet::GetMinStartHTRunningTxnsForCDCLogCallback() const {
 }
 
 Status Tablet::RequestRegularDbFlushForIntentsFlush() {
-  // This runs inside the intents DB flush job, under the intents DB mutex. Flushing the regular DB
-  // from here would take its write thread, and the current write leader may be parked in a write
-  // stall until a regular DB flush completes. That flush's completion listeners read the intents
-  // DB under the mutex this job holds, and the parked writer is only woken after they return:
-  // a deadlock. So the flush is posted to a pool thread instead, and this job returns without
-  // flushing the intents memtable; the retries of the intents flush pick it up once the regular
-  // data is flushed, as for any other regular DB flush in progress.
-  //
-  // The scoped operation holds the shutdown pause of StartShutdownStorages, and so the token reset
-  // in CompleteShutdown, until this returns. Without a token (a tablet created without
-  // TabletInitData::intent_cleanup_pool) the regular DB is flushed right here, which keeps the
-  // hazard above for such tablets.
+  // Called from the intents DB flush job under the intents DB mutex. A regular DB flush from here
+  // would wait for the regular write thread, whose leader may be parked in a write stall that ends
+  // only after the regular flush listeners take the intents DB mutex. So the flush is posted, and
+  // this job keeps deferring the intents memtable until the regular data is flushed.
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-  if (!scoped_operation.ok() || !cleanup_intent_files_token_) {
-    rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
-    options.wait = false;
-    return regular_db_->Flush(options);
+  if (!scoped_operation.ok()) {
+    // Storages are shutting down and flushes are disabled.
+    return Status::OK();
   }
-  // The intents flush job runs this filter again after
-  // rocksdb_nothing_in_memtable_to_flush_sleep_ms for as long as its memtable is deferred; one
-  // posted flush at a time is enough.
+  // One posted flush at a time: the intents flush job retries this filter every
+  // rocksdb_nothing_in_memtable_to_flush_sleep_ms while its memtable is deferred.
   if (regular_db_flush_for_intents_posted_.exchange(true)) {
     return Status::OK();
   }
@@ -1589,9 +1577,8 @@ Status Tablet::RequestRegularDbFlushForIntentsFlush() {
 }
 
 void Tablet::FlushRegularDbForIntentsFlush() {
-  // Not the counter that blocks RocksDB shutdown start: this flush can wait in the write thread
-  // behind a writer parked in a write stall, and at shutdown only StartShutdownStorages, which
-  // runs after that counter drains, wakes the writer.
+  // The not-blocking counter: this flush can wait behind a writer parked in a write stall, which
+  // StartShutdownStorages wakes only after the blocking counter has drained.
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   if (!scoped_operation.ok()) {
     return;

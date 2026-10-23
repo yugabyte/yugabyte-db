@@ -1464,7 +1464,7 @@ class Tablet : public AbstractTablet,
   void DoCleanupIntentFiles();
 
   // Flushes the regular DB on behalf of IntentsDbFlushFilter, which must not do it itself. Posts
-  // the flush on cleanup_intent_files_token_ when the tablet has one.
+  // the flush on cleanup_intent_files_token_.
   Status RequestRegularDbFlushForIntentsFlush();
   void FlushRegularDbForIntentsFlush();
 
@@ -1501,7 +1501,8 @@ class Tablet : public AbstractTablet,
   TransactionsEnabled txns_enabled_;
 
   // Serial token on TabletInitData::intent_cleanup_pool for intent SST file cleanup and for the
-  // regular DB flushes requested by the intents DB flush filter. Null without that pool.
+  // regular DB flushes requested by the intents DB flush filter. Null without a transaction
+  // participant.
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   // Set while a regular DB flush posted by RequestRegularDbFlushForIntentsFlush has not run yet,
