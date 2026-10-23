@@ -242,8 +242,10 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
   }
 
-  // Streams recorded by an earlier attempt are not checkpointed again. Looked up outside mutex_,
-  // which is not held while taking stream locks.
+  // Streams recorded by an earlier attempt are not checkpointed again. That attempt's answer to
+  // whether a bootstrap is required was lost with its response, so assume one is. Looked up outside
+  // mutex_, which is not held while taking stream locks.
+  bool assume_bootstrap_required = false;
   std::vector<std::pair<TableId, xrepl::StreamId>> streams_to_checkpoint;
   for (const auto& [table_id, stream_id] : table_streams) {
     if (VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(stream_id)).empty()) {
@@ -252,16 +254,19 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
     LOG_WITH_PREFIX(INFO) << "Not checkpointing xCluster stream " << stream_id << " of table "
                           << table_id << " again, since an earlier attempt recorded its checkpoint";
+    assume_bootstrap_required |= check_if_bootstrap_required;
   }
 
   auto callback = [table_ids, user_cb = std::move(completion_cb),
-                   automatic_ddl_mode = automatic_ddl_mode_](Result<bool> result) {
+                   automatic_ddl_mode = automatic_ddl_mode_,
+                   assume_bootstrap_required](Result<bool> result) {
     if (!result.ok()) {
       user_cb(result.status());
       return;
     }
     // Bootstrap is always required in automatic mode.
-    user_cb(std::make_pair(std::move(table_ids), automatic_ddl_mode || *result));
+    user_cb(std::make_pair(
+        std::move(table_ids), automatic_ddl_mode || assume_bootstrap_required || *result));
   };
 
   if (!streams_to_checkpoint.empty()) {
@@ -1176,7 +1181,10 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
     anchor_tablet_ids =
         VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(*anchor_stream_id));
     if (anchor_tablet_ids.empty()) {
-      // The anchor has not been checkpointed yet, so checkpoint it together with the table stream.
+      // Checkpoint the anchor together with the table stream. An unrecorded anchor may have been
+      // checkpointed before (its record is skipped for an index checkpointed again after its
+      // backfill, and may fail to be written), but it kept splits blocked, so its tablets are
+      // still the current ones.
       table_streams.emplace_back(table_id, *anchor_stream_id);
     } else {
       // The table stream replaces one whose DDL the target rolled back. Start it from the anchor's
