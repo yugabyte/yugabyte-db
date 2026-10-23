@@ -1247,9 +1247,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   @Test
   public void testAutoFinalizeAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes()
       throws InterruptedException {
-    // PLAT-23182: with rollbackSupport=false the upgrade finalizes itself, then saves Ready
-    // (rollback
-    // disallowed) with the version. An abort just before that must still leave UpgradeFailed.
+    // PLAT-23182: with rollbackSupport=false the upgrade finalizes itself, then saves Ready, with
+    // rollback disallowed, together with the version. An abort just before that must still leave
+    // UpgradeFailed.
     mockRunYsqlUpgrade();
     String oldVersion = primaryVersion();
     TaskInfo taskInfo =
