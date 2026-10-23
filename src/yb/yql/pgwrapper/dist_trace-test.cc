@@ -58,6 +58,7 @@
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
+DECLARE_uint32(otel_internal_log_throttle_secs);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -3000,6 +3001,74 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   ASSERT_EQ(warning_waiter.GetEventCount(), 0);
   ASSERT_EQ(info_waiter.GetEventCount(), 0);
   ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+// A flood from one SDK call site logs once per window and reports the suppressed count, without
+// hiding messages from other call sites.
+TEST_F(DistTraceRpcTest, TestOtelInternalLogThrottlePerCallSite) {
+  google::FlagSaver flag_saver;
+  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  // A long window keeps the flood inside one window even on slow builds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_throttle_secs) = 3600;
+
+  static constexpr auto kFlood = "otel throttle flood";
+  static constexpr auto kOther = "otel throttle other site";
+  static constexpr int kFloodCount = 100;
+
+  RegexWaiterLogSink flood_waiter(Format("E.*$0.*", kFlood));
+  RegexWaiterLogSink other_waiter(Format("E.*$0.*", kOther));
+  RegexWaiterLogSink suppressed_waiter(
+      Format("E.*$0 \\($1 similar lines suppressed\\).*", kFlood, kFloodCount - 1));
+
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-throttle-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  auto emit_flood = [] {
+    OTEL_INTERNAL_LOG_ERROR(kFlood);
+  };
+  for (int i = 0; i < kFloodCount; ++i) {
+    emit_flood();
+  }
+  OTEL_INTERNAL_LOG_ERROR(kOther);
+
+  ASSERT_OK(flood_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(other_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(flood_waiter.GetEventCount(), 1);
+  ASSERT_EQ(other_waiter.GetEventCount(), 1);
+
+  // The handler reads the window on each message, so shrinking it ends the current window.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_throttle_secs) = 1;
+  SleepFor(1500ms);
+  emit_flood();
+
+  ASSERT_OK(suppressed_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(flood_waiter.GetEventCount(), 2);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogThrottleDisabled) {
+  google::FlagSaver flag_saver;
+  TEST_ScopedSetOtelCollectorEndpoint endpoint_setter(collector_.Url());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_throttle_secs) = 0;
+
+  static constexpr auto kFlood = "otel unthrottled flood";
+  static constexpr int kFloodCount = 5;
+
+  RegexWaiterLogSink flood_waiter(Format("E.*$0.*", kFlood));
+
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-unthrottled-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  for (int i = 0; i < kFloodCount; ++i) {
+    OTEL_INTERNAL_LOG_ERROR(kFlood);
+  }
+
+  ASSERT_OK(WaitFor(
+      [&] { return flood_waiter.GetEventCount() == kFloodCount; }, 5s * kTimeMultiplier,
+      "all unthrottled messages logged"));
 }
 
 // A multi-row scan must emit exactly one executor-node span (not one per
