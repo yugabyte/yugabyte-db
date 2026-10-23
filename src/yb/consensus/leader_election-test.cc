@@ -30,12 +30,16 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/metadata.pb.h"
@@ -43,7 +47,12 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/util/format.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -156,6 +165,10 @@ class LeaderElectionTest : public YBTest {
                                                                      int num_grant,
                                                                      int num_deny,
                                                                      int num_error);
+
+  // Three voters, once InitUUIDs has named them: the candidate, voter 0, which denies, and
+  // voter 1, whose proxy is given and whose vote therefore decides the election.
+  LeaderElectionPtr SetUpElectionDecidedBy(ConsensusTerm election_term, PeerProxy* decider);
 
   const string tablet_id_;
   string candidate_uuid_;
@@ -364,6 +377,45 @@ LeaderElectionPtr LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
       std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
 }
 
+LeaderElectionPtr LeaderElectionTest::SetUpElectionDecidedBy(
+    ConsensusTerm election_term, PeerProxy* decider) {
+  const int kNumVoters = 3;
+  const int kMajoritySize = 2;
+
+  CHECK_EQ(kNumVoters - 1, voter_uuids_.size());
+  config_.Clear();
+  for (const string& uuid : voter_uuids_) {
+    RaftPeerPB* peer_pb = config_.add_peers();
+    peer_pb->set_member_type(PeerMemberType::VOTER);
+    peer_pb->set_permanent_uuid(uuid);
+  }
+
+  auto* denier = new MockedPeerProxy(pool_.get());
+  VoteResponsePB denied;
+  denied.set_responder_uuid(voter_uuids_[0]);
+  denied.set_responder_term(election_term);
+  denied.set_vote_granted(false);
+  denied.mutable_consensus_error()->set_code(ConsensusErrorPB::LAST_OPID_TOO_OLD);
+  StatusToPB(STATUS(InvalidArgument, "Last OpId"),
+             denied.mutable_consensus_error()->mutable_status());
+  denier->set_vote_response(denied);
+  InsertOrDie(&proxies_, voter_uuids_[0], denier);
+  InsertOrDie(&proxies_, voter_uuids_[1], decider);
+
+  // The decider may send the request over a real connection, so it has to serialize, which takes
+  // every required field.
+  VoteRequestPB request;
+  request.set_candidate_uuid(candidate_uuid_);
+  request.set_candidate_term(election_term);
+  request.set_tablet_id(tablet_id_);
+  OpId(election_term - 1, 1).ToPB(request.mutable_candidate_status()->mutable_last_received());
+
+  return make_scoped_refptr<LeaderElection>(
+      config_, proxy_factory_.get(), request, InitVoteCounter(kNumVoters, kMajoritySize),
+      kLeaderElectionTimeout, PreElection::kFalse, TEST_SuppressVoteRequest::kFalse,
+      std::bind(&LeaderElectionTest::ElectionCallback, this, std::placeholders::_1));
+}
+
 // All peers respond "yes", no failures.
 TEST_F(LeaderElectionTest, TestPerfectElection) {
   // Try configuration sizes of 1, 3, 5.
@@ -503,6 +555,149 @@ TEST_F(LeaderElectionTest, TestWithErrorVotes) {
   ASSERT_FALSE(result_->higher_term);
   ASSERT_TRUE(result_->message.empty());
   LOG(INFO) << "Election denied.";
+
+  pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
+}
+
+namespace {
+
+// An address nothing listens on once its socket is closed, so a connect to it is refused.
+Result<HostPort> RefusingAddress() {
+  Socket socket;
+  RETURN_NOT_OK(socket.Init(0));
+  RETURN_NOT_OK(socket.BindAndListen(Endpoint(), 1));
+  Endpoint endpoint;
+  RETURN_NOT_OK(socket.GetSocketAddress(&endpoint));
+  RETURN_NOT_OK(socket.Close());
+  return HostPort::FromBoundEndpoint(endpoint);
+}
+
+VoteResponsePB GrantedVote(const string& voter_uuid, ConsensusTerm term) {
+  VoteResponsePB response;
+  response.set_responder_uuid(voter_uuid);
+  response.set_responder_term(term);
+  response.set_vote_granted(true);
+  return response;
+}
+
+// A voter that registered several addresses, each of which either refuses connections or grants
+// the vote. A request to a refusing address goes out over a real connection attempt, so it fails
+// the way an address that cannot be reached does. After a failure the proxy moves to the next
+// address, wrapping around, as an RpcPeerProxy does when its records expire as fast as connects
+// fail.
+class MultiAddressPeerProxy : public TestPeerProxy {
+ public:
+  MultiAddressPeerProxy(
+      ThreadPool* pool, rpc::ProxyCache* proxy_cache, std::vector<HostPort> addresses,
+      std::vector<HostPort> refusing, VoteResponsePB granted)
+      : TestPeerProxy(pool),
+        proxy_cache_(proxy_cache),
+        addresses_(std::move(addresses)),
+        refusing_(std::move(refusing)),
+        granted_(std::move(granted)) {}
+
+  void UpdateAsync(
+      const LWConsensusRequestPB* request, RequestTriggerMode trigger_mode,
+      LWConsensusResponsePB* response, rpc::RpcController* controller,
+      const rpc::ResponseCallback& callback) override {
+    LOG(FATAL) << "An election sends no updates";
+  }
+
+  void RequestConsensusVoteAsync(
+      const VoteRequestPB* request, VoteResponsePB* response, rpc::RpcController* controller,
+      const rpc::ResponseCallback& callback) override {
+    const auto address = CurrentHostPort();
+    {
+      std::lock_guard lock(lock_);
+      requested_.push_back(address);
+    }
+    if (std::ranges::find(refusing_, address) != refusing_.end()) {
+      refused_ = std::make_unique<ConsensusServiceProxy>(proxy_cache_, address);
+      refused_->RequestConsensusVoteAsync(*request, response, controller, callback);
+      return;
+    }
+    *response = granted_;
+    RegisterCallbackAndRespond(Method::kRequestVote, callback);
+  }
+
+  bool FailToNextAddress(const HostPort& failed) override {
+    std::lock_guard lock(lock_);
+    if (addresses_[current_] == failed) {
+      current_ = (current_ + 1) % addresses_.size();
+    }
+    return addresses_[current_] != failed;
+  }
+
+  HostPort CurrentHostPort() const override {
+    std::lock_guard lock(lock_);
+    return addresses_[current_];
+  }
+
+  std::vector<HostPort> requested() const {
+    std::lock_guard lock(lock_);
+    return requested_;
+  }
+
+ private:
+  rpc::ProxyCache* const proxy_cache_;
+  const std::vector<HostPort> addresses_;
+  const std::vector<HostPort> refusing_;
+  const VoteResponsePB granted_;
+  // Requests to one voter go out one at a time, so one is enough.
+  std::unique_ptr<ConsensusServiceProxy> refused_;
+  size_t current_ GUARDED_BY(lock_) = 0;
+  std::vector<HostPort> requested_ GUARDED_BY(lock_);
+};
+
+} // namespace
+
+// A voter that refuses connections at its preferred address is asked again, within the same
+// election, at the next address it registered, since the request never reached it. Its vote is
+// the one the candidate needs: the other voter denies.
+TEST_F(LeaderElectionTest, YB_DISABLE_TEST_ON_MACOS(TestVoteResentToAnotherAddress)) {
+  const ConsensusTerm kElectionTerm = 2;
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("client").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  const auto refusing = ASSERT_RESULT(RefusingAddress());
+  const HostPort answering("answering.example.com", 9100);
+  InitUUIDs(3, 0);
+  auto* decider = new MultiAddressPeerProxy(
+      pool_.get(), &proxy_cache, {refusing, answering}, {refusing},
+      GrantedVote(voter_uuids_[1], kElectionTerm));
+  auto election = SetUpElectionDecidedBy(kElectionTerm, decider);
+  election->Run();
+  latch_.Wait();
+
+  ASSERT_EQ(ElectionVote::kGranted, result_->decision);
+  ASSERT_EQ(decider->requested(), (std::vector<HostPort>{refusing, answering}));
+
+  pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
+}
+
+// A proxy whose failure records expire as fast as connects fail keeps offering another address.
+// With every address refusing, the request still goes to each address once and the vote is then
+// denied, rather than the addresses taking turns until the election times out.
+TEST_F(LeaderElectionTest, YB_DISABLE_TEST_ON_MACOS(TestVoteResentAtMostOncePerAddress)) {
+  const ConsensusTerm kElectionTerm = 2;
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("client").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  // Nothing listens on the port at any loopback address.
+  const auto refusing = ASSERT_RESULT(RefusingAddress());
+  const HostPort also_refusing("127.0.0.2", refusing.port());
+  InitUUIDs(3, 0);
+  auto* decider = new MultiAddressPeerProxy(
+      pool_.get(), &proxy_cache, {refusing, also_refusing}, {refusing, also_refusing},
+      GrantedVote(voter_uuids_[1], kElectionTerm));
+  auto election = SetUpElectionDecidedBy(kElectionTerm, decider);
+  election->Run();
+  latch_.Wait();
+
+  ASSERT_EQ(ElectionVote::kDenied, result_->decision);
+  ASSERT_EQ(decider->requested(), (std::vector<HostPort>{refusing, also_refusing}));
 
   pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
 }

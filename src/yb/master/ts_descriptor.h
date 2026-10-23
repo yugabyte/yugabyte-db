@@ -212,9 +212,16 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  Status GetProxy(std::shared_ptr<TProxy>* proxy) {
-    return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
+  Status GetProxy(std::shared_ptr<TProxy>* proxy) EXCLUDES(mutex_) {
+    return GetProxies(proxy);
   }
+
+  // Return RPC proxies to several services. Every proxy of this server is built against the
+  // address selected for the first of them, until a failure or a re-registration selects again,
+  // and these are returned under one lock, so a failure on any of them names the address the
+  // others are on as well.
+  template <class... TProxies>
+  Status GetProxies(std::shared_ptr<TProxies>*... proxies) EXCLUDES(mutex_);
 
   // Increment the accounting of the number of replicas recently created on this
   // server. This value will automatically decay over time.
@@ -395,8 +402,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
  private:
   mutable rw_spinlock mutex_;
-  template <class TProxy>
-  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
@@ -413,6 +418,14 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Uses DNS to resolve registered hosts to a single endpoint.
   Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
+
+  // Drops the cached proxies and the endpoint they were built against, so the next GetProxies
+  // selects again.
+  void ResetProxiesUnlocked() REQUIRES(mutex_);
+
+  // Builds the proxy against proxies_endpoint_ unless one is cached.
+  template <class TProxy>
+  void GetOrCreateProxyUnlocked(std::shared_ptr<TProxy>* result) REQUIRES(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
@@ -521,30 +534,34 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   ProxyTuple proxies_;
 
+  // The endpoint every cached proxy was built against.
+  std::optional<SelectedEndpoint> proxies_endpoint_ GUARDED_BY(mutex_);
+
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
 
-template <class TProxy>
-Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                                      std::shared_ptr<TProxy>* result_cache) {
-  {
-    std::lock_guard l(mutex_);
-    if (*result_cache) {
-      *result = *result_cache;
-      return Status::OK();
-    }
-    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
-    if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(
-          proxy_cache_, selected.host_port,
-          &proxy_cache_->GetContext()->ProtocolFor(selected.encrypted));
-    }
-    *result = *result_cache;
+template <class... TProxies>
+Status TSDescriptor::GetProxies(std::shared_ptr<TProxies>*... proxies) {
+  std::lock_guard l(mutex_);
+  if (!proxies_endpoint_) {
+    proxies_endpoint_ = VERIFY_RESULT(SelectEndpointUnlocked());
   }
+  (GetOrCreateProxyUnlocked(proxies), ...);
   return Status::OK();
+}
+
+template <class TProxy>
+void TSDescriptor::GetOrCreateProxyUnlocked(std::shared_ptr<TProxy>* result) {
+  auto& cached = proxies_.get<TProxy>();
+  if (!cached) {
+    cached = std::make_shared<TProxy>(
+        proxy_cache_, proxies_endpoint_->host_port,
+        &proxy_cache_->GetContext()->ProtocolFor(proxies_endpoint_->encrypted));
+  }
+  *result = cached;
 }
 
 struct cloud_equal_to {

@@ -387,7 +387,9 @@ class PeerProxyFactory {
 // PeerProxy implementation that does RPC calls
 class RpcPeerProxy : public PeerProxy {
  public:
-  RpcPeerProxy(rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from);
+  RpcPeerProxy(
+      rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from,
+      std::shared_ptr<FailedAddresses> failed_addresses);
 
   virtual void UpdateAsync(const LWConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
@@ -434,9 +436,9 @@ class RpcPeerProxy : public PeerProxy {
   rpc::ProxyCache* const proxy_cache_;
   const RaftPeerPB peer_pb_;
   const CloudInfoPB from_;
+  const std::shared_ptr<FailedAddresses> failed_addresses_;
 
   mutable rw_spinlock mutex_;
-  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
   HostPort hostport_ GUARDED_BY(mutex_);
   HostPort update_hostport_ GUARDED_BY(mutex_);
   std::shared_ptr<ConsensusServiceProxy> consensus_proxy_ GUARDED_BY(mutex_);
@@ -457,6 +459,12 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
   rpc::Messenger* messenger_ = nullptr;
   rpc::ProxyCache* const proxy_cache_;
   const CloudInfoPB from_;
+
+  // The addresses of this tablet's peers that could not be connected to, shared by every proxy
+  // made here. Elections and leadership transfers make a proxy for each request, and only a
+  // leader has a Peer for each of the others, so this is where what one request found out
+  // reaches the next, whichever kind it is.
+  const std::shared_ptr<FailedAddresses> failed_addresses_ = std::make_shared<FailedAddresses>();
 };
 
 // Query the consensus service at last known host/port that is specified in 'remote_peer' and set

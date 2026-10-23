@@ -162,7 +162,7 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
                                    : SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
-  proxies_.reset();
+  ResetProxiesUnlocked();
   failed_addresses_.Clear();
   // Once a tserver is marked as faulty it remains that way until it reregisters here.
   // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
@@ -454,11 +454,11 @@ bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
   std::lock_guard l(mutex_);
   failed_addresses_.MarkFailed(host_port);
 
-  // Drop the cached proxies so the next GetProxy selects again, the same way re-registration
+  // Drop the cached proxies so the next GetProxies selects again, the same way re-registration
   // drops them when the addresses may have changed. Selecting again happens whether or not an
   // address is left, because that is what lets a record expire: proxies left on the address
   // that just failed would outlive every record that could move them.
-  proxies_.reset();
+  ResetProxiesUnlocked();
 
   // SelectEndpointUnlocked returns the preferred address once every one of them has failed,
   // so whether it now selects another address that has not failed is whether one is left to
@@ -471,6 +471,11 @@ bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   return VERIFY_RESULT(SelectEndpointUnlocked()).host_port;
+}
+
+void TSDescriptor::ResetProxiesUnlocked() {
+  proxies_.reset();
+  proxies_endpoint_.reset();
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

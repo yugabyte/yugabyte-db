@@ -14,6 +14,7 @@
 
 #include <unordered_map>
 
+#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 
@@ -28,15 +29,17 @@ namespace yb {
 // Failed applies that window itself, the way ConcurrentPod::Load applies its own, so that
 // every caller reaches the same answer about the same address at the same moment.
 //
-// Callers hold the lock that guards the addresses this is consulted against.
+// Dialers that reach the same nodes can share one record. A dialer that picks an address from
+// it and moves off that address as one step holds its own lock around both.
 class FailedAddresses {
  public:
-  bool Failed(const HostPort& host_port) const;
-  void MarkFailed(const HostPort& host_port);
-  void Clear();
+  bool Failed(const HostPort& host_port) const EXCLUDES(mutex_);
+  void MarkFailed(const HostPort& host_port) EXCLUDES(mutex_);
+  void Clear() EXCLUDES(mutex_);
 
  private:
-  std::unordered_map<HostPort, MonoTime, HostPortHash> last_failed_;
+  mutable simple_spinlock mutex_;
+  std::unordered_map<HostPort, MonoTime, HostPortHash> last_failed_ GUARDED_BY(mutex_);
 };
 
 }  // namespace yb

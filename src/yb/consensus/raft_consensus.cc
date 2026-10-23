@@ -57,6 +57,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -323,6 +324,15 @@ const RaftPeerPB* FindPeer(const RaftConfigPB& active_config, const std::string&
   }
 
   return nullptr;
+}
+
+// A proxy made for one request is still on the address that request went to, so that is the
+// address a connect failure is about. The tablet's proxies share the record of it, which steers
+// the next request to the peer, of whatever kind, to another address the peer registered.
+void RecordConnectFailure(const Status& status, PeerProxy* proxy) {
+  if (rpc::NetworkError(status) == rpc::NetworkErrorCode::kConnectFailed) {
+    proxy->FailToNextAddress(proxy->CurrentHostPort());
+  }
 }
 
 // Helper function to check if the op is a non-Operation op.
@@ -1072,6 +1082,7 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
     LOG_WITH_PREFIX(WARNING) << "RPC error from RunLeaderElection() call to peer "
                              << election_state->req.dest_uuid() << ": "
                              << election_state->rpc.status();
+    RecordConnectFailure(election_state->rpc.status(), election_state->proxy.get());
   // Check for tablet errors.
   } else if (election_state->resp.has_error()) {
     LOG_WITH_PREFIX(WARNING) << "Tablet error from RunLeaderElection() call to peer "
@@ -3636,7 +3647,7 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
     return;
   }
 
-  auto proxy = peer_proxy_factory_->NewProxy(*peer);
+  std::shared_ptr<PeerProxy> proxy = peer_proxy_factory_->NewProxy(*peer);
   LeaderElectionLostRequestPB req;
   req.set_dest_uuid(originator_uuid);
   req.set_election_lost_by_uuid(state_->GetPeerUuid());
@@ -3645,10 +3656,11 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
   auto rpc = std::make_shared<rpc::RpcController>();
   rpc->set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   auto log_prefix = state_->LogPrefix();
-  proxy->LeaderElectionLostAsync(&req, resp.get(), rpc.get(), [log_prefix, resp, rpc] {
+  proxy->LeaderElectionLostAsync(&req, resp.get(), rpc.get(), [log_prefix, resp, rpc, proxy] {
     if (!rpc->status().ok()) {
       LOG(WARNING) << log_prefix << "Notify about lost election RPC failure: "
                    << rpc->status().ToString();
+      RecordConnectFailure(rpc->status(), proxy.get());
     } else if (resp->has_error()) {
       LOG(WARNING) << log_prefix << "Notify about lost election failed: "
                    << StatusFromPB(resp->error().status()).ToString();

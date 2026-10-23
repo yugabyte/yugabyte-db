@@ -702,14 +702,19 @@ Peer::~Peer() {
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 
-RpcPeerProxy::RpcPeerProxy(rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from)
-    : proxy_cache_(proxy_cache), peer_pb_(std::move(peer_pb)), from_(std::move(from)) {
+RpcPeerProxy::RpcPeerProxy(
+    rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from,
+    std::shared_ptr<FailedAddresses> failed_addresses)
+    : proxy_cache_(proxy_cache),
+      peer_pb_(std::move(peer_pb)),
+      from_(std::move(from)),
+      failed_addresses_(std::move(failed_addresses)) {
   std::lock_guard lock(mutex_);
   BuildProxyUnlocked();
 }
 
 void RpcPeerProxy::BuildProxyUnlocked() {
-  auto selected = FirstUsable(CandidateHostPorts(peer_pb_, from_), failed_addresses_);
+  auto selected = FirstUsable(CandidateHostPorts(peer_pb_, from_), *failed_addresses_);
   hostport_ = HostPortFromPB(selected.host_port);
   consensus_proxy_ = std::make_shared<ConsensusServiceProxy>(
       proxy_cache_, hostport_,
@@ -734,7 +739,7 @@ HostPort RpcPeerProxy::CurrentHostPort() const {
 
 bool RpcPeerProxy::FailToNextAddress(const HostPort& failed) {
   std::lock_guard lock(mutex_);
-  failed_addresses_.MarkFailed(failed);
+  failed_addresses_->MarkFailed(failed);
 
   // An update and a batched heartbeat can both fail on one address, and only the first of them
   // finds the proxy still there; moving it again for the second would condemn an address that
@@ -748,7 +753,7 @@ bool RpcPeerProxy::FailToNextAddress(const HostPort& failed) {
   // the proxy is now on another address that has not failed is whether one is left to try.
   // Comparing with the failed one also covers retry_failed_address_ms=0, under which no address
   // counts as failed and the pick is the address that just failed.
-  return hostport_ != failed && !failed_addresses_.Failed(hostport_);
+  return hostport_ != failed && !failed_addresses_->Failed(hostport_);
 }
 
 void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
@@ -799,7 +804,7 @@ RpcPeerProxyFactory::RpcPeerProxyFactory(
     : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  return std::make_unique<RpcPeerProxy>(proxy_cache_, peer_pb, from_);
+  return std::make_unique<RpcPeerProxy>(proxy_cache_, peer_pb, from_, failed_addresses_);
 }
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}

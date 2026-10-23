@@ -439,7 +439,9 @@ RaftPeerPB PeerWithSeveralAddresses() {
 // on one moves the proxy to the next rather than leaving the peer unreachable.
 TEST_F(ConsensusPeersTest, TestAddressFallback) {
   rpc::ProxyCache proxy_cache(messenger_.get());
-  RpcPeerProxy proxy(&proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
 
   // The broadcast address is preferred, then the private ones in the order registered.
   const std::vector<string> kExpectedOrder = {"broadcast1", "private1", "private2"};
@@ -461,7 +463,9 @@ TEST_F(ConsensusPeersTest, TestAddressFallback) {
 // peer unreachable.
 TEST_F(ConsensusPeersTest, TestAddressFallbackLateFailure) {
   rpc::ProxyCache proxy_cache(messenger_.get());
-  RpcPeerProxy proxy(&proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
 
   const auto preferred = proxy.CurrentHostPort();
   ASSERT_TRUE(proxy.FailToNextAddress(preferred));
@@ -472,12 +476,34 @@ TEST_F(ConsensusPeersTest, TestAddressFallbackLateFailure) {
   ASSERT_EQ(moved_to, proxy.CurrentHostPort());
 }
 
+// An election or a leadership transfer makes a proxy for one request, so what a request found
+// out reaches the next only through the record every proxy of one factory shares: a proxy made
+// after a failure starts on the address the failure moved to. Another tablet's factory keeps
+// its own record.
+TEST_F(ConsensusPeersTest, TestAddressFallbackSharedByFactory) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxyFactory factory(messenger_.get(), &proxy_cache, CloudInfoPB());
+
+  auto peer_proxy = factory.NewProxy(PeerWithSeveralAddresses());
+  const auto preferred = peer_proxy->CurrentHostPort();
+  ASSERT_TRUE(peer_proxy->FailToNextAddress(preferred));
+  ASSERT_NE(preferred, peer_proxy->CurrentHostPort());
+
+  auto election_proxy = factory.NewProxy(PeerWithSeveralAddresses());
+  ASSERT_EQ(peer_proxy->CurrentHostPort(), election_proxy->CurrentHostPort());
+
+  RpcPeerProxyFactory other_factory(messenger_.get(), &proxy_cache, CloudInfoPB());
+  ASSERT_EQ(preferred, other_factory.NewProxy(PeerWithSeveralAddresses())->CurrentHostPort());
+}
+
 // With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
 // proxy on the preferred address and reports the peer unreachable.
 TEST_F(ConsensusPeersTest, TestAddressFallbackDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
   rpc::ProxyCache proxy_cache(messenger_.get());
-  RpcPeerProxy proxy(&proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
 
   const auto preferred = proxy.CurrentHostPort();
   ASSERT_FALSE(proxy.FailToNextAddress(preferred));

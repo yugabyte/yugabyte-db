@@ -25,16 +25,19 @@ DEFINE_RUNTIME_int32(retry_failed_address_ms, 3600 * 1000,
 namespace yb {
 
 bool FailedAddresses::Failed(const HostPort& host_port) const {
+  std::lock_guard lock(mutex_);
   auto it = last_failed_.find(host_port);
   return it != last_failed_.end() &&
          (MonoTime::Now() - it->second) < FLAGS_retry_failed_address_ms * 1ms;
 }
 
 void FailedAddresses::MarkFailed(const HostPort& host_port) {
+  std::lock_guard lock(mutex_);
   last_failed_[host_port] = MonoTime::Now();
 }
 
 void FailedAddresses::Clear() {
+  std::lock_guard lock(mutex_);
   last_failed_.clear();
 }
 

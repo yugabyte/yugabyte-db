@@ -610,8 +610,9 @@ void RetryingTSRpcTask::DoRpcCallback() {
     // A server that registered several addresses is only unreachable once every one of them
     // has failed, so the next attempt tries the next address before anything treats the
     // server as down. Only a connect failure says anything about the address; every other
-    // failure came back over a connection that worked. Every proxy of this task was built
-    // against the same address, so any of them names the one that failed.
+    // failure came back over a connection that worked. ResetProxies takes every proxy of this
+    // task from one GetProxies, which builds them against one address, so any of them names
+    // the one that failed.
     if (rpc::NetworkError(rpc_.status()) == rpc::NetworkErrorCode::kConnectFailed && target_ts &&
         ts_proxy_ && target_ts->FailToNextAddress(ts_proxy_->proxy().remote())) {
       LOG_WITH_PREFIX(INFO) << "Retrying " << target_ts->id()
@@ -645,10 +646,8 @@ Status RetryingTSRpcTask::ResetProxies() {
   std::shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy;
 
   auto target_ts = target_ts_desc();
-  RETURN_NOT_OK(target_ts->GetProxy(&ts_proxy));
-  RETURN_NOT_OK(target_ts->GetProxy(&ts_admin_proxy));
-  RETURN_NOT_OK(target_ts->GetProxy(&consensus_proxy));
-  RETURN_NOT_OK(target_ts->GetProxy(&ts_backup_proxy));
+  RETURN_NOT_OK(
+      target_ts->GetProxies(&ts_proxy, &ts_admin_proxy, &consensus_proxy, &ts_backup_proxy));
 
   ts_proxy_.swap(ts_proxy);
   ts_admin_proxy_.swap(ts_admin_proxy);

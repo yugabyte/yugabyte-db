@@ -31,11 +31,16 @@
 //
 
 #include "yb/common/constants.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/master/catalog_manager-test_base.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/format.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/util/flags.h"
 
@@ -175,6 +180,43 @@ TEST(TestTSDescriptor, TestAddressFallbackDisabled) {
   ASSERT_EQ("broadcast1", host_port.host());
   ASSERT_FALSE(ts->FailToNextAddress(host_port));
   ASSERT_EQ(host_port, ASSERT_RESULT(ts->GetHostPort()));
+}
+
+// A task reports a failure of any of its proxies against the address all of them are on, so a
+// server's proxies stay on the address selected for the first of them until a failure or a
+// re-registration selects again. Here the record that moved them expires before the second is
+// built, when selecting afresh would pick the preferred address for it alone.
+TEST(TestTSDescriptor, TestProxiesShareOneAddress) {
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), &proxy_cache, RegisteredThroughHeartbeat::kTrue));
+
+  const auto preferred = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_NE(preferred, ts_proxy->proxy().remote());
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_EQ(preferred, ASSERT_RESULT(ts->GetHostPort()));
+
+  std::shared_ptr<tserver::TabletServerServiceProxy> same_ts_proxy;
+  std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  ASSERT_OK(ts->GetProxies(&same_ts_proxy, &consensus_proxy));
+  ASSERT_EQ(ts_proxy, same_ts_proxy);
+  ASSERT_EQ(ts_proxy->proxy().remote(), consensus_proxy->proxy().remote());
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {
