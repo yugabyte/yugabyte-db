@@ -75,7 +75,7 @@ class SnapshotCoordinatorContext {
 
   virtual Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
-  virtual void PrepareRestore() = 0;
+  virtual void PrepareRestore(const TxnSnapshotRestorationId& restoration_id) = 0;
 
   virtual rpc::Scheduler& Scheduler() = 0;
 
