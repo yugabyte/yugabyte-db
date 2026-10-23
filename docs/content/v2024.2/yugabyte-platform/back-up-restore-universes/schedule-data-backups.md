@@ -14,9 +14,11 @@ type: docs
 
 You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all tables in a database (YSQL) or keyspace (YCQL) or only the specified tables (YCQL only).
 
+To perform scheduled backups, as well as enable [Restore to a point in time](../restore-universe-data/#restore-a-pitr-enabled-backup) for backups, you first create a scheduled backup policy.
+
 To back up your universe data immediately, see [Back up universe data](../back-up-universe-data/).
 
-To schedule backups, backups must be enabled for the universe. On the universe **Tables** tab, click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+Note: To schedule backups, backups must be [enabled for the universe](../back-up-universe-data/#disable-backups-for-a-universe) (the default).
 
 ## Create a scheduled backup policy
 
@@ -120,7 +122,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
     Specify the interval between backups or select **Use cron expression (UTC)**.
 
-    Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (supported in YugabyteDB Anywhere v2.16 or later, and YugabyteDB v2.16 or later only). The incremental backup intervals must be shorter than the full scheduled backup frequency.
+    Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups. The incremental backup intervals must be shorter than the full scheduled backup frequency.
 
     Specify the time period to retain a backup, or select **Keep indefinitely** to never delete the backup.
 

@@ -5,7 +5,7 @@
 
 use bitvec::slice::BitSlice;
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use std::{borrow::Cow, fmt::Debug};
 
@@ -253,7 +253,7 @@ where
 /// because of the skip behavior
 pub struct BitSliceNulls<'a>(pub &'a BitSlice<u8>);
 
-impl<'a> NullLayout<usize> for BitSliceNulls<'a> {
+impl NullLayout<usize> for BitSliceNulls<'_> {
     /// Returns true if this container has any nulls, checked at run-time.
     /// # Performance
     /// This implementation should be very fast, since all it needs to do
@@ -287,7 +287,7 @@ impl<'a> NullLayout<usize> for BitSliceNulls<'a> {
 
 pub struct BoolSliceNulls<'a>(pub &'a [bool]);
 
-impl<'a> NullLayout<usize> for BoolSliceNulls<'a> {
+impl NullLayout<usize> for BoolSliceNulls<'_> {
     /// Returns true if this container has any nulls, checked at run-time.
     /// # Performance
     /// This implementation requires iterating over one boolean per
@@ -323,11 +323,7 @@ impl<'a> NullLayout<usize> for BoolSliceNulls<'a> {
     /// or `None` if `idx` is out-of-bounds.
     #[inline]
     fn is_null(&self, idx: usize) -> Option<bool> {
-        if idx < self.0.len() {
-            Some(self.0[idx])
-        } else {
-            None
-        }
+        if idx < self.0.len() { Some(self.0[idx]) } else { None }
     }
 
     #[inline]
@@ -390,7 +386,7 @@ where
     }
 }
 
-impl<'mcx, Inner> NullLayout<usize> for MaybeStrictNulls<Inner>
+impl<Inner> NullLayout<usize> for MaybeStrictNulls<Inner>
 where
     Inner: NullLayout<usize>,
 {
@@ -437,13 +433,8 @@ unsafe impl<T> SqlTranslatable for Nullable<T>
 where
     T: SqlTranslatable,
 {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        T::argument_sql()
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        T::return_sql()
-    }
-    fn optional() -> bool {
-        true
-    }
+    const TYPE_IDENT: &'static str = T::TYPE_IDENT;
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin = T::TYPE_ORIGIN;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = T::ARGUMENT_SQL;
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> = T::RETURN_SQL;
 }

@@ -248,6 +248,27 @@ make_partition_pruneinfo(PlannerInfo *root, RelOptInfo *parentrel,
 	int			i;
 
 	/*
+	 * YB: A federated foreign table is modeled as LIST-partitioned by
+	 * server_uuid (see yb_set_global_view_partition_key) but is not a real
+	 * partitioned table: it has no catalog PartitionDesc/PartitionKey. Runtime
+	 * pruning (ExecInitPartitionPruning) fetches both from the relcache and
+	 * would crash on a foreign table, so never build a runtime
+	 * PartitionPruneInfo for it.
+	 *
+	 * TODO(#34190): support runtime pruning so a server_uuid supplied by a
+	 * join, subquery, or bound parameter skips non-matching tservers.
+	 */
+	if (IsYugaByteEnabled() && parentrel->relid > 0)
+	{
+		RangeTblEntry *parentrte = planner_rt_fetch(parentrel->relid, root);
+
+		if (parentrte->rtekind == RTE_RELATION &&
+			parentrte->relkind == RELKIND_FOREIGN_TABLE &&
+			yb_is_federated_yb_foreign_table(parentrte->relid))
+			return NULL;
+	}
+
+	/*
 	 * Scan the subpaths to see which ones are scans of partition child
 	 * relations, and identify their parent partitioned rels.  (Note: we must
 	 * restrict the parent partitioned rels to be parentrel or children of

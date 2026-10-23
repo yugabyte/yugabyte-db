@@ -35,6 +35,9 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <ranges>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -53,11 +56,14 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/tools/xcluster_verify.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
@@ -72,15 +78,23 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 #include "yb/util/jsonwriter.h"
 
 DEFINE_NON_RUNTIME_string(master_addresses, "localhost:7100",
     "Comma-separated list of YB Master server addresses");
-DEFINE_NON_RUNTIME_string(init_master_addrs, "", "host:port of any yb-master in a cluster");
+DEFINE_NON_RUNTIME_string(init_master_addrs, "", "host:port of any yb-master in a universe");
 DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_NON_RUNTIME_string(xcluster_source_certs_dir_name, "",
+    "Directory with certificates for connecting to the source universe, used by the "
+    "verify_xcluster_* commands. Empty falls back to --certs_dir_name and then --certs_dir, which "
+    "name this universe's certificates and are only correct when both universes share a "
+    "certificate authority; otherwise name the directory holding the source's certificates, which "
+    "xCluster keeps at <certs_for_cdc_dir>/<replication_group_id> on the target's nodes. Since "
+    "empty always means fall back, a TLS target cannot reach a plaintext source.");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
@@ -107,15 +121,24 @@ const Status ClusterAdminCli::kInvalidArguments =
 
 namespace {
 
+std::string FlagDefault(const char* flag_name) {
+  google::CommandLineFlagInfo info;
+  return google::GetCommandLineFlagInfo(flag_name, &info) ? info.default_value : "";
+}
+
+constexpr auto kHelpOperation = "help";
+
 constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 const string kMinus = "minus";
 
 const std::string namespace_expression =
-    "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
-const std::string table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
-const std::string index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+    "<namespace>\n  [(ycql|ysql).]<namespace_name> (default: ycql.)";
+const std::string table_expression =
+    "<table>\n  <namespace> <table_name> | tableid.<table_id>";
+const std::string index_expression =
+    "<index>\n  <namespace> <index_name> | tableid.<index_id>";
 
 Status GetUniverseConfig(ClusterAdminClient* client, const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
@@ -426,17 +449,21 @@ size_t EditDistance(const string& lhs, const string& rhs) {
 }  // namespace
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
+  auto contains = [&](const char* p) { return usage_arguments.find(p) != std::string::npos; };
+  const bool has_table = contains("<table>");
+  const bool has_index = contains("<index>");
+  // The <table> and <index> definitions reference <namespace>.
+  const bool has_namespace =
+      has_table || has_index || contains("<namespace>") || contains("<source_namespace>");
   std::string expressions;
-  std::stringstream ss(usage_arguments);
-  std::string next_argument;
-  while (ss >> next_argument) {
-    if (next_argument == "<namespace>" || next_argument == "<source_namespace>") {
-      expressions += namespace_expression + '\n';
-    } else if (next_argument == "<table>") {
-      expressions += table_expression + '\n';
-    } else if (next_argument == "<index>") {
-      expressions += index_expression + '\n';
-    }
+  if (has_table) {
+    expressions += table_expression + '\n';
+  }
+  if (has_index) {
+    expressions += index_expression + '\n';
+  }
+  if (has_namespace) {
+    expressions += namespace_expression + '\n';
   }
   return expressions.empty() ? "" : "Definitions: " + expressions;
 }
@@ -492,21 +519,30 @@ std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string
       candidates.push_back(name);
     }
   }
-  return candidates;
+  if (!candidates.empty()) {
+    return candidates;
+  }
+
+  // Abbreviations like "list_server" are too far from "list_tablet_servers" for the above.
+  constexpr size_t kMaxTokenSuggestions = 5;
+  std::vector<std::string> visible_names;
+  for (const auto& [name, index] : command_indexes_) {
+    if (!commands_[index].hidden_) {
+      visible_names.push_back(name);
+    }
+  }
+  return SuggestByNameTokens(op, visible_names, kMaxTokenSuggestions);
 }
 
-Status ClusterAdminCli::RunCommand(
-    const Command& command, const CLIArguments& command_args, const std::string& program_name) {
+Status ClusterAdminCli::RunCommand(const Command& command, const CLIArguments& command_args) {
   auto s = command.action_(command_args, client_.get());
   if (!s.ok()) {
-    if (s.IsRemoteError() && s.ToString().find("rpc error 2")) {
+    if (IsUnsupportedRpcError(s)) {
       cerr << "The cluster doesn't support " << command.name_ << ": " << s << std::endl;
     } else {
       cerr << "Error running " << command.name_ << ": " << s << endl;
       if (s.IsInvalidArgument()) {
-        cerr << Format("Usage: $0 $1 $2", program_name, command.name_, command.usage_arguments_)
-             << endl
-             << GetArgumentExpressions(command.usage_arguments_);
+        PrintCommandUsage(command, cerr);
       }
     }
     return STATUS(RuntimeError, "Error running command");
@@ -514,28 +550,260 @@ Status ClusterAdminCli::RunCommand(
   return Status::OK();
 }
 
-Status ClusterAdminCli::Run(int argc, char** argv) {
-  const string prog_name = argv[0];
-  FLAGS_logtostderr = true;
-  FLAGS_minloglevel = 2;
-  ParseCommandLineFlags(&argc, &argv, true);
-  InitGoogleLoggingSafe(prog_name.c_str());
+void ClusterAdminCli::PrintCommandUsage(const Command& command, std::ostream& out) {
+  out << Format("Usage: $0 $1 $2", prog_name_, command.name_, command.usage_arguments_) << endl
+      << GetArgumentExpressions(command.usage_arguments_);
+}
 
-  HybridTime::TEST_SetPrettyToString(true);
+void ClusterAdminCli::PrintOverview(const std::string& prog_name, std::ostream& out) {
+  out << prog_name << ": " << google::ProgramUsage();
+}
 
-  const string addrs = FLAGS_master_addresses;
-  if (!FLAGS_init_master_addrs.empty()) {
-    std::vector<HostPort> init_master_addrs;
-    RETURN_NOT_OK(HostPort::ParseStrings(
-        FLAGS_init_master_addrs, master::kMasterDefaultPort, &init_master_addrs));
-    client_.reset(new ClusterAdminClient(
-        init_master_addrs[0], MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
-  } else {
-    client_.reset(new ClusterAdminClient(addrs, MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
+size_t ClusterAdminCli::PrintOperationNames(std::ostream& out, const std::string& filter) const {
+  const auto filter_lower = ToLowerCase(filter);
+  std::vector<const Command*> matches;
+  for (const auto& [name, index] : command_indexes_) {
+    const auto& command = commands_[index];
+    if (command.hidden_) {
+      continue;
+    }
+    if (!filter_lower.empty() && ToLowerCase(name).find(filter_lower) == std::string::npos) {
+      continue;
+    }
+    matches.push_back(&command);
+  }
+  if (matches.empty()) {
+    return 0;
   }
 
+  if (filter.empty()) {
+    out << "Operations (" << matches.size() << "):" << endl;
+  } else {
+    out << "Operations matching '" << filter << "' (" << matches.size() << "):" << endl;
+  }
+
+  // Truncate long usage strings to one line; "help <operation>" shows the full syntax.
+  constexpr size_t kMaxLineWidth = 100;
+  // Only the full list is numbered, so an operation never has two different numbers.
+  const auto number_width = std::to_string(matches.size()).size();
+  size_t number = 0;
+  for (const auto* command : matches) {
+    std::string line = "  ";
+    if (filter.empty()) {
+      line += PadLeft(std::to_string(++number), number_width) + ". ";
+    } else {
+      line += "* ";
+    }
+    line += command->name_;
+    if (!command->usage_arguments_.empty()) {
+      line += " " + command->usage_arguments_;
+    }
+    if (line.size() > kMaxLineWidth) {
+      // Usage strings write repetition as "]..." or ",...", so mark the cut with " ...", which
+      // never appears in a usage string.
+      constexpr std::string_view kCutMarker = " ...";
+      line.resize(line.rfind(' ', kMaxLineWidth - kCutMarker.size()));
+      line += kCutMarker;
+    }
+    out << line << endl;
+  }
+  return matches.size();
+}
+
+void ClusterAdminCli::ReportUnknownOperation(const std::string& op) const {
+  cerr << "Invalid operation: " << op << endl;
+  const auto suggestions = GetSuggestedCommands(op);
+  if (!suggestions.empty()) {
+    cerr << "Did you mean one of these?" << endl;
+    for (const auto& suggestion : suggestions) {
+      cerr << "  " << suggestion << endl;
+    }
+  }
+  cerr << endl << "Run '" << prog_name_ << " help' to list all operations." << endl;
+}
+
+std::optional<ClusterAdminCli::HelpRequest> ClusterAdminCli::ScanForHelpRequest(
+    int argc, char** argv) const {
+  bool help_requested = false;
+  bool helpshort = false;
+  bool gflags_help = false;
+  std::vector<std::string> positionals;
+  bool positional_only = false;
+  for (int i = 1; i < argc; ++i) {
+    const std::string token = argv[i];
+    if (!positional_only && token == "--") {
+      positional_only = true;
+      continue;
+    }
+    if (positional_only || token.empty() || token[0] != '-') {
+      positionals.push_back(token);
+      continue;
+    }
+    const auto name_begin = token.find_first_not_of('-');
+    if (name_begin == std::string::npos || name_begin > 2) {
+      continue;
+    }
+    std::string name = token.substr(name_begin);
+    std::string value;
+    bool has_value = false;
+    const auto eq = name.find('=');
+    if (eq != std::string::npos) {
+      value = ToLowerCase(name.substr(eq + 1));
+      name = name.substr(0, eq);
+      has_value = true;
+    }
+    // --helpmatch and --helpon take a string, so only an empty value turns them off.
+    const bool string_valued = name == "helpmatch" || name == "helpon";
+    const bool false_value = value == "false" || value == "f" || value == "0" ||
+                             value == "no" || value == "n";
+    const bool off = has_value && (value.empty() || (!string_valued && false_value));
+    // yb::ParseCommandLineFlags() prints these and exits before gflags looks at --help (--version
+    // through its callback in init.cc). Keep in sync with util/flags/flags.cc.
+    static constexpr std::string_view kYbDumpFlags[] = {
+        "dump_flags_xml", "dump_metrics_json", "help_auto_flag_json", "helpxml", "version"};
+    // gflags prints these unless --help or --helpshort is also given.
+    static constexpr std::string_view kGflagsHelpFlags[] = {
+        "helpfull", "helpmatch", "helpon", "helppackage"};
+    if (!off && std::ranges::find(kYbDumpFlags, name) != std::end(kYbDumpFlags)) {
+      return std::nullopt;
+    }
+    if (!off && std::ranges::find(kGflagsHelpFlags, name) != std::end(kGflagsHelpFlags)) {
+      gflags_help = true;
+    }
+    if (name == "help" || name == "h" || name == "helpshort") {
+      if (!off) {
+        help_requested = true;
+        helpshort |= name == "helpshort";
+      }
+      continue;
+    }
+    // Skip the value of a two-token "--flag value", so "--master_addresses --help" is not help.
+    if (i + 1 < argc && FlagTakesSeparateValue(token)) {
+      ++i;
+    }
+  }
+  if (help_requested) {
+    HelpRequest request;
+    request.helpshort = helpshort;
+    // Commands usually lead with flags, e.g. "--flagfile server.conf delete_table --help".
+    // "help delete_table --help" asks about delete_table, not about the help operation.
+    auto first = positionals.begin();
+    if (positionals.size() > 1 && *first == kHelpOperation) {
+      ++first;
+    }
+    for (const auto& positional : std::ranges::subrange(first, positionals.end())) {
+      if (command_indexes_.contains(positional)) {
+        request.operation = positional;
+        break;
+      }
+    }
+    return request;
+  }
+  if (gflags_help) {
+    return std::nullopt;
+  }
+  // Only a leading "help" counts: in "list_tables help", it is an argument to list_tables.
+  if (!positionals.empty() && positionals.front() == kHelpOperation) {
+    HelpRequest request;
+    request.help_operation = true;
+    request.help_args.assign(positionals.begin() + 1, positionals.end());
+    return request;
+  }
+  return std::nullopt;
+}
+
+void ClusterAdminCli::PrintHelpRequest(const HelpRequest& request, std::ostream& out) {
+  if (!request.operation.empty()) {
+    PrintCommandUsage(commands_[command_indexes_[request.operation]], out);
+    return;
+  }
+  PrintOverview(prog_name_, out);
+  if (!request.helpshort) {
+    return;
+  }
+  // Not google::ShowUsageWithFlagsRestrict(), which prints build-relative source paths.
+  std::vector<google::CommandLineFlagInfo> all_flags;
+  google::GetAllFlags(&all_flags);
+  std::vector<std::pair<std::string, std::string>> own_flags;
+  size_t width = 0;
+  for (const auto& info : all_flags) {
+    const auto basename = BaseName(info.filename);
+    if (!boost::starts_with(basename, "yb-admin") && basename != "tools_utils.cc") {
+      continue;
+    }
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(info.name, &tags);
+    if (tags.contains(FlagTag::kHidden)) {
+      continue;
+    }
+    auto left = Format("--$0 <$1>", info.name, info.type);
+    auto default_value =
+        info.type == "string" ? Format("\"$0\"", info.default_value) : info.default_value;
+    width = std::max(width, left.size());
+    own_flags.emplace_back(std::move(left), std::move(default_value));
+  }
+  std::sort(own_flags.begin(), own_flags.end());
+  out << endl << prog_name_ << "'s own flags:" << endl;
+  for (const auto& [left, default_value] : own_flags) {
+    out << "  " << RightPadToWidth(left, narrow_cast<int>(width + 2)) << "(default: "
+        << default_value << ")" << endl;
+  }
+}
+
+Status ClusterAdminCli::RunHelp(const CLIArguments& args) {
+  if (args.size() > 1) {
+    cerr << "Error running " << kHelpOperation << ": " << kInvalidArguments << endl;
+    PrintCommandUsage(commands_[command_indexes_[kHelpOperation]], cerr);
+    return STATUS(RuntimeError, "Error running command");
+  }
+  if (args.empty()) {
+    PrintOperationNames(std::cout);
+    std::cout << endl
+              << "Run '" << prog_name_ << " help <operation>' for the usage of one operation."
+              << endl
+              << "Run '" << prog_name_ << " help <text>' to filter, e.g. '" << prog_name_
+              << " help snapshot'." << endl;
+    return Status::OK();
+  }
+  const auto& topic = args[0];
+  // Hidden operations are listed nowhere, but their usage is available by exact name.
+  if (const auto cmd = command_indexes_.find(topic); cmd != command_indexes_.end()) {
+    PrintCommandUsage(commands_[cmd->second], std::cout);
+    return Status::OK();
+  }
+  // An empty filter matches every operation, so treat "help ''" like "yb-admin ''".
+  if (!topic.empty() && PrintOperationNames(std::cout, topic) > 0) {
+    std::cout << endl
+              << "Run '" << prog_name_ << " help <operation>' for the usage of one operation."
+              << endl;
+    return Status::OK();
+  }
+  ReportUnknownOperation(topic);
+  return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", topic);
+}
+
+Status ClusterAdminCli::Run(int argc, char** argv) {
+  prog_name_ = BaseName(argv[0]);
+  FLAGS_logtostderr = true;
+  FLAGS_minloglevel = 2;
+
+  // Before the flag parse, because the --help* surfaces gflags renders during the parse print
+  // the usage message as their header.
   RegisterCommandHandlers();
-  SetUsage(prog_name);
+  SetUsage();
+
+  if (const auto request = ScanForHelpRequest(argc, argv)) {
+    if (request->help_operation) {
+      return RunHelp(request->help_args);
+    }
+    PrintHelpRequest(*request, std::cout);
+    return Status::OK();
+  }
+
+  ParseCommandLineFlags(&argc, &argv, true);
+  InitGoogleLoggingSafe(prog_name_.c_str());
+
+  HybridTime::TEST_SetPrettyToString(true);
 
   CLIArguments args;
   for (int i = 0; i < argc; ++i) {
@@ -548,42 +816,46 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   // Find operation handler by operation name.
   const string op = args[1];
-  auto cmd = command_indexes_.find(op);
+  const auto cmd = command_indexes_.find(op);
 
   if (cmd == command_indexes_.end()) {
-    cerr << "Invalid operation: " << op << endl;
-
-    const auto suggestions = GetSuggestedCommands(op);
-    if (!suggestions.empty()) {
-      cerr << "Did you mean one of these?" << endl;
-      for (const auto& suggestion : suggestions) {
-        cerr << "  " << suggestion << endl;
-      }
-    }
-    cerr << "Run '" << prog_name << "' with no operation to see all available operations." << endl;
-
-    // The targeted error and suggestions above are more helpful than the full command list, so
-    // return a non-InvalidArgument status to keep main() from additionally dumping the usage.
+    ReportUnknownOperation(op);
+    // The targeted error and suggestions above are more helpful than the overview, so return a
+    // non-InvalidArgument status to keep main() from also printing it.
     return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", op);
   }
 
-  // Init client.
+  const string addrs = FLAGS_master_addresses;
+  if (!FLAGS_init_master_addrs.empty()) {
+    std::vector<HostPort> init_master_addrs;
+    const auto parse_status = HostPort::ParseStrings(
+        FLAGS_init_master_addrs, master::kMasterDefaultPort, &init_master_addrs);
+    // ParseStrings() skips empty entries, so "," parses to no addresses (#33435).
+    if (!parse_status.ok() || init_master_addrs.empty()) {
+      cerr << "Invalid --init_master_addrs '" << FLAGS_init_master_addrs << "': "
+           << (parse_status.ok() ? "no addresses found" : parse_status.message().ToBuffer())
+           << endl;
+      return STATUS(RuntimeError, "Invalid --init_master_addrs");
+    }
+    client_.reset(new ClusterAdminClient(
+        init_master_addrs[0], MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
+  } else {
+    client_.reset(new ClusterAdminClient(addrs, MonoDelta::FromMilliseconds(FLAGS_timeout_ms)));
+  }
+
   Status s = client_->Init();
 
   if (PREDICT_FALSE(!s.ok())) {
-    cerr << s.CloneAndPrepend(
-                 "Unable to establish connection to leader master at [" + addrs +
-                 "]."
-                 " Please verify the addresses and check if server is up, or if you're"
-                 " missing --certs_dir_name.\n\n")
-                .ToString()
-         << endl;
+    cerr << "Unable to establish connection to leader master at [" << addrs << "]."
+         << " Please verify the addresses and check if server is up, or if you're"
+         << " missing --certs_dir_name." << endl
+         << endl
+         << s << endl;
     return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
   CLIArguments command_args(args.begin() + 2, args.end());
-  auto& command = commands_[cmd->second];
-  return RunCommand(command, command_args, args[0]);
+  return RunCommand(commands_[cmd->second], command_args);
 }
 
 void ClusterAdminCli::Register(
@@ -592,34 +864,49 @@ void ClusterAdminCli::Register(
   commands_.push_back({std::move(cmd_name), cmd_args, std::move(action), hidden});
 }
 
-void ClusterAdminCli::SetUsage(const string& prog_name) {
+void ClusterAdminCli::SetUsage() {
+  const auto visible_operations = std::count_if(
+      commands_.begin(), commands_.end(), [](const Command& command) { return !command.hidden_; });
+
   ostringstream str;
-
-  str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
-      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>]" << endl
-      << "  [--flagfile <path/to/master/conf/server.conf>]" << endl
-      << "  <operation>" << endl
+  str << "administer a YugabyteDB universe from the command line." << endl
       << endl
-      << "Tip: Use --flagfile with the master's server.conf to automatically pick up" << endl
-      << "master_addresses and certs_dir, avoiding manual flag entry." << endl
-      << "Example: " << prog_name
-      << " --flagfile master/conf/server.conf list_all_masters" << endl
+      << "Usage:" << endl
+      << "  " << prog_name_ << " [global flags] <operation> [args]" << endl
       << endl
-      << "<operation> must be one of:" << endl;
+      << "Get help:" << endl;
 
-  for (size_t i = 0; i < commands_.size(); ++i) {
-    const auto& command = commands_[i];
-    if (command.hidden_) {
-      continue;
-    }
-    str << ' ' << i + 1 << ". " << command.name_ << (command.usage_arguments_.empty() ? "" : " ")
-        << command.usage_arguments_ << endl;
+  const std::vector<pair<string, string>> help_lines = {
+      {prog_name_ + " help", Format("List all $0 operations", visible_operations)},
+      {prog_name_ + " help <operation>", "Usage of one operation"},
+      {prog_name_ + " help <text>", "Operations whose name contains <text>"},
+      {prog_name_ + " --helpshort", prog_name_ + "'s own flags"},
+      {prog_name_ + " --helpmatch=<substring>",
+       "Flags defined in source files whose path contains <substring>"},
+      {prog_name_ + " --helpfull", "All flags (long)"},
+  };
+  size_t width = 0;
+  for (const auto& [invocation, description] : help_lines) {
+    width = std::max(width, invocation.size());
+  }
+  for (const auto& [invocation, description] : help_lines) {
+    str << "  " << RightPadToWidth(invocation, narrow_cast<int>(width + 2)) << description << endl;
   }
 
-  str << endl;
-  str << namespace_expression << endl;
-  str << table_expression << endl;
-  str << index_expression << endl;
+  str << endl
+      << "Common global flags:" << endl
+      << "  --master_addresses host:port[,host:port,...]  (default: "
+      << FlagDefault("master_addresses") << ")" << endl
+      << "  --init_master_addrs host:port                 (alternative to --master_addresses)"
+      << endl
+      << "  --timeout_ms <millisec>                       (default: "
+      << FlagDefault("timeout_ms") << ")" << endl
+      << "  --certs_dir_name <dir>" << endl
+      << "  --flagfile <path>                             (use the master's server.conf)" << endl
+      << endl
+      << "Example:" << endl
+      << "  " << prog_name_ << " --flagfile /path/to/master/conf/server.conf list_all_masters"
+      << endl;
 
   google::SetUsageMessage(str.str());
 }
@@ -725,7 +1012,8 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 const auto modify_table_placement_info_args =
-    "<table> <placement_info> <replication_factor> [<placement_uuid>]";
+    "<table> <placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_table_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 3 || args.size() > 5) {
@@ -755,7 +1043,9 @@ Status modify_table_placement_info_action(
   return Status::OK();
 }
 
-const auto modify_placement_info_args = "<placement_info> <replication_factor> [<placement_uuid>]";
+const auto modify_placement_info_args =
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -780,7 +1070,8 @@ Status clear_placement_info_action(
 }
 
 const auto add_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status add_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -795,7 +1086,8 @@ Status add_read_replica_placement_info_action(
 }
 
 const auto modify_read_replica_placement_info_args =
-    "<placement_info> <replication_factor> [<placement_uuid>]";
+    "<placement_info> <replication_factor> [<placement_uuid>] "
+    "(placement_info: cloud.region.zone[:min[:max]],...)";
 Status modify_read_replica_placement_info_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 2 && args.size() != 3) {
@@ -1567,11 +1859,11 @@ Status demote_single_auto_flag_action(
 }
 
 std::string GetListSnapshotsFlagList() {
-  std::string options = "";
+  std::vector<std::string> options;
   for (auto flag : ListSnapshotsFlagList()) {
-    options += Format(" [$0]", flag);
+    options.push_back(Format("[$0]", flag));
   }
-  return options;
+  return JoinStrings(options, " ");
 }
 const auto list_snapshots_args = GetListSnapshotsFlagList();
 Status list_snapshots_action(
@@ -2487,6 +2779,19 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
+Result<std::vector<NamespaceId>> GetYsqlNamespaceIds(
+    const std::string& comma_separated_names, ClusterAdminClient* client) {
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, comma_separated_names, boost::is_any_of(","));
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& namespace_name : namespace_names) {
+    const auto& namespace_info = VERIFY_RESULT_REF(
+        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
+    namespace_ids.push_back(namespace_info.id());
+  }
+  return namespace_ids;
+}
+
 const auto create_xcluster_checkpoint_args =
     "<replication_group_id> <namespace_names> [automatic_ddl_mode]";
 Status create_xcluster_checkpoint_action(
@@ -2498,13 +2803,7 @@ Status create_xcluster_checkpoint_action(
   auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
   std::vector<NamespaceName> namespace_names;
   boost::split(namespace_names, args[1], boost::is_any_of(","));
-  std::vector<NamespaceName> namespace_ids;
-
-  for (const auto& namespace_name : namespace_names) {
-    const auto& namespace_info = VERIFY_RESULT_REF(
-        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name));
-    namespace_ids.push_back(namespace_info.id());
-  }
+  const auto namespace_ids = VERIFY_RESULT(GetYsqlNamespaceIds(args[1], client));
 
   if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "automatic_ddl_mode")) {
     return ClusterAdminCli::kInvalidArguments;
@@ -2547,6 +2846,39 @@ Status create_xcluster_checkpoint_action(
             << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
 
   return Status::OK();
+}
+
+const auto stop_persisting_args = "<namespace_names>";
+Status stop_persisting_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(
+      client->XClusterClient().StopPersisting(VERIFY_RESULT(GetYsqlNamespaceIds(args[0], client))));
+  std::cout << "Stopped persisting for database(s) " << args[0] << std::endl;
+  return Status::OK();
+}
+
+const auto start_persisting_args = "<namespace_names>";
+Status start_persisting_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(client->XClusterClient().StartPersisting(
+      VERIFY_RESULT(GetYsqlNamespaceIds(args[0], client))));
+  std::cout << "Started persisting for database(s) " << args[0] << std::endl;
+  return Status::OK();
+}
+
+const auto get_persistence_block_map_args = "";
+Status get_persistence_block_map_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  return PrintJsonResult(client->GetPersistenceBlockMap());
 }
 
 const auto is_xcluster_bootstrap_required_args = "<replication_group_id> <namespace_names>";
@@ -2845,7 +3177,8 @@ Status get_universe_replication_info_action(
   const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
 
   std::cout << "Replication Group Id: " << replication_group_id << std::endl;
-  std::cout << "Source master addresses: " << group_info.source_master_addrs << std::endl;
+  std::cout << "Source master addresses: " << group_info.deprecated_source_master_addresses
+            << std::endl;
   std::cout << "Type: " << xcluster::ShortReplicationType(group_info.replication_type) << std::endl;
 
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
@@ -3018,25 +3351,10 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
-// Decodes a hex-encoded partition-key argument, rejecting malformed input rather than silently
-// truncating it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage,
-// which would quietly hash the wrong range instead of reporting a bad argument.
-Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
-  SCHECK(
-      arg.size() % 2 == 0, InvalidArgument,
-      Format("hex key '$0' must have an even number of digits", arg));
-  for (const char c : arg) {
-    SCHECK(
-        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
-        Format("hex key '$0' contains a non-hex character", arg));
-  }
-  return strings::a2b_hex(arg);
-}
-
-const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex]";
+const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex] [max_rows]";
 Status get_table_hash_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 || args.size() > 4) {
+  if (args.size() < 1 || args.size() > 5) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -3056,13 +3374,121 @@ Status get_table_hash_action(
   if (args.size() >= 4 && !args[3].empty()) {
     end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
   }
-  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
-  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
-  // on that side and imposes no ordering constraint.
+  uint64_t max_rows = 0;
+  if (args.size() >= 5 && !args[4].empty()) {
+    max_rows = VERIFY_RESULT(CheckedStoull(args[4]));
+  }
+  // The start < end ordering check lives in ComputeTableXorHash: a bound may be a continuation key
+  // from a capped scan, and only the server-side encoding makes such a bound comparable against a
+  // plain partition key.
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key, max_rows);
+}
+
+// Verifies one slice of one table pair and prints the outcome as JSON. The target is
+// --master_addresses; source_master_addresses names the source.
+//
+// read_ht is optional. Omitted, the command resolves one hybrid time -- the target's xCluster safe
+// time -- and hashes both sides at it, reporting it back as read_ht. A long-running verify should
+// let each slice resolve its own: one time reused across a whole run eventually falls behind the
+// source's history retention and every later slice comes back kTryAgain. Pass one explicitly only
+// to reproduce an earlier slice exactly.
+//
+// Exit status reports only whether the slice ran, not what it found: a kDiverged slice still exits
+// 0, and the verdict is in the JSON. This is the opposite of verify_xcluster_group, deliberately --
+// this command is the primitive a driver walks a table with, and a driver reads the verdict to
+// decide where to go next. Anything invoking it from a shell has to read `result`, not $?.
+const auto verify_xcluster_slice_args =
+    "<source_table_id> <target_table_id> <source_master_addresses> "
+    "[read_ht] [start_key_hex] [end_key_hex] [max_rows]";
+Status verify_xcluster_slice_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 3 || args.size() > 7) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  SliceVerifyRequest req;
+  req.source_table_id = args[0];
+  req.target_table_id = args[1];
+  const auto& source_master_addresses = args[2];
   SCHECK(
-      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
-      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
-  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
+      !source_master_addresses.empty(), InvalidArgument,
+      "source_master_addresses must not be empty");
+  if (args.size() >= 4 && !args[3].empty()) {
+    const auto read_ht = VERIFY_RESULT(CheckedStoll(args[3]));
+    // 0 is the sentinel for "resolve one for me", set by omitting the argument, so a literal 0 is a
+    // caller who thinks they pinned a time and did not. The negative half guards the conversion to
+    // unsigned, which would turn one into a hybrid time past every write either cluster will take.
+    SCHECK_GT(read_ht, 0, InvalidArgument,
+              "read_ht must be a positive hybrid time; omit it to have one resolved from the "
+              "target's xCluster safe time");
+    req.read_ht = static_cast<uint64_t>(read_ht);
+  }
+  if (args.size() >= 5 && !args[4].empty()) {
+    req.start_key = VERIFY_RESULT(DecodeHexPartitionKey(args[4]));
+  }
+  if (args.size() >= 6 && !args[5].empty()) {
+    req.end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[5]));
+  }
+  if (args.size() >= 7 && !args[6].empty()) {
+    req.max_rows = VERIFY_RESULT(CheckedStoull(args[6]));
+  }
+  // As in get_table_hash, ComputeTableXorHash owns the start < end check, since a bound may be a
+  // continuation key that only compares correctly once encoded. A bad range surfaces as a kError
+  // result rather than a CLI argument error.
+  ClusterAdminClient source_client(
+      source_master_addresses, MonoDelta::FromMilliseconds(FLAGS_timeout_ms),
+      FLAGS_xcluster_source_certs_dir_name);
+  RETURN_NOT_OK_PREPEND(
+      source_client.Init(),
+      Format("Unable to connect to source masters at [$0]", source_master_addresses));
+
+  auto outcome = VERIFY_RESULT(client->VerifyXClusterSliceAgainst(&source_client, req));
+  std::cout << SliceVerifyOutcomeToJson(outcome) << std::endl;
+  return Status::OK();
+}
+
+// Sweeps every table in one inbound replication group, printing one JSON outcome per slice followed
+// by a JSON summary. The group supplies the source addresses and table pairs.
+//
+// An invocation always sweeps the whole group. max_rows caps a single scan so no one read time is
+// held open across a whole table, and max_concurrent_ranges controls how many key ranges are in
+// flight. Nothing is written to disk.
+//
+// Exit status is non-zero for any summary result but kMatch, so cron and CI need only check $?.
+// verify_xcluster_slice deliberately does the opposite; see its comment.
+const auto verify_xcluster_group_args =
+    "<replication_group_id> [max_rows] [max_concurrent_ranges] [skip_source_table_ids]";
+Status verify_xcluster_group_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.empty() || args.size() > 4) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  GroupVerifyOptions options;
+  if (args.size() >= 2 && !args[1].empty()) {
+    options.max_rows = VERIFY_RESULT(CheckedStoull(args[1]));
+  }
+  if (args.size() >= 3 && !args[2].empty()) {
+    options.max_concurrent_ranges = VERIFY_RESULT(CheckedStoi(args[2]));
+  }
+  SCHECK_GE(
+      options.max_concurrent_ranges, 1, InvalidArgument,
+      "max_concurrent_ranges must be at least 1");
+
+  std::unordered_set<TableId> skip_tables;
+  if (args.size() >= 4 && !args[3].empty()) {
+    std::vector<std::string> skip_ids;
+    boost::split(skip_ids, args[3], boost::is_any_of(","));
+    for (auto& id : skip_ids) {
+      boost::trim(id);
+      if (!id.empty()) {
+        skip_tables.insert(id);
+      }
+    }
+  }
+  return client->VerifyXClusterGroup(
+      xcluster::ReplicationGroupId(args[0]), options, skip_tables,
+      FLAGS_xcluster_source_certs_dir_name);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";
@@ -3080,7 +3506,10 @@ Status xcluster_failover_action(
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
-  DCHECK_ONLY_NOTNULL(client_);
+  // Run() answers `help` before dispatch; registering it lists it and suggests it for typos.
+  Register(kHelpOperation, "[<operation>]", [this](const CLIArguments& args, ClusterAdminClient*) {
+    return RunHelp(args);
+  });
 
   REGISTER_COMMAND(change_config);
   REGISTER_COMMAND(list_tablet_servers);
@@ -3169,6 +3598,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   REGISTER_COMMAND(get_table_hash);
+  REGISTER_COMMAND(verify_xcluster_slice);
+  REGISTER_COMMAND(verify_xcluster_group);
 
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
@@ -3210,6 +3641,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
   REGISTER_COMMAND(xcluster_failover);
+  REGISTER_COMMAND(stop_persisting);
+  REGISTER_COMMAND(start_persisting);
+  REGISTER_COMMAND(get_persistence_block_map);
 
   /* Upgrade related commands */
   // AutoFlags
@@ -3312,7 +3746,7 @@ int main(int argc, char** argv) {
   }
 
   if (s.IsInvalidArgument()) {
-    google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
+    yb::tools::ClusterAdminCli::PrintOverview(yb::BaseName(argv[0]), std::cout);
   }
 
   return 1;

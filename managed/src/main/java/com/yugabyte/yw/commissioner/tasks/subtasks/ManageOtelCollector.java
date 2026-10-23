@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -33,7 +34,13 @@ public class ManageOtelCollector extends NodeTaskBase {
   // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
   // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
   // must stay in step with the URLs in support/thirdparty-dependencies.txt.
-  public static String OtelCollectorVersion = "0.145.0";
+  //
+  // The -fips suffix selects the build made with GOFIPS140=v1.0.0, the FIPS 140-3 validated Go
+  // Cryptographic Module (CMVP certificate #5247), which also defaults the binary to
+  // GODEBUG=fips140=on. It is a separate artifact from the bare 0.145.0 rather than a
+  // replacement, published from the same collector manifest by the unified-otelcol workflow in
+  // yugabyte-cloud, so the suffix is part of the version string and not a build flag here.
+  public static String OtelCollectorVersion = "0.145.0-fips";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
@@ -112,6 +119,7 @@ public class ManageOtelCollector extends NodeTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
+    Common.CloudType providerType = nodeCluster.getProviderCloudType(node);
     taskParams().useSudo =
         isYbServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
 
@@ -119,8 +127,7 @@ public class ManageOtelCollector extends NodeTaskBase {
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
         taskParams().nodeName,
         taskParams().useSudo);
-    boolean isNodeAgentSupported =
-        NodeAgentClient.isCloudTypeSupported(nodeCluster.userIntent.providerType);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
     if (isNodeAgentSupported) {
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       log.info("Configuring otel-collector using node-agent");

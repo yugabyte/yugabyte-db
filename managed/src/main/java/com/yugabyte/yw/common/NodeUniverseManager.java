@@ -722,7 +722,9 @@ public class NodeUniverseManager extends DevopsBase {
         }
       } else {
         String errMsg =
-            "No remote connection method is available to the node " + node.cloudInfo.private_ip;
+            String.format(
+                "No %s connection is available to the node %s",
+                context.isUseSshConnectionOnly() ? "SSH" : "remote", node.cloudInfo.private_ip);
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }

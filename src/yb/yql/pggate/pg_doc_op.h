@@ -168,16 +168,23 @@ class PgDocResponse {
   struct MetricInfo {
     MetricInfo(TableType table_type_,
                IsForWritePgDoc is_write_,
-               IsOpBuffered is_buffered_)
-        : table_type(table_type_), is_write(is_write_), is_buffered(is_buffered_) {}
+               IsOpBuffered is_buffered_,
+               PgOid relation_oid_)
+        : table_type(table_type_), is_write(is_write_), is_buffered(is_buffered_),
+          relation_oid(relation_oid_) {}
 
     TableType table_type;
     IsForWritePgDoc is_write;
     IsOpBuffered is_buffered;
+    // OID of the relation the operation is sent to
+    PgOid relation_oid;
   };
 
   struct FutureInfo {
-    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse) {}
+    FutureInfo()
+        : metrics(
+              TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse,
+              kPgInvalidOid) {}
     FutureInfo(PerformFuture&& future_, const MetricInfo& metrics_)
         : future(std::move(future_)), metrics(metrics_) {}
 
@@ -320,6 +327,8 @@ class PgDocOp {
 
   Result<int32_t> GetRowsAffectedCount() const;
 
+  Result<PgsqlResponsePB::PgsqlOnConflictOutcome> GetOnConflictOutcome() const;
+
   // Get the results and hand them over to the result stream.
   // Send requests for new pages if necessary.
   virtual Status FetchMoreResults();
@@ -410,6 +419,10 @@ class PgDocOp {
 
   // Executed row count.
   int32_t rows_affected_count_ = 0;
+
+  // On conflict outcome.
+  PgsqlResponsePB::PgsqlOnConflictOutcome on_conflict_outcome_ =
+      PgsqlResponsePB::PGSQL_ON_CONFLICT_OUTCOME_UNKNOWN;
 
   // Whether all requested data by the statement has been received or there's a run-time error.
   bool end_of_data_ = false;

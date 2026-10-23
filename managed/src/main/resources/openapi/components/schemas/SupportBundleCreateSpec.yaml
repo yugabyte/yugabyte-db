@@ -32,7 +32,7 @@ properties:
     description: |
       Names of the universe nodes to collect node-level components from. When omitted or empty,
       every node in the universe is considered. Global-level components (PrometheusMetrics,
-      YbaMetadata, TabletReport, PerfAdvisor, K8sInfo, ApplicationLogs) are collected once for the
+      YbaMetadata, TabletReport, ClusterConfig, PerfAdvisor, K8sInfo, ApplicationLogs) are collected once for the
       universe and are not scoped by this list. Rejected with a 400 when none of the given names
       exist in the universe; names that do not exist are ignored when at least one matches. Not
       applicable to YBA-only support bundles.

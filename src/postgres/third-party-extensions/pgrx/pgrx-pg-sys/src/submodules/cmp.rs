@@ -1,4 +1,4 @@
-use crate::{Point, BOX};
+use crate::{BOX, CIRCLE, Point};
 
 impl PartialEq for Point {
     #[inline]
@@ -15,3 +15,11 @@ impl PartialEq for BOX {
     }
 }
 impl Eq for BOX {}
+
+impl PartialEq for CIRCLE {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.center == other.center && self.radius == other.radius
+    }
+}
+impl Eq for CIRCLE {}

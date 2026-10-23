@@ -5,6 +5,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
@@ -44,7 +45,7 @@ const (
 type ShellTask struct {
 	// Name of the task.
 	cmdInfo  *module.CommandInfo
-	exitCode *atomic.Value
+	exitCode *atomic.Int32
 }
 
 // NewShellTask returns a shell task executor.
@@ -63,7 +64,7 @@ func NewShellTaskWithUser(name string, user string, cmd string, args []string) *
 			StdOut: util.NewBuffer(module.MaxBufferCapacity),
 			StdErr: util.NewBuffer(module.MaxBufferCapacity),
 		},
-		exitCode: &atomic.Value{},
+		exitCode: &atomic.Int32{},
 	}
 }
 
@@ -94,7 +95,8 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		}
 	} else {
 		taskStatus.ExitStatus.Error = s.cmdInfo.StdErr
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			taskStatus.ExitStatus.Code = exitErr.ExitCode()
 		}
 		err = util.NewStatusError(taskStatus.ExitStatus.Code, err)
@@ -105,7 +107,7 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.cmdInfo.StdErr.String())
 		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.cmdInfo.Desc, errMsg)
 	}
-	s.exitCode.Store(taskStatus.ExitStatus.Code)
+	s.exitCode.Store(int32(taskStatus.ExitStatus.Code))
 	return taskStatus, err
 }
 
@@ -118,7 +120,7 @@ func (s *ShellTask) Handle(ctx context.Context) (*pb.DescribeTaskResponse, error
 // CurrentTaskStatus implements the AsyncTask method.
 func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
 	v := s.exitCode.Load()
-	if v == nil {
+	if v == 0 {
 		return &TaskStatus{
 			Info: s.cmdInfo.StdOut,
 		}
@@ -126,7 +128,7 @@ func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
 	return &TaskStatus{
 		Info: s.cmdInfo.StdOut,
 		ExitStatus: &ExitStatus{
-			Code:  v.(int),
+			Code:  int(v),
 			Error: s.cmdInfo.StdErr,
 		},
 	}

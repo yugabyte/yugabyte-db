@@ -1160,9 +1160,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = provider.getUuid().toString();
-                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
                 // Append the path to copy the gFlag file from local to remote host
                 subcommand.add("--local_gflag_files_path");
                 subcommand.add(localGflagFilePath.toString());
@@ -1660,7 +1658,7 @@ public class NodeManager extends DevopsBase {
     Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
-      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", provider.getCloudCode());
       return;
     }
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
@@ -1772,6 +1770,9 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
         }
+        if (Common.CloudType.oci == provider.getCloudCode() && rrvParams.forceReplacement) {
+          commandArgs.add("--force_replacement");
+        }
         if (!bootScript.isEmpty()) {
           bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
         }
@@ -1804,6 +1805,7 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = provider.getCloudCode();
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            addOciFlexShapeConfigArgs(commandArgs, provider, taskParam.instanceType);
             if (taskParam.capacityReservation != null) {
               commandArgs.add("--capacity_reservation");
               commandArgs.add(taskParam.capacityReservation);
@@ -1846,6 +1848,9 @@ public class NodeManager extends DevopsBase {
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
                 commandArgs.add("--instance_template");
                 commandArgs.add(instanceTemplate);
+                if (confGetter.getGlobalConf(GlobalConfKeys.readGcpInstanceTemplate)) {
+                  commandArgs.add("--read_instance_template");
+                }
               }
             } else if (Common.CloudType.oci == provider.getCloudCode()) {
               OCIRegionCloudInfo o = CloudInfoInterface.get(taskParam.getRegion());
@@ -1975,8 +1980,8 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = provider.getCloudCode();
 
-          if (cloudType.equals(Common.CloudType.aws)) {
-            // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws) || cloudType.equals(Common.CloudType.oci)) {
+            // aws / oci use instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
@@ -2243,20 +2248,18 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          if (taskParam.checkVolumesAttached) {
-            UniverseDefinitionTaskParams.Cluster cluster =
-                universe.getCluster(taskParam.placementUuid);
+          if (taskParam.shouldCheckVolumeAttached()) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
+            UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+            DeviceInfo deviceInfo = null;
             if (node != null
                 && cluster != null
-                && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && provider.getCloudCode() != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem
+                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(
-                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
+              commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
-          }
-          if ("stop".equalsIgnoreCase(taskParam.command)) {
+          } else if ("stop".equalsIgnoreCase(taskParam.command)) {
             if (taskParam.deconfigure) {
               commandArgs.add("--deconfigure");
             }
@@ -2354,6 +2357,7 @@ public class NodeManager extends DevopsBase {
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+          addOciFlexShapeConfigArgs(commandArgs, provider, taskParam.instanceType);
 
           if (!taskParam.skipAnsiblePlaybookForCGroup) {
             commandArgs.add("--pg_max_mem_mb");
@@ -2704,6 +2708,33 @@ public class NodeManager extends DevopsBase {
                 commandArgs.add("--cloud_instance_types");
                 commandArgs.add(t);
               });
+    }
+  }
+
+  // OCI Flex shapes require shapeConfig.ocpus on launch and UpdateInstance.
+  // DenseIO/HPC Flex included: those cores and memory come from the YAML min SKU.
+  private void addOciFlexShapeConfigArgs(
+      List<String> commandArgs, Provider provider, String instanceTypeCode) {
+    if (provider.getCloudCode() != Common.CloudType.oci
+        || StringUtils.isBlank(instanceTypeCode)
+        || !instanceTypeCode.contains("Flex")) {
+      return;
+    }
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), instanceTypeCode);
+    if (instanceType == null) {
+      log.warn(
+          "Skipping OCI Flex shapeConfig args; instance type {} not found for provider {}",
+          instanceTypeCode,
+          provider.getUuid());
+      return;
+    }
+    if (instanceType.getNumCores() != null) {
+      commandArgs.add("--ocpus");
+      commandArgs.add(String.valueOf(instanceType.getNumCores()));
+    }
+    if (instanceType.getMemSizeGB() != null) {
+      commandArgs.add("--memory_in_gbs");
+      commandArgs.add(String.valueOf(instanceType.getMemSizeGB()));
     }
   }
 

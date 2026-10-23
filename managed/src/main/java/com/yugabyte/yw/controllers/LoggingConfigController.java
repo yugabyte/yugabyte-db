@@ -71,14 +71,33 @@ public class LoggingConfigController extends AuthenticatedController {
       }
     }
     Integer newMaxHistory = data.getMaxHistory();
+    String newMaxFileSize = data.getMaxFileSize();
+    String newTotalSizeCap = data.getTotalSizeCap();
+    // Reject here rather than fail the logback reload with an opaque message.
+    try {
+      LogUtil.checkLogSizeLimits(sConfigFactory, newMaxFileSize, newTotalSizeCap);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     String applicationLogFileNamePrefix = data.getFileNamePrefix();
     // restartLogback() resets the logback context, which wipes the properties Play injects via
     // play.logger.includeConfigProperties. Need to configure this to simulate that effect.
     LogUtil.configureFixedLogbackSystemProperties(sConfigFactory.staticApplicationConf());
     LogUtil.updateApplicationLoggingContext(
-        newLevel, newRolloverPattern, newMaxHistory, applicationLogFileNamePrefix);
+        newLevel,
+        newRolloverPattern,
+        newMaxHistory,
+        newMaxFileSize,
+        newTotalSizeCap,
+        applicationLogFileNamePrefix);
     LogUtil.updateApplicationLoggingConfig(
-        sConfigFactory, newLevel, newRolloverPattern, newMaxHistory, applicationLogFileNamePrefix);
+        sConfigFactory,
+        newLevel,
+        newRolloverPattern,
+        newMaxHistory,
+        newMaxFileSize,
+        newTotalSizeCap,
+        applicationLogFileNamePrefix);
     return PlatformResults.withData(data);
   }
 

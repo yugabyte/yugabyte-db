@@ -7,9 +7,11 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
-use crate::pg_sys;
+
+use crate::{PGRXSharedMemory, pg_sys};
 use core::mem::MaybeUninit;
-use std::{cell::UnsafeCell, marker::PhantomData};
+use core::ops::{Deref, DerefMut};
+use std::cell::UnsafeCell;
 
 /// A Rust locking mechanism which uses a PostgreSQL `slock_t` to lock the data.
 ///
@@ -29,18 +31,17 @@ use std::{cell::UnsafeCell, marker::PhantomData};
 ///     https://github.com/postgres/postgres/blob/1f0c4fa255253d223447c2383ad2b384a6f05854/src/include/storage/spin.h
 #[doc(alias = "slock_t")]
 pub struct PgSpinLock<T> {
-    item: UnsafeCell<T>,
+    data: UnsafeCell<T>,
     lock: UnsafeCell<pg_sys::slock_t>,
 }
 
-// `PgSpinLock` is basically a `Mutex`, so we just need `T` to be `Send` to get
-// `Send` and `Sync`.
-unsafe impl<T: Send> Send for PgSpinLock<T> {}
-unsafe impl<T: Send> Sync for PgSpinLock<T> {}
+unsafe impl<T: PGRXSharedMemory> Sync for PgSpinLock<T> {}
+unsafe impl<T: PGRXSharedMemory> PGRXSharedMemory for PgSpinLock<T> {}
 
 impl<T> PgSpinLock<T> {
     /// Create a new [`PgSpinLock`]. See the type documentation for more info.
     #[inline]
+    #[doc(alias = "SpinLockInit")]
     pub fn new(value: T) -> Self {
         let mut slock = MaybeUninit::zeroed();
         // Safety: We initialize the `slock_t` before use (and it was likely
@@ -48,10 +49,12 @@ impl<T> PgSpinLock<T> {
         // it's probably a primitive integer).
         unsafe {
             pg_sys::SpinLockInit(slock.as_mut_ptr());
-            Self { item: UnsafeCell::new(value), lock: UnsafeCell::new(slock.assume_init()) }
+            Self { data: UnsafeCell::new(value), lock: UnsafeCell::new(slock.assume_init()) }
         }
     }
+}
 
+impl<T: PGRXSharedMemory> PgSpinLock<T> {
     /// Returns true if the spinlock is locked, and false otherwise.
     #[inline]
     #[doc(alias = "SpinLockFree")]
@@ -65,8 +68,10 @@ impl<T> PgSpinLock<T> {
     #[inline]
     #[doc(alias = "SpinLockAcquire")]
     pub fn lock(&self) -> PgSpinLockGuard<'_, T> {
-        unsafe { pg_sys::SpinLockAcquire(self.lock.get()) };
-        PgSpinLockGuard { lock: self, _marker: PhantomData }
+        unsafe {
+            pg_sys::SpinLockAcquire(self.lock.get());
+            PgSpinLockGuard { data: &mut *self.data.get(), lock: self.lock.get() }
+        }
     }
 }
 
@@ -75,33 +80,32 @@ impl<T> PgSpinLock<T> {
 ///
 /// See the documentation of [`PgSpinLock`] for more information.
 pub struct PgSpinLockGuard<'a, T: 'a> {
-    lock: &'a PgSpinLock<T>,
-    // For !Send, variance, etc.
-    _marker: PhantomData<*mut T>,
+    data: &'a mut T,
+    lock: *mut pg_sys::slock_t,
 }
 
-unsafe impl<T: Sync> Sync for PgSpinLockGuard<'_, T> {}
+unsafe impl<T: PGRXSharedMemory> Sync for PgSpinLockGuard<'_, T> {}
 
-impl<'a, T> Drop for PgSpinLockGuard<'a, T> {
+impl<T> Drop for PgSpinLockGuard<'_, T> {
     #[inline]
+    #[doc(alias = "SpinLockRelease")]
     fn drop(&mut self) {
-        unsafe { pg_sys::SpinLockRelease(self.lock.lock.get()) };
+        unsafe { pg_sys::SpinLockRelease(self.lock) };
     }
 }
 
-impl<'a, T> core::ops::Deref for PgSpinLockGuard<'a, T> {
+impl<T> Deref for PgSpinLockGuard<'_, T> {
     type Target = T;
+
     #[inline]
     fn deref(&self) -> &T {
-        // Safety: The guard's existence enforces that the lock is locked.
-        unsafe { &*self.lock.item.get() }
+        self.data
     }
 }
 
-impl<'a, T> core::ops::DerefMut for PgSpinLockGuard<'a, T> {
+impl<T> DerefMut for PgSpinLockGuard<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        // Safety: The guard's existence enforces that the lock is locked.
-        unsafe { &mut *self.lock.item.get() }
+        self.data
     }
 }

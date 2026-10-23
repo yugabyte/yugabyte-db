@@ -614,6 +614,8 @@ Status PlainTableReader::Get(const ReadOptions&, const Slice& target,
 }
 
 uint64_t PlainTableReader::ApproximateOffsetOf(const Slice& key) {
+  // Plain tables have no block index to offset into, so there is no approximation to give. 0 is
+  // what VersionSet::ApproximateSize reads as "this file contributes nothing".
   return 0;
 }
 

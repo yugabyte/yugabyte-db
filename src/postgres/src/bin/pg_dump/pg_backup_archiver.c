@@ -4121,10 +4121,10 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 									  ") AS role_exists \\gset\n"
 									  "\\if :role_exists\n", role_buf->data);
 					ybAppendRestrict(&yb_buf, yb_key);
-					appendPQExpBuffer(&yb_buf, "    %s\n", temp->data);
+					appendPQExpBuffer(&yb_buf, "%s\n", temp->data);
 					ybAppendUnrestrict(&yb_buf, yb_key);
 					appendPQExpBufferStr(&yb_buf, "\\else\n"
-										 "    \\echo 'Skipping owner privilege due to missing role:' ");
+										 "\\echo 'Skipping owner privilege due to missing role:' ");
 					ybAppendPsqlMetaLiteral(&yb_buf, eff_owner);
 					appendPQExpBufferStr(&yb_buf, "\n\\endif\n");
 					ybAppendRestrict(&yb_buf, yb_key);

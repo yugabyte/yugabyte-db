@@ -136,7 +136,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         // Instance Type
         // Make sure the instance type exists.
         String newInstanceTypeCode =
-            taskParams().getPrimaryCluster().userIntent.getBaseInstanceType();
+            taskParams()
+                .getPrimaryCluster()
+                .userIntent
+                .getBaseInstanceType(UUID.fromString(primIntent.provider));
         // Deprecated class.
         String provider = primIntent.provider;
 
@@ -1212,7 +1215,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
 
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

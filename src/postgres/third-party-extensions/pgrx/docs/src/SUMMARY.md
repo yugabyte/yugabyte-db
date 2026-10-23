@@ -20,6 +20,5 @@
   - [PGRX Internals](./contributing/pgrx-internal.md)
   - [Releases](./contributing/release.md)
 - [Articles](./articles.md)
-  - [Forging SQL from Rust](./articles/forging-sql-from-rust.md)
   - [Postgres Aggregates from Rust](./articles/postgresql-aggregates-with-rust.md)
 - [Design Decisions](./design-decisions.md)

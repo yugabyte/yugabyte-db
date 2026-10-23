@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -27,11 +26,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("ysql_enable_concurrent_ddl", "true");
-    flagMap.put("allowed_preview_flags_csv",
-      "enable_object_locking_for_table_locks,ysql_enable_concurrent_ddl");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("ysql_beta_features", "true");
     return flagMap;
@@ -40,9 +35,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("enable_object_locking_for_table_locks", "true");
-    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    toggleDDLMode(flagMap, /* useLegacy */ false);
     return flagMap;
   }
 
@@ -51,11 +44,23 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     return 600;
   }
 
-  @Test
-  public void testPgRegress() throws Exception {
+  private void runSchedule(boolean useAllHosts) throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
       "yb_isolation_object_locking_schedule",
-      0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+      0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
+      useAllHosts);
+  }
+
+  @Test
+  public void testPgRegress() throws Exception {
+    runSchedule(false /* useAllHosts */);
+  }
+
+  // Sessions are spread round-robin across tservers, so conflicting sessions acquire object locks
+  // and receive invalidation messages on different nodes.
+  @Test
+  public void testPgRegressAcrossTServers() throws Exception {
+    runSchedule(true /* useAllHosts */);
   }
 }

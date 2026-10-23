@@ -23,7 +23,6 @@
 
 #include "access/htup_details.h"
 #include "access/relation.h"
-#include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -37,6 +36,7 @@
 #include "nodes/primnodes.h"
 #include "nodes/print.h"
 #include "optimizer/ybplan.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/array.h"
 #include "utils/datum.h"
@@ -94,7 +94,8 @@ static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
  *
  * Full list of the conditions we check here:
  *  - there is only one target table;
- *  - there is no ON CONFLICT clause;
+ *  - ON CONFLICT is not used, except for DO NOTHING when IOC pushdown is
+ *    possible;
  *  - there is no init plan;
  *  - there is only one source plan, which is a simple form of Result;
  *  - all expressions in the Result's target list and in the returning list are
@@ -104,7 +105,8 @@ static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
  *  - not in transaction block;
  *  - is a single-plan execution;
  *  - target table has no triggers to fire;
- *  - target table has no indexes to update.
+ *  - target table has no indexes to update;
+ *  - ON CONFLICT DO NOTHING uses IOC pushdown.
  * And if all are true we will execute this op as a single-row transaction
  * rather than a distributed transaction.
  */
@@ -122,7 +124,9 @@ ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 		return false;
 
 	/* ON CONFLICT clause may require another write request */
-	if (modifyTable->onConflictAction != ONCONFLICT_NONE)
+	if (modifyTable->onConflictAction != ONCONFLICT_NONE &&
+		!(modifyTable->onConflictAction == ONCONFLICT_NOTHING &&
+		  modifyTable->ybInsertOnConflictPushdownPossible))
 		return false;
 
 	/* Init plan execution would require request(s) to DocDB */
@@ -158,6 +162,96 @@ YBCIsSingleRowModify(PlannedStmt *pstmt)
 		ModifyTable *node = castNode(ModifyTable, pstmt->planTree);
 
 		return ModifyTableIsSingleRowWrite(node);
+	}
+
+	return false;
+}
+
+/*
+ * The plan carries one statement-level IOC pushdown hint, so plans with
+ * multiple target relations are excluded.  The executor makes the final
+ * eligibility decision for the sole target relation.
+ */
+static RangeTblEntry *
+YbGetSingleModifytableTargetRte(PlannerInfo *root, ModifyTable *node)
+{
+	Index		rti;
+	RangeTblEntry *rte;
+
+	if (list_length(node->resultRelations) != 1)
+		return NULL;
+
+	rti = linitial_int(node->resultRelations);
+	rte = planner_rt_fetch(rti, root);
+	Assert(rte != NULL && rte->rtekind == RTE_RELATION);
+
+	return rte;
+}
+
+/*
+ * A Result without an outer plan produces at most one row without reading from
+ * DocDB.  At plan time, only validate the shape of the arbiter list; the
+ * executor verifies that an explicitly specified arbiter is the target
+ * relation's primary key.
+ */
+static bool
+YbIocDoNothingPushdownPossible(ModifyTable *node)
+{
+	Plan	   *source = outerPlan(&node->plan);
+
+	if (!IsA(source, Result) || outerPlan(source))
+		return false;
+
+	return (node->arbiterIndexes == NIL ||
+			list_length(node->arbiterIndexes) == 1);
+}
+
+/*
+ * Check the requirements specific to DO UPDATE pushdown.  This action is not
+ * supported yet.
+ */
+static bool
+YbIocDoUpdatePushdownPossible(ModifyTable *node)
+{
+	return false;
+}
+
+/*
+ * Produce a plan-time hint based on the action's pushdown setting and the
+ * statement and plan shape.  The executor combines this hint with checks that
+ * require the opened target relation, such as its primary key, secondary
+ * indexes, and triggers, before selecting pushdown.
+ *
+ * Partitioned targets are excluded for now because their relation-specific
+ * eligibility can only be decided after tuple routing identifies the leaf
+ * partition.
+ *
+ * The executor also rechecks YbIsIocPushdownEnabled() so that execution
+ * honors the current setting even when reusing a cached plan.
+ */
+bool
+YbIocPushdownPossible(PlannerInfo *root, ModifyTable *node)
+{
+	if (node->operation != CMD_INSERT ||
+		!YbIsIocPushdownEnabled(node->onConflictAction))
+		return false;
+
+	RangeTblEntry *rte = YbGetSingleModifytableTargetRte(root, node);
+
+	if (rte == NULL)
+		return false;
+
+	if (rte->relkind != RELKIND_RELATION)
+		return false;
+
+	switch (node->onConflictAction)
+	{
+		case ONCONFLICT_NOTHING:
+			return YbIocDoNothingPushdownPossible(node);
+		case ONCONFLICT_UPDATE:
+			return YbIocDoUpdatePushdownPossible(node);
+		default:
+			return false;
 	}
 
 	return false;
@@ -1022,10 +1116,10 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 
 /*
  * Look up the hardcoded "server_uuid" column on 'relid' and return its
- * AttrNumber. Returns InvalidAttrNumber if no such column exists or if it
- * exists but is not of UUID type.
+ * AttrNumber. Errors if no such column exists or if it exists but is not of
+ * UUID type - a federated foreign table must expose it.
  */
-static AttrNumber
+AttrNumber
 yb_get_federated_tserver_uuid_attno(Oid relid)
 {
 	AttrNumber	attno = get_attnum(relid, "server_uuid");
@@ -1038,240 +1132,4 @@ yb_get_federated_tserver_uuid_attno(Oid relid)
 						get_rel_name(relid))));
 
 	return attno;
-}
-
-/*
- * Outcome of attempting to extract a server_uuid filter from one
- * RestrictInfo clause.
- */
-typedef enum YbTserverUuidClauseResult
-{
-	YB_TS_UUID_CLAUSE_UNSUPPORTED,	/* clause shape / column / type not ours */
-	YB_TS_UUID_CLAUSE_SUBSET,		/* recognized; *out_indexes populated */
-} YbTserverUuidClauseResult;
-
-/*
- * Map a Const UUID Datum to the index of the matching entry in 'servers',
- * adding the index to *out_indexes if a match is found. Unmatched UUIDs
- * (stale / unknown) simply don't contribute to the set.
- */
-static void
-yb_add_matching_server_index(Datum uuid_datum,
-							 YbcServerDescriptor *servers, size_t nservers,
-							 Bitmapset **out_indexes)
-{
-	char	   *uuid_str =
-		yb_convert_uuid_to_yb_uuid_string_repr(DatumGetUUIDP(uuid_datum));
-
-	for (size_t i = 0; i < nservers; ++i)
-	{
-		if (strcmp(uuid_str, servers[i].uuid) == 0)
-		{
-			*out_indexes = bms_add_member(*out_indexes, (int) i);
-			break;
-		}
-	}
-
-	pfree(uuid_str);
-}
-
-/*
- * yb_extract_tserver_indexes_from_clause
- *		If 'clause' is a recognized equality / IN-list restriction on the
- *		server_uuid column of 'rel', set *out_indexes to a Bitmapset of
- *		indexes into 'servers' that the clause admits and return
- *		YB_TS_UUID_CLAUSE_SUBSET. Otherwise leave *out_indexes alone and
- *		return YB_TS_UUID_CLAUSE_UNSUPPORTED.
- *
- * Supported clause shapes:
- *   - OpExpr            Var = Const          (equality)
- *   - ScalarArrayOpExpr Var = ANY(Const[])   (i.e. IN-list, useOr=true)
- *
- * For both shapes the Var must reference 'relid' and 'attno', the operator
- * must be UUID's default equality 'uuid_eq_op', and the Const must be of
- * UUID (or UUID[]) type. NULL elements inside an IN-list array are
- * skipped (they can never match an equality).
- */
-static YbTserverUuidClauseResult
-yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
-									   AttrNumber attno, Oid uuid_eq_op,
-									   YbcServerDescriptor *servers,
-									   size_t nservers,
-									   Bitmapset **out_indexes)
-{
-	if (IsA(clause, OpExpr))
-	{
-		OpExpr	   *opexpr = (OpExpr *) clause;
-		Var		   *var;
-		Const	   *con;
-
-		if (opexpr->opno != uuid_eq_op)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		/* An equality OpExpr always has exactly two args. */
-		Assert(list_length(opexpr->args) == 2);
-
-		/*
-		 * The planner normalizes equality clauses so that the Var is the
-		 * left arg and the Const is the right arg. The rhs is only a Const
-		 * for a custom/one-off plan; a generic (prepared) plan leaves it as
-		 * a Param.
-		 */
-		Assert(IsA(linitial(opexpr->args), Var));
-		if (!IsA(lsecond(opexpr->args), Const))
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		var = (Var *) linitial(opexpr->args);
-		con = (Const *) lsecond(opexpr->args);
-
-		if (var->varno != relid || var->varattno != attno)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		if (con->consttype != UUIDOID)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		/* col = NULL never reaches here */
-		Assert(!con->constisnull);
-
-		yb_add_matching_server_index(con->constvalue, servers, nservers,
-									 out_indexes);
-		return YB_TS_UUID_CLAUSE_SUBSET;
-	}
-
-	if (IsA(clause, ScalarArrayOpExpr))
-	{
-		ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-		Var		   *var;
-		Const	   *con;
-		ArrayType  *arr;
-		Datum	   *elems;
-		bool	   *nulls;
-		int			nelems;
-		int			j;
-
-		/* useOr=true means IN, useOr=false means NOT IN; we only handle IN. */
-		if (!saop->useOr || saop->opno != uuid_eq_op)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		/* A ScalarArrayOpExpr always has exactly two args. */
-		Assert(list_length(saop->args) == 2);
-
-		/* As above: only a plain Const array is prunable at plan time. */
-		Assert(IsA(linitial(saop->args), Var));
-		if (!IsA(lsecond(saop->args), Const))
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		var = (Var *) linitial(saop->args);
-		con = (Const *) lsecond(saop->args);
-
-		if (var->varno != relid || var->varattno != attno)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		if (get_element_type(con->consttype) != UUIDOID)
-			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-
-		arr = DatumGetArrayTypeP(con->constvalue);
-
-		deconstruct_array(arr, UUIDOID, UUID_LEN, false, 'c',
-						  &elems, &nulls, &nelems);
-
-		for (j = 0; j < nelems; j++)
-		{
-			if (nulls[j])
-				continue;
-
-			yb_add_matching_server_index(elems[j], servers, nservers,
-										 out_indexes);
-		}
-
-		pfree(elems);
-		pfree(nulls);
-
-		return YB_TS_UUID_CLAUSE_SUBSET;
-	}
-
-	return YB_TS_UUID_CLAUSE_UNSUPPORTED;
-}
-
-/*
- * YbExtractFederatedTserverFilter
- *		Inspect 'rel->baserestrictinfo' for filters on the hardcoded
- *		"server_uuid" column of the foreign table referenced by 'rte',
- *		and return a Bitmapset of indexes into 'servers' that the
- *		conjunction of those filters admits.
- *
- * Why iterating baserestrictinfo as an AND list is correct:
- *   rel->baserestrictinfo is, by PostgreSQL invariant, an implicit-AND
- *   list of RestrictInfo nodes. A top-level OR predicate is represented
- *   as a single BoolExpr(OR_EXPR) entry in the list, which our IsA()
- *   checks do not match - we therefore conservatively skip it
- *   (treating it as "no pruning information"). Because the list is
- *   AND-connected, a tserver excluded by any one recognized clause
- *   cannot satisfy the overall predicate, so intersecting the SUBSETs
- *   of all recognized clauses is sound. Unrecognized clauses remain in
- *   baserestrictinfo and are re-evaluated as residual quals on each
- *   per-tserver child.
- *
- * If no recognized clause is found, every index 0 .. nservers-1 is set
- * so the caller requests all servers.
- *
- * Errors when the federated foreign table is missing a "server_uuid"
- * UUID column or when UUID equality is somehow unregistered.
- */
-Bitmapset *
-YbExtractFederatedTserverFilter(PlannerInfo *root, RelOptInfo *rel,
-								RangeTblEntry *rte,
-								YbcServerDescriptor *servers,
-								size_t nservers)
-{
-	AttrNumber	attno;
-	Oid			uuid_eq_op;
-	ListCell   *lc;
-	Bitmapset  *allowed_indexes = NULL;
-	bool		any_subset_seen = false;
-
-	attno = yb_get_federated_tserver_uuid_attno(rte->relid);
-
-	uuid_eq_op = lookup_type_cache(UUIDOID, TYPECACHE_EQ_OPR)->eq_opr;
-
-	if (!OidIsValid(uuid_eq_op))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("UUID equality operator is not registered")));
-
-	foreach(lc, rel->baserestrictinfo)
-	{
-		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
-		Bitmapset  *clause_indexes = NULL;
-		YbTserverUuidClauseResult res;
-
-		res = yb_extract_tserver_indexes_from_clause(ri->clause, rel->relid,
-													 attno, uuid_eq_op,
-													 servers, nservers,
-													 &clause_indexes);
-
-		if (res == YB_TS_UUID_CLAUSE_UNSUPPORTED)
-			continue;
-
-		Assert(res == YB_TS_UUID_CLAUSE_SUBSET);
-
-		if (!any_subset_seen)
-		{
-			allowed_indexes = clause_indexes;
-			any_subset_seen = true;
-		}
-		else
-		{
-			Bitmapset  *prev = allowed_indexes;
-
-			allowed_indexes = bms_intersect(prev, clause_indexes);
-			bms_free(prev);
-			bms_free(clause_indexes);
-		}
-	}
-
-	if (!any_subset_seen)
-		return bms_add_range(NULL, 0, (int) nservers - 1);
-
-	return allowed_indexes;
 }

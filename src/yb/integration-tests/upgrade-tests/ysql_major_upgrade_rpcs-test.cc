@@ -17,6 +17,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 
@@ -359,6 +360,66 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade))
 
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+// Make sure rollback works after a master restart inside the catalog copy window.
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespacePreparing)) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  auto* master_leader = cluster_->GetLeaderMaster();
+
+  rpc::RpcController rpc;
+  CountDownLatch latch(1);
+  master::StartYsqlMajorCatalogUpgradeResponsePB upgrade_response;
+  AsyncStartYsqlMajorUpgrade(upgrade_response, rpc, latch);
+  latch.Wait();
+
+  // Arm after the restore phase starts; initdb's own copy windows would freeze the leader earlier.
+  ASSERT_OK(WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE));
+  ASSERT_OK(cluster_->SetFlag(master_leader, "TEST_pause_before_upsert_ysql_sys_table", "true"));
+
+  ASSERT_OK(WaitForNamespaceNextMajorVersionState(
+      "template1", master::SysNamespaceEntryPB::NEXT_VER_PREPARING));
+
+  LOG(INFO) << "Killing the master leader inside the catalog copy window";
+  master_leader->Shutdown();
+  ASSERT_OK(WaitForClusterToStabilize());
+
+  // A master restart during the catalog upgrade fails the upgrade by design.
+  auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_CONTAINS(ysql_catalog_config, "state: FAILED");
+
+  ASSERT_OK(master_leader->Restart());
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_before_upsert_ysql_sys_table", "false"));
+
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+// Make sure a namespace left in PREPARING before the upgrade is still reaped.
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
+  const std::string kStaleDb = "stale_db";
+
+  // Hang the creation so the database stays in PREPARING on disk. The hook has to be one the old
+  // version already ships, since the stale database must predate the upgrade.
+  auto* master_leader = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->SetFlag(master_leader, "TEST_hang_on_namespace_transition", "true"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, kStaleDb] {
+    // Blocks until the master restart below kills the process it is waiting on.
+    WARN_NOT_OK(ExecuteStatement("CREATE DATABASE " + kStaleDb), "CREATE DATABASE");
+  });
+
+  ASSERT_OK(WaitForNamespaceState(kStaleDb, master::SysNamespaceEntryPB::PREPARING));
+
+  // Restarting onto the new binary makes IsMajorUpgradeInProgress() true with no upgrade started,
+  // and clears the hang flag so the reap can run.
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  thread_holder.JoinAll();
+
+  // The row carries no NEXT_VER_PREPARING marker, so the loader reaps it instead of keeping it as a
+  // database the upgrade is rebuilding.
+  ASSERT_OK(WaitForNamespaceState(kStaleDb, master::SysNamespaceEntryPB::DELETING));
 }
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.

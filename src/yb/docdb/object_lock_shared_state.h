@@ -68,6 +68,34 @@ struct ObjectLockFastpathRequest {
 
 static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
 
+struct ObjectLockExclusiveIntent;
+
+// This object is a handle to a shared memory array of exclusive lock intents, and may be stored in
+// private memory.
+class ObjectLockExclusiveIntents {
+ public:
+  ObjectLockExclusiveIntents();
+  ObjectLockExclusiveIntents(ObjectLockExclusiveIntents&& other);
+  ~ObjectLockExclusiveIntents();
+
+  ObjectLockExclusiveIntents& operator=(ObjectLockExclusiveIntents&& other);
+
+  static Result<ObjectLockExclusiveIntents> Make(
+      SharedMemoryBackingAllocator& allocator,
+      const std::map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
+
+ private:
+  friend class ObjectLockSharedState;
+
+  ObjectLockExclusiveIntents(
+      SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> array, size_t count);
+
+  std::span<const ObjectLockExclusiveIntent> SharedMemorySpan() const;
+
+  SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> intents_;
+  size_t count_ = 0;
+};
+
 using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
 
 class ObjectLockSharedState {
@@ -76,7 +104,7 @@ class ObjectLockSharedState {
  public:
   ObjectLockSharedState(
       SharedMemoryBackingAllocator& allocator,
-      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
+      const ObjectLockExclusiveIntents& exclusive_intents);
   ~ObjectLockSharedState();
 
   // Try to add a lock request from postgres side.
@@ -105,11 +133,11 @@ class ObjectLockSharedState {
 
   void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  void ConsumeAndResetExclusiveLockIntentsTo(
       const FastLockRequestConsumer& consume,
-      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
+      const ObjectLockExclusiveIntents& exclusive_intents) PARENT_PROCESS_ONLY;
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
+  void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
   uint64_t PgLockRequestCount() const;
@@ -117,7 +145,7 @@ class ObjectLockSharedState {
   uint64_t TServerLockRequestCount() const;
   uint64_t TServerLockReleaseCount() const;
 
-  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
+  [[nodiscard]] bool TEST_has_exclusive_intents() const PARENT_PROCESS_ONLY;
 
  private:
   const SharedMemoryUniquePtr<Impl> impl_;

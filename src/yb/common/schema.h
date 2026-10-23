@@ -368,6 +368,7 @@ class TableProperties {
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
     // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -394,6 +395,7 @@ class TableProperties {
     // Ignoring retain_delete_markers_.
     // Ignoring partitioning_version_.
     // Ignoring owns_vector_reverse_mapping_.
+    // Ignoring writes_vector_reverse_mapping_.
     return true;
   }
 
@@ -488,6 +490,10 @@ class TableProperties {
     return owns_vector_reverse_mapping_;
   }
 
+  bool writes_vector_reverse_mapping() const {
+    return writes_vector_reverse_mapping_;
+  }
+
   PgReplicaIdentity replica_identity() const {
     DCHECK(HasReplicaIdentity());
     return *ysql_replica_identity_;
@@ -536,6 +542,12 @@ class TableProperties {
   // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
   // Alter is intentionally not supported.
   bool owns_vector_reverse_mapping_;
+
+  // Whether writes to this table maintain the vector reverse mapping. When false, all vector
+  // indexes of the table store the ybctid as the vector payload instead.
+  // Set by master at YSQL table creation; loaded via FromTablePropertiesPB; restored from backup.
+  // Alter is intentionally not supported.
+  bool writes_vector_reverse_mapping_;
 
   // This is optional since its a ysql only field
   std::optional<PgReplicaIdentity> ysql_replica_identity_;

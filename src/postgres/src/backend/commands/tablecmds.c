@@ -5496,10 +5496,13 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
-	 * If this is a partitioned table, prepare alter table handles for all
-	 * the partitions as well.
+	 * YB: If this is a partitioned table and a subcommand trickles down to
+	 * the partitions, prepare alter table handles for all the partitions as
+	 * well. Lock them before reading them.
 	 */
-	List	   *children = find_all_inheritors(main_relid, NoLock, NULL);
+	List	   *children = (YbATAltersPartitions(info->subcmds, AT_NUM_PASSES) ?
+							find_all_inheritors(main_relid, lockmode, NULL) :
+							NIL);
 	ListCell   *child;
 
 	foreach(child, children)
@@ -9809,7 +9812,7 @@ ATExecAddStatistics(AlteredTableInfo *tab, Relation rel,
 	/* The CreateStatsStmt has already been through transformStatsStmt */
 	Assert(stmt->transformed);
 
-	address = CreateStatistics(stmt);
+	address = CreateStatistics(stmt, !is_rebuild);
 
 	return address;
 }
@@ -21593,7 +21596,11 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		stmt = YbGenerateClonedExtStatsStmt(new_rel, old_relid,
 											stat_ext_form->oid, attmap);
 		stmt->defnames = stringToQualifiedNameList(orig_stats_name);
-		CreateStatistics(stmt);
+		/*
+		 * Re-creating statistics during a rewrite must not require CREATE on
+		 * the schema, matching the !is_rebuild case in ATExecAddStatistics.
+		 */
+		CreateStatistics(stmt, false /* check_rights */ );
 	}
 	systable_endscan(scan);
 	table_close(pg_statistic_ext, RowExclusiveLock);

@@ -210,13 +210,13 @@ Install the following dependencies on the airgapped machine _before_ running the
 
 **PostgreSQL client tools**
 
-Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+Install the following PostgreSQL 18 client tools and make them available in your system PATH.
 
 | Dependency | Required Version |
 | :--------- | :--------------- |
-| pg_dump | 17 |
-| pg_restore | 17 |
-| psql | 17 |
+| pg_dump | 18 |
+| pg_restore | 18 |
+| psql | 18 |
 
 **MySQL development libraries**
 
@@ -343,13 +343,13 @@ Install the following dependencies on the airgapped machine _before_ running the
 
 **PostgreSQL client tools**
 
-Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+Install the following PostgreSQL 18 client tools and make them available in your system PATH.
 
 | Dependency | Required Version |
 | :--------- | :--------------- |
-| pg_dump | 17 |
-| pg_restore | 17 |
-| psql | 17 |
+| pg_dump | 18 |
+| pg_restore | 18 |
+| psql | 18 |
 
 **MySQL development libraries**
 

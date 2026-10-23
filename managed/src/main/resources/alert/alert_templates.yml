@@ -772,7 +772,7 @@ templates:
     name: Number of YSQL connections is high
     description: Number of YSQL connections is above threshold
     queryTemplate: max by (universe_uuid)
-      (max_over_time(yb_node_ysql_connections_count{universe_uuid="__universeUuid__"}[5m]))
+      (max_over_time(yb_ysqlserver_connection_total{universe_uuid="__universeUuid__",export_type="ysql_export"}[5m]))
       {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
@@ -784,7 +784,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (max_over_time(yb_node_ysql_connections_count{universe_uuid='{{ $labels.universe_uuid }}'}[5m]))
+        (max_over_time(yb_ysqlserver_connection_total{universe_uuid='{{ $labels.universe_uuid }}',export_type='ysql_export'}[5m]))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -1291,6 +1291,7 @@ templates:
     defaultThresholdUnit: STATUS
     thresholdMaxValue: 0.0
     thresholdReadOnly: true
+    defaultDurationSec: 180
     labels:
       affected_xcluster_configs: >-
         {{ range $index, $element := query "count by (source_universe_uuid, xcluster_config_name)
@@ -2411,7 +2412,9 @@ templates:
     queryTemplate: ybp_pa_collector_expected_up{customer_uuid = "__customerUuid__"} == 1
       and on() absent(up{job="perf-advisor"}) == 1
     createForNewCustomer: true
-    defaultDurationSec: 900
+    # absent() only turns 1 once the collector's last sample leaves Prometheus' query lookback
+    # delta, 5 minutes by default, so the wait to fire is that plus this duration.
+    defaultDurationSec: 300
     defaultThresholdMap:
       SEVERE:
         threshold: 1.0
@@ -2797,5 +2800,63 @@ templates:
       summary: >-
         YB node maintenance service definition is missing for universe
         '{{ $labels.source_name }}' on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_EXPORTER_TLS_ROOT_NODES:
+    name: Node exporter TLS off due to root-level nodes
+    description: Node-to-node encryption is on but node_exporter serves plain HTTP, because some
+      nodes still run node_exporter from the root-level systemd unit
+    queryTemplate: (count(label_replace(max_over_time(ybp_nodeagent_root_node_exporter{customer_uuid="__customerUuid__"}[1m]), "node_address", "$1", "node_address", "(.+):([0-9]+)") == 1
+      and on (node_address) min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__"}[1m]))
+      and on () (max_over_time(ybp_universe_node_exporter_https_allowed{universe_uuid="__universeUuid__"}[1m]) == 1)
+      unless on () (max_over_time(ybp_universe_node_exporter_https{universe_uuid="__universeUuid__"}[1m]) == 1))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultDurationSec: 300
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (node_name) (min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}'}[1m])
+        and on (node_address) (label_replace(max_over_time(ybp_nodeagent_root_node_exporter{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_address', '$1', 'node_address', '(.+):([0-9]+)') == 1))" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        node_exporter TLS is off for universe '{{ $labels.source_name }}' because
+        {{ $value | printf "%.0f" }} node(s) still run node_exporter from the root-level systemd
+        unit. Re-provision these nodes with root to move it to the DB user's systemd.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_EXPORTER_ROOT_NON_UNIVERSE:
+    name: Non-universe node with root-level node exporter
+    description: A node not associated with a universe runs node_exporter from the root-level
+      systemd unit, so it can't be added to a universe that serves node_exporter over TLS
+    queryTemplate: count(label_replace(max_over_time(ybp_nodeagent_root_node_exporter{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.+):([0-9]+)") == 1
+      unless on (node_ip) label_replace(min_over_time(ybp_universe_node_function{customer_uuid="__customerUuid__"}[1m]), "node_ip", "$1", "node_address", "(.*)"))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultDurationSec: 300
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (node_name) (label_replace(max_over_time(ybp_nodeagent_root_node_exporter{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_ip', '$1', 'node_address', '(.+):([0-9]+)') == 1
+        unless on (node_ip) label_replace(min_over_time(ybp_universe_node_function{customer_uuid='{{ $labels.customer_uuid }}'}[1m]), 'node_ip', '$1', 'node_address', '(.*)'))" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} node(s) not associated with a universe still run
+        node_exporter from the root-level systemd unit. They can't be added to universes that
+        serve node_exporter over TLS until node-agent-provision.sh is re-run with root on them.
 
         Affected nodes: {{ $labels.affected_node_names }}

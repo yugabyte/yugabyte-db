@@ -56,6 +56,9 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid);
 
+// Sent with every request so PG client service can tell which database the backend serves.
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -103,10 +106,18 @@ void YBCRefreshClusterReplicationInfo();
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
+// Catalog prefetch load on the master leader as of the last heartbeat. Values match
+// YsqlCatalogPrefetchLoadPB: 0 unknown, 1 low, 2 busy, 3 super busy.
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad();
+
 // Set per-db catalog_version to the local tserver's per-db catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedDBCatalogVersion(
     YbcPgOid db_oid, uint64_t* catalog_version);
+
+// For database db_oid, the newest catalog version this node holds a cached sys table prefetch
+// at. Zero if it holds none for that database.
+YbcStatus YBCGetSharedDbLastPrefetchedCatalogVersion(YbcPgOid db_oid, uint64_t* catalog_version);
 
 // Return the number of rows in pg_yb_catalog_table. Only used when per-db
 // catalog version mode is enabled.
@@ -148,6 +159,7 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+void YBCTCMallocReleaseFreeMemory(int64_t bytes);
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
@@ -158,8 +170,11 @@ void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
 YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 
-// Is this node acting as the pg_cron leader?
-bool YBCIsCronLeader();
+// Does this node hold a valid pg_cron leader lease (true while draining after a step down)?
+bool YBCHasCronLease();
+
+// Is this node the active pg_cron leader (holds a lease and has not stepped down)?
+bool YBCCanCronStartJobs();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
 
@@ -422,6 +437,12 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
                                 int64_t *size,
                                 int32_t *num_missing_tablets);
 
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets);
+
 YbcStatus YBCGetSplitPoints(YbcPgTableDesc table_desc,
                             const YbcPgTypeEntity **type_entities,
                             YbcPgTypeAttrs *type_attrs_arr,
@@ -598,6 +619,11 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
 YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
 
+// Restrict a vector index search to the tablets that can hold rows whose primary key columns
+// have the given values. Columns that don't bound the tablets are ignored.
+YbcStatus YBCPgDmlANNBindKeyFilter(
+    YbcPgStatement handle, int ncolumns, const YbcPgVectorKeyColumn *columns);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -605,6 +631,11 @@ YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, 
 
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
 YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_count);
+
+// Return the outcome reported by DocDB for an executed INSERT ... ON CONFLICT operation.
+// The outcome is UNKNOWN when DocDB did not report conflict resolution.
+YbcStatus YBCPgDmlGetOnConflictOutcome(
+    YbcPgStatement handle, YbcPgOnConflictOutcome *on_conflict_outcome);
 
 // This function returns the tuple id (ybctid) of a Postgres tuple.
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *ybctid);
@@ -633,6 +664,7 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
+void YBCPgClearSessionState();
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
@@ -674,6 +706,9 @@ YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
 YbcStatus YBCPgInsertStmtSetUpsertMode(YbcPgStatement handle);
+
+YbcStatus YBCPgInsertStmtSetOnConflictAction(YbcPgStatement handle,
+                                             YbcPgOnConflictAction action);
 
 YbcStatus YBCPgInsertStmtSetWriteTime(YbcPgStatement handle, const uint64_t write_time);
 
@@ -718,7 +753,8 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle);
 
-// Set forward/backward scan direction.
+// Set forward/backward scan direction.  Leave it unset when row order does not matter, which lets
+// pggate read tablets in parallel and skip preserving ybctid order.  Cannot be changed once set.
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 
 // Set prefix length for distinct index scans.
@@ -751,7 +787,7 @@ YbcStatus YBCSRFGetNext(YbcPgFunction handle, uint64_t *values, bool *is_nulls, 
 YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YbcStatus YBCPgBeginTransaction(int64_t start_time);
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -785,6 +821,14 @@ bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
+
+// Whether DDLs run inside the enclosing transaction block.
+// ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
+// enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
+// object locking feature. It therefore follows table locking for the current transaction, which
+// is off until the object locking infra auto flag is promoted and stays at the value latched when
+// the transaction began.
+bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
 // doesn't request a smaller limit.  Equals
@@ -899,6 +943,11 @@ void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
 
+// The deadline pggate applies to a request when no tighter timeout is in force. A caller arms a
+// timer that fires before this deadline does, so the failure is reported by postgres rather than
+// as a transport timeout.
+int32_t YBCGetDefaultRpcTimeoutMs();
+
 bool YBCHasProcessableAbortInterrupt();
 
 //--------------------------------------------------------------------------------------------------
@@ -932,6 +981,11 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
+
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+
+void YBCPgResetHistoricalReadContext();
+
 YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
@@ -942,12 +996,13 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache();
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
-    YbcPgSysTablePrefetcherCacheMode cache_mode);
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind);
 
 void YBCStopSysTablePrefetching();
 
@@ -957,7 +1012,7 @@ void YBCRegisterSysTableForPrefetching(
     YbcPgOid database_oid, YbcPgOid table_oid, YbcPgOid index_oid, int row_oid_filtering_attr,
     bool fetch_ybctid);
 
-YbcStatus YBCPrefetchRegisteredSysTables();
+YbcStatus YBCPrefetchRegisteredSysTables(bool completes_connection_prefetch);
 
 YbcStatus YBCPgCheckIfPitrActive(bool* is_active);
 
@@ -1120,6 +1175,7 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
+YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 YbcStatus YBCResetAutoAnalyzeMutationCounters(

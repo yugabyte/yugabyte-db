@@ -39,11 +39,14 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -278,8 +281,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     taskParams.nodePrefix = "test_uni";
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
+    TestUtils.existingProviderInitializer(userIntent)
+        .setProviderType(Common.CloudType.onprem)
+        .setInstanceType("type.small");
     userIntent.universeName = "megauniverse";
     taskParams.upsertPrimaryCluster(userIntent, null, null);
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
@@ -1008,7 +1012,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Universe universe = createUniverse(customer.getId());
     UUID uUUID = universe.getUniverseUUID();
     CloudType providerType =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getAllCloudTypes()
+            .iterator()
+            .next();
     Universe.saveDetails(
         uUUID,
         univ -> {
@@ -1613,8 +1623,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               universeDetails.getPrimaryCluster().userIntent;
-          userIntent.providerType = Common.CloudType.azu;
-          userIntent.provider = p.getUuid().toString();
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(p.getUuid())
+              .setProviderType(CloudType.azu);
           universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(u.getUniverseUUID(), updater);
@@ -1779,7 +1790,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditModifyTags() throws IOException {
     testGetAvailableOptions(
-        u -> u.getPrimaryCluster().userIntent.instanceTags.put("aa", "bb"),
+        u ->
+            TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+                .setInstanceTags(Map.of("aa", "bb")),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
@@ -1800,7 +1813,11 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditSmartResizeNonRestart() throws IOException {
     testGetAvailableOptions(
-        x -> x.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50,
+        x ->
+            TestUtils.updateDeviceInfo(
+                x.getPrimaryCluster().userIntent,
+                UniverseTaskBase.ServerType.TSERVER,
+                deviceInfo -> deviceInfo.volumeSize += 50),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
   }
@@ -1847,8 +1864,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
-          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+          TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+              .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize += 50)
+              .setInstanceType("c3.large");
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE,
@@ -1870,8 +1888,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
-          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+          TestUtils.existingProviderInitializer(u.getPrimaryCluster().userIntent)
+              .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize += 50)
+              .setInstanceType("c3.large");
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
@@ -1891,7 +1910,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 nodesToAdd.add(newNode);
               });
           u.nodeDetailsSet.addAll(nodesToAdd);
-          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
+          TestUtils.updateDeviceInfo(
+              u.getPrimaryCluster().userIntent,
+              UniverseTaskBase.ServerType.TSERVER,
+              deviceInfo -> deviceInfo.volumeSize += 50);
           // change placement => SR is not available.
           PlacementInfo.PlacementAZ az =
               u.getPrimaryCluster().placementInfo.azStream().findFirst().get();
@@ -1927,17 +1949,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     ObjectNode bodyJson = Json.newObject();
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = i.getInstanceTypeCode();
     userIntent.universeName = "foo";
     userIntent.numNodes = 3;
-    userIntent.provider = p.getUuid().toString();
     userIntent.regionList = Arrays.asList(r.getUuid(), r2.getUuid());
 
     DeviceInfo di = new DeviceInfo();
     di.storageType = PublicCloudConstants.StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    userIntent.deviceInfo = di;
+
+    TestUtils.initUserIntent(userIntent, p, i.getInstanceTypeCode(), di, "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
@@ -1974,17 +1996,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     ObjectNode bodyJson = Json.newObject();
     UserIntent userIntent = new UserIntent();
-    userIntent.instanceType = i.getInstanceTypeCode();
     userIntent.universeName = "foo";
     userIntent.numNodes = 3;
-    userIntent.provider = p.getUuid().toString();
     userIntent.regionList = Arrays.asList(r.getUuid());
 
     DeviceInfo di = new DeviceInfo();
     di.storageType = PublicCloudConstants.StorageType.GP2;
     di.volumeSize = 100;
     di.numVolumes = 2;
-    userIntent.deviceInfo = di;
+
+    TestUtils.initUserIntent(userIntent, p, i.getInstanceTypeCode(), di, "demo-access");
+
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
@@ -2026,8 +2048,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testUniverseUpdateChangeInstanceTypeFail() {
     Universe u = setUpUniverse();
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType = "newInstanceType";
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .setInstanceType("newInstanceType")
+        .setInstanceTags(Map.of("foo", "bar"));
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result =
         assertPlatformException(
@@ -2040,8 +2063,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testUniverseUpdateChangeVolumeSizeFail() {
     Universe u = setUpUniverse();
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
-    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize++)
+        .setInstanceTags(Map.of("foo", "bar"));
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result =
         assertPlatformException(
@@ -2067,7 +2091,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               universe.setUniverseDetails(universeDetails);
             });
     u = addNode(u);
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize++);
     JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
@@ -2078,7 +2103,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   public void testUniverseUpdateChangeNumVolumesFail() {
     Universe u = setUpUniverse();
     u = addNode(u);
-    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    TestUtils.existingProviderInitializer(u.getUniverseDetails().getPrimaryCluster().userIntent)
+        .updateDeviceInfo(deviceInfo -> deviceInfo.numVolumes++);
     String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
     JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
     Result result =
@@ -2184,9 +2210,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-              userIntent.instanceType = i.getInstanceTypeCode();
               userIntent.regionList = Collections.singletonList(r.getUuid());
-              userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+                  .setInstanceType(i.getInstanceTypeCode());
+
               PlacementInfoUtil.updateUniverseDefinition(
                   universeDetails,
                   customer.getId(),
@@ -2231,27 +2261,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = provider.getUuid().toString();
-    userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.instanceType = "c5.large";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+
+    TestUtils.initUserIntent(
+        userIntent, provider, "c5.large", ApiUtils.getDummyDeviceInfo(1, 100), "demo-access");
+
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
     mutator.accept(udtp);
     udtp.setUniverseUUID(u.getUniverseUUID());
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(udtp);
-    if (udtp.getPrimaryCluster().userIntent.instanceTags.size() > 0) {
+    if (udtp.getPrimaryCluster().userIntent.getInstanceTagsForProvider(provider.getUuid()).size()
+        > 0) {
       ArrayNode clusters = (ArrayNode) bodyJson.get("clusters");
       ObjectNode cluster = (ObjectNode) clusters.get(0);
       ArrayNode instanceTags = Json.newArray();
+
       udtp.getPrimaryCluster()
           .userIntent
-          .instanceTags
+          .getInstanceTagsForProvider(provider.getUuid())
           .entrySet()
           .forEach(
               entry -> {
@@ -2263,7 +2294,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     }
     InstanceType.upsert(
         provider.getUuid(),
-        udtp.getPrimaryCluster().userIntent.instanceType,
+        udtp.getPrimaryCluster().userIntent.getBaseInstanceType(provider.getUuid()),
         10,
         5.5,
         new InstanceType.InstanceTypeDetails());
@@ -2298,15 +2329,25 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
-          userIntent.instanceType = instanceType;
-          userIntent.provider =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
-          userIntent.providerType = storageType.getCloudType();
+
           DeviceInfo di = new DeviceInfo();
           di.volumeSize = diskSize;
           di.numVolumes = 2;
           di.storageType = storageType;
-          userIntent.deviceInfo = di;
+
+          ProviderInitializer providerInitializer =
+              TestUtils.getProviderInitializerForTests(
+                      userIntent,
+                      universe
+                          .getUniverseDetails()
+                          .getPrimaryCluster()
+                          .userIntent
+                          .maybeGetSingleProviderUUID()
+                          .get())
+                  .setProviderType(storageType.getCloudType())
+                  .setInstanceType(instanceType)
+                  .setDeviceInfo(di);
+
           universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };

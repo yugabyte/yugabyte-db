@@ -2479,7 +2479,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(80));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2513,7 +2513,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(80));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");

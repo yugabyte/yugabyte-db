@@ -44,18 +44,21 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     flagMap.put("TEST_generate_ybrowid_sequentially", "true");
     // this is the default isolation level in upstream tests
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    // TODO(#26734): Enable transactional DDL once savepoint for DDLs are supported.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    // DDL savepoint requires transactional DDL to be enabled.
-    flagMap.put("ysql_yb_enable_ddl_savepoint_support", "false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    flagMap.put("enable_object_locking_for_table_locks","false");
-    flagMap.put("ysql_enable_concurrent_ddl", "false");
-    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
-        (e, a) -> e + "," + a);
-
     // (Auto Analyze #28391) Restarting a DDL transaction not supported
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // TODO(#26734): with concurrent DDL, anon.reset() fails in yb.port.init because its TRUNCATE
+    // now runs inside a transaction block and the test sets yb_enable_alter_table_rewrite=false
+    // ("unsafe TRUNCATE cannot be executed in a transaction block"), and yb.port.injection's
+    // manual DROP TABLE workarounds fail once the rollback undoes the DDL. Run in the legacy mode
+    // until both are addressed.
+    toggleDDLMode(flagMap, /* useLegacy */ true);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
 

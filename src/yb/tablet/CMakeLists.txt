@@ -37,6 +37,21 @@ set(TABLET_SRCS
   apply_intents_task.cc
   cleanup_aborts_task.cc
   cleanup_intents_task.cc
+  maintenance_manager.cc
+  mvcc.cc
+  operations/change_auto_flags_config_operation.cc
+  operations/change_metadata_operation.cc
+  operations/clone_operation.cc
+  operations/history_cutoff_operation.cc
+  operations/operation.cc
+  operations/operation_driver.cc
+  operations/operation_tracker.cc
+  operations/snapshot_operation.cc
+  operations/split_operation.cc
+  operations/truncate_operation.cc
+  operations/update_txn_operation.cc
+  operations/write_operation.cc
+  preparer.cc
   remove_intents_task.cc
   restore_util.cc
   running_transaction.cc
@@ -48,31 +63,17 @@ set(TABLET_SRCS
   tablet_component.cc
   tablet_dump_helper.cc
   tablet_metrics.cc
-  tablet_peer_mm_ops.cc
   tablet_peer.cc
+  tablet_peer_mm_ops.cc
+  tablet_retention_policy.cc
   tablet_snapshots.cc
   tablet_vector_indexes.cc
   transaction_coordinator.cc
   transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
+  vector_index_checker.cc
   write_post_apply_metadata_task.cc
-  operations/operation.cc
-  operations/change_auto_flags_config_operation.cc
-  operations/change_metadata_operation.cc
-  operations/clone_operation.cc
-  operations/history_cutoff_operation.cc
-  operations/operation_driver.cc
-  operations/operation_tracker.cc
-  operations/snapshot_operation.cc
-  operations/split_operation.cc
-  operations/truncate_operation.cc
-  operations/update_txn_operation.cc
-  operations/write_operation.cc
-  maintenance_manager.cc
-  mvcc.cc
-  tablet_retention_policy.cc
-  preparer.cc
   write_query.cc
   )
 
@@ -158,7 +159,9 @@ set(YB_TEST_LINK_LIBS tablet tablet_test_util yb_common_test_util ${YB_MIN_TEST_
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-split-test)
 ADD_YB_TEST(tablet-metadata-test)
+ADD_YB_TEST(tablet_dump_helper-test)
 ADD_YB_TEST(tablet_snapshots-test)
+ADD_YB_TEST(tablet-tier-migration-test)
 ADD_YB_TEST(verifyrows-tablet-test)
 ADD_YB_TEST(tablet-pushdown-test)
 ADD_YB_TEST(tablet-schema-test)

@@ -48,8 +48,6 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -70,6 +68,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
 
@@ -98,7 +97,6 @@ using master::ReportedTabletPB;
 using master::TabletReportPB;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
-using strings::Substitute;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 using tserver::TSTabletManager;
@@ -197,7 +195,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   // TSTabletManager should acknowledge the role changes via tablet reports.
   unsigned int seed = SeedRandom();
   for (int i = 0; i < FLAGS_num_election_test_loops; i++) {
-    SCOPED_TRACE(Substitute("Iter: $0", i));
+    SCOPED_TRACE(Format("Iter: $0", i));
     int new_leader_idx = rand_r(&seed) % 2;
     LOG(INFO) << "Electing peer " << new_leader_idx << "...";
     auto con = CHECK_RESULT(tablet_peers[new_leader_idx]->GetConsensus());

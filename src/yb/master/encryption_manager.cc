@@ -26,6 +26,7 @@
 #include "yb/master/universe_key_registry_service.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -249,7 +250,7 @@ Result<std::string> EncryptionManager::GetKeyFromParams(
     std::lock_guard l(universe_key_mutex_);
     const auto& it = universe_keys_->map().find(version_id);
     if (it == universe_keys_->map().end()) {
-      return STATUS_SUBSTITUTE(NotFound, "Could not find key with version $0", version_id);
+      return STATUS_FORMAT(NotFound, "Could not find key with version $0", version_id);
     }
     return it->second;
   }

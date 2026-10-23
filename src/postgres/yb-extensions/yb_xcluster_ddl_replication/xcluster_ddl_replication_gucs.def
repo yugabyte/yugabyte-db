@@ -18,6 +18,11 @@
  * These all need to be lowercase.
  */
 
+/*
+ * This affects how unqualified names in the DDL are resolved (types, functions,
+ * operator classes, tables, ...), not just which schema new objects land in.
+ */
+X("search_path")
 /* This affects what tablespace a table is created in. */
 X("default_tablespace")
 /* This affects whether a table is range or hash started. */
@@ -31,3 +36,9 @@ X("timezone")
 X("intervalstyle")
 /* Settings that affect parsing of function bodies. */
 X("check_function_bodies")
+
+/*
+ * This affects whether REFRESH MATERIALIZED VIEW rewrites the materialized
+ * view or updates it in place.
+ */
+X("yb_refresh_matview_in_place")

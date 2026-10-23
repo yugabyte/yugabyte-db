@@ -57,8 +57,6 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
-  uint32_t get_oid_cache_invalidations_count() const override { return 0; }
-
   // Get the global catalog versions. When use_cache is true and the heartbeat catalog version
   // cache is enabled, reads from the cache (stale-tolerant). Otherwise reads from disk.
   void get_ysql_catalog_version(uint64_t* current_version,
@@ -81,6 +79,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) override;
+
+  // The master serves sys catalog reads but holds no sys table prefetch cache for a backend to
+  // read back, so there is nothing to record.
+  void SetYsqlDbLastPrefetchedCatalogVersion(uint32_t, uint64_t) override {}
 
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
@@ -140,6 +142,11 @@ class MasterTabletServer : public tserver::TabletServerIf,
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
+  Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> /* table_ids */, uint32_t /* list_version */) override {
+    return STATUS(NotSupported, "SetActiveTableIdsForMetrics is not supported on masters");
+  }
 
   bool SkipCatalogVersionChecks() override;
 

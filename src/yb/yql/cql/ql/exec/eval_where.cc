@@ -127,8 +127,8 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
       int32_t val = value.int32_value();
       if (val < std::numeric_limits<uint16_t>::min() ||
           val > std::numeric_limits<uint16_t>::max()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "$0 out of bounds for unsigned 16 bit integer",
-                                 val);
+        return STATUS_FORMAT(InvalidArgument, "$0 out of bounds for unsigned 16 bit integer",
+                             val);
       }
       hash_code = val;
     } else {

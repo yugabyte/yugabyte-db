@@ -135,6 +135,8 @@ func handleRootCheck(cmdName string) {
 			log.Warn("Failed to set as_root in config file, please set it manually")
 			log.Fatal("Failed to set as_root in config file: " + err.Error())
 		}
+		// Reload so the as_root state migration copies the value just written, not the unset one.
+		common.InitViper()
 		return
 	} else if user.Uid == "0" && !viper.GetBool("as_root") {
 		log.Fatal("running as root user with 'as_root' set to false is not supported")

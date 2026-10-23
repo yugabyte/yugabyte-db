@@ -29,6 +29,39 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	ScanKeyData scankey[2];
 	SysScanDesc scan;
 
+	/*
+	 * YB: AlterSetting is invoked in four different contexts:
+	 *  1. ALTER ROLE ... SET: set a variable for a specific role
+	 *  2. ALTER ROLE ALL SET: set a variable for all roles
+	 *  3. ALTER DATABASE ... SET: set a variable for a specific database
+	 *  4. ALTER ROLE ... IN DATABASE ... SET: set a variable for a specific
+	 *     role within a database
+	 *
+	 * Password validity and password reuse are properties of the role, which
+	 * is global across databases, so they only make sense in (1) and (2).
+	 * Those pass databaseid InvalidOid.
+	 *
+	 * yb_allow_prehashed_passwords is a cluster switch, so only (2) is
+	 * accepted. A per-role value is applied in that role's session and can
+	 * skip a reuse policy that is on for the cluster.
+	 */
+	if (setstmt->name && databaseid != InvalidOid &&
+		(strcmp(setstmt->name, "yb_password_validity") == 0 ||
+		 strcmp(setstmt->name, "yb_password_reuse_history") == 0 ||
+		 strcmp(setstmt->name, "yb_password_reuse_interval") == 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" can only be set for a specific role",
+						setstmt->name)));
+
+	if (setstmt->name &&
+		strcmp(setstmt->name, "yb_allow_prehashed_passwords") == 0 &&
+		(databaseid != InvalidOid || OidIsValid(roleid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" can only be set for all roles",
+						setstmt->name)));
+
 	valuestr = ExtractSetVariableArgs(setstmt);
 
 	/* Get the old tuple, if any. */

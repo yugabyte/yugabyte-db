@@ -266,10 +266,16 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+
   // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
   // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
   // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
   bool use_regular_transaction_block = 4;
+
+  // Origination time (HybridTime value) for the DDL transaction this RPC may create: CREATE INDEX
+  // starts the transaction it holds across the backfill right before issuing this RPC, so this is
+  // what stamps that transaction's writes and commit.  0 means none.
+  fixed64 origination_ht = 5;
 }
 
 message PgBackfillIndexResponsePB {
@@ -770,7 +776,7 @@ message PgListReplicationSlotsResponsePB {
 }
 
 message PgOpenTableRequestPB {
-  string table_id = 1;
+  string table_id = 1 [(yb.rpc.trace) = {enabled: true}];
   bool reopen = 2;
 
   // Reserved for invalidate_cache_time_us which was used to invalidate
@@ -835,6 +841,27 @@ message PgPerformOptionsPB {
     uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
+
+    // The catalog version this response is being cached at. The version is already part of
+    // key_value, but only as opaque bytes that pggate serialized; naming it separately lets the
+    // tserver record which version it now holds a prefetch for, for backends that want to start
+    // from an older one.
+    uint64 catalog_version = 4;
+
+    // Serve this request only if the response is already cached. A miss returns an Incomplete
+    // status instead of being filled, so a backend asking for an older version cannot cause the
+    // catalog to be read afresh and then stored under that older version's key.
+    bool lookup_only = 5;
+
+    // This request is the last of a connection start's prefetch, so once it is cached this node
+    // holds every entry such a connection needs at catalog_version. The tserver records the
+    // version only for these, because the load worth sparing the master leader is the large
+    // catalog read a connection start makes, and a connection skips it only when the whole set
+    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
+    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
+    // relcache preload -- cost the leader little, so a version recorded from one of them would
+    // advertise a saving that does not exist.
+    bool completes_connection_prefetch = 6;
   }
 
   message ReadTimeOptionsPB {
@@ -887,6 +914,30 @@ message PgPerformOptionsPB {
   bool is_using_table_locks = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
+
+  // When true, route the request through the HistoricalRead session kind.
+  // Used by walsender to read the catalog as of a time in the past within the
+  // context of a committed transaction.
+  bool use_historical_read_session = 35;
+
+  // The id of transaction within which the reads should be performed.
+  // The read will be performed with the in_txn_limit along with the
+  // transaction id, so that we read as of the time when a specific statement
+  // ran in the transaction i.e. see everything committed by the transaction
+  // until that statement.
+  // Only applicable when use_historical_read_session is true.
+  bytes historical_read_transaction_id = 36;
+
+  // OID of the database the backend is connected to; 0 until the backend knows it.
+  uint32 connected_database_oid = 37;
+
+  // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
+  fixed64 origination_ht = 38;
+}
+
+message PgRequestSequenceNumPB {
+  uint64 serial_no = 1;
+  OptionalUint64PB predecessor_serial_no = 2;
 }
 
 message PgPerformRequestPB {
@@ -894,7 +945,7 @@ message PgPerformRequestPB {
   PgPerformOptionsPB options = 2;
   repeated PgPerformOpPB ops = 3;
   fixed64 write_time = 4;
-  uint64 serial_no = 5;
+  PgRequestSequenceNumPB sequence_num = 5;
 }
 
 message PgPerformResponsePB {
@@ -979,6 +1030,9 @@ message PgInsertSequenceTupleRequestPB {
   int64 last_val = 5;
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 9;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -997,6 +1051,9 @@ message PgUpdateSequenceTupleRequestPB {
   int64 expected_last_val = 8;
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1020,6 +1077,9 @@ message PgFetchSequenceTupleRequestPB {
   int64 max_value = 8;
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1036,6 +1096,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 8;
 }
 
 message PgReadSequenceTupleResponsePB {
@@ -1049,6 +1111,7 @@ message PgDeleteSequenceTupleRequestPB {
   int64 db_oid = 2;
   int64 seq_oid = 3;
   reserved 4; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 5;
 }
 
 message PgDeleteSequenceTupleResponsePB {
@@ -1059,6 +1122,7 @@ message PgDeleteDBSequencesRequestPB {
   uint64 session_id = 1;
   int64 db_oid = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  fixed64 origination_ht = 4;
 }
 
 message PgDeleteDBSequencesResponsePB {
@@ -1068,6 +1132,9 @@ message PgDeleteDBSequencesResponsePB {
 message PgGetTableDiskSizeRequestPB {
   PgObjectIdPB table_id = 1;
   reserved 2; // ASH metadata is now passed in RequestHeader PB
+  // DocDB table UUID. When set, takes precedence over table_id. Used for
+  // colocation parent tables which have no PG oid mapping.
+  optional string yb_table_id = 3;
 }
 
 message PgGetTableDiskSizeResponsePB {
@@ -1175,7 +1242,7 @@ message PgCancelTransactionRequestPB {
   // Populating the field is optional. When populated, the cancel request is sent to the specified
   // status tablet alone. If not, the request is forwarded to all tablet servers and is thereafter
   // broadcast to all status tablets hosted by the tablet server.
-  bytes status_tablet_id = 2;
+  bytes status_tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   reserved 3; // ASH metadata is now passed in RequestHeader PB
 }
 
@@ -1445,11 +1512,11 @@ enum ObjectLockMode {
 }
 
 message ObjectLockOid {
-  uint32 database_oid = 1;
-  uint32 relation_oid = 2;
-  uint32 object_oid = 3;
-  uint32 object_sub_oid = 4;
-  uint32 tablespace_oid = 5;
+  uint32 database_oid = 1 [(yb.rpc.trace) = {enabled: true}];
+  uint32 relation_oid = 2 [(yb.rpc.trace) = {enabled: true}];
+  uint32 object_oid = 3 [(yb.rpc.trace) = {enabled: true}];
+  uint32 object_sub_oid = 4 [(yb.rpc.trace) = {enabled: true}];
+  uint32 tablespace_oid = 5 [(yb.rpc.trace) = {enabled: true}];
 }
 
 message PgAcquireObjectLockRequestPB {
@@ -1459,11 +1526,11 @@ message PgAcquireObjectLockRequestPB {
   ObjectLockOid lock_oid = 3;
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
-  ObjectLockMode lock_type = 4;
+  ObjectLockMode lock_type = 4 [(yb.rpc.trace) = {enabled: true}];
 
   reserved 5; // ASH metadata is now passed in RequestHeader PB
 
-  bool is_session_lock = 6;
+  bool is_session_lock = 6 [(yb.rpc.trace) = {enabled: true}];
 }
 
 message PgAcquireObjectLockResponsePB {

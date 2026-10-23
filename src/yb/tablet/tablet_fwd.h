@@ -65,28 +65,33 @@ class TransactionStatePB;
 class TruncateOperation;
 class TruncatePB;
 class UpdateTxnOperation;
+class VectorIndexCheckResultPB;
 class VectorIndexList;
 class WriteOperation;
 class WriteQuery;
 class WriteQueryContext;
 
 struct CreateSnapshotData;
-struct DocDbOpIds;
+struct DocDbPersistentState;
+struct VectorIndexPersistentState;
 struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
+struct TierMigrationHooks;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
 YB_STRONGLY_TYPED_BOOL(AbortOps);
+YB_STRONGLY_TYPED_BOOL(AllowLogLookup);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(IncludeVectorIndexes);
 YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
 
 enum class FlushFlags {

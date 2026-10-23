@@ -496,7 +496,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().helmReleaseName,
                 appLabelValue,
                 universe.getUniverseDetails().useNewHelmNamingStyle,
-                taskParams().newPlacementAzMasterCount); // ReplicaCount to Assert.
+                taskParams().newPlacementAzMasterCount, // ReplicaCount to Assert.
+                confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory
@@ -878,6 +879,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> getOrCreateMap(Map<String, Object> parent, String key) {
+    Object value = parent.get(key);
+    if (!(value instanceof Map)) {
+      value = new HashMap<String, Object>();
+      parent.put(key, value);
+    }
+    return (Map<String, Object>) value;
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml(new SkipNullRepresenter());
@@ -903,14 +914,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
 
     // TODO Support overriden instance types
-    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
+
+    InstanceType instanceType =
+        InstanceType.get(provider.getUuid(), userIntent.getBaseInstanceType(provider.getUuid()));
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}",
+          provider.getUuid(),
+          userIntent.getBaseInstanceType(provider.getUuid()));
       throw new RuntimeException(
-          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
+          "Unable to fetch InstanceType "
+              + provider.getUuid()
+              + ": "
+              + userIntent.getBaseInstanceType(provider.getUuid()));
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;
@@ -1298,9 +1316,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
+    boolean applyNewInstallGFlags = GFlagsUtil.areNewInstallGFlagsApplied(universeFromDB);
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(masterGFlags, universeFromDB, ServerType.MASTER);
+    }
     if (universeFromDBParams.fipsEnabled) {
       masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
     }
@@ -1321,11 +1343,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster
-        && universeFromDB
-            .getConfig()
-            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
-            .equals("true")) {
+    if (taskParams().masterJoinExistingCluster) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (primaryClusterIntent.enableYSQL) {
@@ -1362,6 +1380,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> tserverGFlags =
         GFlagsUtil.getGFlagsForAZ(
             azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+    if (applyNewInstallGFlags) {
+      GFlagsUtil.mergeNewInstallGFlags(tserverGFlags, universeFromDB, ServerType.TSERVER);
+    }
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -1580,7 +1601,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               "PGPASSFILE",
               "value",
               Util.getDataDirectoryPath(
-                      universeFromDB, universeFromDB.getMasterLeaderNode(), this.config)
+                      universeFromDB, universeFromDB.getMasterLeaderNodeOrThrow(), this.config)
                   + "/yw-data/.pgpass"));
       masterOverrides.put("extraEnv", masterExtraEnv);
     }
@@ -1720,7 +1741,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           e);
       throw new RuntimeException("Error in writing overrides map to string.");
     }
-    // TODO gflags which have precedence over helm overrides should be merged here.
+    // The provider, universe and AZ overrides were merged over the generated gflags, so they can
+    // have turned the FIPS gflag off again. The API rejects such overrides, but ones saved before
+    // that check existed are still in the database. Leaves gflags.master.openssl_require_fips and
+    // gflags.tserver.openssl_require_fips at "true" in the rendered values.
+    if (universeFromDBParams.fipsEnabled) {
+      Map<String, Object> gflags = getOrCreateMap(overrides, "gflags");
+      for (String server : List.of("master", "tserver")) {
+        getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+      }
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =
@@ -1871,9 +1901,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Add old deviceInfo/masterDeviceInfo spec if existing AZ
     if (!newlyAddedAZ) {
-      DeviceInfo savedTsDeviceInfo = savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+      DeviceInfo savedTsDeviceInfo =
+          savedUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo savedMasterDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+          savedUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       if (savedTsDeviceInfo != null) {
         if (savedTsDeviceInfo.numVolumes != null) {
@@ -1901,8 +1932,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
-    DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
-    DeviceInfo taskMasterDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+    DeviceInfo taskTsDeviceInfo =
+        taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
+    DeviceInfo taskMasterDeviceInfo =
+        taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
     // For cases when resize is combined with full move and new size was persisted in userIntent
     // We need to pass the old size explicitly until all full move AZ nodes are moved.
     if (taskParams().oldMasterDiskSize != null) {
@@ -1960,9 +1993,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> moveOpMasterDiskSpecs =
           (HashMap) moveOpStorageOverrides.getOrDefault("master", new HashMap<>());
 
-      DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+      DeviceInfo taskTsDeviceInfo =
+          taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo taskMasterDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+          taskUserIntent.evaluateDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       // moveOp storage attributes should use new volume attributes
       if (taskMasterDeviceInfo.numVolumes != null) {

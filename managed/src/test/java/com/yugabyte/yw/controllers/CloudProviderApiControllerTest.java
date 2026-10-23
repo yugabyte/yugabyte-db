@@ -18,8 +18,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYBPSuccess;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
@@ -54,11 +52,11 @@ import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -604,125 +602,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   //  public void testGetK8sSuggestedConfig() {
   //  public void testGetK8sSuggestedConfigWithoutPullSecret() {
   //  public void testGetKubernetesConfigsDiscoveryFailure() {
-
-  //  @Test
-  public void testDeleteProviderWithAccessKey() {
-    Provider p = ModelFactory.awsProvider(customer);
-    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.getUuid());
-    assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
-    assertEquals(0, AccessKey.getAll(p.getUuid()).size());
-    assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak);
-    assertAuditEntry(1, customer.getUuid());
-  }
-
-  //  @Test
-  public void testDeleteProviderWithInstanceType() {
-    Provider p = ModelFactory.onpremProvider(customer);
-
-    ObjectNode metaData = Json.newObject();
-    metaData.put("numCores", 4);
-    metaData.put("memSizeGB", 300);
-    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
-    instanceTypeDetails.volumeDetailsList = new ArrayList<>();
-    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
-    volumeDetails.volumeSizeGB = 20;
-    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
-    instanceTypeDetails.volumeDetailsList.add(volumeDetails);
-    metaData.put("longitude", -119.417932);
-    metaData.put("ybImage", "yb-image-1");
-    metaData.set("instanceTypeDetails", Json.toJson(instanceTypeDetails));
-
-    InstanceType.createWithMetadata(p.getUuid(), "region-1", metaData);
-    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.getUuid());
-    assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
-
-    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
-    assertNull(Provider.get(p.getUuid()));
-  }
-
-  //  @Test
-  public void testDeleteProviderWithMultiRegionAccessKey() {
-    Provider p = ModelFactory.awsProvider(customer);
-    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.getUuid());
-    assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
-    assertEquals(0, AccessKey.getAll(p.getUuid()).size());
-    assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak);
-    assertAuditEntry(1, customer.getUuid());
-  }
-
-  //  @Test
-  public void testDeleteProviderWithInvalidProviderUUID() {
-    UUID providerUUID = UUID.randomUUID();
-    Result result = assertPlatformException(() -> deleteProvider(providerUUID));
-    assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
-    assertAuditEntry(0, customer.getUuid());
-  }
-
-  //  @Test
-  public void testDeleteProviderWithUniverses() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Universe universe = createUniverse(customer.getId());
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = p.getUuid().toString();
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    userIntent.regionList = new ArrayList<>();
-    userIntent.regionList.add(r.getUuid());
-    universe =
-        Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
-    Result result = assertPlatformException(() -> deleteProvider(p.getUuid()));
-    assertBadRequest(result, "Cannot delete Provider with Universes");
-    assertAuditEntry(0, customer.getUuid());
-  }
-
-  //  @Test
-  public void testDeleteProviderWithoutAccessKey() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Result result = deleteProvider(p.getUuid());
-    assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
-    assertNull(Provider.get(p.getUuid()));
-    assertAuditEntry(1, customer.getUuid());
-  }
-
-  //  @Test
-  public void testDeleteProviderWithProvisionScript() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    String scriptFile = createTempFile("provision_instance.py", "some script");
-    keyInfo.provisionInstanceScript = scriptFile;
-    AccessKey.create(p.getUuid(), "access-key-code", keyInfo);
-    Result result = deleteProvider(p.getUuid());
-    assertOk(result);
-    assertFalse(new File(scriptFile).exists());
-    assertAuditEntry(1, customer.getUuid());
-  }
-
-  //  @Test
-  public void testCreateAwsProviderWithInvalidAWSCredentials() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("code", "aws");
-    bodyJson.put("name", "aws-Provider");
-    bodyJson.put("region", "ap-south-1");
-    ObjectNode detailsJson = Json.newObject();
-    ObjectNode CloudInfoJson = Json.newObject();
-    CloudInfoJson.put("AWS_ACCESS_KEY_ID", "test");
-    CloudInfoJson.put("AWS_SECRET_ACCESS_KEY", "secret");
-    CloudInfoJson.put("AWS_HOSTED_ZONE_ID", "1234");
-    detailsJson.set("cloudInfo", CloudInfoJson);
-    bodyJson.set("details", detailsJson);
-    CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    Result result = assertPlatformException(() -> createProvider(bodyJson));
-    assertBadRequest(result, "Invalid AWS Credentials.");
-    assertAuditEntry(0, customer.getUuid());
-  }
 
   @Test
   public void testCreateAwsProviderWithInvalidDevopsReply() {
@@ -1367,8 +1246,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
           // Add a desired number of nodes.
           userIntent.numNodes = 5;
-          userIntent.provider = p.getUuid().toString();
-          userIntent.imageBundleUUID = ib.getUuid();
+          TestUtils.getProviderInitializerForTests(userIntent, p.getUuid())
+              .setImageBundleUUID(ib.getUuid());
+
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 1; idx <= userIntent.numNodes; idx++) {
             NodeDetails node = new NodeDetails();
@@ -1486,7 +1366,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
           UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
           UserIntent userIntent = new UserIntent();
           userIntent.numNodes = 3;
-          userIntent.provider = onPremProvider.getUuid().toString();
+
+          TestUtils.getProviderInitializerForTests(userIntent, onPremProvider.getUuid())
+              .setProviderType(onPremProvider.getCloudCode());
+
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 1; idx <= userIntent.numNodes; idx++) {
             NodeDetails node = new NodeDetails();

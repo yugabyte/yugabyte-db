@@ -89,6 +89,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/scope_exit.h"
@@ -153,7 +154,6 @@ using server::SetFlagRequestPB;
 using server::SetFlagResponsePB;
 using server::HybridClock;
 using server::ClockPtr;
-using strings::Substitute;
 
 static const int kConsensusRpcTimeoutForTests = 50;
 
@@ -281,13 +281,13 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                       const vector<string>& leader_results,
                       TServerDetails* replica,
                       const vector<string>& replica_results) {
-    string ret = strings::Substitute("Replica results did not match the leaders."
-                                     "\nLeader: $0\nReplica: $1. Results size "
-                                     "L: $2 R: $3",
-                                     leader->ToString(),
-                                     replica->ToString(),
-                                     leader_results.size(),
-                                     replica_results.size());
+    string ret = Format("Replica results did not match the leaders."
+                        "\nLeader: $0\nReplica: $1. Results size "
+                        "L: $2 R: $3",
+                        leader->ToString(),
+                        replica->ToString(),
+                        leader_results.size(),
+                        replica_results.size());
 
     StrAppend(&ret, "Leader Results: \n");
     for (const string& result : leader_results) {
@@ -322,7 +322,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
         auto* const req = op->mutable_request();
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);
-        table.AddStringColumnValue(req, "string_val", StringPrintf("hello %d", j));
+        table.AddStringColumnValue(req, "string_val", Format("hello $0", j));
         session->Apply(op);
       }
 
@@ -496,6 +496,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void TestAddRemoveServer(PeerMemberType member_type);
   void TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type);
+  void TestStepDownWhenServerInTransition(PeerMemberType member_type);
 
   // Drives the phantom-acknowledgement scenario end to end. Defined near the test that uses it,
   // at the bottom of this file.
@@ -626,7 +627,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
   int num_threads = FLAGS_num_client_threads;
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -637,7 +638,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
   }
   for (int i = 0; i < FLAGS_num_replicas; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("chaos-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("chaos-test$0", i),
                                   &RaftConsensusITest::DelayInjectorThread,
                                   this, cluster_->tablet_server(i),
                                   kConsensusRpcTimeoutForTests,
@@ -1429,6 +1430,106 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(PeerMemberType me
       initial_leader, tablet_id_, tservers[2], std::nullopt, MonoDelta::FromSeconds(10)));
 }
 
+// A live PRE_VOTER/PRE_OBSERVER may still be in remote bootstrap, so stepdown must wait. Once that
+// peer is unreachable for follower_unavailable_considered_failed_sec, it must not block transfer.
+void RaftConsensusITest::TestStepDownWhenServerInTransition(PeerMemberType member_type) {
+  ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
+              member_type == PeerMemberType::PRE_OBSERVER);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  const int kUnavailableSec = 5;
+  vector<string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+    "--TEST_skip_change_role"s,
+    "--evict_failed_followers=false"s,
+    // Validator requires follower_unavailable >= heartbeat * missed_periods (6s under TSAN).
+    "--raft_heartbeat_interval_ms=500"s,
+    Format("--follower_unavailable_considered_failed_sec=$0", kUnavailableSec),
+  };
+  vector<string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  TServerDetails* initial_leader = tservers[0];
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
+
+  const string initial_leader_uuid = initial_leader->uuid();
+  const string new_leader_uuid = tservers[1]->uuid();
+  const string extra_voter_uuid = tservers[2]->uuid();
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, timeout));
+  tablet_servers_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  initial_leader = tablet_servers_[initial_leader_uuid].get();
+  TServerDetails* tserver_to_add = tablet_servers_[cluster_->tablet_server(3)->uuid()].get();
+  auto active_tablet_servers = CreateTabletServerMapUnowned(
+      tablet_servers_, {tserver_to_add->uuid()});
+
+  // TEST_skip_change_role keeps this peer in PRE_VOTER/PRE_OBSERVER after ADD_SERVER commits.
+  ASSERT_OK(AddServer(
+      initial_leader, tablet_id_, tserver_to_add, member_type, std::nullopt, timeout));
+  ASSERT_OK(WaitForServersToAgree(
+      MonoDelta::FromSeconds(60), active_tablet_servers, tablet_id_, /* minimum_index = */ 2));
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(1, initial_leader, tablet_id_, timeout,
+                                                 member_type));
+
+  TabletServerErrorPB error;
+  Status s = LeaderStepDown(
+      initial_leader, tablet_id_, tablet_servers_[new_leader_uuid].get(), timeout,
+      /* disable_graceful_transition = */ false, &error);
+  ASSERT_TRUE(s.IsIllegalState()) << s;
+  ASSERT_EQ(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN, error.code());
+
+  cluster_->tablet_server(3)->Shutdown();
+
+  // Config change re-enters LEADER mode. Must not restart the dead PRE_* liveness clock.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        TabletServerErrorPB::Code remove_error = TabletServerErrorPB::UNKNOWN_ERROR;
+        auto status = RemoveServer(
+            initial_leader, tablet_id_, tablet_servers_[extra_voter_uuid].get(), std::nullopt,
+            timeout, &remove_error, /* retry = */ false);
+        if (status.ok()) {
+          return true;
+        }
+        if (remove_error == TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+          return false;
+        }
+        return status;
+      },
+      30s * kTimeMultiplier, "remove extra voter after transitioning peer became unreachable"));
+  active_tablet_servers.erase(extra_voter_uuid);
+  ASSERT_OK(WaitForServersToAgree(
+      MonoDelta::FromSeconds(60), active_tablet_servers, tablet_id_, /* minimum_index = */ 3));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        TabletServerErrorPB stepdown_error;
+        auto status = LeaderStepDown(
+            initial_leader, tablet_id_, tablet_servers_[new_leader_uuid].get(), timeout,
+            /* disable_graceful_transition = */ false, &stepdown_error);
+        if (status.ok()) {
+          return true;
+        }
+        if (stepdown_error.code() == TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+          return false;
+        }
+        return status;
+      },
+      30s * kTimeMultiplier, "stepdown after transitioning peer became unreachable"));
+  TServerDetails* new_leader = nullptr;
+  ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, timeout, &new_leader));
+  ASSERT_EQ(new_leader_uuid, new_leader->uuid());
+}
+
 // Test that the leader doesn't crash if one of its followers has
 // fallen behind so far that the logs necessary to catch it up
 // have been GCed.
@@ -1672,10 +1773,10 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 
   OverrideFlagForSlowTests(
       "client_inserts_per_thread",
-      strings::Substitute("$0", (FLAGS_client_inserts_per_thread * 100)));
+      Format("$0", (FLAGS_client_inserts_per_thread * 100)));
   OverrideFlagForSlowTests(
       "client_num_batches_per_thread",
-      strings::Substitute("$0", (FLAGS_client_num_batches_per_thread * 100)));
+      Format("$0", (FLAGS_client_num_batches_per_thread * 100)));
 
   int num_threads = FLAGS_num_client_threads;
   int64_t total_num_rows = num_threads * FLAGS_client_inserts_per_thread;
@@ -1689,7 +1790,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -1731,8 +1832,8 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
   const int kFinalNumReplicas = FLAGS_num_replicas / 2 + 1;
 
   for (int leaders_killed = 0; leaders_killed < kFinalNumReplicas; leaders_killed++) {
-    LOG(INFO) << Substitute("Writing data to leader of $0-node config ($1 alive)...",
-                            FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
+    LOG(INFO) << Format("Writing data to leader of $0-node config ($1 alive)...",
+                        FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
 
     ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
         leaders_killed * FLAGS_client_inserts_per_thread,
@@ -1819,7 +1920,7 @@ TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
   AtomicBool finish(false);
   for (int i = 0; i < FLAGS_num_tablet_servers; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("ts-test$0", i),
                                   &RaftConsensusITest::StubbornlyWriteSameRowThread,
                                   this, i, &finish, &new_thread));
     threads_.push_back(new_thread);
@@ -1845,7 +1946,7 @@ void RaftConsensusITest::AddOp(const OpId& id, consensus::LWConsensusRequestPB* 
   msg->set_op_type(consensus::WRITE_OP);
   auto* write_req = msg->mutable_write();
   int32_t key = static_cast<int32_t>(id.index * 10000 + id.term);
-  string str_val = Substitute("term: $0 index: $1", id.term, id.index);
+  string str_val = Format("term: $0 index: $1", id.term, id.index);
   AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
 }
 
@@ -2034,8 +2135,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     vector<string> results;
     ASSERT_NO_FATALS(WaitForRowCount(replica_ts->tserver_proxy.get(), 5, &results));
     SCOPED_TRACE(results);
-    ASSERT_STR_CONTAINS(results[3], Substitute("term: $0 index: 5", leader_term));
-    ASSERT_STR_CONTAINS(results[4], Substitute("term: $0 index: 6", leader_term));
+    ASSERT_STR_CONTAINS(results[3], Format("term: $0 index: 5", leader_term));
+    ASSERT_STR_CONTAINS(results[4], Format("term: $0 index: 6", leader_term));
   }
 }
 
@@ -2271,7 +2372,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
 
   // And a write should also succeed.
   ASSERT_OK(WriteSimpleTestRow(initial_leader, tablet_id_,
-                               kTestRowKey, kTestRowIntVal, Substitute("qsz=$0", config_size),
+                               kTestRowKey, kTestRowIntVal, Format("qsz=$0", config_size),
                                MonoDelta::FromSeconds(10)));
 }
 
@@ -2623,7 +2724,7 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
     int cur_row_key = ++*row_key;
     Status write_status = WriteSimpleTestRow(
         leader_tserver, tablet_id, cur_row_key, cur_row_key,
-        Substitute("key=$0", cur_row_key), write_timeout);
+        Format("key=$0", cur_row_key), write_timeout);
     if (!write_status.IsLeaderHasNoLease() &&
         !write_status.IsLeaderNotReadyToServe()) {
       // Temporary failures to write because of not having a valid leader lease are OK. We don't
@@ -2674,7 +2775,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     int num_threads = FLAGS_num_client_threads;
     for (int i = 0; i < num_threads; i++) {
       scoped_refptr<Thread> thread;
-      ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Substitute("row-writer-$0", i),
+      ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Format("row-writer-$0", i),
           &DoWriteTestRows,
           leader_tserver,
           tablet_id_,
@@ -3313,6 +3414,14 @@ TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenObserverInTransition) {
   TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
 }
 
+TEST_F(RaftConsensusITest, TestStepDownWhenVoterInTransition) {
+  TestStepDownWhenServerInTransition(PeerMemberType::PRE_VOTER);
+}
+
+TEST_F(RaftConsensusITest, TestStepDownWhenObserverInTransition) {
+  TestStepDownWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
+}
+
 TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {
   TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_OBSERVER);
 }
@@ -3330,9 +3439,9 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
   const auto kHeartbeatIntervalMs = 200;
   const auto kMaxMissedHeartbeatPeriods = 3;
   const vector<string> ts_flags {
-    Substitute("--raft_heartbeat_interval_ms=$0", kHeartbeatIntervalMs),
-    Substitute("--leader_failure_max_missed_heartbeat_periods=$0",
-               kMaxMissedHeartbeatPeriods),
+    Format("--raft_heartbeat_interval_ms=$0", kHeartbeatIntervalMs),
+    Format("--leader_failure_max_missed_heartbeat_periods=$0",
+           kMaxMissedHeartbeatPeriods),
   };
   NO_FATALS(BuildAndStart(ts_flags));
 

@@ -21,23 +21,6 @@
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/sys_catalog.h"
 
-#define DECLARE_SINGLETON_LOADER_CLASS(name, key_type, entry_pb_name) \
-  template <typename CatalogEntityWrapper> \
-  class BOOST_PP_CAT(name, Loader) \
-      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
-   public: \
-    explicit BOOST_PP_CAT(name, Loader)(CatalogEntityWrapper & catalog_entity_wrapper) \
-        : catalog_entity_wrapper_(catalog_entity_wrapper) {} \
-\
-   private: \
-    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
-      catalog_entity_wrapper_.Load(metadata); \
-      return Status::OK(); \
-    } \
-    CatalogEntityWrapper& catalog_entity_wrapper_; \
-    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
-  };
-
 namespace yb::master {
 
 struct PersistentXClusterConfigInfo : public Persistent<SysXClusterConfigEntryPB> {};
@@ -45,6 +28,13 @@ struct PersistentXClusterConfigInfo : public Persistent<SysXClusterConfigEntryPB
 class XClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentXClusterConfigInfo> {};
 
 DECLARE_SINGLETON_LOADER_CLASS(XClusterConfig, std::string, SysXClusterConfigEntryPB);
+
+struct PersistentPersistenceBlockMapInfo : public Persistent<SysPersistenceBlockMapEntryPB> {};
+
+class PersistenceBlockMapInfo
+    : public SingletonMetadataCowWrapper<PersistentPersistenceBlockMapInfo> {};
+
+DECLARE_SINGLETON_LOADER_CLASS(PersistenceBlockMap, std::string, SysPersistenceBlockMapEntryPB);
 
 struct PersistentXClusterSafeTimeInfo : public Persistent<XClusterSafeTimePB> {};
 

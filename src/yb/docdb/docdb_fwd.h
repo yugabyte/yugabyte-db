@@ -54,6 +54,8 @@ class RedisWriteOperation;
 class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
+class SstStatsAggregator;
+class SstStatsMetrics;
 class StorageSet;
 class TableInfoProvider;
 class TransactionStatusCache;
@@ -117,6 +119,7 @@ YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
 YB_STRONGLY_TYPED_BOOL(UpdateFilterKey);
+YB_STRONGLY_TYPED_BOOL(XClusterTargetApplied);
 
 // Flags that alter IntentAwareIterator behavior relative to the defaults. kNoFastNext keeps all
 // reads on the iterator's creation-time snapshot: fast next skips sequence number filtering, so it

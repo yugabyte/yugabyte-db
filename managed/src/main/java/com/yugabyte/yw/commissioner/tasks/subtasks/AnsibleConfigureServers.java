@@ -15,6 +15,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -209,9 +210,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         resetMasterState,
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
-    boolean isNodeAgentSupported =
-        NodeAgentClient.isCloudTypeSupported(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+    Common.CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(nodeDetails.placementUuid)
+            .getProviderCloudType(nodeDetails);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
     taskParams().resetMasterState = resetMasterState;
     taskParams().skipDownloadSoftware = isNodeAgentSupported;
     if (isNodeAgentSupported
@@ -239,6 +243,16 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), nodeAgent, taskParams().configureCgroupOverride),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      if (taskParams().type == UpgradeTaskType.Everything
+          && !taskParams().updateMasterAddrsOnly
+          && universe.isNodeExporterHttps()) {
+        // Provisioning leaves node_exporter on plain HTTP; point its web.yml at the node certs the
+        // configure command above placed, so the node serves the universe's scheme.
+        nodeAgentClient.runConfigureNodeExporter(
+            nodeAgent,
+            nodeAgentRpcPayload.setUpConfigureNodeExporterBits(universe, nodeDetails, true),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      }
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);

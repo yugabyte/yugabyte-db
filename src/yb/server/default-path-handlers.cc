@@ -71,7 +71,6 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
@@ -124,7 +123,6 @@ using std::string;
 using std::endl;
 using std::map;
 using std::vector;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
@@ -453,7 +451,7 @@ static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   } else if (level == "warn") {
     return MetricLevel::kWarn;
   }
-  return STATUS(NotSupported, Substitute("Unknown Metric Level $0", level));
+  return STATUS(NotSupported, Format("Unknown Metric Level $0", level));
 }
 
 template<class Value>
@@ -478,11 +476,16 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       const Webserver::WebRequest& req,
-                                      Webserver::WebResponse* resp) {
+                                      Webserver::WebResponse* resp,
+                                      const std::function<void(MetricPrometheusOptions*)>&
+                                          configure_prometheus_options) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
   opts.max_metric_entries = FLAGS_max_prometheus_metric_entries;
   ParseRequestOptions(req, &opts);
+  if (configure_prometheus_options) {
+    configure_prometheus_options(&opts);
+  }
 
   std::stringstream* output = &resp->output;
 
@@ -721,6 +724,16 @@ void ParseRequestOptions(
       prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
 
       prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
+
+      // Active-table filtering is only available under v2, which also exports a server-level copy
+      // of every table-level metric, so filtered tables still count towards node totals.
+      // Parsed argument names are lower cased by the webserver, so callers may spell these
+      // parameters with any casing.
+      arg = FindWithDefault(req.parsed_args, "apply_table_ids_filter", "false");
+      prometheus_opts->apply_table_ids_filter = ParseLeadingBoolValue(arg.c_str(), false);
+
+      prometheus_opts->table_always_allowlist_string =
+          FindHandlingAllOrNone("table_always_allowlist", "NONE");
     } else {
       prometheus_opts->priority_regex_string =
           FindWithDefault(req.parsed_args, "priority_regex", ".*");
@@ -786,10 +799,12 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   AddPprofPathHandlers(webserver);
 }
 
-void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
+void RegisterMetricsJsonHandler(
+    Webserver* webserver, const MetricRegistry* const metrics,
+    std::function<void(MetricPrometheusOptions*)> configure_prometheus_options) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
-      WriteMetricsForPrometheus, metrics, _1, _2);
+      WriteMetricsForPrometheus, metrics, _1, _2, std::move(configure_prometheus_options));
   bool not_styled = false;
   bool not_on_nav_bar = false;
   webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);

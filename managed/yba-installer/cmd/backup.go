@@ -31,7 +31,7 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 
 	if err := CreateBackupScriptHelper(outputPath, dataDir, plat.backupScript(), plat.YsqlDump,
 		plat.PgBin+"/pg_dump", excludePrometheus, excludeReleases, restart, disableVersion, verbose,
-		true, excludePADatabase, excludePAFiles); err != nil {
+		true, excludePADatabase, excludePAFiles, viper.GetBool("fips.enabled")); err != nil {
 		log.Fatal(err.Error())
 	}
 }
@@ -39,7 +39,7 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump string,
 	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol,
-	excludePADatabase, excludePAFiles bool) error {
+	excludePADatabase, excludePAFiles, fips bool) error {
 
 	err := os.Chmod(script, 0750)
 	if err != nil {
@@ -82,6 +82,9 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 	}
 	if verbose {
 		args = append(args, "--verbose")
+	}
+	if fips {
+		args = append(args, "--fips")
 	}
 	if viper.GetBool("ybdb.install.enabled") {
 		args = append(args, "--ysql_dump_path", ysqldump)
@@ -140,7 +143,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	err := RestoreBackupScriptHelper(inputPath, destination, skipRestart, verbose, migration,
 		useSystemPostgres, disableVersion, plat.backupScript(), plat.DataDir, plat.YsqlBin,
-		plat.PgBin+"/pg_restore", excludePADatabase, excludePAFiles)
+		plat.PgBin+"/pg_restore", excludePADatabase, excludePAFiles, viper.GetBool("fips.enabled"))
 	if err != nil {
 		log.Fatal("Restore script failed.")
 	}
@@ -166,7 +169,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 // TODO: Version check is still disabled because of issues finding the path across all installs.
 func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart bool,
 	verbose bool, migration bool, useSystemPostgres bool, disableVersion bool,
-	script, dataDir, ysqlBin, pgRestore string, excludePADatabase, excludePAFiles bool) error {
+	script, dataDir, ysqlBin, pgRestore string, excludePADatabase, excludePAFiles, fips bool) error {
 	userName := viper.GetString("service_username")
 	err := os.Chmod(script, 0750)
 	if err != nil {
@@ -201,6 +204,9 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 	}
 	if excludePAFiles {
 		args = append(args, "--exclude_pa_files")
+	}
+	if fips {
+		args = append(args, "--fips")
 	}
 	// Add prometheus user
 	if common.HasSudoAccess() {

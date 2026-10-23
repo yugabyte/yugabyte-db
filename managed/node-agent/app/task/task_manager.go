@@ -11,6 +11,7 @@ import (
 	"node-agent/app/scheduler"
 	pb "node-agent/generated/service"
 	"node-agent/util"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -96,7 +97,7 @@ func InitTaskManager(ctx context.Context) *TaskManager {
 		// Start the scanner on a schedule.
 		// Completed tasks are not immediately removed as the client can ask for status.
 		scheduler.GetInstance().
-			Schedule(ctx, TaskPollInterval, func(ctx context.Context) (any, error) {
+			Schedule(ctx, TaskPollInterval, false /* runImmediately */, func(ctx context.Context) (any, error) {
 				taskManager.taskInfos.Range(func(k any, v any) bool {
 					taskID := k.(string)
 					tInfo := v.(*taskInfo)
@@ -251,8 +252,15 @@ func (m *TaskManager) Subscribe(
 				result, err := tInfo.future.Get()
 				if err != nil {
 					exitCode = 1
-					if status, ok := err.(*util.StatusError); ok {
-						exitCode = status.Code()
+					// Try to get the exit code from the error.
+					var statusErr *util.StatusError
+					if errors.As(err, &statusErr) {
+						exitCode = statusErr.Code()
+					} else {
+						var exitErr *exec.ExitError
+						if errors.As(err, &exitErr) {
+							exitCode = exitErr.ExitCode()
+						}
 					}
 					callbackData := &TaskCallbackData{
 						State:    tInfo.future.State(),

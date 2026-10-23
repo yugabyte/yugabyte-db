@@ -16,11 +16,11 @@ use std::path::Path;
 
 pub fn metadata(
     features: &clap_cargo::Features,
-    manifest_path: Option<impl AsRef<Path>>,
+    manifest_path: Option<&Path>,
 ) -> eyre::Result<Metadata> {
     let mut metadata_command = MetadataCommand::new();
     if let Some(manifest_path) = manifest_path {
-        metadata_command.manifest_path(manifest_path.as_ref().to_owned());
+        metadata_command.manifest_path(manifest_path.to_owned());
     }
     features.forward_metadata(&mut metadata_command);
     let metadata = metadata_command.exec()?;
@@ -28,10 +28,7 @@ pub fn metadata(
 }
 
 #[tracing::instrument(level = "error", skip_all)]
-pub fn validate(
-    path: Option<impl AsRef<std::path::Path>>,
-    metadata: &Metadata,
-) -> eyre::Result<()> {
+pub fn validate(path: Option<&Path>, metadata: &Metadata) -> eyre::Result<()> {
     let cargo_pgrx_version = env!("CARGO_PKG_VERSION");
     let cargo_pgrx_version_req = VersionReq::parse(&format!("~{cargo_pgrx_version}"))?;
 
@@ -86,7 +83,7 @@ pub fn validate(
 cargo-pgrx and pgrx library versions must be identical.
 {help}"#,
             if many == 1 { "dependency" } else { "dependencies" },
-            path.map(|p| p.as_ref().display().to_string())
+            path.map(|p| p.display().to_string())
                 .unwrap_or_else(|| "./Cargo.toml".to_string())
                 .yellow(),
         ));

@@ -13,10 +13,15 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
+#include <strings.h>
+
 #include <fstream>
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
@@ -27,12 +32,17 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/cql_pg_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
+DECLARE_bool(ysql_conn_mgr_cert_auth);
 DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
@@ -49,20 +59,17 @@ DECLARE_uint32(ysql_conn_mgr_server_lifetime);
 DECLARE_uint64(ysql_conn_mgr_log_max_size);
 DECLARE_uint64(ysql_conn_mgr_log_rotate_interval);
 DECLARE_uint32(ysql_conn_mgr_readahead_buffer_size);
+DECLARE_uint32(ysql_conn_mgr_cache_coroutine);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
-DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
-DECLARE_bool(ysql_conn_mgr_enable_prep_stmt_close);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
-DECLARE_bool(ysql_conn_mgr_enable_parse_queue_tracking);
 DECLARE_bool(ysql_conn_mgr_wait_for_rfq_on_sync);
-DECLARE_bool(ysql_conn_mgr_enable_dealloc_reconciliation);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
@@ -72,6 +79,7 @@ DECLARE_uint32(ysql_conn_mgr_auth_msg_timeout);
 DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
 DECLARE_uint32(ysql_conn_mgr_backend_drain_timeout_ms);
 DECLARE_uint32(ysql_conn_mgr_socket_listen_backlog);
+DECLARE_bool(ysql_conn_mgr_full_tls_handshake);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -145,12 +153,46 @@ std::string get_num_workers(uint32_t value) {
   return std::to_string(value);
 }
 
-void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs) {
+Status YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>& ysql_conn_mgr_configs) {
+  if (FLAGS_ysql_conn_mgr_full_tls_handshake) {
+    CHECK_GT(conf_->pg_config_map.size(), 0);
+    const std::map<std::string, std::string>& pg_conf = conf_->pg_config_map;
+    std::string tls_ca_file = FindOrDie(pg_conf, "ssl_ca_file");
+    std::string tls_key_file = FindOrDie(pg_conf, "ssl_key_file");
+    std::string tls_cert_file = FindOrDie(pg_conf, "ssl_cert_file");
+
+    std::string yb_crl_file = FindOrDie(pg_conf, "ssl_crl_file");
+    std::string yb_crl_dir = FindOrDie(pg_conf, "ssl_crl_dir");
+    std::string yb_max_protocol = FindOrDie(pg_conf, "ssl_max_protocol_version");
+    std::string yb_dh_params_file = FindOrDie(pg_conf, "ssl_dh_params_file");
+    std::string yb_passphrase_command = FindOrDie(pg_conf, "ssl_passphrase_command");
+
+    ysql_conn_mgr_configs["{%enable_tls%}"] = enable_tls ? "" : "#";
+    ysql_conn_mgr_configs["{%tls_ca_file%}"] = tls_ca_file;
+    ysql_conn_mgr_configs["{%tls_key_file%}"] = tls_key_file;
+    ysql_conn_mgr_configs["{%tls_cert_file%}"] = tls_cert_file;
+    ysql_conn_mgr_configs["{%yb_tls_cipher_list%}"] = FindOrDie(pg_conf, "ssl_ciphers");
+    ysql_conn_mgr_configs["{%yb_tls_min_protocol_version%}"] =
+            FindOrDie(pg_conf, "ssl_min_protocol_version");
+    /*
+     * Connection manager's config reader (od_config_reader_yes_no) matches only the
+     * "yes" and "no" keywords.
+     */
+    ysql_conn_mgr_configs["{%yb_tls_prefer_server_ciphers%}"] =
+        FindOrDie(pg_conf, "ssl_prefer_server_ciphers") == "on" ? "yes" : "no";
+    ysql_conn_mgr_configs["{%yb_tls_ecdh_curve%}"] = FindOrDie(pg_conf, "ssl_ecdh_curve");
+    ysql_conn_mgr_configs["{%yb_tls_crl_file%}"] = yb_crl_file;
+    ysql_conn_mgr_configs["{%yb_tls_crl_dir%}"] = yb_crl_dir;
+    ysql_conn_mgr_configs["{%yb_tls_max_protocol_version%}"] = yb_max_protocol;
+    ysql_conn_mgr_configs["{%yb_tls_dh_params_file%}"] = yb_dh_params_file;
+    ysql_conn_mgr_configs["{%yb_tls_passphrase_command%}"] = yb_passphrase_command;
+    return Status::OK();
+  }
+
   std::string tls_ca_file;
   std::string tls_key_file;
   std::string tls_cert_file;
 
-  // ssl config
   if (enable_tls && !certs_for_client_dir.empty()) {
     if (tls_cert_file.empty())
     tls_cert_file = Format("$0/node.$1.crt",
@@ -164,10 +206,27 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
     tls_ca_file = Format("$0/ca.crt", certs_for_client_dir);
   }
 
-  (*ysql_conn_mgr_configs)["{%enable_tls%}"] = enable_tls ? "" : "#";
-  (*ysql_conn_mgr_configs)["{%tls_ca_file%}"] = tls_ca_file;
-  (*ysql_conn_mgr_configs)["{%tls_key_file%}"] = tls_key_file;
-  (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
+  ysql_conn_mgr_configs["{%enable_tls%}"] = enable_tls ? "" : "#";
+  ysql_conn_mgr_configs["{%tls_ca_file%}"] = tls_ca_file;
+  ysql_conn_mgr_configs["{%tls_key_file%}"] = tls_key_file;
+  ysql_conn_mgr_configs["{%tls_cert_file%}"] = tls_cert_file;
+
+  // The remaining values only reach OpenSSL through yb_mm_tls_bind_pg_ssl_globals(), which
+  // runs solely on the be_tls_init() path, so they are inert here. They still need entries:
+  // PutConfigValue() loops forever on a placeholder with no map entry, and
+  // yb_tls_prefer_server_ciphers is unquoted in the template and read by
+  // od_config_reader_yes_no(), which rejects anything other than "yes"/"no".
+  ysql_conn_mgr_configs["{%yb_tls_prefer_server_ciphers%}"] = "yes";
+  // tls_protocols was hardcoded to this in the template before it became a placeholder.
+  ysql_conn_mgr_configs["{%yb_tls_min_protocol_version%}"] = "TLSv1.2";
+  ysql_conn_mgr_configs["{%yb_tls_cipher_list%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_ecdh_curve%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_crl_file%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_crl_dir%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_max_protocol_version%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_dh_params_file%}"] = "";
+  ysql_conn_mgr_configs["{%yb_tls_passphrase_command%}"] = "";
+  return Status::OK();
 }
 
 void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
@@ -201,14 +260,20 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 
   if (!conf_) {
     RETURN_NOT_OK(UpdateConfigFromGFlags());
+    // TODO(#33129): Re-read on a runtime ysql_pg_conf_csv change so conn mgr picks it up.
+    if (FLAGS_ysql_conn_mgr_full_tls_handshake) {
+      DCHECK_EQ(conf_->pg_config_map.size(), 0);
+      RETURN_NOT_OK(UpdateConfigFromYsqlPgConf());
+    }
   }
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
-    {"{%log_dir%}", FLAGS_log_dir},
+    {"{%log_dir%}", log_dir_},
     {"{%log_max_size%}", std::to_string(FLAGS_ysql_conn_mgr_log_max_size)},
     {"{%log_rotate_interval%}", std::to_string(FLAGS_ysql_conn_mgr_log_rotate_interval)},
     {"{%pid_file%}", pid_file_},
+    {"{%yb_data_directory%}", pg_data_dir_},
     {"{%quantiles%}", quantiles_},
     {"{%postgres_host%}", postgres_address_.host()},
     {"{%control_connection_pool_size%}", std::to_string(conf_->control_connection_pool_size)},
@@ -231,8 +296,10 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%yb_cert_auth%}", BoolToString(FLAGS_ysql_conn_mgr_cert_auth)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
+    {"{%cache_coroutine%}", std::to_string(FLAGS_ysql_conn_mgr_cache_coroutine)},
     {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
     {"{%tcp_keepalive_keep_interval%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_keep_interval)},
@@ -240,22 +307,14 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%tcp_keepalive_usr_timeout%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
-    {"{%yb_optimized_extended_query_protocol%}",
-      BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
-    {"{%yb_enable_prep_stmt_close%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_prep_stmt_close)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
     {"{%yb_max_prepared_statements%}", std::to_string(FLAGS_ysql_conn_mgr_max_prepared_statements)},
-    {"{%yb_enable_parse_queue_tracking%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_parse_queue_tracking)},
     {"{%yb_wait_for_rfq_on_sync%}",
       BoolToString(FLAGS_ysql_conn_mgr_wait_for_rfq_on_sync)},
-    {"{%yb_enable_dealloc_reconciliation%}",
-      BoolToString(FLAGS_ysql_conn_mgr_enable_dealloc_reconciliation)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%yb_alter_guc_adoption_strategy%}", FLAGS_ysql_conn_mgr_alter_guc_adoption_strategy},
@@ -271,7 +330,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_socket_listen_backlog%}",
       std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)}};
 
-  AddSslConfig(&ysql_conn_mgr_configs);
+  RETURN_NOT_OK(AddSslConfig(ysql_conn_mgr_configs));
 
   // Create a config file. Since the config can be concurrently read by Odyssey (consider the case
   // of it processing a SIGHUP while another config is being written), we want to ensure the config
@@ -374,15 +433,109 @@ Status YsqlConnMgrConf::UpdateConfigFromGFlags() {
   return Status::OK();
 }
 
+/*
+ * Settings conn mgr reads out of ysql_pg.conf.
+ */
+static const char* const kPgConfGucs[] = {
+  "ssl_ca_file",
+  "ssl_key_file",
+  "ssl_cert_file",
+  "ssl_crl_file",
+  "ssl_crl_dir",
+  "ssl_ciphers",
+  "ssl_ecdh_curve",
+  "ssl_dh_params_file",
+  "ssl_passphrase_command",
+  "ssl_prefer_server_ciphers",
+  "ssl_min_protocol_version",
+  "ssl_max_protocol_version",
+};
+
+/*
+ * Read kPgConfGucs out of ysql_pg.conf through ybgate, so PostgreSQL's own parser and resolver
+ * decide the values rather than a copy of its rules here. Each lands in pg_config_map
+ * canonicalized - base units, "on"/"off", canonical enum names - or at PostgreSQL's default
+ * where the file does not assign it.
+ *
+ * A file that does not parse, names an unknown parameter or holds an invalid value fails, as the
+ * postmaster refuses to start.
+ */
+Status YsqlConnMgrConf::UpdateConfigFromYsqlPgConf() {
+  std::vector<const char*> names(std::begin(kPgConfGucs), std::end(kPgConfGucs));
+  std::vector<const char*> values(names.size(), nullptr);
+  std::map<std::string, std::string> pg_conf;
+
+  YbgMemoryContext memctx = nullptr;
+  PG_RETURN_NOT_OK(YbgCreateMemoryContext(nullptr, "ysql_conn_mgr_pg_conf", &memctx));
+
+  Status read_status = Status::OK();
+  {
+    ScopedSetMemoryContext set_memctx(memctx);
+
+    // Not thread-safe: PG's config parser keeps its state in process-wide globals. Every path
+    // here (StartProcessUnlocked, YsqlConnMgrSupervisor::UpdateAndReloadConfig) holds the
+    // supervisor's mtx_, and this is the only caller in the tserver.
+    YbgStatus status = YbGetConfigFileValues(
+        ysql_pgconf_file_.c_str(), names.data(), narrow_cast<int>(names.size()), values.data());
+    if (YbgStatusIsError(status)) {
+      read_status = STATUS_FORMAT(
+          IllegalState, "Unable to read the ysql pg conf file. File path: $0. Error details: $1",
+          ysql_pgconf_file_, YbgStatusGetMessage(status));
+    }
+    YbgStatusDestroy(status);
+
+    for (size_t i = 0; read_status.ok() && i < names.size(); ++i) {
+      // NULL values[i] means the file does not assign it, so PG's default is used.
+      const char* canonical = nullptr;
+      YbgStatus resolve_status = YbgResolveGucValue(names[i], values[i], &canonical);
+      if (YbgStatusIsError(resolve_status)) {
+        if (values[i] != nullptr) {
+          read_status = STATUS_FORMAT(
+              InvalidArgument, "Invalid value '$0' for PostgreSQL setting $1: $2", values[i],
+              names[i], YbgStatusGetMessage(resolve_status));
+        } else {
+          read_status = STATUS_FORMAT(
+              IllegalState, "Unable to read the default value of PostgreSQL setting $0: $1",
+              names[i], YbgStatusGetMessage(resolve_status));
+        }
+      } else {
+        VLOG(1) << "Resolved " << names[i] << " '"
+                << (values[i] != nullptr ? values[i] : "<boot>") << "' to '" << canonical << "'";
+        pg_conf[names[i]] = canonical;
+      }
+      YbgStatusDestroy(resolve_status);
+    }
+
+    YbgStatus delete_status = YbgDeleteMemoryContext();
+    if (YbgStatusIsError(delete_status)) {
+      LOG(WARNING) << "Unable to delete ybgate memory context: "
+                   << YbgStatusGetMessage(delete_status);
+    }
+    YbgStatusDestroy(delete_status);
+  }
+  RETURN_NOT_OK(read_status);
+
+  conf_->pg_config_map = std::move(pg_conf);
+  return Status::OK();
+}
+
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
-  ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
+  pg_data_dir_ = JoinPathSegments(data_path, "pg_data");
+  ysql_pgconf_file_ = JoinPathSegments(pg_data_dir_, "ysql_pg.conf");
 
   // Create the log directory if it is not present.
   // This is to handle the case while running the java tests,
   // in which log directory is not created.
   CHECK_OK(env_util::CreateDirIfMissing(Env::Default(), FLAGS_log_dir.c_str()));
+
+  // YB: Connection manager runs in pg_data_dir_, so paths outside it must be absolute.
+  // data_path is already absolute (FsManager rejects relative roots); a relative --log_dir is not.
+  log_dir_ = FLAGS_log_dir;
+  if (!log_dir_.empty() && !log_dir_.starts_with('/')) {
+    CHECK_OK(Env::Default()->Canonicalize(FLAGS_log_dir, &log_dir_));
+  }
 }
 
 void YsqlConnMgrConf::set_yb_tserver_key(uint64_t tserver_key) {

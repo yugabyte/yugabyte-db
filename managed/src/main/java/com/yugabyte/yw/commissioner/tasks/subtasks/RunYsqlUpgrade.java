@@ -195,7 +195,7 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
    *   will try to find an alive tserver in any region.
    */
   private NodeDetails findAliveTServer(YBClientApi client, Universe universe) {
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNodeOrThrow();
     String masterLeaderRegion = masterLeaderNode.getRegion();
     NodeDetails aliveTServer = null;
 

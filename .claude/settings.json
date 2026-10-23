@@ -1,7 +1,4 @@
 {
-  "attribution": {
-    "commit": ""
-  },
   "permissions": {
     "allow": [
       "Bash(./build-support/lint.sh *)",

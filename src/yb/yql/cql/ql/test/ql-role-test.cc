@@ -21,11 +21,10 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/mini_master.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
@@ -45,7 +44,6 @@ namespace ql {
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;
 using yb::util::bcrypt_checkpw;
-using strings::Substitute;
 using std::string;
 
 #define EXEC_DUPLICATE_CREATE_ROLE_STMT(stmt)                           \
@@ -115,20 +113,20 @@ class QLTestAuthentication : public QLTestBase {
   }
 
   inline const string AlterStmt(const string& role, string password) {
-    return Substitute("ALTER ROLE $0 WITH PASSWORD = '$1'", role, password);
+    return Format("ALTER ROLE $0 WITH PASSWORD = '$1'", role, password);
   }
 
   static const string GrantStmt(const string& role, const string& recipient) {
-    return Substitute("GRANT $0 TO $1", role, recipient);
+    return Format("GRANT $0 TO $1", role, recipient);
   }
 
   static const string RevokeStmt(const string& role, const string& recipient) {
-    return Substitute("REVOKE $0 FROM $1", role, recipient);
+    return Format("REVOKE $0 FROM $1", role, recipient);
   }
 
   // Use superuser = false if there is a need to revoke permissions.
   void CreateRole(TestQLProcessor* processor, const string& role_name, bool superuser = false) {
-    const string create_stmt = Substitute(
+    const string create_stmt = Format(
         "CREATE ROLE $0 WITH LOGIN = TRUE AND SUPERUSER = $1 AND PASSWORD = 'TEST';", role_name,
             superuser ? "TRUE" : "FALSE");
     ExecuteValidModificationStmt(processor, create_stmt);
@@ -151,7 +149,7 @@ class QLTestAuthentication : public QLTestBase {
   }
 
   string SelectStmt(const string& role_name) const {
-    return Substitute("SELECT * FROM system_auth.roles where role='$0';", role_name);
+    return Format("SELECT * FROM system_auth.roles where role='$0';", role_name);
   }
 
  protected:
@@ -170,7 +168,7 @@ class TestQLPermission : public QLTestAuthentication {
   // Helper Functions
   void CreateTable(TestQLProcessor* processor, const string& keyspace_name,
                    const string& table_name) {
-    const string create_stmt = Substitute(
+    const string create_stmt = Format(
         "CREATE TABLE $0.$1(id int, name varchar, primary key(id));", keyspace_name, table_name);
     Status s = processor->Run(create_stmt);
     CHECK(s.ok());
@@ -181,7 +179,7 @@ class TestQLPermission : public QLTestAuthentication {
   }
 
   void CreateKeyspace(TestQLProcessor* processor, const string& keyspace_name) {
-    const string create_stmt = Substitute(
+    const string create_stmt = Format(
         "CREATE KEYSPACE $0;", keyspace_name);
     Status s = processor->Run(create_stmt);
     CHECK(s.ok());
@@ -192,50 +190,50 @@ class TestQLPermission : public QLTestAuthentication {
   }
 
   string GrantAllKeyspaces(const string& permission, const string& role_name) const {
-    return Substitute("GRANT $0 ON ALL KEYSPACES TO $1;", permission, role_name);
+    return Format("GRANT $0 ON ALL KEYSPACES TO $1;", permission, role_name);
   }
 
   string RevokeAllKeyspaces(const string& permission, const string& role_name) const {
-    return Substitute("REVOKE $0 ON ALL KEYSPACES FROM $1;", permission, role_name);
+    return Format("REVOKE $0 ON ALL KEYSPACES FROM $1;", permission, role_name);
   }
 
   string GrantKeyspace(const string& permission, const string& keyspace,
                             const string& role_name) const {
-    return Substitute("GRANT $0 ON KEYSPACE $1 TO $2;", permission, keyspace, role_name);
+    return Format("GRANT $0 ON KEYSPACE $1 TO $2;", permission, keyspace, role_name);
   }
 
   string RevokeKeyspace(const string& permission, const string& keyspace,
                        const string& role_name) const {
-    return Substitute("REVOKE $0 ON KEYSPACE $1 FROM $2;", permission, keyspace, role_name);
+    return Format("REVOKE $0 ON KEYSPACE $1 FROM $2;", permission, keyspace, role_name);
   }
 
   string GrantTable(const string& permission, const string& table, const string& role_name) const {
-    return Substitute("GRANT $0 ON TABLE $1 TO $2;", permission, table, role_name);
+    return Format("GRANT $0 ON TABLE $1 TO $2;", permission, table, role_name);
   }
 
   string RevokeTable(const string& permission, const string& table, const string& role_name) const {
-    return Substitute("REVOKE $0 ON TABLE $1 FROM $2;", permission, table, role_name);
+    return Format("REVOKE $0 ON TABLE $1 FROM $2;", permission, table, role_name);
   }
 
   string GrantAllRoles(const string& permission, const string& role_name) const {
-    return Substitute("GRANT $0 ON ALL ROLES TO $1;", permission, role_name);
+    return Format("GRANT $0 ON ALL ROLES TO $1;", permission, role_name);
   }
 
   string RevokeAllRoles(const string& permission, const string& role_name) const {
-    return Substitute("REVOKE $0 ON ALL ROLES FROM $1;", permission, role_name);
+    return Format("REVOKE $0 ON ALL ROLES FROM $1;", permission, role_name);
   }
 
   string GrantRole(const string& permission, const string& role_resource,
                    const string& role_name) const {
-    return Substitute("GRANT $0 ON ROLE $1 TO $2;", permission, role_resource, role_name);
+    return Format("GRANT $0 ON ROLE $1 TO $2;", permission, role_resource, role_name);
   }
 
   string SelectStmt(const string& role_name) const {
-    return Substitute("SELECT * FROM system_auth.role_permissions where role='$0';", role_name);
+    return Format("SELECT * FROM system_auth.role_permissions where role='$0';", role_name);
   }
 
   string SelectStmt(const string& role_name, const string& resource) const {
-    return Substitute(
+    return Format(
         "SELECT * FROM system_auth.role_permissions where role='$0' AND resource='$1';",
         role_name, resource);
   }
@@ -653,7 +651,7 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
   // Grant ALL on a role. It should succeed and all the appropriate permissions should be granted.
   const string grant_all_on_a_role = GrantRole("ALL", role4, role1);
   GrantRevokePermissionAndVerify(processor, grant_all_on_a_role,
-                                 strings::Substitute("$0/$1", kRolesRoleResource, role4),
+                                 Format("$0/$1", kRolesRoleResource, role4),
                                  all_permissions_for_role, role1);
 
   // Grant ALL on all roles. It should succeed and all the appropriate permissions should be
@@ -695,11 +693,11 @@ class TestQLRole : public QLTestAuthentication {
 
     const string is_superuser_str = (is_superuser) ? "true" : "false";
     const string can_login_str = (can_login) ? "true" : "false";
-    const string password_str = (password == nullptr) ? "" : Substitute(
+    const string password_str = (password == nullptr) ? "" : Format(
         "AND PASSWORD =  '$0'", password);
 
     // Create the role
-    const string create_stmt = Substitute(
+    const string create_stmt = Format(
         "CREATE ROLE $0 WITH LOGIN = $1 $3 AND SUPERUSER = $2;", role_name,
         can_login_str, is_superuser_str, password_str);
 
@@ -728,7 +726,7 @@ class TestQLRole : public QLTestAuthentication {
       }
       EXPECT_EQ(true, password_match);
     }
-    const string drop_stmt = Substitute("DROP ROLE $0;", role_name);
+    const string drop_stmt = Format("DROP ROLE $0;", role_name);
     ExecuteValidModificationStmt(processor, drop_stmt);
 
     // Check that only default cassandra role exists
@@ -744,7 +742,7 @@ class TestQLRole : public QLTestAuthentication {
 
   void CheckRole(TestQLProcessor* processor, const string& role_name, const char* password,
                  const bool can_login, const bool is_superuser) {
-    auto select = Substitute("SELECT * FROM system_auth.roles WHERE role = '$0';", role_name);
+    auto select = Format("SELECT * FROM system_auth.roles WHERE role = '$0';", role_name);
 
     CHECK_OK(processor->Run(select));
     auto row_block = processor->row_block();
@@ -805,24 +803,24 @@ TEST_F(TestQLRole, TestGrantRole) {
 
   // Same Grant Twice
   const string invalid_grant_1 = GrantStmt(role_1, role_2);
-  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_1, Substitute("$0 is a member of $1", role_2, role_1));
+  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_1, Format("$0 is a member of $1", role_2, role_1));
 
   // Roles not present
   const string invalid_grant_2 = GrantStmt(role_1, role_4);
-  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_2, Substitute("$0 doesn't exist", role_4));
+  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_2, Format("$0 doesn't exist", role_4));
 
   const string invalid_grant_3 = GrantStmt(role_4, role_2);
-  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_3, Substitute("$0 doesn't exist", role_4));
+  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant_3, Format("$0 doesn't exist", role_4));
 
   const auto invalid_circular_reference_grant = GrantStmt(role_1, role_1);
   EXEC_INVALID_STMT_WITH_ERROR(invalid_circular_reference_grant,
-                               Substitute("$0 is a member of $1", role_1, role_1));
+                               Format("$0 is a member of $1", role_1, role_1));
 
   // It should fail because role_3 was granted to role_2.
   const auto invalid_circular_reference_grant2 = GrantStmt(role_2, role_3);
   // The message is backwards, but that's what Apache Cassandra outputs.
   EXEC_INVALID_STMT_WITH_ERROR(invalid_circular_reference_grant2,
-                               Substitute("$0 is a member of $1", role_3, role_2));
+                               Format("$0 is a member of $1", role_3, role_2));
 
   CreateRole(processor, role_4);
   // Single Role Granted
@@ -834,19 +832,19 @@ TEST_F(TestQLRole, TestGrantRole) {
   const auto invalid_circular_reference_grant3 = GrantStmt(role_4, role_2);
   // The message is backwards, but that's what Apache Cassandra outputs.
   EXEC_INVALID_STMT_WITH_ERROR(invalid_circular_reference_grant3,
-                               Substitute("$0 is a member of $1", role_2, role_4));
+                               Format("$0 is a member of $1", role_2, role_4));
 
   // It should fail because role_4 was granted to role_3, and role_3 to role_2.
   const auto invalid_circular_reference_grant4 = GrantStmt(role_2, role_4);
   // The message is backwards, but that's what Apache Cassandra outputs.
   EXEC_INVALID_STMT_WITH_ERROR(invalid_circular_reference_grant4,
-                               Substitute("$0 is a member of $1", role_4, role_2));
+                               Format("$0 is a member of $1", role_4, role_2));
 
   // It should fail because role_7 -> role_5 -> role_3 -> role_2.
   const auto invalid_circular_reference_grant5 = GrantStmt(role_2, role_7);
   // The message is backwards, but that's what Apache Cassandra outputs.
   EXEC_INVALID_STMT_WITH_ERROR(invalid_circular_reference_grant5,
-                               Substitute("$0 is a member of $1", role_7, role_2));
+                               Format("$0 is a member of $1", role_7, role_2));
 
   // Lastly, create another role to verify that the roles version didn't change after all the
   // statements that didn't modify anything in the master.
@@ -896,7 +894,7 @@ TEST_F(TestQLRole, TestRevokeRole) {
   // Try to revoke it again. It should fail.
   const auto invalid_revoke = RevokeStmt(role3, role2);
   EXEC_INVALID_STMT_WITH_ERROR(
-      invalid_revoke, Substitute("$0 is not a member of $1", role2, role3));
+      invalid_revoke, Format("$0 is not a member of $1", role2, role3));
 }
 
 TEST_F(TestQLRole, TestRoleQuerySimple) {
@@ -1144,21 +1142,21 @@ TEST_F(TestQLRole, TestMutationsGetCommittedOrAborted) {
 
   // Same Grant Twice
   const auto invalid_grant = GrantStmt(role1, role2);
-  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant, Substitute("$0 is a member of $1", role2, role1));
+  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant, Format("$0 is a member of $1", role2, role1));
 
   // Verify that the same invalid operation fails instead of timing out.
-  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant, Substitute("$0 is a member of $1", role2, role1));
+  EXEC_INVALID_STMT_WITH_ERROR(invalid_grant, Format("$0 is a member of $1", role2, role1));
 
   RevokeRole(processor, role1, role2);
 
   // Revoke it again.
   const auto invalid_revoke = RevokeStmt(role1, role2);
   EXEC_INVALID_STMT_WITH_ERROR(
-      invalid_revoke, Substitute("$0 is not a member of $1", role2, role1));
+      invalid_revoke, Format("$0 is not a member of $1", role2, role1));
 
   // If the mutation was ended properly, this request shouldn't time out.
   EXEC_INVALID_STMT_WITH_ERROR(
-      invalid_revoke, Substitute("$0 is not a member of $1", role2, role1));
+      invalid_revoke, Format("$0 is not a member of $1", role2, role1));
 
   // Lastly, create another role to verify that the roles version didn't change after all the
   // statements that didn't modify anything in the master.

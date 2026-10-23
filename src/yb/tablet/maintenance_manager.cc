@@ -38,12 +38,11 @@
 #include <string>
 #include <utility>
 
-#include "yb/gutil/stringprintf.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -57,7 +56,6 @@
 
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 using namespace std::literals;
 
@@ -363,10 +361,10 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
   auto soft_limit_exceeded_result = parent_mem_tracker_->AnySoftLimitExceeded(0.0 /* score */);
   if (soft_limit_exceeded_result.exceeded) {
     if (!most_mem_anchored_op) {
-      string msg = StringPrintf("we have exceeded our soft memory limit for %s "
-          "(current capacity is %.2f%%).  However, there are no ops currently "
-          "runnable which would free memory.", soft_limit_exceeded_result.tracker_path.c_str(),
-          soft_limit_exceeded_result.current_capacity_pct);
+      string msg = Format("we have exceeded our soft memory limit for $0 "
+          "(current capacity is $1%).  However, there are no ops currently "
+          "runnable which would free memory.", soft_limit_exceeded_result.tracker_path,
+          FixedPoint(soft_limit_exceeded_result.current_capacity_pct, 2));
       YB_LOG_EVERY_N_SECS(INFO, 5) << msg;
       return nullptr;
     }
@@ -408,7 +406,7 @@ void MaintenanceManager::LaunchOp(const ScopedMaintenanceOpRun& run) {
   auto op = run.get();
   MonoTime start_time(MonoTime::Now());
   op->RunningGauge()->Increment();
-  LOG_TIMING(INFO, Substitute("running $0", op->name())) {
+  LOG_TIMING(INFO, Format("running $0", op->name())) {
     TRACE_EVENT1("maintenance", "MaintenanceManager::LaunchOp",
                  "name", op->name());
     op->Perform();

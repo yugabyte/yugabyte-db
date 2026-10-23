@@ -8,9 +8,9 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use super::ArrayIntoIterator;
-use crate::{pg_sys, AnyElement, Array, FromDatum, IntoDatum};
+use crate::{AnyElement, Array, FromDatum, IntoDatum, pg_sys};
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use std::iter::FusedIterator;
 
@@ -50,7 +50,9 @@ impl FromDatum for AnyArray {
     /// and pass a type ID.
     #[inline]
     unsafe fn from_datum(_datum: pg_sys::Datum, _is_null: bool) -> Option<AnyArray> {
-        panic!("Can't create a polymorphic type using from_datum, call FromDatum::from_polymorphic_datum instead")
+        panic!(
+            "Can't create a polymorphic type using from_datum, call FromDatum::from_polymorphic_datum instead"
+        )
     }
 
     #[inline]
@@ -59,11 +61,7 @@ impl FromDatum for AnyArray {
         is_null: bool,
         typoid: pg_sys::Oid,
     ) -> Option<AnyArray> {
-        if is_null {
-            None
-        } else {
-            Some(AnyArray { datum, typoid })
-        }
+        if is_null { None } else { Some(AnyArray { datum, typoid }) }
     }
 }
 
@@ -79,12 +77,13 @@ impl IntoDatum for AnyArray {
 }
 
 unsafe impl SqlTranslatable for AnyArray {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        Ok(SqlMapping::literal("anyarray"))
-    }
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        Ok(Returns::One(SqlMapping::literal("anyarray")))
-    }
+    const TYPE_IDENT: &'static str = crate::pgrx_resolved_type!(AnyArray);
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin =
+        pgrx_sql_entity_graph::metadata::TypeOrigin::External;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> =
+        Ok(SqlMappingRef::literal("anyarray"));
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> =
+        Ok(ReturnsRef::One(SqlMappingRef::literal("anyarray")));
 }
 
 impl<'a> IntoIterator for &'a AnyArray

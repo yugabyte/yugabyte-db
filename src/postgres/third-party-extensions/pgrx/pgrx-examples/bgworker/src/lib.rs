@@ -26,10 +26,13 @@ use std::time::Duration;
     this background worker
 */
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_guard]
 pub extern "C-unwind" fn _PG_init() {
+    if unsafe { !pgrx::pg_sys::process_shared_preload_libraries_in_progress } {
+        pgrx::error!("this extension must be loaded via shared_preload_libraries.");
+    }
     BackgroundWorkerBuilder::new("Background Worker Example")
         .set_function("background_worker_main")
         .set_library("bgworker")
@@ -39,7 +42,7 @@ pub extern "C-unwind" fn _PG_init() {
 }
 
 #[pg_guard]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C-unwind" fn background_worker_main(arg: pg_sys::Datum) {
     let arg = unsafe { i32::from_polymorphic_datum(arg, false, pg_sys::INT4OID) };
 
@@ -84,4 +87,13 @@ pub extern "C-unwind" fn background_worker_main(arg: pg_sys::Datum) {
     }
 
     log!("Goodbye from inside the {} BGWorker! ", BackgroundWorker::get_name());
+}
+
+#[cfg(test)]
+pub mod pg_test {
+    pub fn setup(_options: Vec<&str>) {}
+
+    pub fn postgresql_conf_options() -> Vec<&'static str> {
+        vec!["shared_preload_libraries='bgworker'"]
+    }
 }

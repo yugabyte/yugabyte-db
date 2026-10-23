@@ -329,7 +329,14 @@ qpmReadFile()
 		YbQpmHashEntry entry;
 
 		if (fread(&entry, entrySize, 1, file) != 1)
-			return -1;
+		{
+			/* The entries read so far have no LRU slot yet, so drop them. */
+			for (int j = 0; j < cnt; j++)
+				(void) hash_search(qpmHashTable, &(entries[j]->key), HASH_REMOVE,
+								   NULL);
+			pfree(entries);
+			goto read_error;
+		}
 
 		/*
 		 * Insert the entry into the hash table.
@@ -1089,11 +1096,18 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 		else
 			hashEntry->lastUsedTime = *lastUsedTime;
 
-		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->totaltime != NULL)
+		if (queryDesc != NULL && queryDesc->totaltime != NULL)
+		{
 			/*
-			 * Get the total elapsed time (in milliseconds) from the query descriptor.
+			 * qpmProcess passes 0 for both. avg_est_cost is estTotalCost / cnt,
+			 * so a repeat execution must add planTree->total_cost or the
+			 * average decays toward 0.
 			 */
-			totalTime = queryDesc->totaltime->total * 1000.0;
+			if (totalTime == 0.0)
+				totalTime = queryDesc->totaltime->total * 1000.0;
+			if (estTotalCost == 0.0)
+				estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
+		}
 
 		if (totalTime > 0.0)
 		{
@@ -1199,12 +1213,14 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			lruEntry = &(qpmLruClock->entries[lruSlot]);
 
-			if (qpmNumEntries() == yb_qpm_configuration.max_cache_size + 1)
+			/*
+			 * Evict when the clock hands back an occupied slot.  That
+			 * happens below max_cache_size too: a hole later in the sweep
+			 * does not stop an earlier !referenced row from being chosen.
+			 * An empty slot is reused without a hash remove.
+			 */
+			if (lruEntry->hashEntry != NULL)
 			{
-				/*
-				 * Delete the victim to keep the number
-				 * of entries == yb_qpm_configuration.max_cache_size.
-				 */
 				YbQpmHashEntry *removedEntry = hash_search(qpmHashTable,
 														   &(lruEntry->hashEntry->key),
 														   HASH_REMOVE,
@@ -1640,6 +1656,7 @@ YbQpmShmemInit(void)
 typedef struct YbPlanStatePtr
 {
 	PlanState  *ps;
+	bool processed;
 	Instrumentation *instrument;
 	WorkerInstrumentation *worker_instrument;
 	struct SharedJitInstrumentation *worker_jit_instrument;
@@ -1648,8 +1665,23 @@ typedef struct YbPlanStatePtr
 static void
 walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 {
+	ListCell   *lc;
+
 	if (ps == NULL)
 		return;
+
+	/*
+	 * Skip plan states we have already processed since the same subplan can
+	 * appear in the subplan lists (ps->subPlan) of different nodes, e.g.,
+	 * Hash and HashJoin.
+	 */
+	foreach(lc, *pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+
+		if (psp->processed && psp->ps == ps)
+			return;
+	}
 
 	if (save)
 	{
@@ -1664,10 +1696,16 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		psp->instrument = ps->instrument;
 		psp->worker_instrument = ps->worker_instrument;
 		psp->worker_jit_instrument = ps->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		*pspList = lappend(*pspList, psp);
 		ps->instrument = NULL;
 		ps->worker_instrument = NULL;
 		ps->worker_jit_instrument = NULL;
+
 		++(*pos);
 	}
 	else
@@ -1684,6 +1722,11 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		ps->instrument = psp->instrument;
 		ps->worker_instrument = psp->worker_instrument;
 		ps->worker_jit_instrument = psp->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		++(*pos);
 	}
 
@@ -1698,8 +1741,6 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 	walkPlanState(ps->righttree, save, pspList, pos);
 
 	/* initPlans */
-	ListCell   *lc;
-
 	foreach(lc, ps->initPlan)
 	{
 		SubPlanState *sps = (SubPlanState *) lfirst(lc);
@@ -1771,6 +1812,13 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	/*
 	 * Restore the instrumentation pointers.
 	 */
+	ListCell *lc;
+	foreach(lc, pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+		psp->processed = false;
+	}
+
 	pos = 0;
 	walkPlanState(queryDesc->planstate, false, &pspList, &pos);
 	list_free_deep(pspList);

@@ -13,11 +13,16 @@
 
 #include "yb/master/catalog_manager_util.h"
 
+#include <algorithm>
+#include <numeric>
+
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/dockv/partition.h"
+
+#include "yb/gutil/strings/numbers.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -30,6 +35,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/math_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -50,7 +56,6 @@ DECLARE_int32(replication_factor);
 namespace yb {
 namespace master {
 
-using strings::Substitute;
 
 Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_descs) {
   ZoneToDescMap zone_to_ts;
@@ -74,9 +79,9 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
                 << " for placement uuid " << entry.first;
 
       if (std_dev >= FLAGS_balancer_load_max_standard_deviation) {
-        return STATUS(IllegalState, Substitute("Load not balanced: deviation=$0 in $1 for "
-                                               "placement uuid $2.",
-                                               std_dev, zone.first, entry.first));
+        return STATUS(IllegalState, Format("Load not balanced: deviation=$0 in $1 for "
+                                           "placement uuid $2.",
+                                           SimpleDtoa(std_dev), zone.first, entry.first));
       }
     }
   }
@@ -160,7 +165,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
         if (!accepting_leader_load.contains(replica.first)) {
           return STATUS(
               IllegalState,
-              Substitute("Tserver $0 not expected to have leader of tablet $1",
+              Format("Tserver $0 not expected to have leader of tablet $1",
                   replica.first, tablet->id()));
         }
       }
@@ -326,7 +331,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
       cloud_info_string.insert(ci_string);
     } else {
       return STATUS(IllegalState,
-                    Substitute("Placement information specified should not contain duplicates. "
+                    Format("Placement information specified should not contain duplicates. "
                     "Given placement block: $0 is a duplicate", ci.ShortDebugString()));
     }
   }
@@ -354,7 +359,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 
     if (!star_star_star && !c_star_star && !c_r_star && !c_r_z) {
       return STATUS(IllegalState,
-                        Substitute("Placement information specified should be prefixes."
+                        Format("Placement information specified should be prefixes."
                         "Given placement block: $0 isn't a prefix", pb.ShortDebugString()));
     }
   }
@@ -375,7 +380,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
         // pb1 shouldn't be prefix of pb2.
         if (CatalogManagerUtil::IsCloudInfoPrefix(pb1, pb2)) {
           return STATUS(IllegalState,
-                        Substitute("Placement information specified should not overlap. $0 and"
+                        Format("Placement information specified should not overlap. $0 and"
                         " $1 overlap. For instance, c1.r1.z1,c1.r1 is invalid while "
                         "c1.r1.z1,c1.r1.z2 is valid. Also note that c1.r1,c1.r1 is valid.",
                         pb1.ShortDebugString(), pb2.ShortDebugString()));
@@ -384,14 +389,69 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
     }
   }
 
-  int total_min_replica_count = 0;
-  for (auto& placement_block : placement_info.placement_blocks()) {
+  int64_t total_min_replica_count = 0;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
     total_min_replica_count += placement_block.min_num_replicas();
   }
   if (total_min_replica_count > placement_info.num_replicas()) {
     return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
         "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
         total_min_replica_count);
+  }
+
+  RETURN_NOT_OK(ValidateMaxNumReplicasFields(placement_info));
+
+  return Status::OK();
+}
+
+Status CatalogManagerUtil::ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info) {
+  if (!PlacementInfoHasMaxNumReplicas(placement_info)) {
+    return Status::OK();
+  }
+
+  // Enforcing per-block maximums requires unambiguously attributing every tserver to a single
+  // placement block. Wildcard (partially-specified) blocks can overlap fully-qualified ones, so
+  // when any block has an explicit maximum, every block in the placement must be fully qualified
+  // and no block may be duplicated. Otherwise a tserver in a capped block could be attributed to
+  // an overlapping wildcard block, bypassing the cap.
+  int64_t total_max_replica_count = 0;
+  std::unordered_set<std::string> placement_ids;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    const auto& cloud_info = placement_block.cloud_info();
+    if (IsWildcardCloudInfo(cloud_info)) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "max_num_replicas is not supported in combination with wildcard placement blocks: $0",
+          placement_block.ShortDebugString());
+    }
+    if (!placement_ids.insert(TSDescriptor::generate_placement_id(cloud_info)).second) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "max_num_replicas is not supported in combination with duplicate placement blocks: $0",
+          placement_block.ShortDebugString());
+    }
+    if (placement_block.has_max_num_replicas()) {
+      if (placement_block.max_num_replicas() < 1) {
+        return STATUS_FORMAT(
+            IllegalState, "max_num_replicas ($0) must be greater than or equal to 1",
+            placement_block.max_num_replicas());
+      }
+      if (placement_block.max_num_replicas() < placement_block.min_num_replicas()) {
+        return STATUS_FORMAT(
+            IllegalState,
+            "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
+            placement_block.max_num_replicas(), placement_block.min_num_replicas());
+      }
+    }
+    total_max_replica_count += placement_block.has_max_num_replicas()
+        ? placement_block.max_num_replicas()
+        : placement_info.num_replicas();
+  }
+  if (total_max_replica_count < placement_info.num_replicas()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "num_replicas ($0) should be less than or equal to the total maximum replica count ($1).",
+        placement_info.num_replicas(), total_max_replica_count);
   }
 
   return Status::OK();
@@ -537,31 +597,61 @@ size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replica
   return FLAGS_replication_factor;
 }
 
-Result<bool> CMPerTableLoadState::CompareReplicaLoads(
-    const TabletServerId &ts1, const TabletServerId &ts2) {
-  auto ts1_load = per_ts_replica_load_.find(ts1);
-  auto ts2_load = per_ts_replica_load_.find(ts2);
-  SCHECK(ts1_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts1));
-  SCHECK(ts2_load != per_ts_replica_load_.end(), IllegalState,
-         Format("per_ts_replica_load_ does not contain $0", ts2));
-
-  if (ts1_load->second != ts2_load->second) {
-    return ts1_load->second < ts2_load->second;
+Status CMPerTableLoadState::Init(const TSDescriptorVector& ts_descs) {
+  const size_t n = ts_descs.size();
+  uuids_.reserve(n);
+  table_load_.reserve(n);
+  global_load_.reserve(n);
+  for (const auto& ts : ts_descs) {
+    const auto& uuid = ts->permanent_uuid();
+    auto it = per_ts_replica_load_.find(uuid);
+    SCHECK(it != per_ts_replica_load_.end(), IllegalState,
+           Format("per_ts_replica_load_ does not contain $0", uuid));
+    index_[uuid] = uuids_.size();
+    uuids_.push_back(uuid);
+    table_load_.push_back(it->second);
+    global_load_.push_back(VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(uuid)));
   }
-
-  auto ts1_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts1));
-  auto ts2_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts2));
-
-  if (ts1_global_load == ts2_global_load) {
-    return ts1 < ts2;
+  sorted_.resize(n);
+  std::iota(sorted_.begin(), sorted_.end(), 0);
+  std::sort(sorted_.begin(), sorted_.end(),
+            [this](size_t a, size_t b) { return LessLoaded(a, b); });
+  pos_.resize(n);
+  for (size_t p = 0; p < n; ++p) {
+    pos_[sorted_[p]] = p;
   }
-  return ts1_global_load < ts2_global_load;
+  return Status::OK();
 }
 
-void CMPerTableLoadState::SortLoad() {
-  Comparator comp(this);
-  std::sort(sorted_replica_load_.begin(), sorted_replica_load_.end(), comp);
+bool CMPerTableLoadState::LessLoaded(size_t a, size_t b) const {
+  if (table_load_[a] != table_load_[b]) {
+    return table_load_[a] < table_load_[b];
+  }
+  if (global_load_[a] != global_load_[b]) {
+    return global_load_[a] < global_load_[b];
+  }
+  return uuids_[a] < uuids_[b];
+}
+
+void CMPerTableLoadState::AddReplica(const TabletServerId& uuid) {
+  auto it = index_.find(uuid);
+  if (it == index_.end()) {
+    LOG(DFATAL) << "Unknown tablet server " << uuid;
+    return;
+  }
+  size_t idx = it->second;
+  ++table_load_[idx];
+  ++global_load_[idx];
+  ++global_load_state_->per_ts_replica_load_[uuid];
+  // The key only grew, so the entry can only move towards the loaded end.
+  size_t p = pos_[idx];
+  while (p + 1 < sorted_.size() && LessLoaded(sorted_[p + 1], idx)) {
+    sorted_[p] = sorted_[p + 1];
+    pos_[sorted_[p]] = p;
+    ++p;
+  }
+  sorted_[p] = idx;
+  pos_[idx] = p;
 }
 
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info) {
@@ -649,6 +739,22 @@ template Status CatalogManagerUtil::FillTableLoadState(
     const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
 template Status CatalogManagerUtil::FillTableLoadState(
     const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
+
+Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
+  if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||
+      table.index_info().vector_idx_options().idx_type() != PgVectorIndexType::HNSW) {
+    return Status::OK();
+  }
+  const auto backend = table.index_info().vector_idx_options().hnsw().backend();
+  if (backend == HnswBackend::YB_HNSW_USEARCH || backend == HnswBackend::YB_HNSW_HNSWLIB) {
+    return Status::OK();
+  }
+  return STATUS(
+      NotSupported,
+      Format("Vector index $0 ($1) uses backend $2, which is no longer supported",
+             table.name(), table_id, HnswBackend_Name(backend)),
+      MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+}
 
 } // namespace master
 } // namespace yb

@@ -63,6 +63,7 @@ using std::vector;
 using namespace std::literals;
 
 DECLARE_bool(track_stack_traces);
+DECLARE_bool(stack_trace_symbolize);
 DECLARE_bool(TEST_disable_thread_stack_collection_wait);
 
 namespace yb {
@@ -147,6 +148,32 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
 #else
   ASSERT_GE(without_file_line, 0);
 #endif
+}
+
+TEST_F(DebugUtilTest, TestStackTraceNoSymbolize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = false;
+  auto se = ScopeExit([] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_stack_trace_symbolize) = true; });
+
+  StackTrace t;
+  t.Collect(1);
+  for (const auto& trace : {t.Symbolize(), GetStackTrace()}) {
+    LOG(INFO) << "Trace:\n" << trace;
+    // Every frame is "@ 0x<pc> (<module>+0x<offset>)", no symbol names.
+    const std::regex kLineRe(R"#(^\s*@\s+0x[0-9a-f]+ \(\S+\+0x[0-9a-f]+\)$)#");
+    std::stringstream ss(trace);
+    std::string line;
+    int num_lines = 0;
+    while (std::getline(ss, line)) {
+      SCOPED_TRACE(line);
+      ASSERT_TRUE(std::regex_match(line, kLineRe));
+      ++num_lines;
+    }
+    ASSERT_GT(num_lines, 2);
+    ASSERT_STR_NOT_CONTAINS(trace, "TestBody");
+    // TestBody is the top frame, or the second one when GetStackTrace() reports itself first.
+    auto second_newline = trace.find('\n', trace.find('\n') + 1);
+    ASSERT_STR_CONTAINS(trace.substr(0, second_newline), "debug-util-test");
+  }
 }
 
 // DumpThreadStack is only supported on Linux, since the implementation relies
@@ -400,6 +427,12 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   start_latch.Wait();
   auto deadline = MonoTime::Now() + 10s;
 
+  // Every empty result must say why; see HandleStackTraceSignal. A thread that misses the
+  // ThreadStacks deadline is reported by the caller, not the handler, and is allowed.
+  int num_in_alloc_dealloc = 0;
+  int num_collecting = 0;
+  int num_timed_out = 0;
+
   // Keep dumping thread stacks.
   while (MonoTime::Now() < deadline) {
     for (size_t i = 0; i < 100; ++i) {
@@ -416,7 +449,17 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
             num_empty_stacks++;
           }
         } else {
-          error_statuses.insert(stack.status().ToString());
+          const auto status_str = stack.status().ToString();
+          if (status_str.find(kThreadStackInAllocDeallocMsg) != std::string::npos) {
+            ++num_in_alloc_dealloc;
+          } else if (status_str.find(kThreadStackCollectingMsg) != std::string::npos) {
+            ++num_collecting;
+          } else if (status_str.find(kThreadStackTimedOutMsg) != std::string::npos) {
+            ++num_timed_out;
+          } else {
+            FAIL() << "Unexpected error status: " << status_str;
+          }
+          error_statuses.insert(status_str);
           num_errors++;
         }
       }
@@ -430,6 +473,13 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   thread_holder.Stop();
   thread_holder.JoinAll();
 
+  LOG(INFO) << "Empty stacks inside tcmalloc alloc/dealloc: " << num_in_alloc_dealloc
+            << ", during another stack collection: " << num_collecting
+            << ", timed out: " << num_timed_out;
+#if YB_GOOGLE_TCMALLOC
+  ASSERT_GT(num_in_alloc_dealloc, 0);
+#endif
+
   for (size_t i = 0; i < kNumThreads; ++i) {
     auto& queue = queues[i];
     while (auto* entry = queue->Pop()) {
@@ -438,32 +488,53 @@ TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
   }
 }
 
+class TestLogSink : public google::LogSink {
+ public:
+  void send(google::LogSeverity severity, const char* full_filename,
+            const char* base_filename, int line,
+            const struct ::tm* tm_time,
+            const char* message, size_t message_len) override {
+    std::lock_guard lock(mutex_);
+    log_messages_.emplace_back(message, message_len);
+  }
+
+  size_t MessagesSize() {
+    std::lock_guard lock(mutex_);
+    return log_messages_.size();
+  }
+
+  std::string MessageAt(size_t idx) {
+    std::lock_guard lock(mutex_);
+    return log_messages_[idx];
+  }
+
+  size_t CountMessagesContaining(const std::string& substring) {
+    std::lock_guard lock(mutex_);
+    size_t result = 0;
+    for (const auto& message : log_messages_) {
+      if (message.find(substring) != std::string::npos) {
+        ++result;
+      }
+    }
+    return result;
+  }
+
+  std::string FirstMessageContaining(const std::string& substring) {
+    std::lock_guard lock(mutex_);
+    for (const auto& message : log_messages_) {
+      if (message.find(substring) != std::string::npos) {
+        return message;
+      }
+    }
+    return std::string();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::string> log_messages_;
+};
+
 TEST_F(DebugUtilTest, LongOperationTracker) {
-  class TestLogSink : public google::LogSink {
-   public:
-    void send(google::LogSeverity severity, const char* full_filename,
-              const char* base_filename, int line,
-              const struct ::tm* tm_time,
-              const char* message, size_t message_len) override {
-      std::lock_guard lock(mutex_);
-      log_messages_.emplace_back(message, message_len);
-    }
-
-    size_t MessagesSize() {
-      std::lock_guard lock(mutex_);
-      return log_messages_.size();
-    }
-
-    std::string MessageAt(size_t idx) {
-      std::lock_guard lock(mutex_);
-      return log_messages_[idx];
-    }
-
-   private:
-    std::mutex mutex_;
-    std::vector<std::string> log_messages_;
-  };
-
 #ifndef NDEBUG
   const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
 #else
@@ -503,6 +574,206 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
     ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
     ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
     ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  }
+}
+
+// Stress concurrent registration and completion of tracked operations to exercise the
+// lock-free intake path of LongOperationTrackerHelper and reference transfer to the checker
+// thread.
+TEST_F(DebugUtilTest, LongOperationTrackerStress) {
+  constexpr int kNumThreads = 8;
+  const auto kRunTime = 3s;
+  // Deadline long enough that operations normally complete in time, short enough that the
+  // checker thread pops expired entries while the test is running.
+  const auto kDeadline = 500ms;
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), kDeadline] {
+      while (!stop.load(std::memory_order_acquire)) {
+        LongOperationTracker tracker("StressOp", kDeadline);
+        // Cover move construction and move assignment while the operation is registered.
+        LongOperationTracker moved(std::move(tracker));
+        tracker = std::move(moved);
+        std::this_thread::sleep_for(100us);
+      }
+    });
+  }
+  thread_holder.WaitAndStop(kRunTime);
+}
+
+// Verifies that the checker thread keeps detecting overdue operations while registration
+// traffic is running, and that operations completing before their deadline are not reported.
+// A synchronous burst larger than the checker's per-iteration drain bound guarantees that the
+// bounded-drain path runs repeatedly while the overdue operations are pending. A genuine
+// indefinite overload, with producers outpacing the checker forever, cannot be reproduced
+// deterministically, so this test exercises the bounded-drain code path rather than proving
+// starvation freedom.
+//
+// Also verifies that move construction and move assignment clear the moved-from tracker: the
+// moved-from trackers are destroyed after the deadline has passed, so a stale reference left
+// behind by either move would produce an extra "took a long time" warning and fail the exact
+// count checks below.
+TEST_F(DebugUtilTest, LongOperationTrackerUnderLoad) {
+#ifndef NDEBUG
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
+#else
+  const auto kTimeMultiplier = 1;
+#endif
+
+  const auto kOverdueDuration = 100ms * kTimeMultiplier;
+  // Long enough that traffic operations never expire, even on heavily loaded test hosts.
+  const auto kTrafficDuration = 60s;
+  constexpr int kNumThreads = 8;
+  // Significantly more than the checker's drain bound of 1000 registrations per iteration.
+  constexpr int kBurstSize = 50000;
+
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  auto se = ScopeExit([&log_sink] {
+    google::RemoveLogSink(&log_sink);
+  });
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), kTrafficDuration] {
+      while (!stop.load(std::memory_order_acquire)) {
+        LongOperationTracker tracker("TrafficOp", kTrafficDuration);
+        std::this_thread::sleep_for(10us);
+      }
+    });
+  }
+
+  {
+    LongOperationTracker move_ctor_source("MoveCtorOp", kOverdueDuration);
+    LongOperationTracker move_ctor_target(std::move(move_ctor_source));
+
+    LongOperationTracker move_assign_source("MoveAssignOp", kOverdueDuration);
+    LongOperationTracker move_assign_target;
+    move_assign_target = std::move(move_assign_source);
+
+    for (int i = 0; i != kBurstSize; ++i) {
+      LongOperationTracker tracker("TrafficOp", kTrafficDuration);
+    }
+
+    // The checker thread must report both overdue operations while traffic is still running.
+    const auto deadline = CoarseMonoClock::now() + 10s * kTimeMultiplier;
+    while (!IsSanitizer() &&
+           (log_sink.CountMessagesContaining("MoveCtorOp") == 0 ||
+            log_sink.CountMessagesContaining("MoveAssignOp") == 0)) {
+      ASSERT_LT(CoarseMonoClock::now(), deadline)
+          << "Timed out waiting for the overdue operation warnings";
+      std::this_thread::sleep_for(10ms);
+    }
+    // All four trackers are destroyed here, after the deadline has passed. Only the two
+    // targets hold operations, so exactly one destructor warning per operation is expected.
+  }
+
+  thread_holder.Stop();
+
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.CountMessagesContaining("MoveCtorOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("MoveAssignOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("TrafficOp"), 0);
+  } else {
+    for (const auto* operation : {"MoveCtorOp", "MoveAssignOp"}) {
+      // Exactly two warnings per overdue operation: the stack trace warning from the checker
+      // thread and the "took a long time" warning from the destructor of the move target.
+      ASSERT_EQ(log_sink.CountMessagesContaining(std::string(operation) + " running for"), 1)
+          << operation;
+      ASSERT_EQ(log_sink.CountMessagesContaining(std::string(operation) + " took a long time"), 1)
+          << operation;
+      ASSERT_EQ(log_sink.CountMessagesContaining(operation), 2) << operation;
+      // The checker thread warning identifies the thread that registered the operation.
+      ASSERT_STR_CONTAINS(
+          log_sink.FirstMessageContaining(std::string(operation) + " running for"), "in thread");
+    }
+    // Operations that completed before their deadline must not be reported.
+    ASSERT_EQ(log_sink.CountMessagesContaining("TrafficOp"), 0);
+  }
+}
+
+// A short-deadline operation registered behind a large intake backlog. The intake queue is FIFO,
+// so the checker thread adopts this operation only after it has drained the older long-deadline
+// registrations. The stack trace warning must still be logged while the operation is running,
+// and within a bounded delay after its deadline, i.e. the backlog does not stall detection.
+TEST_F(DebugUtilTest, LongOperationTrackerShortDeadlineBehindBacklog) {
+#ifndef NDEBUG
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(3, 10);
+#else
+  const auto kTimeMultiplier = 1;
+#endif
+
+  // Stays below the checker's short deadline threshold (200ms) in regular builds, so this also
+  // exercises the short deadline wakeup path.
+  const auto kShortDuration = 20ms * kTimeMultiplier;
+  // Generous bound on how long after the deadline the stack trace warning must be observed.
+  // The checker's scan interval is 100ms, the rest is slack for draining the backlog on loaded
+  // test hosts.
+  const auto kDetectionLatencyBound = 500ms * kTimeMultiplier;
+  // Long enough that backlog operations never expire.
+  const auto kBacklogDuration = 60s;
+  constexpr int kNumThreads = 8;
+  // Significantly more than the checker's drain bound of 1000 registrations per iteration.
+  constexpr int kBacklogPerThread = 25000;
+
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  auto se = ScopeExit([&log_sink] {
+    google::RemoveLogSink(&log_sink);
+  });
+
+  // Keep the backlog operations alive so that they occupy the intake queue and the checker's
+  // priority queue as live long-deadline operations while the short one is processed.
+  std::vector<std::vector<LongOperationTracker>> backlog(kNumThreads);
+  {
+    // Register the backlog concurrently from several threads, so that registrations outpace the
+    // single checker thread and a real backlog accumulates in the intake queue.
+    TestThreadHolder thread_holder;
+    for (int i = 0; i != kNumThreads; ++i) {
+      thread_holder.AddThreadFunctor([&ops = backlog[i], kBacklogDuration] {
+        ops.reserve(kBacklogPerThread);
+        for (int j = 0; j != kBacklogPerThread; ++j) {
+          ops.emplace_back("BacklogOp", kBacklogDuration);
+        }
+      });
+    }
+    thread_holder.JoinAll();
+  }
+
+  {
+    LongOperationTracker short_op("ShortOp", kShortDuration);
+    const auto deadline = CoarseMonoClock::now() + kShortDuration;
+
+    // Wait for the checker thread to report the running operation.
+    const auto timeout = deadline + 10s * kTimeMultiplier;
+    while (!IsSanitizer() && log_sink.CountMessagesContaining("ShortOp running for") == 0) {
+      ASSERT_LT(CoarseMonoClock::now(), timeout)
+          << "Timed out waiting for the short deadline operation warning";
+      std::this_thread::sleep_for(1ms);
+    }
+    const auto detected_at = CoarseMonoClock::now();
+
+    if (!IsSanitizer()) {
+      ASSERT_LT(detected_at - deadline, kDetectionLatencyBound)
+          << "Stack trace warning delayed by " << MonoDelta(detected_at - deadline)
+          << " after the deadline";
+    }
+    // short_op is destroyed here, after its deadline, producing the destructor warning.
+  }
+
+  backlog.clear();
+
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp"), 0);
+    ASSERT_EQ(log_sink.CountMessagesContaining("BacklogOp"), 0);
+  } else {
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp running for"), 1);
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp took a long time"), 1);
+    ASSERT_EQ(log_sink.CountMessagesContaining("ShortOp"), 2);
+    ASSERT_STR_CONTAINS(log_sink.FirstMessageContaining("ShortOp running for"), "in thread");
+    // Backlog operations completed well before their deadline and must not be reported.
+    ASSERT_EQ(log_sink.CountMessagesContaining("BacklogOp"), 0);
   }
 }
 

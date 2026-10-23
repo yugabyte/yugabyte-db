@@ -30,19 +30,16 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
+import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.AlertingData;
@@ -52,7 +49,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -61,16 +57,11 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.rbac.ResourceGroup;
-import com.yugabyte.yw.models.rbac.Role;
-import com.yugabyte.yw.models.rbac.RoleBinding;
-import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
-import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -95,6 +86,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
@@ -142,15 +134,9 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject private AlertConfigurationService alertConfigurationService;
-
-  @Inject private AlertDestinationService alertDestinationService;
-
   @Inject private SessionHandler sessionHandler;
 
   @Inject private UserService userService;
-
-  @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject private LoginHandler loginHandler;
 
@@ -160,7 +146,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
-  @Inject private PACollectorSync paCollectorSync;
+  @Inject private CustomerRegistrationHandler customerRegistrationHandler;
 
   private final ApiHelper apiHelper;
 
@@ -364,17 +350,7 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(authToken, null, null, cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        Audit.ActionType.Login,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.Login);
     return withData(sessionInfo)
         .withCookies(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
@@ -408,17 +384,7 @@ public class SessionController extends AbstractPlatformController {
         new SessionInfo(
             null, user.upsertApiToken(), user.getApiTokenVersion(), cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        ActionType.ApiLogin,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.ApiLogin);
     return withData(sessionInfo);
   }
 
@@ -449,9 +415,13 @@ public class SessionController extends AbstractPlatformController {
     Users user = Users.getByEmail(email);
     // Block local SuperAdmin accounts from using the SSO callback; SSO-provisioned SuperAdmin
     // users (for example via OIDC group mapping) must still be able to sign in via SSO.
+    // Resolved through role bindings, not users.role: that column stays at its original value for a
+    // SuperAdmin granted via setRoleBindings, so reading it would let such a user through here and
+    // findUserByEmailOrCreateNewUser would then recompute their role and rebuild their bindings,
+    // silently costing them SuperAdmin. UserType is checked first as it needs no query.
     if (user != null
-        && user.getRole().equals(Users.Role.SuperAdmin)
-        && UserType.local.equals(user.getUserType())) {
+        && UserType.local.equals(user.getUserType())
+        && roleBindingUtil.isSuperAdmin(user)) {
       throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
@@ -465,17 +435,7 @@ public class SessionController extends AbstractPlatformController {
     Customer cust = Customer.get(user.getCustomerUUID());
 
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        Audit.ActionType.Login,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.Login);
 
     try {
       // Persist the JWT auth token in case of successful login.
@@ -605,17 +565,7 @@ public class SessionController extends AbstractPlatformController {
           new SessionInfo(
               null, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
       RequestContext.update(IS_AUDITED, val -> val.set(true));
-      Audit.create(
-          user,
-          request.path(),
-          request.method(),
-          Audit.TargetType.User,
-          user.getUuid().toString(),
-          Audit.ActionType.Login,
-          null,
-          null,
-          null,
-          request.remoteAddress());
+      loginHandler.auditLogin(user, request, Audit.ActionType.Login);
       return withData(sessionInfo)
           .withCookies(
               Http.Cookie.builder(API_TOKEN, apiToken)
@@ -707,25 +657,29 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken, Http.Request request) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
-    boolean multiTenant = config.getBoolean("yb.multiTenant");
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    int customerCount = Customer.getAll().size();
-    if (!multiTenant && customerCount >= 1) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
-    }
-    if (useOAuth && customerCount >= 1) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
-    }
-    if (customerCount == 0) {
-      return registerCustomer(data, true, generateApiToken, request);
-    } else {
-      if (tokenAuthenticator.superAdminAuthentication(request)) {
-        return registerCustomer(data, false, generateApiToken, request);
-      } else {
-        throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
+    // /register isn't wrapped in TokenAuthenticator, which is what clears RequestContext's user
+    // after other requests. Clear it here, or the user set below (or by checkAllowed) would stay on
+    // the worker thread and be attributed to later requests.
+    try {
+      int customerCount = customerRegistrationHandler.countCustomersForRegistration();
+      Optional<CustomerRegistrationHandler.Refusal> refusal =
+          customerRegistrationHandler.checkAllowed(request, customerCount);
+      if (refusal.isPresent()) {
+        switch (refusal.get()) {
+          case SINGLE_TENANT:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
+          case SSO_ENABLED:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
+          default:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Only Super Admins can register tenant.");
+        }
       }
+      return registerCustomer(data, customerCount == 0, generateApiToken, request);
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
     }
   }
 
@@ -745,58 +699,25 @@ public class SessionController extends AbstractPlatformController {
       boolean isSuper,
       boolean generateApiToken,
       Http.Request request) {
-    Customer cust = Customer.create(data.getCode(), data.getName());
-    Users.Role role = Users.Role.Admin;
-    if (isSuper) {
-      role = Users.Role.SuperAdmin;
-    }
-    passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-
-    alertDestinationService.createDefaultDestination(cust.getUuid());
-    alertConfigurationService.createDefaultConfigs(cust);
-
-    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
-
-    boolean useNewAuthz =
-        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
-
-    // Sync all the built-in roles when a new customer is created.
-    R__Sync_System_Roles.syncSystemRoles(cust.getUuid());
-
-    if (useNewAuthz) {
-      Role newRbacRole = Role.get(cust.getUuid(), role.name());
-
-      // Now add the role binding for the above user.
-      ResourceGroup resourceGroup =
-          ResourceGroup.getSystemDefaultResourceGroup(cust.getUuid(), user);
-      // Create a single role binding for the user.
-      RoleBinding createdRoleBinding =
-          roleBindingUtil.createRoleBinding(
-              user.getUuid(), newRbacRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
-
-      log.info(
-          "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
-              + "with role '{}' (name '{}'), and default role binding '{}'.",
-          user.getUuid(),
-          RedactingService.SECRET_REPLACEMENT,
-          cust.getUuid(),
-          newRbacRole.getRoleUUID(),
-          newRbacRole.getName(),
-          createdRoleBinding.toString());
-    }
-
-    // Have to call it here, because customer only present inside the same transaction.
-    paCollectorSync.initialize(cust);
+    Users user =
+        customerRegistrationHandler.register(
+            data.getCode(),
+            data.getName(),
+            data.getEmail(),
+            data.getPassword(),
+            isSuper ? Users.Role.SuperAdmin : Users.Role.Admin);
+    Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;
     SessionInfo sessionInfo =
         new SessionInfo(
             authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
-    // When there is no authenticated user in context; we just pretend that the user
-    // created himself for auditing purpose.
-    RequestContext.putIfAbsent(
-        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    if (isSuper) {
+      // The first registration has no authenticated user to audit; attribute it to the new user.
+      // A later one is attributed to the SuperAdmin, set by checkAllowed.
+      RequestContext.put(TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    }
     auditService()
         .createAuditEntryWithReqBody(
             request,

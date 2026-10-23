@@ -13,6 +13,8 @@ package com.yugabyte.yw.common.ha;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.when;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -41,19 +44,22 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
-import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import jakarta.persistence.PersistenceException;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -68,6 +74,8 @@ import org.mockito.junit.MockitoRule;
 public class PlatformReplicationManagerTest extends FakeDBApplication {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
   @Mock Config mockConfig;
+
+  @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
   @Mock PlatformScheduler mockPlatformScheduler;
 
@@ -87,8 +95,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock OperatorResourceRestorer mockOperatorResourceRestorer;
 
-  @Mock PACollectorSync mockPACollectorSync;
-
   private static final String STORAGE_PATH = "yb.storage.path";
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
   private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
@@ -105,14 +111,14 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     backupManager =
         spy(
             new PlatformReplicationManager(
+                mockPlatformExecutorFactory,
                 mockPlatformScheduler,
                 mockReplicationUtil,
                 mockFileDataService,
                 mockPrometheusConfigHelper,
                 mockConfigHelper,
                 runtimeConfGetter,
-                mockOperatorResourceRestorer,
-                mockPACollectorSync));
+                mockOperatorResourceRestorer));
   }
 
   private void setupConfig(
@@ -149,7 +155,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       boolean isCreate,
       String backupDir,
       boolean isYbaInstaller,
-      boolean enableSingleTransaction) {
+      boolean enableSingleTransaction,
+      boolean fips) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
     if (isCreate) {
@@ -204,21 +211,25 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     expectedCommandArgs.add("9090");
     expectedCommandArgs.add("--verbose");
     expectedCommandArgs.add("--skip_restart");
+    if (fips) {
+      expectedCommandArgs.add("--fips");
+    }
 
     return expectedCommandArgs;
   }
 
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
+    File input = new File("/tmp/foo.bar");
     return new Object[][] {
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true, false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, false},
-      {
-        "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false, false
-      },
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, true},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, true}
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, input, true, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, false, false},
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, input, false, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, true, true, true},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, input, false, true, true}
     };
   }
 
@@ -232,7 +243,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       int dbPort,
       File inputPath,
       boolean isCreate,
-      boolean isYbaInstaller) {
+      boolean isYbaInstaller,
+      boolean fips) {
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
@@ -243,6 +255,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfig.getString("yb.pa.url")).thenReturn("http://localhost:9000");
+    when(mockConfig.getBoolean(CommonUtils.FIPS_ENABLED)).thenReturn(fips);
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
     doCallRealMethod()
@@ -251,14 +264,14 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
+            mockPlatformExecutorFactory,
             mockPlatformScheduler,
             mockReplicationUtil,
             mockFileDataService,
             mockPrometheusConfigHelper,
             mockConfigHelper,
             runtimeConfGetter,
-            mockOperatorResourceRestorer,
-            mockPACollectorSync);
+            mockOperatorResourceRestorer);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -270,7 +283,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             isCreate,
             "/tmp/foo.bar",
             isYbaInstaller,
-            !isCreate);
+            !isCreate,
+            fips);
 
     if (isCreate) {
       backupManager.createBackup();
@@ -308,14 +322,14 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       PlatformReplicationManager backupManager =
           spy(
               new PlatformReplicationManager(
+                  mockPlatformExecutorFactory,
                   mockPlatformScheduler,
                   mockReplicationUtil,
                   mockFileDataService,
                   mockPrometheusConfigHelper,
                   mockConfigHelper,
                   runtimeConfGetter,
-                  mockOperatorResourceRestorer,
-                  mockPACollectorSync));
+                  mockOperatorResourceRestorer));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());
@@ -405,5 +419,67 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     // All node agents upgraded, query was made to metrics to confirm if they got upgraded before
     // the backup was taken.
     verify(mockMetricQueryHelper, times(1)).queryDirect(anyString());
+  }
+
+  @Test
+  public void testStalePlanErrorIsRecognisedThroughTheCauseChain() {
+    // What Ebean actually hands us: the driver's SQLException wrapped in a PersistenceException.
+    assertTrue(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(
+                "Query threw SQLException",
+                new SQLException("ERROR: cached plan must not change result type"))));
+    // Same condition reported by SQL state alone.
+    assertTrue(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(new SQLException("some other wording", "0A000"))));
+    assertFalse(
+        PlatformReplicationManager.isStalePlanError(
+            new PersistenceException(
+                "Query threw SQLException",
+                new SQLException("ERROR: duplicate key violates unique constraint", "23505"))));
+    assertFalse(PlatformReplicationManager.isStalePlanError(new RuntimeException("unrelated")));
+  }
+
+  @Test
+  public void testStalePlanErrorDoesNotLoopOnACyclicCauseChain() {
+    // Throwable rejects a throwable that causes itself, but not a pair that cause each other,
+    // so walking the chain has to terminate on its own rather than hang the promotion.
+    SQLException first = new SQLException("boom", "42P01");
+    SQLException second = new SQLException("bang", "42P01", first);
+    first.initCause(second);
+    assertFalse(PlatformReplicationManager.isStalePlanError(first));
+  }
+
+  @Test
+  public void testPromotionIsRetriedOnceAfterAStalePlan() {
+    AtomicInteger attempts = new AtomicInteger();
+    backupManager.retryOnStalePlan(
+        "test operation",
+        () -> {
+          if (attempts.incrementAndGet() == 1) {
+            throw new PersistenceException(
+                new SQLException("ERROR: cached plan must not change result type"));
+          }
+        });
+    assertEquals(2, attempts.get());
+  }
+
+  @Test
+  public void testAnUnrelatedFailureIsNotRetried() {
+    AtomicInteger attempts = new AtomicInteger();
+    RuntimeException thrown = new RuntimeException("not a stale plan");
+    RuntimeException caught =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                backupManager.retryOnStalePlan(
+                    "test operation",
+                    () -> {
+                      attempts.incrementAndGet();
+                      throw thrown;
+                    }));
+    assertSame(thrown, caught);
+    assertEquals(1, attempts.get());
   }
 }

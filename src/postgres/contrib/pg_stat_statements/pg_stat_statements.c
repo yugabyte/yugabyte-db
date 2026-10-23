@@ -419,7 +419,8 @@ static const struct config_enum_entry track_options[] =
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
-#define YB_DEFAULT_QTEXT_LIMIT_KB -1
+#define YB_DEFAULT_QTEXT_LIMIT_KB -1	/* max text file size read; -1 = no limit */
+#define YB_DEFAULT_MAX_QUERY_TEXT_LENGTH -1	/* max text bytes per entry; -1 = no limit */
 
 static int	pgss_max;			/* max # statements to track */
 static int	pgss_track;			/* tracking level */
@@ -440,6 +441,7 @@ static int64_t yb_hdr_max_value = YB_HDR_DEFAULT_MAX_VALUE; /* default hardcode 
 															 * latency_res */
 static struct hdr_histogram_bucket_config cfg;
 static int	yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
+static int	yb_max_query_text_length = YB_DEFAULT_MAX_QUERY_TEXT_LENGTH;
 
 /*
  * yb_hdr_max_value is the integer representation of the max query latency we
@@ -559,6 +561,8 @@ static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 												   int *query_len_p);
 static void yb_pgss_mark_needs_normalization(uint64 queryId);
 static bool yb_pgss_needs_normalization(uint64 queryId);
+static char *yb_truncate_query_text(const char *query, int *query_len,
+									int encoding);
 
 /*
  * Module load callback
@@ -666,6 +670,19 @@ _PG_init(void)
 							MAX_KILOBYTES,
 							PGC_SUSET,
 							GUC_UNIT_KB,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomIntVariable("pg_stat_statements.yb_max_query_text_length",
+							"Sets the maximum length in bytes of the query text stored for each statement.",
+							"Longer texts are truncated and end with \"...\". -1 stores texts in full.",
+							&yb_max_query_text_length,
+							YB_DEFAULT_MAX_QUERY_TEXT_LENGTH,
+							-1,
+							INT_MAX / 2,
+							PGC_SUSET,
+							GUC_UNIT_BYTE,
 							NULL,
 							NULL,
 							NULL);
@@ -1458,6 +1475,14 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query, jstate);
 
+	/*
+	 * YB: Mark before the tracking check.  A query parsed while it is not
+	 * tracked, such as one prepared under track = 'none' or nested under
+	 * track = 'top', can still be executed while tracked.
+	 */
+	if (jstate && jstate->clocations_count > 0)
+		yb_pgss_mark_needs_normalization(query->queryId);
+
 	/* Safety check... */
 	if (!pgss || !pgss_hash || !pgss_enabled(exec_nested_level))
 		return;
@@ -1482,8 +1507,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
-	{
-		yb_pgss_mark_needs_normalization(query->queryId);
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1497,7 +1520,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   jstate,
 				   false /* yb_is_sensitive_stmt */ ,
 				   NULL /* yb_stats */ );
-	}
 }
 
 /*
@@ -1729,6 +1751,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 
+	bool		yb_is_backfill = IsA(parsetree, YbBackfillIndexStmt);
+
 	/*
 	 * Force utility statements to get queryId zero.  We do this even in cases
 	 * where the statement contains an optimizable statement for which a
@@ -1833,7 +1857,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * For BACKFILL INDEX commands, generate a normalized query string so
 		 * that all backfill calls for the same index are aggregated.
 		 */
-		if (IsA(parsetree, YbBackfillIndexStmt))
+		if (yb_is_backfill)
 		{
 			char	   *norm_query;
 			int			norm_query_len;
@@ -2001,6 +2025,21 @@ pgss_store(const char *query, uint64 queryId,
 			goto done;
 		}
 
+		/*
+		 * YB: Enforce yb_max_query_text_length.  The truncated copy takes the
+		 * place of norm_query so that the code below stores and frees it.
+		 */
+		if (yb_max_query_text_length >= 0 &&
+			query_len > yb_max_query_text_length)
+		{
+			char	   *truncated = yb_truncate_query_text(norm_query ? norm_query : query,
+														   &query_len, encoding);
+
+			if (norm_query)
+				pfree(norm_query);
+			norm_query = truncated;
+		}
+
 		/* Append new query text to file with only shared lock held */
 		stored = qtext_store(norm_query ? norm_query : query, query_len,
 							 &query_offset, &gc_count);
@@ -2147,10 +2186,10 @@ pgss_store(const char *query, uint64 queryId,
 			{
 				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
 					yb_stats->tbl_reads.count + yb_stats->index_reads.count;
+				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+					yb_stats->tbl_reads.ops_count + yb_stats->index_reads.ops_count;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
 					yb_stats->write_flushes.count;
-				e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
-					yb_stats->tbl_read_ops + yb_stats->index_read_ops;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
 					yb_stats->tbl_writes + yb_stats->index_writes;
 				e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
@@ -4054,4 +4093,34 @@ yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 
 	*query_len_p = buf.len;
 	return buf.data;
+}
+
+/*
+ * YB: Truncate a query text to yb_max_query_text_length bytes without
+ * splitting a multibyte character, and append "..." to show the truncation,
+ * as upstream does for log_parameter_max_length and COPY error context.
+ * "query" need not be null-terminated.  Returns a palloc'd string and sets
+ * *query_len to its length.
+ */
+static char *
+yb_truncate_query_text(const char *query, int *query_len, int encoding)
+{
+	int			cliplen;
+	char	   *result;
+
+	/*
+	 * Length of the longest prefix of at most yb_max_query_text_length bytes
+	 * that ends on a character boundary. Upstream clips texts the same way,
+	 * via pg_mbcliplen, for track_activity_query_size and
+	 * log_parameter_max_length.
+	 */
+	cliplen = pg_encoding_mbcliplen(encoding, query, *query_len,
+									yb_max_query_text_length);
+
+	result = palloc(cliplen + 4);
+	memcpy(result, query, cliplen);
+	strcpy(result + cliplen, "...");
+
+	*query_len = cliplen + 3;
+	return result;
 }

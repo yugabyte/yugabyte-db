@@ -50,7 +50,8 @@ public interface SupportBundleEnumMapper {
     @ValueMapping(target = "PROMETHEUS_METRICS_PROMETHEUS", source = "PROMETHEUS"),
     @ValueMapping(target = "PROMETHEUS_METRICS_TSERVER_EXPORT", source = "TSERVER_EXPORT"),
     @ValueMapping(target = "PROMETHEUS_METRICS_CQL_EXPORT", source = "CQL_EXPORT"),
-    @ValueMapping(target = "PROMETHEUS_METRICS_YSQL_EXPORT", source = "YSQL_EXPORT")
+    @ValueMapping(target = "PROMETHEUS_METRICS_YSQL_EXPORT", source = "YSQL_EXPORT"),
+    @ValueMapping(target = "PROMETHEUS_METRICS_KUBERNETES", source = "KUBERNETES")
   })
   PrometheusMetricsType toPrometheusMetricsType(
       com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType source);
@@ -62,7 +63,8 @@ public interface SupportBundleEnumMapper {
     @ValueMapping(target = "PROMETHEUS", source = "PROMETHEUS_METRICS_PROMETHEUS"),
     @ValueMapping(target = "TSERVER_EXPORT", source = "PROMETHEUS_METRICS_TSERVER_EXPORT"),
     @ValueMapping(target = "CQL_EXPORT", source = "PROMETHEUS_METRICS_CQL_EXPORT"),
-    @ValueMapping(target = "YSQL_EXPORT", source = "PROMETHEUS_METRICS_YSQL_EXPORT")
+    @ValueMapping(target = "YSQL_EXPORT", source = "PROMETHEUS_METRICS_YSQL_EXPORT"),
+    @ValueMapping(target = "KUBERNETES", source = "PROMETHEUS_METRICS_KUBERNETES")
   })
   com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType toV1PrometheusMetricsType(
       PrometheusMetricsType source);

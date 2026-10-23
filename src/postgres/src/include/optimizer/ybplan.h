@@ -60,12 +60,9 @@ extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(Mod
 																			 const Relation rel,
 																			 Bitmapset *update_attrs);
 
-struct PlannerInfo;
-struct RelOptInfo;
-struct RangeTblEntry;
+extern AttrNumber yb_get_federated_tserver_uuid_attno(Oid relid);
 
-extern Bitmapset *YbExtractFederatedTserverFilter(struct PlannerInfo *root,
-												  struct RelOptInfo *rel,
-												  struct RangeTblEntry *rte,
-												  YbcServerDescriptor *servers,
-												  size_t nservers);
+struct PlannerInfo;
+
+extern bool YbIocPushdownPossible(struct PlannerInfo *root,
+								  ModifyTable *node);

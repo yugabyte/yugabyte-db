@@ -2731,6 +2731,28 @@ WalSndCheckTimeOut(void)
 	if (wal_sender_timeout > 0 && last_processing >= timeout)
 	{
 		/*
+		 * YB: A single blocking GetConsistentChanges RPC can span the whole
+		 * timeout, so the stall is entirely server side and the client was
+		 * never asked to reply.  Request a reply and restart the timer once
+		 * before giving up.  waiting_for_ping_response stays set until the
+		 * client answers, so a truly unresponsive client still times out at
+		 * the next expiry.
+		 */
+		if (IsYugaByteEnabled() && !waiting_for_ping_response)
+		{
+			/*
+			 * Fresh timestamp, not last_processing: the latter predates the
+			 * stall, so a second slow RPC would expire the timer before the
+			 * client had a chance to answer this ping.
+			 */
+			last_reply_timestamp = GetCurrentTimestamp();
+			WalSndKeepalive(true, InvalidXLogRecPtr);
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+			return;
+		}
+
+		/*
 		 * Since typically expiration of replication timeout means
 		 * communication problem, we don't send the error message to the
 		 * standby.
@@ -3809,6 +3831,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 	YbcSlotEntryDescriptor *yb_slot_entries = NULL;
 	size_t		yb_num_slot_entries = 0;
+	bool		yb_slot_entries_fetched = false;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -3817,9 +3840,6 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
-
-	if (IsYugaByteEnabled())
-		YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -3938,6 +3958,13 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 			{
 				int64_t		lag_metric = -1;
 				int			slotno;
+
+				/* Only fetch slot entries if there is an active walsender. */
+				if (!yb_slot_entries_fetched)
+				{
+					YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
+					yb_slot_entries_fetched = true;
+				}
 
 				for (slotno = 0; slotno < yb_num_slot_entries; slotno++)
 				{

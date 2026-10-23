@@ -16,13 +16,13 @@
 
 */
 use super::get_pgrx_attr_macro;
-use crate::pg_extern::NameMacro;
 use crate::UsedType;
+use crate::pg_extern::NameMacro;
 
 use proc_macro2::TokenStream as TokenStream2;
-use quote::ToTokens;
+use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_quote, Expr, Type};
+use syn::{Expr, Type, parse_quote};
 
 #[derive(Debug, Clone)]
 pub struct AggregateTypeList {
@@ -51,6 +51,27 @@ impl AggregateTypeList {
         let found = self.found.iter().map(|x| x.entity_tokens());
         parse_quote! {
             vec![#(#found),*]
+        }
+    }
+
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        let found = self.found.iter().map(AggregateType::section_len_tokens);
+        quote! {
+            ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                #( #found ),*
+            ])
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        let count = self.found.len();
+        let found = self.found.iter().map(|item| item.section_writer_tokens(quote! { writer }));
+        quote! {
+            {
+                let writer = #writer.u32(#count as u32);
+                #( let writer = { #found }; )*
+                writer
+            }
         }
     }
 }
@@ -100,6 +121,34 @@ impl AggregateType {
             }
         }
     }
+
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        let used_ty_len = self.used_ty.section_len_tokens();
+        let name_len = self
+            .name
+            .as_ref()
+            .map(|name| {
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::str_len(#name)
+                }
+            })
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        quote! {
+            (#used_ty_len) + (#name_len)
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        let name_writer = self
+            .name
+            .as_ref()
+            .map(|name| quote! { .bool(true).str(#name) })
+            .unwrap_or_else(|| quote! { .bool(false) });
+        self.used_ty.section_writer_tokens(quote! {
+            #writer #name_writer
+        })
+    }
 }
 
 impl ToTokens for AggregateType {
@@ -117,7 +166,7 @@ impl Parse for AggregateType {
 #[cfg(test)]
 mod tests {
     use super::AggregateTypeList;
-    use eyre::{eyre as eyre_err, Result};
+    use eyre::{Result, eyre as eyre_err};
     use syn::parse_quote;
 
     #[test]

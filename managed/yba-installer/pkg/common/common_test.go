@@ -2,6 +2,7 @@ package common
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -88,4 +89,58 @@ func TestSetYaml(t *testing.T) {
 		t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
 	}
 
+}
+
+// TestSetYaml covers building a config up from an empty file. A migration instead adds a new
+// top-level block to a config that already has content, which takes a different path through
+// setYamlValue, and must not disturb what is already there.
+func TestSetYamlValueAddsBlockToPopulatedConfig(t *testing.T) {
+	const existing = `installRoot: "/opt/yugabyte"
+host: ""
+service_username: "yugabyte"
+platform:
+   port: 443
+   keyStorePassword: "existing-password"
+`
+	filePath := filepath.Join(t.TempDir(), "yba-ctl.yml")
+	if err := os.WriteFile(filePath, []byte(existing), 0600); err != nil {
+		t.Fatalf("error writing file %s: %s", filePath, err)
+	}
+
+	if err := SetYamlValue(filePath, "fips.enabled", false); err != nil {
+		t.Fatalf("error setting fips.enabled: %s", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(filePath)
+	if err := v.ReadInConfig(); err != nil {
+		t.Fatalf("error reading yaml %s: %s", filePath, err)
+	}
+	if !v.IsSet("fips.enabled") {
+		t.Fatalf("fips.enabled was not added to %s", filePath)
+	}
+	if v.GetBool("fips.enabled") {
+		t.Fatalf("fips.enabled should be false")
+	}
+	if real := v.GetString("platform.keyStorePassword"); real != "existing-password" {
+		t.Fatalf("existing entry was overwritten: got '%s'", real)
+	}
+	if real := v.GetInt("platform.port"); real != 443 {
+		t.Fatalf("existing entry was overwritten: got '%d'", real)
+	}
+}
+
+// An existing password must come back untouched: rotating it under a running install would leave
+// the keystore on disk unopenable by the service that is already using it.
+func TestEnsureGeneratedPasswordKeepsAnExistingValue(t *testing.T) {
+	viper.Set("perfAdvisor.tls.keystorePassword", "already-set-password")
+	t.Cleanup(func() { viper.Set("perfAdvisor.tls.keystorePassword", "") })
+
+	got, err := EnsureGeneratedPassword("perfAdvisor.tls.keystorePassword")
+	if err != nil {
+		t.Fatalf("EnsureGeneratedPassword: %v", err)
+	}
+	if got != "already-set-password" {
+		t.Fatalf("got %q, want the stored value", got)
+	}
 }

@@ -42,6 +42,8 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
   std::string data_dir_;
   std::string pid_file_;
+  std::string pg_data_dir_;
+  std::string log_dir_;
   std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;
@@ -52,6 +54,7 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
     uint16_t global_pool_size = 10;
     uint16_t control_connection_pool_size;
     int ysql_max_connections = 0;
+    std::map<std::string, std::string> pg_config_map = {};
   };
   std::optional<CachedConf> conf_;
 
@@ -62,8 +65,9 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   bool log_stats_ = false;
 
   Status UpdateConfigFromGFlags();
+  Status UpdateConfigFromYsqlPgConf();
   std::string GetBindAddress();
-  void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
+  Status AddSslConfig(std::map<std::string, std::string>& ysql_conn_mgr_configs);
   void UpdateLogSettings(const std::string& log_settings_str);
 };
 

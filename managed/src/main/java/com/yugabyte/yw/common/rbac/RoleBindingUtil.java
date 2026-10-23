@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -44,6 +45,45 @@ public class RoleBindingUtil {
   public RoleBindingUtil(PermissionUtil permissionUtil, RuntimeConfGetter confGetter) {
     this.permissionUtil = permissionUtil;
     this.confGetter = confGetter;
+  }
+
+  /**
+   * Resolves SuperAdmin from role bindings, which is where the answer actually lives once RBAC is
+   * on -- users.role is deprecated and stays at whatever it was when a SuperAdmin is granted
+   * through a role binding. Group bindings count: fetchRoleBindingsForUser walks the user's group
+   * memberships.
+   *
+   * <p>A user with no bindings at all has no RBAC answer to give (a break-glass account from
+   * add_superadmin_user.py --skip-role-binding, or a customer registered while use_new_authz was
+   * off), so the deprecated column answers for them rather than denying a real SuperAdmin.
+   */
+  public boolean isSuperAdmin(Users user) {
+    if (user == null) {
+      return false;
+    }
+    if (!confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
+      return Users.Role.SuperAdmin.equals(user.getRole());
+    }
+    List<RoleBinding> roleBindings = RoleBinding.fetchRoleBindingsForUser(user.getUuid());
+    if (roleBindings.isEmpty()) {
+      log.warn(
+          "User '{}' has no role bindings; resolving SuperAdmin from the deprecated users.role.",
+          user.getUuid());
+      return Users.Role.SuperAdmin.equals(user.getRole());
+    }
+    Role superAdminRole = Role.get(user.getCustomerUUID(), Users.Role.SuperAdmin.name());
+    return superAdminRole != null
+        && roleBindings.stream()
+            .anyMatch(rb -> superAdminRole.getRoleUUID().equals(rb.getRole().getRoleUUID()));
+  }
+
+  /**
+   * users.user_type is nullable -- V138 added it as "varchar(5) default 'local'" with no NOT NULL
+   * constraint -- so a legacy row reads null and must keep behaving as the local account it is.
+   */
+  public static boolean isLocalAccount(Users user) {
+    return user != null
+        && (user.getUserType() == null || UserType.local.equals(user.getUserType()));
   }
 
   public RoleBinding createRoleBinding(

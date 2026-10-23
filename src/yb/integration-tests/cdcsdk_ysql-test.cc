@@ -416,7 +416,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
       RowMessage::DELETE};
 
   // Catch up both streams.
-  auto change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets);
+  auto change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, nullptr, 0, -1, 0, /* expected_records_count = */ 5);
   size_t record_size_1 = change_resp_1.records.size();
   auto change_resp_2 = GetAllPendingChangesFromCdc(stream_id_2, tablets);
   size_t record_size_2 = change_resp_2.records.size();
@@ -457,7 +458,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Call GetChanges only on stream 1.
   auto previous_checkpoint_1 = change_resp_1.checkpoint;
-  change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets, &previous_checkpoint_1);
+  change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, &previous_checkpoint_1, 0, -1, 0, /* expected_records_count = */ 3);
   record_size_1 = change_resp_1.records.size();
   ASSERT_EQ(record_size_1, 3);
 
@@ -480,7 +482,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleSt
 
   // Call GetChanges on stream 1.
   previous_checkpoint_1 = change_resp_1.checkpoint;
-  change_resp_1 = GetAllPendingChangesFromCdc(stream_id_1, tablets, &previous_checkpoint_1);
+  change_resp_1 = GetAllPendingChangesFromCdc(
+      stream_id_1, tablets, &previous_checkpoint_1, 0, -1, 0, /* expected_records_count = */ 2);
   record_size_1 = change_resp_1.records.size();
   ASSERT_EQ(record_size_1, 2);
 
@@ -2501,8 +2504,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  // Call get changes.
-  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+  // A single DDL, plus a BEGIN and a COMMIT for each of the two txns, on top of the inserts.
+  const int expected_records_count = insert_count + 5;
+  auto change_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, /* cp = */ nullptr, /* tablet_idx = */ 0, /* safe_hybrid_time = */ -1,
+      /* wal_segment_index = */ 0, expected_records_count);
   size_t record_size = change_resp.records.size();
   ASSERT_GT(record_size, insert_count);
 
@@ -12177,6 +12183,13 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   LOG(INFO) << "Got " << received_records << " insert records";
   ASSERT_EQ(expected_records_size, received_records);
 
+  // GetChangeRecordCount returns as soon as it has seen every record, so the batch it fetched last
+  // is never acknowledged. Acknowledge the position it stopped at: intent SST files are released
+  // only once the barrier has moved past the segments holding those intents.
+  CDCSDKCheckpointPB ack_checkpoint = tablet_to_checkpoint[tablet_id];
+  ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &ack_checkpoint, &ack_checkpoint));
+
   // Wait for UpdatePeersAndMetrics to move the checkpoint & min_start_ht for CDC unstreamed txns.
   SleepFor(
       MonoDelta::FromSeconds(3 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
@@ -12188,8 +12201,9 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
   // compared to pre-consumption.
   std::unordered_map<std::string, size_t> final_log_segment_count;
   GetLogSegmentCountForTablet(tablet_id, &final_log_segment_count);
+  // A rollover in flight at the first sample can still add a segment, so only check none were GCed.
   for (const auto& [peer, segment_count] : final_log_segment_count) {
-    ASSERT_EQ(segment_count, log_segment_count[peer]);
+    ASSERT_GE(segment_count, log_segment_count[peer]);
   }
 
   ASSERT_OK(WaitFor(

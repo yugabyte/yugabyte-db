@@ -16,13 +16,16 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,6 +39,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
@@ -48,7 +53,9 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -58,6 +65,16 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   private Users user;
   private Universe universe;
   private String authToken;
+
+  // The controller pre-validates GCP configs against GCP itself; stub that out so the create and
+  // edit request handling can be exercised without cloud access.
+  private GcpEARServiceUtil mockGcpEARServiceUtil = mock(GcpEARServiceUtil.class);
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(builder)
+        .overrides(bind(GcpEARServiceUtil.class).toInstance(mockGcpEARServiceUtil));
+  }
 
   String mockEncryptionKey = "RjZiNzVGekljNFh5Zmh0NC9FQ1dpM0FaZTlMVGFTbW1Wa1dnaHRzdDhRVT0=";
   String algorithm = "AES";
@@ -409,5 +426,94 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
     assertBadRequest(updateKMSResult, "AZU Kms config field 'AZU_KEY_NAME' cannot be changed.");
+  }
+
+  private KMSConfigTaskParams capturedSubmittedParams(TaskType taskType) {
+    ArgumentCaptor<KMSConfigTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(KMSConfigTaskParams.class);
+    verify(mockCommissioner).submit(eq(taskType), paramsCaptor.capture());
+    return paramsCaptor.getValue();
+  }
+
+  private KmsConfig createGcpKeyFileConfig(String name) {
+    ObjectNode authConfig =
+        Json.newObject()
+            .put(GcpKmsAuthConfigField.LOCATION_ID.fieldName, "global")
+            .put(GcpKmsAuthConfigField.KEY_RING_ID.fieldName, "yb-kr")
+            .put(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName, "yb-ck");
+    authConfig
+        .putObject(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+        .put("type", "service_account")
+        .put("project_id", "sa-project");
+    return KmsConfig.createKMSConfig(customer.getUuid(), KeyProvider.GCP, authConfig, name);
+  }
+
+  private Result editGcpKmsConfig(KmsConfig config, ObjectNode editReq) {
+    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
+        .thenReturn(buildTaskInfo(null, TaskType.EditKMSConfig));
+    String kmsConfigUrl =
+        String.format(
+            "/api/customers/%s/kms_configs/%s/edit", customer.getUuid(), config.getConfigUUID());
+    return doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, editReq);
+  }
+
+  @Test
+  public void testCreateGcpKmsConfigWithHostIdentityReturnsConfigUUID() {
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/GCP";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put("name", "gcp-host-identity")
+            .put(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName, true)
+            .put(GcpKmsAuthConfigField.LOCATION_ID.fieldName, "us-west1")
+            .put(GcpKmsAuthConfigField.KEY_RING_ID.fieldName, "yb-kr")
+            .put(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName, "yb-ck");
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateKMSConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Result createKMSResult =
+        doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
+    assertOk(createKMSResult);
+
+    // The task is submitted with a pre-minted config UUID and the response hands it back, so
+    // clients no longer have to match the new config by name.
+    KMSConfigTaskParams params = capturedSubmittedParams(TaskType.CreateKMSConfig);
+    JsonNode json = Json.parse(contentAsString(createKMSResult));
+    assertEquals(fakeTaskUUID.toString(), json.get("taskUUID").asText());
+    assertEquals(params.configUUID.toString(), json.get("resourceUUID").asText());
+    assertFalse(params.providerConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName));
+  }
+
+  @Test
+  public void testEditGcpKmsConfigSwitchToHostIdentityDropsKeyFile() {
+    KmsConfig config = createGcpKeyFileConfig("gcp-kms-switch");
+
+    assertOk(
+        editGcpKmsConfig(
+            config, Json.newObject().put(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName, true)));
+
+    KMSConfigTaskParams params = capturedSubmittedParams(TaskType.EditKMSConfig);
+    assertTrue(params.providerConfig.get(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName).asBoolean());
+    assertFalse(params.providerConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName));
+    // The key location still comes from the stored config.
+    assertEquals(
+        "yb-kr", params.providerConfig.get(GcpKmsAuthConfigField.KEY_RING_ID.fieldName).asText());
+  }
+
+  @Test
+  public void testEditGcpKmsConfigWithoutAuthFieldsKeepsStoredKeyFile() {
+    KmsConfig config = createGcpKeyFileConfig("gcp-kms-keep");
+
+    assertOk(editGcpKmsConfig(config, Json.newObject()));
+
+    KMSConfigTaskParams params = capturedSubmittedParams(TaskType.EditKMSConfig);
+    assertEquals(
+        "sa-project",
+        params
+            .providerConfig
+            .get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+            .get("project_id")
+            .asText());
+    assertFalse(params.providerConfig.has(GcpKmsAuthConfigField.USE_GCP_IAM.fieldName));
   }
 }

@@ -3174,6 +3174,77 @@ ResolveOpClass(List *opclass, Oid attrType,
 }
 
 /*
+ * State accumulated while scanning pg_opclass in GetDefaultOpClass().
+ */
+typedef struct YbDefaultOpClassScanState
+{
+	Oid			type_id;		/* target type (base type) */
+	TYPCATEGORY tcategory;		/* its type category */
+	Oid			result;			/* best opclass found so far */
+	int			nexact;
+	int			ncompatible;
+	int			ncompatiblepreferred;
+} YbDefaultOpClassScanState;
+
+/*
+ * Fold one pg_opclass tuple into the default-opclass search state.  Shared by
+ * the two ways GetDefaultOpClass() enumerates the candidate opclasses (YB's
+ * syscache-list lookup and the upstream systable scan) so the matching rules
+ * stay identical.
+ */
+static void
+YbConsiderDefaultOpClass(YbDefaultOpClassScanState *state, HeapTuple tup)
+{
+	Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
+
+	/* ignore altogether if not a default opclass */
+	if (!opclass->opcdefault)
+		return;
+	if (opclass->opcintype == state->type_id)
+	{
+		state->nexact++;
+		state->result = opclass->oid;
+	}
+	else if (state->nexact == 0 &&
+			 IsBinaryCoercible(state->type_id, opclass->opcintype))
+	{
+		if (IsPreferredType(state->tcategory, opclass->opcintype))
+		{
+			state->ncompatiblepreferred++;
+			state->result = opclass->oid;
+		}
+		else if (state->ncompatiblepreferred == 0)
+		{
+			state->ncompatible++;
+			state->result = opclass->oid;
+		}
+	}
+}
+
+/*
+ * YB: Resolve the accumulated scan state to the final GetDefaultOpClass
+ * result.  This is the tail of the upstream function, shared by the YB
+ * syscache-list path and the upstream systable-scan path.
+ */
+static Oid
+YbDefaultOpClassFromState(const YbDefaultOpClassScanState *state, Oid type_id)
+{
+	/* raise error if pg_opclass contains inconsistent data */
+	if (state->nexact > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("there are multiple default operator classes for data type %s",
+						format_type_be(type_id))));
+
+	if (state->nexact == 1 ||
+		state->ncompatiblepreferred == 1 ||
+		(state->ncompatiblepreferred == 0 && state->ncompatible == 1))
+		return state->result;
+
+	return InvalidOid;
+}
+
+/*
  * GetDefaultOpClass
  *
  * Given the OIDs of a datatype and an access method, find the default
@@ -3182,20 +3253,18 @@ ResolveOpClass(List *opclass, Oid attrType,
 Oid
 GetDefaultOpClass(Oid type_id, Oid am_id)
 {
-	Oid			result = InvalidOid;
-	int			nexact = 0;
-	int			ncompatible = 0;
-	int			ncompatiblepreferred = 0;
+	YbDefaultOpClassScanState yb_state = {0};
 	Relation	rel;
 	ScanKeyData skey[1];
 	SysScanDesc scan;
 	HeapTuple	tup;
-	TYPCATEGORY tcategory;
 
 	/* If it's a domain, look at the base type instead */
 	type_id = getBaseType(type_id);
 
-	tcategory = TypeCategory(type_id);
+	yb_state.type_id = type_id;
+	yb_state.tcategory = TypeCategory(type_id);
+	yb_state.result = InvalidOid;
 
 	/*
 	 * We scan through all the opclasses available for the access method,
@@ -3209,6 +3278,27 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 	 * we need a tiebreaker.)  If we find more than one exact match, then
 	 * someone put bogus entries in pg_opclass.
 	 */
+	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
+	{
+		/*
+		 * YB: Enumerate the opclasses for this access method through the
+		 * CLAAMNAMENSP syscache list rather than a direct systable scan.  When
+		 * pg_opclass is preloaded the list is built from the local cache with
+		 * no master read, and the built list is cached per access method so
+		 * repeated lookups (e.g. lookup_type_cache probing lsm then hash for
+		 * many types) don't rescan the catalog.
+		 */
+		CatCList   *opclist = SearchSysCacheList1(CLAAMNAMENSP,
+												  ObjectIdGetDatum(am_id));
+
+		for (int i = 0; i < opclist->n_members; i++)
+			YbConsiderDefaultOpClass(&yb_state, &opclist->members[i]->tuple);
+
+		ReleaseSysCacheList(opclist);
+
+		return YbDefaultOpClassFromState(&yb_state, type_id);
+	}
+
 	rel = table_open(OperatorClassRelationId, AccessShareLock);
 
 	ScanKeyInit(&skey[0],
@@ -3220,50 +3310,13 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 							  NULL, 1, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
-
-		/* ignore altogether if not a default opclass */
-		if (!opclass->opcdefault)
-			continue;
-		if (opclass->opcintype == type_id)
-		{
-			nexact++;
-			result = opclass->oid;
-		}
-		else if (nexact == 0 &&
-				 IsBinaryCoercible(type_id, opclass->opcintype))
-		{
-			if (IsPreferredType(tcategory, opclass->opcintype))
-			{
-				ncompatiblepreferred++;
-				result = opclass->oid;
-			}
-			else if (ncompatiblepreferred == 0)
-			{
-				ncompatible++;
-				result = opclass->oid;
-			}
-		}
-	}
+		YbConsiderDefaultOpClass(&yb_state, tup);
 
 	systable_endscan(scan);
 
 	table_close(rel, AccessShareLock);
 
-	/* raise error if pg_opclass contains inconsistent data */
-	if (nexact > 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("there are multiple default operator classes for data type %s",
-						format_type_be(type_id))));
-
-	if (nexact == 1 ||
-		ncompatiblepreferred == 1 ||
-		(ncompatiblepreferred == 0 && ncompatible == 1))
-		return result;
-
-	return InvalidOid;
+	return YbDefaultOpClassFromState(&yb_state, type_id);
 }
 
 /*

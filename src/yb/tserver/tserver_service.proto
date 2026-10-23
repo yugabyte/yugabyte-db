@@ -43,6 +43,7 @@ import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -166,6 +167,9 @@ service TabletServerService {
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
+  rpc SetActiveTableIdsForMetrics(SetActiveTableIdsForMetricsRequestPB)
+      returns (SetActiveTableIdsForMetricsResponsePB);
+
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
 
@@ -269,6 +273,28 @@ message GetMetricsResponsePB {
   optional TabletServerErrorPB error = 2;
 }
 
+message SetActiveTableIdsForMetricsRequestPB {
+  // The complete set of tables whose table-level metrics should be exported by
+  // /prometheus-metrics. Each request replaces the previous set.
+  repeated string table_ids = 1;
+
+  // Version of this list, chosen by the caller, for example a counter it increments whenever the
+  // list changes. The tablet server stores it with the list and reports it through the
+  // active_table_metrics_list_version gauge and the /tables page, so the caller can find tablet
+  // servers that hold an older list. Zero or unset means no version. 32 bits keep every value exact
+  // in Prometheus, which stores gauge values as doubles.
+  optional uint32 list_version = 2;
+}
+
+message SetActiveTableIdsForMetricsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // State of enable_active_table_metrics_filtering on this tablet server. The list is stored
+  // either way, but no scrape uses it while this is false, so the caller can surface that its
+  // list is not being applied.
+  optional bool filtering_enabled = 2;
+}
+
 message GetLogLocationRequestPB {
 }
 
@@ -279,7 +305,7 @@ message GetLogLocationResponsePB {
 message ChecksumRequestPB {
   reserved 1, 2, 3, 4, 5;
 
-  optional bytes tablet_id = 6;
+  optional bytes tablet_id = 6 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional YBConsistencyLevel consistency_level = 7;
 }
 
@@ -315,7 +341,7 @@ message ListTabletsForTabletServerResponsePB {
 }
 
 message ImportDataRequestPB {
-  optional string tablet_id = 1;
+  optional string tablet_id = 1 [(yb.rpc.trace) = {enabled: true}];
   optional string source_dir = 2;
 }
 
@@ -325,7 +351,7 @@ message ImportDataResponsePB {
 }
 
 message UpdateTransactionRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
@@ -344,7 +370,7 @@ message UpdateTransactionResponsePB {
 }
 
 message GetTransactionStatusRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
   // Reserved for xcluster deprecated field external_hybrid_time.
@@ -388,7 +414,7 @@ message GetTransactionStatusResponsePB {
 }
 
 message GetOldTransactionsRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional uint32 min_txn_age_ms = 2;
   optional uint32 max_num_txns = 3;
   optional fixed64 propagated_hybrid_time = 4;
@@ -468,7 +494,7 @@ message UpdateTransactionWaitingForStatusResponsePB {
 message ProbeTransactionDeadlockRequestPB {
   optional fixed64 propagated_hybrid_time = 1;
 
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   optional bytes probe_origin_txn_id = 3;
 
@@ -515,7 +541,7 @@ message ProbeTransactionDeadlockResponsePB {
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
   optional int64 required_num_replicated_batches = 4;
@@ -531,7 +557,7 @@ message GetTransactionStatusAtParticipantResponsePB {
 }
 
 message AbortTransactionRequestPB {
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
 
@@ -555,7 +581,7 @@ message AbortTransactionResponsePB {
 }
 
 message GetSplitKeyRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional fixed64 propagated_hybrid_time = 2;
   optional bool is_manual_split = 3;
   optional int32 split_factor = 4;
@@ -613,7 +639,7 @@ message CancelTransactionRequestPB {
 
   // When the field is not populated, the cancel request is broadcast to all the status tablets
   // hosted by the TabletServer.
-  optional bytes status_tablet_id = 2;
+  optional bytes status_tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message CancelTransactionResponsePB {
@@ -625,7 +651,7 @@ message StartRemoteSnapshotTransferRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  required bytes tablet_id = 2;
+  required bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   required bytes snapshot_id = 3;
 
@@ -671,14 +697,33 @@ message GetLocalPgTxnSnapshotResponsePB {
 }
 
 message VerifyVectorIndexesRequestPB {
+  // Tablet to check, every tablet of the server when unset.
+  optional bytes tablet_id = 1;
+  // Vector indexes to check, every active vector index of the tablet when empty.
+  // Requires tablet_id.
+  repeated bytes index_table_ids = 2;
+  // Inconsistencies to report per index, server default when 0.
+  optional uint32 max_inconsistencies = 3;
+}
+
+// Outcome of checking one vector index of one tablet replica, see CheckVectorIndex.
+message VectorIndexReplicaCheckPB {
+  optional bytes tablet_id = 1;
+  optional bytes index_table_id = 2;
+  optional PeerRole role = 3;
+  // Why the replica was not checked, e.g. the index backfill is still in progress. Unset when
+  // the check ran and produced the result.
+  optional AppStatusPB status = 4;
+  optional tablet.VectorIndexCheckResultPB result = 5;
 }
 
 message VerifyVectorIndexesResponsePB {
   optional TabletServerErrorPB error = 1;
+  repeated VectorIndexReplicaCheckPB checks = 2;
 }
 
 message DumpTabletDataRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional string dest_path = 2;
   optional uint64 read_ht = 3;
 
@@ -694,7 +739,9 @@ message DumpTabletDataRequestPB {
   // inclusive, end_key is exclusive; an absent/empty bound means the table's start/end. For a
   // colocated table the server prepends the table's colocation_id/cotable_id prefix, so the range
   // addresses that table's slice of the shared tablet. A key range scopes a single table, so it
-  // requires a concrete table_id (not the colocation parent id).
+  // requires a concrete table_id (not the colocation parent id). A bound may also be a next_key
+  // returned by an earlier capped scan, which for a hash table is an encoded row key rather than a
+  // 2-byte hash; the server tells the two apart by length.
   optional bytes start_key = 5;
   optional bytes end_key = 6;
 
@@ -703,12 +750,31 @@ message DumpTabletDataRequestPB {
   // RPC deadline.
   // A tserver that predates this field ignores it and answers at whatever it has applied.
   optional uint32 max_wait_ms = 7;
+
+  // Stop after hashing this many rows (0 = unlimited), for every partitioning scheme. When the scan
+  // stops early, next_key on the response is the exclusive continuation key (the first unhashed
+  // row) so the caller can resume with start_key = next_key. Requires a concrete table_id (not a
+  // colocation parent).
+  optional uint64 max_rows = 8;
 }
 
 message DumpTabletDataResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint64 row_count = 2;
   optional uint64 xor_hash = 3;
+  // Exclusive continuation key when max_rows stopped the scan before end_key. Empty if the
+  // requested range was fully hashed. Accepted as a start_key / end_key on a later request. For a
+  // hash table this is the first unhashed row's encoded key, so the scan resumes mid-band.
+  optional bytes next_key = 4;
+
+  // Which hashing scheme produced xor_hash (tablet::kTabletDataHashSchemeVersion). Two xor_hash
+  // values are comparable only when produced under the same scheme, so a caller comparing hashes
+  // from two servers checks this first.
+  //
+  // Unset means a tserver that predates this field, whose scheme is the original one. Read that as
+  // version 0 and not as "same as mine": during a rolling upgrade the old and new binaries answer
+  // the same question differently.
+  optional uint32 hash_scheme_version = 5;
 }
 
 message ConnectivityStateRequestPB {

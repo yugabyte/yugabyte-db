@@ -82,7 +82,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
           }
           waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while (!status && iters < MAX_ITERS);
-        if (iters >= MAX_ITERS) {
+        if (!status) {
           throw new RuntimeException("Pods' start taking too long.");
         }
         break;

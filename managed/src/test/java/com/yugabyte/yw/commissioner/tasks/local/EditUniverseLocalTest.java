@@ -12,13 +12,16 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Streams;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -33,6 +36,7 @@ import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -51,6 +55,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.CoreMatchers;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClientApi;
@@ -59,9 +64,18 @@ import play.libs.Json;
 @Slf4j
 public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
 
+  // ALTER TABLE ... SET TABLESPACE, run by the tablespace moves, randomly fails on 2024.1 builds
+  // because the replica placement is read past its end (yugabyte/yugabyte-db#21655, fixed in
+  // 2024.2), so the tests doing such moves use a newer version.
+  private static final String TABLESPACE_MOVE_DB_VERSION = "2024.2.3.0-b116";
+  private static final String TABLESPACE_MOVE_DB_VERSION_URL =
+      "https://software.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-%s-%s.tar.gz";
+
   private Region region2;
   private AvailabilityZone az21;
   private AvailabilityZone az22;
+  private String defaultYbVersion;
+  private String defaultYbBinPath;
 
   @Before
   public void setUpDNS() {
@@ -72,13 +86,40 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     region2 = Region.create(provider, "region-2", "region-2", "default-image");
     az21 = AvailabilityZone.createOrThrow(region2, "az-21", "az-21", "subnet-1");
     az22 = AvailabilityZone.createOrThrow(region2, "az-22", "az-22", "subnet-1");
+    defaultYbVersion = ybVersion;
+    defaultYbBinPath = ybBinPath;
+  }
+
+  @After
+  public void restoreYbVersion() {
+    // The version is static, so restore it for the tests that follow in this class.
+    ybVersion = defaultYbVersion;
+    ybBinPath = defaultYbBinPath;
+  }
+
+  private void useTablespaceMoveDbVersion() {
+    downloadAndSetUpYBSoftware(
+        os,
+        arch,
+        String.format(TABLESPACE_MOVE_DB_VERSION_URL, os, arch),
+        TABLESPACE_MOVE_DB_VERSION);
+    ObjectNode releases =
+        (ObjectNode) YugawareProperty.get(ReleaseManager.CONFIG_TYPE.name()).getValue();
+    releases.set(
+        TABLESPACE_MOVE_DB_VERSION,
+        getMetadataJson(TABLESPACE_MOVE_DB_VERSION, false).get(TABLESPACE_MOVE_DB_VERSION));
+    YugawareProperty.addConfigProperty(ReleaseManager.CONFIG_TYPE.name(), releases, "release");
+    ybVersion = TABLESPACE_MOVE_DB_VERSION;
+    ybBinPath = deriveYBBinPath(TABLESPACE_MOVE_DB_VERSION);
+    provider.getDetails().getCloudInfo().local.setYugabyteBinDir(ybBinPath);
+    provider.update();
   }
 
   @Test
   public void testExpand() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    userIntent.setCgroupSize(100);
+    TestUtils.existingProviderInitializer(userIntent).setCGroupSize(100);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
@@ -175,7 +216,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     ImageBundle imageBundle2 = ImageBundle.create(provider, "ib-1", details2, false);
 
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    userIntent.imageBundleUUID = imageBundle.getUuid();
+    TestUtils.existingProviderInitializer(userIntent).setImageBundleUUID(imageBundle.getUuid());
 
     Universe universe = createUniverse(userIntent);
     Map<String, String> gg =
@@ -186,7 +227,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.imageBundleUUID = imageBundle2.getUuid();
+    TestUtils.existingProviderInitializer(cluster.userIntent)
+        .setImageBundleUUID(imageBundle2.getUuid());
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -225,7 +267,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(cluster.userIntent).setInstanceType(INSTANCE_TYPE_CODE_2);
+
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -537,7 +580,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo = waitForTask(taskID, universe);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     cluster = universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(cluster.userIntent).setInstanceType(INSTANCE_TYPE_CODE_2);
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -653,6 +696,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    useTablespaceMoveDbVersion();
     Universe universe =
         createGeopartitionedUniverse(
             p ->
@@ -736,6 +780,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    useTablespaceMoveDbVersion();
     Universe universe = createGeopartitionedUniverse(null);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -793,6 +838,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    useTablespaceMoveDbVersion();
     Universe universe = createGeopartitionedUniverse(null);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -855,8 +901,9 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     initYSQL(universe, "table_in_main", partition.getTablespaceName());
     initYSQL(universe, "table_in_secondary", cluster.getPartitions().get(1).getTablespaceName());
 
-    universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
-        INSTANCE_TYPE_CODE_2;
+    TestUtils.existingProviderInitializer(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent)
+        .setInstanceType(INSTANCE_TYPE_CODE_2);
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),

@@ -137,7 +137,7 @@ YRPC_GENERATE(
   TSERVER_ADMIN_YRPC_SRCS TSERVER_ADMIN_YRPC_HDRS TSERVER_ADMIN_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES tserver_admin.proto)
+  MESSAGES_PROTO_FILES tserver_admin.proto)
 set(TSERVER_ADMIN_YRPC_LIBS
   yrpc
   protobuf
@@ -260,12 +260,14 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
+  pg_cache_util.cc
   pg_client_service.cc
   pg_client_session.cc
   pg_client_session_util.cc
   pg_create_table.cc
   pg_db_cache.cc
   pg_mutation_counter.cc
+  pg_request_sequencer.cc
   pg_response_cache.cc
   pg_session_guard.cc
   pg_sequence_cache.cc
@@ -273,6 +275,7 @@ set(TSERVER_SRCS
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   pg_txn_snapshot_manager.cc
+  tier_migration_reconciler.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
@@ -440,6 +443,7 @@ ADD_YB_LIBRARY(tserver_mock
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  yb_common_test_util
   tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName
@@ -473,3 +477,5 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
 ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
 ADD_YB_TEST(xcluster_ddl_queue_handler-test)
+
+ADD_YB_TEST(pg_request_sequencer-test)

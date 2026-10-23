@@ -52,7 +52,12 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
 
   @Test
   public void testPgRegressWithoutSkipPrefixLocks() throws Exception {
-    runIsolationRegressTest("yb_wait_queues_schedule_skip_prefix_locks_off");
+    runIsolationRegressTest("yb_wait_queues_skip_prefix_locks_off_schedule");
+  }
+
+  @Test
+  public void testPgRegressPrefixLockConflicts() throws Exception {
+    runIsolationRegressTest("yb_wait_queues_prefix_lock_conflicts_schedule");
   }
 
   @Test
@@ -61,6 +66,9 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
     flagMap.put("skip_prefix_locks", "true");
     flagMap.put("ysql_enable_packed_row", "true");
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    // The cluster no longer matches getTServerFlags(), so it must not be reused by the other test
+    // methods, which all need skip_prefix_locks=false.
+    markClusterNeedsRecreation();
     runIsolationRegressTest("yb_wait_queues_schedule");
   }
 }

@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.backuprestore;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +57,9 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.ArrayList;
@@ -354,6 +358,58 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(preflightResponse.getHasKMSHistory().equals(isKMS));
     assertTrue(bInfo.getIsYSQLBackup());
     assertTrue(bInfo.getPerBackupLocationKeyspaceTables().getOriginalKeyspace().equals("foo"));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testRestorePreflightRejectsNonFipsBackupIntoFipsUniverse(boolean recorded) {
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "test_S3");
+    BackupTableParams parentParams = new BackupTableParams();
+    parentParams.setUniverseUUID(testUniverse.getUniverseUUID());
+    parentParams.customerUuid = testCustomer.getUuid();
+    parentParams.storageConfigUUID = storageConfig.getConfigUUID();
+    BackupTableParams childParams = new BackupTableParams();
+    childParams.setKeyspace("foo");
+    childParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    childParams.storageConfigUUID = storageConfig.getConfigUUID();
+    parentParams.backupList = Arrays.asList(childParams);
+    Backup backup =
+        Backup.create(
+            testCustomer.getUuid(),
+            parentParams,
+            BackupCategory.YB_BACKUP_SCRIPT,
+            BackupVersion.V2);
+    if (!recorded) {
+      // A backup taken before the mode was recorded: inferred from the source universe.
+      BackupTableParams info = backup.getBackupInfo();
+      info.fipsEnabled = null;
+      backup.setBackupInfo(info);
+      backup.save();
+    }
+    Universe fipsUniverse = ModelFactory.createUniverse("fips-target", testCustomer.getId());
+    Universe.saveDetails(
+        fipsUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.fipsEnabled = true;
+          u.setUniverseDetails(details);
+        });
+
+    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    preflightParams.setBackupUUID(backup.getBackupUUID());
+    preflightParams.setUniverseUUID(fipsUniverse.getUniverseUUID());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.generateRestorePreflightAPIResponse(
+                    preflightParams, testCustomer.getUuid()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .startsWith(
+                "Cannot restore a backup of a universe that is not FIPS-enabled into"
+                    + " FIPS-enabled universe 'fips-target'"));
   }
 
   @Test
@@ -1310,5 +1366,77 @@ public class BackupHelperTest extends FakeDBApplication {
     }
     RestoreBackupParams foundParams = paramsCaptor.getValue();
     return foundParams;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // YBA-side federation gate. These four cases are the four supported deployments: the flag says
+  // whether YBA ITSELF must federate to reach the bucket, which depends on the cloud YBA runs on,
+  // not on the clouds its DB nodes run on. Getting this wrong is silent until a delete fails, so
+  // each combination is pinned here.
+  // ---------------------------------------------------------------------------------------------
+
+  private CrossCloudFederationTarget stubTarget(CloudType targetCloud) {
+    CrossCloudFederationTarget target = new CrossCloudFederationTarget();
+    target.targetCloud = targetCloud;
+    target.audience = "//iam.googleapis.com/projects/1/test-audience";
+    target.roleArn = "arn:aws:iam::123456789012:role/yb-fed";
+    doReturn(target)
+        .when(spyBackupHelper)
+        .resolveCrossCloudFederationTarget(any(), eq(targetCloud));
+    return target;
+  }
+
+  /**
+   * YBA on GCP -> GCS: same cloud, native identity. Stamping would force an AWS-IMDS credential.
+   */
+  @Test
+  public void testGcsConfigIsNotStampedWhenYbaDoesNotNeedFederation() {
+    stubTarget(CloudType.gcp);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = false;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(gcsData, testUniverse);
+
+    assertNull(gcsData.crossCloudFederationAudience);
+  }
+
+  /** YBA on AWS -> GCS: cross-cloud, YBA federates with its own AWS identity. */
+  @Test
+  public void testGcsConfigIsStampedWhenYbaNeedsFederation() {
+    CrossCloudFederationTarget target = stubTarget(CloudType.gcp);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(gcsData, testUniverse);
+
+    assertEquals(target.audience, gcsData.crossCloudFederationAudience);
+  }
+
+  /** YBA on AWS -> S3: same cloud, native instance profile. */
+  @Test
+  public void testS3ConfigIsNotStampedWhenYbaDoesNotNeedFederation() {
+    stubTarget(CloudType.aws);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = false;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(s3Data, testUniverse);
+
+    assertNull(s3Data.crossCloudFederationAudience);
+    assertNull(s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** YBA on GCP -> S3: cross-cloud, AssumeRoleWithWebIdentity from YBA's GCE identity. */
+  @Test
+  public void testS3ConfigIsStampedWhenYbaNeedsFederation() {
+    CrossCloudFederationTarget target = stubTarget(CloudType.aws);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(s3Data, testUniverse);
+
+    assertEquals(target.audience, s3Data.crossCloudFederationAudience);
+    assertEquals(target.roleArn, s3Data.crossCloudFederationRoleArn);
   }
 }

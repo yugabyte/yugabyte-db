@@ -29,6 +29,7 @@ generate_ca() {
 
   touch "$dir/index.txt"
   echo "01" > "$dir/serial.txt"
+  echo "01" > "$dir/crlnumber.txt"
 
   cat > "$dir/ca.self.conf" <<-EOT
 [ ca ]
@@ -69,8 +70,10 @@ default_ca = yugabyte_ca
 [ yugabyte_ca ]
 default_startdate = 00000101000000Z
 default_enddate = 99991231235959Z
+default_crl_days = 36500
 
 serial = $dir/serial.txt
+crlnumber = $dir/crlnumber.txt
 database = $dir/index.txt
 default_md = sha256
 policy = yugabyte_policy
@@ -307,6 +310,24 @@ EOT
                        -nocrypt
 }
 
+# Revokes the given certificate and writes the CA's CRL to ca.crl.
+generate_crl() {
+  local dir="$1"
+  local revoked_prefix="$2"
+
+  "$openssl_bin" ca -config "$dir/ca.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -cert "$dir/ca.crt" \
+                    -revoke "$dir/$revoked_prefix.crt" \
+                    -batch
+  "$openssl_bin" ca -config "$dir/ca.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -cert "$dir/ca.crt" \
+                    -gencrl \
+                    -out "$dir/ca.crl" \
+                    -batch
+}
+
 generate_test_certificates() {
   local out_dir="$1"
 
@@ -322,14 +343,28 @@ generate_test_certificates() {
     generate_node_cert "$temp_dir/CA1" "$i"
   done
   generate_ysql_cert "$temp_dir/CA1" ysql
+  # A second client certificate, identical to ysql apart from being listed in ca.crl, so that tests
+  # of ssl_crl_file and ssl_crl_dir can attribute a rejected handshake to revocation alone.
+  generate_ysql_cert "$temp_dir/CA1" ysql_revoked
+  generate_crl "$temp_dir/CA1" ysql_revoked
 
   cp "$temp_dir/CA1/ca.crt" \
+     "$temp_dir/CA1/ca.crl" \
      "$temp_dir/CA1/node."*".crt" \
      "$temp_dir/CA1/node."*".key" \
      "$temp_dir/CA1/ysql.crt" \
      "$temp_dir/CA1/ysql.key" \
      "$temp_dir/CA1/ysql.key.der" \
+     "$temp_dir/CA1/ysql_revoked.crt" \
+     "$temp_dir/CA1/ysql_revoked.key" \
+     "$temp_dir/CA1/ysql_revoked.key.der" \
      "$out_dir/"
+
+  # OpenSSL only finds a CRL in a directory under its hashed name, which is what `openssl rehash`
+  # would produce. This directory is what ssl_crl_dir is pointed at.
+  mkdir -p "$out_dir/crl"
+  cp "$temp_dir/CA1/ca.crl" \
+     "$out_dir/crl/$("$openssl_bin" crl -hash -noout -in "$temp_dir/CA1/ca.crl").r0"
 
   generate_ca "$temp_dir/CA2" 'YugabyteDB CA 2'
   for i in $(seq 2 2 254); do

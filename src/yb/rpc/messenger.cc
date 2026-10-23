@@ -45,7 +45,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
@@ -98,6 +97,10 @@ DEFINE_UNKNOWN_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 DEPRECATE_FLAG(int32, rpc_queue_limit, "03_2024");
 
 DEFINE_NON_RUNTIME_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
+
+DEFINE_NON_RUNTIME_int32(rpc_high_priority_workers_limit, 0,
+    "Workers limit for the high priority rpc thread pool, which serves consensus. "
+    "0 means use rpc_workers_limit.");
 
 DEFINE_NON_RUNTIME_int32(rpc_reactor_task_timeout_ms, 0,
     "Report if reactor task task takes longer that specified amount of milliseconds. "
@@ -449,7 +452,9 @@ const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
       high_priority_thread_pool_ = std::make_shared<rpc::ThreadPool>(
           rpc::ThreadPoolOptions {
             .name = name_ + "-high-pri",
-            .max_workers = thread_pool_workers_limit_,
+            .max_workers = FLAGS_rpc_high_priority_workers_limit > 0
+                ? static_cast<size_t>(FLAGS_rpc_high_priority_workers_limit)
+                : thread_pool_workers_limit_,
             .cgroup = system_high_cgroup_,
           });
       high_priority_thread_pool_ready_.store(true, std::memory_order_release);
@@ -531,15 +536,16 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   reactor->QueueOutboundCall(std::move(call));
 }
 
+void Messenger::HandleLocal(LocalYBInboundCallPtr call, Queue queue) {
+  local_call_tracker_.Enqueue(call);
+  Handle(std::move(call), queue);
+}
+
 void Messenger::Handle(InboundCallPtr call, Queue queue) {
   ScopedRWOperation op(&rpc_services_counter_, CoarseTimePoint::min());
   if (!op.ok()) {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, MoveStatus(op));
     return;
-  }
-
-  if (call->IsLocalCall()) {
-    local_call_tracker_.Enqueue(call);
   }
 
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
@@ -622,6 +628,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size, bld.system_high_cgroup_),
       scheduler_(&io_thread_pool_.io_service()),
+      local_call_tracker_(scheduler_),
       thread_pool_workers_limit_(bld.workers_limit_),
       normal_thread_pools_(new TaggedThreadPools(
           [this](TaggedThreadPools::Tag tag) { return MakeNormalThreadPoolOptions(tag); })),

@@ -1,6 +1,6 @@
 use pgrx::prelude::*;
 
-::pgrx::pg_module_magic!();
+::pgrx::pg_module_magic!(name, version);
 
 #[pg_extern]
 fn hello_{name}() -> &'static str {{
@@ -17,6 +17,20 @@ mod tests {{
         assert_eq!("Hello, {name}", crate::hello_{name}());
     }}
 
+}}
+
+#[cfg(feature = "pg_bench")]
+#[pg_schema]
+mod benches {{
+    use pgrx::prelude::*;
+    use pgrx_bench::{{Bencher, black_box}};
+
+    #[pg_bench]
+    fn bench_hello_{name}(b: &mut Bencher) {{
+        b.iter(|| {{
+            black_box(crate::hello_{name}());
+        }});
+    }}
 }}
 
 /// This module is required by `cargo pgrx test` invocations.

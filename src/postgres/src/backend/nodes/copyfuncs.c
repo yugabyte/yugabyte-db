@@ -248,6 +248,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_skip_entities);
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
+	COPY_SCALAR_FIELD(ybInsertOnConflictPushdownPossible);
 
 	return newnode;
 }
@@ -545,6 +546,7 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(yb_rel_pushdown.quals);
 	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_NODE_FIELD(yb_merge_scan_info);
 	COPY_SCALAR_FIELD(yb_lock_mechanism);
 
 	return newnode;
@@ -575,6 +577,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(yb_pushdown.quals);
 	COPY_NODE_FIELD(yb_pushdown.colrefs);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_NODE_FIELD(yb_merge_scan_info);
 	COPY_SCALAR_FIELD(yb_num_decoded_pk_cols);
 
 	return newnode;
@@ -1012,12 +1015,17 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	/*
 	 * copy remainder of node
 	 */
+	COPY_SCALAR_FIELD(first_batch_size);
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
 
 	if (from->num_hashClauseInfos > 0)
 		COPY_POINTER_FIELD(hashClauseInfos,
 						   (from->num_hashClauseInfos *
 							sizeof(YbBNLHashClauseInfo)));
+
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+		newnode->hashClauseInfos[i].innerHashExpr = (Expr *)
+			copyObject(from->hashClauseInfos[i].innerHashExpr);
 
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)
@@ -1232,6 +1240,7 @@ _copyAgg(const Agg *from)
 	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
+	COPY_SCALAR_FIELD(yb_pushdown_decision);
 
 	return newnode;
 }
@@ -5380,20 +5389,21 @@ _copyYbMergeScanInfo(const YbMergeScanInfo *from)
 {
 	YbMergeScanInfo *newnode = makeNode(YbMergeScanInfo);
 
-	COPY_NODE_FIELD(saop_cols);
+	COPY_NODE_FIELD(stream_cols);
 	COPY_NODE_FIELD(sort_cols);
 
 	return newnode;
 }
 
-static YbMergeScanSaopColInfo *
-_copyYbMergeScanSaopColInfo(const YbMergeScanSaopColInfo *from)
+static YbMergeScanStreamColInfo *
+_copyYbMergeScanStreamColInfo(const YbMergeScanStreamColInfo *from)
 {
-	YbMergeScanSaopColInfo *newnode = makeNode(YbMergeScanSaopColInfo);
+	YbMergeScanStreamColInfo *newnode = makeNode(YbMergeScanStreamColInfo);
 
-	COPY_NODE_FIELD(saop);
+	COPY_NODE_FIELD(clause);
 	COPY_SCALAR_FIELD(indexcol);
 	COPY_SCALAR_FIELD(num_elems);
+	COPY_SCALAR_FIELD(derived);
 
 	return newnode;
 }
@@ -6423,8 +6433,8 @@ copyObjectImpl(const void *from)
 			retval = _copyYbMergeScanInfo(from);
 			break;
 
-		case T_YbMergeScanSaopColInfo:
-			retval = _copyYbMergeScanSaopColInfo(from);
+		case T_YbMergeScanStreamColInfo:
+			retval = _copyYbMergeScanStreamColInfo(from);
 			break;
 
 		case T_YbSortInfo:
