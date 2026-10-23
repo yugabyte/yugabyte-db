@@ -2356,6 +2356,8 @@ StartTransaction(void)
 void
 YBCRestartWriteTransaction()
 {
+	VirtualTransactionId vxid;
+
 	/*
 	 * Roll back every open savepoint / subtransaction so the trans_stack is
 	 * clean before we recreate the top-level write state. Without this, the
@@ -2403,6 +2405,18 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
+
+	/*
+	 * A replayed command would run in a new transaction with a new lxid.
+	 * Per-transaction caches keyed on the lxid (plpgsql simple expressions,
+	 * SQL function caches, sequence locks) depend on that to drop state the
+	 * release above invalidated (#30540).
+	 */
+	VirtualXactLockTableCleanup();
+	vxid.backendId = MyBackendId;
+	vxid.localTransactionId = GetNextLocalTransactionId();
+	VirtualXactLockTableInsert(vxid);
+	MyProc->lxid = vxid.localTransactionId;
 }
 
 /*

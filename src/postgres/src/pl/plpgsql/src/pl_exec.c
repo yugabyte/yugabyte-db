@@ -54,7 +54,6 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
-#include "storage/sinvaladt.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
 /*
@@ -465,11 +464,8 @@ static PLpgSQL_variable *make_callstmt_target(PLpgSQL_execstate *estate,
 
 static bool YbIsFlushRequiredForPlStmt(PLpgSQL_stmt_type cmd_type);
 static bool YbIsFlushRequiredForCommandTag(CommandTag commandTag);
-static LocalTransactionId yb_plpgsql_cur_lxid(void);
 
 static int	yb_exception_block_nesting = 0;
-static LocalTransactionId yb_retry_lxid = InvalidLocalTransactionId;
-static LocalTransactionId yb_retry_base_lxid = InvalidLocalTransactionId;
 
 
 /* ----------
@@ -6119,9 +6115,6 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 	bool		need_snapshot;
 	MemoryContext oldcontext;
 
-	/* YB */
-	curlxid = yb_plpgsql_cur_lxid();
-
 	/*
 	 * Forget it if expression wasn't simple before.
 	 */
@@ -8043,7 +8036,6 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	 * cast hash tables to go with them.)
 	 */
 	curlxid = MyProc->lxid;
-	curlxid = yb_plpgsql_cur_lxid();	/* YB */
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)
 	{
 		oldcontext = MemoryContextSwitchTo(estate->simple_eval_estate->es_query_cxt);
@@ -8119,7 +8111,6 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 		expr->expr_simple_plansource = plansource;
 		expr->expr_simple_plan = cplan;
 		expr->expr_simple_plan_lxid = MyProc->lxid;
-		expr->expr_simple_plan_lxid = yb_plpgsql_cur_lxid();	/* YB */
 
 		/* Share the remaining work with the replan code path */
 		exec_save_simple_expr(expr, cplan);
@@ -8603,16 +8594,6 @@ plpgsql_xact_cb(XactEvent event, void *arg)
 		simple_econtext_stack = NULL;
 		shared_simple_eval_estate = NULL;
 		shared_simple_eval_resowner = NULL;
-
-		/*
-		 * YB: a real abort clears MyProc->lxid before the callbacks run;
-		 * only the query-layer retry calls them with the lxid still set.
-		 */
-		if (IsYugaByteEnabled() && LocalTransactionIdIsValid(MyProc->lxid))
-		{
-			yb_retry_base_lxid = MyProc->lxid;
-			yb_retry_lxid = GetNextLocalTransactionId();
-		}
 	}
 }
 
@@ -9149,22 +9130,4 @@ YbIsFlushRequiredForCommandTag(CommandTag commandTag)
 	}
 
 	return true;
-}
-
-/*
- * #30540: the local transaction id that keys plpgsql's per-transaction
- * caches (simple-expression plan refcounts, expression states, casts).
- *
- * A query-layer retry (YBCRestartWriteTransaction) keeps MyProc->lxid but
- * releases everything the transaction's resource owners held, including
- * the plan refcounts plpgsql records against that lxid.  Reusing those
- * records made the retry release a refcount it no longer held.  The retry
- * fires the abort callbacks, and plpgsql_xact_cb then allocates a fresh
- * lxid for the rest of the transaction, so every cache is rebuilt as after
- * a real abort.
- */
-static LocalTransactionId
-yb_plpgsql_cur_lxid(void)
-{
-	return yb_retry_base_lxid == MyProc->lxid ? yb_retry_lxid : MyProc->lxid;
 }
