@@ -59,6 +59,7 @@ from yugabyte.dep_graph_common import (
 )
 from yugabyte_pycommon import WorkDirContext  # type: ignore
 from yugabyte.lto import link_whole_program
+from yugabyte.upgrade_test_selection import get_upgrade_tests_to_skip
 
 
 class Command(Enum):
@@ -903,6 +904,14 @@ def main() -> None:
                                      (['yb-{master,tserver} binaries changed']
                                       if yb_master_or_tserver_changed else [])))
 
+        upgrade_tests_to_skip: Set[str] = set()
+        if args.git_diff and not (user_said_all_tests or user_said_all_cpp_tests or
+                                  manual_test_filtering_with_regex):
+            upgrade_tests_to_skip = get_upgrade_tests_to_skip(
+                args.git_diff, file_changes, conf.yb_src_root)
+            test_basename_list = [
+                name for name in test_basename_list if name not in upgrade_tests_to_skip]
+
         if run_cpp_tests and not test_basename_list and not select_all_tests_for_now:
             logging.info('There are no C++ test programs affected by the changes, '
                          'will skip running C++ tests.')
@@ -915,6 +924,8 @@ def main() -> None:
         )
         if test_filter_re:
             test_conf.update(test_filter_re=test_filter_re)
+        if upgrade_tests_to_skip:
+            test_conf['cpp_test_programs_to_skip'] = sorted(upgrade_tests_to_skip)
 
         if not select_all_tests_for_now:
             # We only have this kind of fine-grained filtering for C++ test programs, and for Java
