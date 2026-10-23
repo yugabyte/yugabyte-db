@@ -463,6 +463,7 @@ SlabReset(MemoryContext context)
 		VALGRIND_MEMPOOL_FREE(slab, block);
 
 		free(block);
+		YbPgMemSubConsumption(slab->blockSize);
 		context->mem_allocated -= slab->blockSize;
 	}
 
