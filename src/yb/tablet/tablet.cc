@@ -1587,19 +1587,20 @@ Status Tablet::RequestRegularDbFlushForIntentsFlush() {
 }
 
 void Tablet::FlushRegularDbForIntentsFlush() {
+  auto clear_posted = ScopeExit([this] { regular_db_flush_for_intents_posted_ = false; });
   // Not the counter that blocks RocksDB shutdown start: this flush can wait in the write thread
   // behind a writer parked in a write stall, and at shutdown only StartShutdownStorages, which
   // runs after that counter drains, wakes the writer.
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-  if (scoped_operation.ok()) {
-    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush");
-    rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
-    options.wait = false;
-    auto status = regular_db_->Flush(options);
-    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
-        << "Failed to flush the regular DB: " << status;
+  if (!scoped_operation.ok()) {
+    return;
   }
-  regular_db_flush_for_intents_posted_ = false;
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush");
+  rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
+  options.wait = false;
+  auto status = regular_db_->Flush(options);
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+      << "Failed to flush the regular DB: " << status;
 }
 
 void Tablet::DoCleanupIntentFiles() {
