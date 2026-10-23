@@ -60,6 +60,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -154,6 +155,21 @@ class TierMigrationTest : public YBTabletTest {
     });
     RETURN_NOT_OK(meta->Flush());
     return harness()->OpenTablet(child_id);
+  }
+
+  // ScheduleDBPathMove only enqueues; the task claims the file (being_compacted) when a pool
+  // worker runs it. A test whose holder must win the file has to wait for that claim before it
+  // schedules the competing move, or the competitor can claim first and park at the sync point
+  // meant for the holder, and the pass it belongs to never finishes.
+  Status WaitForFileClaimed(uint64_t file_number) {
+    return WaitFor([&]() -> Result<bool> {
+      for (const auto& file : tablet()->regular_db()->GetLiveFilesMetaData()) {
+        if (file.name_id == file_number) {
+          return file.being_compacted;
+        }
+      }
+      return STATUS_FORMAT(NotFound, "File $0 is not live", file_number);
+    }, MonoDelta::FromSeconds(10), Format("holder to claim file $0", file_number));
   }
 
   // File number of the tablet's single live SST. A DB path move writes the copy under a new file
@@ -310,6 +326,7 @@ TEST_F(TierMigrationTest, BusyFileIsDeferredNotFailed) {
   std::promise<Status> hold_done;
   ASSERT_OK(tablet()->regular_db()->ScheduleDBPathMove(
       file_number, kDecoyPathId, [&](const Status& s) { hold_done.set_value(s); }));
+  ASSERT_OK(WaitForFileClaimed(file_number));
 
   auto status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
   ASSERT_EQ(status.files_total, 1u);
@@ -431,6 +448,7 @@ TEST_F(TierMigrationTest, ReconcilePassRetriesDeferredFile) {
   std::promise<Status> hold_done;
   ASSERT_OK(tablet()->regular_db()->ScheduleDBPathMove(
       file_number, kDecoyPathId, [&](const Status& s) { hold_done.set_value(s); }));
+  ASSERT_OK(WaitForFileClaimed(file_number));
 
   auto result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
   ASSERT_EQ(result.scheduled, 1u);
@@ -533,6 +551,7 @@ TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
   std::promise<Status> hold_done;
   ASSERT_OK(tablet()->regular_db()->ScheduleDBPathMove(
       file_number, kDecoyPathId, [&](const Status& s) { hold_done.set_value(s); }));
+  ASSERT_OK(WaitForFileClaimed(file_number));
 
   auto status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
   ASSERT_EQ(status.files_total, 1u);
