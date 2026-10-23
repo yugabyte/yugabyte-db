@@ -815,6 +815,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Update this so that it is not added as a master in config update.
       createUpdateNodeProcessTask(stoppingNode.nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      if (keepTserverRunning) {
+        // The node stays up as a tserver (master failover), so drop the master target from its
+        // collector config. Best effort: failover often runs against an unhealthy node.
+        createOtelCollectorMetricsRefreshTasks(
+            Collections.singleton(stoppingNode), true /* ignoreErrors */);
+      }
     }
 
     // Update all server conf files because there was a master change.
@@ -3044,6 +3050,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean installOtelCollector,
       TelemetryConfig telemetryConfig,
       Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    createManageOtelCollectorTasks(
+        userIntent, nodes, installOtelCollector, telemetryConfig, nodeToGflags, false);
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags,
+      boolean ignoreErrors) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -3064,6 +3081,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.telemetryConfig = telemetryConfig;
       params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
+      params.ignoreErrors = ignoreErrors;
 
       ManageOtelCollector task = createTask(ManageOtelCollector.class);
       task.initialize(params);
@@ -3082,6 +3100,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * change. It is idempotent, so callers do not need to know whether the config is already current.
    */
   protected void createOtelCollectorMetricsRefreshTasks(Collection<NodeDetails> nodes) {
+    createOtelCollectorMetricsRefreshTasks(nodes, false /* ignoreErrors */);
+  }
+
+  /**
+   * Same as above. With {@code ignoreErrors}, a failed refresh is logged and does not fail the
+   * task, for nodes that may be unhealthy.
+   */
+  protected void createOtelCollectorMetricsRefreshTasks(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
     Universe universe = getUniverse();
     TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
     if (nodes.isEmpty()
@@ -3105,7 +3132,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           telemetryConfig,
           node ->
               GFlagsUtil.getGFlagsForNode(
-                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters));
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+          ignoreErrors);
     }
   }
 

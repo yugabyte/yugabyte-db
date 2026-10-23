@@ -254,8 +254,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     assertStartMasterSequence(subTasksByPosition);
   }
 
-  // PLAT-23125: configure writes the collector config before UpdateNodeProcess stores isMaster,
-  // so the new master must get its collector config rewritten right after UpdateNodeProcess.
+  // PLAT-23125: the master-start configure step only updates gflags and does not write the
+  // collector config, so the new master must get its collector config rewritten.
   @Test
   public void testStartMasterOnNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
     DataDogConfig ddConfig = new DataDogConfig();
