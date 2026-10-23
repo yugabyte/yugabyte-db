@@ -13040,9 +13040,11 @@ void CatalogManager::StartElectionIfReady(
   }
 
   ReplicationInfoPB replication_info;
+  BlacklistSet leader_blacklist;
   {
     auto l = ClusterConfig()->LockForRead();
     replication_info = l->pb.replication_info();
+    leader_blacklist = ToBlacklistSet(GetBlacklist(l->pb, /* blacklist_leader */ true));
   }
 
   // Find tservers that can be leaders for a tablet.
@@ -13057,7 +13059,8 @@ void CatalogManager::StartElectionIfReady(
     }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
-        if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
+        if (ts_desc->IsAcceptingLeaderLoad(replication_info) &&
+            !ts_desc->IsBlacklisted(leader_blacklist)) {
           possible_leaders.push_back(replica.first);
         }
         break;
