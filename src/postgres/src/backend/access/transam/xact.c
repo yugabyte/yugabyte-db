@@ -2370,6 +2370,13 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
+	/*
+	 * The release below drops resources that callback owners, such as
+	 * plpgsql's simple-expression refcounts (#30540), still believe they
+	 * hold.  AbortTransaction tells them first; so must the retry.
+	 */
+	CallXactCallbacks(XACT_EVENT_ABORT);
+
 	if (TopTransactionResourceOwner != NULL)
 	{
 		ResourceOwnerRelease(TopTransactionResourceOwner,

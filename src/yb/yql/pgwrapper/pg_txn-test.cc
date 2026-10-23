@@ -1332,4 +1332,25 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
       "1, NULL");
 }
 
+// #30540: a query-layer retry of a PL/pgSQL call failed with "plancache
+// reference ... is not owned by resource owner PL/pgSQL simple expressions"
+// when the function's cached plans went stale before the retry. The first
+// attempt evaluates a simple expression, invalidates every cached plan, then
+// raises a retriable kAborted (YB001); the retry must succeed.
+TEST_F(PgTxnTest, PlpgsqlSimpleExprRetryAfterPlanInvalidation) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE attempt"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION f() RETURNS INT LANGUAGE plpgsql AS $$\n"
+      "BEGIN\n"
+      "  IF nextval('attempt') = 1 THEN\n"
+      "    EXECUTE 'DISCARD PLANS';\n"
+      "    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';\n"
+      "  END IF;\n"
+      "  RETURN 1;\n"
+      "END $$"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT f()")), 1);
+}
+
 } // namespace yb::pgwrapper
