@@ -303,6 +303,8 @@ typedef enum {
 /* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
+extern bool yb_restrict_relaxed_visibility_to_read_only_txns;
+
 /*
  * Controls which transactions publish a per-database history retention pin, protecting their
  * read snapshot from history cutoff advancement cluster-wide.

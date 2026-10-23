@@ -339,6 +339,10 @@ yb_index_check(PG_FUNCTION_ARGS)
 		(void) set_config_option("yb_read_after_commit_visibility", "relaxed",
 								 PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE,
 								 true, 0, false);
+		/* The caller's transaction need not be READ ONLY; the check only reads. */
+		(void) set_config_option("yb_restrict_relaxed_visibility_to_read_only_txns",
+								 "off", PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
 	}
 
 	/*

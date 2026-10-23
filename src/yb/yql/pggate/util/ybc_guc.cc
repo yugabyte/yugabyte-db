@@ -105,6 +105,8 @@ bool yb_disable_catalog_version_check = false;
 
 int yb_read_after_commit_visibility = 0;
 
+bool yb_restrict_relaxed_visibility_to_read_only_txns = true;
+
 int yb_db_history_retention_pin_mode = YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY;
 
 bool yb_allow_block_based_sampling_algorithm = true;

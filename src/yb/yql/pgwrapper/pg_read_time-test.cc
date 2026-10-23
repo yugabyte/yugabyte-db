@@ -862,6 +862,27 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
   ASSERT_OK(conn.Execute("SET log_statement = 'all'"));
 
+  // #35522: by default, relaxed mode applies only to READ ONLY transactions.
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+      });
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      });
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat(
+            "SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+  ASSERT_OK(conn.Execute(
+      "SET yb_restrict_relaxed_visibility_to_read_only_txns = off"));
+
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
     // TODO(#30357): Clamp uncertainty window in the storage layer.
@@ -903,14 +924,13 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
   //
-  // relaxed yb_read_after_commit_visibility does not apply to FOR UPDATE
-  // queries.
-  CheckReadTimePickedOnDocdb(
+  // relaxed yb_read_after_commit_visibility now clamps the read time for FOR UPDATE queries.
+  CheckReadTimeProvidedToDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+      });
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation

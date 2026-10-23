@@ -1924,6 +1924,8 @@ TEST_F(PgSingleTServerTest, NoSafeTimeClampingInRelaxedReadAfterCommit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 100;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility ='relaxed'"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_restrict_relaxed_visibility_to_read_only_txns = off"));
   ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
   for (int i = 0; i != 20; ++i) {
     LOG(INFO) << "Delete iteration " << i;

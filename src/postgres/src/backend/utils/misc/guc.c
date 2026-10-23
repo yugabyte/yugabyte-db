@@ -2625,6 +2625,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_restrict_relaxed_visibility_to_read_only_txns", PGC_USERSET,
+			CUSTOM_OPTIONS,
+			gettext_noop("Apply yb_read_after_commit_visibility = relaxed only to "
+						 "READ ONLY transactions."),
+			gettext_noop("When off, relaxed mode applies to every statement, "
+						 "including writes and row locks, which can then miss "
+						 "rows that another node committed just before."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_restrict_relaxed_visibility_to_read_only_txns,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_non_ddl_txn_for_sys_tables_allowed", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the use of regular transactions for operating on system catalog tables in case a DDL transaction has not been started."),
 			NULL,
@@ -8395,9 +8410,10 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Read only statements/transactions do not see"
-						 " read restart errors but may miss recent updates with"
-						 " staleness bounded by clock skew."
+						 " relaxed. READ ONLY transactions do not see read restart"
+						 " errors, but may miss rows that another node committed"
+						 " up to one clock skew before the read. See also"
+						 " yb_restrict_relaxed_visibility_to_read_only_txns."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
