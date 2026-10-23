@@ -67,6 +67,7 @@
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/local_tablet_server.h"
@@ -207,6 +208,55 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
 
 RemoteTabletServer::~RemoteTabletServer() = default;
 
+std::vector<SelectedHostPort> RemoteTabletServer::CandidatesUnlocked(
+    const CloudInfoPB& connect_from) const {
+  return yb::CandidateHostPorts(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, connect_from);
+}
+
+void RemoteTabletServer::BuildProxyUnlocked(YBClient& client) {
+  if (!dns_resolve_stats_) {
+    auto metric_entity = client.metric_entity();
+    if (metric_entity) {
+      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+          metric_entity);
+    }
+  }
+
+  auto candidates = CandidatesUnlocked(client.data_->cloud_info_pb_);
+  auto selected = FirstUsable(candidates, failed_addresses_);
+  auto hostport = HostPortFromPB(selected.host_port);
+  CHECK(!hostport.host().empty());
+  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
+  proxy_ = std::make_shared<TabletServerServiceProxy>(
+      client.data_->proxy_cache_.get(), hostport,
+      client.data_->ProtocolFor(selected.used_broadcast, cloud_info_pb_));
+  proxy_endpoint_ = hostport;
+  proxy_pick_ = PickOf(candidates, selected);
+}
+
+bool RemoteTabletServer::FailToNextAddress(const HostPort& failed, YBClient& client) {
+  std::lock_guard lock(mutex_);
+  if (proxy_endpoint_.host().empty()) {
+    return false;
+  }
+  failed_addresses_.MarkFailed(failed);
+
+  // An RPC past InitProxy reads proxy() again to send, so the proxy is replaced in place and never
+  // left empty. It is replaced whether or not an address is left, because that is what lets a
+  // record expire: with every address failed the pick is the preferred one again, where a proxy
+  // left on the address that just failed would outlive every record that could move it.
+  if (proxy_endpoint_ == failed) {
+    BuildProxyUnlocked(client);
+  }
+
+  // The pick falls back to the preferred address once every one of them has failed, so whether
+  // the proxy is now on another address that has not failed is whether one is left to try.
+  // Comparing with the failed one also covers retry_failed_address_ms=0, under which no address
+  // counts as failed and the pick is the address that just failed.
+  return proxy_endpoint_ != failed && !failed_addresses_.Failed(proxy_endpoint_);
+}
+
 Status RemoteTabletServer::InitProxy(YBClient* client) {
   return ResultToStatus(ObtainProxy(*client));
 }
@@ -216,7 +266,7 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
   {
     SharedLock lock(mutex_);
 
-    if (proxy_) {
+    if (proxy_ && !proxy_pick_.Due(failed_addresses_)) {
       // Already have a proxy created.
       return proxy_;
     }
@@ -224,29 +274,14 @@ Result<std::shared_ptr<tserver::TabletServerServiceProxy>> RemoteTabletServer::O
 
   std::lock_guard lock(mutex_);
 
-  if (proxy_) {
+  if (proxy_ && !proxy_pick_.Due(failed_addresses_)) {
     // Already have a proxy created.
     return proxy_;
   }
 
-  if (!dns_resolve_stats_) {
-    auto metric_entity = client.metric_entity();
-    if (metric_entity) {
-      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
-          metric_entity);
-    }
-  }
-
-  // TODO: if the TS advertises multiple host/ports, pick the right one
-  // based on some kind of policy. For now just use the first always.
-  auto hostport = HostPortFromPB(yb::DesiredHostPort(
-      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
-      client.data_->cloud_info_pb_));
-  CHECK(!hostport.host().empty());
-  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
-  proxy_ = std::make_shared<TabletServerServiceProxy>(client.data_->proxy_cache_.get(), hostport);
-  proxy_endpoint_ = hostport;
-
+  // Either there is no proxy yet, or an address it fell back past no longer counts as failed,
+  // and nothing else would move it back there.
+  BuildProxyUnlocked(client);
   return proxy_;
 }
 
@@ -357,6 +392,16 @@ HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) co
 std::string RemoteTabletServer::TEST_PlacementZone() const {
   SharedLock lock(mutex_);
   return cloud_info_pb_.placement_zone();
+}
+
+std::vector<HostPort> RemoteTabletServer::TEST_Candidates(
+    const CloudInfoPB& connect_from) const {
+  SharedLock lock(mutex_);
+  std::vector<HostPort> result;
+  for (const auto& candidate : CandidatesUnlocked(connect_from)) {
+    result.push_back(HostPortFromPB(candidate.host_port));
+  }
+  return result;
 }
 
 std::string ReplicasCount::ToString() {

@@ -22,9 +22,15 @@
 namespace yb {
 namespace rpc {
 
-const Protocol* CompressedStreamProtocol();
+// A compressed stream is named by the layer beneath it, so a messenger offering both
+// encrypted and unencrypted transports can register a compressed variant of each.
+const Protocol* CompressedStreamProtocol(Encrypted encrypted);
+
+// The protocol must match the lower layer: a stream reports it from GetProtocol(), and
+// connections are cached by what they report.
 StreamFactoryPtr CompressedStreamFactory(
-    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker);
+    StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
+    const Protocol* protocol);
 
 }  // namespace rpc
 }  // namespace yb

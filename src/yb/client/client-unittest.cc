@@ -38,7 +38,31 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_client.pb.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_test_util.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+#include "yb/rpc/tcp_stream.h"
+
+#include "yb/server/clock.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/test_macros.h"
+
+DECLARE_int32(retry_failed_address_ms);
+DECLARE_string(use_node_to_node_plaintext);
 
 namespace yb {
 namespace client {
@@ -103,6 +127,257 @@ TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   b.AddColumn("b")->Type(DataType::INT32);
   b.AddColumn("c")->Type(DataType::INT32)->NotNull();
   ASSERT_EQ("OK", b.Build(&s).ToString());
+}
+
+namespace {
+
+CloudInfoPB Placement(const std::string& zone) {
+  CloudInfoPB result;
+  result.set_placement_cloud("cloud");
+  result.set_placement_region("region");
+  result.set_placement_zone(zone);
+  return result;
+}
+
+master::TSInfoPB TabletServerIn(const std::string& host, const std::string& zone) {
+  master::TSInfoPB result;
+  result.set_permanent_uuid(host);
+  auto* address = result.add_private_rpc_addresses();
+  address->set_host(host);
+  address->set_port(9100);
+  *result.mutable_cloud_info() = Placement(zone);
+  return result;
+}
+
+} // namespace
+
+// A client reaches a tablet server in plaintext only when it applies use_node_to_node_plaintext.
+// One that does not, like the client XClusterRemoteClientHolder builds for another universe, stays
+// on the messenger's default transport even toward a server whose placement names match its own.
+TEST(ClientUnitTest, NodeToNodePlaintextAppliesOnlyToClientsThatApplyIt) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "zone";
+
+  // A messenger holding the secure transport, keys generated in process as rpc's SecureTest
+  // builds one.
+  rpc::SecureContext secure_context(
+      rpc::RequireClientCertificate::kFalse, rpc::UseClientCertificate::kFalse);
+  ASSERT_OK(secure_context.TEST_GenerateKeys(2048, "127.0.0.1", rpc::MatchingCertKeyPair::kTrue));
+  rpc::MessengerBuilder builder("test");
+  builder.UseDefaultConnectionContextFactory();
+  builder.SetListenProtocol(rpc::SecureStreamProtocol());
+  builder.SetUncompressedProtocol(rpc::SecureStreamProtocol());
+  builder.AddStreamFactory(
+      rpc::SecureStreamProtocol(),
+      rpc::SecureStreamFactory(
+          rpc::TcpStream::Factory(), MemTracker::GetRootTracker(), &secure_context));
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(ASSERT_RESULT(builder.Build()));
+  const auto* encrypted = &messenger->ProtocolFor(rpc::Encrypted::kTrue);
+  const auto* unencrypted = &messenger->ProtocolFor(rpc::Encrypted::kFalse);
+  ASSERT_NE(encrypted, unencrypted);
+
+  for (bool apply : {false, true}) {
+    SCOPED_TRACE(apply ? "applies the flag" : "does not apply the flag");
+    auto client = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr("127.0.0.1")
+        .set_skip_master_leader_resolution(true)
+        .set_cloud_info_pb(Placement("zone1"))
+        .apply_node_to_node_plaintext(apply)
+        .Build(messenger.get()));
+
+    internal::RemoteTabletServer same_zone(TabletServerIn("ts-same-zone", "zone1"));
+    internal::RemoteTabletServer other_zone(TabletServerIn("ts-other-zone", "zone2"));
+    ASSERT_EQ(
+        ASSERT_RESULT(same_zone.ObtainProxy(*client))->proxy().TEST_protocol(),
+        apply ? unencrypted : encrypted);
+    ASSERT_EQ(
+        ASSERT_RESULT(other_zone.ObtainProxy(*client))->proxy().TEST_protocol(), encrypted);
+  }
+}
+
+namespace {
+
+void AddHostPort(
+    google::protobuf::RepeatedPtrField<HostPortPB>* list, const std::string& host) {
+  auto* hp = list->Add();
+  hp->set_host(host);
+  hp->set_port(9100);
+}
+
+master::TSInfoPB MakeTSInfo(
+    const std::vector<std::string>& private_hosts,
+    const std::vector<std::string>& broadcast_hosts,
+    const std::string& zone) {
+  master::TSInfoPB result;
+  result.set_permanent_uuid("ts-uuid");
+  for (const auto& host : private_hosts) {
+    AddHostPort(result.mutable_private_rpc_addresses(), host);
+  }
+  for (const auto& host : broadcast_hosts) {
+    AddHostPort(result.mutable_broadcast_addresses(), host);
+  }
+  result.mutable_cloud_info()->set_placement_cloud("cloud1");
+  result.mutable_cloud_info()->set_placement_region("region1");
+  result.mutable_cloud_info()->set_placement_zone(zone);
+  return result;
+}
+
+CloudInfoPB MakeCloudInfo(const std::string& zone) {
+  CloudInfoPB result;
+  result.set_placement_cloud("cloud1");
+  result.set_placement_region("region1");
+  result.set_placement_zone(zone);
+  return result;
+}
+
+std::vector<std::string> Hosts(const std::vector<HostPort>& host_ports) {
+  std::vector<std::string> result;
+  for (const auto& hp : host_ports) {
+    result.push_back(hp.host());
+  }
+  return result;
+}
+
+} // namespace
+
+// A server is reached at the address use_private_ip selects, and the remaining ways it
+// advertised itself are kept so that one unreachable address does not condemn it. The order
+// after the first is private before broadcast, which is the direction GetHostPort already
+// falls back in.
+TEST(ClientUnitTest, RemoteTabletServerCandidateOrder) {
+  const auto here = MakeCloudInfo("zone1");
+
+  {
+    // Same zone, so use_private_ip=zone would prefer the private address. The default is
+    // never, meaning the broadcast address is preferred whenever one was advertised.
+    internal::RemoteTabletServer ts(MakeTSInfo({"private1"}, {"broadcast1"}, "zone1"));
+    ASSERT_EQ((std::vector<std::string>{"broadcast1", "private1"}),
+              Hosts(ts.TEST_Candidates(here)));
+  }
+
+  {
+    // Nothing was broadcast, so the private address is both the preference and the only
+    // candidate, and it must not appear twice.
+    internal::RemoteTabletServer ts(MakeTSInfo({"private1"}, {}, "zone1"));
+    ASSERT_EQ((std::vector<std::string>{"private1"}), Hosts(ts.TEST_Candidates(here)));
+  }
+
+  {
+    // Several of each: every advertised address is a candidate, the preferred one first and
+    // not repeated, then the rest private before broadcast.
+    internal::RemoteTabletServer ts(
+        MakeTSInfo({"private1", "private2"}, {"broadcast1", "broadcast2"}, "zone1"));
+    ASSERT_EQ(
+        (std::vector<std::string>{"broadcast1", "private1", "private2", "broadcast2"}),
+        Hosts(ts.TEST_Candidates(here)));
+  }
+}
+
+namespace {
+
+// A client that resolves no leader master, which is all a RemoteTabletServer needs to build its
+// proxies.
+Result<std::unique_ptr<YBClient>> ClientWithoutLeader(rpc::Messenger* messenger) {
+  return YBClientBuilder()
+      .add_master_server_addr("127.0.0.1")
+      .set_skip_master_leader_resolution(true)
+      .Build(messenger);
+}
+
+} // namespace
+
+// RPCs in flight on a server share its proxy and read it again to send, so a connect failure
+// replaces it in place. One RPC can report its failure after another already moved the proxy;
+// that failure is about an address the proxy left, and moves it nowhere.
+TEST(ClientUnitTest, RemoteTabletServerFailsOnlyTheAddressDialed) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto first = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_EQ("private1", first.host());
+
+  ASSERT_TRUE(ts.FailToNextAddress(first, *client));
+  ASSERT_NE(ts.proxy(), nullptr);
+  const auto second = ts.proxy()->proxy().remote();
+  ASSERT_EQ("private2", second.host());
+
+  ASSERT_TRUE(ts.FailToNextAddress(first, *client));
+  ASSERT_EQ(second, ts.proxy()->proxy().remote());
+
+  // The last address leaves nothing to move to, and the proxy is back on the preferred one.
+  ASSERT_FALSE(ts.FailToNextAddress(second, *client));
+  ASSERT_EQ(first, ts.proxy()->proxy().remote());
+}
+
+// A proxy moves off an address only when that address fails, so one that fell back goes back to
+// the preferred address once the window that kept it off has passed, the next time an RPC
+// obtains it.
+TEST(ClientUnitTest, RemoteTabletServerReturnsToPreferredAddress) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto fallback = ASSERT_RESULT(ts.ObtainProxy(*client));
+  ASSERT_NE(preferred, fallback->proxy().remote());
+
+  // Within the window the proxy stays where it fell back to.
+  ASSERT_EQ(fallback, ASSERT_RESULT(ts.ObtainProxy(*client)));
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_EQ(preferred, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+}
+
+// An RPC that dialed an address before the proxy moved off it reports its failure afterwards,
+// which keeps the address failed for longer than the move alone would. The proxy goes back once
+// that later record expires: not while it holds, and not a whole window after it.
+TEST(ClientUnitTest, RemoteTabletServerReturnsWhenLateFailureExpires) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto moved_at = MonoTime::Now();
+  const auto fallback = ts.proxy()->proxy().remote();
+  ASSERT_NE(preferred, fallback);
+
+  SleepFor(500ms);
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto failed_late_at = MonoTime::Now();
+  SleepFor(500ms);
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_EQ(fallback, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+
+  SleepUntil(failed_late_at + window + 100ms);
+  ASSERT_EQ(preferred, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// proxy on the preferred address and reports the server unreachable.
+TEST(ClientUnitTest, RemoteTabletServerFallbackDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_FALSE(ts.FailToNextAddress(preferred, *client));
+  ASSERT_EQ(preferred, ts.proxy()->proxy().remote());
 }
 
 } // namespace client

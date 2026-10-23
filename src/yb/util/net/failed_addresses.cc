@@ -1,0 +1,55 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include "yb/util/net/failed_addresses.h"
+
+#include <algorithm>
+
+#include "yb/util/flags.h"
+
+using namespace std::literals;
+
+DEFINE_RUNTIME_int32(retry_failed_address_ms, 3600 * 1000,
+    "Time in milliseconds to wait for before retrying an address of a node that could not be "
+    "connected to, while the node's other addresses are used instead. At 0 a node is only "
+    "dialed at its preferred address.");
+
+namespace yb {
+
+bool FailedAddresses::Failed(const HostPort& host_port) const {
+  std::lock_guard lock(mutex_);
+  auto it = last_failed_.find(host_port);
+  return it != last_failed_.end() &&
+         (MonoTime::Now() - it->second) < FLAGS_retry_failed_address_ms * 1ms;
+}
+
+void FailedAddresses::MarkFailed(const HostPort& host_port) {
+  std::lock_guard lock(mutex_);
+  last_failed_[host_port] = MonoTime::Now();
+}
+
+void FailedAddresses::Clear() {
+  std::lock_guard lock(mutex_);
+  last_failed_.clear();
+}
+
+AddressPick::AddressPick(std::vector<HostPort> passed_over)
+    : passed_over_(std::move(passed_over)) {}
+
+bool AddressPick::Due(const FailedAddresses& failed) const {
+  return std::any_of(
+      passed_over_.begin(), passed_over_.end(),
+      [&failed](const HostPort& host_port) { return !failed.Failed(host_port); });
+}
+
+}  // namespace yb

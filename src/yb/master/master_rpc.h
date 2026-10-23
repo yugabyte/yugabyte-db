@@ -45,6 +45,9 @@
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -84,7 +87,12 @@ namespace master {
 // leader has already been found.
 class GetLeaderMasterRpc : public rpc::Rpc {
  public:
-  typedef Callback<void(const Status&, const HostPort&)> LeaderCallback;
+  // The registration accompanies the address because the address alone does not say how to
+  // reach the leader, only where. Its placement scopes the proxies the callee builds, and its
+  // address lists say whether the address that won the race is one the leader reports as
+  // private. It is unset when a leader was named without a registration being fetched.
+  typedef Callback<void(const Status&, const HostPort&, const ServerRegistrationPB&)>
+      LeaderCallback;
   // The host and port of the leader master server is stored in
   // 'leader_master', which must remain valid for the lifetime of this
   // object.
@@ -125,6 +133,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::vector<HostPort> addrs_;
 
   HostPort leader_master_;
+  ServerRegistrationPB leader_master_registration_;
 
   // The received responses.
   //

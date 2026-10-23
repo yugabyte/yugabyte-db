@@ -32,6 +32,7 @@
 
 #include "yb/consensus/leader_election.h"
 
+#include <algorithm>
 #include <functional>
 #include <mutex>
 
@@ -44,6 +45,7 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/format.h"
@@ -211,22 +213,58 @@ void LeaderElection::Run() {
 
     // Send the RPC request.
     LOG_WITH_PREFIX(INFO) << "Requesting vote from peer " << voter_uuid;
-    state->rpc.set_timeout(timeout_);
+    state->deadline = CoarseMonoClock::Now() + timeout_;
 
     state->request = request_;
     state->request.set_dest_uuid(voter_uuid);
 
     LeaderElectionPtr retained_self = this;
     if (!suppress_vote_request_) {
-      state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
-      state->proxy->RequestConsensusVoteAsync(
-          &state->request, &state->response, &state->rpc,
-          std::bind(&LeaderElection::VoteResponseRpcCallback, this, voter_uuid, retained_self));
+      SendVoteRequest(voter_uuid, state, retained_self);
     } else {
       state->response.set_responder_uuid(voter_uuid);
       VoteResponseRpcCallback(voter_uuid, retained_self);
     }
   }
+}
+
+void LeaderElection::SendVoteRequest(
+    const std::string& voter_uuid, VoterState* state, const LeaderElectionPtr& self) {
+  state->rpc.Reset();
+  state->rpc.set_deadline(state->deadline);
+  state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
+  state->sent_to.push_back(state->proxy->CurrentHostPort());
+  state->proxy->RequestConsensusVoteAsync(
+      &state->request, &state->response, &state->rpc,
+      std::bind(&LeaderElection::VoteResponseRpcCallback, this, voter_uuid, self));
+}
+
+bool LeaderElection::ResentToAnotherAddress(
+    const std::string& voter_uuid, VoterState* state, const LeaderElectionPtr& self) {
+  // A voter that registered several addresses may only be reachable at another of them. A
+  // connect failure means the request never reached it, so while the vote is still worth
+  // waiting for it goes to the next address, and to each at most once: with
+  // retry_failed_address_ms shorter than a connect takes to fail, the addresses would otherwise
+  // take turns until the deadline. Resent or not, the failure is recorded where every proxy of
+  // the tablet reads it, which is what steers the next election.
+  const auto status = state->rpc.status();
+  if (rpc::NetworkError(status) != rpc::NetworkErrorCode::kConnectFailed ||
+      !state->proxy->FailToNextAddress(state->sent_to.back()) ||
+      std::ranges::find(state->sent_to, state->proxy->CurrentHostPort()) !=
+          state->sent_to.end() ||
+      CoarseMonoClock::Now() >= state->deadline) {
+    return false;
+  }
+  {
+    std::lock_guard guard(lock_);
+    if (result_.decided()) {
+      return false;
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Requesting vote from peer " << voter_uuid
+                        << " at another address it registered after: " << status;
+  SendVoteRequest(voter_uuid, state, self);
+  return true;
 }
 
 void LeaderElection::CheckForDecision() {
@@ -258,16 +296,22 @@ void LeaderElection::CheckForDecision() {
 
 void LeaderElection::VoteResponseRpcCallback(const std::string& voter_uuid,
                                              const LeaderElectionPtr& self) {
+  // Neither the lookup nor a resend needs lock_, for the reason Run sends without it:
+  // voter_state_ is not mutated outside of the constructor / destructor, and only this voter's
+  // request uses its state.
+  auto it = voter_state_.find(voter_uuid);
+  CHECK(it != voter_state_.end());
+  VoterState* state = it->second.get();
+  if (ResentToAnotherAddress(voter_uuid, state, self)) {
+    return;
+  }
+
   {
     std::lock_guard guard(lock_);
 
     if (has_responded_) {
       return;
     }
-
-    auto it = voter_state_.find(voter_uuid);
-    CHECK(it != voter_state_.end());
-    VoterState* state = it->second.get();
 
     // Check for RPC errors.
     if (!state->rpc.status().ok()) {
@@ -320,9 +364,8 @@ void LeaderElection::RecordVoteUnlocked(const std::string& voter_uuid, ElectionV
     return;
   }
   if (duplicate) {
-    // Note: This is DFATAL because at the time of writing we do not support
-    // retrying vote requests, so this should be impossible. It may be valid to
-    // receive duplicate votes in the future if we implement retry.
+    // Note: This is DFATAL because a voter's vote is recorded once: a request is only sent again
+    // after it failed to connect, which records nothing, so this should be impossible.
     LOG_WITH_PREFIX(DFATAL) << "Duplicate vote received from peer " << voter_uuid;
   }
 }

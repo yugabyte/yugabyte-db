@@ -40,6 +40,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/thread_annotations.h"
@@ -49,10 +50,13 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
@@ -208,9 +212,16 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  Status GetProxy(std::shared_ptr<TProxy>* proxy) {
-    return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
+  Status GetProxy(std::shared_ptr<TProxy>* proxy) EXCLUDES(mutex_) {
+    return GetProxies(proxy);
   }
+
+  // Return RPC proxies to several services. Every proxy of this server is built against the
+  // address selected for the first of them, until a failure, a re-registration, or the end of the
+  // window that kept an earlier address off selects again, and these are returned under one
+  // lock, so a failure on any of them names the address the others are on as well.
+  template <class... TProxies>
+  Status GetProxies(std::shared_ptr<TProxies>*... proxies) EXCLUDES(mutex_);
 
   // Increment the accounting of the number of replicas recently created on this
   // server. This value will automatically decay over time.
@@ -377,20 +388,46 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  // Moves to another of the addresses this server registered, after host_port could not be
+  // connected to, and reports whether there was one.
+  //
+  // This is the address-level counterpart of RemoteTablet::MarkReplicaFailed, as it is on the
+  // client side. A server that cannot be reached one way may still be reachable another, so
+  // it is only treated as unreachable once every way of reaching it has failed.
+  bool FailToNextAddress(const HostPort& host_port) EXCLUDES(mutex_);
+
   // Transition this TServer to UNRESPONSIVE and/or DEFINITELY_NO_LEASE if enough time has passed
   // since its last heartbeat.
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
   mutable rw_spinlock mutex_;
-  template <class TProxy>
-  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
 
+  // An address to reach this server at and whether a connection to it is encrypted, as the
+  // master's own placement and the server's decide it. Both come from one read of the
+  // registration, so a re-registration cannot pair one registration's address with another's
+  // placement.
+  struct SelectedEndpoint {
+    HostPort host_port;
+    rpc::Encrypted encrypted;
+    // The earlier addresses passed over because they had failed, which say when to select again.
+    AddressPick pick;
+  };
+
   // Uses DNS to resolve registered hosts to a single endpoint.
+  Result<SelectedEndpoint> SelectEndpointUnlocked() const REQUIRES_SHARED(mutex_);
   Result<HostPort> GetHostPortUnlocked() const REQUIRES_SHARED(mutex_);
+
+  // Drops the cached proxies and the endpoint they were built against, so the next GetProxies
+  // selects again.
+  void ResetProxiesUnlocked() REQUIRES(mutex_);
+
+  // Builds the proxy against proxies_endpoint_ unless one is cached.
+  template <class TProxy>
+  void GetOrCreateProxyUnlocked(std::shared_ptr<TProxy>* result) REQUIRES(mutex_);
 
   void DecayRecentReplicaCreationsUnlocked() REQUIRES(mutex_);
 
@@ -495,7 +532,12 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   std::string placement_id_ GUARDED_BY(mutex_);
 
+  FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
+
   ProxyTuple proxies_;
+
+  // The endpoint every cached proxy was built against.
+  std::optional<SelectedEndpoint> proxies_endpoint_ GUARDED_BY(mutex_);
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_ GUARDED_BY(mutex_);
@@ -503,22 +545,30 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
 
-template <class TProxy>
-Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                                      std::shared_ptr<TProxy>* result_cache) {
-  {
-    std::lock_guard l(mutex_);
-    if (*result_cache) {
-      *result = *result_cache;
-      return Status::OK();
+template <class... TProxies>
+Status TSDescriptor::GetProxies(std::shared_ptr<TProxies>*... proxies) {
+  std::lock_guard l(mutex_);
+  if (!proxies_endpoint_ || proxies_endpoint_->pick.Due(failed_addresses_)) {
+    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
+    if (proxies_endpoint_ && (selected.host_port != proxies_endpoint_->host_port ||
+                              selected.encrypted != proxies_endpoint_->encrypted)) {
+      ResetProxiesUnlocked();
     }
-    auto hostport = VERIFY_RESULT(GetHostPortUnlocked());
-    if (!(*result_cache)) {
-      *result_cache = std::make_shared<TProxy>(proxy_cache_, hostport);
-    }
-    *result = *result_cache;
+    proxies_endpoint_ = std::move(selected);
   }
+  (GetOrCreateProxyUnlocked(proxies), ...);
   return Status::OK();
+}
+
+template <class TProxy>
+void TSDescriptor::GetOrCreateProxyUnlocked(std::shared_ptr<TProxy>* result) {
+  auto& cached = proxies_.get<TProxy>();
+  if (!cached) {
+    cached = std::make_shared<TProxy>(
+        proxy_cache_, proxies_endpoint_->host_port,
+        &proxy_cache_->GetContext()->ProtocolFor(proxies_endpoint_->encrypted));
+  }
+  *result = cached;
 }
 
 struct cloud_equal_to {

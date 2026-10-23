@@ -50,6 +50,8 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 class Status;
@@ -190,6 +192,12 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
     rpc::RpcController rpc;
     VoteRequestPB request;
     VoteResponsePB response;
+
+    // When the vote stops being worth waiting for, across every address the request goes to.
+    CoarseTimePoint deadline;
+
+    // The addresses the request was sent to, the last of them for the attempt in flight.
+    std::vector<HostPort> sent_to;
   };
 
   typedef std::unordered_map<std::string, std::unique_ptr<VoterState>> VoterStateMap;
@@ -201,6 +209,16 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   // Check to see if a decision has been made. If so, invoke decision callback.
   // Calls the callback outside of holding a lock.
   void CheckForDecision();
+
+  // Sends the vote request to the address the voter's proxy goes to now.
+  void SendVoteRequest(
+      const std::string& voter_uuid, VoterState* state, const LeaderElectionPtr& self);
+
+  // Sends the request again, to another address the voter registered, if it failed to connect
+  // and one is left that this request has not tried. Reports whether it did.
+  bool ResentToAnotherAddress(
+      const std::string& voter_uuid, VoterState* state, const LeaderElectionPtr& self)
+      EXCLUDES(lock_);
 
   // Callback called when the RPC responds.
   void VoteResponseRpcCallback(const std::string& voter_uuid, const LeaderElectionPtr& self);

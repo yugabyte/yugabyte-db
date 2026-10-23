@@ -59,6 +59,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/net/failed_addresses.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
@@ -192,9 +193,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Signals that a heartbeat response was received from the peer.
   void ProcessHeartbeatResponse(const Status& status);
 
-  // Returns true if there are more pending ops to process, false otherwise.
+  // Returns true if there are more pending ops to process, false otherwise. sent_to is the
+  // address the request went to.
   bool ProcessResponseWithStatus(const Status& status,
-                                 LWConsensusResponsePB* response);
+                                 LWConsensusResponsePB* response,
+                                 const HostPort& sent_to);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -206,8 +209,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Handle RPC callback from initiating remote bootstrap.
   void ProcessRemoteBootstrapResponse();
 
-  // Signals there was an error sending the request to the peer.
-  void ProcessResponseError(const Status& status);
+  // Signals there was an error sending the request to the peer at sent_to.
+  void ProcessResponseError(const Status& status, const HostPort& sent_to);
+
+  // Sets batcher_address_stale_ from where the proxy is now.
+  void UpdateBatcherAddressStale();
 
   // Returns true if the peer is closed and the calling function should return.
   std::unique_lock<simple_spinlock> StartProcessingUnlocked();
@@ -278,6 +284,11 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // on a per tserver level
   MultiRaftHeartbeatBatcherPtr multi_raft_batcher_;
 
+  // Whether the proxy is on another address than the one multi_raft_batcher_ was built for. The
+  // batcher is shared and keyed by that address, so it cannot follow the proxy; heartbeats go
+  // through the proxy while this is set and through the batcher again once the proxy is back.
+  std::atomic<bool> batcher_address_stale_{false};
+
   // Thread pool used to construct requests to this peer.
   ThreadPoolToken* raft_pool_token_;
 
@@ -338,6 +349,32 @@ class PeerProxy {
     LOG(DFATAL) << "Not implemented";
   }
 
+  // Records that failed, one of the addresses the peer registered, could not be connected to,
+  // moves off it if requests still go there, and reports whether they now go to another address
+  // that has not failed. A proxy that reaches its peer some other way than by one of its
+  // registered addresses has none to move to, which is the answer this default gives, as
+  // PeerProxyFactory::messenger does for a factory that has no messenger.
+  virtual bool FailToNextAddress(const HostPort& failed) {
+    return false;
+  }
+
+  // Goes back to an earlier address the peer registered, if the proxy fell back past it and
+  // retry_failed_address_ms has passed since, and reports whether requests now go elsewhere.
+  virtual bool ReturnToEarlierAddress() {
+    return false;
+  }
+
+  // The address the last UpdateAsync went to, which is the one its failure is about. Requests
+  // can move to another address while it is in flight, so this is not the current address.
+  virtual HostPort UpdateHostPort() const {
+    return HostPort();
+  }
+
+  // The address requests go to now.
+  virtual HostPort CurrentHostPort() const {
+    return HostPort();
+  }
+
   virtual ~PeerProxy() {}
 };
 
@@ -359,7 +396,9 @@ class PeerProxyFactory {
 // PeerProxy implementation that does RPC calls
 class RpcPeerProxy : public PeerProxy {
  public:
-  RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy);
+  RpcPeerProxy(
+      rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from,
+      std::shared_ptr<FailedAddresses> failed_addresses);
 
   virtual void UpdateAsync(const LWConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
@@ -387,11 +426,34 @@ class RpcPeerProxy : public PeerProxy {
                                        rpc::RpcController* controller,
                                        const rpc::ResponseCallback& callback) override;
 
+  bool FailToNextAddress(const HostPort& failed) override EXCLUDES(mutex_);
+
+  bool ReturnToEarlierAddress() override EXCLUDES(mutex_);
+
+  HostPort UpdateHostPort() const override EXCLUDES(mutex_);
+
+  HostPort CurrentHostPort() const override EXCLUDES(mutex_);
+
   virtual ~RpcPeerProxy();
 
  private:
-  HostPort hostport_;
-  ConsensusServiceProxyPtr consensus_proxy_;
+  // The proxy for the address currently in use. Returned by value so a call already in
+  // flight keeps its proxy alive across a move to another address.
+  std::shared_ptr<ConsensusServiceProxy> proxy() const EXCLUDES(mutex_);
+
+  // Builds the proxy for the first address of the peer that has not failed.
+  void BuildProxyUnlocked() REQUIRES(mutex_);
+
+  rpc::ProxyCache* const proxy_cache_;
+  const RaftPeerPB peer_pb_;
+  const CloudInfoPB from_;
+  const std::shared_ptr<FailedAddresses> failed_addresses_;
+
+  mutable rw_spinlock mutex_;
+  HostPort hostport_ GUARDED_BY(mutex_);
+  AddressPick pick_ GUARDED_BY(mutex_);
+  HostPort update_hostport_ GUARDED_BY(mutex_);
+  std::shared_ptr<ConsensusServiceProxy> consensus_proxy_ GUARDED_BY(mutex_);
 };
 
 // PeerProxyFactory implementation that generates RPCPeerProxies
@@ -409,6 +471,12 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
   rpc::Messenger* messenger_ = nullptr;
   rpc::ProxyCache* const proxy_cache_;
   const CloudInfoPB from_;
+
+  // The addresses of this tablet's peers that could not be connected to, shared by every proxy
+  // made here. Elections and leadership transfers make a proxy for each request, and only a
+  // leader has a Peer for each of the others, so this is where what one request found out
+  // reaches the next, whichever kind it is.
+  const std::shared_ptr<FailedAddresses> failed_addresses_ = std::make_shared<FailedAddresses>();
 };
 
 // Query the consensus service at last known host/port that is specified in 'remote_peer' and set

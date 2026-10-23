@@ -43,6 +43,8 @@
 #include "yb/master/master_util.h"
 #include "yb/master/master_ysql_lease.pb.h"
 
+#include "yb/rpc/proxy_context.h"
+
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -160,7 +162,8 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
                                    : SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
-  proxies_.reset();
+  ResetProxiesUnlocked();
+  failed_addresses_.Clear();
   // Once a tserver is marked as faulty it remains that way until it reregisters here.
   // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
   has_faulty_drive_ = false;
@@ -419,7 +422,7 @@ bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  return yb::master::IsRunningOn(LockForRead()->pb.registration(), hp);
+  return yb::IsRunningOn(LockForRead()->pb.registration(), hp);
 }
 
 Result<HostPort> TSDescriptor::GetHostPort() const {
@@ -427,15 +430,57 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
   return GetHostPortUnlocked();
 }
 
-Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() const {
   auto l = LockForRead();
-  const auto& addr = DesiredHostPort(l->pb.registration(), local_master_cloud_info_);
-  if (addr.host().empty()) {
+  const auto& registration = l->pb.registration();
+  auto candidates = CandidateHostPorts(
+      registration.broadcast_addresses(), registration.private_rpc_addresses(),
+      registration.cloud_info(), local_master_cloud_info_);
+
+  auto selected = FirstUsable(candidates, failed_addresses_);
+  if (selected.host_port.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
-                         permanent_uuid(), l->pb.registration().ShortDebugString());
+                         permanent_uuid(), registration.ShortDebugString());
   }
 
-  return HostPortFromPB(addr);
+  return SelectedEndpoint {
+    .host_port = HostPortFromPB(selected.host_port),
+    .encrypted = rpc::Encrypted(UseEncryption(
+        selected.used_broadcast, registration.cloud_info(), local_master_cloud_info_)),
+    .pick = PickOf(candidates, selected),
+  };
+}
+
+bool TSDescriptor::FailToNextAddress(const HostPort& host_port) {
+  std::lock_guard l(mutex_);
+  failed_addresses_.MarkFailed(host_port);
+
+  // A task that dialed an address before the proxies moved off it reports its failure late, and
+  // that moves them nowhere. Proxies still on the address that failed are dropped so the next
+  // GetProxies selects again, the same way re-registration drops them when the addresses may
+  // have changed. Selecting again happens whether or not an address is left, because that is
+  // what lets a record expire: proxies left on the address that just failed would outlive every
+  // record that could move them.
+  if (proxies_endpoint_ && proxies_endpoint_->host_port == host_port) {
+    ResetProxiesUnlocked();
+  }
+
+  // SelectEndpointUnlocked returns the preferred address once every one of them has failed,
+  // so whether it now selects another address that has not failed is whether one is left to
+  // try. Comparing with host_port also covers retry_failed_address_ms=0, under which no address
+  // counts as failed and the selection is the address that just failed.
+  auto selected = SelectEndpointUnlocked();
+  return selected.ok() && selected->host_port != host_port &&
+         !failed_addresses_.Failed(selected->host_port);
+}
+
+Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+  return VERIFY_RESULT(SelectEndpointUnlocked()).host_port;
+}
+
+void TSDescriptor::ResetProxiesUnlocked() {
+  proxies_.reset();
+  proxies_endpoint_.reset();
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {

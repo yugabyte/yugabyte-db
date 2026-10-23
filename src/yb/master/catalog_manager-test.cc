@@ -31,11 +31,20 @@
 //
 
 #include "yb/common/constants.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/master/catalog_manager-test_base.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/format.h"
+#include "yb/util/scope_exit.h"
+
+#include "yb/util/flags.h"
+
+DECLARE_int32(retry_failed_address_ms);
 
 namespace yb {
 namespace master {
@@ -111,6 +120,153 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
     SleepFor(MonoDelta::FromSeconds(10));
     ASSERT_NEAR(0.891, ts.RecentReplicaCreations(), 0.05);
   }
+}
+
+TEST(TestTSDescriptor, TestAddressFallback) {
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_private_rpc_addresses()->set_host("private2");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue));
+
+  // The broadcast address is preferred, then the private ones in the order registered.
+  const vector<string> kExpectedOrder = {"broadcast1", "private1", "private2"};
+  for (const auto& expected : kExpectedOrder) {
+    auto host_port = ASSERT_RESULT(ts->GetHostPort());
+    ASSERT_EQ(expected, host_port.host());
+    // The last address leaves nothing to fall back to, which is what tells the caller the
+    // server itself is unreachable.
+    ASSERT_EQ(expected != kExpectedOrder.back(), ts->FailToNextAddress(host_port));
+  }
+
+  // With every address failed the preferred one comes back, so the server becomes reachable
+  // again as soon as it is, rather than being unaddressable until it re-registers.
+  ASSERT_EQ(kExpectedOrder.front(), ASSERT_RESULT(ts->GetHostPort()).host());
+
+  // Re-registering clears the record outright: a server that just came back is worth trying
+  // at every address it now reports.
+  auto write_lock = ASSERT_RESULT(
+      ts->UpdateRegistration(node, reg, RegisteredThroughHeartbeat::kTrue));
+  write_lock.Commit();
+  auto host_port = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_EQ(kExpectedOrder.front(), host_port.host());
+  ASSERT_TRUE(ts->FailToNextAddress(host_port));
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// server on its preferred address and reports it unreachable.
+TEST(TestTSDescriptor, TestAddressFallbackDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue));
+
+  auto host_port = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_EQ("broadcast1", host_port.host());
+  ASSERT_FALSE(ts->FailToNextAddress(host_port));
+  ASSERT_EQ(host_port, ASSERT_RESULT(ts->GetHostPort()));
+}
+
+// A task reports a failure of any of its proxies against the address all of them are on, so a
+// server's proxies share one address and move together: off an address that failed, and back to
+// it once the window that kept it off has passed. A proxy built in between joins the others
+// rather than selecting afresh.
+TEST(TestTSDescriptor, TestProxiesShareOneAddress) {
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), &proxy_cache, RegisteredThroughHeartbeat::kTrue));
+
+  const auto preferred = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  const auto fallback = ts_proxy->proxy().remote();
+  ASSERT_NE(preferred, fallback);
+
+  std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  ASSERT_OK(ts->GetProxy(&consensus_proxy));
+  ASSERT_EQ(fallback, consensus_proxy->proxy().remote());
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_OK(ts->GetProxies(&ts_proxy, &consensus_proxy));
+  ASSERT_EQ(preferred, ts_proxy->proxy().remote());
+  ASSERT_EQ(preferred, consensus_proxy->proxy().remote());
+}
+
+// A task that dialed an address before the proxies moved off it reports its failure afterwards.
+// That moves nothing and rebuilds nothing, as in the other dialers, but it keeps the address
+// failed for longer than the move alone would, and the proxies go back once that later record
+// expires: not while it holds, and not a whole window after it.
+TEST(TestTSDescriptor, TestLateFailureMovesNothing) {
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test").Build());
+  auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+
+  NodeInstancePB node;
+  node.set_permanent_uuid("ts-with-several-addresses");
+
+  TSRegistrationPB reg;
+  auto* common = reg.mutable_common();
+  common->add_private_rpc_addresses()->set_host("private1");
+  common->add_broadcast_addresses()->set_host("broadcast1");
+
+  auto ts = ASSERT_RESULT(TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), &proxy_cache, RegisteredThroughHeartbeat::kTrue));
+
+  const auto preferred = ASSERT_RESULT(ts->GetHostPort());
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  std::shared_ptr<tserver::TabletServerServiceProxy> moved;
+  ASSERT_OK(ts->GetProxy(&moved));
+  const auto moved_at = MonoTime::Now();
+  ASSERT_NE(preferred, moved->proxy().remote());
+
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  ASSERT_TRUE(ts->FailToNextAddress(preferred));
+  const auto failed_late_at = MonoTime::Now();
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(moved, ts_proxy);
+  SleepFor(MonoDelta::FromMilliseconds(500));
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(moved->proxy().remote(), ts_proxy->proxy().remote());
+
+  SleepUntil(failed_late_at + window + MonoDelta::FromMilliseconds(100));
+  ASSERT_OK(ts->GetProxy(&ts_proxy));
+  ASSERT_EQ(preferred, ts_proxy->proxy().remote());
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {

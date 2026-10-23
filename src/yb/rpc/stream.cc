@@ -22,5 +22,17 @@ std::string Stream::ToString() const {
   return Format("{ local: $0 remote: $1 }", Local(), Remote());
 }
 
+const Protocol* StreamProtocol(Compressed compressed, Encrypted encrypted) {
+  static Protocol kPlain("tcp");
+  static Protocol kSecure("tcps");
+  static Protocol kCompressed("tcpc");
+  static Protocol kCompressedSecure("tcpcs");
+
+  if (compressed) {
+    return encrypted ? &kCompressedSecure : &kCompressed;
+  }
+  return encrypted ? &kSecure : &kPlain;
+}
+
 }  // namespace rpc
 }  // namespace yb

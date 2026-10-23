@@ -47,7 +47,9 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/multi_raft_batcher.h"
 
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
@@ -142,7 +144,11 @@ Peer::Peer(
       multi_raft_batcher_(std::move(multi_raft_batcher)),
       raft_pool_token_(raft_pool_token),
       consensus_(consensus),
-      messenger_(messenger) {}
+      messenger_(messenger) {
+  // The proxy starts past any address its factory's record says failed, while the batcher is
+  // keyed by the peer's preferred one, so the two can differ from the first request.
+  UpdateBatcherAddressStale();
+}
 
 void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
   update_response_ = arena->NewObject<LWConsensusResponsePB>(arena);
@@ -388,10 +394,17 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_leader_request_fraction);
 
+  // The proxy moves off an address only when that address fails, so one that fell back goes
+  // back here once the address it left may work again, and heartbeats follow it to the batcher.
+  if (proxy_->ReturnToEarlierAddress()) {
+    UpdateBatcherAddressStale();
+  }
+
   // Heartbeat batching allows for network layer savings by reducing CPU cycles
   // spent on computing state, context switching (sending/receiving RPC's)
   // and serializing/deserializing protobufs.
   if (req_is_heartbeat && multi_raft_batcher_
+      && !batcher_address_stale_.load(std::memory_order_acquire)
       && FLAGS_enable_multi_raft_heartbeat_batcher) {
     auto performing_heartbeat_lock = LockPerformingHeartbeat(std::try_to_lock);
     if (!performing_heartbeat_lock.owns_lock()) {
@@ -443,7 +456,8 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
 }
 
 bool Peer::ProcessResponseWithStatus(const Status& status,
-                                     LWConsensusResponsePB* response) {
+                                     LWConsensusResponsePB* response,
+                                     const HostPort& sent_to) {
   if (!status.ok()) {
     if (status.IsRemoteError()) {
       // Most controller errors are caused by network issues or corner cases like shutdown and
@@ -453,7 +467,7 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
       // remote is responsive.
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
     }
-    ProcessResponseError(status);
+    ProcessResponseError(status, sent_to);
     return false;
   }
 
@@ -469,7 +483,7 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
         Format("Leader communication with peer $0 received error $1, will try to "
                "evict peer", peer_pb_.permanent_uuid(),
                response->error().ShortDebugString()));
-    ProcessResponseError(StatusFromPB(response->error().status()));
+    ProcessResponseError(StatusFromPB(response->error().status()), sent_to);
     return false;
   }
 
@@ -486,7 +500,7 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
         peer_pb_.permanent_uuid(),
         Format("Tablet in peer $0 is in FAILED state, will try to evict peer",
                peer_pb_.permanent_uuid()));
-    ProcessResponseError(StatusFromPB(response->error().status()));
+    ProcessResponseError(StatusFromPB(response->error().status()), sent_to);
   }
 
   // Response should be either error or status.
@@ -502,7 +516,7 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
     // Again, let the queue know that the remote is still responsive, since we will not be sending
     // this error response through to the queue.
     queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
-    ProcessResponseError(StatusFromPB(response->error().status()));
+    ProcessResponseError(StatusFromPB(response->error().status()), sent_to);
     return false;
   }
 
@@ -530,7 +544,7 @@ void Peer::ProcessResponse(TracePtr trace) {
   if (!processing_lock.owns_lock()) {
     return;
   }
-  bool more_pending = ProcessResponseWithStatus(status, update_response_);
+  bool more_pending = ProcessResponseWithStatus(status, update_response_, proxy_->UpdateHostPort());
 
   if (more_pending) {
     processing_lock.unlock();
@@ -560,7 +574,8 @@ void Peer::ProcessHeartbeatResponse(const Status& status) {
 
   // TODO(lw_uc) support multiraft heartbeat with LW
   auto lw_response = rpc::CopySharedMessage(heartbeat_response_);
-  bool more_pending = ProcessResponseWithStatus(status, lw_response.get());
+  bool more_pending = ProcessResponseWithStatus(
+      status, lw_response.get(), multi_raft_batcher_->hostport());
 
   if (more_pending) {
     auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);
@@ -628,12 +643,29 @@ void Peer::ProcessRemoteBootstrapResponse() {
   // the new peer at the end of RBS.
 }
 
-void Peer::ProcessResponseError(const Status& status) {
+void Peer::ProcessResponseError(const Status& status, const HostPort& sent_to) {
   DCHECK(performing_update_mutex_.is_locked() || performing_heartbeat_mutex_.is_locked());
   failed_attempts_++;
+  // A peer that registered several addresses is only unreachable once every one of them has
+  // failed, so the next heartbeat period goes to the next address. Only a connect failure says
+  // anything about the address; every other failure came back over a connection that worked.
+  if (rpc::NetworkError(status) == rpc::NetworkErrorCode::kConnectFailed) {
+    if (proxy_->FailToNextAddress(sent_to)) {
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+          << "Retrying on another address this peer registered after " << status;
+    }
+    UpdateBatcherAddressStale();
+  }
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
       << " Already tried " << failed_attempts_ << " times. State: " << state_;
+}
+
+void Peer::UpdateBatcherAddressStale() {
+  if (multi_raft_batcher_) {
+    batcher_address_stale_.store(
+        proxy_->CurrentHostPort() != multi_raft_batcher_->hostport(), std::memory_order_release);
+  }
 }
 
 string Peer::LogPrefix() const {
@@ -681,8 +713,76 @@ Peer::~Peer() {
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 
-RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
-    : hostport_(std::move(hostport)), consensus_proxy_(std::move(consensus_proxy)) {
+RpcPeerProxy::RpcPeerProxy(
+    rpc::ProxyCache* proxy_cache, RaftPeerPB peer_pb, CloudInfoPB from,
+    std::shared_ptr<FailedAddresses> failed_addresses)
+    : proxy_cache_(proxy_cache),
+      peer_pb_(std::move(peer_pb)),
+      from_(std::move(from)),
+      failed_addresses_(std::move(failed_addresses)) {
+  std::lock_guard lock(mutex_);
+  BuildProxyUnlocked();
+}
+
+void RpcPeerProxy::BuildProxyUnlocked() {
+  auto candidates = CandidateHostPorts(peer_pb_, from_);
+  auto selected = FirstUsable(candidates, *failed_addresses_);
+  hostport_ = HostPortFromPB(selected.host_port);
+  pick_ = PickOf(candidates, selected);
+  consensus_proxy_ = std::make_shared<ConsensusServiceProxy>(
+      proxy_cache_, hostport_,
+      &proxy_cache_->GetContext()->ProtocolFor(
+          rpc::Encrypted(UseEncryption(selected.used_broadcast, peer_pb_.cloud_info(), from_))));
+}
+
+std::shared_ptr<ConsensusServiceProxy> RpcPeerProxy::proxy() const {
+  SharedLock lock(mutex_);
+  return consensus_proxy_;
+}
+
+HostPort RpcPeerProxy::UpdateHostPort() const {
+  SharedLock lock(mutex_);
+  return update_hostport_;
+}
+
+HostPort RpcPeerProxy::CurrentHostPort() const {
+  SharedLock lock(mutex_);
+  return hostport_;
+}
+
+bool RpcPeerProxy::FailToNextAddress(const HostPort& failed) {
+  std::lock_guard lock(mutex_);
+  failed_addresses_->MarkFailed(failed);
+
+  // An update and a batched heartbeat can both fail on one address, and only the first of them
+  // finds the proxy still there; moving it again for the second would condemn an address that
+  // was never tried. Rebuilding whether or not an address is left is what lets a record expire:
+  // with every address failed the pick is the preferred one again.
+  if (hostport_ == failed) {
+    BuildProxyUnlocked();
+  }
+
+  // The pick falls back to the preferred address once every one of them has failed, so whether
+  // the proxy is now on another address that has not failed is whether one is left to try.
+  // Comparing with the failed one also covers retry_failed_address_ms=0, under which no address
+  // counts as failed and the pick is the address that just failed.
+  return hostport_ != failed && !failed_addresses_->Failed(hostport_);
+}
+
+bool RpcPeerProxy::ReturnToEarlierAddress() {
+  {
+    SharedLock lock(mutex_);
+    if (!pick_.Due(*failed_addresses_)) {
+      return false;
+    }
+  }
+  std::lock_guard lock(mutex_);
+  if (!pick_.Due(*failed_addresses_)) {
+    return false;
+  }
+  const auto previous = hostport_;
+  BuildProxyUnlocked();
+  return hostport_ != previous;
 }
 
 void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
@@ -691,13 +791,19 @@ void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
                                rpc::RpcController* controller,
                                const rpc::ResponseCallback& callback) {
   controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));
-  consensus_proxy_->UpdateConsensusAsync(*request, response, controller, callback);
+  std::shared_ptr<ConsensusServiceProxy> proxy;
+  {
+    std::lock_guard lock(mutex_);
+    proxy = consensus_proxy_;
+    update_hostport_ = hostport_;
+  }
+  proxy->UpdateConsensusAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::RequestConsensusVoteAsync(
     const VoteRequestPB* request, VoteResponsePB* response, rpc::RpcController* controller,
     const rpc::ResponseCallback& callback) {
-  consensus_proxy_->RequestConsensusVoteAsync(*request, response, controller, callback);
+  proxy()->RequestConsensusVoteAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
@@ -705,19 +811,19 @@ void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* requ
                                           rpc::RpcController* controller,
                                           const rpc::ResponseCallback& callback) {
   controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));
-  consensus_proxy_->RunLeaderElectionAsync(*request, response, controller, callback);
+  proxy()->RunLeaderElectionAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::LeaderElectionLostAsync(
     const LeaderElectionLostRequestPB* request, LeaderElectionLostResponsePB* response,
     rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
-  consensus_proxy_->LeaderElectionLostAsync(*request, response, controller, callback);
+  proxy()->LeaderElectionLostAsync(*request, response, controller, callback);
 }
 
 void RpcPeerProxy::StartRemoteBootstrap(
     const StartRemoteBootstrapRequestPB* request, StartRemoteBootstrapResponsePB* response,
     rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
-  consensus_proxy_->StartRemoteBootstrapAsync(*request, response, controller, callback);
+  proxy()->StartRemoteBootstrapAsync(*request, response, controller, callback);
 }
 
 RpcPeerProxy::~RpcPeerProxy() {}
@@ -727,9 +833,7 @@ RpcPeerProxyFactory::RpcPeerProxyFactory(
     : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
-  auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
-  auto proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_, hostport);
-  return std::make_unique<RpcPeerProxy>(std::move(hostport), std::move(proxy));
+  return std::make_unique<RpcPeerProxy>(proxy_cache_, peer_pb, from_, failed_addresses_);
 }
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}

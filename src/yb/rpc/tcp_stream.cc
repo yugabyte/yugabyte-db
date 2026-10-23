@@ -15,6 +15,7 @@
 
 #include "yb/rpc/tcp_stream.h"
 
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_util.h"
@@ -97,7 +98,9 @@ Status TcpStream::DoStart(ev::loop_ref* loop, bool connect) {
     auto status = socket_.Connect(remote_);
     if (!status.ok() && !status.IsTryAgain()) {
       LOG_WITH_PREFIX(WARNING) << "Connect failed: " << status;
-      return status;
+      // A connect that fails at once reached no server, like one that fails later, which
+      // Connection reports with the same code.
+      return status.CloneAndAddErrorCode(NetworkError(NetworkErrorCode::kConnectFailed));
     }
   }
 
@@ -515,8 +518,7 @@ void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* res
 }
 
 const Protocol* TcpStream::StaticProtocol() {
-  static Protocol result("tcp");
-  return &result;
+  return StreamProtocol(Compressed::kFalse, Encrypted::kFalse);
 }
 
 StreamFactoryPtr TcpStream::Factory() {

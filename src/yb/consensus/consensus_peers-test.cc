@@ -44,6 +44,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -58,8 +59,9 @@
 using namespace std::chrono_literals;
 
 METRIC_DECLARE_entity(tablet);
-DECLARE_int32(stuck_peer_call_threshold_ms);
 DECLARE_bool(force_recover_from_stuck_peer_call);
+DECLARE_int32(retry_failed_address_ms);
+DECLARE_int32(stuck_peer_call_threshold_ms);
 
 namespace yb::consensus {
 
@@ -418,6 +420,156 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // OK to have called UpdateConsensus() a few times due to regularly
   // scheduled heartbeats.
   ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
+}
+
+namespace {
+
+RaftPeerPB PeerWithSeveralAddresses() {
+  RaftPeerPB peer_pb;
+  peer_pb.set_permanent_uuid("peer-with-several-addresses");
+  peer_pb.add_last_known_private_addr()->set_host("private1");
+  peer_pb.add_last_known_private_addr()->set_host("private2");
+  peer_pb.add_last_known_broadcast_addr()->set_host("broadcast1");
+  return peer_pb;
+}
+
+} // namespace
+
+// A peer that registered several addresses is reachable at any of them, so a connect failure
+// on one moves the proxy to the next rather than leaving the peer unreachable.
+TEST_F(ConsensusPeersTest, TestAddressFallback) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  // The broadcast address is preferred, then the private ones in the order registered.
+  const std::vector<string> kExpectedOrder = {"broadcast1", "private1", "private2"};
+  for (const auto& expected : kExpectedOrder) {
+    auto current = proxy.CurrentHostPort();
+    ASSERT_EQ(expected, current.host());
+    // The last address leaves nothing to move to, which is what tells the caller the peer
+    // itself is unreachable.
+    ASSERT_EQ(expected != kExpectedOrder.back(), proxy.FailToNextAddress(current));
+  }
+
+  // With every address failed the preferred one comes back, so the peer becomes reachable
+  // again as soon as it is.
+  ASSERT_EQ(kExpectedOrder.front(), proxy.CurrentHostPort().host());
+}
+
+// An update and a batched heartbeat can both fail on one address. Only the first failure finds
+// the proxy there; the second neither moves it on to an address nobody tried nor reports the
+// peer unreachable.
+TEST_F(ConsensusPeersTest, TestAddressFallbackLateFailure) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto moved_to = proxy.CurrentHostPort();
+  ASSERT_EQ("private1", moved_to.host());
+
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  ASSERT_EQ(moved_to, proxy.CurrentHostPort());
+}
+
+// An election or a leadership transfer makes a proxy for one request, so what a request found
+// out reaches the next only through the record every proxy of one factory shares: a proxy made
+// after a failure starts on the address the failure moved to. Another tablet's factory keeps
+// its own record.
+TEST_F(ConsensusPeersTest, TestAddressFallbackSharedByFactory) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxyFactory factory(messenger_.get(), &proxy_cache, CloudInfoPB());
+
+  auto peer_proxy = factory.NewProxy(PeerWithSeveralAddresses());
+  const auto preferred = peer_proxy->CurrentHostPort();
+  ASSERT_TRUE(peer_proxy->FailToNextAddress(preferred));
+  ASSERT_NE(preferred, peer_proxy->CurrentHostPort());
+
+  auto election_proxy = factory.NewProxy(PeerWithSeveralAddresses());
+  ASSERT_EQ(peer_proxy->CurrentHostPort(), election_proxy->CurrentHostPort());
+
+  RpcPeerProxyFactory other_factory(messenger_.get(), &proxy_cache, CloudInfoPB());
+  ASSERT_EQ(preferred, other_factory.NewProxy(PeerWithSeveralAddresses())->CurrentHostPort());
+}
+
+// A proxy moves off an address only when that address fails, so one that fell back goes back on
+// its own once the window that kept the address it left off has passed, rather than staying on
+// the fallback for as long as the fallback works.
+TEST_F(ConsensusPeersTest, TestAddressFallbackReturns) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto fallback = proxy.CurrentHostPort();
+  ASSERT_NE(preferred, fallback);
+
+  // Within the window the proxy stays where it fell back to.
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(fallback, proxy.CurrentHostPort());
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_TRUE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+
+  // On the preferred address there is nothing earlier to go back to.
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+}
+
+// A heartbeat that dialed an address before the proxy moved off it reports its failure
+// afterwards, which keeps the address failed for longer than the move alone would. The proxy
+// goes back once that later record expires: not while it holds, and not a whole window after it.
+TEST_F(ConsensusPeersTest, TestAddressFallbackReturnsWhenLateFailureExpires) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto moved_at = MonoTime::Now();
+  const auto fallback = proxy.CurrentHostPort();
+  ASSERT_NE(preferred, fallback);
+
+  SleepFor(500ms);
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto failed_late_at = MonoTime::Now();
+  SleepFor(500ms);
+
+  // A window the move has outlived and the late failure has not.
+  google::FlagSaver flag_saver;
+  const auto now = MonoTime::Now();
+  const auto window = ((now - moved_at) + (now - failed_late_at)) / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) =
+      static_cast<int32_t>(window.ToMilliseconds());
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(fallback, proxy.CurrentHostPort());
+
+  SleepUntil(failed_late_at + window + 100ms);
+  ASSERT_TRUE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+}
+
+// With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
+// proxy on the preferred address and reports the peer unreachable.
+TEST_F(ConsensusPeersTest, TestAddressFallbackDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_FALSE(proxy.FailToNextAddress(preferred));
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
 }
 
 } // namespace yb::consensus

@@ -169,10 +169,17 @@ bool Connection::Shutdown(const Status& provided_status) {
         << "Connection shutdown called with an OK status, replacing with an error:\n"
         << GetStackTrace();
   }
-  const Status status =
+  Status status =
       provided_status.ok()
           ? STATUS_FORMAT(RuntimeError, "Connection shutdown called with OK status")
           : provided_status;
+  // Calls on a connection that never finished connecting, its handshake included, never reached
+  // the server, so the failure is about the address dialed. kConnectFailed is what says so, as
+  // HandleTimeout already does when the connect runs out of time.
+  if (direction_ == Direction::CLIENT && status.IsNetworkError() && !stream_->IsConnected() &&
+      !NetworkError::ValueFromStatus(status)) {
+    status = status.CloneAndAddErrorCode(NetworkError(NetworkErrorCode::kConnectFailed));
+  }
 
   std::function<void()> shutdown_listener;
   {

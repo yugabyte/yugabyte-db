@@ -274,6 +274,10 @@ class TabletInvoker {
   // alive while YBClient is alive. Because we don't delete them, but only add and update.
   RemoteTabletServer* current_ts_ = nullptr;
 
+  // The proxy this attempt sends through, kept so a failure is reported against the address it
+  // dialed even after another RPC has moved current_ts_ to a different one.
+  std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
+
   // Should we assign new leader in meta cache when successful response is received.
   bool assign_new_leader_ = false;
 };
