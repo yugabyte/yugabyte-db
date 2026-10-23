@@ -277,12 +277,10 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
         streams_to_checkpoint, StreamCheckpointLocation::kCurrentEndOfWAL, epoch,
         check_if_bootstrap_required, std::move(callback), /*op0_tablet_ids=*/{}));
   } else {
-    // Nothing to checkpoint: no tables left, or an earlier attempt checkpointed all of them.
+    // Nothing to checkpoint: either an earlier attempt checkpointed all of these tables, or there
+    // are no tables left. An empty table result makes MarkBootstrapTablesAsCheckpointed mark the
+    // namespace READY, so it takes one extra call after all tables are checkpointed.
     callback(false);
-    // When MarkBootstrapTablesAsCheckpointed handles this empty table result it will mark the
-    // namespace as READY.
-    // So, after all tables have been checkpointed this function and
-    // MarkBootstrapTablesAsCheckpointed have to be called one extra time.
   }
 
   return Status::OK();

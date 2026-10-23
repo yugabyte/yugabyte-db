@@ -1572,7 +1572,7 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
               !IsCheckpointedAgainAfterBackfill(*index_info, *stream)) {
             continue;
           }
-          // Recorded by an earlier run of this checkpoint.
+          // A recorded checkpoint is never redone.
           if (HasBootstrapTablets(stream->LockForRead()->pb)) {
             LOG(INFO) << "Not checkpointing xCluster stream " << stream->StreamId()
                       << " of index " << index_id
