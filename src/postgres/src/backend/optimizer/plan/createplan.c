@@ -44,8 +44,6 @@
 #include "utils/lsyscache.h"
 
 /* YB includes */
-#include <math.h>
-
 #include "access/htup_details.h"
 #include "access/yb_target.h"
 #include "catalog/partition.h"
@@ -65,6 +63,7 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+#include <math.h>
 
 
 /*
@@ -4095,12 +4094,15 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 											 NULL));
 	if (yb_is_single_row_update_or_delete)
 	{
-		/*
-		 * YB_TODO_PG19MERGE: PG removed make_result; the helper
-		 * make_one_row_result seems to be its closest equivalent. Revisit this.
-		 */
 		subplan = (Plan *) make_one_row_result(result_tlist, NULL,
 											   best_path->path.parent);
+		/*
+		 * The Result node replaces a single-row Scan node in the single-shard
+		 * path but the ModifyTable's parent is an upper rel, which would make
+		 * EXPLAIN print "Replaces: Aggregate". RESULT_TYPE_SCAN with the upper
+		 * rel's empty relids suppresses the Replaces line.
+		 */
+		((Result *) subplan)->result_type = RESULT_TYPE_SCAN;
 		copy_generic_path_info(subplan, best_path->subpath);
 	}
 	else
