@@ -136,7 +136,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
-DECLARE_uint32(vector_index_tenant_key_components);
+DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
@@ -5967,11 +5967,11 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
-// Master caps the tenant key components of a new index by the key components of its table, and the
-// vectors keep their tenant in the payload.
-TEST_F(PgVectorIndexUtilTest, TenantKeyComponents) {
+// Master caps the tenant components of a new index by the hash group and range components of its
+// table, and the vectors keep their tenant in the payload.
+TEST_F(PgVectorIndexUtilTest, TenantComponents) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 2;
 
   constexpr size_t kNumRows = 5;
   auto conn = ASSERT_RESULT(MakeIndex());
@@ -5981,8 +5981,8 @@ TEST_F(PgVectorIndexUtilTest, TenantKeyComponents) {
   auto indexes = ListVectorIndexes(cluster_.get());
   ASSERT_FALSE(indexes.empty());
   for (const auto& index : indexes) {
-    // The primary key of the table is its only key component.
-    ASSERT_EQ(index->options().tenant_key_components(), 1U);
+    // The primary key of the table is its only component.
+    ASSERT_EQ(index->options().tenant_hash_group_and_range_components(), 1U);
   }
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
 }
@@ -6376,9 +6376,9 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
-// CREATE INDEX on restore takes the backend, store_payload and tenant_key_components from the
-// restore cluster's flags, but the restored chunk files were written with the source's. Restore
-// has to apply the source options.
+// CREATE INDEX on restore takes the backend, store_payload and tenant components from the restore
+// cluster's flags, but the restored chunk files were written with the source's. Restore has to
+// apply the source options.
 TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
@@ -6392,7 +6392,7 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   constexpr int kNumRows = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 1;
   {
     auto admin = ASSERT_RESULT(PgMiniTestBase::Connect());
     ASSERT_OK(admin.ExecuteFormat(
@@ -6413,19 +6413,21 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
       ASSERT_RESULT(client_->OpenTable(ASSERT_RESULT(GetTableId(kSourceDb, kIndex))));
   const auto source_options = source_index->index_info().vector_idx_options();
   ASSERT_TRUE(source_options.store_payload());
-  ASSERT_EQ(source_options.tenant_key_components(), 1U);
+  ASSERT_EQ(source_options.tenant_hash_group_and_range_components(), 1U);
   ASSERT_EQ(source_options.hnsw().backend(), HnswBackend::YB_HNSW_HNSWLIB);
 
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_key_components) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {
     ASSERT_EQ(options.store_payload(), source_options.store_payload());
-    ASSERT_EQ(options.tenant_key_components(), source_options.tenant_key_components());
+    ASSERT_EQ(
+        options.tenant_hash_group_and_range_components(),
+        source_options.tenant_hash_group_and_range_components());
     ASSERT_EQ(options.hnsw().backend(), source_options.hnsw().backend());
     ASSERT_EQ(options.id(), source_options.id());
   };

@@ -245,8 +245,8 @@ TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
 
 TEST(DocVectorIdTest, TenantPrefixSize) {
   const auto tenant = KeyEntryValue::Create("tenant");
-  auto tenant_prefix_size = [](const KeyBytes& key, size_t num_key_components) {
-    return CHECK_RESULT(DocVectorTenantPrefixSize(key.AsSlice(), num_key_components));
+  auto tenant_prefix_size = [](const KeyBytes& key, size_t num_components) {
+    return CHECK_RESULT(DocVectorTenantPrefixSize(key.AsSlice(), num_components));
   };
   // Drops the group end that closes the range group, as pggate does for a ybctid prefix.
   auto query_prefix = [](const DocKey& doc_key) {
@@ -287,6 +287,14 @@ TEST(DocVectorIdTest, TenantPrefixSize) {
   ASSERT_EQ(tenant_prefix_size(range_ybctid, 1), range_prefix.size());
   ASSERT_EQ(tenant_prefix_size(range_prefix, 1), range_prefix.size());
   ASSERT_EQ(tenant_prefix_size(range_prefix, 2), std::nullopt);
+
+  // The colocation id of a range key is not a hash group.
+  constexpr ColocationId kColocationId = 0x4000;
+  DocKey colocated_key({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)});
+  colocated_key.set_colocation_id(kColocationId);
+  DocKey colocated_prefix({KeyEntryValue::Int32(7)});
+  colocated_prefix.set_colocation_id(kColocationId);
+  ASSERT_EQ(tenant_prefix_size(colocated_key.Encode(), 1), query_prefix(colocated_prefix).size());
 }
 
 } // namespace yb::dockv

@@ -645,7 +645,7 @@ ColumnId Schema::first_column_id() {
   return kFirstColumnId;
 }
 
-size_t Schema::NumKeyComponents(const SchemaPB& schema) {
+size_t Schema::NumHashGroupAndRangeComponents(const SchemaPB& schema) {
   size_t num_hash_key_columns = 0;
   size_t num_range_key_columns = 0;
   for (const auto& column : schema.columns()) {
@@ -655,7 +655,8 @@ size_t Schema::NumKeyComponents(const SchemaPB& schema) {
       ++num_range_key_columns;
     }
   }
-  return KeyComponentIndex(num_hash_key_columns + num_range_key_columns, num_hash_key_columns);
+  return HashGroupAndRangeComponentIndex(
+      num_hash_key_columns + num_range_key_columns, num_hash_key_columns);
 }
 
 Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
