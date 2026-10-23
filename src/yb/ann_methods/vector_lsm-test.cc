@@ -1498,6 +1498,69 @@ TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {
   }
 }
 
+// A compaction that fails after saving some of its output chunks must delete their files: they
+// never reach the manifest, so nothing else would.
+TEST_P(VectorLSMTest, FailedCompactionDeletesSavedOutputFiles) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kNumInputChunks = 2;
+  constexpr size_t kMemStoreLimitMb = 1;
+  const std::string kChunkFilePrefix = "vectorindex_";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  // Each input chunk holds one output chunk's worth of vectors, so the merge saves several.
+  const auto vectors_per_input_chunk = lsm.EstimateNumVectorsForBytes(kMemStoreLimitMb * 1_MB);
+  ASSERT_GT(vectors_per_input_chunk, 0);
+  for (size_t i = 0; i != kNumInputChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, vectors_per_input_chunk));
+  }
+
+  // Fail the merge right before it saves its second output chunk. This stands for a non-shutdown
+  // failure such as an IO error. ShutdownInProgress is used only because any other status is a
+  // DFATAL in CompactionTask::Run, and the LSM here is not shutting down.
+  std::atomic<size_t> num_saves{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::Merger::Merge:BeforeSave", [&num_saves](void* arg) {
+    if (++num_saves == 2) {
+      *static_cast<Status*>(arg) = STATUS(ShutdownInProgress, "Injected merge failure");
+    }
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  auto status = lsm.Compact(/* wait = */ true);
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+  ASSERT_EQ(num_saves.load(), 2);
+  // The failure affects only the output: the input chunks are still there.
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumInputChunks);
+
+  // Releasing the failed compaction's chunks removes their files.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    std::unordered_set<uint64_t> manifest_serial_nos;
+    for (const auto& chunk : VERIFY_RESULT(
+             LoadAliveManifestChunks(lsm.TEST_GetEnv(), lsm.StorageDir()))) {
+      manifest_serial_nos.insert(chunk.serial_no());
+    }
+    for (const auto& file : VERIFY_RESULT(GetFiles(lsm))) {
+      if (file.starts_with(kChunkFilePrefix) &&
+          !manifest_serial_nos.contains(std::stoull(file.substr(kChunkFilePrefix.size())))) {
+        LOG(INFO) << "Chunk file not in the manifest: " << file;
+        return false;
+      }
+    }
+    return true;
+  }, 10s * kTimeMultiplier, "Only manifest chunks left on disk"));
+}
+
 // Same chunk-splitting behavior as ChunkedCompactionRespectsMemStoreLimit, but the byte budget
 // comes from a percentage of the vector index block cache capacity.
 TEST_P(VectorLSMTest, ChunkedCompactionRespectsBlockCachePercentage) {
