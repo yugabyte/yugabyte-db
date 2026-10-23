@@ -1886,6 +1886,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status ListSlotEntries(
       const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
       rpc::RpcContext* context) {
+    // cdc_state is only created with the first CDC/xCluster stream, so don't wait for it here.
+    if (!VERIFY_RESULT(cdc_state_table_->TableExists())) {
+      return Status::OK();
+    }
+
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
         cdc::CDCStateTableEntrySelector()
