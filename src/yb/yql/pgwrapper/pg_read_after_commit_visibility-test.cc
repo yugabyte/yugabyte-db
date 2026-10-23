@@ -482,8 +482,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeDuplicateKeyInsert) {
   }, "INSERT INTO kv(k) VALUES (1)");
 }
 
-// Ensure that relaxed mode applies to neither fast-path nor distributed txn
-// writes.
+// Ensure that, by default, relaxed mode applies to neither fast-path nor
+// distributed txn writes.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathUpdate) {
   RunTest(Config{
     .is_dml = true,
@@ -507,8 +507,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathDelete) {
   ASSERT_EQ(rows.size(), 0);
 }
 
-// Hidden DMLs are still DMLs. So, relaxed mode does not apply to them,
-// and duplicate key violations are not ignored.
+// Hidden DMLs are still DMLs. So, by default, relaxed mode does not apply to
+// them, and duplicate key violations are not ignored.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeHiddenDmlDuplicateKey) {
   RunTest(
     Config{

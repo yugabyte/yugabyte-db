@@ -311,6 +311,7 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
+static bool yb_check_bool_no_txn(bool *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
@@ -2625,8 +2626,8 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_restrict_relaxed_visibility_to_read_only_txns", PGC_USERSET,
-			CUSTOM_OPTIONS,
+		{"yb_relaxed_read_after_commit_visibility_read_only_txns",
+			PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Apply yb_read_after_commit_visibility = relaxed only to "
 						 "READ ONLY transactions."),
 			gettext_noop("When off, relaxed mode applies to every statement, "
@@ -2634,9 +2635,9 @@ static struct config_bool ConfigureNamesBool[] =
 						 "rows that another node committed just before."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_restrict_relaxed_visibility_to_read_only_txns,
+		&yb_relaxed_read_after_commit_visibility_read_only_txns,
 		true,
-		NULL, NULL, NULL
+		yb_check_bool_no_txn, NULL, NULL
 	},
 
 	{
@@ -8413,7 +8414,7 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " relaxed. READ ONLY transactions do not see read restart"
 						 " errors, but may miss rows that another node committed"
 						 " up to one clock skew before the read. See also"
-						 " yb_restrict_relaxed_visibility_to_read_only_txns."
+						 " yb_relaxed_read_after_commit_visibility_read_only_txns."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -17892,6 +17893,12 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
+}
+
+static bool
+yb_check_bool_no_txn(bool *newval, void **extra, GucSource source)
+{
+	return yb_check_no_txn(NULL, extra, source);
 }
 
 static const char *

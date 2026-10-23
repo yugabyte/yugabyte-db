@@ -702,7 +702,8 @@ bool PgTxnManager::ShouldClamp() const {
   }
   return yb_read_after_commit_visibility ==
              YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
-         (read_only_ || !yb_restrict_relaxed_visibility_to_read_only_txns);
+         (read_only_ ||
+          !yb_relaxed_read_after_commit_visibility_read_only_txns);
 }
 
 Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(

@@ -880,8 +880,14 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
             "SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
       }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"),
+      "Cannot be set within a txn block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_OK(conn.Execute(
-      "SET yb_restrict_relaxed_visibility_to_read_only_txns = off"));
+      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
 
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
