@@ -12,6 +12,8 @@
 #      VALIDATE succeeds
 # 6.   Delete of a parent row referenced by the FK constraint being
 #      validated fails at once, without waiting for VALIDATE
+# 7.   With batched nested loop off, VALIDATE checks row by row and locks
+#      each referenced parent row, so the same delete waits for VALIDATE
 #
 # VALIDATE of an FK constraint with concurrent valid DMLs is covered by
 # alter-table-1.
@@ -45,6 +47,7 @@ session s1
 step s1_begin			{ BEGIN; }
 step s1_begin_rc		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
 step s1_begin_rr		{ BEGIN ISOLATION LEVEL REPEATABLE READ; }
+step s1_no_bnl			{ SET LOCAL yb_enable_batchednl = off; }
 step s1_validate		{ ALTER TABLE child VALIDATE CONSTRAINT child_fk; }
 step s1_validate_orphan	{ ALTER TABLE orphan VALIDATE CONSTRAINT orphan_fk; }
 step s1_validate_noaction
@@ -92,3 +95,7 @@ permutation s2_begin s2_ins_noaction s1_begin s1_validate_noaction
 # 6.
 permutation s2_begin s1_begin s1_validate_noaction s2_del_referenced
     s1_commit s2_commit s1_check
+
+# 7.
+permutation s2_begin s1_begin s1_no_bnl s1_validate_noaction
+    s2_del_referenced s1_commit s2_commit s1_check

@@ -139,6 +139,7 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "nodes/bitmapset.h"
+#include "optimizer/cost.h"
 #include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "statistics/statistics.h"
@@ -13041,15 +13042,16 @@ validateForeignKeyConstraint(char *conname,
 	 * indicates we must proceed with the fire-the-trigger method.
 	 *
 	 * YB: this query takes no row locks, so it is safe only if table locks
-	 * stop every write it cannot see that skips the FK triggers. ADD
-	 * FOREIGN KEY: its ShareRowExclusiveLock blocks writers during the
+	 * ensure that all new writes invisible to the scan apply FK triggers.
+	 * ADD FOREIGN KEY: its ShareRowExclusiveLock blocks writers during the
 	 * check. VALIDATE: the same lock, taken by ADD ... NOT VALID, waited
 	 * out every writer that started before the triggers existed. YB table
-	 * locks block writers only in the concurrent DDL mode. Without them, a
-	 * DELETE could remove the parent of a child row that the check passed
-	 * and leave that child orphaned.
+	 * locks block writers only if object locking is enabled, i.e. the
+	 * non-legacy DDL mode. Without them, a DELETE could remove the parent
+	 * of a child row that the check passed and leave that child orphaned.
 	 */
-	if ((!IsYBRelation(rel) || !YBCIsLegacyModeForCatalogOps()) &&
+	if ((!IsYBRelation(rel) ||
+		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
 		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
