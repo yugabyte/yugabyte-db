@@ -1551,11 +1551,9 @@ Status Tablet::RequestRegularDbFlushForIntentsFlush() {
   // would wait for the regular write thread, whose leader may be parked in a write stall that ends
   // only after the regular flush listeners take the intents DB mutex. So the flush is posted, and
   // this job keeps deferring the intents memtable until the regular data is flushed.
-  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-  if (!scoped_operation.ok()) {
-    // Storages are shutting down and flushes are disabled.
-    return Status::OK();
-  }
+  //
+  // No scoped operation: the filter does not run once the intents DB's StartShutdown has been
+  // called, which precedes the pause of operations and the reset of the token.
   // One posted flush at a time: the intents flush job retries this filter every
   // rocksdb_nothing_in_memtable_to_flush_sleep_ms while its memtable is deferred.
   if (regular_db_flush_for_intents_posted_.exchange(true)) {
