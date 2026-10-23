@@ -193,6 +193,14 @@ Use **Expert** when **Guided** cannot represent the topology you need. For examp
 
 If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YugabyteDB Anywhere warns you and **resets** the placement configuration.
 
+{{< note title="Replication factor 9" >}}
+
+In v2026.1.3.0 and later, you can allow replication factor 9 by setting the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option.
+
+When that option is true, **Expert** mode and the Classic UI include replication factor 9, and you can raise an existing primary cluster to replication factor 9. The replication factor limits on this page apply while the option is false.
+
+{{< /note >}}
+
 #### Preferred region
 
 You can rank availability zones so [tablet leaders](../../../architecture/key-concepts/#tablet-leader) sit close to your application. Give every zone in a region the same rank to prefer that region. See [Preferred region](../../../architecture/key-concepts/#preferred-region) and [leader affinity](../../../architecture/key-concepts/#leader-affinity).
