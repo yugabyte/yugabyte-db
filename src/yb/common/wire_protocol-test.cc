@@ -46,7 +46,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(node_to_node_encryption_required_on_broadcast);
-DECLARE_string(node_to_node_encryption_scope);
+DECLARE_string(use_node_to_node_plaintext);
 DECLARE_string(use_private_ip);
 
 namespace yb {
@@ -206,20 +206,20 @@ CloudInfoPB CloudInfo(const std::string& cloud, const std::string& region,
 
 } // namespace
 
-TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
+TEST_F(WireProtocolTest, UseNodeToNodePlaintext) {
   const auto here = CloudInfo("cloud1", "region1", "zone1");
   const auto same_zone = CloudInfo("cloud1", "region1", "zone1");
   const auto same_region = CloudInfo("cloud1", "region1", "zone2");
   const auto same_cloud = CloudInfo("cloud1", "region2", "zone3");
   const auto elsewhere = CloudInfo("cloud2", "region3", "zone4");
 
-  // Each scope names the boundary within which a destination is exempt. Anything at or
-  // beyond that boundary is outside the scope.
+  // Each value names the boundary within which a destination is reached in plaintext. Anything
+  // beyond that boundary is encrypted.
   struct {
-    const char* scope;
+    const char* value;
     bool zone, region, cloud, other;
   } cases[] = {
-    // scope     same_zone  same_region  same_cloud  elsewhere
+    // value     same_zone  same_region  same_cloud  elsewhere
     {"zone",     false,     true,        true,       true},
     {"region",   false,     false,       true,       true},
     {"cloud",    false,     false,       false,      true},
@@ -228,8 +228,8 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
 
   for (const auto& c : cases) {
     google::FlagSaver flag_saver;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = c.scope;
-    SCOPED_TRACE(c.scope);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = c.value;
+    SCOPED_TRACE(c.value);
     EXPECT_EQ(c.zone, UseEncryption(UsedBroadcastAddress::kFalse, same_zone, here));
     EXPECT_EQ(c.region, UseEncryption(UsedBroadcastAddress::kFalse, same_region, here));
     EXPECT_EQ(c.cloud, UseEncryption(UsedBroadcastAddress::kFalse, same_cloud, here));
@@ -237,38 +237,38 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionScope) {
   }
 }
 
-TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeUnknownPlacement) {
+TEST_F(WireProtocolTest, UseNodeToNodePlaintextUnknownPlacement) {
   const auto here = CloudInfo("cloud1", "region1", "zone1");
 
-  // A destination whose placement was never reported matches no node's, so it is outside
-  // every scope and its connection stays encrypted.
-  for (const auto* scope : {"zone", "region", "cloud", "never"}) {
+  // A destination whose placement was never reported matches no node's, so no value reaches it
+  // in plaintext and its connection stays encrypted.
+  for (const auto* value : {"zone", "region", "cloud", "never"}) {
     google::FlagSaver flag_saver;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = scope;
-    SCOPED_TRACE(scope);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = value;
+    SCOPED_TRACE(value);
     EXPECT_TRUE(UseEncryption(UsedBroadcastAddress::kFalse, CloudInfoPB(), here));
   }
 }
 
-TEST_F(WireProtocolTest, NodeToNodeEncryptionScopeInvalid) {
+TEST_F(WireProtocolTest, UseNodeToNodePlaintextInvalid) {
   google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "continent";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "continent";
 
-  ASSERT_NOK(GetNodeToNodeEncryptionScope());
+  ASSERT_NOK(GetNodeToNodePlaintextMode());
 
-  // A value that names no scope leaves every destination outside it, so a typo encrypts
-  // rather than exposing traffic.
+  // A value that names no boundary uses plaintext nowhere, so a typo encrypts rather than
+  // exposing traffic.
   const auto here = CloudInfo("cloud1", "region1", "zone1");
   EXPECT_TRUE(UseEncryption(UsedBroadcastAddress::kFalse, here, here));
 }
 
-// use_private_ip names a boundary of its own, and a destination inside the encryption scope
-// can still sit outside that one, which is what sends the connection out on a broadcast
-// address. The exemption is withheld there so narrowing the scope cannot leave a connection
-// unencrypted once it has left the destination's private address.
+// use_private_ip names a boundary of its own, and a destination use_node_to_node_plaintext would
+// reach in plaintext can still sit outside that one, which is what sends the connection out on a
+// broadcast address. Plaintext is withheld there so widening use_node_to_node_plaintext cannot
+// leave a connection unencrypted once it has left the destination's private address.
 TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcast) {
   google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "zone";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "zone";
   const auto here = CloudInfo("cloud1", "region1", "zone1");
 
   for (auto used : {UsedBroadcastAddress::kTrue}) {
@@ -280,17 +280,18 @@ TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcast) {
     EXPECT_FALSE(UseEncryption(used, here, here));
   }
 
-  // A connection that stayed on the private address is the scope's to decide either way.
+  // A connection that stayed on the private address is use_node_to_node_plaintext's to decide
+  // either way.
   for (auto required : {true, false}) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = required;
     EXPECT_FALSE(UseEncryption(UsedBroadcastAddress::kFalse, here, here));
   }
 }
 
-// The gate withholds an exemption; it cannot grant one.
+// The gate withholds plaintext; it cannot grant it.
 TEST_F(WireProtocolTest, NodeToNodeEncryptionRequiredOnBroadcastCannotExempt) {
   google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_scope) = "never";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_plaintext) = "never";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_on_broadcast) = false;
 
   const auto here = CloudInfo("cloud1", "region1", "zone1");
@@ -359,7 +360,8 @@ TEST_F(WireProtocolTest, UsesBroadcastAddressRecoversProvenance) {
   EXPECT_TRUE(UsesBroadcastAddress(registration, host_port("broadcast.example.com")));
 
   // An address the node reports in neither list cannot be shown to be private, so it is
-  // treated as broadcast rather than exempted.
+  // treated as broadcast, which node_to_node_encryption_required_on_broadcast holds to
+  // encryption.
   EXPECT_TRUE(UsesBroadcastAddress(registration, host_port("alias.example.com")));
 
   // The port is part of the identity: the same host on another port is a different address.
@@ -378,12 +380,12 @@ TEST_F(WireProtocolTest, UsesBroadcastAddressRecoversProvenance) {
   // Selecting that address has to reach the same answer. Deciding from the list it was read
   // from instead would hold a connection that never left the node's private address to
   // node_to_node_encryption_required_on_broadcast, so a Kubernetes deployment would ignore
-  // node_to_node_encryption_scope entirely.
+  // use_node_to_node_plaintext entirely.
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "never";
   EXPECT_FALSE(SelectHostPort(both, both.cloud_info()).used_broadcast);
 
-  // An empty registration reports no private address, so nothing is exempt.
+  // An empty registration reports no private address, so nothing counts as private.
   EXPECT_TRUE(UsesBroadcastAddress(ServerRegistrationPB(), host_port("anything.example.com")));
 }
 

@@ -106,8 +106,8 @@ YB_DEFINE_ENUM(UsePrivateIpMode, (cloud)(region)(zone)(never));
 // Returns mode for selecting between private and public IP.
 Result<UsePrivateIpMode> GetPrivateIpMode();
 
-// Returns the scope outside which node to node connections are encrypted.
-Result<UsePrivateIpMode> GetNodeToNodeEncryptionScope();
+// Returns when node to node connections use plaintext.
+Result<UsePrivateIpMode> GetNodeToNodePlaintextMode();
 
 // Pick node's public host and port
 // registration - node registration information
@@ -216,10 +216,10 @@ const HostPortPB& DesiredHostPort(
 const HostPortPB& DesiredHostPort(
     const ServerRegistrationPB& registration, const CloudInfoPB& connect_from);
 
-// Whether a connection to connect_to should be encrypted: node_to_node_encryption_scope
-// exempts destinations within a placement boundary, and
-// node_to_node_encryption_required_on_broadcast withholds that exemption from any connection
-// that did not stay on the destination's private address.
+// Whether a connection to connect_to should be encrypted: use_node_to_node_plaintext names a
+// placement boundary within which destinations are reached in plaintext, and
+// node_to_node_encryption_required_on_broadcast withholds that from any connection that did
+// not stay on the destination's private address.
 //
 // used_broadcast comes from the same SelectHostPort call that chose the address, so the
 // transport always describes the connection actually being made.

@@ -125,8 +125,9 @@ TEST_F(SecureTest, ClampEncryptionFollowsTheMessenger) {
   {
     auto messenger = ASSERT_RESULT(BuildSecureMessenger());
 
-    // This messenger holds the secure stream, so the answer is the caller's own: a scope that
-    // exempts a peer still reaches it unencrypted, and one that does not still encrypts.
+    // This messenger holds the secure stream, so the answer is the caller's own: a peer
+    // use_node_to_node_plaintext reaches in plaintext stays unencrypted, and any other is
+    // encrypted.
     EXPECT_TRUE(messenger->ClampEncryption(Encrypted::kTrue));
     EXPECT_FALSE(messenger->ClampEncryption(Encrypted::kFalse));
     EXPECT_EQ(

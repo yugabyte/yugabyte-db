@@ -2027,8 +2027,8 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   const PeerId& source_uuid = req.source_peer_uuid();
   const auto& kLogPrefix = TabletLogPrefix(tablet_id);
   const auto& private_addr = req.source_private_addr()[0].host();
-  // The address falls back like every other, but the encryption scope does not reach here: an
-  // xCluster native bootstrap draws its snapshot from a separate universe, whose placement
+  // The address falls back like every other, but use_node_to_node_plaintext does not reach here:
+  // an xCluster native bootstrap draws its snapshot from a separate universe, whose placement
   // names mean nothing against this one's, so the transport stays the messenger's default.
   const auto source_addr = HostPortFromPB(SelectRemoteSourceAddress(
       req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info()).host_port);

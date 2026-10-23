@@ -50,7 +50,7 @@ DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
     "accepts, not to what it sends: the first bytes of each incoming connection are "
     "examined for a TLS handshake, and one without is accepted when this is set and "
     "rejected when it is not. What a connection this server opens carries is decided "
-    "by node_to_node_encryption_scope.");
+    "by use_node_to_node_plaintext.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
 DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");

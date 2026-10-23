@@ -464,7 +464,7 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
   scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client(nullptr);
   if (tablet_leader_conn_info != nullptr) {
     // The anchor reaches the tablet leader of this cluster, so it is held to
-    // node_to_node_encryption_scope like the bootstrap it anchors.
+    // use_node_to_node_plaintext like the bootstrap it anchors.
     auto selected = SelectHostPort(
         tablet_leader_conn_info->broadcast_addresses(),
         tablet_leader_conn_info->private_rpc_addresses(), tablet_leader_conn_info->cloud_info(),
