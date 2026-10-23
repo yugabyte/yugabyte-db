@@ -1573,21 +1573,22 @@ Status Tablet::RequestRegularDbFlushForIntentsFlush() {
   if (regular_db_flush_for_intents_posted_.exchange(true)) {
     return Status::OK();
   }
-  auto status =
-      cleanup_intent_files_token_->SubmitFunc([this] { FlushRegularDbForIntentsFlush(); });
-  if (!status.ok()) {
-    regular_db_flush_for_intents_posted_ = false;
-    // A failed filter makes the flush job flush the intents memtable ahead of the regular data it
-    // depends on, so the failure to post, which only happens while the pool shuts down, is not
-    // returned. A post the closing pool accepts and drops has the same outcome.
-    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.IsShutdownInProgress())
-        << "Failed to post the regular DB flush: " << status;
-  }
+  // The closure owns the reset of the flag, so it happens whether the task ran, the submit failed
+  // or the closing pool dropped the task.
+  auto clear_posted = [this] { regular_db_flush_for_intents_posted_ = false; };
+  auto status = cleanup_intent_files_token_->SubmitFunc(
+      [this, se = std::make_shared<ScopeExit<decltype(clear_posted)>>(std::move(clear_posted))] {
+        FlushRegularDbForIntentsFlush();
+      });
+  // A failed filter makes the flush job flush the intents memtable ahead of the regular data it
+  // depends on, so the failure to post, which only happens while the pool shuts down, is not
+  // returned.
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+      << "Failed to post the regular DB flush: " << status;
   return Status::OK();
 }
 
 void Tablet::FlushRegularDbForIntentsFlush() {
-  auto clear_posted = ScopeExit([this] { regular_db_flush_for_intents_posted_ = false; });
   // Not the counter that blocks RocksDB shutdown start: this flush can wait in the write thread
   // behind a writer parked in a write stall, and at shutdown only StartShutdownStorages, which
   // runs after that counter drains, wakes the writer.
