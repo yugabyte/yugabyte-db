@@ -35,6 +35,9 @@ CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_block
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
+-- max_num_replicas cannot be combined with a wildcard placement block.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2,"max_num_replicas":2},{"cloud":"cloud1","region":"r1","zone":"*","min_num_replicas":1}]}');
+
 -- Positive cases
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
@@ -53,6 +56,7 @@ CREATE TABLESPACE wildcard_region_ts WITH (replica_placement='{"num_replicas":3,
 
 -- wildcard zone
 CREATE TABLESPACE wildcard_zone_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3}]}');
+ALTER TABLESPACE wildcard_zone_ts SET (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3,"max_num_replicas":3}]}');
 
 -- describe command
 \db
