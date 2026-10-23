@@ -42,4 +42,22 @@ class FailedAddresses {
   std::unordered_map<HostPort, MonoTime, HostPortHash> last_failed_ GUARDED_BY(mutex_);
 };
 
+// When a dialer last picked one of a node's addresses, and whether the pick fell back past an
+// earlier one that had failed. A dialer moves off an address only when that address fails, so
+// one that fell back would stay on the fallback for as long as the fallback works; once
+// retry_failed_address_ms has passed since such a pick, the address it fell back past is worth
+// trying again and the dialer picks again. A pick that fell back past nothing is never due, so
+// a dialer on its preferred address pays nothing for this.
+//
+// The dialer holds the lock that guards its address.
+class AddressPick {
+ public:
+  void Record(bool fell_back);
+  bool Due() const;
+
+ private:
+  CoarseTimePoint picked_at_;
+  bool fell_back_ = false;
+};
+
 }  // namespace yb

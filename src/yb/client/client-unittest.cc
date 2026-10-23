@@ -313,6 +313,28 @@ TEST(ClientUnitTest, RemoteTabletServerFailsOnlyTheAddressDialed) {
 
 // With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
 // proxy on the preferred address and reports the server unreachable.
+// A proxy moves off an address only when that address fails, so one that fell back goes back to
+// the preferred address once the window that kept it off has passed, the next time an RPC
+// obtains it.
+TEST(ClientUnitTest, RemoteTabletServerReturnsToPreferredAddress) {
+  auto messenger = rpc::CreateAutoShutdownMessengerHolder(
+      ASSERT_RESULT(rpc::MessengerBuilder("test").Build()));
+  auto client = ASSERT_RESULT(ClientWithoutLeader(messenger.get()));
+  internal::RemoteTabletServer ts(MakeTSInfo({"private1", "private2"}, {}, "zone1"));
+
+  const auto preferred = ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote();
+  ASSERT_TRUE(ts.FailToNextAddress(preferred, *client));
+  const auto fallback = ASSERT_RESULT(ts.ObtainProxy(*client));
+  ASSERT_NE(preferred, fallback->proxy().remote());
+
+  // Within the window the proxy stays where it fell back to.
+  ASSERT_EQ(fallback, ASSERT_RESULT(ts.ObtainProxy(*client)));
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_EQ(preferred, ASSERT_RESULT(ts.ObtainProxy(*client))->proxy().remote());
+}
+
 TEST(ClientUnitTest, RemoteTabletServerFallbackDisabled) {
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;

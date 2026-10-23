@@ -443,10 +443,13 @@ Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() co
                          permanent_uuid(), registration.ShortDebugString());
   }
 
+  auto host_port = HostPortFromPB(selected.host_port);
+  const bool fell_back = host_port != HostPortFromPB(candidates.front().host_port);
   return SelectedEndpoint {
-    .host_port = HostPortFromPB(selected.host_port),
+    .host_port = std::move(host_port),
     .encrypted = rpc::Encrypted(UseEncryption(
         selected.used_broadcast, registration.cloud_info(), local_master_cloud_info_)),
+    .fell_back = fell_back,
   };
 }
 

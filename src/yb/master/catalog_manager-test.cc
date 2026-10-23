@@ -183,9 +183,9 @@ TEST(TestTSDescriptor, TestAddressFallbackDisabled) {
 }
 
 // A task reports a failure of any of its proxies against the address all of them are on, so a
-// server's proxies stay on the address selected for the first of them until a failure or a
-// re-registration selects again. Here the record that moved them expires before the second is
-// built, when selecting afresh would pick the preferred address for it alone.
+// server's proxies share one address and move together: off an address that failed, and back to
+// it once the window that kept it off has passed. A proxy built in between joins the others
+// rather than selecting afresh.
 TEST(TestTSDescriptor, TestProxiesShareOneAddress) {
   auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test").Build());
   auto shutdown = ScopeExit([&messenger] { messenger->Shutdown(); });
@@ -206,17 +206,18 @@ TEST(TestTSDescriptor, TestProxiesShareOneAddress) {
   ASSERT_TRUE(ts->FailToNextAddress(preferred));
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
   ASSERT_OK(ts->GetProxy(&ts_proxy));
-  ASSERT_NE(preferred, ts_proxy->proxy().remote());
+  const auto fallback = ts_proxy->proxy().remote();
+  ASSERT_NE(preferred, fallback);
+
+  std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  ASSERT_OK(ts->GetProxy(&consensus_proxy));
+  ASSERT_EQ(fallback, consensus_proxy->proxy().remote());
 
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
-  ASSERT_EQ(preferred, ASSERT_RESULT(ts->GetHostPort()));
-
-  std::shared_ptr<tserver::TabletServerServiceProxy> same_ts_proxy;
-  std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
-  ASSERT_OK(ts->GetProxies(&same_ts_proxy, &consensus_proxy));
-  ASSERT_EQ(ts_proxy, same_ts_proxy);
-  ASSERT_EQ(ts_proxy->proxy().remote(), consensus_proxy->proxy().remote());
+  ASSERT_OK(ts->GetProxies(&ts_proxy, &consensus_proxy));
+  ASSERT_EQ(preferred, ts_proxy->proxy().remote());
+  ASSERT_EQ(preferred, consensus_proxy->proxy().remote());
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {

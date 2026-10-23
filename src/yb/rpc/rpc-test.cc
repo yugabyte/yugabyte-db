@@ -1364,23 +1364,26 @@ TEST_F(TestRpcSecure, TLS) {
   RunSecureTest(&TestSimple);
 }
 
+// Run against a server whose certificate names 127.0.0.2 while it is dialed at 127.0.0.1.
+void TestEndpointMismatchIsConnectFailed(CalculatorServiceProxy* proxy) {
+  RpcController controller;
+  controller.set_timeout(5s * kTimeMultiplier);
+  rpc_test::AddRequestPB req;
+  req.set_x(10);
+  req.set_y(20);
+  rpc_test::AddResponsePB resp;
+  auto s = proxy->Add(req, &resp, &controller);
+  ASSERT_TRUE(s.IsNetworkError()) << s;
+  ASSERT_EQ(NetworkError(s).value(), NetworkErrorCode::kConnectFailed) << s;
+}
+
 // A server whose certificate does not name the address dialed fails the handshake, so the call
 // never reaches it, and the failure is about that address.
 TEST_F(TestRpcSecure, EndpointMismatchIsConnectFailed) {
   secure_context_ = std::make_unique<SecureContext>(
       RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
   ASSERT_OK(secure_context_->TEST_GenerateKeys(2048, "127.0.0.2", MatchingCertKeyPair::kTrue));
-  RunSecureTest([](CalculatorServiceProxy* proxy) {
-    RpcController controller;
-    controller.set_timeout(5s * kTimeMultiplier);
-    rpc_test::AddRequestPB req;
-    req.set_x(10);
-    req.set_y(20);
-    rpc_test::AddResponsePB resp;
-    auto s = proxy->Add(req, &resp, &controller);
-    ASSERT_TRUE(s.IsNetworkError()) << s;
-    ASSERT_EQ(NetworkError(s).value(), NetworkErrorCode::kConnectFailed) << s;
-  });
+  RunSecureTest(&TestEndpointMismatchIsConnectFailed);
 }
 
 TEST_F(TestRpcSecure, Timeout) {
@@ -1646,6 +1649,16 @@ TEST_F(TestRpcSecureCompression, Compression) {
   RunSecureCompressionTest([this](CalculatorServiceProxy* proxy) {
     TestCompression(proxy, metric_entity());
   });
+}
+
+// Compression sits above TLS, and its stream reports connected only once TLS has established,
+// which a certificate the address dialed does not match prevents, so the call still carries
+// kConnectFailed.
+TEST_F(TestRpcSecureCompression, EndpointMismatchIsConnectFailed) {
+  secure_context_ = std::make_unique<SecureContext>(
+      RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+  ASSERT_OK(secure_context_->TEST_GenerateKeys(2048, "127.0.0.2", MatchingCertKeyPair::kTrue));
+  RunSecureCompressionTest(&TestEndpointMismatchIsConnectFailed);
 }
 
 } // namespace rpc

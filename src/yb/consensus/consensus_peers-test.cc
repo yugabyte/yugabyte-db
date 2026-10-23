@@ -498,6 +498,34 @@ TEST_F(ConsensusPeersTest, TestAddressFallbackSharedByFactory) {
 
 // With retry_failed_address_ms at 0 no address stays failed, so a connect failure leaves the
 // proxy on the preferred address and reports the peer unreachable.
+// A proxy moves off an address only when that address fails, so one that fell back goes back on
+// its own once the window that kept the address it left off has passed, rather than staying on
+// the fallback for as long as the fallback works.
+TEST_F(ConsensusPeersTest, TestAddressFallbackReturns) {
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  RpcPeerProxy proxy(
+      &proxy_cache, PeerWithSeveralAddresses(), CloudInfoPB(),
+      std::make_shared<FailedAddresses>());
+
+  const auto preferred = proxy.CurrentHostPort();
+  ASSERT_TRUE(proxy.FailToNextAddress(preferred));
+  const auto fallback = proxy.CurrentHostPort();
+  ASSERT_NE(preferred, fallback);
+
+  // Within the window the proxy stays where it fell back to.
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(fallback, proxy.CurrentHostPort());
+
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
+  ASSERT_TRUE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+
+  // On the preferred address there is nothing earlier to go back to.
+  ASSERT_FALSE(proxy.ReturnToEarlierAddress());
+  ASSERT_EQ(preferred, proxy.CurrentHostPort());
+}
+
 TEST_F(ConsensusPeersTest, TestAddressFallbackDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_address_ms) = 0;
   rpc::ProxyCache proxy_cache(messenger_.get());

@@ -144,7 +144,11 @@ Peer::Peer(
       multi_raft_batcher_(std::move(multi_raft_batcher)),
       raft_pool_token_(raft_pool_token),
       consensus_(consensus),
-      messenger_(messenger) {}
+      messenger_(messenger) {
+  // The proxy starts past any address its factory's record says failed, while the batcher is
+  // keyed by the peer's preferred one, so the two can differ from the first request.
+  UpdateBatcherAddressStale();
+}
 
 void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
   update_response_ = arena->NewObject<LWConsensusResponsePB>(arena);
@@ -389,6 +393,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_leader_request_fraction);
+
+  // The proxy moves off an address only when that address fails, so one that fell back goes
+  // back here once the address it left may work again, and heartbeats follow it to the batcher.
+  if (proxy_->ReturnToEarlierAddress()) {
+    UpdateBatcherAddressStale();
+  }
 
   // Heartbeat batching allows for network layer savings by reducing CPU cycles
   // spent on computing state, context switching (sending/receiving RPC's)
@@ -644,17 +654,18 @@ void Peer::ProcessResponseError(const Status& status, const HostPort& sent_to) {
       YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
           << "Retrying on another address this peer registered after " << status;
     }
-    // The proxy only moves here, so this is where the batcher starts or stops being on the
-    // address requests go to.
-    if (multi_raft_batcher_) {
-      batcher_address_stale_.store(
-          proxy_->CurrentHostPort() != multi_raft_batcher_->hostport(),
-          std::memory_order_release);
-    }
+    UpdateBatcherAddressStale();
   }
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
       << " Already tried " << failed_attempts_ << " times. State: " << state_;
+}
+
+void Peer::UpdateBatcherAddressStale() {
+  if (multi_raft_batcher_) {
+    batcher_address_stale_.store(
+        proxy_->CurrentHostPort() != multi_raft_batcher_->hostport(), std::memory_order_release);
+  }
 }
 
 string Peer::LogPrefix() const {
@@ -714,8 +725,10 @@ RpcPeerProxy::RpcPeerProxy(
 }
 
 void RpcPeerProxy::BuildProxyUnlocked() {
-  auto selected = FirstUsable(CandidateHostPorts(peer_pb_, from_), *failed_addresses_);
+  auto candidates = CandidateHostPorts(peer_pb_, from_);
+  auto selected = FirstUsable(candidates, *failed_addresses_);
   hostport_ = HostPortFromPB(selected.host_port);
+  pick_.Record(hostport_ != HostPortFromPB(candidates.front().host_port));
   consensus_proxy_ = std::make_shared<ConsensusServiceProxy>(
       proxy_cache_, hostport_,
       &proxy_cache_->GetContext()->ProtocolFor(
@@ -754,6 +767,22 @@ bool RpcPeerProxy::FailToNextAddress(const HostPort& failed) {
   // Comparing with the failed one also covers retry_failed_address_ms=0, under which no address
   // counts as failed and the pick is the address that just failed.
   return hostport_ != failed && !failed_addresses_->Failed(hostport_);
+}
+
+bool RpcPeerProxy::ReturnToEarlierAddress() {
+  {
+    SharedLock lock(mutex_);
+    if (!pick_.Due()) {
+      return false;
+    }
+  }
+  std::lock_guard lock(mutex_);
+  if (!pick_.Due()) {
+    return false;
+  }
+  const auto previous = hostport_;
+  BuildProxyUnlocked();
+  return hostport_ != previous;
 }
 
 void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,

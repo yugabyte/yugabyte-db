@@ -217,9 +217,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   }
 
   // Return RPC proxies to several services. Every proxy of this server is built against the
-  // address selected for the first of them, until a failure or a re-registration selects again,
-  // and these are returned under one lock, so a failure on any of them names the address the
-  // others are on as well.
+  // address selected for the first of them, until a failure, a re-registration, or the end of the
+  // window that kept an earlier address off selects again, and these are returned under one
+  // lock, so a failure on any of them names the address the others are on as well.
   template <class... TProxies>
   Status GetProxies(std::shared_ptr<TProxies>*... proxies) EXCLUDES(mutex_);
 
@@ -413,6 +413,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct SelectedEndpoint {
     HostPort host_port;
     rpc::Encrypted encrypted;
+    // Whether an earlier address was passed over because it had failed.
+    bool fell_back;
   };
 
   // Uses DNS to resolve registered hosts to a single endpoint.
@@ -534,8 +536,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   ProxyTuple proxies_;
 
-  // The endpoint every cached proxy was built against.
+  // The endpoint every cached proxy was built against, and when it was selected.
   std::optional<SelectedEndpoint> proxies_endpoint_ GUARDED_BY(mutex_);
+  AddressPick proxies_pick_ GUARDED_BY(mutex_);
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_ GUARDED_BY(mutex_);
@@ -546,8 +549,14 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 template <class... TProxies>
 Status TSDescriptor::GetProxies(std::shared_ptr<TProxies>*... proxies) {
   std::lock_guard l(mutex_);
-  if (!proxies_endpoint_) {
-    proxies_endpoint_ = VERIFY_RESULT(SelectEndpointUnlocked());
+  if (!proxies_endpoint_ || proxies_pick_.Due()) {
+    auto selected = VERIFY_RESULT(SelectEndpointUnlocked());
+    if (proxies_endpoint_ && (selected.host_port != proxies_endpoint_->host_port ||
+                              selected.encrypted != proxies_endpoint_->encrypted)) {
+      ResetProxiesUnlocked();
+    }
+    proxies_endpoint_ = selected;
+    proxies_pick_.Record(selected.fell_back);
   }
   (GetOrCreateProxyUnlocked(proxies), ...);
   return Status::OK();

@@ -184,8 +184,6 @@ class RemoteTabletServer {
  private:
   std::vector<SelectedHostPort> CandidatesUnlocked(const CloudInfoPB& connect_from) const
       REQUIRES_SHARED(mutex_);
-  SelectedHostPort PickCandidateUnlocked(const CloudInfoPB& connect_from) const
-      REQUIRES_SHARED(mutex_);
   // Builds the proxy for the first address that has not failed.
   void BuildProxyUnlocked(YBClient& client) REQUIRES(mutex_);
 
@@ -197,6 +195,7 @@ class RemoteTabletServer {
   yb::CloudInfoPB cloud_info_pb_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
+  AddressPick proxy_pick_ GUARDED_BY(mutex_);
   FailedAddresses failed_addresses_ GUARDED_BY(mutex_);
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;

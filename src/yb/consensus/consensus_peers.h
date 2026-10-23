@@ -212,6 +212,9 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Signals there was an error sending the request to the peer at sent_to.
   void ProcessResponseError(const Status& status, const HostPort& sent_to);
 
+  // Sets batcher_address_stale_ from where the proxy is now.
+  void UpdateBatcherAddressStale();
+
   // Returns true if the peer is closed and the calling function should return.
   std::unique_lock<simple_spinlock> StartProcessingUnlocked();
 
@@ -355,6 +358,12 @@ class PeerProxy {
     return false;
   }
 
+  // Goes back to an earlier address the peer registered, if the proxy fell back past it and
+  // retry_failed_address_ms has passed since, and reports whether requests now go elsewhere.
+  virtual bool ReturnToEarlierAddress() {
+    return false;
+  }
+
   // The address the last UpdateAsync went to, which is the one its failure is about. Requests
   // can move to another address while it is in flight, so this is not the current address.
   virtual HostPort UpdateHostPort() const {
@@ -419,6 +428,8 @@ class RpcPeerProxy : public PeerProxy {
 
   bool FailToNextAddress(const HostPort& failed) override EXCLUDES(mutex_);
 
+  bool ReturnToEarlierAddress() override EXCLUDES(mutex_);
+
   HostPort UpdateHostPort() const override EXCLUDES(mutex_);
 
   HostPort CurrentHostPort() const override EXCLUDES(mutex_);
@@ -440,6 +451,7 @@ class RpcPeerProxy : public PeerProxy {
 
   mutable rw_spinlock mutex_;
   HostPort hostport_ GUARDED_BY(mutex_);
+  AddressPick pick_ GUARDED_BY(mutex_);
   HostPort update_hostport_ GUARDED_BY(mutex_);
   std::shared_ptr<ConsensusServiceProxy> consensus_proxy_ GUARDED_BY(mutex_);
 };

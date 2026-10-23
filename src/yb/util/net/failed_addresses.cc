@@ -41,4 +41,14 @@ void FailedAddresses::Clear() {
   last_failed_.clear();
 }
 
+void AddressPick::Record(bool fell_back) {
+  picked_at_ = CoarseMonoClock::Now();
+  fell_back_ = fell_back;
+}
+
+bool AddressPick::Due() const {
+  return fell_back_ &&
+         CoarseMonoClock::Now() - picked_at_ >= FLAGS_retry_failed_address_ms * 1ms;
+}
+
 }  // namespace yb
