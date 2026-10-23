@@ -13,9 +13,6 @@
 
 #include "yb/master/xcluster_consumer_registry_service.h"
 
-#include <algorithm>
-#include <tuple>
-
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/common/constants.h"
@@ -167,29 +164,19 @@ Status ComputeTabletMapping(
 
 Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys) {
   SCHECK(!tablet_keys.empty(), NotFound, "No key ranges provided");
-  std::vector<const KeyRange*> ranges;
-  ranges.reserve(tablet_keys.size());
-  for (const auto& [_, range] : tablet_keys) {
-    ranges.push_back(&range);
+  std::unordered_map<std::string, std::string> partitions(tablet_keys.size());
+  for (const auto& [_, partition] : tablet_keys) {
+    partitions[partition.start_key] = partition.end_key;
   }
-  std::sort(ranges.begin(), ranges.end(), [](const KeyRange* lhs, const KeyRange* rhs) {
-    return std::tie(lhs->start_key, lhs->end_key) < std::tie(rhs->start_key, rhs->end_key);
-  });
-
-  std::string expected_start;
-  for (size_t i = 0; i < ranges.size(); ++i) {
+  std::string key = "";
+  for (size_t i = 0; i < tablet_keys.size(); ++i) {
+    const auto it = partitions.find(key);
     SCHECK(
-        ranges[i]->start_key == expected_start, InvalidArgument,
-        "Key ranges do not cover the entire key space exactly once.");
-    // An empty end key is the end of the key space, so only the last range can have one.
-    SCHECK(
-        !ranges[i]->end_key.empty() || i + 1 == ranges.size(), InvalidArgument,
-        "Key ranges do not cover the entire key space exactly once.");
-    expected_start = ranges[i]->end_key;
+        it != partitions.end(), InvalidArgument, "Key ranges do not cover the entire key space.");
+    key = it->second;
   }
-  SCHECK(
-      expected_start.empty(), InvalidArgument,
-      "Key ranges do not cover the entire key space exactly once.");
+  // Check that the last key is "", then way we know we have gone through the entire key range.
+  SCHECK(key.empty(), InvalidArgument, "Key ranges do not cover the entire key space.");
 
   return Status::OK();
 }

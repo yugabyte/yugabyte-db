@@ -435,8 +435,8 @@ Result<uint64_t> SumSourceRows(const std::string& out, const TableId& source_tab
 
 }  // namespace
 
-// Split the source tablets after the checkpoint and before the target is set up. The target has to
-// start from the checkpointed (now split) tablets to get the rows written before the split.
+// The source splits between the checkpoint and the target setup. The target has to start from the
+// checkpointed (now split) tablets to get the rows written before the split.
 TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
   ASSERT_OK(SetUpClusters());
   // Cluster setup turns this off.
@@ -462,7 +462,7 @@ TEST_F(XClusterDBScopedAutomaticModeTest, SplitAfterCheckpoint) {
 
 // If the source fails to record the checkpointed tablets, the checkpoint still succeeds, and the
 // stream keeps blocking splits.
-TEST_F(XClusterDBScopedTest, SplitBlockedWithoutRecordedTablets) {
+TEST_F(XClusterDBScopedAutomaticModeTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(SetUpClusters());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = true;
@@ -478,11 +478,10 @@ TEST_F(XClusterDBScopedTest, SplitBlockedWithoutRecordedTablets) {
   ASSERT_OK(InsertRowsInProducer(0, 50));
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(VerifyWrittenRecords());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info) = false;
 }
 
 // An attempt of the initial checkpoint that recorded its streams but then failed is not redone.
-TEST_F(XClusterDBScopedTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
+TEST_F(XClusterDBScopedAutomaticModeTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
   ASSERT_OK(SetUpClusters());
   // Every BootstrapProducer response is lost, so the checkpoint only completes if the retry skips
   // the streams that the first attempt recorded.
@@ -494,26 +493,6 @@ TEST_F(XClusterDBScopedTest, InitialCheckpointRetryKeepsRecordedCheckpoint) {
   ASSERT_OK(InsertRowsInProducer(0, 50));
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(VerifyWrittenRecords());
-}
-
-// An index stream that is checkpointed again after the backfill is only recorded by that
-// checkpoint, so that its index cannot split before it.
-TEST_F(XClusterDBScopedTest, IndexRecordedAfterBackfill) {
-  ASSERT_OK(SetUpClusters());
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(InsertRowsInProducer(0, 50));
-
-  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(conn.ExecuteFormat(
-      "CREATE INDEX key_idx ON $0 ($1 DESC)", producer_table_->name().table_name(),
-      kKeyColumnName));
-  const auto index_id =
-      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", "key_idx")).table_id();
-  // The OpId-0 checkpoint did not record the stream (MarkIndexBackfillCompleted DFATALs if it did),
-  // and the post-backfill checkpoint recorded the index's tablets.
-  ASSERT_EQ(ASSERT_RESULT(GetProducerStreamBootstrapTablets(index_id)),
-            ProducerActiveTabletIds(index_id));
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on

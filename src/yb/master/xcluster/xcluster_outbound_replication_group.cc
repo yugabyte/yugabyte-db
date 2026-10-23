@@ -242,11 +242,8 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
   }
 
-  // A stream that is already recorded was checkpointed by an earlier attempt that failed
-  // afterwards, and is not checkpointed again (see SysCDCStreamEntryPB.xcluster_bootstrap_info).
-  // That attempt's answer to whether a bootstrap is required is lost, so assume it is. Looked up
-  // outside mutex_, which is not held while taking stream locks.
-  bool assume_bootstrap_required = false;
+  // Streams recorded by an earlier attempt are not checkpointed again. Looked up outside mutex_,
+  // which is not held while taking stream locks.
   std::vector<std::pair<TableId, xrepl::StreamId>> streams_to_checkpoint;
   for (const auto& [table_id, stream_id] : table_streams) {
     if (VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(stream_id)).empty()) {
@@ -255,19 +252,16 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
     LOG_WITH_PREFIX(INFO) << "Not checkpointing xCluster stream " << stream_id << " of table "
                           << table_id << " again, since an earlier attempt recorded its checkpoint";
-    assume_bootstrap_required |= check_if_bootstrap_required;
   }
 
   auto callback = [table_ids, user_cb = std::move(completion_cb),
-                   automatic_ddl_mode = automatic_ddl_mode_,
-                   assume_bootstrap_required](Result<bool> result) {
+                   automatic_ddl_mode = automatic_ddl_mode_](Result<bool> result) {
     if (!result.ok()) {
       user_cb(result.status());
       return;
     }
     // Bootstrap is always required in automatic mode.
-    user_cb(std::make_pair(
-        std::move(table_ids), automatic_ddl_mode || assume_bootstrap_required || *result));
+    user_cb(std::make_pair(std::move(table_ids), automatic_ddl_mode || *result));
   };
 
   if (!streams_to_checkpoint.empty()) {
@@ -277,10 +271,9 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     RETURN_NOT_OK(helper_functions_.checkpoint_xcluster_streams_func(
         streams_to_checkpoint, StreamCheckpointLocation::kCurrentEndOfWAL, epoch,
         check_if_bootstrap_required, std::move(callback), /*op0_tablet_ids=*/{}));
-  } else if (!table_ids.empty()) {
-    callback(false);  // Every stream of this batch was checkpointed by an earlier attempt.
   } else {
-    callback(false);  // Bootstrap not required if we don't have any tables.
+    // Nothing to checkpoint: no tables left, or an earlier attempt checkpointed all of them.
+    callback(false);
     // When MarkBootstrapTablesAsCheckpointed handles this empty table result it will mark the
     // namespace as READY.
     // So, after all tables have been checkpointed this function and
@@ -1166,9 +1159,8 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
     }
   }
 
-  // Looked up outside mutex_, which is not held while taking stream locks.
-  // A table stream that is already recorded was checkpointed by an earlier attempt and is not
-  // checkpointed again (see SysCDCStreamEntryPB.xcluster_bootstrap_info).
+  // A table stream recorded by an earlier attempt is not checkpointed again. Looked up outside
+  // mutex_, which is not held while taking stream locks.
   const auto& table_stream_id = table_streams.front().second;
   const auto table_stream_tablets =
       VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(table_stream_id));
@@ -1187,10 +1179,8 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
       // The anchor has not been checkpointed yet, so checkpoint it together with the table stream.
       table_streams.emplace_back(table_id, *anchor_stream_id);
     } else {
-      // The table stream is being replaced after the target rolled back its DDL. Start it from the
-      // anchor's tablets: the table may have split since the anchor was checkpointed, and
-      // checkpointing the current tablets would skip the parents' WAL before the split.
-      // Re-checkpointing the anchor itself would lose its original tablets in the same way.
+      // The table stream replaces one whose DDL the target rolled back. Start it from the anchor's
+      // tablets, which may have split since, and leave the anchor's checkpoint as it is.
       LOG_WITH_PREFIX(INFO) << "Checkpointing xCluster stream " << table_streams.front().second
                             << " of table " << table_id << " from the tablets of WAL_ANCHOR "
                             << "stream " << *anchor_stream_id << ": "

@@ -140,8 +140,7 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
 
-  // Last, so that a recorded checkpoint is never rolled back. Without a record the streams keep
-  // blocking tablet splits until they turn ACTIVE, which is safe.
+  // Last, so that a recorded checkpoint is never rolled back.
   WARN_NOT_OK(
       RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 

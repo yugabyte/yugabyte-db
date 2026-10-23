@@ -1126,11 +1126,8 @@ Status XClusterTableSetupTask::ProcessStreamOptions(
   table_setup_info_.stream_entry.set_xcluster_use_target_applied_filter(
       *xcluster_use_target_applied_filter);
 
-  // Also used when the stream is already ACTIVE: the stream is marked ACTIVE before the setup
-  // persists its tablet mapping, so a setup retried after a failure finds it ACTIVE.
-  if (bootstrap_tablet_ids) {
-    table_setup_info_.bootstrap_tablet_ids = std::move(*bootstrap_tablet_ids);
-  }
+  // Also used for ACTIVE streams (see CatalogManager::UpdateCDCStreams).
+  table_setup_info_.bootstrap_tablet_ids = std::move(*bootstrap_tablet_ids);
 
   PopulateTabletMapping();
 
@@ -1162,9 +1159,7 @@ void XClusterTableSetupTask::PopulateTabletMapping() {
   VLOG_WITH_PREFIX_AND_FUNC(1);
 
   if (!table_setup_info_.bootstrap_tablet_ids.empty()) {
-    // These are the tablets the stream was checkpointed on. Some may have been split since, and
-    // are then hidden: their pollers replicate up to the SPLIT_OP and then hand off to the
-    // children.
+    // Hidden split parents among them hand off to their children at the SPLIT_OP.
     LOG_WITH_PREFIX(INFO) << "Using the bootstrap tablets of stream "
                           << table_setup_info_.stream_id << ": "
                           << AsString(table_setup_info_.bootstrap_tablet_ids);
@@ -1223,9 +1218,6 @@ void XClusterTableSetupTask::BootstrapTabletLocationsCallback(
 
 Status XClusterTableSetupTask::ProcessBootstrapTabletLocations(
     master::GetTabletLocationsResponsePB& resp) {
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status()).CloneAndPrepend("Error from source universe");
-  }
   // Recorded split parents are retained until the stream has polled their children.
   if (resp.errors_size() > 0) {
     return StatusFromPB(resp.errors(0).status())

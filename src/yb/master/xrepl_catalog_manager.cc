@@ -4361,8 +4361,8 @@ Status CatalogManager::UpdateCDCStreams(
     pb.CopyFrom(entry);
     pb.set_xcluster_use_target_applied_filter(preserve_use_target_applied_filter);
     pb.set_xcluster_is_wal_anchor(preserve_is_wal_anchor);
-    // Kept after the stream turns ACTIVE: the target marks the stream ACTIVE before it persists its
-    // tablet mapping, so a setup that fails after that must still find the record when retried.
+    // The target marks the stream ACTIVE before it persists its tablet mapping, so a setup that is
+    // retried after that still needs the record.
     if (bootstrap_info) {
       *pb.mutable_xcluster_bootstrap_info() = std::move(*bootstrap_info);
     }

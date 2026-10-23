@@ -171,10 +171,9 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& source_table_ids);
 
-  // Records, on each INITIATED stream, the tablets whose end-of-WAL cdc_state checkpoints the
-  // tserver's BootstrapProducer just wrote for it. Streams that are not INITIATED are skipped. A
-  // stream without a record keeps blocking tablet splits. Does nothing unless
-  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is set.
+  // Records the tablets of the tserver's end-of-WAL checkpoints (BootstrapProducer) on INITIATED
+  // streams, unless enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is
+  // off.
   Status RecordXClusterStreamBootstrapInfo(
       const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
 
@@ -250,32 +249,32 @@ class XClusterSourceManager {
       bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback,
       const std::vector<TabletId>& op0_tablet_ids = {});
 
-  // Checkpoints the streams to OpId 0, on tablet_ids if given (the tablets of an earlier checkpoint
-  // of the same table, which may since have split; all table_streams must then belong to one
-  // table), else on the table's current tablets. The checkpointed tablets are recorded on
-  // INITIATED streams while
-  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is set, except for
-  // streams that MarkIndexBackfillCompleted checkpoints again. Failing to record only logs a
-  // warning, unless tablet_ids were given, since the target must then start from them.
+  // Checkpoints the streams to OpId 0 and records the tablets on INITIATED streams, except while
+  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is off or for an
+  // index that MarkIndexBackfillCompleted checkpoints again. tablet_ids, if given, are the tablets
+  // of an earlier checkpoint of their table (all table_streams must then belong to one table);
+  // otherwise the table's current tablets are used. With tablet_ids the tablets are always
+  // recorded, and failing to record them fails the checkpoint, since the target must start from
+  // them.
   Status CheckpointStreamsToOp0(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
       const LeaderEpoch& epoch, StdStatusCallback user_callback,
       const std::vector<TabletId>& tablet_ids = {});
 
-  // Tablets recorded by RecordXClusterStreamBootstrapInfo, or empty if there are none.
+  // The stream's recorded tablets, or empty if there are none.
   Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
 
-  // Writes the records without validating the tablets. Skips streams that are not INITIATED.
+  // Skips streams that are not INITIATED, and empty tablet lists.
   Status WriteXClusterStreamBootstrapInfo(
       const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
 
-  // The end-of-WAL checkpoints of tablet_ids can be recorded: they are tablets of the table, and
-  // none of them has split.
+  // Whether the end-of-WAL checkpoints of tablet_ids can be recorded: they must be the table's
+  // current tablets.
   Status ValidateEndOfWalBootstrapTablets(
       const TableId& table_id, const std::vector<TabletId>& tablet_ids) const;
 
-  // Whether MarkIndexBackfillCompleted checkpoints the stream again, to the end of its WAL, once
-  // its index is backfilled.
+  // Whether MarkIndexBackfillCompleted checkpoints the stream again, to the end of its WAL, if its
+  // index is backfilled.
   bool IsCheckpointedAgainAfterBackfill(const TableInfo& table, const CDCStreamInfo& stream) const;
 
   Status SetWALRetentionOnTables(const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
@@ -299,8 +298,7 @@ class XClusterSourceManager {
       const std::vector<CDCStreamInfoPtr>& outbound_streams,
       std::vector<cdc::CDCStateTableKey>& entries_to_delete);
 
-  // A bootstrapping (INITIATED) stream blocks splits of its table unless it has recorded its
-  // bootstrap tablets, which the target then starts from, and splits during bootstrap are enabled.
+  // An INITIATED stream blocks splits of its table unless it has recorded its bootstrap tablets.
   bool DoesTableHaveBootstrappingStreamThatBlocksSplit(const TableId& table_id) const
       EXCLUDES(tables_to_stream_map_mutex_);
 
