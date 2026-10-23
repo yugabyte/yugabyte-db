@@ -2444,6 +2444,8 @@ bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
 
+bool		yb_xcluster_invalid_index_ddl_check = true;
+
 bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;

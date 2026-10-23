@@ -2995,6 +2995,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_xcluster_invalid_index_ddl_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("On an xCluster automatic mode source, reject DDLs "
+						 "whose outcome depends on an invalid index."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_xcluster_invalid_index_ddl_check,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_all_drops", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, all drops will fail"),
 			NULL,
