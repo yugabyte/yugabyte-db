@@ -97,6 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
+DECLARE_bool(xcluster_skip_schema_validation_on_setup);
 DECLARE_bool(xcluster_enable_target_applied_filter);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
@@ -8042,6 +8043,188 @@ TEST_F(XClusterDDLReplicationStuckCreateIndexPauseTest, PauseTerminatesStuckCrea
       /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
   ASSERT_OK(terminated_log.WaitFor(kTimeout));
   ASSERT_OK(ddl_aborted_log.WaitFor(kTimeout));
+}
+
+class XClusterDDLReplicationRenameIndexedColumnTest
+    : public XClusterDDLReplicationTest, public ::testing::WithParamInterface<bool> {
+ protected:
+  // Colocated objects created separately on each side need matching colocation ids.
+  std::string WithColocationId(int colocation_id) const {
+    return GetParam() ? Format(" WITH (colocation_id = $0)", colocation_id) : "";
+  }
+
+  // Creates the same table and indexes on either side, with the given names for the indexed
+  // columns.
+  Status CreateIndexedTable(
+      pgwrapper::PGConn& conn, const std::string& a, const std::string& b, const std::string& v) {
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE t (key int PRIMARY KEY, $0 int, $1 int, $2 vector(3))$3", a, b, v,
+        WithColocationId(100001)));
+    RETURN_NOT_OK(
+        conn.ExecuteFormat("CREATE INDEX t_a_idx ON t ($0)$1", a, WithColocationId(100002)));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX t_b_idx ON t ($0) INCLUDE ($1)$2", b, a, WithColocationId(100003)));
+    return conn.ExecuteFormat(
+        "CREATE INDEX t_v_idx ON t USING ybhnsw ($0 vector_l2_ops)$1", v,
+        WithColocationId(100004));
+  }
+
+  // Counts rows of t matching `predicate` on the target by reading only `index`, so the result
+  // reflects that index's replicated rows.
+  Result<int64_t> CountOnTargetThroughIndex(
+      const std::string& index, const std::string& predicate) {
+    const auto query =
+        Format("/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1", index, predicate);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    ColocationMode, XClusterDDLReplicationRenameIndexedColumnTest, ::testing::Values(false, true));
+
+// RENAME COLUMN on an indexed table does not rename the index's columns, but a restore recreates
+// the index with the table's current column names. Setup must accept index column names that
+// differ only because of that. The target objects are created directly with the new names, the
+// way a restore would create them.
+TEST_P(XClusterDDLReplicationRenameIndexedColumnTest, RenameIndexedColumnBeforeSetup) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  const bool colocated = GetParam();
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = colocated;
+  ASSERT_OK(SetUpClusters(params));
+
+  ASSERT_OK(CreateIndexedTable(*producer_conn_, "a", "b", "v"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN b TO b2"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN v TO v2"));
+  ASSERT_OK(CreateIndexedTable(*consumer_conn_, "a2", "b2", "v2"));
+
+  const auto kIndexColumnNamesQuery =
+      "SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute "
+      "WHERE attrelid = 't_b_idx'::regclass";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNamesQuery)), "b,a");
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNamesQuery)), "b2,a2");
+
+  if (!colocated) {
+    // p2 is created after the rename, but its index is cloned from p_a_idx and copies its column
+    // name, so every source partition index has the old name. The target creates the partition
+    // indexes on the current column name with the source's index names, as pg_dump does.
+    ASSERT_OK(producer_conn_->Execute(
+        "CREATE TABLE p (key int PRIMARY KEY, a int) PARTITION BY RANGE (key)"));
+    ASSERT_OK(producer_conn_->Execute(
+        "CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (100)"));
+    ASSERT_OK(producer_conn_->Execute("CREATE INDEX p_a_idx ON p (a)"));
+    ASSERT_OK(producer_conn_->Execute("ALTER TABLE p RENAME COLUMN a TO a2"));
+    ASSERT_OK(producer_conn_->Execute(
+        "CREATE TABLE p2 PARTITION OF p FOR VALUES FROM (100) TO (200)"));
+
+    ASSERT_OK(consumer_conn_->Execute(
+        "CREATE TABLE p (key int PRIMARY KEY, a2 int) PARTITION BY RANGE (key)"));
+    ASSERT_OK(consumer_conn_->Execute(
+        "CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (0) TO (100)"));
+    ASSERT_OK(consumer_conn_->Execute(
+        "CREATE TABLE p2 PARTITION OF p FOR VALUES FROM (100) TO (200)"));
+    ASSERT_OK(consumer_conn_->Execute("CREATE INDEX p_a_idx ON ONLY p (a2)"));
+    ASSERT_OK(consumer_conn_->Execute("CREATE INDEX p1_a_idx ON p1 (a2)"));
+    ASSERT_OK(consumer_conn_->Execute("ALTER INDEX p_a_idx ATTACH PARTITION p1_a_idx"));
+    ASSERT_OK(consumer_conn_->Execute("CREATE INDEX p2_a_idx ON p2 (a2)"));
+    ASSERT_OK(consumer_conn_->Execute("ALTER INDEX p_a_idx ATTACH PARTITION p2_a_idx"));
+  }
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO t SELECT i, i, i, format('[%s,1,1]', i)::vector "
+      "FROM generate_series(1, 50) AS i"));
+  if (!colocated) {
+    ASSERT_OK(producer_conn_->Execute("INSERT INTO p SELECT i, i FROM generate_series(0, 199) i"));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_EQ(ASSERT_RESULT(CountOnTargetThroughIndex("t_a_idx", "a2 >= 10")), 41);
+  ASSERT_EQ(ASSERT_RESULT(CountOnTargetThroughIndex("t_b_idx", "b2 >= 10")), 41);
+  const auto kVectorQuery = "SELECT key FROM t ORDER BY v2 <-> '[3.1,1,1]' LIMIT 3";
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(Format("EXPLAIN $0", kVectorQuery))),
+      "t_v_idx");
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString(kVectorQuery)),
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(kVectorQuery)));
+
+  if (!colocated) {
+    // The partition indexes are p's only indexes, so any index scan reads them.
+    ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+    const auto kPartitionQuery = "SELECT count(*) FROM p WHERE a2 >= 50";
+    ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kPartitionQuery)));
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(kPartitionQuery)), 150);
+  }
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO t SELECT i, i, i, format('[%s,1,1]', i)::vector "
+      "FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(CountOnTargetThroughIndex("t_a_idx2", "a2 >= 10")), 51);
+}
+
+// Index column names are not compared, but base table column names still are.
+TEST_F(XClusterDDLReplicationTest, SetupFailsOnTableColumnNameMismatch) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, b int)"));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  auto status = CreateReplicationFromCheckpoint();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Source and target schemas don't match");
+}
+
+TEST_F(XClusterDDLReplicationTest, SetupFailsOnIndexColumnTypeMismatch) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE TABLE t (key int PRIMARY KEY, a int, b text)");
+  }));
+  // Both index columns get the generated name "expr", so only the types differ.
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_idx ON t ((a + 1))"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE INDEX t_idx ON t ((b || 'x'))"));
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_idx'::regclass";
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)),
+      ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  auto status = CreateReplicationFromCheckpoint();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Source and target schemas don't match (index column names not compared)");
+}
+
+TEST_F(XClusterDDLReplicationTest, SkipSchemaValidationOnSetup) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, b int)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_schema_validation_on_setup) = true;
+
+  StringWaiterLogSink mismatch_log(
+      "Continuing because xcluster_skip_schema_validation_on_setup is set");
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(mismatch_log.WaitFor(kTimeout));
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT sum(b) FROM t")), 55);
 }
 
 }  // namespace yb
