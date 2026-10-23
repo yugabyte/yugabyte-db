@@ -49,7 +49,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -87,6 +86,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
@@ -137,8 +137,6 @@ public class SessionController extends AbstractPlatformController {
   @Inject private SessionHandler sessionHandler;
 
   @Inject private UserService userService;
-
-  @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject private LoginHandler loginHandler;
 
@@ -352,17 +350,7 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(authToken, null, null, cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        Audit.ActionType.Login,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.Login);
     return withData(sessionInfo)
         .withCookies(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
@@ -396,17 +384,7 @@ public class SessionController extends AbstractPlatformController {
         new SessionInfo(
             null, user.upsertApiToken(), user.getApiTokenVersion(), cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        ActionType.ApiLogin,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.ApiLogin);
     return withData(sessionInfo);
   }
 
@@ -457,17 +435,7 @@ public class SessionController extends AbstractPlatformController {
     Customer cust = Customer.get(user.getCustomerUUID());
 
     RequestContext.update(IS_AUDITED, val -> val.set(true));
-    Audit.create(
-        user,
-        request.path(),
-        request.method(),
-        Audit.TargetType.User,
-        user.getUuid().toString(),
-        Audit.ActionType.Login,
-        null,
-        null,
-        null,
-        request.remoteAddress());
+    loginHandler.auditLogin(user, request, Audit.ActionType.Login);
 
     try {
       // Persist the JWT auth token in case of successful login.
@@ -597,17 +565,7 @@ public class SessionController extends AbstractPlatformController {
           new SessionInfo(
               null, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
       RequestContext.update(IS_AUDITED, val -> val.set(true));
-      Audit.create(
-          user,
-          request.path(),
-          request.method(),
-          Audit.TargetType.User,
-          user.getUuid().toString(),
-          Audit.ActionType.Login,
-          null,
-          null,
-          null,
-          request.remoteAddress());
+      loginHandler.auditLogin(user, request, Audit.ActionType.Login);
       return withData(sessionInfo)
           .withCookies(
               Http.Cookie.builder(API_TOKEN, apiToken)
@@ -699,25 +657,29 @@ public class SessionController extends AbstractPlatformController {
   public Result register(Boolean generateApiToken, Http.Request request) {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
-    boolean multiTenant = config.getBoolean("yb.multiTenant");
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    int customerCount = customerRegistrationHandler.countCustomersForRegistration();
-    if (!multiTenant && customerCount >= 1) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
-    }
-    if (useOAuth && customerCount >= 1) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
-    }
-    if (customerCount == 0) {
-      return registerCustomer(data, true, generateApiToken, request);
-    } else {
-      if (tokenAuthenticator.superAdminAuthentication(request)) {
-        return registerCustomer(data, false, generateApiToken, request);
-      } else {
-        throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
+    // /register isn't wrapped in TokenAuthenticator, which is what clears RequestContext's user
+    // after other requests. Clear it here, or the user set below (or by checkAllowed) would stay on
+    // the worker thread and be attributed to later requests.
+    try {
+      int customerCount = customerRegistrationHandler.countCustomersForRegistration();
+      Optional<CustomerRegistrationHandler.Refusal> refusal =
+          customerRegistrationHandler.checkAllowed(request, customerCount);
+      if (refusal.isPresent()) {
+        switch (refusal.get()) {
+          case SINGLE_TENANT:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
+          case SSO_ENABLED:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
+          default:
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Only Super Admins can register tenant.");
+        }
       }
+      return registerCustomer(data, customerCount == 0, generateApiToken, request);
+    } finally {
+      RequestContext.clean(Set.of(TokenAuthenticator.USER));
     }
   }
 
@@ -751,10 +713,11 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(
             authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
-    // When there is no authenticated user in context; we just pretend that the user
-    // created himself for auditing purpose.
-    RequestContext.putIfAbsent(
-        TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    if (isSuper) {
+      // The first registration has no authenticated user to audit; attribute it to the new user.
+      // A later one is attributed to the SuperAdmin, set by checkAllowed.
+      RequestContext.put(TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
+    }
     auditService()
         .createAuditEntryWithReqBody(
             request,
