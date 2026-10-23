@@ -52,7 +52,6 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "checkpoint. enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets "
     "allows these splits safely.");
 
-// kExternal: an older target would ignore the recorded tablets and lose the split parents' data.
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets,
     kExternal, false, true,
     "When set, the source records the tablets each bootstrapping xCluster stream is checkpointed "
@@ -775,7 +774,7 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
        }));
 
   std::vector<cdc::CDCStateTableEntry> entries;
-  XClusterStreamTablets stream_tablets;
+  XClusterStreamCheckpointedTablets stream_tablets;
   for (const auto& [stream_id, stripped_table_id, table, stream] : streams) {
     // Earlier tablets may be hidden split parents, so look them up among all tablets.
     TabletsById table_tablets;
@@ -830,12 +829,12 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
 }
 
 Status XClusterSourceManager::RecordXClusterStreamBootstrapInfo(
-    const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch) {
+    const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch) {
   if (!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets) {
     return Status::OK();
   }
 
-  XClusterStreamTablets to_record;
+  XClusterStreamCheckpointedTablets to_record;
   for (const auto& [stream_id, tablet_ids] : stream_tablets) {
     auto stream_result = catalog_manager_.GetXReplStreamInfo(stream_id);
     if (!stream_result.ok() && stream_result.status().IsNotFound()) {
@@ -883,9 +882,9 @@ Status XClusterSourceManager::ValidateEndOfWalBootstrapTablets(
 }
 
 Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
-    const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch) {
+    const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch) {
   // Like CatalogManager::UpdateCDCStreams, look up all the streams before taking any stream lock,
-  // and lock them in StreamId order (XClusterStreamTablets is ordered) to avoid deadlocks.
+  // and lock them in StreamId order (stream_tablets is ordered) to avoid deadlocks.
   std::vector<std::pair<CDCStreamInfoPtr, const std::vector<TabletId>*>> streams;
   for (const auto& [stream_id, tablet_ids] : stream_tablets) {
     auto stream_result = catalog_manager_.GetXReplStreamInfo(stream_id);

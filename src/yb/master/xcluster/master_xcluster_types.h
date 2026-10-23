@@ -70,7 +70,7 @@ using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, b
 
 // Stream -> the source tablets its checkpoint covers. Ordered so that stream locks can be taken in
 // a consistent order.
-using XClusterStreamTablets = std::map<xrepl::StreamId, std::vector<TabletId>>;
+using XClusterStreamCheckpointedTablets = std::map<xrepl::StreamId, std::vector<TabletId>>;
 
 class XClusterCreateStreamsContext {
  public:

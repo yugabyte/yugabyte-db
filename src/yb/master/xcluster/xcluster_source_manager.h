@@ -175,7 +175,7 @@ class XClusterSourceManager {
   // streams, unless enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is
   // off.
   Status RecordXClusterStreamBootstrapInfo(
-      const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
+      const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch);
 
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
       NamespaceId namespace_filter) const;
@@ -266,7 +266,7 @@ class XClusterSourceManager {
 
   // Skips streams that are not INITIATED, and empty tablet lists.
   Status WriteXClusterStreamBootstrapInfo(
-      const XClusterStreamTablets& stream_tablets, const LeaderEpoch& epoch);
+      const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch);
 
   // Whether the end-of-WAL checkpoints of tablet_ids can be recorded: they must be the table's
   // current tablets.

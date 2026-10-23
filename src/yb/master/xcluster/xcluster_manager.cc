@@ -790,7 +790,7 @@ Status XClusterManager::RecordXClusterStreamBootstrapInfo(
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
 
-  XClusterStreamTablets stream_tablets;
+  XClusterStreamCheckpointedTablets stream_tablets;
   for (const auto& stream : req->streams()) {
     auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
     stream_tablets[stream_id].assign(
