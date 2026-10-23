@@ -2642,6 +2642,8 @@ TEST_F(DistTraceRpcTest, TestExecuteSpanCoversPortalStart) {
 
   // A fresh backend has cold catalog caches, so the lookups happen inside this query.
   auto fresh_conn = ASSERT_RESULT(Connect(true /* simple_query_protocol */));
+  // The plan-id hash is only computed when plan tracking is on; pg19 defaults it to none.
+  ASSERT_OK(fresh_conn.Execute("SET yb_pg_stat_plans_track = 'all'"));
   auto tp = GenerateTraceparent();
   ASSERT_OK(fresh_conn.FetchFormat(
       "SELECT c_first, c_last, c_balance FROM customer "
