@@ -23,9 +23,11 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -44,15 +46,38 @@ public class CloudQueryHelper extends DevopsBase {
 
   private Map<Common.CloudType, JsonNode> cachedHostInfos = new ConcurrentHashMap<>();
 
+  @Inject HostCloudDetector hostCloudDetector;
+
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
   }
 
+  /**
+   * Returns the host's metadata from the cloud's metadata service, or, as ybops does, a JSON string
+   * if YBA doesn't run on that cloud or its metadata service is unreachable.
+   */
   public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
-    return cachedHostInfos.computeIfAbsent(
-        cloudType,
-        ct -> currentHostInfo(ct, ct == Common.CloudType.aws ? AWS_METADATA_TYPES : null));
+    JsonNode cached = cachedHostInfos.get(cloudType);
+    if (cached != null) {
+      return cached;
+    }
+    if (!hostCloudDetector.getHostCloud().equals(Optional.of(cloudType))) {
+      // Running ybops would only wait out the metadata service timeouts to fail the same way.
+      return Json.toJson(
+          String.format(
+              "Unable to auto-discover %s provider information",
+              cloudType.name().toUpperCase()));
+    }
+    JsonNode hostInfo =
+        currentHostInfo(
+            cloudType, cloudType == Common.CloudType.aws ? AWS_METADATA_TYPES : null);
+    // ybops reports failures as a string or an error object; cache only successes, so that a
+    // transient failure isn't kept until restart.
+    if (hostInfo.isObject() && !hostInfo.has("error")) {
+      cachedHostInfos.put(cloudType, hostInfo);
+    }
+    return hostInfo;
   }
 
   private JsonNode currentHostInfo(
