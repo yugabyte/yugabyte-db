@@ -764,8 +764,9 @@ class ControlScript(object):
             sys.exit(1)
 
         if self.script.daemon_status.in_daemon:
-            # This process is the daemon that daemonize() exec()ed.  Its command line has been
-            # parsed in the launching directory, so it can leave that directory now.
+            # This process is the daemon that daemonize() exec()ed.  The paths that validation
+            # makes absolute have been resolved in the launcher's directory, so the daemon can
+            # leave that directory now.
             os.chdir(YUGABYTE_DIR)
             Output.log("Daemon process begins execution.")
         else:
@@ -4985,8 +4986,9 @@ class ControlScript(object):
     #
     # The grandchild exec()s this command again rather than carrying on as a forked copy of the
     # launcher, because system libraries need not work in a process that has forked without
-    # exec().  The daemon parses the same command line in the same directory, so relative paths
-    # resolve as they did here, and leaves the directory in start().
+    # exec().  The daemon validates the same command line in the launcher's directory, so the
+    # paths that validation makes absolute resolve as they did here; the daemon leaves the
+    # directory in start().
     def daemonize(self):
         def remove_handlers():
             if PY_VERSION < 3:
@@ -5017,10 +5019,12 @@ class ControlScript(object):
                     "Timed out trying to start {} daemon.".format(SCRIPT_NAME), logging.ERROR)
                 self.stop()
             elif status == DaemonStatusPipe.EXITED:
+                # The daemon has exited, so a live pid in the pidfile belongs to another start on
+                # this base_dir, whose servers stop() would kill.
                 Output.print_and_log(
                     "{} daemon exited before reporting its status.".format(SCRIPT_NAME),
                     logging.ERROR)
-                self.stop()
+                sys.exit(1)
             sys.exit()
         os.setsid()
         os.umask(0)
