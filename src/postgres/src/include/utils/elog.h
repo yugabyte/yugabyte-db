@@ -143,9 +143,6 @@ struct Node;
  * optlevel -O0.
  *----------
  */
-/* YB_TODO_PG19MERGE (amartsinchyk)
- * The macros for multi-thread needs review and modifications to match PG19.
- */
 #ifdef HAVE_PG_INTEGER_CONSTANT_P
 #define ereport_domain(elevel, domain, ...)	\
 	do { \
