@@ -2533,6 +2533,10 @@ bool PgApiImpl::IsParallelWorker() const {
   return is_parallel_worker_;
 }
 
+bool PgApiImpl::LeaderIsLegacyModeForCatalogOps() const {
+  return leader_is_legacy_mode_for_catalog_ops_;
+}
+
 Status PgApiImpl::PrefetchRegisteredSysTables() {
   SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
   return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
@@ -2578,6 +2582,8 @@ void PgApiImpl::DumpSessionState(YbcPgSessionState* session_data) {
 void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
   DCHECK_EQ(GetSessionID(), session_data.session_id);
   pg_txn_manager_->RestoreSessionState(session_data);
+  leader_is_legacy_mode_for_catalog_ops_ =
+      session_data.is_legacy_mode_for_catalog_ops;
 }
 
 //--------------------------------------------------------------------------------------------------
