@@ -1,8 +1,13 @@
 --
--- Test BNL plan correctness
+-- Batched nested loop joins that must be built and must run correctly
 --
-
-SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+-- The prelude forces the batched join the pre-hint way: every other join
+-- method off, yb_prefer_bnl on; the tests at the end of the file switch to
+-- the cost model and the YbBatchedNL hints.  The tables shared with
+-- yb.orig.join_batching_negative come from yb.orig.join_batching_setup; a
+-- test whose data carries a key type, a physical layout or a property of
+-- its own creates a table of its own, and no table is dropped.
+--
 
 -- Force BNL
 SET enable_hashjoin = off;
@@ -14,349 +19,11 @@ SET enable_nestloop = off;
 
 SET yb_bnl_batch_size = 3;
 
---------------------------------------------------------
--- Try some queries from yb.port.join with BNL forced --
---------------------------------------------------------
-
-CREATE TABLE J1_TBL (
-  i integer,
-  j integer,
-  t text
-);
-
-CREATE TABLE J2_TBL (
-  i integer,
-  k integer
-);
-
-
-INSERT INTO J1_TBL VALUES (1, 4, 'one');
-INSERT INTO J1_TBL VALUES (2, 3, 'two');
-INSERT INTO J1_TBL VALUES (3, 2, 'three');
-INSERT INTO J1_TBL VALUES (4, 1, 'four');
-INSERT INTO J1_TBL VALUES (5, 0, 'five');
-INSERT INTO J1_TBL VALUES (6, 6, 'six');
-INSERT INTO J1_TBL VALUES (7, 7, 'seven');
-INSERT INTO J1_TBL VALUES (8, 8, 'eight');
-INSERT INTO J1_TBL VALUES (0, NULL, 'zero');
-INSERT INTO J1_TBL VALUES (NULL, NULL, 'null');
-INSERT INTO J1_TBL VALUES (NULL, 0, 'zero');
-
-INSERT INTO J2_TBL VALUES (1, -1);
-INSERT INTO J2_TBL VALUES (2, 2);
-INSERT INTO J2_TBL VALUES (3, -3);
-INSERT INTO J2_TBL VALUES (2, 4);
-INSERT INTO J2_TBL VALUES (5, -5);
-INSERT INTO J2_TBL VALUES (5, -5);
-INSERT INTO J2_TBL VALUES (0, NULL);
-INSERT INTO J2_TBL VALUES (NULL, NULL);
-INSERT INTO J2_TBL VALUES (NULL, 0);
-
---
--- CORRELATION NAMES
--- Make sure that table/column aliases are supported
--- before diving into more complex join syntax.
---
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL AS tx order by 1, 2, 3, 4;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL tx  order by 1, 2, 3, 4;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL AS t1 (a, b, c)  order by 1, 2, 3, 4;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c)  order by 1, 2, 3, 4;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)  order by 1, 2, 3, 4, 5, 6;
-
-SELECT '' AS "xxx", t1.a, t2.e
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
-  WHERE t1.a = t2.d  order by 1, 2, 3;
-
-
---
---
--- Inner joins (equi-joins)
---
---
-
---
--- Inner joins (equi-joins) with USING clause
--- The USING syntax changes the shape of the resulting table
--- by including a column in the USING clause only once in the result.
---
-
--- Inner equi-join on specified column
-SELECT '' AS "xxx", *
-  FROM J1_TBL INNER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
-
--- Same as above, slightly different syntax
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
-  ORDER BY a, d;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
-  ORDER BY b, t1.a;
-
-
---
--- NATURAL JOIN
--- Inner equi-join on all columns with the same name
---
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL NATURAL JOIN J2_TBL order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) order by 1, 2, 3, 4, 5;
-
--- mismatch number of columns
--- currently, Postgres will fill in with underlying names
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) order by 1, 2, 3, 4, 5;
-
-
---
--- Inner joins (equi-joins)
---
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) order by 1, 2, 3, 4, 5, 6;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
-
-
---
--- Non-equi-joins
---
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
-
-
---
--- Outer joins
--- Note that OUTER is a noise word
---
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL FULL JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) order by 1, 2, 3, 4, 5;
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) order by 1, 2, 3, 4, 5;
-
---
--- semijoin selectivity for <>
---
--- explain (costs off)
--- select * from int4_tbl i4, tenk1 a
--- where exists(select * from tenk1 b
---              where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
---       and i4.f1 = a.tenthous;
-
-
---
--- More complicated constructs
---
-
---
--- Multiway full join
---
-
-CREATE TABLE t1 (name TEXT, n INTEGER);
-CREATE TABLE t2 (name TEXT, n INTEGER);
-CREATE TABLE t3 (name TEXT, n INTEGER);
-
-INSERT INTO t1 VALUES ( 'bb', 11 );
-INSERT INTO t2 VALUES ( 'bb', 12 );
-INSERT INTO t2 VALUES ( 'cc', 22 );
-INSERT INTO t2 VALUES ( 'ee', 42 );
-INSERT INTO t3 VALUES ( 'bb', 13 );
-INSERT INTO t3 VALUES ( 'cc', 23 );
-INSERT INTO t3 VALUES ( 'dd', 33 );
-
-SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) order by 1, 2, 3, 4;
-
---
--- Test interactions of join syntax and subqueries
---
-
--- Basic cases (we expect planner to pull up the subquery here)
-SELECT * FROM
-(SELECT * FROM t2) as s2
-INNER JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
-
-SELECT * FROM
-(SELECT * FROM t2) as s2
-LEFT JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
-
-SELECT * FROM
-(SELECT * FROM t2) as s2
-FULL JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
-
--- Cases with non-nullable expressions in subquery results;
--- make sure these go to null as expected
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
-
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL LEFT JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
-
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4;
-
-SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
-NATURAL INNER JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
-
-SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
-NATURAL FULL JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
-
-SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
-NATURAL FULL JOIN
-  (SELECT * FROM
-    (SELECT name, n as s2_n FROM t2) as s2
-    NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2 order by 1, 2, 3, 4;
-
-SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
-NATURAL FULL JOIN
-  (SELECT * FROM
-    (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-    NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2 order by 1, 2, 3, 4, 5;
-
-
--- Test for propagation of nullability constraints into sub-joins
-
-create temp table x (x1 int, x2 int);
-insert into x values (1,11);
-insert into x values (2,22);
-insert into x values (3,null);
-insert into x values (4,44);
-insert into x values (5,null);
-
-create temp table y (y1 int, y2 int);
-insert into y values (1,111);
-insert into y values (2,222);
-insert into y values (3,333);
-insert into y values (4,null);
-
-select * from x order by 1, 2;
-select * from y order by 1, 2;
-
-select * from x left join y on (x1 = y1 and x2 is not null) order by 1, 2, 3, 4;
-select * from x left join y on (x1 = y1 and y2 is not null) order by 1, 2, 3, 4;
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) order by 1, 2, 3, 4, 5, 6;
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and x2 is not null) order by 1, 2, 3, 4, 5, 6;
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and y2 is not null) order by 1, 2, 3, 4, 5, 6;
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and xx2 is not null) order by 1, 2, 3, 4, 5, 6;
--- these should NOT give the same answers as above
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (x2 is not null) order by 1;
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (y2 is not null) order by 1;
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (xx2 is not null) order by 1;
-
--------------------------------
--- Original tests start here --
--------------------------------
-
-CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
-INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
-CREATE INDEX p1_b_idx ON p1 (b ASC);
-ANALYZE p1;
-
-CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
-INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
-ANALYZE p2;
-
-CREATE TABLE p3 (a int, b int, c varchar, primary key(a,b));
-INSERT INTO p3 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 5 = 0;
-ANALYZE p3;
-
-CREATE TABLE p4 (a int, b int, c varchar, primary key(a,b));
-INSERT INTO p4 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 7 = 0;
-ANALYZE p4;
-
-CREATE TABLE p5 (a int, b int, c varchar, primary key(a asc,b asc));
-INSERT INTO p5 SELECT i / 10, i % 10, to_char(i, 'FM0000') FROM generate_series(0, 599) i;
-CREATE INDEX p5_hash ON p5((a,b) hash);
-CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
-ANALYZE p5;
-
-
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-
-EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
 
 -- Batching on compound clauses
 /*+ Leading((p2 p1)) */ EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
@@ -364,14 +31,6 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a
 
 explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-
--- Batching should still be disabled if there is a filter
--- clause on a batched relation.
-/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-
-/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
-
-/*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
 
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 /*+IndexScan(p5 p5_hash)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
@@ -382,8 +41,6 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
 /*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
 
 /*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b AND p1.a = p2.a;
-
-/*+ set(enable_seqscan true) Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
 CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
 
@@ -407,10 +64,6 @@ EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SEL
 
 /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
 
-DROP TABLE t10;
-DROP TABLE t11;
-DROP TABLE t12;
-
 CREATE TABLE strtable(a varchar(26), b varchar(23), primary key(a, b));
 CREATE TABLE strtable2(a varchar(26), b varchar(23), primary key(a, b));
 INSERT INTO strtable VALUES ('123', 'abc'), ('1234', 'abcd'), ('123', 'pqr');
@@ -422,78 +75,63 @@ SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
 EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
 SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
 
-DROP TABLE strtable;
-DROP TABLE strtable2;
+create table dp_key (a double precision, b double precision, primary key (a, b));
+insert into dp_key values (12.34, 99.99), (12.345, 99.99);
+create table dec_key (a decimal(6, 2), b decimal(6, 2), primary key (a, b));
+insert into dec_key values (12.34, 99.99), (12.345, 99.99);
+explain (costs off) select * from dp_key, dec_key where dp_key.a = dec_key.a and dp_key.b = dec_key.b;
+select * from dp_key, dec_key where dp_key.a = dec_key.a and dp_key.b = dec_key.b;
 
-create table q1 (a double precision, b double precision, primary key (a, b));
-insert into q1 values (12.34, 99.99), (12.345, 99.99);
-create table q2 (a decimal(6, 2), b decimal(6, 2), primary key (a, b));
-insert into q2 values (12.34, 99.99), (12.345, 99.99);
-explain (costs off) select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
-select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
+create table char_key (a char(6), b char(6), primary key (a, b));
+insert into char_key values ('abc', 'def'), ('xyz', 'uvw');
+create table vchar_key (a varchar(6), b varchar(6), primary key (a, b));
+insert into vchar_key values ('abc  ', 'def  '), ('xyz', 'uvw');
+explain (costs off) select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
+select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
 
-create table q3 (a char(6), b char(6), primary key (a, b));
-insert into q3 values ('abc', 'def'), ('xyz', 'uvw');
-create table q4 (a varchar(6), b varchar(6), primary key (a, b));
-insert into q4 values ('abc  ', 'def  '), ('xyz', 'uvw');
-explain (costs off) select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
-select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+explain (costs off) select * from dp_key, dec_key where dp_key.a::decimal = dec_key.a and dp_key.b::decimal = dec_key.b;
+select * from dp_key, dec_key where dp_key.a::decimal = dec_key.a and dp_key.b::decimal = dec_key.b;
+explain (costs off) select * from dp_key, dec_key where dp_key.a = dec_key.a::decimal and dp_key.b = dec_key.b::decimal;
+select * from dp_key, dec_key where dp_key.a = dec_key.a::decimal and dp_key.b = dec_key.b::decimal;
+explain (costs off) select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
+select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
+explain (costs off) select * from char_key, vchar_key where char_key.a = vchar_key.a::text and char_key.b = vchar_key.b::text;
+select * from char_key, vchar_key where char_key.a = vchar_key.a::text and char_key.b = vchar_key.b::text;
 
-explain (costs off) select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
-select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
-explain (costs off) select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
-select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
-explain (costs off) select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
-select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
-explain (costs off) select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
-select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
+-- Expected: the varchar keys of vchar_key are batched into char_key's bpchar key.
+explain (costs off) /*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) Set(yb_prefer_bnl off) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
+/*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) Set(yb_prefer_bnl off) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
 
-explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
-/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+explain (costs off) /*+ Leading((char_key vchar_key)) IndexScan(vchar_key) */select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
+/*+ Leading((char_key vchar_key)) IndexScan(vchar_key) */select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
 
-explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
-/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+-- Three batched joins nest in the hinted order, each taking its own outer's
+-- keys: the planner restores the set of relations available for batching
+-- after each join level, so the join of d1 above (d2 (d3 d4)) still
+-- batches (#15878).
+/*+Leading(((d2 (d3 d4)) d1))*/ explain (costs off) select * from p1 d1, p2 d2, p3 d3, p4 d4 where d1.a = d3.a and d2.a = d3.a and d4.a = d2.a;
 
-drop table q1;
-drop table q2;
-drop table q3;
-drop table q4;
-
-create table d1(a int, primary key(a));
-create table d2(a int, primary key(a));
-create table d3(a int, primary key(a));
-create table d4(a int, primary key(a));
-
-/*+Leading(((d2 (d3 d4)) d1))*/ explain (costs off) select * from d1,d2,d3,d4 where d1.a = d3.a and d2.a = d3.a and d4.a = d2.a;
-
-drop table d1;
-drop table d2;
-drop table d3;
-drop table d4;
-
-create table test (
+create table uuid_key (
     id   uuid NOT NULL,
     num  int4 NOT NULL,
     PRIMARY KEY ((id)HASH, num DESC)
 );
-insert into test(id, num) VALUES
+insert into uuid_key(id, num) VALUES
 ('774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid, 1);
 
 /*+ Set(yb_bnl_batch_size 3) */ explain (costs off)
-select * from test t1
-join test t2 on (t1.id = t2.id and t1.num = t2.num)
+select * from uuid_key t1
+join uuid_key t2 on (t1.id = t2.id and t1.num = t2.num)
 where t1.id in (
 	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
 	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
 
 /*+ Set(yb_bnl_batch_size 3) */
-select * from test t1
-join test t2 on (t1.id = t2.id and t1.num = t2.num)
+select * from uuid_key t1
+join uuid_key t2 on (t1.id = t2.id and t1.num = t2.num)
 where t1.id in (
 	'774cee8f-f0e9-4c46-8f3d-3b5e7db8b839'::uuid,
 	'884cee8f-f0e9-4c46-8f3d-3b5e7db8b847'::uuid);
-
-drop table test;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
@@ -501,14 +139,14 @@ SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
 SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
 
--- anti join--
+-- Anti joins
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
 SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
 SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
 
--- semi join--
+-- Semi joins
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
 
@@ -523,133 +161,54 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 /*+Leading((i2 p))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 /*+Leading((p i2))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 /*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
-DROP TABLE int2type;
 
-create table floattable1(a float8, b float4, primary key(a asc, b asc));
-create table floattable2(a float4, b float8, primary key(a asc, b asc));
-insert into floattable2 values (1.12312, 29401.212931231);
-insert into floattable2 values (1.12312, 2941.212931231);
-insert into floattable1 select * from floattable2;
-explain (costs off) /*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-/*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-
--- We don't support float4 IN <float8 values> yet
-explain (costs off) /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-/*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
-
-drop table floattable1;
-drop table floattable2;
-
-create table ss1(a bigint, b int, primary key(b asc, a asc));
-create table ss2(a int, b bigint, primary key(a asc, b asc));
+create table bigint_int(a bigint, b int, primary key(b asc, a asc));
+create table int_bigint(a int, b bigint, primary key(a asc, b asc));
 -- 0x8000000000000001 should not join with 1 and 0x8000000000000002 should not join with 2
-insert into ss1 values (1,2), (3,4), (x'8000000000000001'::bigint, 1);
-insert into ss2 values (1,2), (3,4), (1,1), (1, x'8000000000000002'::bigint);
-explain (costs off) /*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-/*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-/*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
-/*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
-drop table ss1;
-drop table ss2;
+insert into bigint_int values (1,2), (3,4), (x'8000000000000001'::bigint, 1);
+insert into int_bigint values (1,2), (3,4), (1,1), (1, x'8000000000000002'::bigint);
+explain (costs off) /*+Leading((bigint_int int_bigint))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b;
+/*+Leading((bigint_int int_bigint))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b;
+explain (costs off) /*+Leading((int_bigint bigint_int))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b;
+/*+Leading((int_bigint bigint_int))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b;
+explain (costs off) /*+Leading((int_bigint bigint_int))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b and bigint_int.b < 10;
+/*+Leading((int_bigint bigint_int))*/ select * from bigint_int, int_bigint where bigint_int.a = int_bigint.a and bigint_int.b = int_bigint.b and bigint_int.b < 10;
 
-create table ss1(a varchar(16), b int4);
-insert into ss1 values ('abc', 123), ('abc', 124);
-insert into ss1 values ('xyz', 123), ('xyz', 124);
-insert into ss1 values ('ijk', 123), ('xyz', 456);
-create table ss2(a varchar(16), b int8);
-create index ss2_ind on ss2(a asc, b asc);
-insert into ss2 values ('abc', 123), ('abc', 124);
-insert into ss2 values ('xyz', 123), ('xyz', 124);
-/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
-/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
-drop table ss1;
-drop table ss2;
+create table vc_int4(a varchar(16), b int4);
+insert into vc_int4 values ('abc', 123), ('abc', 124);
+insert into vc_int4 values ('xyz', 123), ('xyz', 124);
+insert into vc_int4 values ('ijk', 123), ('xyz', 456);
+create table vc_int8(a varchar(16), b int8);
+create index vc_int8_ind on vc_int8(a asc, b asc);
+insert into vc_int8 values ('abc', 123), ('abc', 124);
+insert into vc_int8 values ('xyz', 123), ('xyz', 124);
+/*+YbBatchedNL(vc_int4 vc_int8) Leading((vc_int4 vc_int8)) IndexOnlyScan(vc_int8 vc_int8_ind)*/ explain (costs off) select * from vc_int4, vc_int8 where vc_int4.a = vc_int8.a and vc_int4.b = vc_int8.b and vc_int8.b <= 100000 order by 1,2;
+/*+YbBatchedNL(vc_int4 vc_int8) Leading((vc_int4 vc_int8)) IndexOnlyScan(vc_int8 vc_int8_ind)*/ select * from vc_int4, vc_int8 where vc_int4.a = vc_int8.a and vc_int4.b = vc_int8.b and vc_int8.b <= 100000 order by 1,2;
 
-create table ss1(a int, b float8, primary key(a asc, b asc));
-create table ss2(a bigint, b float4, primary key(a asc, b asc));
-insert into ss1 values (1, 0.0), (1, 0.5), (3, 0.625), (2, 0.625 + POW(2, -25)), (2, 0.625);
-insert into ss2 values (1, 0.0), (1, 0.5), (x'8000000000000001'::bigint, 0.5), (2, 0.625);
-explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-/*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
-drop table ss1;
-drop table ss2;
+create table nf_inner(a int, b text, primary key(a asc, b asc));
+create table nf_outer(c1 int, c2 text);
+create index nf_outer_c2_idx on nf_outer(c2 asc NULLS FIRST);
+insert into nf_inner values (1, 'abcd');
+insert into nf_outer values (1, NULL), (1, 'abcd');
+/*+Leading((nf_outer nf_inner)) IndexScan(nf_outer nf_outer_c2_idx)*/ explain (costs off) select * from nf_outer, nf_inner where nf_outer.c1 = nf_inner.a and nf_outer.c2 = nf_inner.b and nf_inner.a <= 4;
+/*+Leading((nf_outer nf_inner)) IndexScan(nf_outer nf_outer_c2_idx)*/ select * from nf_outer, nf_inner where nf_outer.c1 = nf_inner.a and nf_outer.c2 = nf_inner.b and nf_inner.a <= 4;
 
-create table ss1(a timestamp primary key);
-create table ss2(a date primary key);
-insert into ss1 values (to_timestamp('27 Nov 2100 08:14:30', 'DD MON YYYY HH:MI:SS')), (to_timestamp('27 Nov 2100', 'DD MON YYYY'));
-insert into ss2 values (to_date('27 Nov 2100 08:14:30', 'DD MON YYYY')), (to_date('27 Feb 2010 08:14:30', 'DD MON YYYY'));
-explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a;
-/*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a;
-explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a;
-/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a;
-drop table ss1;
-drop table ss2;
+-- A left join whose WHERE clause has an OR over columns of both sides: the
+-- clause can be neither batched nor pushed to the inner scan, so the batched
+-- join applies it as its filter instead of being given up (#21366).
+explain (costs off) select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
 
-create table intable(a int, b text, primary key(a asc, b asc));
-create table out(c1 int, c2 text);
-create index out_ind on out(c2 asc NULLS FIRST);
-insert into intable values (1, 'abcd');
-insert into out values (1, NULL), (1, 'abcd');
-/*+Leading((out intable)) IndexScan(out out_ind)*/ explain (costs off) select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
-/*+Leading((out intable)) IndexScan(out out_ind)*/ select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
-drop table intable;
-drop table out;
+select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
 
-create table outtable(a int);
-insert into outtable values (1), (2), (3);
+explain (costs off) select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
 
-create table intable(a int primary key);
-insert into intable values (2), (3), (4), (6);
-
-explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
-
-select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
-
-explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
-
-select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
-
-explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
-
-select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
-
--- The problematic join filter is pushdownable to the nullable side.
--- BNL not allowed here.
-explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
-
-select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
-
-drop table outtable;
-drop table intable;
-
-CREATE TABLE q1(a int);
-CREATE TABLE q2(a int);
-CREATE TABLE q3(a int primary key);
-
--- We shouldn't be producing dangerous plans that have join clauses
--- that involve more than one rel on a side. Leading hint should not be
--- respected here.
--- See issue #17150
-/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
-
--- This join is not dangerous as the clause q3.a = q2.a + q1.a
--- will actually receive a cross product of q1 and q2 here.
-/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading(((q1 q2) q3))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
-
-DROP TABLE q1;
-DROP TABLE q2;
-DROP TABLE q3;
+select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
 
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 
 -- expression-based index
-CREATE INDEX ON p2 ((b + 123) ASC);
 /*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
 EXPLAIN (COSTS OFF)
 SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
@@ -662,8 +221,8 @@ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
 -- two different joins batch t1a and t1b.  Expanding it with one batch index
 -- for both batches probes only their diagonal, so the count drops below the
 -- unbatched baseline.  Two relations in one batched expression stay legal
--- when a single join batches both, which the Leading(((q1 q2) q3)) case
--- above and the "legal BNL" case further down keep covered.
+-- when a single join batches both; the #17150 and #19642 controls of
+-- yb.orig.join_batching_negative cover that.
 -- Expected: the top join does not batch t1b, so t1b.b + t1a.b is applied as
 -- its join filter instead of a batched Index Cond on t2b, and the count
 -- matches the unbatched baseline.
@@ -862,7 +421,6 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
  WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
    AND t1a.a < 60 AND t1b.a < 60;
-DROP TABLE p5_part;
 
 -- GEQO ignores join hints, and without the check its own search picks the
 -- split for the four-relation query above.
@@ -886,74 +444,46 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
  WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
    AND t1a.a < 60 AND t1b.a < 60;
 
-DROP TABLE p1;
-DROP TABLE p2;
-DROP TABLE p3;
-DROP TABLE p4;
-DROP TABLE p5;
+-- Under a nested loop with s2 outer, the batched join of s1 and s3 takes a
+-- batch of s1.a and the plain parameter s2.b in the same index condition:
+-- s2's rows are not batched into a join whose outer, s1, cannot pass a batch
+-- on (#15156).
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
 
-
-
-CREATE TABLE s1(r1 int, r2 int, r3 int);
-CREATE TABLE s2(r1 int, r2 int, r3 int);
-CREATE TABLE s3(r1 int, r2 int);
-CREATE INDEX ON s3 (r1 asc, r2 asc);
-
-INSERT INTO s1 select i,i,i from generate_series(1,10) i;
-INSERT INTO s2 select i,i,i from generate_series(1,10) i;
-INSERT INTO s3 select i,i from generate_series(1,100) i;
-/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
-/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
-
-DROP TABLE s3;
-DROP TABLE s2;
-DROP TABLE s1;
-
-CREATE TABLE r1(a int, PRIMARY KEY(a ASC));
-CREATE TABLE r2(a int);
-
+-- The batched key is a placeholder value, the NULL constant the subquery
+-- supplies: the batched index condition is built from it as from a column,
+-- and the right join keeps the subquery's row (#24186).
 /*+Leading(r2 r1)*/
 EXPLAIN (COSTS OFF)
 SELECT *
-FROM r1
+FROM rk1 r1
 RIGHT OUTER JOIN (
     (SELECT
         NULL::int AS nullcol
      FROM
-        r2
+        h
      LIMIT 1)) AS r2
 ON (r1.a = r2.nullcol);
 
 SELECT *
-FROM r1
+FROM rk1 r1
 RIGHT OUTER JOIN (
     (SELECT
         NULL::int AS nullcol
      FROM
-        r2
+        h
      LIMIT 1)) AS r2
 ON (r1.a = r2.nullcol);
 
-DROP TABLE r1;
-DROP TABLE r2;
+-- The batched join's outer is a merge join that is exhausted inside a batch,
+-- five rows at a batch size of three.  The join must not pull the outer
+-- again after it has returned its last row (#15393).
+explain (costs off) /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from rk1 s1 left outer join rk1 s2
+on s1.a = s2.a left outer join rk1 s3 on s2.a = s3.a where s1.a > 35;
 
-create table s1(a int, primary key (a asc));
-create table s2(a int, primary key (a asc));
-create table s3(a int, primary key (a asc));
-
-insert into s1 values (24), (25);
-insert into s2 values (24), (25);
-insert into s3 values (24), (25);
-
-explain (costs off) /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
-on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
-
-/*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from s1 left outer join s2
-on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
-
-drop table s1;
-drop table s2;
-drop table s3;
+/*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from rk1 s1 left outer join rk1 s2
+on s1.a = s2.a left outer join rk1 s3 on s2.a = s3.a where s1.a > 35;
 
 SET yb_bnl_batch_size = 3;
 
@@ -964,8 +494,6 @@ create table test1 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp 
 insert into test1 values (1,0,2,0,1), (1,0,2,0,2), (2,0,3,0,3), (2,0,4,0,4), (2,0,4,0,5), (2,0,4,0,6);
 explain (costs off) select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
 select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
-drop table test1;
-drop table test2;
 
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
@@ -983,9 +511,6 @@ SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
 SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
-
-DROP TABLE m1;
-DROP TABLE m2;
 
 create table q1 (c1 int, c2 int, primary key (c1 asc, c2 asc));
 create table q2 (c1 int, c2 int, primary key (c2 hash, c1 asc));
@@ -1009,14 +534,13 @@ explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order b
 select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
 create index on q2(c1 asc);
-create table q3(c1 int, c2 int, c3 int, primary key(c3 desc));
-insert into q3 select i, i, i from generate_series(0,999) i;
+create table q3d(c1 int, c2 int, c3 int, primary key(c3 desc));
+insert into q3d select i, i, i from generate_series(0,999) i;
 
-/*+Leading((q3 q2))*/explain (costs off) select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
-/*+Leading((q3 q2))*/select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+/*+Leading((q3d q2))*/explain (costs off) select q3d.c3, q2.c2 from q2, q3d where q3d.c3 = q2.c1 order by 1 desc limit 10;
+/*+Leading((q3d q2))*/select q3d.c3, q2.c2 from q2, q3d where q3d.c3 = q2.c1 order by 1 desc limit 10;
 
 drop index q2_c1_idx;
-drop table q3;
 CREATE TABLE q1nulls (a int, b int);
 CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
 INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
@@ -1032,8 +556,6 @@ SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1
 
 EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
-
-DROP TABLE q1nulls;
 
 delete from q1;
 delete from q2;
@@ -1182,11 +704,9 @@ order by q1.c1, q2.c1, q3.a;
 explain (costs off)
 SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 = q2.c1;
 
-DROP TABLE q1;
-DROP TABLE q2;
-DROP TABLE q3;
-
--- GHI #25917
+-- The batched outer value pos.i reaches n's index condition through the
+-- nested loop of r and n, as the subscript of r's array in
+-- r.ref_names[pos.i] (#25917).
 create table names (namespace_id int, name_id smallint, name_value text);
 create index on names(name_id);
 create table name_refs (namespace_id int, ref_names smallint[], ref_comment text);
@@ -1201,33 +721,17 @@ explain (analyze, costs off, timing off, summary off)
 SELECT r.ref_comment, n.name_value
 FROM names n, name_refs r, generate_series(1, 32) pos(i)
 WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
-drop table names;
-drop table name_refs;
 
-create table ss1(a int, primary key(a asc));
-insert into ss1 select generate_series(1,5);
-create table ss2(a int, b int, primary key(a asc, b asc));
-insert into ss2 select i, i from generate_series(1,5) i;
-insert into ss2 select i, i+1 from generate_series(1,5) i;
-analyze ss1;
-analyze ss2;
-/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
-/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+-- The LIMIT equals the rows the two outer rows produce, so the first batch
+-- is sized to exactly the outer's rows and the outer is exhausted while the
+-- batch is built; every row must still be returned (#20707).
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
 
-drop table ss1;
-drop table ss2;
-
-create table q1(a int, b int);
-create table q2(a int, b int);
-create index on q2(b, a);
-insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24), (4,2);
-insert into q2 values (2,1), (6,6), (2,4), (0,2), (1,2), (2,2), (4,2);
-
-/*+Leading((q1 q2))*/ explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
-/*+Leading((q1 q2))*/ select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
-
-drop table q1;
-drop table q2;
+-- The inner index orders its columns (b, a) against join clauses on (a, b):
+-- the batched index condition is built in index column order (#17115).
+/*+Leading((q1 q2)) IndexScan(q2 h_ba_idx)*/ explain (costs off) select * from p1 q1, h q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
+/*+Leading((q1 q2)) IndexScan(q2 h_ba_idx)*/ select * from p1 q1, h q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
 
 create table g1(h int, r int, primary key(h hash, r asc));
 create table g2(h int, r int, primary key(h hash, r asc));
@@ -1240,19 +744,13 @@ insert into g2 values (2,4), (6,8);
 
 /*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
 
-drop table g1;
-drop table g2;
-drop table main;
-
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));
 insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
 insert into int4table select i from generate_series(1,20) i where i % 3 = 0;
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/explain (costs off) select * from oidtable, int4table where oidtable.
-a = int4table.a;
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/ select * from oidtable, int4table where oidtable.a = int4table.a;
-drop table oidtable;
-drop table int4table;
+-- Expected: the int4 keys of int4table are batched into oidtable's oid key.
+/*+ Set(yb_bnl_batch_size 3) Set(yb_prefer_bnl off) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */explain (costs off) select * from oidtable, int4table where oidtable.a = int4table.a;
+/*+ Set(yb_bnl_batch_size 3) Set(yb_prefer_bnl off) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */ select * from oidtable, int4table where oidtable.a = int4table.a;
 
 CREATE TABLE p_inner(a int, b text, PRIMARY KEY(b asc, a asc));
 CREATE TABLE p_outer(a bigint, b text);
@@ -1260,54 +758,6 @@ INSERT INTO p_outer VALUES (0, '1');
 INSERT INTO p_inner VALUES (0, '1');
 EXPLAIN (COSTS OFF) SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
 SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
-DROP TABLE p_inner;
-DROP TABLE p_outer;
-
-create table ss1(a int);
-create table ss2(a int);
-create table ss3(a int, b int, primary key(a asc, b asc));
-
--- Should not result in an illegal BNL on the inner side
-/*+Leading((ss1 (ss2 ss3)))*/ explain (costs off) select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
-/*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
-drop table ss1;
-drop table ss2;
-drop table ss3;
-
-
-create table p1(a int, primary key(a asc));
-create table p2(a int, primary key(a asc));
-create table p3(a int, primary key(a asc));
-
-insert into p1 select generate_series(1, 1000);
-insert into p2 select generate_series(1, 1000);
-insert into p3 select generate_series(1, 1000);
-
-analyze p1;
-analyze p2;
-analyze p3;
-
-set yb_prefer_bnl = off;
-
--- The following hints try to force an illegal BNL
-/*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
-p3.a = p1.a + p2.a;
-
-/*+YbBatchedNL(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
-p3.a = p1.a + p2.a;
-
-/*+NestLoop(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
-p3.a = p1.a + p2.a;
-
--- This is a legal BNL
-/*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
-p3.a = p1.a + p2.a;
-
-set yb_prefer_bnl = on;
-
-drop table p1;
-drop table p2;
-drop table p3;
 
 -- Test the scenarios where parameterized column values from the outer most
 -- loop (x1) are used at difference nesting levels (x2 and x3).
@@ -1327,9 +777,9 @@ ANALYZE x1;
 ANALYZE x2;
 ANALYZE x3;
 
--- Before 8ac82f4247 (2.21.0.0-b227), the planner was producing incorrect plans
--- for the following queries, but the results happened to be correct with smaller
--- batch size e.g. 2, 3, etc.
+-- Batch size 10 exceeds every relation's row count, so a plan that batched
+-- x1.a or x2.b at the wrong nesting level could not return the right rows by
+-- chance (#19642, #19946).
 SET yb_bnl_batch_size = 10;
 
 EXPLAIN (COSTS OFF)
@@ -1349,7 +799,6 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5;
 
-
 EXPLAIN (COSTS OFF)
 SELECT * FROM x1 LEFT JOIN LATERAL (
   SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
@@ -1369,57 +818,42 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5, 6, 7;
 
-
-DROP TABLE x1;
-DROP TABLE x2;
-DROP TABLE x3;
-
 SET yb_bnl_batch_size = 3;
-create table ss1(a varchar(1024), b char(10));
-create table ss2(a varchar(1024));
-create index on ss2 (a asc);
-explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2.a;
-drop table ss1;
-drop table ss2;
+create table wide_vc1(a varchar(1024), b char(10));
+create table wide_vc2(a varchar(1024));
+create index on wide_vc2 (a asc);
+explain (costs off) select * from wide_vc1 t1, wide_vc2 t2 where t1.a = t2.a and t1.b = t2.a;
 
-CREATE TABLE ss1(a int);
-CREATE TABLE ss2(a int);
-CREATE TABLE ss3(a int, b int, c int, primary key(a asc, b asc));
-
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3_1)))
+-- The join clause on ss3.v runs a subquery that needs ss1, the batched outer,
+-- and ss2, the relation joined above.  It is not pushed into the batched
+-- index scan on ss3, where ss2's value would be missing: it stays in the
+-- filter of the join above, and the join of ss1 and ss3 is still batched
+-- (#21878).
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
 */EXPLAIN (COSTS OFF) SELECT *
-FROM ss1, ss2, ss3
-WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+FROM h ss1, h ss2, rk2 ss3
+WHERE ss1.a = ss3.a and ss3.v <= (SELECT a FROM rk2 ss3s where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
 
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading(((ss1 ss2) ss3))
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
 */SELECT *
-FROM ss1, ss2, ss3
-WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+FROM h ss1, h ss2, rk2 ss3
+WHERE ss1.a = ss3.a and ss3.v <= (SELECT a FROM rk2 ss3s where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
 
-DROP TABLE ss1;
-DROP TABLE ss2;
-DROP TABLE ss3;
-
-CREATE TABLE other(a int);
-CREATE INDEX ON other(a asc);
-CREATE TABLE ss1(a int);
-CREATE TABLE ss2(a int, b int);
-CREATE INDEX ON ss2(a asc, b asc);
-
-INSERT INTO ss1 VALUES (0), (0);
-INSERT INTO ss2 VALUES (0, 0), (0, 0);
-INSERT INTO other VALUES (1), (1);
-
+-- The batched key is a subquery.  The join's hash table computes its keys in
+-- an expression context of its own, as a hash join does, so running the
+-- subplan for a key does not disturb the per-tuple context, and every outer
+-- row finds its inner rows (#21266).
 /*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */EXPLAIN (COSTS OFF)
 SELECT *
 FROM (
     SELECT ss1.a as a, other.a as othera
-    FROM ss1
-    CROSS JOIN other
+    FROM h ss1
+    CROSS JOIN h other
+    WHERE ss1.a <= 2 AND other.a <= 2
 ) AS cross_join
-LEFT OUTER JOIN ss2 ON ss2.a = (
+LEFT OUTER JOIN rk2 ss2 ON ss2.a = (
     SELECT other.a
-    FROM other, ss1
+    FROM h other, h ss1
     WHERE other.a = ss1.a + cross_join.a limit 1
 );
 
@@ -1427,19 +861,15 @@ LEFT OUTER JOIN ss2 ON ss2.a = (
 SELECT *
 FROM (
     SELECT ss1.a as a, other.a as othera
-    FROM ss1
-    CROSS JOIN other
+    FROM h ss1
+    CROSS JOIN h other
+    WHERE ss1.a <= 2 AND other.a <= 2
 ) AS cross_join
-LEFT OUTER JOIN ss2 ON ss2.a = (
+LEFT OUTER JOIN rk2 ss2 ON ss2.a = (
     SELECT other.a
-    FROM other, ss1
+    FROM h other, h ss1
     WHERE other.a = ss1.a + cross_join.a limit 1
 );
-
-DROP TABLE other;
-DROP TABLE ss1;
-DROP TABLE ss2;
-
 
 -- Tests for EXPLAIN output of BNL
 -- These tests ensure we don't resolve fieldnames for batched expressions in Index Cond
@@ -1450,104 +880,81 @@ IMMUTABLE PARALLEL SAFE STRICT
 AS 'SELECT 1, 1';
 EXPLAIN (COSTS OFF) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS ss WHERE t.oid = (ss.x).a;
 
-CREATE TABLE tbl (c1 INT, c2 INT, PRIMARY KEY (c1 ASC, c2 ASC));
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.c1 = (ss.x).a AND tbl.c2 = (ss2.x2).a;
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM rk2 tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.a = (ss.x).a AND tbl.b = (ss2.x2).a;
 
-CREATE TABLE tbl2 (c1 int, c2 int, PRIMARY KEY(c1  ASC, c2 ASC));
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
-EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.c1 FROM tbl, tbl2) j1 ON j1.c1 = (ss.x).a;
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.a AS c1 FROM rk2 tbl, rk2 tbl2) j1 ON j1.c1 = (ss.x).a;
 
 /*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
-EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, rk2 tbl, rk2 tbl2 WHERE tbl2.a = (ss.x).a AND (ss.x).a < 40 AND tbl.a = ANY(ARRAY[(ss.x).a, (ss.x).a]);
 
-create table ss1 (a int, b int);
-create table ss2(a int, b int);
-create table ss3(a int, b int);
-create index on ss3(a asc);
-insert into ss1 values (1,1), (1,2);
-insert into ss2 values (1,1), (1,2);
-insert into ss3 values (1,1), (1,3);
+-- The batch holds the same key, a = 1, twice with different b, and the
+-- filter p.b <= ss2.b + 1 refers to the second outer relation: the local
+-- lookup that matches an inner row to the outer rows of its batch compares
+-- only the hashed part of the join clause, so both outer rows with the key
+-- get their inner rows (#20531).
+create table lk_outer1 (a int, b int);
+create table lk_outer2 (a int, b int);
+create table lk_inner (a int, b int);
+create index on lk_inner (a asc);
+insert into lk_outer1 values (1,1), (1,2);
+insert into lk_outer2 values (1,1), (1,2);
+insert into lk_inner values (1,1), (1,3);
 
 explain (costs off) /*+Set(enable_hashjoin off)
 Set(enable_material off)
 Set(enable_mergejoin off)
 Set(yb_bnl_batch_size 1024)
-NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from lk_outer1 ss1, lk_outer2 ss2, lk_inner p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
 
 /*+Set(enable_hashjoin off)
 Set(enable_material off)
 Set(enable_mergejoin off)
 Set(yb_bnl_batch_size 1024)
-NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from lk_outer1 ss1, lk_outer2 ss2, lk_inner p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
 
-drop table ss1;
-drop table ss2;
-drop table ss3;
+-- The outer is a UNION ALL whose arms deliver tuples in different formats, a
+-- table's heap tuples and the sort's minimal tuples: the batched join reads
+-- both into its batch (#25651).
+explain (costs off)
+select * from (select a as k, b as v from p3 union all select a, a from rk1) s join p1 it0 on s.k = it0.a where s.k <= 20 order by s.k;
+select * from (select a as k, b as v from p3 union all select a, a from rk1) s join p1 it0 on s.k = it0.a where s.k <= 20 order by s.k;
 
--- 25651 BNL taking mixed heap and minimal tuples from the outer plan tree
-create table ot1(k int primary key, v int);
-create table ot2(k int, v int, primary key(k asc));
-create table it0(k int primary key, v int);
-insert into ot1 values (11, 11), (33, 33), (55, 55), (77, 77), (99, 99);
-insert into ot2 values (22, 22), (44, 44), (66, 66), (88, 88);
-insert into it0 select i, i from generate_series(1, 10000) i;
-analyze it0, ot1, ot2;
-explain
-select * from (select k, v from ot1 union all select k, v from ot2) s join it0 on s.k = it0.k order by s.k;
-select * from (select k, v from ot1 union all select k, v from ot2) s join it0 on s.k = it0.k order by s.k;
-drop table ot1;
-drop table ot2;
-drop table it0;
-
-
--- #25251: Ensure no Memoize under BNL
-create table r (pk int primary key, a int);
-create index on r (a);
-insert into r select i, i from generate_series(1, 1000) i;
-
-create table s (pk int, x int, y int, primary key (pk asc));
-insert into s select i, i % 3, 2 from generate_series(1, 10) i;
-
-analyze r, s;
+-- No Memoize is placed under a batched join, whether the key has few
+-- distinct values (x) or one (y); under a plain nested loop the same joins
+-- get one (#25251).
+create table memo_outer (pk int, x int, y int, primary key (pk asc));
+insert into memo_outer select i, i % 3, 2 from generate_series(1, 10) i;
+analyze memo_outer;
 
 explain (costs off)
 /*+ Leading((s r)) */
-select * from s join r on a = x;
+select * from memo_outer s join p1 r on r.b = s.x;
 
 explain (costs off)
 /*+ Leading((s r)) */
-select * from s join r on a = y;
+select * from memo_outer s join p1 r on r.b = s.y;
 
 -- Memoize under NL
 explain (costs off)
 /*+ Leading((s r)) NoYbBatchedNL(s r) */
-select * from s join r on a = x;
+select * from memo_outer s join p1 r on r.b = s.x;
 
 explain (costs off)
 /*+ Leading((s r)) NoYbBatchedNL(s r) */
-select * from s join r on a = y;
-
-
-drop table r, s;
+select * from memo_outer s join p1 r on r.b = s.y;
 
 -- Test BNL join with IN + inequality on the same column.
 SET yb_bnl_batch_size = 1024;
-CREATE TABLE t_bnl_outer(v int, primary key(v asc));
-CREATE TABLE t_bnl_inner(k int, x int, primary key(k asc));
-INSERT INTO t_bnl_outer SELECT i FROM generate_series(1, 5) i;
-INSERT INTO t_bnl_inner SELECT i, i % 3 FROM generate_series(1, 20) i;
-ANALYZE t_bnl_outer, t_bnl_inner;
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
 /*+ YbBatchedNL(o i) Leading((o i)) */
-SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
+SELECT * FROM rk1 o JOIN rk2 i ON o.a = i.a WHERE i.a >= 3;
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
 /*+ YbBatchedNL(o i) Leading((o i)) */
-SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
+SELECT * FROM rk1 o JOIN rk2 i ON o.a = i.a WHERE i.a >= 3;
 RESET yb_enable_advanced_index_cond_fold;
-DROP TABLE t_bnl_outer, t_bnl_inner;
-
 
 -------------------------------------------------------------------------
 -- #31724: canonical BNL + correlated SubPlan on Join Filter
@@ -1642,7 +1049,8 @@ WHERE t3.c_vc_key  = t2.c_vc
       SELECT s.c_int FROM repro31724 AS s WHERE s.c_vc = t1.c_vc
   );
 
--- BNL hashing off still needs scalar rechecks.
+-- The same with BNL hashing off, where the tuplestore strategy re-applies the
+-- join clauses.
 SET yb_bnl_enable_hashing = off;
 
 /*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
@@ -1662,8 +1070,6 @@ WHERE t3.c_vc_key  = t2.c_vc
 
 RESET yb_bnl_enable_hashing;
 
-DROP TABLE repro31724;
-
 -- Test BNL on a table with a large number of tablets
 CREATE TABLE t_multi_tablet(h1 bigint, h2 bigint, v text, primary key((h1, h2) hash)) split into 48 tablets;
 INSERT INTO t_multi_tablet SELECT i, j, 'Value(' || i::text || ', ' || j::text || ')' FROM generate_series(1, 100) i, generate_series(1, 100) j;
@@ -1674,8 +1080,6 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 1000) i, t_multi_tablet t WHERE h1 = 1 AND h2 = i;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
-
-DROP TABLE t_multi_tablet;
 
 -- First batch sizing under a pushed-down LIMIT.  EXPLAIN DEBUG shows the
 -- outer rows the planner sized the first batch to (First Batch Size) and the
@@ -1747,8 +1151,6 @@ RESET yb_bnl_optimize_first_batch;
 RESET yb_explain_hide_non_deterministic_fields;
 RESET yb_enable_base_scans_cost_model;
 DROP FUNCTION explain_first_batch(text);
-DROP TABLE fb_outer;
-DROP TABLE fb_inner;
 
 -------------------------------------------------------------------------
 -- #33788: a join clause that references the batched outer relation, the
@@ -1929,7 +1331,46 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
 
-DROP TABLE w1, w2, w3, w4;
+-- Batched nested loop over a partitioned inner relation under the cost
+-- model, forced the pre-hint way (#25078): each scanned partition takes the
+-- batch, the partitions outside p.i <= 201 are pruned, and no Memoize sits
+-- under the batched join (#25251).  It keeps yb_prefer_bnl on with nested
+-- loops enabled: with yb_prefer_bnl off, no batched nested loop is built over
+-- a partitioned inner relation (#35384).
+CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
+CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
+CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);
+CREATE TABLE t_part3 PARTITION OF t_part FOR VALUES FROM (400) TO (600);
+CREATE TABLE t_part4 PARTITION OF t_part FOR VALUES FROM (600) TO (MAXVALUE);
+
+CREATE INDEX ON t_part (b);
+
+INSERT INTO t_part SELECT (i % 200) + 1,   ((i-1) / 4) * 4, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 201, ((i-1) / 4) * 4 + 1, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 401, ((i-1) / 4) * 4 + 2, i  FROM generate_series(1, 2500) i;
+INSERT INTO t_part SELECT (i % 200) + 601, ((i-1) / 4) * 4 + 3, i  FROM generate_series(1, 2500) i;
+
+CREATE TABLE t_nopart (i int, a int, b int);
+INSERT INTO t_nopart SELECT * FROM t_part;
+
+ANALYZE t_part;
+ANALYZE t_nopart;
+
+/*+
+  Leading((np p))
+  SeqScan(np)
+  IndexScan(p)
+  Set(enable_nestloop on)
+  Set(yb_bnl_batch_size 1024)
+  Set(yb_enable_cbo on)
+*/
+EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;
+
+-- The tests from here to the end of the file run under the cost model and
+-- force the batched join with YbBatchedNL hints, which are ignored while
+-- yb_prefer_bnl is on.
+SET yb_enable_cbo = on;
+SET yb_prefer_bnl = off;
 
 -- #35565: a Unique outer child of BNL must not return a key twice. Unique
 -- remembers its last returned tuple in its result slot, and BNL must not
@@ -1941,7 +1382,6 @@ CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
 INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
 INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
   FROM generate_series(1, 30) i WHERE i % 2 = 0;
-SET yb_prefer_bnl = off;
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
     Set(yb_enable_distinct_pushdown off) */
 EXPLAIN (COSTS OFF)
@@ -1953,6 +1393,7 @@ SELECT count(*) FROM bnl_uniq t
 SELECT count(*) FROM bnl_uniq t
   JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
     ON t.k1 = d.k1 AND t.k2 = d.k2;
+
 -- #35565: the same rule on BNL's other writes into its outer slot: the
 -- tuplestore batch (hashing off) and the left-join pass that returns
 -- unmatched outer rows. With t.v > 100 only the 15 even keys match one row
@@ -1986,11 +1427,11 @@ SELECT count(*) FROM bnl_uniq t
 SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
   LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
 RESET yb_bnl_enable_hashing;
+
 -- #35565: the planner builds a Unique on its own, so the bug needs no
 -- DISTINCT in the query. Each query must count every row of bnl_uniq once
 -- (45): an IN subquery uniquified as the outer of the join, a UNION, and a
 -- DISTINCT ON.
-SET yb_enable_cbo = on;
 /*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
     Set(enable_hashagg off) */
 EXPLAIN (COSTS OFF)
@@ -2033,6 +1474,7 @@ SELECT count(*)
   FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
   JOIN bnl_uniq t ON t.k1 = d.k1;
 RESET yb_bnl_enable_hashing;
+
 -- #35565: semi and anti joins return outer rows through the same slot on
 -- their single-match and unmatched-outer passes. 15 even keys match a row
 -- with v > 100, so the semi join must return 15; with the extra
@@ -2076,11 +1518,12 @@ SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
                     WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
                       AND t.k1 % 4 = 0);
 RESET yb_bnl_enable_hashing;
+
 -- #35565: a SetOp with ALL returns its result slot once per copy of a row.
 -- Batch size 2 puts a group's second copy after the batch boundary, so
--- each join must return 75. On master the Subquery Scan above the SetOp
--- projects into its own slot, so these pass without the fix; they guard
--- the PG18 SetOp, which BNL reaches directly.
+-- each join must return 75. Up to PostgreSQL 17 a projecting Subquery
+-- Scan sits between BNL and the SetOp, so BNL never reads the SetOp's
+-- slot; from PostgreSQL 18 on, BNL reads it directly.
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
@@ -2109,6 +1552,3 @@ SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
                       INTERSECT ALL SELECT k1 FROM bnl_uniq) d
   JOIN bnl_uniq t ON t.k1 = d.k1;
 RESET yb_bnl_enable_hashing;
-RESET yb_prefer_bnl;
-RESET yb_enable_cbo;
-DROP TABLE bnl_uniq;

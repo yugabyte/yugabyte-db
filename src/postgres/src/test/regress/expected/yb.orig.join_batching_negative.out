@@ -1,0 +1,464 @@
+--
+-- Batched nested loop joins that must not be built
+--
+-- Each block forces YbBatchedNL on a join that cannot be batched, or leaves
+-- the join free where its comment says why, and expects no YB Batched Nested
+-- Loop at that join.  Where a block has a control, the control is a join that
+-- can be batched, hinted the same way as far as it can be, and expects one.
+-- The rows of the result queries are asserted too.  Which join method replaces
+-- the batched one is not part of the assertion.
+--
+-- Every statement names its scans in hints, and its join methods unless its
+-- block says otherwise; no session setting enables or disables a join method.
+-- The shared tables come from yb.orig.join_batching_setup; a block whose keys
+-- have a type of their own creates its tables, and no table is dropped.
+-- The negatives turn off Material and Memoize, whose placement over the
+-- replacing nested loop differs between PostgreSQL versions.
+--
+SET yb_bnl_batch_size = 3;
+SET yb_prefer_bnl = off; -- disable pre-BNL-hint compatibility mode
+-- The inner key is an expression, t1.a - 1, which the index on t1.a cannot
+-- take a batch for, so the join is not batched.  The control batches the
+-- same join when only the outer key is an expression (#14069).
+/*+ Leading((t2 t1)) YbBatchedNL(t1 t2) SeqScan(t2) IndexScan(t1 p1_pkey) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = (t2.a + 1))
+   ->  Seq Scan on p2 t2
+         Storage Filter: (a <= 100)
+   ->  Index Scan using p1_pkey on p1 t1
+         Index Cond: (a = ANY (ARRAY[(t2.a + 1), ($1 + 1), ($2 + 1)]))
+         Storage Filter: (a <= 100)
+(7 rows)
+
+/*+ Leading((t2 t1)) YbBatchedNL(t1 t2) SeqScan(t2) IndexScan(t1 p1_pkey) Set(enable_material off) Set(enable_memoize off) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   Join Filter: ((t1.a - 1) = (t2.a + 1))
+   ->  Seq Scan on p1 t1
+         Storage Filter: (a <= 100)
+   ->  Seq Scan on p2 t2
+         Storage Filter: (a <= 100)
+(6 rows)
+
+/*+ Leading((t2 t1)) YbBatchedNL(t1 t2) SeqScan(t2) IndexScan(t1 p1_pkey) Set(enable_material off) Set(enable_memoize off) */
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100 ORDER BY t1.a, t2.a;
+ a  | b  |  c   | a  | b  |  c   
+----+----+------+----+----+------
+  2 |  2 | 0002 |  0 |  0 | 0000
+  8 |  8 | 0008 |  6 |  6 | 0006
+ 14 | 14 | 0014 | 12 | 12 | 0012
+ 20 | 20 | 0020 | 18 | 18 | 0018
+ 26 |  1 | 0026 | 24 | 24 | 0024
+ 32 |  7 | 0032 | 30 |  5 | 0030
+ 38 | 13 | 0038 | 36 | 11 | 0036
+ 44 | 19 | 0044 | 42 | 17 | 0042
+ 50 |  0 | 0050 | 48 | 23 | 0048
+ 56 |  6 | 0056 | 54 |  4 | 0054
+ 62 | 12 | 0062 | 60 | 10 | 0060
+ 68 | 18 | 0068 | 66 | 16 | 0066
+ 74 | 24 | 0074 | 72 | 22 | 0072
+ 80 |  5 | 0080 | 78 |  3 | 0078
+ 86 | 11 | 0086 | 84 |  9 | 0084
+ 92 | 17 | 0092 | 90 | 15 | 0090
+ 98 | 23 | 0098 | 96 | 21 | 0096
+(17 rows)
+
+-- A join clause that the inner index scan can only apply as a filter keeps the
+-- join from being batched (#15496).  Scanning p1 by p1_b_idx makes p2.a = p1.b
+-- the index condition and p1.a = p2.b a filter on p1; the control scans the
+-- primary key, where both clauses are index conditions.
+/*+ Leading((p2 p1)) YbBatchedNL(p1 p2) SeqScan(p2) IndexScan(p1 p1_pkey) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a = p2.b) AND (p1.b = p2.a))
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.a), ROW($1, $4), ROW($2, $5)]))
+(5 rows)
+
+/*+ Leading((p2 p1)) YbBatchedNL(p1 p2) SeqScan(p2) IndexScan(p1 p1_b_idx) Set(enable_material off) Set(enable_memoize off) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.a)
+         Storage Filter: (p2.b = a)
+(5 rows)
+
+/*+ Leading(((p2 p3) p1)) YbBatchedNL(p2 p3) YbBatchedNL(p1 p2 p3) SeqScan(p2) IndexScan(p3 p3_pkey) IndexScan(p1 p1_b_idx) Set(enable_material off) Set(enable_memoize off) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   Join Filter: (p3.a = p1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (p2.a = p3.a)
+         ->  Seq Scan on p2
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2]))
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.b)
+         Storage Filter: (p2.a = a)
+(10 rows)
+
+-- An inequality on the next key column, p1.b < p2.b + 1, has no batched form,
+-- so with the primary key scan the join is not batched.
+/*+ Leading((p2 p1)) YbBatchedNL(p1 p2) SeqScan(p2) IndexScan(p1 p1_pkey) Set(enable_material off) Set(enable_memoize off) */
+EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((a = p2.b) AND (b < (p2.b + 1)))
+(4 rows)
+
+-- A batched nested loop is never a right join.  Forced in the right join's
+-- orientation, the batched join is built as a left join with the sides
+-- swapped, the orientation the control asks for.
+/*+ Leading((t3 (t1 t2))) YbBatchedNL(t1 t2) YbBatchedNL(t1 t2 t3) SeqScan(t1) IndexScan(t2 p2_pkey) IndexScan(t3 p3_pkey) */
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t3.b = t1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
+         ->  Seq Scan on p1 t1
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+   ->  Index Scan using p3_pkey on p3 t3
+         Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
+(9 rows)
+
+/*+ Leading(((t1 t2) t3)) YbBatchedNL(t1 t2) YbBatchedNL(t1 t2 t3) SeqScan(t1) IndexScan(t2 p2_pkey) IndexScan(t3 p3_pkey) */
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t3.b = t1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
+         ->  Seq Scan on p1 t1
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+   ->  Index Scan using p3_pkey on p3 t3
+         Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
+(9 rows)
+
+-- A float8 inner key takes a batch of float4 outer values cast to float8.  A
+-- float4 inner key cannot take a batch of float8 outer values, so with f2
+-- inner the join is not batched; the control batches f2's float4 values into
+-- f1's float8 key (#20715).
+create table floattable1(a float8, b float4, primary key(a asc, b asc));
+create table floattable2(a float4, b float8, primary key(a asc, b asc));
+insert into floattable2 values (1.12312, 29401.212931231);
+insert into floattable2 values (1.12312, 2941.212931231);
+insert into floattable1 select * from floattable2;
+/*+ Leading((f2 f1)) YbBatchedNL(f1 f2) IndexScan(f2 floattable2_pkey) IndexScan(f1 floattable1_pkey) */ explain (costs off) select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (f1.a = f2.a)
+   ->  Index Scan using floattable2_pkey on floattable2 f2
+   ->  Index Scan using floattable1_pkey on floattable1 f1
+         Index Cond: (a = ANY (ARRAY[(f2.a)::double precision, ($1)::double precision, ($2)::double precision]))
+(5 rows)
+
+/*+ Leading((f2 f1)) YbBatchedNL(f1 f2) IndexScan(f2 floattable2_pkey) IndexScan(f1 floattable1_pkey) */ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a order by 1, 2, 3, 4;
+         a          |     b     |    a    |        b        
+--------------------+-----------+---------+-----------------
+ 1.1231199502944946 |  2941.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 |  2941.213 | 1.12312 | 29401.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 | 29401.212931231
+(4 rows)
+
+/*+ Leading((f1 f2)) YbBatchedNL(f1 f2) IndexScan(f1 floattable1_pkey) IndexScan(f2 floattable2_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   ->  Index Scan using floattable1_pkey on floattable1 f1
+   ->  Index Scan using floattable2_pkey on floattable2 f2
+         Index Cond: (a = f1.a)
+(4 rows)
+
+/*+ Leading((f1 f2)) YbBatchedNL(f1 f2) IndexScan(f1 floattable1_pkey) IndexScan(f2 floattable2_pkey) Set(enable_material off) Set(enable_memoize off) */ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a order by 1, 2, 3, 4;
+         a          |     b     |    a    |        b        
+--------------------+-----------+---------+-----------------
+ 1.1231199502944946 |  2941.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 |  2941.213 | 1.12312 | 29401.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 |  2941.212931231
+ 1.1231199502944946 | 29401.213 | 1.12312 | 29401.212931231
+(4 rows)
+
+-- The same with a two-column key whose second column is float4 on the inner
+-- side (#20715).
+create table int_float8(a int, b float8, primary key(a asc, b asc));
+create table bigint_float4(a bigint, b float4, primary key(a asc, b asc));
+insert into int_float8 values (1, 0.0), (1, 0.5), (3, 0.625), (2, 0.625 + POW(2, -25)), (2, 0.625);
+insert into bigint_float4 values (1, 0.0), (1, 0.5), (x'8000000000000001'::bigint, 0.5), (2, 0.625);
+/*+ Leading((bigint_float4 int_float8)) YbBatchedNL(int_float8 bigint_float4) IndexScan(bigint_float4 bigint_float4_pkey) IndexScan(int_float8 int_float8_pkey) */ explain (costs off) select * from int_float8, bigint_float4 where int_float8.a = bigint_float4.a and int_float8.b = bigint_float4.b;
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((int_float8.a = bigint_float4.a) AND (int_float8.b = bigint_float4.b))
+   ->  Index Scan using bigint_float4_pkey on bigint_float4
+   ->  Index Scan using int_float8_pkey on int_float8
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(bigint_float4.a, (bigint_float4.b)::double precision), ROW($1, ($4)::double precision), ROW($2, ($5)::double precision)]))
+(5 rows)
+
+/*+ Leading((bigint_float4 int_float8)) YbBatchedNL(int_float8 bigint_float4) IndexScan(bigint_float4 bigint_float4_pkey) IndexScan(int_float8 int_float8_pkey) */ select * from int_float8, bigint_float4 where int_float8.a = bigint_float4.a and int_float8.b = bigint_float4.b order by 1, 2, 3, 4;
+ a |   b   | a |   b   
+---+-------+---+-------
+ 1 |     0 | 1 |     0
+ 1 |   0.5 | 1 |   0.5
+ 2 | 0.625 | 2 | 0.625
+(3 rows)
+
+/*+ Leading((int_float8 bigint_float4)) YbBatchedNL(int_float8 bigint_float4) IndexScan(int_float8 int_float8_pkey) IndexScan(bigint_float4 bigint_float4_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from int_float8, bigint_float4 where int_float8.a = bigint_float4.a and int_float8.b = bigint_float4.b;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Nested Loop
+   ->  Index Scan using int_float8_pkey on int_float8
+   ->  Index Scan using bigint_float4_pkey on bigint_float4
+         Index Cond: ((a = int_float8.a) AND (b = int_float8.b))
+(4 rows)
+
+/*+ Leading((int_float8 bigint_float4)) YbBatchedNL(int_float8 bigint_float4) IndexScan(int_float8 int_float8_pkey) IndexScan(bigint_float4 bigint_float4_pkey) Set(enable_material off) Set(enable_memoize off) */ select * from int_float8, bigint_float4 where int_float8.a = bigint_float4.a and int_float8.b = bigint_float4.b order by 1, 2, 3, 4;
+ a |   b   | a |   b   
+---+-------+---+-------
+ 1 |     0 | 1 |     0
+ 1 |   0.5 | 1 |   0.5
+ 2 | 0.625 | 2 | 0.625
+(3 rows)
+
+-- A date inner key cannot take a batch of timestamp outer values, although the
+-- unbatched nested loop probes it with one timestamp at a time; the control
+-- batches the date values into the timestamp key (#20715).
+create table ts_key(a timestamp primary key);
+create table date_key(a date primary key);
+insert into ts_key values (to_timestamp('27 Nov 2100 08:14:30', 'DD MON YYYY HH:MI:SS')), (to_timestamp('27 Nov 2100', 'DD MON YYYY'));
+insert into date_key values (to_date('27 Nov 2100 08:14:30', 'DD MON YYYY')), (to_date('27 Feb 2010 08:14:30', 'DD MON YYYY'));
+/*+ Leading((date_key ts_key)) YbBatchedNL(ts_key date_key) SeqScan(date_key) IndexScan(ts_key ts_key_pkey) */ explain (costs off) select * from ts_key, date_key where ts_key.a = date_key.a;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (ts_key.a = date_key.a)
+   Batch Matching: Tuplestore
+   ->  Seq Scan on date_key
+   ->  Index Scan using ts_key_pkey on ts_key
+         Index Cond: (a = ANY (ARRAY[(date_key.a)::timestamp without time zone, ($1)::timestamp without time zone, ($2)::timestamp without time zone]))
+(6 rows)
+
+/*+ Leading((date_key ts_key)) YbBatchedNL(ts_key date_key) SeqScan(date_key) IndexScan(ts_key ts_key_pkey) */ select * from ts_key, date_key where ts_key.a = date_key.a;
+            a             |     a      
+--------------------------+------------
+ Sat Nov 27 00:00:00 2100 | 11-27-2100
+(1 row)
+
+/*+ Leading((ts_key date_key)) YbBatchedNL(ts_key date_key) SeqScan(ts_key) IndexScan(date_key date_key_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from ts_key, date_key where ts_key.a = date_key.a;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on ts_key
+   ->  Index Scan using date_key_pkey on date_key
+         Index Cond: (a = ts_key.a)
+(4 rows)
+
+/*+ Leading((ts_key date_key)) YbBatchedNL(ts_key date_key) SeqScan(ts_key) IndexScan(date_key date_key_pkey) Set(enable_material off) Set(enable_memoize off) */ select * from ts_key, date_key where ts_key.a = date_key.a;
+            a             |     a      
+--------------------------+------------
+ Sat Nov 27 00:00:00 2100 | 11-27-2100
+(1 row)
+
+-- A clause of a left join's ON condition that the nullable side can apply but
+-- that has no batched form keeps the join from being batched (#21366).  The
+-- control has the same clause in WHERE, where the batched join applies it to
+-- its output as a filter.
+/*+ Leading((t1 t2)) YbBatchedNL(t1 t2) SeqScan(t1) IndexScan(t2 rk1_pkey) */ explain (costs off) select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.a)
+         Filter: (((t1.a + 1) > t2.a) OR (t1.a = 1))
+         ->  Seq Scan on h t1
+         ->  Index Scan using rk1_pkey on rk1 t2
+               Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(8 rows)
+
+/*+ Leading((t1 t2)) YbBatchedNL(t1 t2) SeqScan(t1) IndexScan(t2 rk1_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Nested Loop Left Join
+         ->  Seq Scan on h t1
+         ->  Index Scan using rk1_pkey on rk1 t2
+               Index Cond: (a = t1.a)
+               Storage Filter: (((t1.a + 1) > a) OR (t1.a = 1))
+(7 rows)
+
+/*+ Leading((t1 t2)) YbBatchedNL(t1 t2) SeqScan(t1) IndexScan(t2 rk1_pkey) Set(enable_material off) Set(enable_memoize off) */ select * FROM h t1 left outer join rk1 t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+ a  | b | a  
+----+---+----
+  1 | 1 |  1
+  2 | 2 |  2
+  3 | 3 |  3
+  4 | 0 |  4
+  5 | 1 |  5
+  6 | 2 |  6
+  7 | 3 |  7
+  8 | 0 |  8
+  9 | 1 |  9
+ 10 | 2 | 10
+(10 rows)
+
+-- q3.a = q2.a + q1.a is batched only by a join that has both q1 and q2 on its
+-- outer side (#17150).  Joined as (q1 (q2 q3)), neither join can batch it;
+-- the control joins q1 and q2 first, and the batched join probes q3 with
+-- their cross product.
+/*+ Leading((q1 (q2 q3))) YbBatchedNL(q2 q3) YbBatchedNL(q1 q2 q3) SeqScan(q1) SeqScan(q2) IndexScan(q3 rk1_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from h q1, h q2, rk1 q3 where q3.a = q2.a + q1.a;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   Join Filter: ((q2.a + q1.a) = q3.a)
+   ->  Nested Loop
+         ->  Seq Scan on h q2
+         ->  Index Scan using rk1_pkey on rk1 q3
+   ->  Seq Scan on h q1
+(6 rows)
+
+/*+ Leading(((q1 q2) q3)) NestLoop(q1 q2) YbBatchedNL(q1 q2 q3) SeqScan(q1) SeqScan(q2) IndexScan(q3 rk1_pkey) Set(enable_material off) */ explain (costs off) select * from h q1, h q2, rk1 q3 where q3.a = q2.a + q1.a;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((q2.a + q1.a) = q3.a)
+   ->  Nested Loop
+         ->  Seq Scan on h q1
+         ->  Seq Scan on h q2
+   ->  Index Scan using rk1_pkey on rk1 q3
+         Index Cond: (a = ANY (ARRAY[(q2.a + q1.a), ($1 + $4), ($2 + $5)]))
+(7 rows)
+
+-- (ss2 ss3) has a clause, ss3.a <> ss2.a, that the inner index scan can only
+-- apply as a filter, so that join is not batched, while the join above it
+-- batches ss1 into the same scan (#21292).  The inner join has no method
+-- hint and hash and merge joins are off, so the planner picks its nested
+-- loop; forcing YbBatchedNL on it leaves only disabled paths there and loses
+-- the batched join above.
+/*+ Leading((ss1 (ss2 ss3))) YbBatchedNL(ss1 ss2 ss3) SeqScan(ss1) SeqScan(ss2) IndexScan(ss3 rk2_pkey) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from h ss1, h ss2, rk2 ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (ss3.b = ss1.a)
+   ->  Seq Scan on h ss1
+   ->  Nested Loop
+         ->  Seq Scan on h ss2
+         ->  Index Scan using rk2_pkey on rk2 ss3
+               Index Cond: ((b = ANY (ARRAY[ss1.a, $1, $2])) AND (a = ss2.a))
+               Storage Filter: (a <> ss2.a)
+(8 rows)
+
+/*+ Leading((ss1 (ss2 ss3))) YbBatchedNL(ss1 ss2 ss3) SeqScan(ss1) SeqScan(ss2) IndexScan(ss3 rk2_pkey) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) Set(enable_memoize off) */ select * from h ss1, h ss2, rk2 ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+ a | b | a | b | a | b | v 
+---+---+---+---+---+---+---
+(0 rows)
+
+-- p3.a = p1.a + p2.a can be batched only by a join with p1 and p2 on its outer
+-- side.  Forced as (p1 (p2 p3)), neither join is batched, whether the inner
+-- join is forced to batch or to be a nested loop; the unbatched nested loops
+-- follow as the baseline, and the control batches ((p1 p2) p3)
+-- (#19642, #19946).
+/*+ YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) SeqScan(p1) IndexScan(p2 p2_pkey) IndexScan(p3 p3_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and p3.a = p1.a + p2.a;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Nested Loop
+   Join Filter: ((p2.a = (p1.a + 1)) AND ((p1.a + p2.a) = p3.a))
+   ->  Nested Loop
+         ->  Seq Scan on p2
+         ->  Seq Scan on p3
+   ->  Seq Scan on p1
+(6 rows)
+
+/*+ YbBatchedNL(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) SeqScan(p1) IndexScan(p2 p2_pkey) IndexScan(p3 p3_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and p3.a = p1.a + p2.a;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+   ->  Nested Loop
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = (p1.a + 1))
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = (p1.a + p2.a))
+(7 rows)
+
+/*+ NestLoop(p1 p2 p3) NestLoop(p2 p3) Leading((p1 (p2 p3))) SeqScan(p1) IndexScan(p2 p2_pkey) IndexScan(p3 p3_pkey) Set(enable_material off) Set(enable_memoize off) */ explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and p3.a = p1.a + p2.a;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+   ->  Nested Loop
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = (p1.a + 1))
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = (p1.a + p2.a))
+(7 rows)
+
+/*+ YbBatchedNL(p1 p2 p3) NestLoop(p1 p2) Leading(((p1 p2) p3)) SeqScan(p1) IndexScan(p2 p2_pkey) IndexScan(p3 p3_pkey) */ explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and p3.a = p1.a + p2.a;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a + p2.a) = p3.a)
+   ->  Nested Loop
+         ->  Seq Scan on p1
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (a = (p1.a + 1))
+   ->  Index Scan using p3_pkey on p3
+         Index Cond: (a = ANY (ARRAY[(p1.a + p2.a), ($2 + $5), ($3 + $6)]))
+(8 rows)
+
+-- A temporary inner relation is not batched; a temporary outer relation is
+-- (#28864).
+CREATE TABLE reg_bnl (a int, b int, PRIMARY KEY(a ASC));
+INSERT INTO reg_bnl SELECT i, i % 25 FROM generate_series(1, 100) i;
+CREATE INDEX reg_bnl_b_idx ON reg_bnl(b ASC);
+CREATE TEMP TABLE tmp_bnl (a int, b int);
+INSERT INTO tmp_bnl SELECT i, i % 25 FROM generate_series(1, 100) i;
+CREATE INDEX tmp_bnl_b_idx ON tmp_bnl(b ASC);
+ANALYZE reg_bnl;
+ANALYZE tmp_bnl;
+/*+ Leading((reg_bnl tmp_bnl)) YbBatchedNL(reg_bnl tmp_bnl) IndexScan(reg_bnl reg_bnl_pkey) IndexScan(tmp_bnl tmp_bnl_b_idx) Set(enable_material off) Set(enable_memoize off) */
+EXPLAIN (COSTS OFF) SELECT * FROM reg_bnl JOIN tmp_bnl ON reg_bnl.b = tmp_bnl.b WHERE reg_bnl.a <= 50;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   ->  Index Scan using reg_bnl_pkey on reg_bnl
+         Index Cond: (a <= 50)
+   ->  Index Scan using tmp_bnl_b_idx on tmp_bnl
+         Index Cond: (b = reg_bnl.b)
+(5 rows)
+
+/*+ Leading((tmp_bnl reg_bnl)) YbBatchedNL(tmp_bnl reg_bnl) SeqScan(tmp_bnl) IndexScan(reg_bnl reg_bnl_b_idx) */
+EXPLAIN (COSTS OFF) SELECT * FROM tmp_bnl JOIN reg_bnl ON tmp_bnl.b = reg_bnl.b WHERE tmp_bnl.a <= 50;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (tmp_bnl.b = reg_bnl.b)
+   ->  Seq Scan on tmp_bnl
+         Filter: (a <= 50)
+   ->  Index Scan using reg_bnl_b_idx on reg_bnl
+         Index Cond: (b = ANY (ARRAY[tmp_bnl.b, $1, $2]))
+(6 rows)
+
