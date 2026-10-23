@@ -3,7 +3,7 @@ title: ysql_dump
 headerTitle: ysql_dump
 linkTitle: ysql_dump
 description: Back up a YSQL database into a SQL script file or an archive.
-headcontent: Extract a YugabyteDB database into a SQL script file or an archive.
+headcontent: Extract a YugabyteDB database into a SQL script file or an archive
 menu:
   v2024.2:
     identifier: ysql-dump
@@ -14,7 +14,7 @@ type: docs
 
 ## Overview
 
-ysql_dump is a utility for backing up a YugabyteDB database. By default it writes a plain-text SQL script file. You can also write a custom, directory, or tar archive with [-F|--format](#f-format-format-format). ysql_dump makes consistent backups, even if the database is being used concurrently. ysql_dump does not block other users accessing the database (readers or writers).
+ysql_dump is a utility for backing up a YugabyteDB database. By default, it writes a plain-text SQL script file. You can also write to custom, directory, or tar archive formats using the [-F|--format](#f-format-format-format) option. ysql_dump makes consistent backups, even if the database is being used concurrently. ysql_dump does not block other users accessing the database (readers or writers).
 
 ysql_dump only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [ysql_dumpall](../ysql-dumpall/).
 
@@ -84,10 +84,12 @@ Send output to the specified file. For directory format (`-Fd`), this option is 
 
 Select the output format. *format* can be one of the following:
 
-- **`p`** — Plain-text SQL script (default). Restore with [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh`.
-- **`c`** — Custom archive format. Restore with `pg_restore`. You can restore selected objects, and the archive can be compressed.
-- **`d`** — Directory format. ysql_dump writes one file per table and other objects under the directory named by [-f|--file](#f-file-file-file). Use this format to run more than one parallel job ([-j|--jobs](#j-num-jobs-num)). Restore with `pg_restore`.
-- **`t`** — tar archive format. Restore with `pg_restore`.
+| Format | Description | Restore using |
+| :--- | :--- | :--- |
+| `p` | Plain-text SQL script (default). | [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh` |
+| `c` | Custom archive format. You can restore selected objects, and the archive can be compressed. | `pg_restore` |
+| `d` | Directory format. ysql_dump writes one file per table and other objects under the directory named by [`-f`](#f-file-file-file). Use this format to run more than one parallel job ([`-j`](#j-num-jobs-num)). | `pg_restore` |
+| `t` | tar archive format. | `pg_restore` |
 
 `pg_restore` ships in the server install, under `postgres/bin`. The [client package](/stable/releases/yugabyte-clients/) does not include `pg_restore`, so restoring a custom, directory, or tar archive needs a server install.
 

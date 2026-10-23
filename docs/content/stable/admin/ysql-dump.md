@@ -84,10 +84,12 @@ Send output to the specified file. For directory format (`-Fd`), this option is 
 
 Select the output format. *format* can be one of the following:
 
-- **`p`** — Plain-text SQL script (default). Restore using [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh`.
-- **`c`** — Custom archive format. Restore using `pg_restore`. You can restore selected objects, and the archive can be compressed.
-- **`d`** — Directory format. ysql_dump writes one file per table and other objects under the directory named by [-f|--file](#f-file-file-file). Use this format to run more than one parallel job ([-j|--jobs](#j-num-jobs-num)). Restore using `pg_restore`.
-- **`t`** — tar archive format. Restore using `pg_restore`.
+| Format | Description | Restore using |
+| :--- | :--- | :--- |
+| `p` | Plain-text SQL script (default). | [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh` |
+| `c` | Custom archive format. You can restore selected objects, and the archive can be compressed. | `pg_restore` |
+| `d` | Directory format. ysql_dump writes one file per table and other objects under the directory named by [`-f`](#f-file-file-file). Use this format to run more than one parallel job ([`-j`](#j-num-jobs-num)). | `pg_restore` |
+| `t` | tar archive format. | `pg_restore` |
 
 `pg_restore` ships in the server install, under `postgres/bin`. The [client package](../../releases/yugabyte-clients/) includes `ysql_dump` and does not include `pg_restore`, so restoring a custom, directory, or tar archive needs a server install.
 
