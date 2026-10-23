@@ -908,9 +908,8 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
-   * Same as above, with the API flags (enableYSQL/enableYCQL) read from {@code apiIntent}. Helm
-   * upgrades pass the task's target intent: ConfigureDBApisKubernetes stores the new flags only
-   * after the upgrade, so the persisted universe still has the old ones when this runs.
+   * Same as above, with the API flags read from {@code apiIntent}: the target intent, since the
+   * persisted universe has the old flags during a helm upgrade.
    */
   public K8sOtelConfig getOtelColConfigK8s(
       Provider provider,
@@ -2287,12 +2286,9 @@ public class OtelCollectorConfigGenerator {
 
   /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847, PLAT-23125). Add/start node write the collector
-   * config during configure, before they store isTserver, so tserver targets gate only on
-   * dedicatedTo and the API flags. MASTER_EXPORT gates on isMaster: master starts do not write the
-   * collector config during configure, so createStartMasterProcessTasks and AddNodeToUniverse
-   * rewrite it afterwards (createOtelCollectorMetricsRefreshTasks), as ConfigureDBApis does after
-   * an API change.
+   * a closed port every interval. isTserver is not set yet when configure writes the config, so
+   * tserver targets gate on dedicatedTo and the API flags. MASTER_EXPORT gates on isMaster, and
+   * master role changes rewrite the config (createOtelCollectorMetricsRefreshTasks).
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {

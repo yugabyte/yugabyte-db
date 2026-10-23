@@ -3093,11 +3093,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Rewrites the collector config on the given nodes when metrics export is on, so its scrape
-   * targets match the node's current roles and API flags. Callers use it after a change that the
-   * collector config does not otherwise pick up: a master start (its configure step only updates
-   * gflags, so the node keeps the config it got as a tserver, with no master target) and a DB API
-   * change. It is idempotent, so callers do not need to know whether the config is already current.
+   * Rewrites the collector config when metrics export is on, so scrape targets match the node's
+   * current roles and API flags. Master starts and API changes do not rewrite it on their own.
    */
   protected void createOtelCollectorMetricsRefreshTasks(Collection<NodeDetails> nodes) {
     createOtelCollectorMetricsRefreshTasks(nodes, false /* ignoreErrors */);
