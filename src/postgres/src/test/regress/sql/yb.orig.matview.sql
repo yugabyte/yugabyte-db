@@ -484,6 +484,23 @@ BEGIN
 END $$;
 :cv_bumped
 
+-- The refresh fails on duplicate rows and the exception block catches it.
+CREATE TABLE cv_dup_base (k int, v int);
+CREATE MATERIALIZED VIEW cv_dup_mv AS SELECT * FROM cv_dup_base;
+CREATE UNIQUE INDEX ON cv_dup_mv (k);
+INSERT INTO cv_dup_base VALUES (1, 1), (1, 1);
+DROP INDEX cv_t_v;
+:cv_save
+DO $$
+BEGIN
+  BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY cv_dup_mv;
+  EXCEPTION WHEN cardinality_violation THEN NULL;
+  END;
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+:cv_bumped
+
 -- REFRESH MATERIALIZED VIEW CONCURRENTLY alone does not bump the catalog version.
 :cv_save
 CALL cv_refresh_twice();
@@ -493,7 +510,21 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
 REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
 COMMIT;
 :cv_bumped
+
+-- DDL run by an event trigger that the refresh fires is not part of the refresh.
+CREATE FUNCTION cv_evt_create_index() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+CREATE EVENT TRIGGER cv_evt ON ddl_command_end
+  WHEN TAG IN ('REFRESH MATERIALIZED VIEW') EXECUTE FUNCTION cv_evt_create_index();
+DROP INDEX cv_t_v;
+:cv_save
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+:cv_bumped
+DROP EVENT TRIGGER cv_evt;
 DROP TABLE cv_t;
 DROP TABLE cv_base CASCADE;
+DROP TABLE cv_dup_base CASCADE;
 DROP PROCEDURE cv_refresh_then_index, cv_refresh_twice;
-DROP FUNCTION cv_create_index;
+DROP FUNCTION cv_create_index, cv_evt_create_index;
