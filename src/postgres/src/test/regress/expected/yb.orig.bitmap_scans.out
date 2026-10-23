@@ -1180,8 +1180,8 @@ SET yb_explain_hide_non_deterministic_fields = off;
 -- returns only its rows
 SELECT explain_bitmap_first_fetch(:'bmlimit');
 NOTICE:  exceeded work_mem, switching to full table scan
-                          explain_bitmap_first_fetch                           
--------------------------------------------------------------------------------
+                            explain_bitmap_first_fetch                            
+----------------------------------------------------------------------------------
  Limit (actual rows=10.00 loops=1)
    ->  YB Bitmap Table Scan on bm_limit (actual rows=10.00 loops=1)
          Storage Filter: ((a < 5000) OR (b > 9000))
@@ -1203,8 +1203,8 @@ NOTICE:  exceeded work_mem, switching to full table scan
 -- does not exceed work_mem: no bound, the first page comes back full
 SET work_mem TO '4MB';
 SELECT explain_bitmap_first_fetch(:'bmlimit');
-                            explain_bitmap_first_fetch                            
-----------------------------------------------------------------------------------
+                             explain_bitmap_first_fetch                              
+-------------------------------------------------------------------------------------
  Limit (actual rows=10.00 loops=1)
    ->  YB Bitmap Table Scan on bm_limit (actual rows=10.00 loops=1)
          Storage Table Read Requests: 1

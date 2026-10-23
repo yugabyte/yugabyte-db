@@ -637,7 +637,7 @@ select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 
  Nested Loop
    Join Filter: (t2.k3 < (t1.id + t3.a))
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.k4)
+         Join Filter: (t2.k4 = t1.a)
          ->  Seq Scan on t1
          ->  Index Scan using i_t2r_k4k5 on t2r t2
                Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -1586,7 +1586,7 @@ select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 
  Nested Loop
    Join Filter: (t2.k3 < (t1.id + t3.a))
    ->  YB Batched Nested Loop Join
-         Join Filter: (t1.a = t2.k4)
+         Join Filter: (t2.k4 = t1.a)
          ->  Seq Scan on t1
          ->  Index Scan using i_t2r_k4k5 on t2r t2
                Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
@@ -2187,7 +2187,7 @@ select * from t1, t1 t3, t2r t2 where t2.k4 = t1.a and t2.k5 <= t3.id and t2.k3 
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: ((t2.k5 <= t3.id) AND (t1.a = t2.k4) AND (t2.k3 < (t1.id + t3.a)))
+   Join Filter: ((t2.k5 <= t3.id) AND (t2.k4 = t1.a) AND (t2.k3 < (t1.id + t3.a)))
    ->  Nested Loop
          ->  Seq Scan on t1
          ->  Materialize
