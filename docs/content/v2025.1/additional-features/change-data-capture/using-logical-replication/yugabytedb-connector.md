@@ -47,7 +47,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
-When you install the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you're running. After it's installed, you don't need to change the connector when you upgrade YugabyteDB, as long as you stay in the same release series (for example, v2025.1).
+When installing the connector for the first time, always use the newest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version.
 
 Connector versions follow one of these schemes.
 
