@@ -5967,27 +5967,39 @@ class PgLibPqBlockDangerousRolesTest : public PgLibPqTest {
 };
 
 TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
+  // PG's own "permission denied to grant role" error has the same error code, so match the
+  // message to make sure the dangerous-role check is what failed.
+  constexpr auto kDangerousRoleError = "read/write data/files roles are disabled";
   PGConn conn_yugabyte = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn_yugabyte.Execute("CREATE USER admin WITH CREATEROLE ROLE yb_db_admin"));
+  // Create admin as a member of yb_db_admin. "IN ROLE yb_db_admin" adds admin to
+  // yb_db_admin; the similar-looking "ROLE yb_db_admin" would do the opposite and add
+  // yb_db_admin to admin.
+  ASSERT_OK(conn_yugabyte.Execute("CREATE USER admin WITH CREATEROLE IN ROLE yb_db_admin"));
+  // Since PG commit cf5eb37c5ee, CREATEROLE alone no longer lets admin grant or revoke a
+  // role; admin needs ADMIN OPTION on it. Without it, the GRANTs below would fail on PG's
+  // ADMIN OPTION check and never reach the dangerous-role check.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "GRANT pg_read_all_data, pg_write_all_data, pg_read_server_files, pg_write_server_files, "
+      "pg_execute_server_program, pg_checkpoint, pg_read_all_stats, yb_db_admin TO admin "
+      "WITH ADMIN OPTION"));
   PGConn conn_admin = ASSERT_RESULT(ConnectToDBAsUser("" /* db_name */, "admin"));
   ASSERT_OK(conn_admin.Execute("CREATE ROLE r"));
 
   for (const auto& granted_role : {"pg_read_all_data", "pg_write_all_data", "pg_read_server_files",
                                    "pg_write_server_files", "pg_execute_server_program"}) {
     LOG(INFO) << "granted_role: " << granted_role;
-    ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role),
-                             YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
-    ASSERT_OK(conn_yugabyte.ExecuteFormat("GRANT $0 to r", granted_role));
-    // Revoke as the granting superuser: a CREATEROLE user (admin) may only
-    // revoke a role membership it holds ADMIN OPTION on.
-    ASSERT_OK(conn_yugabyte.ExecuteFormat("REVOKE $0 FROM r", granted_role));
+    ASSERT_NOK_STR_CONTAINS(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role),
+                            kDangerousRoleError);
+    // GRANTED BY admin, because a non-superuser can only revoke grants made by itself.
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("GRANT $0 to r GRANTED BY admin", granted_role));
+    ASSERT_OK(conn_admin.ExecuteFormat("REVOKE $0 FROM r", granted_role));
     // Avoid catalog version mismatch by refreshing session.
     conn_yugabyte.Reset();
     for (const auto& option : {"IN ROLE", "IN GROUP"}) {
       LOG(INFO) << "option: " << option;
-      ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("CREATE ROLE invalid WITH $0 $1",
-                                                        option, granted_role),
-                               YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
+      ASSERT_NOK_STR_CONTAINS(conn_admin.ExecuteFormat("CREATE ROLE invalid WITH $0 $1",
+                                                       option, granted_role),
+                              kDangerousRoleError);
       ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE ROLE \"invalid$0$1\" WITH $0 $1",
                                             option, granted_role));
     }
@@ -5998,7 +6010,10 @@ TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
     }
   }
 
-  for (const auto& granted_role : {"pg_checkpoint", "pg_read_all_stats", "yb_db_admin", "admin"}) {
+  // admin cannot grant itself (a role never has ADMIN OPTION on itself), so grant a role
+  // that admin created instead.
+  ASSERT_OK(conn_admin.Execute("CREATE ROLE u"));
+  for (const auto& granted_role : {"pg_checkpoint", "pg_read_all_stats", "yb_db_admin", "u"}) {
     LOG(INFO) << "granted_role: " << granted_role;
     ASSERT_OK(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role));
   }
