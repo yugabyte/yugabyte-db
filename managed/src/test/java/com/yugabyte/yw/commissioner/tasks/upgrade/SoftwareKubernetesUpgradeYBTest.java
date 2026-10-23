@@ -364,13 +364,20 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
   @Test
   public void testAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes() throws Exception {
-    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */);
+    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */, true /* rollbackSupport */);
   }
 
   @Test
   public void testAbortBeforeVersionUpdateWithoutFinalizeFailsUpgradeAndRetryCompletes()
       throws Exception {
-    abortBeforeVersionUpdateThenRetry(false /* requireFinalize */);
+    abortBeforeVersionUpdateThenRetry(false /* requireFinalize */, true /* rollbackSupport */);
+  }
+
+  @Test
+  public void testAutoFinalizeAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes()
+      throws Exception {
+    // With rollbackSupport=false the upgrade finalizes itself, then saves Ready with the version.
+    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */, false /* rollbackSupport */);
   }
 
   /**
@@ -378,7 +385,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
    * saves the end state. The upgrade must be left UpgradeFailed on the old version, and a retry
    * must finish it.
    */
-  private void abortBeforeVersionUpdateThenRetry(boolean requireFinalize) throws Exception {
+  private void abortBeforeVersionUpdateThenRetry(boolean requireFinalize, boolean rollbackSupport)
+      throws Exception {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
     factory
@@ -386,8 +394,16 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
     when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
         .thenReturn(requireFinalize);
+    if (!rollbackSupport) {
+      // RunYsqlUpgrade, which the in-task finalize runs.
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(new UpgradeYsqlResponse(1000, "", null));
+      when(mockClient.getIsInitDbDone())
+          .thenReturn(new IsInitDbDoneResponse(1000, "", true, true, null, null));
+    }
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.rollbackSupport = rollbackSupport;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.nodePrefix = NODE_PREFIX;
@@ -433,10 +449,11 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(Success, retryTask.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
-        requireFinalize
+        requireFinalize && rollbackSupport
             ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
             : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(rollbackSupport, defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         YB_SOFTWARE_VERSION_NEW,
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);

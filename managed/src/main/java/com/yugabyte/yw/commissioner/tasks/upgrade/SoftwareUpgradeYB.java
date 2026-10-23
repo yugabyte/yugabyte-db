@@ -531,12 +531,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    UniverseDefinitionTaskParams.SoftwareUpgradeState endState = null;
+    UniverseDefinitionTaskParams.SoftwareUpgradeState endState;
+    Boolean isSoftwareRollbackAllowed = null;
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(
           taskParams().upgradeSystemCatalog,
           ctx.requireYsqlMajorVersionUpgrade,
-          ctx.requireAdditionalSuperUserForCatalogUpgrade);
+          ctx.requireAdditionalSuperUserForCatalogUpgrade,
+          false /* saveReadyState */);
+      endState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+      isSoftwareRollbackAllowed = false;
     } else if (ctx.upgradeRequireFinalize) {
       endState = UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize;
     } else {
@@ -545,7 +549,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     }
     // The end state is saved with the version (PLAT-23182). Saved earlier, an abort in between
     // left it with the old version, and the failure handler doesn't reset an end state.
-    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */, endState)
+    createUpdateSoftwareVersionTask(
+            ctx.newVersion, false /* isSoftwareUpdateViaVm */, endState, isSoftwareRollbackAllowed)
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 

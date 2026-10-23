@@ -1865,14 +1865,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         softwareVersion, isSoftwareUpdateViaVm, null /* softwareUpgradeState */);
   }
 
-  /**
-   * Create a task to mark the final software version on a universe, also setting {@code
-   * softwareUpgradeState} in the same universe save when it is not null.
-   */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion,
       boolean isSoftwareUpdateViaVm,
       @Nullable SoftwareUpgradeState softwareUpgradeState) {
+    return createUpdateSoftwareVersionTask(
+        softwareVersion,
+        isSoftwareUpdateViaVm,
+        softwareUpgradeState,
+        null /* isSoftwareRollbackAllowed */);
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe, also setting {@code
+   * softwareUpgradeState} (and {@code isSoftwareRollbackAllowed} when not null) in the same
+   * universe save when it is not null.
+   */
+  public SubTaskGroup createUpdateSoftwareVersionTask(
+      String softwareVersion,
+      boolean isSoftwareUpdateViaVm,
+      @Nullable SoftwareUpgradeState softwareUpgradeState,
+      @Nullable Boolean isSoftwareRollbackAllowed) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -1880,6 +1893,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
     params.softwareUpgradeState = softwareUpgradeState;
+    params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

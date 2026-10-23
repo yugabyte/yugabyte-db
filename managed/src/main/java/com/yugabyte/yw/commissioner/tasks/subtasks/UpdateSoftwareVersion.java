@@ -41,6 +41,8 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
     // Upgrade state written in the same save as the version, so an abort or YBA restart can't
     // leave one updated without the other. Null leaves the state unchanged.
     public SoftwareUpgradeState softwareUpgradeState;
+    // Applied with softwareUpgradeState, as in UpdateUniverseSoftwareUpgradeState.
+    public Boolean isSoftwareRollbackAllowed;
   }
 
   protected Params taskParams() {
@@ -76,7 +78,11 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
                 cluster.userIntent.ybSoftwareVersion = taskParams().softwareVersion;
               }
               if (taskParams().softwareUpgradeState != null) {
-                universeDetails.softwareUpgradeState = taskParams().softwareUpgradeState;
+                UpdateUniverseSoftwareUpgradeState.applySoftwareUpgradeState(
+                    universeDetails,
+                    taskParams().softwareUpgradeState,
+                    taskParams().isSoftwareRollbackAllowed,
+                    false /* retainPrevYBSoftwareConfig */);
               }
               universe.setUniverseDetails(universeDetails);
             }

@@ -74,6 +74,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -283,18 +284,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   @Test
   public void testSoftwareUpgradeWithAutoFinalize() {
     updateDefaultUniverseTo5Nodes(true);
-
-    try {
-      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
-      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
-          .thenReturn(mockUpgradeYsqlResponse);
-      IsInitDbDoneResponse mockIsInitDbDoneResponse =
-          new IsInitDbDoneResponse(1000, "", true, true, null, null);
-      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
-    } catch (Exception ignored) {
-      fail();
-    }
+    mockRunYsqlUpgrade();
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -337,7 +327,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.RunYsqlUpgrade)
         .addTasks(TaskType.EnablePitrConfig)
-        .addTasks(TaskType.UpdateUniverseState)
         .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
@@ -348,6 +337,21 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  /** Mocks for the RunYsqlUpgrade subtask that auto-finalize (rollbackSupport=false) runs. */
+  private void mockRunYsqlUpgrade() {
+    try {
+      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      IsInitDbDoneResponse mockIsInitDbDoneResponse =
+          new IsInitDbDoneResponse(1000, "", true, true, null, null);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+    } catch (Exception ignored) {
+      fail();
+    }
   }
 
   @Test
@@ -1211,7 +1215,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     String oldVersion = primaryVersion();
     TaskInfo taskInfo =
         abortUpgradeAfterSubTask(
-            taskUuid -> firstSubTaskPosition(taskUuid, TaskType.UpdateSoftwareVersion), canary);
+            taskUuid -> firstSubTaskPosition(taskUuid, TaskType.UpdateSoftwareVersion),
+            canary ? this::setNoPauseCanaryConfig : params -> {});
 
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     UniverseDefinitionTaskParams details =
@@ -1239,6 +1244,55 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(newVersion, primaryVersion());
   }
 
+  @Test
+  public void testAutoFinalizeAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes()
+      throws InterruptedException {
+    // PLAT-23182: with rollbackSupport=false the upgrade finalizes itself, then saves Ready
+    // (rollback
+    // disallowed) with the version. An abort just before that must still leave UpgradeFailed.
+    mockRunYsqlUpgrade();
+    String oldVersion = primaryVersion();
+    TaskInfo taskInfo =
+        abortUpgradeAfterSubTask(
+            taskUuid -> firstSubTaskPosition(taskUuid, TaskType.UpdateSoftwareVersion),
+            params -> params.rollbackSupport = false);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(SoftwareUpgradeState.UpgradeFailed, details.softwareUpgradeState);
+    assertEquals(oldVersion, primaryVersion());
+    assertNotNull(details.prevYBSoftwareConfig);
+
+    String newVersion = "2.21.0.0-b2";
+    mockDBServerVersion(
+        newVersion, defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    createCustomerTask(taskInfo);
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTask = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, retryTask.getTaskState());
+    details = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertFalse(details.isSoftwareRollbackAllowed);
+    assertNull(details.prevYBSoftwareConfig);
+    assertEquals(newVersion, primaryVersion());
+  }
+
+  /** Canary upgrade of az1-az3, one AZ per step, with no pause points. */
+  private void setNoPauseCanaryConfig(SoftwareUpgradeParams taskParams) {
+    taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
+    taskParams.canaryUpgradeConfig.primaryClusterAZSteps = new ArrayList<>();
+    for (UUID azUUID : Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid())) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUUID;
+      step.pauseAfterTserverUpgrade = false;
+      taskParams.canaryUpgradeConfig.primaryClusterAZSteps.add(step);
+    }
+  }
+
   /**
    * Runs an upgrade past FreezeUniverse and aborts it just before the Upgrading state update, or
    * just after it when {@code afterStateUpdate}.
@@ -1257,14 +1311,15 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
    */
   private TaskInfo abortUpgradeAfterSubTask(ToIntFunction<UUID> abortPosition)
       throws InterruptedException {
-    return abortUpgradeAfterSubTask(abortPosition, false /* canary */);
+    return abortUpgradeAfterSubTask(abortPosition, params -> {});
   }
 
   /**
-   * Same as {@link #abortUpgradeAfterSubTask(ToIntFunction)}; {@code canary} upgrades one AZ per
-   * step with no pause points, on a universe with nodes in az1-az3.
+   * Same as {@link #abortUpgradeAfterSubTask(ToIntFunction)}, with {@code customizeParams} applied
+   * to the upgrade params before submitting.
    */
-  private TaskInfo abortUpgradeAfterSubTask(ToIntFunction<UUID> abortPosition, boolean canary)
+  private TaskInfo abortUpgradeAfterSubTask(
+      ToIntFunction<UUID> abortPosition, Consumer<SoftwareUpgradeParams> customizeParams)
       throws InterruptedException {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -1272,17 +1327,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
     taskParams.creatingUser = defaultUser;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
-    if (canary) {
-      taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
-      taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
-      taskParams.canaryUpgradeConfig.primaryClusterAZSteps = new ArrayList<>();
-      for (UUID azUUID : Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid())) {
-        AZUpgradeStep step = new AZUpgradeStep();
-        step.azUUID = azUUID;
-        step.pauseAfterTserverUpgrade = false;
-        taskParams.canaryUpgradeConfig.primaryClusterAZSteps.add(step);
-      }
-    }
+    customizeParams.accept(taskParams);
     mockDBServerVersion(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
         taskParams.ybSoftwareVersion,
