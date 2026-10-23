@@ -5967,23 +5967,38 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
-// Master caps the tenant components of a new index by the hash group and range components of its
-// table, and the vectors keep their tenant in the payload.
+// Master caps the tenant components of a new index below the hash group and range components of
+// its table, so a tenant never covers the whole primary key, and the vectors keep their tenant in
+// the payload.
 TEST_F(PgVectorIndexUtilTest, TenantComponents) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 3;
 
   constexpr size_t kNumRows = 5;
-  auto conn = ASSERT_RESULT(MakeIndex());
-  ASSERT_OK(InsertRows(conn, 1, kNumRows));
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-
-  auto indexes = ListVectorIndexes(cluster_.get());
-  ASSERT_FALSE(indexes.empty());
-  for (const auto& index : indexes) {
-    // The primary key of the table is its only component.
-    ASSERT_EQ(index->options().tenant_hash_group_and_range_components(), 1U);
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (tenant INT, id BIGINT, embedding vector(3), "
+      "PRIMARY KEY ((tenant) HASH, id))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE single (id INT PRIMARY KEY, embedding vector(3))"));
+  for (const auto* table : {"test", "single"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
   }
+  auto tenant_components = [this](const std::string& index_name) -> Result<uint32_t> {
+    auto index = VERIFY_RESULT(client_->OpenTable(
+        VERIFY_RESULT(GetTableIDFromTableName(index_name))));
+    return index->index_info().vector_idx_options().tenant_hash_group_and_range_components();
+  };
+  // The tenant of PRIMARY KEY ((tenant) HASH, id) is its hash group.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("test_idx")), 1U);
+  // Every row of a single component key would be its own tenant.
+  ASSERT_EQ(ASSERT_RESULT(tenant_components("single_idx")), 0U);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
 }
 
@@ -6399,12 +6414,13 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
         "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
     auto conn = ASSERT_RESULT(ConnectToDB(kSourceDb));
     ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, v vector(3))", kTable));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (tenant int, id int, v vector(3), PRIMARY KEY (tenant, id))", kTable));
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE INDEX $0 ON $1 USING ybhnsw (v vector_l2_ops)", kIndex, kTable));
     ASSERT_OK(WaitForVectorIndexBackfills(1, "source index backfill"));
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 SELECT i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
+        "INSERT INTO $0 SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $1) i", kTable,
         kNumRows));
   }
   ASSERT_OK(cluster_->FlushTablets());
