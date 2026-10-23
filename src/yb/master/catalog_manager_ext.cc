@@ -3442,12 +3442,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
       continue;
     }
 
-    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+    LOG(INFO) << "Removing hidden table " << table->name() << " from tablet "
+              << tablet_info->tablet_id();
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-    table->ClearTabletMaps();
+    // Only drop this tablet from the table. A vector index is hosted by every tablet of its indexed
+    // table, and the others may still be retained by a snapshot schedule.
+    auto tablet_lock = tablet_info->LockForWrite();
+    WARN_NOT_OK(
+        table->RemoveTablet(tablet_info->tablet_id()),
+        Format("Failed to remove tablet $0 from $1", tablet_info->tablet_id(), AsString(*table)));
   }
 }
 
