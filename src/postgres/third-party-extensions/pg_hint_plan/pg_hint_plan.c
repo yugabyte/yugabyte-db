@@ -2590,6 +2590,21 @@ ybAddHintedJoin(PlannerInfo *root, Relids outer_relids, Relids inner_relids)
 	}
 }
 
+/*
+ * Relids a hint is matched against for rel.  A hint names relations of the
+ * query, which find_relid_aliasname() resolves among initial_rels and never
+ * to a child relation of a partitioned table, so a partitionwise child
+ * relation or child join is matched by its topmost parents' relids, the way
+ * setup_hint_enforcement() applies a scan hint to a child.
+ */
+static Relids
+ybRelidsForHintMatch(RelOptInfo *rel)
+{
+	if (rel->top_parent_relids)
+		return rel->top_parent_relids;
+	return rel->relids;
+}
+
 static HintKeyword
 ybIsNegationHint(Hint *hint)
 {
@@ -6391,24 +6406,25 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		current_hint_state->join_hint_level &&
 		hint_inhibit_level == 0)
 	{
-		Relids		joinrelids = bms_union(outerrel->relids, innerrel->relids);
-		Relids		ybLevelRelids = bms_difference(joinrelids, root->outer_join_rels);
-
 		/*
-		 * YB: the join level counts every relation joined, the child rels of
-		 * a partitionwise join included; only outer-join relids are not
-		 * relations.  Filtered to base relations, a child join would count as
-		 * level 0 and get every method back under a Leading hint.
+		 * YB: a child join of a partitionwise join is matched, and its join
+		 * level counted, by its topmost parents' relids
+		 * (ybRelidsForHintMatch()), so it gets the hints of the join its
+		 * parents form, with the Leading orientation and denial below.
 		 */
-		ybLevelHasHints =
-			current_hint_state->join_hint_level[bms_num_members(ybLevelRelids)] != NIL;
-		bms_free(ybLevelRelids);
+		Relids		joinrelids = bms_union(ybRelidsForHintMatch(outerrel),
+										   ybRelidsForHintMatch(innerrel));
+		int			ybJoinLevel;
 
 		/*
 		 * joinrelids may include outer-join relids since PostgreSQL 16, so
 		 * filter them out as hints can only handle base relations.
 		 */
 		joinrelids = bms_intersect(joinrelids, root->all_baserels);
+
+		ybJoinLevel = bms_num_members(joinrelids);
+		ybLevelHasHints =
+			current_hint_state->join_hint_level[ybJoinLevel] != NIL;
 
 		join_hint = find_join_hint(joinrelids);
 		memoize_hint = find_memoize_hint(joinrelids);
@@ -6422,9 +6438,11 @@ pg_hint_plan_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		 * YB: compare base relations only, or a Leading hint whose inner side
 		 * spans an outer join matches neither orientation of that join and
 		 * both end up disabled: innerrel->relids carries outer-join relids,
-		 * inner_joinrelids never does (see ybFindHintedJoin()).
+		 * inner_joinrelids never does (see ybFindHintedJoin()).  The inner
+		 * side of a child join is likewise its topmost parents' relids.
 		 */
-		ybInnerRelids = bms_intersect(innerrel->relids, root->all_baserels);
+		ybInnerRelids = bms_intersect(ybRelidsForHintMatch(innerrel),
+									  root->all_baserels);
 
 		if (join_hint->inner_nrels == 0 ||
 			bms_equal(join_hint->inner_joinrelids, ybInnerRelids))
