@@ -51,6 +51,8 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 
+#include "yb/vector_index/vector_lsm.h"
+
 DEFINE_UNKNOWN_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_UNKNOWN_int32(txn_max_apply_batch_records, 100000,
@@ -64,6 +66,9 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
+DEFINE_test_flag(bool, store_apply_state_without_apply_op_id, false,
+                 "Store the apply state of a large transaction without its apply op id, as older "
+                 "releases did.");
 
 namespace yb::docdb {
 
@@ -696,6 +701,10 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
       rocksdb::CacheRestartBlockKeys::kFalse);
 }
 
+void IntentsWriter::WriteApplied() {
+  context_.WriteApplied();
+}
+
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   Slice key_prefix = txn_reverse_index_prefix_.AsSlice();
   key_prefix.remove_suffix(1);
@@ -810,8 +819,14 @@ ApplyIntentsContext::ApplyIntentsContext(
   if (ShouldMaintainVectorIndexes(table_type)) {
     vector_indexes_updater_.emplace(
         std::move(vector_indexes), schema_packing_provider, frontiers_,
-        apply_to_storages, commit_ht, write_id_);
+        apply_to_storages, commit_ht, write_id_, chunk_holds_);
   }
+}
+
+ApplyIntentsContext::~ApplyIntentsContext() = default;
+
+void ApplyIntentsContext::WriteApplied() {
+  chunk_holds_.clear();
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(
@@ -820,7 +835,9 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
-  apply_op_id_.ToPB(pb.mutable_apply_op_id());
+  if (!FLAGS_TEST_store_apply_state_without_apply_op_id) {
+    apply_op_id_.ToPB(pb.mutable_apply_op_id());
+  }
   faststring encoded_pb;
   RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueEntryTypeAsChar::kString;
@@ -1179,6 +1196,8 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
   }
 }
 
+NonTransactionalBatchWriter::~NonTransactionalBatchWriter() = default;
+
 bool NonTransactionalBatchWriter::Empty() const {
   return !put_batch_.write_pairs_size() && !put_batch_.apply_external_transactions_size();
 }
@@ -1225,7 +1244,7 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   if (ShouldMaintainVectorIndexes(table_type_)) {
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        apply_data.commit_ht, apply_data.write_id, /* xcluster_target= */ true);
+        apply_data.commit_ht, apply_data.write_id, chunk_holds_, /* xcluster_target= */ true);
   }
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
@@ -1420,7 +1439,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        write_hybrid_time_, write_id, xcluster_target_applied_.get());
+        write_hybrid_time_, write_id, chunk_holds_, xcluster_target_applied_.get());
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
@@ -1476,6 +1495,10 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   }
 
   return Status::OK();
+}
+
+void NonTransactionalBatchWriter::WriteApplied() {
+  chunk_holds_.clear();
 }
 
 void NonTransactionalBatchWriter::FlushPendingTableTombstoneNotifies() {
@@ -1538,11 +1561,12 @@ Status DumpIntentsContext::Complete(rocksdb::DirectWriteHandler& handler,
 VectorIndexesUpdater::VectorIndexesUpdater(
     DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
     ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
-    std::reference_wrapper<IntraTxnWriteId> write_id, bool xcluster_target)
+    std::reference_wrapper<IntraTxnWriteId> write_id,
+    vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target)
     : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
       frontiers_(frontiers),
       apply_to_storages_(apply_to_storages), commit_ht_(commit_ht), write_id_(write_id),
-      xcluster_target_(xcluster_target) {
+      chunk_holds_(chunk_holds), xcluster_target_(xcluster_target) {
   if (indexes_) {
     batches_.resize(indexes_->size());
   }
@@ -1839,6 +1863,7 @@ Status VectorIndexesUpdater::Complete() {
       InsertOptions options = {
         .frontiers = &frontiers_,
         .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
+        .chunk_holds = &chunk_holds_,
       };
       RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], options));
     }

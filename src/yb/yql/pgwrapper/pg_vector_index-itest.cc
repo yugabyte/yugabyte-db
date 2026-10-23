@@ -212,12 +212,23 @@ TEST_F_EX(PgVectorIndexITest, Backfill, PgVectorIndexBackfillITest) {
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    tserver::VerifyVectorIndexesRequestPB req;
-    tserver::VerifyVectorIndexesResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(30s);
     auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
-    ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
+    tserver::VerifyVectorIndexesResponsePB resp;
+    // CREATE INDEX waits only for the leader backfills, a follower one could still be queued.
+    ASSERT_OK(WaitFor([&proxy, &resp]() -> Result<bool> {
+      tserver::VerifyVectorIndexesRequestPB req;
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      resp.Clear();
+      RETURN_NOT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
+      for (const auto& check : resp.checks()) {
+        if (check.has_status() && check.status().code() == AppStatusPB::TRY_AGAIN_CODE) {
+          LOG(INFO) << "Retry check: " << check.ShortDebugString();
+          return false;
+        }
+      }
+      return true;
+    }, 2s * kBackfillSleepSec, "Vector index check"));
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
     ASSERT_GT(resp.checks_size(), 0);
     for (const auto& check : resp.checks()) {

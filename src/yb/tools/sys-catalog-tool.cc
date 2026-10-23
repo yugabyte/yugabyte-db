@@ -226,6 +226,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr,
   };
 

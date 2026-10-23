@@ -1,6 +1,8 @@
 -- ########## TIME WEEKLY TESTS ##########
 -- Other tests:  native, constraint_cols/optimize_constraint. Use reapply_constraints procedure
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
@@ -27,9 +29,11 @@ SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'weekl
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP - '8 weeks'::interval);
 
--- YB: default partition creation is disabled
--- TODO(#3109): Re-enable it after transactional DDL support.
+\if :yb_use_txn_ddl_and_locks
+SELECT has_table('partman_test', 'time_taptest_table_default', 'Check time_taptest_table_default exists');
+\else \\ -- YB
 SELECT hasnt_table('partman_test', 'time_taptest_table_default', 'Check time_taptest_table_default does not exists');
+\endif \\ -- YB
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW')||' exists (+1 weeks)');

@@ -495,6 +495,10 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
 
         RETURN_NOT_OK(master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc));
         if (resp->has_error()) {
+          // Master leadership may move or the lease may lapse on slow builds; retry.
+          if (resp->error().code() == master::MasterErrorPB::NOT_THE_LEADER) {
+            return false;
+          }
           return StatusFromPB(resp->error().status());
         }
 

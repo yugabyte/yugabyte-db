@@ -1447,12 +1447,22 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
+    if (num_tasks && context.chunk_holds) {
+      // Counted as one more task, so the chunk is saved only after the hold is released.
+      ++chunk->num_tasks;
+    }
   }
   release_tasks.Cancel();
 
   if (!num_tasks) {
     // Empty insert could be used to update frontiers.
     return Status::OK();
+  }
+
+  if (context.chunk_holds) {
+    context.chunk_holds->emplace_back([this, chunk] {
+      ReleaseChunkHold(*chunk);
+    });
   }
 
   std::shared_ptr<storage::UserFrontiers> frontiers_to_commit;
@@ -1972,6 +1982,16 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::ReleaseChunkHold(MutableChunk& chunk) {
+  if (--chunk.num_tasks == 0) {
+    // Holds are released on the write path, so save the chunk on the insert thread pool.
+    DCHECK(chunk.save_callback);
+    options_.insert_thread_pool->EnqueueFunctor(chunk.save_callback);
+    chunk.save_callback = {};
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::RollChunk(
     size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "min_vectors: " << min_vectors;
@@ -2067,6 +2087,63 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   TEST_SYNC_POINT("VectorLSM::Flush:AfterDoFlush");
 
   return wait ? promise.get_future().get() : Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
+    const std::function<void(storage::UserFrontiers&)>& modify) {
+  RETURN_NOT_OK(RUNNING_STATUS());
+
+  AcquireManifest();
+  auto release_manifest = ScopeExit([this] { ReleaseManifest(); });
+
+  std::vector<std::pair<ImmutableChunkPtr, storage::UserFrontiersPtr>> modified;
+  VectorLSMUpdatePB update;
+  update.set_reset(true);
+  WritableFile* manifest_file = nullptr;
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+    SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
+           "Cannot modify chunk frontiers of a vector index with unflushed entries");
+    for (const auto& chunk : immutable_chunks_) {
+      SCHECK(chunk->IsInManifest(), IllegalState,
+             "Cannot modify chunk frontiers of a vector index with unflushed chunks");
+    }
+    if (immutable_chunks_.empty()) {
+      return Status::OK();
+    }
+
+    // Modify copies, so the in-memory chunks keep matching the manifest if the write fails.
+    modified.reserve(immutable_chunks_.size());
+    for (const auto& chunk : immutable_chunks_) {
+      auto frontiers = chunk->user_frontiers ? chunk->user_frontiers->Clone()
+                                             : storage::UserFrontiersPtr{};
+      if (frontiers) {
+        modify(*frontiers);
+      }
+      chunk->AddToUpdate(update);
+      if (frontiers) {
+        auto& added_chunk = *update.mutable_add_chunks(update.add_chunks_size() - 1);
+        frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+        frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+      }
+      modified.emplace_back(chunk, std::move(frontiers));
+    }
+    manifest_file = VERIFY_RESULT(RollManifest());
+  }
+
+  VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+
+  {
+    std::lock_guard lock(mutex_);
+    for (auto& [chunk, frontiers] : modified) {
+      chunk->user_frontiers = std::move(frontiers);
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Modified frontiers of " << modified.size() << " chunks";
+  return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

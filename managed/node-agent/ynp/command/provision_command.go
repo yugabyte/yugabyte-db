@@ -416,8 +416,11 @@ func (pc *ProvisionCommand) checkPackage(pkg string) error {
 	}
 	err := cmd.Run()
 	if err != nil {
-		util.FileLogger().Infof(pc.ctx, "%s is not installed.", pkg)
-		return err
+		util.FileLogger().Errorf(pc.ctx, "%s is not installed: %v", pkg, err)
+		return fmt.Errorf(
+			"Required package %s is not installed. Install it using the package manager and retry",
+			pkg,
+		)
 	}
 	util.FileLogger().Infof(pc.ctx, "%s is installed.", pkg)
 	return nil
@@ -579,8 +582,9 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 				key, key, values["configure_fips"])
 			continue
 		}
-		if key == configuresudoers.ModuleName &&
-			!config.GetBool(values, "sudoers_commands", false) {
+		// sudoers_commands is a comma-separated command list.
+		sudoersCommands, ok := values["sudoers_commands"].(string)
+		if key == configuresudoers.ModuleName && (!ok || strings.TrimSpace(sudoersCommands) == "") {
 			util.FileLogger().Infof(pc.ctx, "Skipping %s because %s.sudoers_commands is not set\n",
 				key, key)
 			continue
@@ -595,7 +599,8 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		util.FileLogger().Infof(pc.ctx, "Rendering templates for module %s", key)
 		rendered, err := module.RenderTemplates(pc.ctx, values)
 		if err != nil {
-			util.FileLogger().Infof(pc.ctx, "Error rendering templates for module %s: %v", key, err)
+			util.FileLogger().
+				Errorf(pc.ctx, "Error rendering templates for module %s: %v", key, err)
 			return "", "", err
 		}
 		if rendered != nil {
@@ -880,7 +885,7 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 	ybUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
 	if currentYnpVersion == "" || ynpVersionDirPath == "" {
 		util.FileLogger().
-			Info(pc.ctx, "yb_home_dir or current version file is missing in the context")
+			Info(pc.ctx, "yb_user_home or current version file is missing in the context")
 		return nil
 	}
 	// Ensure ynp version dir exists.

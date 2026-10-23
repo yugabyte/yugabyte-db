@@ -61,6 +61,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/crc.h"
@@ -1183,6 +1184,77 @@ TEST_F(TabletServerTest, ApplyXClusterGuardedInfoIfNewer) {
       make_info(3, 0, XClusterNamespaceInfoPB::AUTOMATIC_SOURCE, 12));
   EXPECT_EQ(get_role(), XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
   EXPECT_EQ(ASSERT_RESULT(get_oid_cache_invalidations_count()), 12);
+}
+
+// A connection can cache a prefetch for a database this tserver has not heard of yet, and the
+// fill that records the version is the only one there will be: the response cache keeps what
+// that fill left behind, every later connection is served from it, and the observer that records
+// runs only on a fill. A version arriving before the slot is therefore held and written once the
+// slot exists, or the node would hold a prefetch it never admits to holding and no connection
+// would read an older version for that database until its catalog version moved again.
+TEST_F(TabletServerTest, LastPrefetchedCatalogVersionSurvivesALateSlot) {
+  auto* server = mini_server_->server();
+  constexpr uint32_t kDbOid = 16384;
+  constexpr uint64_t kVersion = 5;
+
+  // Nothing knows this database yet, so there is nowhere to record into.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kDbOid, kVersion);
+
+  DBCatalogVersionDataPB data;
+  auto* entry = data.add_db_catalog_versions();
+  entry->set_db_oid(kDbOid);
+  entry->set_current_version(kVersion);
+  entry->set_last_breaking_version(1);
+  server->SetYsqlDBCatalogVersions(data);
+
+  GetTserverCatalogVersionInfoRequestPB req;
+  GetTserverCatalogVersionInfoResponsePB resp;
+  req.set_db_oid(kDbOid);
+  ASSERT_OK(server->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+  ASSERT_EQ(resp.entries_size(), 1);
+  ASSERT_EQ(
+      server->SharedObject()->ysql_db_last_prefetched_catalog_version(resp.entries(0).shm_index()),
+      kVersion)
+      << "a version cached before the database had a slot was dropped rather than held";
+}
+
+TEST_F(TabletServerTest, LastPrefetchedCatalogVersionHoldsNoMoreThanThereAreSlots) {
+  auto* server = mini_server_->server();
+  constexpr uint32_t kFirstDbOid = 20000;
+  constexpr uint32_t kOneTooMany = 50000;
+
+  // Fill the held map to the number of slots that exist. None of these has a slot, so a node that
+  // never allocates one -- global catalog version mode -- would otherwise keep taking more.
+  for (uint32_t i = 0; i < TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
+    server->SetYsqlDbLastPrefetchedCatalogVersion(kFirstDbOid + i, 5);
+  }
+  // Refused: there is no slot left for it to be waiting for.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kOneTooMany, 7);
+  // Accepted: already held, and a newer version is what a later slot should receive.
+  server->SetYsqlDbLastPrefetchedCatalogVersion(kFirstDbOid, 9);
+
+  DBCatalogVersionDataPB data;
+  for (auto db_oid : {kOneTooMany, kFirstDbOid}) {
+    auto* entry = data.add_db_catalog_versions();
+    entry->set_db_oid(db_oid);
+    entry->set_current_version(1);
+    entry->set_last_breaking_version(1);
+  }
+  server->SetYsqlDBCatalogVersions(data);
+
+  const auto recorded = [server](uint32_t db_oid) -> Result<uint64_t> {
+    GetTserverCatalogVersionInfoRequestPB req;
+    GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(server->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "no slot");
+    return server->SharedObject()->ysql_db_last_prefetched_catalog_version(
+        resp.entries(0).shm_index());
+  };
+  ASSERT_EQ(ASSERT_RESULT(recorded(kOneTooMany)), 0)
+      << "a version was held past the number of slots that can ever exist";
+  ASSERT_EQ(ASSERT_RESULT(recorded(kFirstDbOid)), 9)
+      << "a database already held stopped taking newer versions once the map was full";
 }
 
 }  // namespace yb::tserver

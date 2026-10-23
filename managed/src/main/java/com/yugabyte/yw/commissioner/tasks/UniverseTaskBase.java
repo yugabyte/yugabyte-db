@@ -1427,7 +1427,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // already finalizes params in precheck; this keeps the generic path correct for other tasks.
     // Deep-copy before so a freeze callback that mutates universe details cannot alias the
     // snapshot used for the delta (otherwise new nodes look like REPLACE, not ADD).
-    if (isFirstTry() && shouldCaptureStateTransitionDelta()) {
+    // A retry after an auto-rollback starts again from the restored universe, and the unlock that
+    // performed the rollback cleared the earlier checkpoint, so capture a new one.
+    if ((isFirstTry() || universe.getUniverseDetails().autoRollbackPerformed)
+        && shouldCaptureStateTransitionDelta()) {
       UniverseDefinitionTaskParams beforeDetails =
           Json.fromJson(
               Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
@@ -2577,11 +2580,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
                   throw new PlatformServiceException(
                       BAD_REQUEST,
-                      "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                          + " agent. Disable provider runtime config "
-                          + ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()
-                          + " to not use universe certificates for node agent installation and"
-                          + " retry.");
+                      String.format(
+                          "Certificate %s is of type %s, but only CustomCertHostPath or SelfSigned"
+                              + " type certificate is supported for node agent. Disable provider"
+                              + " runtime config %s to not use universe certificates for node"
+                              + " agent installation and retry.",
+                          certificateInfo.getLabel(),
+                          certificateInfo.getCertType(),
+                          ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()));
                 }
               }
               params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
@@ -6478,8 +6484,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
 
       subTaskGroup.addSubTask(task);
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 

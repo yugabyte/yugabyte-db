@@ -57,6 +57,7 @@ class TServerCgroupManager;
 class TSLocalLockManager;
 class TSTabletManager;
 class TableMutationCountSender;
+class TierMigrationReconciler;
 class TabletPeerLookupIf;
 class TabletServer;
 class TabletServerAdminServiceProxy;

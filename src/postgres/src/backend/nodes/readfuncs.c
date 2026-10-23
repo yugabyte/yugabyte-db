@@ -1757,6 +1757,7 @@ _readModifyTable(void)
 	READ_NODE_FIELD(yb_skip_entities);
 	READ_NODE_FIELD(yb_update_affected_entities);
 	READ_BOOL_FIELD(no_row_trigger);
+	READ_BOOL_FIELD(ybInsertOnConflictPushdownPossible);
 
 	READ_DONE();
 }
@@ -2515,6 +2516,7 @@ _readAgg(void)
 	READ_BITMAPSET_FIELD(aggParams);
 	READ_NODE_FIELD(groupingSets);
 	READ_NODE_FIELD(chain);
+	READ_ENUM_FIELD(yb_pushdown_decision, YbAggPushdownDecision);
 
 	READ_DONE();
 }

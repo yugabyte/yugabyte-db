@@ -482,6 +482,37 @@ Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::Operation
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }
 
+namespace {
+
+// Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the op was
+// assigned, letting a client with a time-bounded lease stop its writes landing once the lease is
+// gone.
+Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
+  if (msg.op_type() != consensus::OperationType::WRITE_OP) {
+    return Status::OK();
+  }
+  const auto fence = HybridTime::FromPB(msg.write().ignore_after_hybrid_time());
+  if (!fence) {
+    return Status::OK();
+  }
+  // The op's own hybrid time, assigned by NotifyAddedToLeader, is when the write takes effect.
+  // An earlier clock reading would leave an unbounded window in which the op could still be
+  // assigned a time past the fence.
+  const auto hybrid_time = HybridTime(msg.hybrid_time());
+  if (fence > hybrid_time) {
+    return Status::OK();
+  }
+  return STATUS_EC_FORMAT(
+      Expired, tserver::TabletServerError(TabletServerErrorPB::WRITE_FENCE_EXPIRED),
+      "Write is fenced: ignore_after_hybrid_time $0 is not after $1", fence, hybrid_time);
+}
+
+}  // namespace
+
+Status TabletPeer::CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) {
+  return CheckWriteFence(replicate_msg);
+}
+
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
     std::lock_guard l(state_change_lock_);
@@ -1042,10 +1073,10 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
     // Tablet peer not yet initialized -- we could be doing tablet bootstrap still.
     return OpId::Min();
   }
-  auto flush_op_ids = VERIFY_RESULT(tablet->MaxPersistentOpId());
-  auto result = OpId::MinValid(flush_op_ids.intents, flush_op_ids.regular);
-  for (const auto& op_id : flush_op_ids.vector_indexes) {
-    result = OpId::MinValid(result, op_id);
+  auto persistent_state = VERIFY_RESULT(tablet->GetPersistentState());
+  auto result = OpId::MinValid(persistent_state.intents, persistent_state.regular);
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    result = OpId::MinValid(result, vector_index.op_id);
   }
   return result;
 }
@@ -1139,7 +1170,7 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // Last committed op id should be read before Tablet::GetPersistentState to avoid race condition
   // described in MaxPersistentOpIdForDb.
   //
   // If we read last committed op id AFTER reading last persistent op id (INCORRECT):

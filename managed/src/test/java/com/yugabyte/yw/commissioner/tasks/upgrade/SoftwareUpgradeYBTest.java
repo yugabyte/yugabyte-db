@@ -7,6 +7,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -18,6 +19,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -46,6 +48,7 @@ import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -56,6 +59,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -64,11 +68,13 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -79,11 +85,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yb.CommonTypes;
+import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.RollbackYsqlMajorCatalogVersionResponse;
+import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
@@ -1096,6 +1107,278 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  @Parameters({"false", "true"})
+  public void testRollbackRejectedWhenPrecheckFails(boolean previousUpgradeRollbackAllowed) {
+    if (previousUpgradeRollbackAllowed) {
+      // Left by an earlier upgrade that did not need finalize; rolling back the failed task would
+      // downgrade that upgrade.
+      PrevYBSoftwareConfig prev = new PrevYBSoftwareConfig();
+      prev.setSoftwareVersion("2.20.0.0-b1");
+      defaultUniverse =
+          Universe.saveDetails(
+              defaultUniverse.getUniverseUUID(),
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                details.isSoftwareRollbackAllowed = true;
+                details.prevYBSoftwareConfig = prev;
+                u.setUniverseDetails(details);
+              });
+    }
+    // Above the mocked available memory, so CheckMemory fails before FreezeUniverse.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.dbMemAvailableLimit.getKey(), "4000000");
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.CheckMemory
+                        && t.getTaskState() == TaskInfo.State.Failure));
+    assertTaskNeverOwnedUniverse(taskInfo);
+    assertRollbackRejected(createCustomerTask(taskInfo));
+  }
+
+  @Test
+  public void testRollbackRejectedWhenAbortedBeforeFreeze() {
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    TaskInfo taskInfo;
+    try {
+      setAbortPosition(0);
+      taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    assertTaskNeverOwnedUniverse(taskInfo);
+    assertRollbackRejected(createCustomerTask(taskInfo));
+  }
+
+  @Test
+  public void testRollbackOfferedWhenAbortedBeforeUpgradeStarts() throws InterruptedException {
+    TaskInfo taskInfo = abortUpgradeAroundUpgradingState(false);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertEquals(taskInfo.getUuid(), details.placementModificationTaskUuid);
+    assertEquals(SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+    assertFalse(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(customerTaskManager.isTaskRetryable(customerTask, taskInfo));
+    // The task owns the universe, so rollback is offered; the rollback's precheck refuses it
+    // because this upgrade never set isSoftwareRollbackAllowed.
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), taskInfo.getUuid()));
+    assertThat(ex.getMessage(), containsString("previous upgrade was finalized"));
+  }
+
+  @Test
+  public void testRollbackAllowedWhenAbortedAfterUpgradeStarts() throws InterruptedException {
+    String oldVersion = primaryVersion();
+    TaskInfo taskInfo = abortUpgradeAroundUpgradingState(true);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(SoftwareUpgradeState.UpgradeFailed, details.softwareUpgradeState);
+    assertTrue(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertRollbackSubmitted(customerTask, oldVersion);
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testRollbackAllowedWhenAbortedAfterEndOfUpgradeState(boolean requireFinalize)
+      throws InterruptedException {
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    // Abort right after the last state update (PreFinalize, or Ready with no finalize), before
+    // UpdateSoftwareVersion, the post-upgrade hooks and MarkUniverseUpdateSuccess.
+    String oldVersion = primaryVersion();
+    TaskInfo taskInfo =
+        abortUpgradeAfterSubTask(
+            taskUuid -> lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState) + 1);
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    // The failure handler leaves the end-of-upgrade state, and the task still owns the universe.
+    assertEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertEquals(
+        requireFinalize ? SoftwareUpgradeState.PreFinalize : SoftwareUpgradeState.Ready,
+        details.softwareUpgradeState);
+    assertTrue(details.isSoftwareRollbackAllowed);
+    CustomerTask customerTask = createCustomerTask(taskInfo);
+    assertTrue(listingCanRollback(customerTask));
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    assertRollbackSubmitted(customerTask, oldVersion);
+  }
+
+  /**
+   * Runs an upgrade past FreezeUniverse and aborts it just before the Upgrading state update, or
+   * just after it when {@code afterStateUpdate}.
+   */
+  private TaskInfo abortUpgradeAroundUpgradingState(boolean afterStateUpdate)
+      throws InterruptedException {
+    return abortUpgradeAfterSubTask(
+        taskUuid ->
+            firstSubTaskPosition(taskUuid, TaskType.UpdateUniverseState)
+                + (afterStateUpdate ? 1 : 0));
+  }
+
+  /**
+   * Runs an upgrade past FreezeUniverse, then aborts it at the subtask position {@code
+   * abortPosition} computes from the created subtasks.
+   */
+  private TaskInfo abortUpgradeAfterSubTask(ToIntFunction<UUID> abortPosition)
+      throws InterruptedException {
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    try {
+      setPausePosition(0);
+      UUID taskUuid = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
+      waitForTaskPaused(taskUuid);
+      // The upgrade subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(abortPosition.applyAsInt(taskUuid));
+      commissioner.resumeTask(taskUuid);
+      return waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  private static int lastSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .max()
+        .orElseThrow();
+  }
+
+  private static int firstSubTaskPosition(UUID taskUuid, TaskType taskType) {
+    return TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+        .filter(t -> t.getTaskType() == taskType)
+        .mapToInt(TaskInfo::getPosition)
+        .min()
+        .orElseThrow();
+  }
+
+  private void assertTaskNeverOwnedUniverse(TaskInfo taskInfo) {
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertNotEquals(taskInfo.getUuid(), details.updatingTaskUUID);
+    assertNotEquals(taskInfo.getUuid(), details.placementModificationTaskUuid);
+    assertEquals(SoftwareUpgradeState.Ready, details.softwareUpgradeState);
+  }
+
+  private CustomerTask createCustomerTask(TaskInfo taskInfo) {
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        defaultUniverse.getName());
+    // Re-fetch so the TaskInfo join is loaded.
+    return CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+  }
+
+  /** Listing, the submit gate, and the rollback API must all refuse. */
+  private void assertRollbackRejected(CustomerTask customerTask) {
+    TaskInfo taskInfo = customerTask.getTaskInfo();
+    assertFalse(listingCanRollback(customerTask));
+    assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                customerTaskManager.rollbackCustomerTask(
+                    defaultCustomer.getUuid(), taskInfo.getUuid()));
+    assertThat(ex.getMessage(), containsString("cannot be rolled back"));
+  }
+
+  /**
+   * The rollback API submits a downgrade to {@code oldVersion}. UpdateSoftwareVersion has not run
+   * yet, so the universe's user intent still holds the old version when the rollback is computed.
+   */
+  private void assertRollbackSubmitted(CustomerTask customerTask, String oldVersion)
+      throws InterruptedException {
+    CustomerTask rollback =
+        customerTaskManager.rollbackCustomerTask(
+            defaultCustomer.getUuid(), customerTask.getTaskUUID());
+    assertEquals(CustomerTask.TaskType.RollbackUpgrade, rollback.getType());
+    TaskInfo rollbackTask = waitForTask(rollback.getTaskUUID());
+    assertEquals(TaskType.RollbackUpgrade, rollbackTask.getTaskType());
+    RollbackUpgradeParams params =
+        play.libs.Json.fromJson(rollbackTask.getTaskParams(), RollbackUpgradeParams.class);
+    assertEquals(oldVersion, params.ybSoftwareVersion);
+  }
+
+  private String primaryVersion() {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .ybSoftwareVersion;
+  }
+
+  /**
+   * Listing {@code canRollback}, with the ownership map built from the universe in memory because
+   * H2 cannot run the JSONB query the task list uses.
+   */
+  private boolean listingCanRollback(CustomerTask customerTask) {
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(customerTask.getTargetUUID()).getUniverseDetails();
+    Set<String> owners = new HashSet<>();
+    Set<String> placementLockOwners = new HashSet<>();
+    if (details.updatingTaskUUID != null) {
+      owners.add(details.updatingTaskUUID.toString());
+    }
+    if (details.placementModificationTaskUuid != null) {
+      owners.add(details.placementModificationTaskUuid.toString());
+      placementLockOwners.add(details.placementModificationTaskUuid.toString());
+    }
+    return commissioner
+        .buildTaskStatus(
+            customerTask,
+            customerTask.getTaskInfo().getSubTasks(),
+            ImmutableMap.of(customerTask.getTargetUUID(), owners),
+            ImmutableMap.of(customerTask.getTargetUUID(), placementLockOwners),
+            ImmutableMap.of(customerTask.getTargetUUID(), customerTask))
+        .map(status -> status.get("canRollback").asBoolean())
+        .orElseThrow();
+  }
+
+  @Test
   public void testPartialSoftwareUpgrade() {
     updateDefaultUniverseTo5Nodes(true);
 
@@ -1258,6 +1541,57 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  @Parameters({"true, false", "false, false", "true, true", "false, true"})
+  public void testSoftwareUpgradeDisablesPitrOnlyWhenFinalizeRequired(
+      boolean requireFinalize, boolean canary) throws Exception {
+    // Finalize or rollback re-creates PITR schedules; a no-finalize upgrade ends in Ready and
+    // never would, so it must leave them alone (PLAT-18619).
+    updateDefaultUniverseTo5Nodes(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    PitrConfig pitrConfig = createPitrConfigWithSchedule();
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    if (canary) {
+      List<AZUpgradeStep> steps = new ArrayList<>();
+      for (UUID azUUID : Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid())) {
+        AZUpgradeStep step = new AZUpgradeStep();
+        step.azUUID = azUUID;
+        step.pauseAfterTserverUpgrade = false;
+        steps.add(step);
+      }
+      taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+      taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
+      taskParams.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+    }
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    TaskInfo taskInfo = waitForTask(commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        requireFinalize,
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.DisablePitrConfig));
+    assertEquals(requireFinalize, PitrConfig.getOrBadRequest(pitrConfig.getUuid()).isDisabled());
+    verify(mockClient, times(requireFinalize ? 1 : 0)).deleteSnapshotSchedule(pitrConfig.getUuid());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        requireFinalize ? SoftwareUpgradeState.PreFinalize : SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
   @Test
@@ -2084,5 +2418,38 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
       prechecks.add(TaskType.PGUpgradeTServerCheck);
     }
     return prechecks.toArray(new TaskType[0]);
+  }
+
+  /** A PITR config whose snapshot schedule the mocked client lists and can delete. */
+  private PitrConfig createPitrConfigWithSchedule() throws Exception {
+    CreatePitrConfigParams params = new CreatePitrConfigParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.name = "test-pitr";
+    params.keyspaceName = "test-keyspace";
+    params.tableType = CommonTypes.TableType.YQL_TABLE_TYPE;
+    params.retentionPeriodInSeconds = 86400L;
+    params.intervalInSeconds = 3600L;
+    PitrConfig pitrConfig = PitrConfig.create(UUID.randomUUID(), params);
+    SnapshotScheduleInfo scheduleInfo =
+        new SnapshotScheduleInfo(
+            pitrConfig.getUuid(),
+            3600L,
+            86400L,
+            Collections.emptyList(),
+            "test-keyspace",
+            UUID.randomUUID(),
+            CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    ListSnapshotSchedulesResponse listResponse = Mockito.mock(ListSnapshotSchedulesResponse.class);
+    lenient()
+        .when(listResponse.getSnapshotScheduleInfoList())
+        .thenReturn(Collections.singletonList(scheduleInfo));
+    lenient().when(mockClient.listSnapshotSchedules(isNull())).thenReturn(listResponse);
+    DeleteSnapshotScheduleResponse deleteResponse =
+        Mockito.mock(DeleteSnapshotScheduleResponse.class);
+    lenient()
+        .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
+        .thenReturn(deleteResponse);
+    return pitrConfig;
   }
 }

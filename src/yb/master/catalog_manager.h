@@ -718,6 +718,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const LeaderEpoch& epoch,
       const scoped_refptr<TableInfo>& table = nullptr) override;
 
+  void HandleAlterTableTaskFailed(const TableInfo& table) override
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
   // For a table that is currently in PREPARING state, if all its tablets have transitioned to
   // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
   // advanced to the RUNNING state after all of these tasks complete successfully.
@@ -1372,6 +1375,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
 
+  Result<SplitPhase> GetTableSplitPhase(
+      const scoped_refptr<const TableInfo>& table) const override;
   Result<SplitPhase> ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
@@ -1982,6 +1987,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Helper function to refresh the tablespace info.
   Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
+  // Writes the observed tablespace of a capped number of tables whose persisted value differs into
+  // their SysTablesEntryPB. Only tables present in the map are touched: a table absent from it may
+  // be HIDDEN, and its last known tablespace is exactly the value that must not be cleared.
+  Status PersistTablespaceIds(
+      const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch);
+
   void ResetCachedCatalogVersions() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   // Refresh the in-memory map for YSQL pg_yb_catalog_version table. Concurrent refreshes and
@@ -2192,26 +2203,42 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       TabletInfoPtr tablet_info, const std::unordered_set<TableId>& tables_to_remove,
       const LeaderEpoch& epoch);
 
-  // Add index info to the indexed table.
-  Status AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table,
-                             const IndexInfoPB& index_info,
-                             const LeaderEpoch& epoch,
-                             CreateTableResponsePB* resp);
+  // Add index info to the uncommitted metadata of the indexed table. The caller must hold the
+  // write lock on the indexed table, persist it in the same sys catalog write as the index table,
+  // and afterwards commit the lock and send the alter table request.
+  Status PrepareAddIndexInfoToTable(TableInfoWithWriteLock& indexed_table,
+                                    const IndexInfoPB& index_info,
+                                    CreateTableResponsePB* resp);
+
+  // Write a new table, its tablets and, for an index, the indexed table that references it to the
+  // sys catalog in a single operation. The caller commits the in-memory state of the table, its
+  // tablets and the indexed table if this succeeds, and aborts the creation of the table if this
+  // returns an error.
+  Status PersistNewTable(
+      const CreateTableRequestPB& req, const TableInfoPtr& table, const TabletInfos& tablets,
+      TableInfoWithWriteLock& indexed_table, IndexInfoPB* index_info, bool index_backfill_enabled,
+      bool is_pg_table, const LeaderEpoch& epoch, CreateTableResponsePB* resp);
 
   struct DeletingTableData;
+  struct DeleteTableOperation;
 
   // Delete index info from the indexed table.
   Status MarkIndexInfoFromTableForDeletion(
       const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
       const LeaderEpoch& epoch,
       DeleteTableResponsePB* resp,
-      std::map<TableId, DeletingTableData>* data_map_ptr,
+      DeleteTableOperation* op,
       const NamespaceInfoPtr& ns_info);
 
   // Delete index info from the indexed table.
   Status DeleteIndexInfoFromTable(
-      const TableId& indexed_table_id, const TableId& index_table_id, const LeaderEpoch& epoch,
-      std::map<TableId, DeletingTableData>* data_map_ptr);
+      const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableOperation* op);
+
+  // Write the changes collected in op to the sys catalog in a single operation, release the tables
+  // it leaves unchanged, commit the in-memory state of the deleted tables and the altered indexed
+  // table, then abort the tasks of the deleted tables that are not only being hidden.
+  Status PersistDeleteTableOperation(
+      const LeaderEpoch& epoch, DeleteTableOperation& op, DeleteTableResponsePB* resp);
 
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
@@ -2358,19 +2385,19 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       std::map<TableId, DeletingTableData>* data_map);
 
-  // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
-  // table are appended to the lists. The caller will be responsible for committing the change and
-  // deleting the actual table and tablets.
+  // Delete the specified table in memory. The DeletingTableData of the deleted table, with its
+  // TableInfo and write lock, is added to op->tables, and the changes to persist are collected in
+  // op. The top-level caller is responsible for persisting op, altering
+  // op->altered_indexed_table, and deleting the actual table and tablets.
   Status DeleteTableInMemory(
       const TableIdentifierPB& table_identifier,
       bool is_index_table,
       bool update_indexed_table,
       const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       const LeaderEpoch& epoch,
-      std::vector<DeletingTableData>* tables,
+      DeleteTableOperation* op,
       DeleteTableResponsePB* resp,
       rpc::RpcContext* rpc,
-      std::map<TableId, DeletingTableData>* data_map_ptr,
       const NamespaceInfoPtr& ns_info);
 
   // Request tablet servers to delete all replicas of the tablet.
@@ -2846,6 +2873,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   template <class Req, class Resp, class F>
   Status PerformOnSysCatalogTablet(const Req& req, Resp* resp, const F& f);
 
+  // GetTableSplitPhase for a caller that already holds the table's replication info.
+  Result<SplitPhase> GetTableSplitPhase(
+      const TableInfo& table, const ReplicationInfoPB& table_replication_info) const;
+
   Status CollectTable(
       const TableDescription& table_description,
       CollectFlags flags,
@@ -3290,9 +3321,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
-
-  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
-      client::internal::RemoteTabletPtr tablet);
 
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <vector>
 #include <boost/algorithm/string/trim.hpp>
 #include "yb/util/format.h"
 #include "yb/util/string_case.h"
@@ -40,6 +41,7 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "
@@ -52,9 +54,13 @@ DECLARE_int32(db_block_cache_size_percentage);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_yb_enable_cbo);
 
@@ -235,6 +241,33 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
             << FLAGS_ysql_enable_auto_analyze;
 }
 
+// pg_partman keeps its existing behavior unless these features are on, so tell a user who set its
+// flag explicitly. The infra auto flags are left out because they stay off until an upgrade is
+// finalized. Advisory locks are left out because with them off, pg_partman fails instead of keeping
+// its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a warning at
+// startup would not track.
+void WarnIfPgPartmanFlagHasNoEffect() {
+  if (!FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks ||
+      google::GetCommandLineFlagInfoOrDie("ysql_yb_pg_partman_use_native_txn_ddl_and_locks")
+          .is_default) {
+    return;
+  }
+  std::vector<std::string> off;
+  if (!FLAGS_ysql_yb_ddl_transaction_block_enabled) {
+    off.push_back("ysql_yb_ddl_transaction_block_enabled=false");
+  }
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    off.push_back("enable_object_locking_for_table_locks=false");
+  }
+  if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
+    off.push_back("ysql_yb_enable_ddl_savepoint_support=false");
+  }
+  if (!off.empty()) {
+    LOG(WARNING) << "ysql_yb_pg_partman_use_native_txn_ddl_and_locks is set, but pg_partman keeps "
+                 << "its existing behavior because of " << AsString(off);
+  }
+}
+
 }  // anonymous namespace
 
 Status MasterTServerParseFlagsAndInit(
@@ -283,8 +316,10 @@ Status MasterTServerParseFlagsAndInit(
 
   AdjustMemoryLimitsIfNeeded(is_master);
 
-  if (!is_master)
+  if (!is_master) {
     AdjustAutoAnalyzeFlagIfNeeded();
+    WarnIfPgPartmanFlagHasNoEffect();
+  }
 
   MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();

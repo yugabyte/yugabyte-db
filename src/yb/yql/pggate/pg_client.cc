@@ -1005,6 +1005,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_using_table_locks,
                              int64_t last_val,
                              bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
@@ -1013,6 +1014,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
+    req.set_is_using_table_locks(is_using_table_locks);
     req.set_last_val(last_val);
     req.set_is_called(is_called);
 
@@ -1026,6 +1028,7 @@ class PgClient::Impl : public BigDataFetcher {
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_using_table_locks,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -1036,6 +1039,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
+    req.set_is_using_table_locks(is_using_table_locks);
     req.set_last_val(last_val);
     req.set_is_called(is_called);
     if (expected_last_val && expected_is_called) {
@@ -1055,6 +1059,7 @@ class PgClient::Impl : public BigDataFetcher {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
+                                                         bool is_using_table_locks,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -1066,6 +1071,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     req.set_ysql_db_catalog_version(ysql_catalog_version);
+    req.set_is_using_table_locks(is_using_table_locks);
     req.set_fetch_count(fetch_count);
     req.set_inc_by(inc_by);
     req.set_min_value(min_value);
@@ -1082,7 +1088,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      std::optional<uint64_t> read_time) {
+      bool is_using_table_locks, std::optional<uint64_t> read_time) {
     tserver::PgReadSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -1090,6 +1096,7 @@ class PgClient::Impl : public BigDataFetcher {
     if (ysql_catalog_version) {
       req.set_ysql_db_catalog_version(*ysql_catalog_version);
     }
+    req.set_is_using_table_locks(is_using_table_locks);
 
     if (read_time) {
       req.set_read_time(*read_time);
@@ -1524,20 +1531,28 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Result<client::TableSizeInfo> GetTableDiskSize(
-      const PgObjectId& table_oid) {
+  Result<client::TableSizeInfo> GetTableDiskSizeFromRequest(
+      tserver::PgGetTableDiskSizeRequestPB& req) {
     tserver::PgGetTableDiskSizeResponsePB resp;
-
-    tserver::PgGetTableDiskSizeRequestPB req;
-    table_oid.ToPB(req.mutable_table_id());
-
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableDiskSize,
         req, resp, PggateRPC::kGetTableDiskSize));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
-
     return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSize(
+      const PgObjectId& table_oid) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    table_oid.ToPB(req.mutable_table_id());
+    return GetTableDiskSizeFromRequest(req);
+  }
+
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id) {
+    tserver::PgGetTableDiskSizeRequestPB req;
+    req.set_yb_table_id(yb_table_id);
+    return GetTableDiskSizeFromRequest(req);
   }
 
   Result<bool> CheckIfPitrActive() {
@@ -2363,45 +2378,53 @@ Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
   return impl_->GetTableDiskSize(table_oid);
 }
 
+Result<client::TableSizeInfo> PgClient::GetTableDiskSizeByYbTableId(
+    const TableId& yb_table_id) {
+  return impl_->GetTableDiskSizeByYbTableId(yb_table_id);
+}
+
 Status PgClient::InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
+                                     bool is_using_table_locks,
                                      int64_t last_val,
                                      bool is_called) {
   return impl_->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, is_using_table_locks, last_val, is_called);
 }
 
 Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
                                            int64_t seq_oid,
                                            uint64_t ysql_catalog_version,
+                                           bool is_using_table_locks,
                                            int64_t last_val,
                                            bool is_called,
                                            std::optional<int64_t> expected_last_val,
                                            std::optional<bool> expected_is_called) {
   return impl_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, is_using_table_locks, last_val, is_called,
       expected_last_val, expected_is_called);
 }
 
 Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
                                                                  int64_t seq_oid,
                                                                  uint64_t ysql_catalog_version,
+                                                                 bool is_using_table_locks,
                                                                  uint32_t fetch_count,
                                                                  int64_t inc_by,
                                                                  int64_t min_value,
                                                                  int64_t max_value,
                                                                  bool cycle) {
   return impl_->FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version, is_using_table_locks, fetch_count, inc_by,
       min_value, max_value, cycle);
 }
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(
     int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-    std::optional<uint64_t> read_time) {
+    bool is_using_table_locks, std::optional<uint64_t> read_time) {
   return impl_->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, read_time);
+      db_oid, seq_oid, ysql_catalog_version, is_using_table_locks, read_time);
 }
 
 Status PgClient::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {

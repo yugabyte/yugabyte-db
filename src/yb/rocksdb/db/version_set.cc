@@ -75,6 +75,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/math_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -2436,13 +2437,9 @@ Result<std::string> Version::FindTargetKey(
     }
   }
 
-  const auto cross_dist = [](uint64_t cross, uint64_t target) {
-    return cross > target ? cross - target : target - cross;
-  };
-
   // At the fixed point both bounds are candidates; take whichever measures closer to the target.
-  const uint64_t low_dist = cross_dist(low_cross, target_size);
-  const uint64_t high_dist = cross_dist(high_cross, target_size);
+  const uint64_t low_dist = yb::unsigned_abs_diff(low_cross, target_size);
+  const uint64_t high_dist = yb::unsigned_abs_diff(high_cross, target_size);
   const bool prefer_low = low_dist <= high_dist;
   const Slice chosen = prefer_low ? Slice(low_buf) : Slice(high_buf);
   const uint64_t chosen_dist = prefer_low ? low_dist : high_dist;

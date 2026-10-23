@@ -230,6 +230,20 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
 
+DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
+    kEnableObjectLockingForTableLocks,
+    "When this is true and transactional DDL, table level locks, and DDL savepoint support are "
+    "all in effect, pg_partman uses those features and advisory locks, which lets it create "
+    "default partitions and run undo_partition. Otherwise pg_partman behaves as if this were "
+    "false. If ysql_yb_enable_advisory_locks is false, the pg_partman functions that take "
+    "advisory locks fail. If partition sets have default partitions, then before turning this "
+    "off, or turning off one of those features, move the rows out of those default partitions "
+    "with partition_data_time or partition_data_id and drop them. Otherwise run_maintenance skips "
+    "those sets, retention included, and rows collect in their default partitions. Once this is "
+    "in effect again, run_maintenance fails with \"updated partition constraint for default "
+    "partition ... would be violated by some row\" until partition_data_time or partition_data_id "
+    "moves those rows out.");
+
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
 

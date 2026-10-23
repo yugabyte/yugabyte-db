@@ -112,6 +112,7 @@ struct TabletInitData {
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
+  std::shared_ptr<TierMigrationHooks> tier_migration_hooks;
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;

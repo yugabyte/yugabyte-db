@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useMethods } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +33,8 @@ import {
   fetchCreateUniverseDbVersions,
   fetchCreateUniverseProviders
 } from './helpers/generalSettingsDefaults';
+import { resolveCreateUniverseFormMode } from './helpers/createUniverseFormModePreference';
+import { RESILIENCE_FORM_MODE } from './fields/FieldNames';
 //style imports
 import './styles/override.css';
 
@@ -69,18 +72,35 @@ const CreateHeader = styled('div')(() => ({
   minWidth: '1200px'
 }));
 
+function buildInitialFormState(
+  settings?: Record<string, unknown> | null
+): createUniverseFormProps {
+  const resilienceFormMode = resolveCreateUniverseFormMode(settings);
+  return {
+    ...initialCreateUniverseFormState,
+    resilienceAndRegionsSettings: {
+      ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+      [RESILIENCE_FORM_MODE]: resilienceFormMode
+    }
+  };
+}
+
 export function CreateUniverse() {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
-  const restoreContextData = useMethods(createUniverseFormMethods, initialCreateUniverseFormState);
+  const userSettings = useSelector(
+    (state: any) => state.customer.currentUser?.data?.settings as Record<string, unknown> | null
+  );
+  // Seed once from profile available at mount; never late-overwrite if settings arrive later.
+  const [initialFormState] = useState(() => buildInitialFormState(userSettings));
+  const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
   const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
     generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
-    t,
-    resilienceType,
-    isK8s
-  ]);
+  const steps = useMemo(
+    () => getCreateUniverseSteps(t, resilienceType, isK8s, false),
+    [t, resilienceType, isK8s]
+  );
   const currentStepRef = useRef<StepsRef>(null);
   // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
   const isNavigatingRef = useRef(false);
@@ -102,10 +122,7 @@ export function CreateUniverse() {
   }, [activeStep]);
 
   // Prefetch providers + DB versions in parallel so step 1 reuses the same cache.
-  const { isLoading } = useQuery(
-    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
-    fetchCreateUniverseProviders
-  );
+  const { isLoading } = useQuery(CREATE_UNIVERSE_PROVIDERS_QUERY_KEY, fetchCreateUniverseProviders);
   useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
@@ -195,7 +212,7 @@ export function CreateUniverse() {
                       minWidth: '856px',
                       width: '100%',
                       gap: 3,
-                      mr: 1,
+                      pr: '24px',
                       pb: 3
                     }}
                   >

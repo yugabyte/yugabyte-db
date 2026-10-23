@@ -44,6 +44,18 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
     GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
         universeOverrides, azOverrides, universe.getUniverseDetails().fipsEnabled);
 
+    if (isFirstTry && !userIntent.enableYSQLAuth) {
+      Map<String, String> newHbaOverrides =
+          GFlagsUtil.getYsqlHbaHelmOverrides(universeOverrides, azOverrides);
+      if (!newHbaOverrides.isEmpty()
+          && !newHbaOverrides.equals(
+              GFlagsUtil.getYsqlHbaHelmOverrides(
+                  userIntent.universeOverrides, userIntent.azOverrides))) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, GFlagsUtil.YSQL_HBA_REQUIRES_AUTH_ERROR);
+      }
+    }
+
     // Verify service endpoints
     try {
       KubernetesUtil.validateUpgradeServiceEndpoints(

@@ -217,6 +217,18 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 		goto error;
 	}
 
+	/*
+	 * YB: Run in PG's data dir, like the postmaster, so relative paths resolve
+	 * as in PG. Files outside the data dir must be given as absolute paths.
+	 */
+	if (instance->config.yb_data_directory &&
+	    chdir(instance->config.yb_data_directory) == -1) {
+		od_error(&instance->logger, "config", NULL, NULL,
+			 "could not change directory to \"%s\": %s",
+			 instance->config.yb_data_directory, strerror(errno));
+		goto error;
+	}
+
 	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
 	if (stats_shm_key != NULL) {
 		instance->yb_stats = yb_get_stats_ptr(instance, stats_shm_key);

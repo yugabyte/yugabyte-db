@@ -158,7 +158,6 @@ using google::protobuf::RepeatedPtrField;
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
-using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
@@ -1101,6 +1100,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::OBJECT_LOCK_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::HISTORY_RETENTION_PIN: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -3459,12 +3459,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
       continue;
     }
 
-    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+    LOG(INFO) << "Removing hidden table " << table->name() << " from tablet "
+              << tablet_info->tablet_id();
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-    table->ClearTabletMaps();
+    // Only drop this tablet from the table. A vector index is hosted by every tablet of its indexed
+    // table, and the others may still be retained by a snapshot schedule.
+    auto tablet_lock = tablet_info->LockForWrite();
+    WARN_NOT_OK(
+        table->RemoveTablet(tablet_info->tablet_id()),
+        Format("Failed to remove tablet $0 from $1", tablet_info->tablet_id(), AsString(*table)));
   }
 }
 
@@ -3839,16 +3845,6 @@ Status CatalogManager::GetUDTypeMetadata(
     }
   }
   return Status::OK();
-}
-
-
-Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
-    client::internal::RemoteTabletPtr tablet) {
-  auto ts = tablet->LeaderTServer();
-  if (ts == nullptr) {
-    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
-  }
-  return ts;
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {

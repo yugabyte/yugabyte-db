@@ -131,6 +131,8 @@ namespace yb::dockv {
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     ((kBson, 'o')) /* ASCII code 111 */ \
     ((kBsonDescending, 'p')) /* ASCII code 112 */ \
+    /* CDR source metadata, optionally present at the start of a value. */ \
+    ((kCdrMetadata, 'q')) /* ASCII code 113 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \

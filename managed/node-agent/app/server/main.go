@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"node-agent/app/executor"
-	"node-agent/app/session"
 	"node-agent/util"
 	"os"
 	"os/signal"
@@ -47,7 +46,6 @@ func Start() {
 	dump, _ := config.Dump(Context())
 	util.FileLogger().Infof(Context(), "Dumping config %s", dump)
 	executor.Init(Context())
-	session.Init(Context())
 	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLSKey)
 	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)

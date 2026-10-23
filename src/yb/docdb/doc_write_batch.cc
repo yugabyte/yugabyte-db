@@ -912,7 +912,8 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
       kv_pair->set_pk_is_known(static_cast<bool>(entry.pk_is_known));
     }
   }
-  if (!delete_vector_ids_.empty()) {
+  // Empty ids only mark the vector deletion, see MarkVectorDeletion.
+  if (has_vector_deletion_) {
     kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
   }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
