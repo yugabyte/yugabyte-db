@@ -5106,7 +5106,6 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 		if (MyReplicationSlot != NULL)
 			ReplicationSlotRelease();
 
-		/* YB_TODO_PG19MERGE: PG19 added bool synced_only. */
 		ReplicationSlotCleanup(false /* synced_only */);
 
 		if (doing_extended_query_message)
@@ -8013,7 +8012,6 @@ PostgresMain(const char *dbname, const char *username)
 					 * This will be set when authenticating and needs to be
 					 * NULL before that
 					 */
-					/* YB_TODO_PG19MERGE: authn_id moved to MyClientConnectionInfo. */
 					MyClientConnectionInfo.authn_id = NULL;
 #ifdef USE_SSL
 					/*
