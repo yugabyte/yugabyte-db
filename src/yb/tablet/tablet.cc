@@ -659,10 +659,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
-
   void OldSchemaGC() {
-    MinSchemaVersionMap table_id_to_min_schema_version;
+    docdb::CotableSchemaVersionMap table_id_to_min_schema_version;
     {
       auto scoped_read_operation = tablet_.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
       if (!scoped_read_operation.ok()) {
@@ -673,6 +671,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
       FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
+      tablet_.vector_indexes().FillMinSchemaVersion(&table_id_to_min_schema_version);
     }
 
     FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
@@ -691,7 +690,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
   // Checks XCluster config to determine the min schema version at which to expect rows.
-  void FillMinXClusterSchemaVersion(MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinXClusterSchemaVersion(
+      docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (nullptr == tablet_.get_min_xcluster_schema_version_) {
       return;
     }
@@ -726,7 +726,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
   }
 
-  void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinSchemaVersion(
+      rocksdb::DB* db, docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (!db) {
       return;
     }
