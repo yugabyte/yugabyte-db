@@ -3099,6 +3099,7 @@
       "banner": {
         "viewDetails": "View Details",
         "retry": "Retry",
+        "abortedDescription": "The upgrade was stopped by a user.",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
