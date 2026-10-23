@@ -1561,9 +1561,9 @@ Status Tablet::RequestRegularDbFlushForIntentsFlush() {
   }
   // The closure owns the reset of the flag, so it happens whether the task ran, the submit failed
   // or the closing pool dropped the task.
-  auto clear_posted = [this] { regular_db_flush_for_intents_posted_ = false; };
   auto status = cleanup_intent_files_token_->SubmitFunc(
-      [this, se = std::make_shared<ScopeExit<decltype(clear_posted)>>(std::move(clear_posted))] {
+      [this, clear_posted = std::shared_ptr<void>(
+                 nullptr, [this](void*) { regular_db_flush_for_intents_posted_ = false; })] {
         FlushRegularDbForIntentsFlush();
       });
   // A failed filter makes the flush job flush the intents memtable ahead of the regular data it
