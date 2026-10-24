@@ -79,8 +79,12 @@ int			px_gen_salt(const char *salt_type, char *buf, int rounds);
  * internal functions
  */
 
-/* YB_TODO_PG19MERGE: do the new functions need a yb prefix (also see px-crypt.c)? */
 /* crypt-gensalt.c */
+/*
+ * YB: the next 4 functions are renamed because their names conflict with
+ * _crypt_gensalt_traditional_rn, _crypt_gensalt_extended_rn,
+ * _crypt_gensalt_md5_rn and _crypt_gensalt_blowfish_rn from libcrypt_blowfish.a.
+ */
 char	   *yb_crypt_gensalt_traditional_rn(unsigned long count,
 											const char *input, int size, char *output, int output_size);
 char	   *yb_crypt_gensalt_extended_rn(unsigned long count,

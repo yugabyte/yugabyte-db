@@ -1259,19 +1259,6 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 			int elevel)
 {
 	GUCHashEntry *hentry;
-/* YB_TODO_PG19MERGE: verify ASAN workaround is still needed */
-#if 0
-#ifdef ADDRESS_SANITIZER		/* YB */
-	struct config_generic config_placeholder;
-
-	config_placeholder.name = name;
-	const char **key = &config_placeholder.name;
-#else
-	const char **key = &name;
-#endif
-	struct config_generic **res;
-	int			i;
-#endif
 
 	Assert(name);
 
