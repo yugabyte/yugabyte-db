@@ -32,6 +32,8 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/rpc/proxy_context.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/master/master_heartbeat.pb.h"
@@ -778,7 +780,12 @@ struct RedisServiceImplData : public RedisServiceData {
   void ForwardToInterestedProxies(
       const string& channel, const string& message, const IntFunctor& f) override;
   int PublishToLocalClients(IsMonitorMessage mode, const string& channel, const string& message);
-  Result<vector<HostPortPB>> GetServerAddrsForChannel(const string& channel);
+  // A tserver to forward a publish to, and the transport for reaching it at that address.
+  struct ForwardTarget {
+    HostPort host_port;
+    const rpc::Protocol* protocol;
+  };
+  Result<vector<ForwardTarget>> GetServerAddrsForChannel(const string& channel);
   size_t NumSubscriptionsUnlocked(Connection* conn);
 
   Status GetRedisPasswords(vector<string>* passwords) override;
@@ -1210,8 +1217,8 @@ int RedisServiceImplData::Publish(const string& channel, const string& message) 
   return PublishToLocalClients(IsMonitorMessage::kFalse, channel, message);
 }
 
-Result<vector<HostPortPB>> RedisServiceImplData::GetServerAddrsForChannel(
-    const string& channel_unused) {
+Result<vector<RedisServiceImplData::ForwardTarget>>
+RedisServiceImplData::GetServerAddrsForChannel(const string& channel_unused) {
   // TODO(Amit): Instead of forwarding  blindly to all servers, figure out the
   // ones that have a subscription and send it to them only.
   std::vector<master::TSInformationPB> live_tservers;
@@ -1221,17 +1228,24 @@ Result<vector<HostPortPB>> RedisServiceImplData::GetServerAddrsForChannel(
     return s;
   }
 
-  vector<HostPortPB> servers;
+  vector<ForwardTarget> servers;
   const auto cloud_info_pb = server_->MakeCloudInfoPB();
   // Queue NEW_NODE event for all the live tservers.
   for (const master::TSInformationPB& ts_info : live_tservers) {
-    const auto& hostport_pb = DesiredHostPort(ts_info.registration().common(), cloud_info_pb);
-    if (hostport_pb.host().empty()) {
+    const auto& registration = ts_info.registration().common();
+    auto selected = SelectHostPort(registration, cloud_info_pb);
+    if (selected.host_port.host().empty()) {
       LOG(WARNING) << "Skipping TS since it doesn't have any rpc address: "
                    << ts_info.DebugString();
       continue;
     }
-    servers.push_back(hostport_pb);
+    // Forwarding a publish reaches another tserver of this cluster, so the transport follows
+    // the address selected for it, as on every other connection between two nodes.
+    servers.push_back(ForwardTarget {
+      .host_port = HostPortFromPB(selected.host_port),
+      .protocol = &client_->proxy_cache().GetContext()->ProtocolFor(rpc::Encrypted(
+          UseEncryption(selected.used_broadcast, registration.cloud_info(), cloud_info_pb))),
+    });
   }
   return servers;
 }
@@ -1264,13 +1278,13 @@ void RedisServiceImplData::ForwardToInterestedProxies(
   }
   std::shared_ptr<PublishResponseHandler> resp_handler =
       std::make_shared<PublishResponseHandler>(interested_servers->size(), f);
-  for (auto& hostport_pb : *interested_servers) {
+  for (auto& target : *interested_servers) {
     tserver::PublishRequestPB requestPB;
     requestPB.set_channel(channel);
     requestPB.set_message(message);
     std::shared_ptr<tserver::TabletServerServiceProxy> proxy =
         std::make_shared<tserver::TabletServerServiceProxy>(
-            &client_->proxy_cache(), HostPortFromPB(hostport_pb));
+            &client_->proxy_cache(), target.host_port, target.protocol);
     std::shared_ptr<tserver::PublishResponsePB> responsePB =
         std::make_shared<tserver::PublishResponsePB>();
     std::shared_ptr<yb::rpc::RpcController> rpcController = std::make_shared<rpc::RpcController>();

@@ -36,6 +36,8 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 
+#include "yb/rpc/proxy_context.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
@@ -55,9 +57,12 @@ RemoteBootstrapAnchorClient::RemoteBootstrapAnchorClient(
     const string& rbs_client_uuid,
     const string &owner_info,
     rpc::ProxyCache* proxy_cache,
-    const HostPort& tablet_leader_peer_addr)
+    const HostPort& tablet_leader_peer_addr,
+    rpc::Encrypted encrypted)
     : rbs_client_uuid_(rbs_client_uuid), owner_info_(owner_info) {
-  proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, tablet_leader_peer_addr));
+  proxy_.reset(new RemoteBootstrapServiceProxy(
+      proxy_cache, tablet_leader_peer_addr,
+      &proxy_cache->GetContext()->ProtocolFor(encrypted)));
 }
 
 Status RemoteBootstrapAnchorClient::RegisterLogAnchor(

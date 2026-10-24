@@ -43,6 +43,8 @@
 #include "yb/master/master_util.h"
 #include "yb/master/master_ysql_lease.pb.h"
 
+#include "yb/rpc/proxy_context.h"
+
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -427,15 +429,24 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
   return GetHostPortUnlocked();
 }
 
-Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+Result<TSDescriptor::SelectedEndpoint> TSDescriptor::SelectEndpointUnlocked() const {
   auto l = LockForRead();
-  const auto& addr = DesiredHostPort(l->pb.registration(), local_master_cloud_info_);
-  if (addr.host().empty()) {
+  const auto& registration = l->pb.registration();
+  auto selected = SelectHostPort(registration, local_master_cloud_info_);
+  if (selected.host_port.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
-                         permanent_uuid(), l->pb.registration().ShortDebugString());
+                         permanent_uuid(), registration.ShortDebugString());
   }
 
-  return HostPortFromPB(addr);
+  return SelectedEndpoint {
+    .host_port = HostPortFromPB(selected.host_port),
+    .encrypted = rpc::Encrypted(UseEncryption(
+        selected.used_broadcast, registration.cloud_info(), local_master_cloud_info_)),
+  };
+}
+
+Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
+  return VERIFY_RESULT(SelectEndpointUnlocked()).host_port;
 }
 
 bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const {
