@@ -50,6 +50,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/faststring.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -5028,18 +5029,48 @@ TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListIgnoresUnknownNames,
 class PgCatalogPreloadCacheListUnknownNameAtStartupTest
     : public PgCatalogPreloadCacheListTestBase {
  protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogPreloadCacheListTestBase::UpdateMiniClusterOptions(options);
+    options->log_to_file = true;
+  }
+
   std::vector<std::string> ExtraTServerFlags() const override {
     return {"--ysql_yb_test_catalog_preload_cache_list=pg_operator,pg_nosuch"};
   }
+
+  Result<bool> PostgresLogsContain(ExternalTabletServer* ts, std::string_view text) {
+    const auto logs_dir = JoinPathSegments(ts->GetDataDirs()[0], "logs");
+    for (const auto& file : VERIFY_RESULT(Env::Default()->GetChildren(logs_dir))) {
+      if (file.starts_with("postgresql-") && file.ends_with(".log")) {
+        faststring contents;
+        RETURN_NOT_OK(ReadFileToString(
+            Env::Default(), JoinPathSegments(logs_dir, file), &contents));
+        if (contents.ToString().find(text) != std::string::npos) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 };
 
-// An unknown name in the list does not keep postgres from starting.
+// An unknown name in the list does not keep postgres from starting, and the warning about it
+// reaches the postgres log, although the postmaster checks the list before it starts the logging
+// collector.
 TEST_F_EX(PgLibPqTest, CatalogPreloadCacheListUnknownNameAtStartup,
           PgCatalogPreloadCacheListUnknownNameAtStartupTest) {
   ASSERT_OK(CreateTestObjects());
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Fetch("SELECT 1"));
   ASSERT_EQ(ASSERT_RESULT(MissesFor(conn, kOperatorQuery))[kOperatorNameIndex], 0);
+
+  constexpr auto kWarning =
+      "WARNING:  ignoring \"pg_nosuch\" in yb_test_catalog_preload_cache_list";
+  for (auto* ts : cluster_->tserver_daemons()) {
+    ASSERT_OK(WaitFor(
+        [this, ts] { return PostgresLogsContain(ts, kWarning); },
+        10s * kTimeMultiplier, "postgres logs the unknown name"));
+  }
 }
 
 // A full catalog cache refresh does not build the indexes on temp tables: loading their opclass

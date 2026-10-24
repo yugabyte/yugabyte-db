@@ -1290,6 +1290,12 @@ PostmasterMain(int argc, char *argv[])
 			(errmsg("starting %s", PG_VERSION_STR)));
 
 	/*
+	 * YB: Before the logging collector started, warnings went only to stderr,
+	 * so yb_test_catalog_preload_cache_list warns about its items now.
+	 */
+	YbReportCatalogPreloadCacheList();
+
+	/*
 	 * Establish input sockets.
 	 */
 	if (ListenAddresses)
