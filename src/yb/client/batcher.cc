@@ -178,6 +178,21 @@ Result<bool> GroupReadAtInTxnLimit(const InFlightOpsGroup& group) {
   return result;
 }
 
+bool OpForceSnapshotRead(const YBOperation& op) {
+  return op.type() == YBOperation::Type::PGSQL_READ &&
+         down_cast<const YBPgsqlReadOp&>(op).force_snapshot_read();
+}
+
+Result<bool> GroupForceSnapshotRead(const InFlightOpsGroup& group) {
+  const auto result = OpForceSnapshotRead(*group.begin->yb_op);
+  for (auto it = group.begin; it != group.end; ++it) {
+    RSTATUS_DCHECK_EQ(
+        OpForceSnapshotRead(*it->yb_op), result, IllegalState,
+        Format("Ops of one group disagree on force_snapshot_read: $0", group.ToString()));
+  }
+  return result;
+}
+
 }  // namespace
 
 // About lock ordering in this file:
@@ -760,6 +775,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
     .read_at_in_txn_limit = VERIFY_RESULT(GroupReadAtInTxnLimit(group)),
+    .force_snapshot_read = VERIFY_RESULT(GroupForceSnapshotRead(group)),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata

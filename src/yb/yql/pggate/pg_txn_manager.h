@@ -197,6 +197,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
 
   bool IsTableLockingEnabledForCurrentTxn() const;
+  bool UsesCatalogSnapshotReadTime(IsCatalogSnapshot is_catalog_snapshot) const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
