@@ -1030,7 +1030,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
             // A task allowed on a universe broken by another task keeps that task's checkpoint.
-            if (ownsPlacementLock(universeDetails)) {
+            if (!isPlacementLockHeldByOtherTask(universeDetails)) {
               universe.setStateTransitionDetails(null);
             }
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
@@ -1303,12 +1303,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Whether this task holds the placement lock, or no task does. Only then is the rollback
-   * checkpoint ({@code state_transition_details}) this task's to write or clear.
+   * Whether another task holds the placement lock. The rollback checkpoint ({@code
+   * state_transition_details}) is then that task's, so this task must not write or clear it.
    */
-  private boolean ownsPlacementLock(UniverseDefinitionTaskParams universeDetails) {
-    return universeDetails.placementModificationTaskUuid == null
-        || universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
+  private boolean isPlacementLockHeldByOtherTask(UniverseDefinitionTaskParams universeDetails) {
+    return universeDetails.placementModificationTaskUuid != null
+        && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
   }
 
   private void initAndAddPrecheckTasks(Universe universe) {
@@ -1442,7 +1442,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             }
             UniverseDefinitionTaskParams target = getTargetUniverseDetails();
             // The freeze has already taken the placement lock if this task modifies placement.
-            if (target != null && ownsPlacementLock(univ.getUniverseDetails())) {
+            if (target != null && !isPlacementLockHeldByOtherTask(univ.getUniverseDetails())) {
               captureStateTransitionDelta(univ, beforeDetails, target);
             }
           };
