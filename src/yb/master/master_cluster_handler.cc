@@ -13,6 +13,8 @@
 
 #include "yb/master/master_cluster_handler.h"
 
+#include <unordered_set>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
@@ -27,6 +29,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(send_blacklisted_tservers_on_heartbeat);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
@@ -39,6 +42,11 @@ DEFINE_RUNTIME_bool(delay_leader_blacklist_completion_percent_until_tservers_hea
     "When set, the master will wait for all live tservers to heartbeat before reporting "
     "leader blacklist completion percent.");
 TAG_FLAG(delay_leader_blacklist_completion_percent_until_tservers_heartbeat, advanced);
+
+DEFINE_RUNTIME_bool(delay_blacklist_completion_percent_until_tservers_heartbeat, true,
+    "When set, the master will wait for all live tservers to heartbeat before reporting "
+    "blacklist load move completion percent.");
+TAG_FLAG(delay_blacklist_completion_percent_until_tservers_heartbeat, advanced);
 
 namespace yb::master {
 
@@ -234,10 +242,13 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   // If we are starting up and don't find any load on the tservers, return progress as 0.
   // We expect that by blacklist_progress_initial_delay_secs time, this should go away and if the
   // load is reported as 0 on the blacklisted tservers after this time then it means that
-  // the transfer is successfully complete.
+  // the transfer is successfully complete. The replica maps are rebuilt from tablet reports after
+  // an election, so also hold at 0 until every live tserver has reported, in case the load took
+  // long enough to eat the grace period or the reports take longer than it.
   if (blacklist_replicas == 0 &&
-      catalog_manager_->TimeSinceElectedLeader() <=
-          MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
+      (catalog_manager_->TimeSinceElectedLeader() <=
+           MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs) ||
+       !catalog_manager_->ReplicaMapsTrusted())) {
     LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog "
               << "manager gets the correct estimates of the remaining load on the blacklisted"
               << "tservers.";
@@ -264,21 +275,47 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   LOG(INFO) << "Blacklisted count " << blacklist_replicas << " across " << state.hosts_size()
             << " servers, with initial load " << initial_load;
 
-  // Case when a blacklisted servers did not have any starting load.
+  // Case when a blacklisted servers did not have any starting load. Zero load is still a drain
+  // the hint has to announce, e.g. a tserver that died and lost its replicas before it was
+  // blacklisted, so fall through to the waits below rather than returning here.
   if (initial_load == 0) {
     resp->set_percent(100);
-    return Status::OK();
+  } else {
+    resp->set_percent(100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
+    resp->set_remaining(blacklist_replicas);
+    resp->set_total(initial_load);
   }
 
-  resp->set_percent(100 - (static_cast<double>(blacklist_replicas) * 100 / initial_load));
-  resp->set_remaining(blacklist_replicas);
-  resp->set_total(initial_load);
-
-  if (blacklist_leader && blacklist_replicas == 0 &&
-      FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat) {
-    // Best effort wait to ensure all tservers have updated their meta-cache and marked
-    // the leader blacklisted tservers with no leaders as followers.
-    const auto start_time = MonoTime::Now();
+  // The waits for the server blacklist only make sense while the master is sending the hint they
+  // confirm the delivery of.
+  const bool delay_until_heartbeat = blacklist_leader
+      ? FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat
+      : FLAGS_delay_blacklist_completion_percent_until_tservers_heartbeat &&
+            FLAGS_send_blacklisted_tservers_on_heartbeat;
+  if (blacklist_replicas == 0 && delay_until_heartbeat) {
+    // Best effort wait to ensure all tservers have updated their meta-cache: marked the leader
+    // blacklisted tservers with no leaders as followers, or the blacklisted tservers with no
+    // tablets as failed. A heartbeat only proves delivery of the hint if the response was built
+    // after the hint became true, so for the server blacklist first wait for the background task
+    // to have derived the drained set from the same replica maps this function just scanned.
+    auto start_time = MonoTime::Now();
+    if (!blacklist_leader) {
+      const auto blacklist_set = ToBlacklistSet(state);
+      WARN_NOT_OK(
+          WaitFor([&]() {
+            const auto drained_vector = catalog_manager_->GetDrainedBlacklistedTServers();
+            const std::unordered_set<TabletServerId> drained(
+                drained_vector.begin(), drained_vector.end());
+            for (const auto& desc : ts_manager_->GetAllDescriptors()) {
+              if (desc->IsBlacklisted(blacklist_set) && !drained.contains(desc->permanent_uuid())) {
+                return false;
+              }
+            }
+            return true;
+          }, 10s, "Wait for the drained tserver set to include all blacklisted tservers"),
+          "Timed out waiting for the master to derive the drained blacklisted tserver set.");
+      start_time = MonoTime::Now();
+    }
     WARN_NOT_OK(
         WaitFor([&]() {
           TSDescriptorVector descs;
@@ -286,8 +323,8 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
           return std::all_of(descs.begin(), descs.end(), [&](const auto& desc) {
             return desc->LastHeartbeatTime() > start_time;
           });
-        }, 10s, "Wait for live tservers to heartbeat before reporting leader blacklist completion"),
-        "Timed out waiting for master to propagate leader blacklisted tserver info on heartbeats.");
+        }, 10s, "Wait for live tservers to heartbeat before reporting blacklist completion"),
+        "Timed out waiting for master to propagate blacklisted tserver info on heartbeats.");
   }
   return Status::OK();
 }
