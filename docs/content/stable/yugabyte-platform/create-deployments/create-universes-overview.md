@@ -205,7 +205,7 @@ Ranks must be contiguous integers starting at 1. Zones with the same rank share 
 
 For example, a primary cluster in us-east, us-central, and us-west with the application in us-east: rank us-east 1, us-central 2, and us-west 3. If us-east fails, followers in us-central become leaders. See [Global database](/stable/develop/build-global-apps/global-database/).
 
-You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions. If a client connects to a [read replica](#multiple-region), reads are served from the replica; writes still go to tablet leaders in the preferred region.
+You can enable [follower reads](../../../additional-features/follower-reads/) to serve reads from non-preferred regions. If a client connects to a [read replica](#multiple-region), the replica serves the read when follower reads are on; writes still go to tablet leaders in the preferred region. With follower reads off, the read goes to the tablet leader in the primary cluster.
 
 #### Dedicated masters
 

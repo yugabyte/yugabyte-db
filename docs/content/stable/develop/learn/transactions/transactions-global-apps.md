@@ -28,7 +28,7 @@ All reads in YugabyteDB are handled by the leader to ensure that applications fe
 - The data does not change often (for example, a movie database).
 - The application does not need the latest data (for example, reading yesterday's report).
 
-In such scenarios, you can enable [follower reads](../../../../explore/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
+In such scenarios, you can enable [follower reads](../../../../additional-features/follower-reads/) to read from followers instead of going to the leader, which could be far away in a different region.
 
 To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the YSQL parameter `yb_read_from_followers`. For example:
 
