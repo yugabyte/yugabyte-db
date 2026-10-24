@@ -127,8 +127,11 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
     protected static void destroyMiniCluster() throws Exception {
         if (miniYugabytedCluster != null) {
             LOG.info("Destroying mini cluster");
-            miniYugabytedCluster.shutdown();
-            miniYugabytedCluster = null;
+            try {
+                miniYugabytedCluster.shutdown();
+            } finally {
+                miniYugabytedCluster = null;
+            }
         }
     }
 
