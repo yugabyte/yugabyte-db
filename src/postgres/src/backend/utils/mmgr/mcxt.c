@@ -1846,3 +1846,37 @@ GetCurrentYbMemctx()
 
 	return context->yb_memctx;
 }
+
+/*
+ * YbMemoryContextDeleteIfNoLiveChunks
+ *		Delete the context if nothing allocated in it is still in use.
+ *
+ * Unlike MemoryContextIsEmpty(), this also deletes a context whose chunks
+ * were all freed again.  The context is kept if it has children, reset
+ * callbacks or pggate objects, none of which its chunk accounting shows.
+ * Returns true if the context was deleted.
+ */
+bool
+YbMemoryContextDeleteIfNoLiveChunks(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	if (context->firstchild != NULL ||
+		context->reset_cbs != NULL ||
+		context->yb_memctx != NULL ||
+		!IsA(context, AllocSetContext) ||
+		!YbAllocSetHasNoLiveChunks(context))
+		return false;
+
+	/*
+	 * A recycled context would quietly serve allocations through a stale
+	 * pointer to this one, so free it outright under ASAN, whose quarantine
+	 * catches such misuse.
+	 */
+#ifdef ADDRESS_SANITIZER
+	YbAllocSetDisableRecycling(context);
+#endif
+
+	MemoryContextDelete(context);
+	return true;
+}

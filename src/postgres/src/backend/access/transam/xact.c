@@ -1700,6 +1700,20 @@ AtSubCommit_Memory(void)
 		MemoryContextDelete(s->curTransactionContext);
 		s->curTransactionContext = NULL;
 	}
+
+	/*
+	 * YB: Every statement of a READ COMMITTED transaction block runs in an
+	 * internal savepoint, released when the next statement starts.  A
+	 * statement that fires AFTER triggers (including foreign key checks)
+	 * allocates and then frees its trigger tuplestore in this context, so the
+	 * check above keeps it, retaining a few kilobytes per statement until the
+	 * transaction ends.  Free it as well if nothing in it is still in use.
+	 */
+	else if (yb_free_read_committed_savepoint_memory &&
+			 s->name != NULL &&
+			 strcmp(s->name, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0 &&
+			 YbMemoryContextDeleteIfNoLiveChunks(s->curTransactionContext))
+		s->curTransactionContext = NULL;
 }
 
 /*
