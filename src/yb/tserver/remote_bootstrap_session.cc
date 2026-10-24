@@ -260,6 +260,11 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   tablet_peer_->log_anchor_registry()->Register(
       rbs_min_op_idx, anchor_owner_token, &log_anchor_);
 
+  // The log anchor keeps the tablet from replacing segments with a newer marker, which the
+  // checkpoint below might not cover. TabletPeer::EnterQuiescentMode checks anchors after it
+  // publishes the marker.
+  quiescent_marker_ = tablet_peer_->log()->quiescent_marker();
+
   OpId last_logged_opid;
   for (int retry = 0;; ++retry) {
     auto res = CreateSnapshot(retry);

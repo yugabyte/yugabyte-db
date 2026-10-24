@@ -561,7 +561,19 @@ class TabletBootstrap {
       tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
-    const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
+    // With skip_wal_rewrite=false, bootstrap moves the WAL dir aside, writes the replayed entries
+    // into a new log in an empty WAL dir, and then deletes the old dir. The quiescent marker in the
+    // WAL dir would be moved away unread and then deleted, while the segments it replaced are gone.
+    // So a tablet with a marker always replays its WAL in place, whatever the flag says.
+    // Tablets enter the quiescent mode only with skip_wal_rewrite=true, so this applies only when
+    // the flag was changed after that.
+    const bool has_marker = GetEnv()->FileExists(Log::QuiescentMarkerPath(meta_->wal_dir()));
+    if (has_marker && !skip_wal_rewrite_) {
+      LOG_WITH_PREFIX(INFO) << "Quiescent marker found, not rewriting WAL";
+      skip_wal_rewrite_ = log::SkipWalWrite::kTrue;
+    }
+
+    const bool needs_recovery = VERIFY_RESULT(PrepareToReplay()) || has_marker;
     if (needs_recovery && !skip_wal_rewrite_) {
       RETURN_NOT_OK(OpenLogReader());
     }
@@ -1629,8 +1641,17 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)),
+        OpenLog(log::CreateNewSegment(!skip_wal_rewrite_)),
           "Failed to open new log");
+
+    // Ops up to the quiescent marker are durable in all storages, and segments with them may be
+    // absent.
+    const auto marker = log_->quiescent_marker();
+    RestartSafeCoarseTimePoint last_entry_time;
+    if (marker) {
+      ApplyQuiescentMarker(*marker);
+      last_entry_time = RestartSafeCoarseTimePoint::FromUInt64(marker->entry_time());
+    }
 
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
@@ -1658,7 +1679,6 @@ class TabletBootstrap {
         data_.bootstrap_retryable_requests && data_.retryable_requests
             ? data_.retryable_requests->GetMaxReplicatedOpId()
             : OpId::Min();
-    RestartSafeCoarseTimePoint last_entry_time;
 
     // If the segment is the first one to replay, start replaying from the last flushed op id
     // instead of very beginning of the segment.
@@ -1745,6 +1765,12 @@ class TabletBootstrap {
     replay_state_->UpdateCommittedFromStored();
     RETURN_NOT_OK(ApplyCommittedPendingReplicates());
 
+    if (marker) {
+      // The marker op is the last op unless ops after it were replayed.
+      replay_state_->prev_op_id =
+          std::max(replay_state_->prev_op_id, OpId::FromPB(marker->op_id()));
+    }
+
     if (last_committed_op_id.index > replay_state_->committed_op_id.index) {
       auto it = replay_state_->pending_replicates.find(last_committed_op_id.index);
       if (it != replay_state_->pending_replicates.end()) {
@@ -1818,6 +1844,24 @@ class TabletBootstrap {
     }
 
     return Status::OK();
+  }
+
+  // Uses the quiescent marker as the lower bound of what replay would derive from the segments it
+  // replaced.
+  void ApplyQuiescentMarker(const log::QuiescentMarkerPB& marker) {
+    const auto marker_op_id = OpId::FromPB(marker.op_id());
+    LOG_WITH_PREFIX(INFO) << "Using quiescent marker: " << marker.ShortDebugString();
+    auto& persistent_state = replay_state_->persistent_state;
+    persistent_state.regular = std::max(persistent_state.regular, marker_op_id);
+    persistent_state.intents = std::max(persistent_state.intents, marker_op_id);
+    for (auto& vector_index : persistent_state.vector_indexes) {
+      vector_index.op_id = std::max(vector_index.op_id, marker_op_id);
+    }
+    replay_state_->UpdateCommittedOpId(marker_op_id);
+    const HybridTime hybrid_time(marker.hybrid_time());
+    replay_state_->max_committed_hybrid_time.MakeAtLeast(hybrid_time);
+    UpdateClock(hybrid_time.ToUint64());
+    tablet_->UpdateMonotonicCounter(marker.monotonic_counter());
   }
 
   Status PlayWriteRequest(

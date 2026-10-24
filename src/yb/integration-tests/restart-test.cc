@@ -133,9 +133,11 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
   auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
-  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
-
-  ASSERT_EQ(2, segments.size());
+  // The second segment is started by the first append after restart.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+    return segments.size() == 2;
+  }, 10s * kTimeMultiplier, "Second segment"));
   log::ReadableLogSegmentPtr segment = ASSERT_RESULT(segments.front());
   ASSERT_TRUE(segment->HasFooter());
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());

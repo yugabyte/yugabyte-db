@@ -117,7 +117,7 @@ class RestartSafeCoarseMonoClock {
     delta_ = mark_as_now.value_ - CoarseMonoClock::Now();
   }
  private:
-  CoarseDuration delta_;
+  CoarseDuration delta_{};
 };
 
 } // namespace yb

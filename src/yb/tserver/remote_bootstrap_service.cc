@@ -229,6 +229,9 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
   resp->set_retryable_requests_file_flushed(session->has_retryable_requests_file());
+  if (session->quiescent_marker()) {
+    *resp->mutable_quiescent_marker() = *session->quiescent_marker();
+  }
 
   auto const& log_segments = session->log_segments();
   resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));

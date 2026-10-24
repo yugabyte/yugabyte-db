@@ -604,9 +604,16 @@ Status LogReader::AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogS
 
 Status LogReader::AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment) {
   DCHECK(segment->IsInitialized());
+  const auto sequence_number = segment->header().sequence_number();
   std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
-  return segments_.push_back(segment->header().sequence_number(), segment);
+  RETURN_NOT_OK(segments_.push_back(sequence_number, segment));
+  // Appends index the new segment from its start. Set under lock_, which DoGetIndexEntry holds to
+  // pick the segments to load the index from.
+  if (log_index_) {
+    log_index_->SetMinIndexedSegmentNumberIfUnset(sequence_number);
+  }
+  return Status::OK();
 }
 
 size_t LogReader::num_segments() const {

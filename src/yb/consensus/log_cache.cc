@@ -358,7 +358,7 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   }
 
   // If it misses, read from the log.
-  return VERIFY_RESULT(log_->GetLogReader())->LookupOpId(op_index);
+  return log_->LookupOpId(op_index);
 }
 
 Result<int64_t> LogCache::LookupOpWalSegmentNumber(int64_t op_index) const {
