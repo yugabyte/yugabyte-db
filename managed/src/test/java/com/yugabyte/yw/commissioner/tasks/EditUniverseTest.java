@@ -27,6 +27,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -61,6 +62,8 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
+import com.yugabyte.yw.forms.YbcThrottleTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
@@ -1600,6 +1603,62 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCanTaskRollbackTrueAfterFailedExpandBeforeCheckpoint() {
+    TaskInfo taskInfo = failExpandBeforeCheckpoint();
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    CustomerTask editCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Edit,
+            universe.getName());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertEquals(taskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
+    // Listing canRollback: ownership still on the failed edit.
+    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
+  }
+
+  @Test
+  public void testTaskOnBrokenUniverseKeepsEditCheckpointWhenItSucceeds() throws Exception {
+    assertTaskOnBrokenUniverseKeepsEditCheckpoint(false /* otherTaskFails */);
+  }
+
+  @Test
+  public void testTaskOnBrokenUniverseKeepsEditCheckpointWhenItFails() throws Exception {
+    assertTaskOnBrokenUniverseKeepsEditCheckpoint(true /* otherTaskFails */);
+  }
+
+  /**
+   * PLAT-23213: a task allowed on a universe broken by a failed edit must neither overwrite the
+   * edit's rollback checkpoint at its freeze nor clear it at its unlock.
+   */
+  private void assertTaskOnBrokenUniverseKeepsEditCheckpoint(boolean otherTaskFails)
+      throws Exception {
+    TaskInfo editTask = failExpandBeforeCheckpoint();
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    JsonNode editCheckpoint = Json.toJson(universe.getStateTransitionDetails());
+    if (otherTaskFails) {
+      doThrow(new RuntimeException("YBC is down"))
+          .when(mockYbcManager)
+          .setThrottleParamsOnYbcServers(any(), any(), any());
+    }
+    YbcThrottleTaskParams params = new YbcThrottleTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.expectedUniverseVersion = -1;
+    params.setYbcThrottleParameters(new YbcThrottleParameters());
+    TaskInfo ybcTask = waitForTask(commissioner.submit(TaskType.UpdateYbcThrottleFlags, params));
+
+    assertEquals(otherTaskFails ? Failure : Success, ybcTask.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(editTask.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
+    assertEquals(editCheckpoint, Json.toJson(universe.getStateTransitionDetails()));
+    assertTrue(commissioner.canTaskRollbackDetailed(editTask));
+  }
+
+  /** Runs an expand that fails on node commands before its rollback-unsafe checkpoint. */
+  private TaskInfo failExpandBeforeCheckpoint() {
     clearAbortOrPausePositions();
     doAnswer(
             invocation -> {
@@ -1621,20 +1680,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
-    CustomerTask editCustomerTask =
-        CustomerTask.create(
-            defaultCustomer,
-            universe.getUniverseUUID(),
-            taskInfo.getUuid(),
-            CustomerTask.TargetType.Universe,
-            CustomerTask.TaskType.Edit,
-            universe.getName());
-    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
-    assertEquals(taskInfo.getUuid(), universe.getUniverseDetails().placementModificationTaskUuid);
-    assertTrue(commissioner.canTaskRollbackDetailed(taskInfo));
-    // Listing canRollback: ownership still on the failed edit.
-    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
+    return taskInfo;
   }
 
   @Test
