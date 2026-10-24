@@ -72,6 +72,7 @@
 #include "utils/timestamp.h"
 
 /* YB includes */
+#include "catalog/pg_inherits.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -2391,6 +2392,8 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
+
+	YbResetPartitionListMemo();
 }
 
 /*

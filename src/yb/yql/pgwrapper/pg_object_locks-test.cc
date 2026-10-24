@@ -2508,6 +2508,57 @@ TEST_F_EX(
   testSyncReleaseForGlobalLocksAndDdls();
 }
 
+// A REPEATABLE READ transaction that read the parent before DETACH PARTITION CONCURRENTLY
+// marked the partition pending keeps seeing it, while FK checks and new statements don't.
+TEST_F_EX(
+    PgObjectLocksTest, DetachConcurrentlyVisibility, PgObjectLocksWithConcurrentDdl) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE pk_parent (id INT NOT NULL) PARTITION BY RANGE (id)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part1 PARTITION OF pk_parent FOR VALUES FROM (1) TO (100)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pk_part2 PARTITION OF pk_parent FOR VALUES FROM (100) TO (200)"));
+  ASSERT_OK(setup_conn.Execute("ALTER TABLE pk_parent ADD PRIMARY KEY (id)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO pk_parent VALUES (50), (150)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE fk_child (id INT, pk_id INT REFERENCES pk_parent(id))"));
+
+  // On an early assertion failure, rr_conn must close first to release the lock the detach waits
+  // on, and detach_conn must outlive the joined thread that uses it.
+  auto detach_conn = ASSERT_RESULT(Connect());
+  TestThreadHolder thread_holder;
+  auto rr_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(rr_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_EQ(ASSERT_RESULT(rr_conn.FetchRows<int32_t>("SELECT id FROM pk_parent ORDER BY id")),
+            (std::vector<int32_t>{50, 150}));
+
+  thread_holder.AddThreadFunctor([&detach_conn] {
+    ASSERT_OK(detach_conn.Execute(
+        "ALTER TABLE pk_parent DETACH PARTITION pk_part1 CONCURRENTLY"));
+  });
+
+  ASSERT_OK(LoggedWaitFor(
+      [&setup_conn]() -> Result<bool> {
+        return setup_conn.FetchRow<bool>(
+            "SELECT EXISTS(SELECT 1 FROM pg_inherits WHERE inhdetachpending)");
+      },
+      30s * kTimeMultiplier, "Wait for partition to be marked detach pending"));
+
+  ASSERT_EQ(ASSERT_RESULT(rr_conn.FetchRows<int32_t>("SELECT id FROM pk_parent ORDER BY id")),
+            (std::vector<int32_t>{50, 150}));
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRows<int32_t>("SELECT id FROM pk_parent ORDER BY id")),
+            (std::vector<int32_t>{150}));
+
+  auto status = rr_conn.Execute("INSERT INTO fk_child VALUES (1, 50)");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "violates foreign key constraint");
+  ASSERT_OK(rr_conn.RollbackTransaction());
+
+  thread_holder.JoinAll();
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRows<int32_t>("SELECT id FROM pk_parent ORDER BY id")),
+            (std::vector<int32_t>{150}));
+}
+
 // In YB, CREATE INDEX acquires session locks against the session level txn's by bumping up the
 // active subtxn id, and the releases all those locks at the end by rolling back the subtxn.
 // The below test asserts that consectuive CREATE INDEX from the same session don't deadlock

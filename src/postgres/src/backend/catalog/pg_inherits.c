@@ -33,7 +33,9 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "access/xact.h"
 #include "pg_yb_utils.h"
+#include "storage/proc.h"
 #include "utils/catcache.h"
 
 /*
@@ -150,36 +152,50 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 				TransactionId xmin;
 				Snapshot	snap;
 
-				xmin = HeapTupleHeaderGetXmin(inheritsTuple->t_data);
-				snap = GetActiveSnapshot();
-
-				if (!XidInMVCCSnapshot(xmin, snap))
+				/* YB: catalog tuples carry no xmin; see YbDetachPendingInProgress() */
+				if (IsYugaByteEnabled())
 				{
-					if (detached_xmin)
+					if (!YbDetachPendingInProgress(parentrelId))
 					{
-						/*
-						 * Two detached partitions should not occur (see
-						 * checks in MarkInheritDetached), but if they do,
-						 * track the newer of the two.  Make sure to warn the
-						 * user, so that they can clean up.  Since this is
-						 * just a cross-check against potentially corrupt
-						 * catalogs, we don't make it a full-fledged error
-						 * message.
-						 */
-						if (*detached_xmin != InvalidTransactionId)
+						/* Any valid xmin works as the rd_partdesc_nodetached tag */
+						if (detached_xmin)
+							*detached_xmin = FrozenTransactionId;
+						continue;
+					}
+				}
+				else
+				{
+					xmin = HeapTupleHeaderGetXmin(inheritsTuple->t_data);
+					snap = GetActiveSnapshot();
+
+					if (!XidInMVCCSnapshot(xmin, snap))
+					{
+						if (detached_xmin)
 						{
-							elog(WARNING, "more than one partition pending detach found for table with OID %u",
-								 parentrelId);
-							if (TransactionIdFollows(xmin, *detached_xmin))
+							/*
+							 * Two detached partitions should not occur (see
+							 * checks in MarkInheritDetached), but if they do,
+							 * track the newer of the two.  Make sure to warn the
+							 * user, so that they can clean up.  Since this is
+							 * just a cross-check against potentially corrupt
+							 * catalogs, we don't make it a full-fledged error
+							 * message.
+							 */
+							if (*detached_xmin != InvalidTransactionId)
+							{
+								elog(WARNING, "more than one partition pending detach found for table with OID %u",
+									 parentrelId);
+								if (TransactionIdFollows(xmin, *detached_xmin))
+									*detached_xmin = xmin;
+							}
+							else
 								*detached_xmin = xmin;
 						}
-						else
-							*detached_xmin = xmin;
-					}
 
-					/* Don't add the partition to the output list */
-					continue;
-				}
+						/* Don't add the partition to the output list */
+						continue;
+					}
+				}				/* YB: end of the !IsYugaByteEnabled() branch */
 			}
 		}
 
@@ -658,4 +674,72 @@ PartitionHasPendingDetach(Oid partoid)
 
 	elog(ERROR, "relation %u is not a partition", partoid);
 	return false;				/* keep compiler quiet */
+}
+
+/* Set while running an RI check that upstream runs on a latest snapshot */
+bool		yb_detach_pending_use_latest_snapshot = false;
+
+/*
+ * Parents whose partition list this transaction obtained while none of their
+ * partitions was pending detach. Lives in TopTransactionContext and is reset
+ * lazily when the local transaction id changes.
+ */
+static List *yb_partlist_memo = NIL;
+static LocalTransactionId yb_partlist_memo_lxid = InvalidLocalTransactionId;
+
+static List *
+YbPartListMemo(void)
+{
+	if (yb_partlist_memo_lxid != MyProc->lxid)
+	{
+		yb_partlist_memo = NIL;
+		yb_partlist_memo_lxid = MyProc->lxid;
+	}
+	return yb_partlist_memo;
+}
+
+void
+YbRememberPartitionList(Oid parentrelid)
+{
+	MemoryContext oldcxt;
+
+	if (!IsolationUsesXactSnapshot() || !IsTransactionState() ||
+		list_member_oid(YbPartListMemo(), parentrelid))
+		return;
+	oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	yb_partlist_memo = lappend_oid(yb_partlist_memo, parentrelid);
+	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * A transaction restart releases every lock of the failed attempt without
+ * changing the local transaction id, so the memo has to be cleared explicitly.
+ */
+void
+YbResetPartitionListMemo(void)
+{
+	yb_partlist_memo = NIL;
+}
+
+/*
+ * Substitute for upstream's XidInMVCCSnapshot(pg_inherits.xmin, active
+ * snapshot), which YB can't evaluate because catalog tuples carry no xmin.
+ * Only callers that ask to omit detached partitions consult it.
+ *
+ * Upstream keeps a pending-detach partition visible to snapshots older than
+ * the detach's first phase. YB approximates "older snapshot" by "this
+ * transaction already read the parent's partition list before the partition
+ * went pending". Such a transaction locked the parent before the first phase
+ * committed, so the second phase waits for it, unless ROLLBACK TO SAVEPOINT
+ * has since released that lock; it is then exposed exactly like an upstream
+ * snapshot that predates the first phase. Every other omit_detached reader,
+ * tuple routing and RI checks included, treats the first phase as committed
+ * and omits the partition. Executor runtime pruning does not ask to omit
+ * detached partitions; it only looks up partitions the planner kept.
+ */
+bool
+YbDetachPendingInProgress(Oid parentrelid)
+{
+	return IsolationUsesXactSnapshot() && !yb_detach_pending_use_latest_snapshot &&
+		list_member_oid(YbPartListMemo(), parentrelid);
 }

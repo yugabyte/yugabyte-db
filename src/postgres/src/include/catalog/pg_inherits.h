@@ -63,4 +63,10 @@ extern bool DeleteInheritsTuple(Oid inhrelid, Oid inhparent, bool allow_detached
 								const char *childname);
 extern bool PartitionHasPendingDetach(Oid partoid);
 
+/* YB declarations */
+extern bool yb_detach_pending_use_latest_snapshot;
+extern bool YbDetachPendingInProgress(Oid parentrelid);
+extern void YbRememberPartitionList(Oid parentrelid);
+extern void YbResetPartitionListMemo(void);
+
 #endif							/* PG_INHERITS_H */

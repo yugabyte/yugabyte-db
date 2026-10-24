@@ -202,6 +202,8 @@ CreateExecutorState(void)
 
 	estate->yb_exec_params.yb_index_check = false;
 	estate->yb_es_pk_proutes = NIL;
+	estate->yb_es_pk_partition_directory = NULL;
+	estate->yb_es_routing_partition_directory = NULL;
 
 	estate->yb_read_ahead_allowed = false;
 
@@ -266,6 +268,10 @@ FreeExecutorState(EState *estate)
 		ExecCleanupTupleRouting(NULL /* mtstate */ , proute);
 	}
 	list_free(estate->yb_es_pk_proutes);
+	if (estate->yb_es_pk_partition_directory)
+		DestroyPartitionDirectory(estate->yb_es_pk_partition_directory);
+	if (estate->yb_es_routing_partition_directory)
+		DestroyPartitionDirectory(estate->yb_es_routing_partition_directory);
 
 	/*
 	 * Free the per-query memory context, thereby releasing all working

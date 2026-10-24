@@ -15,6 +15,7 @@ test: yb.orig.concurrent_partition_insert
 test: yb.orig.inplace_catalog_updates
 test: yb.orig.non_concurrent_index_with_parallel_dml
 test: yb.orig.detach-partition-concurrently-1
+test: yb.orig.detach-partition-concurrently-late-readers
 test: yb.orig.matview_refresh_locking
 test: yb.orig.ddl_lock_conflicts
 test: yb.orig.validate_constraint_concurrent_dml
