@@ -2347,10 +2347,17 @@ StartTransaction(void)
 /*
  * Recreates the state required to restart the write that received a transaction
  * conflict.
+ *
+ * Invariant: afterwards the backend must behave as if the transaction had
+ * aborted and the client had replayed the same command in a new transaction.
+ * State that AbortTransaction resets, or that a new local transaction id
+ * invalidates, must be reset here too; #30540 broke this for plpgsql.
  */
 void
 YBCRestartWriteTransaction()
 {
+	VirtualTransactionId vxid;
+
 	/*
 	 * Roll back every open savepoint / subtransaction so the trans_stack is
 	 * clean before we recreate the top-level write state. Without this, the
@@ -2364,11 +2371,28 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
+	 * Control may have escaped a SECURITY DEFINER function, which leaves
+	 * undoing its user switch to the abort; without this the retry runs with
+	 * the definer's privileges.  The transaction-start user that
+	 * AbortTransaction restores would be wrong here: a SET ROLE earlier in an
+	 * extended-protocol batch is not replayed, and its role GUC stays set.
+	 */
+	SetUserIdAndSecContext(GetOuterUserId(),
+						   CurrentTransactionState->prevSecContext);
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
 	 */
 	PopAllActiveSnapshots();
+
+	/*
+	 * The release below drops resources that callback owners, such as
+	 * plpgsql's simple-expression refcounts (#30540), still believe they
+	 * hold.  AbortTransaction tells them first; so must the retry.
+	 */
+	CallXactCallbacks(XACT_EVENT_ABORT);
 
 	if (TopTransactionResourceOwner != NULL)
 	{
@@ -2391,6 +2415,18 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */ );
 	AfterTriggerBeginXact();
+
+	/*
+	 * A replayed command would run in a new transaction with a new lxid.
+	 * Per-transaction caches keyed on the lxid (plpgsql simple expressions,
+	 * SQL function caches, sequence locks) depend on that to drop state the
+	 * release above invalidated (#30540).
+	 */
+	VirtualXactLockTableCleanup();
+	vxid.backendId = MyBackendId;
+	vxid.localTransactionId = GetNextLocalTransactionId();
+	VirtualXactLockTableInsert(vxid);
+	MyProc->lxid = vxid.localTransactionId;
 }
 
 /*
