@@ -579,6 +579,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     request->set_caller_term(queue_state_.current_term);
+    queue_state_.all_replicated_op_id.ToPB(request->mutable_all_replicated_op_id());
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
     if (member_type) *member_type = peer->member_type;
@@ -1758,6 +1759,11 @@ PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uu
 OpId PeerMessageQueue::TEST_GetAllReplicatedIndex() const {
   LockGuard lock(queue_lock_);
   return queue_state_.all_replicated_op_id;
+}
+
+OpId PeerMessageQueue::GetAllReplicatedOpId() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.mode == Mode::LEADER ? queue_state_.all_replicated_op_id : OpId::Min();
 }
 
 OpId PeerMessageQueue::GetAllAppliedOpId() const {

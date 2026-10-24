@@ -185,7 +185,7 @@ class LogReader {
   Status AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Same as above but for segments without any entries.
-  // Used by the Log to add "empty" segments.
+  // Used by the Log to add "empty" segments. The first such segment becomes the min indexed one.
   Status AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
