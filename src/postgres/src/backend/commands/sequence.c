@@ -538,6 +538,9 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
+		if (seqrel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+			YBCRecordTempRelationDDL();
+
 		/*
 		 * In the binary upgrade case we know we only need to deal with catalog
 		 * metadata. There is no reason to read the actual sequence tuple.

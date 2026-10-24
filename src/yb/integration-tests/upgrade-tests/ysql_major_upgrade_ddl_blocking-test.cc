@@ -116,6 +116,102 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     return Status::OK();
   }
 
+  // Unlike RunTempTableDdls, every statement must succeed during the upgrade, so run this only on
+  // tservers of the current version.
+  Status RunTempObjectDdls(std::optional<size_t> node_index) {
+    const auto stmts = {
+        // Tables.
+        "CREATE TEMP TABLE tmp_obj_tbl "
+        "(a serial PRIMARY KEY, b int GENERATED ALWAYS AS IDENTITY, c int)",
+        "CREATE TEMP TABLE tmp_obj_ref (a int REFERENCES tmp_obj_tbl)",
+        "CREATE TEMP TABLE tmp_obj_ctas AS SELECT 1 AS a",
+        "SELECT 1 AS a INTO TEMP tmp_obj_select_into",
+        "CREATE TEMP TABLE tmp_obj_part (k int) PARTITION BY RANGE (k)",
+        "CREATE TEMP TABLE tmp_obj_part1 PARTITION OF tmp_obj_part FOR VALUES FROM (0) TO (10)",
+        "INSERT INTO tmp_obj_tbl (c) VALUES (1)",
+        "ALTER TABLE tmp_obj_tbl ADD COLUMN d int",
+        "ALTER TABLE tmp_obj_tbl RENAME COLUMN d TO e",
+        "ALTER TABLE tmp_obj_ctas RENAME TO tmp_obj_ctas2",
+        "TRUNCATE tmp_obj_ctas2",
+        "TRUNCATE tmp_obj_ctas2, tmp_obj_select_into",
+        "TRUNCATE tmp_obj_tbl CASCADE",
+        "TRUNCATE tmp_obj_tbl RESTART IDENTITY CASCADE",
+        // Indexes.
+        "CREATE INDEX tmp_obj_idx ON tmp_obj_tbl (c)",
+        "ALTER INDEX tmp_obj_idx RENAME TO tmp_obj_idx2",
+        "DROP INDEX tmp_obj_idx2",
+        // Sequences.
+        "CREATE TEMP SEQUENCE tmp_obj_seq",
+        "ALTER SEQUENCE tmp_obj_seq RESTART WITH 10",
+        "ALTER SEQUENCE tmp_obj_seq RENAME TO tmp_obj_seq2",
+        "DROP SEQUENCE tmp_obj_seq2",
+        // Views.
+        "CREATE TEMP VIEW tmp_obj_view AS SELECT * FROM tmp_obj_tbl",
+        "CREATE OR REPLACE TEMP VIEW tmp_obj_view AS SELECT * FROM tmp_obj_tbl",
+        "ALTER VIEW tmp_obj_view RENAME TO tmp_obj_view2",
+        "DROP VIEW tmp_obj_view2",
+        // In a transaction block, and in a DO block.
+        "BEGIN",
+        "CREATE TEMP SEQUENCE tmp_obj_seq4",
+        "TRUNCATE tmp_obj_tbl CASCADE",
+        "DROP SEQUENCE tmp_obj_seq4",
+        "COMMIT",
+        "DO $$ BEGIN "
+        "CREATE TEMP SEQUENCE tmp_obj_seq5; TRUNCATE tmp_obj_ref; DROP SEQUENCE tmp_obj_seq5; "
+        "END $$",
+        "DROP TABLE tmp_obj_ref, tmp_obj_tbl, tmp_obj_ctas2, tmp_obj_select_into, tmp_obj_part",
+        // DISCARD drops the remaining temp objects.
+        "CREATE TEMP TABLE tmp_obj_discard (a serial)",
+        "DISCARD TEMP",
+        "CREATE TEMP TABLE tmp_obj_discard (a serial)",
+        "DISCARD ALL"};
+
+    auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    for (const auto& stmt : stmts) {
+      RETURN_NOT_OK_PREPEND(conn.Execute(stmt), stmt);
+    }
+    return Status::OK();
+  }
+
+  static constexpr auto kPermTable = "perm_tbl";
+  static constexpr auto kPermSequence = "perm_seq";
+
+  Status CreatePermObjects() {
+    auto conn = VERIFY_RESULT(CreateConnToTs(std::nullopt));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int)", kPermTable));
+    return conn.ExecuteFormat("CREATE SEQUENCE $0", kPermSequence);
+  }
+
+  // DDLs that also change permanent objects must still be refused during the upgrade.
+  Status CheckMixedTempAndPermDdlsRefused(size_t node_index) {
+    auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_tbl (a int)"));
+    // Not in RunTempObjectDdls, which also runs on the old version, where INHERITS is unsupported.
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_parent (a int)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_mixed_child () INHERITS (tmp_mixed_parent)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE tmp_mixed_seq"));
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP VIEW tmp_mixed_view AS SELECT 1 AS a"));
+
+    // A cascading drop of a temp sequence or view can reach permanent objects that depend on it.
+    const auto stmts = {
+        Format("TRUNCATE tmp_mixed_tbl, $0", kPermTable),
+        Format("DROP TABLE tmp_mixed_tbl, $0", kPermTable),
+        Format("CREATE TEMP TABLE tmp_mixed_perm_child () INHERITS ($0)", kPermTable),
+        std::string("DROP SEQUENCE tmp_mixed_seq CASCADE"),
+        std::string("DROP VIEW tmp_mixed_view CASCADE"),
+        Format("ALTER SEQUENCE $0 INCREMENT BY 2", kPermSequence),
+        Format("DROP SEQUENCE $0", kPermSequence),
+        std::string("CREATE SEQUENCE perm_seq2")};
+    for (const auto& stmt : stmts) {
+      auto status = conn.Execute(stmt);
+      SCHECK(
+          !status.ok() && status.message().ToString().find(kExpectedDdlError) != std::string::npos,
+          IllegalState, Format("Unexpected status for $0: $1", stmt, status));
+    }
+
+    return conn.Execute("DISCARD TEMP");
+  }
+
   static constexpr auto kMatviewTable = "matview_tbl";
   static constexpr auto kNormalMatview = "mv_normal";
   static constexpr auto kConcurrentMatview = "mv_concurrent";
@@ -287,6 +383,23 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
   ASSERT_OK(FinalizeUpgrade());
 
   ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+}
+
+// DDLs on temporary objects should be allowed during the upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, TempObjectDdlsDuringUpgrade) {
+  ASSERT_OK(CreatePermObjects());
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(RunTempObjectDdls(kMixedModeTserverPg15));
+  ASSERT_OK(CheckMixedTempAndPermDdlsRefused(kMixedModeTserverPg15));
+
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
+  ASSERT_OK(CheckMixedTempAndPermDdlsRefused(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgrade());
+  ASSERT_OK(RunTempObjectDdls(std::nullopt));
 }
 
 // Make sure in-flight DDL transactions are killed by the upgrade.

@@ -150,6 +150,10 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		 */
 		Assert(relation->relpersistence == rel->rd_rel->relpersistence);
 
+		if (IsYugaByteEnabled() &&
+			rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+			YBCRecordTempRelationDDL();
+
 		/*
 		 * Create a tuple descriptor to compare against the existing view, and
 		 * verify that the old column list is an initial prefix of the new
