@@ -159,6 +159,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_internal_conn.h"
+#include "yb_memory_watcher.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
 
@@ -1107,6 +1108,9 @@ PostmasterMain(int argc, char *argv[])
 		/* Register ASH collector */
 		if (yb_enable_ash)
 			YbAshRegister();
+
+		if (yb_enable_memory_watcher)
+			YbMemoryWatcherRegister();
 	}
 
 	/*
