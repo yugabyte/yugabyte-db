@@ -3142,9 +3142,9 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
   // by some other means.
   cluster_->tablet_server(0)->Shutdown();
   {
+    // CreateTablet RPCs are sent only after the CREATING state is persisted.
+    auto log_waiter = cluster_->GetMasterLogWaiter("Create Tablet RPC failed for tablet");
     ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
-    auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", global_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }
   cluster_->master()->Shutdown(SafeShutdown::kFalse);
@@ -3181,8 +3181,7 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
 
   cluster_->tablet_server(0)->Shutdown();
   {
-    auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", local_txn_table_id));
+    auto log_waiter = cluster_->GetMasterLogWaiter("Create Tablet RPC failed for tablet");
     ASSERT_OK(CallAdmin("add_transaction_tablet", local_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }
