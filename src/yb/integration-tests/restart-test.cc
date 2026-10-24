@@ -13,6 +13,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
@@ -21,6 +22,8 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -28,6 +31,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -388,6 +393,40 @@ TEST_F(PersistRetryableRequestsTest, TestRetryableWriteWithoutPersistence) {
 TEST_F(PersistRetryableRequestsTest, TestRetryableRequestsFileTooOld) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ true);
+}
+
+// A graceful shutdown persists the bootstrap state as of the last write without any log
+// roll-over, so the next bootstrap does not replay from the previous roll-over's flush point.
+TEST_F(PersistRetryableRequestsTest, BootstrapStateFlushedOnGracefulRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  string tablet_id;
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
+
+  PutKeyValue("key_1", "value_1");
+  PutKeyValue("key_2", "value_2");
+  const auto last_write_op_id =
+      ASSERT_RESULT(tablet_peer->GetRetryableRequests()).GetMaxReplicatedOpId();
+  ASSERT_GT(last_write_op_id.index, 0);
+  // Nothing rolled the log, so nothing has persisted the bootstrap state yet.
+  ASSERT_FALSE(tablet_peer->TEST_HasBootstrapStateOnDisk());
+  const auto bootstrap_state_path =
+      tablet::TabletBootstrapStateManager::FilePath(tablet_peer->tablet_metadata()->wal_dir());
+  tablet_peer.reset();
+
+  tablet_server->Shutdown();
+
+  // The shutdown itself wrote the file, before the server comes back.
+  consensus::TabletBootstrapStatePB pb;
+  ASSERT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), bootstrap_state_path, &pb));
+  ASSERT_EQ(OpId::FromPB(pb.last_op_id()), last_write_op_id);
+
+  ASSERT_OK(tablet_server->Start());
+  ASSERT_OK(tablet_server->WaitStarted());
+  PutKeyValue("key_3", "value_3");
+  CheckKeyValue(/* key = */ 3, /* value = */ 3);
 }
 
 } // namespace integration_tests
