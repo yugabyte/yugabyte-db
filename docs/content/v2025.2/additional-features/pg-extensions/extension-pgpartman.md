@@ -335,6 +335,8 @@ For more information on xCluster limitations, refer to [Limitations](../../../ar
 
 In v2025.1.1 and later, pg_cron only executes on the Primary universe. On switchover, pg_cron automatically switches over to the new Primary universe as well.
 
+Don't set `cron.yb_enable_on_xcluster_target` to `true` when using pg_partman. The standby's database is read-only, so the maintenance job can't run there: pg_cron can't start it, and pg_partman's partition DDL is rejected on an automatic mode target.
+
 In versions earlier than v2025.1.1, the pg_partman maintenance cron job can only be enabled on the xCluster primary. Disable it on the xCluster standby.
 
 During disaster recovery switchover (or failover and repair):
