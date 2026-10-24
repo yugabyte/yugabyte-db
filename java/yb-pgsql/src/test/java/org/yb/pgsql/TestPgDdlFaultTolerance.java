@@ -18,7 +18,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.BuildTypeUtil;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
@@ -461,13 +460,6 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
     setServerFlag(server,
                   "TEST_ysql_catalog_write_rejection_percentage",
                   Integer.toString(percentage));
-    // TODO Adding a 6 second sleep here due to issue #4848.
-    // For ASAN sleep needs to be longer to avoid flaky failures due the the same issue.
-    if (BuildTypeUtil.isASAN()) {
-      Thread.sleep(60000);
-    } else {
-      Thread.sleep(6000);
-    }
   }
 
   private void setDocDBSysCatalogWriteRejection(HostAndPort server,
