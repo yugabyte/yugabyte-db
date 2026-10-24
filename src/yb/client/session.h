@@ -237,6 +237,14 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   ConsistentReadPoint* read_point();
 
+  // Makes this session's batchers use the given read point instead of the transaction's or the
+  // non-transactional one. Each batcher keeps the read point that was current when it was created,
+  // so switching it does not affect operations already in flight.
+  void SetReadPointOverride(std::shared_ptr<ConsistentReadPoint> read_point);
+  const std::shared_ptr<ConsistentReadPoint>& read_point_override() const {
+    return batcher_config_.read_point_override;
+  }
+
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
 
   void SetLeaderTerm(int64_t leader_term) { batcher_config_.leader_term = leader_term; }
@@ -254,6 +262,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     client::YBClient* client;
     YBTransactionPtr transaction;
     std::shared_ptr<ConsistentReadPoint> non_transactional_read_point;
+    std::shared_ptr<ConsistentReadPoint> read_point_override;
     bool allow_local_calls_in_curr_thread = true;
     bool force_consistent_read = false;
     RejectionScoreSourcePtr rejection_score_source;
@@ -261,6 +270,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     ThreadSafeArenaPtr arena;
 
     ConsistentReadPoint* read_point() const;
+    std::shared_ptr<ConsistentReadPoint> shared_read_point() const;
   };
 
  private:
