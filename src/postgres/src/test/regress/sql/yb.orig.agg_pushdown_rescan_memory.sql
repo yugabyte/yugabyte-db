@@ -1,0 +1,87 @@
+--
+-- Memory use of scans with aggregate pushdown that are rescanned many times
+--
+-- Peak memory must not grow with the number of rescans, and each query must
+-- return the same result as without aggregate pushdown, which FILTER prevents.
+--
+CREATE TABLE t_outer (k int PRIMARY KEY, v int);
+CREATE TABLE t_inner (k int PRIMARY KEY, v int, w int);
+CREATE INDEX t_inner_w_idx ON t_inner (w ASC);
+CREATE TABLE t_small (k int PRIMARY KEY, v int);
+INSERT INTO t_outer SELECT i, i % 7 FROM generate_series(1, 5000) i;
+INSERT INTO t_inner SELECT i, i % 7, i FROM generate_series(1, 5000) i;
+INSERT INTO t_small SELECT i, i FROM generate_series(1, 10) i;
+ANALYZE t_outer, t_inner, t_small;
+
+SET yb_explain_hide_non_deterministic_fields = off;
+SET yb_enable_bitmapscan = on;
+
+-- Peak memory of a statement that rescans its inner scan once per row of
+-- t_outer with k <= n.
+CREATE FUNCTION peak_mem_kb(query text, n int) RETURNS bigint
+LANGUAGE plpgsql AS
+$$
+DECLARE
+    plan json;
+BEGIN
+    EXECUTE format('EXPLAIN (ANALYZE, SUMMARY, FORMAT JSON) ' || query, n)
+        INTO plan;
+    RETURN (plan -> 0 ->> 'Peak Memory Usage')::bigint;
+END;
+$$;
+
+CREATE FUNCTION check_rescan_memory(query text) RETURNS text
+LANGUAGE plpgsql AS
+$$
+DECLARE
+    peak_n bigint := peak_mem_kb(query, 2500);
+    peak_2n bigint := peak_mem_kb(query, 5000);
+BEGIN
+    IF peak_2n - peak_n < 128 THEN
+        RETURN 'ok';
+    END IF;
+    RETURN format('peak memory grew from %s kB to %s kB', peak_n, peak_2n);
+END;
+$$;
+
+-- Seq Scan
+\set query 'SELECT sum((SELECT count(*) + o.v FROM t_small s)) FROM t_outer o WHERE o.k <= %s'
+EXPLAIN (COSTS OFF) SELECT sum((SELECT count(*) + o.v FROM t_small s)) FROM t_outer o WHERE o.k <= 2500;
+SELECT check_rescan_memory(:'query');
+SELECT sum((SELECT count(*) + o.v FROM t_small s)) FROM t_outer o WHERE o.k <= 2500;
+SELECT sum((SELECT count(*) FILTER (WHERE true) + o.v FROM t_small s)) FROM t_outer o WHERE o.k <= 2500;
+
+-- Index Scan
+\set query 'SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= %s'
+EXPLAIN (COSTS OFF) SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+SELECT check_rescan_memory(:'query');
+SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+SELECT sum((SELECT count(*) FILTER (WHERE true) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+
+-- Index Only Scan
+\set query 'SELECT sum((SELECT count(*) FROM t_inner i WHERE i.w = o.k)) FROM t_outer o WHERE o.k <= %s'
+EXPLAIN (COSTS OFF) SELECT sum((SELECT count(*) FROM t_inner i WHERE i.w = o.k)) FROM t_outer o WHERE o.k <= 2500;
+SELECT check_rescan_memory(:'query');
+SELECT sum((SELECT count(*) FROM t_inner i WHERE i.w = o.k)) FROM t_outer o WHERE o.k <= 2500;
+SELECT sum((SELECT count(*) FILTER (WHERE true) FROM t_inner i WHERE i.w = o.k)) FROM t_outer o WHERE o.k <= 2500;
+
+-- YB Bitmap Table Scan
+\set query '/*+ BitmapScan(i) */ SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= %s'
+EXPLAIN (COSTS OFF) /*+ BitmapScan(i) */ SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+SELECT check_rescan_memory(:'query');
+/*+ BitmapScan(i) */ SELECT sum((SELECT count(*) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+/*+ BitmapScan(i) */ SELECT sum((SELECT count(*) FILTER (WHERE true) FROM t_inner i WHERE i.k = o.k)) FROM t_outer o WHERE o.k <= 2500;
+
+-- Tid Scan
+SELECT ybctid AS small_ybctid FROM t_small WHERE k = 1 \gset
+\set query '/*+ TidScan(s) */ SELECT sum((SELECT count(*) + o.v FROM t_small s WHERE s.ybctid = ''' :small_ybctid ''')) FROM t_outer o WHERE o.k <= %s'
+EXPLAIN (COSTS OFF) /*+ TidScan(s) */ SELECT sum((SELECT count(*) + o.v FROM t_small s WHERE s.ybctid = :'small_ybctid')) FROM t_outer o WHERE o.k <= 2500;
+SELECT check_rescan_memory(:'query');
+/*+ TidScan(s) */ SELECT sum((SELECT count(*) + o.v FROM t_small s WHERE s.ybctid = :'small_ybctid')) FROM t_outer o WHERE o.k <= 2500;
+/*+ TidScan(s) */ SELECT sum((SELECT count(*) FILTER (WHERE true) + o.v FROM t_small s WHERE s.ybctid = :'small_ybctid')) FROM t_outer o WHERE o.k <= 2500;
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_bitmapscan;
+DROP FUNCTION check_rescan_memory(text);
+DROP FUNCTION peak_mem_kb(text, int);
+DROP TABLE t_outer, t_inner, t_small;
