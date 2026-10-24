@@ -17,6 +17,10 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
+When installing the connector for the first time, always use the newest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version.
+
+Exception: YugabyteDB v2024.2 requires connector version `dz.1.9.5.yb.grpc.2024.2.3` or later.
+
 The connector is compatible with the following versions of YugabyteDB.
 
 | YugabyteDB | Connector |
