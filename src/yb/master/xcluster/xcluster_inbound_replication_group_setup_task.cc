@@ -20,6 +20,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_net.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/bind.h"
@@ -50,6 +51,13 @@
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
+DEFINE_RUNTIME_bool(xcluster_skip_schema_validation_on_setup, false,
+    "When set, xCluster setup logs a warning instead of failing when a source table's schema does "
+    "not match its target table's. Use only to unblock setup when the schemas are known to hold "
+    "the same data; replicating between tables whose schemas really differ writes wrong data to "
+    "the target.");
+TAG_FLAG(xcluster_skip_schema_validation_on_setup, advanced);
+
 DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
 DEFINE_validator(xcluster_ensure_sequence_updates_in_wal_timeout_sec, FLAG_GT_VALUE_VALIDATOR(0));
@@ -73,6 +81,33 @@ DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 using namespace std::placeholders;
 
 namespace yb::master {
+
+namespace {
+
+// Schema::EquivalentForDataCopy without the column name check. Keep in sync with
+// Schema::IsSubsetOf.
+//
+// YSQL index column names are fixed at CREATE INDEX, and ALTER TABLE ... RENAME COLUMN on the
+// indexed table does not change them, in PG or in DocDB. A restore recreates the index from its
+// definition, which uses the table's current column names. So a source index created before a
+// rename and its restored target copy hold the same data under different column names. Snapshot
+// import ignores index column names for the same reason.
+bool IndexSchemasEquivalentForDataCopy(const Schema& target, const Schema& source) {
+  if (target.num_columns() != source.num_columns() ||
+      target.num_key_columns() != source.num_key_columns() ||
+      !target.table_properties().Equivalent(source.table_properties())) {
+    return false;
+  }
+  for (size_t i = 0; i < source.num_columns(); ++i) {
+    if (!target.column(i).Equals(source.column(i), ColumnSchema::CompareType) ||
+        target.column_id(i) != source.column_id(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
 
 Result<std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf>>
 CreateSetupUniverseReplicationTask(
@@ -955,13 +990,23 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
     // We now have a table match. Validate the schema.
-    SCHECK(
-        target_schema.EquivalentForDataCopy(source_schema), IllegalState,
-        Format(
-            "Source and target schemas don't match: "
-            "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-            source_table_info.table_id, table_schema_resp.identifier().table_id(),
-            source_table_info.schema.ToString(), table_schema_resp.schema().DebugString()));
+    const bool is_ysql_index_pair = is_ysql_table && source_table_info.index_info.has_value() &&
+                                    table_schema_resp.has_index_info();
+    const bool schemas_match =
+        is_ysql_index_pair ? IndexSchemasEquivalentForDataCopy(target_schema, source_schema)
+                           : target_schema.EquivalentForDataCopy(source_schema);
+    if (!schemas_match) {
+      const auto mismatch = Format(
+          "Source and target schemas don't match$0: "
+          "Source: $1, Target: $2, Source schema: $3, Target schema: $4",
+          is_ysql_index_pair ? " (index column names not compared)" : "",
+          source_table_info.table_id, table_schema_resp.identifier().table_id(),
+          source_table_info.schema.ToString(), table_schema_resp.schema().DebugString());
+      SCHECK(FLAGS_xcluster_skip_schema_validation_on_setup, IllegalState, mismatch);
+      LOG_WITH_PREFIX(WARNING) << mismatch
+                               << ". Continuing because xcluster_skip_schema_validation_on_setup "
+                                  "is set";
+    }
     break;
   }
 

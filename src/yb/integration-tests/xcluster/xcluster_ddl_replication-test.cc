@@ -705,6 +705,59 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
+// RENAME COLUMN on an indexed table does not rename the index's columns, but a restore recreates
+// the index with the table's current column names. Setup must accept index column names that
+// differ only because of that, and replication must keep working after it. The target objects are
+// created directly with the new names, the way a restore would create them.
+TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a2 int)"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE INDEX t_a_idx ON t (a2)"));
+
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_a_idx'::regclass AND attnum = 1";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Reads only `index`, so the count reflects that index's replicated rows.
+  auto count_on_target_through_index = [this](
+      const std::string& index, const std::string& column) -> Result<int64_t> {
+    const auto query = Format(
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 10", index, column);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  };
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 41);
+
+  // A rename after setup is replicated to the target's table, and neither side renames its
+  // index's column, so the index column names stay different.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 51);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 61);
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 
