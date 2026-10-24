@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -23,21 +24,30 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -242,6 +252,62 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(START_MASTER_TASK_SEQUENCE.size(), subTasksByPosition.size());
     assertStartMasterSequence(subTasksByPosition);
+  }
+
+  // PLAT-23125: the master-start configure step only updates gflags and does not write the
+  // collector config, so the new master must get its collector config rewritten.
+  @Test
+  public void testStartMasterOnNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+                node.isMaster = false;
+              }
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              // ManageOtelCollector builds its install payload from the universe architecture.
+              u.getUniverseDetails().arch = Architecture.x86_64;
+            });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n2");
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    List<TaskType> taskTypes =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int updateNodeProcess = taskTypes.indexOf(TaskType.UpdateNodeProcess);
+    assertEquals(TaskType.ManageOtelCollector, taskTypes.get(updateNodeProcess + 1));
+    assertEquals(1, Collections.frequency(taskTypes, TaskType.ManageOtelCollector));
   }
 
   @Test

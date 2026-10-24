@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,6 +62,9 @@ public class ManageOtelCollector extends NodeTaskBase {
     public TelemetryConfig telemetryConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
+    // Log and continue instead of failing the parent task. For a best-effort refresh on a node
+    // that may be unhealthy, such as the old master in a master failover.
+    public boolean ignoreErrors = false;
 
     @JsonIgnore
     public AuditLogConfig getAuditLogConfig() {
@@ -116,6 +120,21 @@ public class ManageOtelCollector extends NodeTaskBase {
 
   @Override
   public void run() {
+    try {
+      manageOtelCollector();
+    } catch (RuntimeException e) {
+      // Never swallow a task abort.
+      if (!taskParams().ignoreErrors || e instanceof CancellationException) {
+        throw e;
+      }
+      log.warn(
+          "Ignoring failure to manage the OpenTelemetry collector on {}: {}",
+          taskParams().nodeName,
+          e.getMessage());
+    }
+  }
+
+  private void manageOtelCollector() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Cluster nodeCluster = universe.getCluster(node.placementUuid);

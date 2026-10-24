@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -13,12 +14,14 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -26,12 +29,23 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -141,6 +155,85 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     super.setLeaderlessTabletsMock();
     super.setFollowerLagMock();
     super.setMockLiveTabletServers(mockClient, defaultUniverse);
+  }
+
+  @After
+  public void tearDown() {
+    // The static mock is per thread; close it so the next test's setUp can register it again.
+    mockedMetricGroup.close();
+  }
+
+  // PLAT-23125: failover keeps the old master node up as a tserver, so its collector config must
+  // drop the master target. The node is often unhealthy, so a failed refresh must not fail the
+  // failover.
+  @Test
+  public void testMasterFailoverRefreshesOtelCollectorOnOldMasterBestEffort() throws Exception {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              // ManageOtelCollector builds its install payload from the universe architecture.
+              u.getUniverseDetails().arch = Architecture.x86_64;
+            });
+    // With an architecture set, the precheck looks for a local release package the test lacks.
+    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    String oldMasterIp = universe.getNode("host-n1").cloudInfo.private_ip;
+    // The old master is unreachable: its collector refresh fails.
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
+        .thenAnswer(
+            invocation -> {
+              if (oldMasterIp.equals(invocation.getArgument(0))) {
+                throw new RuntimeException("node agent unreachable");
+              }
+              return null;
+            });
+
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.nodeName = "host-n1";
+    taskParams.azUuid = UUID.randomUUID();
+    taskParams.expectedUniverseVersion = -1;
+    TaskInfo taskInfo = waitForTask(commissioner.submit(TaskType.MasterFailover, taskParams));
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == TaskInfo.State.Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        TaskInfo.State.Success,
+        taskInfo.getTaskState());
+
+    Map<String, Boolean> ignoreErrorsByNode =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(
+                Collectors.toMap(
+                    t -> t.getTaskParams().get("nodeName").asText(),
+                    t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
+    // The old master is refreshed best-effort; the new master is refreshed normally.
+    assertEquals(Boolean.TRUE, ignoreErrorsByNode.get("host-n1"));
+    assertEquals(2, ignoreErrorsByNode.size());
+    assertEquals(1, Collections.frequency(ignoreErrorsByNode.values(), Boolean.FALSE));
   }
 
   @Test

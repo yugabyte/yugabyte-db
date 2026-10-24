@@ -52,6 +52,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCloudFederation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
@@ -95,6 +96,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -820,6 +822,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Update this so that it is not added as a master in config update.
       createUpdateNodeProcessTask(stoppingNode.nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      if (keepTserverRunning) {
+        // The node stays up as a tserver (master failover), so drop the master target from its
+        // collector config. Best effort: failover often runs against an unhealthy node.
+        createOtelCollectorMetricsRefreshTasks(
+            Collections.singleton(stoppingNode), true /* ignoreErrors */);
+      }
     }
 
     // Update all server conf files because there was a master change.
@@ -3043,6 +3051,96 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    createManageOtelCollectorTasks(
+        userIntent, nodes, installOtelCollector, telemetryConfig, nodeToGflags, false);
+  }
+
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      TelemetryConfig telemetryConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags,
+      boolean ignoreErrors) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled =
+          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+      params.telemetryConfig = telemetryConfig;
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+      params.ignoreErrors = ignoreErrors;
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Rewrites the collector config when metrics export is on, so scrape targets match the node's
+   * current roles and API flags. Master starts and API changes do not rewrite it on their own.
+   */
+  protected void createOtelCollectorMetricsRefreshTasks(Collection<NodeDetails> nodes) {
+    createOtelCollectorMetricsRefreshTasks(nodes, false /* ignoreErrors */);
+  }
+
+  /**
+   * Same as above. With {@code ignoreErrors}, a failed refresh is logged and does not fail the
+   * task, for nodes that may be unhealthy.
+   */
+  protected void createOtelCollectorMetricsRefreshTasks(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    Universe universe = getUniverse();
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    if (nodes.isEmpty()
+        || !universe.getUniverseDetails().otelCollectorEnabled
+        || !OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+            telemetryConfig.getMetricsExportConfig())) {
+      return;
+    }
+    Map<UUID, List<NodeDetails>> nodesByCluster =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.placementUuid));
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
+      Cluster cluster = universe.getCluster(entry.getKey());
+      // The collector on Kubernetes is a sidecar that helm upgrades configure.
+      if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        continue;
+      }
+      createManageOtelCollectorTasks(
+          cluster.userIntent,
+          entry.getValue(),
+          false /* installOtelCollector */,
+          telemetryConfig,
+          node ->
+              GFlagsUtil.getGFlagsForNode(
+                  node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+          ignoreErrors);
+    }
+  }
+
   /**
    * Creates subtasks to start master processes on the nodes.
    *
@@ -3061,6 +3159,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createUpdateNodeProcessTasks(updatableNodes, ServerType.MASTER, true /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
+    // All nodes, not only updatableNodes: edit universe sets isMaster before this, and a retry
+    // re-reads isMaster=true, so neither is in updatableNodes but both still need the target.
+    createOtelCollectorMetricsRefreshTasks(nodesToBeStarted);
 
     // Wait for new masters to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.MASTER)

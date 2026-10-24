@@ -196,6 +196,10 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // between the Stop/Start actions as Inactive.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
+      // The node may have lost its master while stopped, and its collector config still scrapes
+      // the master port. Rewrite it for the node's current roles.
+      createOtelCollectorMetricsRefreshTasks(nodeCollection);
+
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 

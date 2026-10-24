@@ -898,6 +898,26 @@ public class OtelCollectorConfigGenerator {
       TelemetryConfig telemetryConfig,
       K8sPodPlacement podPlacement,
       String logLinePrefix) {
+    return getOtelColConfigK8s(
+        provider,
+        universe,
+        telemetryConfig,
+        podPlacement,
+        logLinePrefix,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent);
+  }
+
+  /**
+   * Same as above, with the API flags read from {@code apiIntent}: the target intent, since the
+   * persisted universe has the old flags during a helm upgrade.
+   */
+  public K8sOtelConfig getOtelColConfigK8s(
+      Provider provider,
+      Universe universe,
+      TelemetryConfig telemetryConfig,
+      K8sPodPlacement podPlacement,
+      String logLinePrefix,
+      UniverseDefinitionTaskParams.UserIntent apiIntent) {
     AuditLogConfig auditLogConfig =
         telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
     QueryLogConfig queryLogConfig =
@@ -1096,6 +1116,7 @@ public class OtelCollectorConfigGenerator {
           universe,
           metricsExportConfig,
           podPlacement,
+          apiIntent,
           secretEnv,
           secretEnvProviderUuids);
     }
@@ -1270,9 +1291,11 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       MetricsExportConfig metricsExportConfig,
       K8sPodPlacement podPlacement,
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
-    Set<ScrapeConfigTargetType> scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    Set<ScrapeConfigTargetType> scrapeTargets =
+        getYugabyteScrapeTargetsForK8s(apiIntent, metricsExportConfig.getScrapeConfigTargets());
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2244,16 +2267,36 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
+   * Drops the YSQL/CQL targets when the universe does not run that API (PLAT-21847). Master and
+   * tserver pods share one collector config, so per-node gating as on VMs is not possible here.
+   */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
+      Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    if (!apiIntent.enableYSQL) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (!apiIntent.enableYCQL) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
+  }
+
+  /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847). The collector config is written during configure,
-   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
-   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
-   * when it changes them). This is why MASTER_EXPORT is not gated.
+   * a closed port every interval. isTserver is not set yet when configure writes the config, so
+   * tserver targets gate on dedicatedTo and the API flags. MASTER_EXPORT gates on isMaster, and
+   * master role changes rewrite the config (createOtelCollectorMetricsRefreshTasks).
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
+    if (!nodeDetails.isMaster) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
     boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
     if (dedicatedMaster) {
       targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
