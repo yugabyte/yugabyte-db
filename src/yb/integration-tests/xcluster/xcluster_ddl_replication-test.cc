@@ -6144,6 +6144,62 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
       << "Producer and consumer vector search should match (commit_ht < index ht case).";
 }
 
+// Rows of a new colocated table reach the consumer before the DDL queue creates the table there,
+// so the consumer applies them without the reverse mapping entries the table owns. The vector
+// index backfill has to write them, or search finds none of the rows (GH #34504).
+TEST_F(XClusterDDLReplicationTest, VectorIndexColocatedRowsBeforeTargetCreateTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.Execute("CREATE EXTENSION vector");
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  constexpr auto kInsert =
+      "INSERT INTO vec_test SELECT id, ('[' || id || ', ' || id * 2 || ', 1]')::vector "
+      "FROM generate_series($0, $1) AS g(id)";
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, 1, 50));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, 51, 100));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return consumer_conn_->FetchRow<bool>(
+            "SELECT EXISTS (SELECT 1 FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "WHERE c.relname = 'vec_test_idx' AND i.indisready AND i.indisvalid)");
+      },
+      kTimeout, "consumer vector index backfill"));
+
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vec_test "
+      "ORDER BY embedding <-> '[1.0, 2.0, 1.0]' LIMIT 10"));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx");
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 100);
+  // The search wider than the table goes first: with rows the index cannot resolve, it returns
+  // none of them, while the narrower searches never finish.
+  for (const auto* query : {
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT 200",
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 1.0]' LIMIT 10",
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[75.0, 150.0, 1.0]' LIMIT 10"}) {
+    auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+    auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+    ASSERT_EQ(p_search, c_search) << query;
+  }
+}
+
 // The consumer applies every external transaction of a polled batch in one write op, and each
 // write of those transactions inserts its vectors into the vector index separately. So a single
 // op can fill and save several vector chunks before RocksDB publishes the op's rows and their
