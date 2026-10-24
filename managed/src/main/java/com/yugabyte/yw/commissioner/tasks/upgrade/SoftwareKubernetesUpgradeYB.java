@@ -246,25 +246,22 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
+          UniverseDefinitionTaskParams.SoftwareUpgradeState endState = null;
           if (!taskParams().rollbackSupport) {
             createFinalizeUpgradeTasks(
                 taskParams().upgradeSystemCatalog,
                 ysqlMajorVersionUpgrade,
                 requireAdditionalSuperUserForCatalogUpgrade);
           } else {
-            if (upgradeRequireFinalize) {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
-                  true /* isSoftwareRollbackAllowed */);
-            } else {
-              createUpdateUniverseSoftwareUpgradeStateTask(
-                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-                  true /* isSoftwareRollbackAllowed */);
-            }
+            endState =
+                upgradeRequireFinalize
+                    ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
+                    : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
           }
-          // Also idempotent can be run again here.
-          // Mark the final software version on the universe (last subtask).
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+          // Mark the final software version on the universe (last subtask), with the end state in
+          // the same save (PLAT-23182). Also idempotent can be run again here.
+          createUpdateSoftwareVersionTask(
+                  taskParams().ybSoftwareVersion, false /* isSoftwareUpdateViaVm */, endState)
               .setSubTaskGroupType(getTaskSubGroupType());
         },
         () -> {

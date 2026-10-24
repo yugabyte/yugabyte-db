@@ -362,6 +362,86 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   }
 
   @Test
+  public void testAbortBeforeVersionUpdateFailsUpgradeAndRetryCompletes() throws Exception {
+    abortBeforeVersionUpdateThenRetry(true /* requireFinalize */);
+  }
+
+  @Test
+  public void testAbortBeforeVersionUpdateWithoutFinalizeFailsUpgradeAndRetryCompletes()
+      throws Exception {
+    abortBeforeVersionUpdateThenRetry(false /* requireFinalize */);
+  }
+
+  /**
+   * PLAT-23182: aborts just before UpdateSoftwareVersion, the last upgrade subtask, which also
+   * saves the end state. The upgrade must be left UpgradeFailed on the old version, and a retry
+   * must finish it.
+   */
+  private void abortBeforeVersionUpdateThenRetry(boolean requireFinalize) throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(requireFinalize);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+    TaskInfo taskInfo;
+    try {
+      setPausePosition(0);
+      UUID taskUuid = commissioner.submit(TaskType.SoftwareKubernetesUpgradeYB, taskParams);
+      waitForTaskPaused(taskUuid);
+      // The upgrade subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(firstSubTaskPosition(taskUuid, TaskType.UpdateSoftwareVersion));
+      commissioner.resumeTask(taskUuid);
+      taskInfo = waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        YB_SOFTWARE_VERSION_OLD,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        defaultUniverse.getName());
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTask = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, retryTask.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        requireFinalize
+            ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
+            : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        YB_SOFTWARE_VERSION_NEW,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+  }
+
+  @Test
   public void testSoftwareKubernetesUpgradeRetries() {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
