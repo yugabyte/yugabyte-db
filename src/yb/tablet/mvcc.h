@@ -31,8 +31,10 @@
 //
 #pragma once
 
-#include <condition_variable>
 #include <deque>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 #include "yb/common/opid.h"
@@ -46,6 +48,9 @@
 #include "yb/util/result.h"
 
 namespace yb {
+
+class Synchronizer;
+
 namespace tablet {
 
 // Allows us to keep track of how a particular value of safe time was obtained, for sanity
@@ -163,6 +168,24 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
+  // Threads that wait for safe time, keyed by the min_allowed that they wait for. Shared ownership
+  // lets a waker signal a waiter after releasing mutex_, even if that waiter has timed out.
+  using SafeTimeWaiters = std::multimap<HybridTime, std::shared_ptr<Synchronizer>>;
+
+  // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.
+  template <class SafeTimeFunc>
+  Result<SafeTimeWithSource> WaitForSafeTime(
+      SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
+      const SafeTimeFunc& safe_time_func, std::unique_lock<std::mutex>* lock) const
+      REQUIRES(mutex_);
+
+  // Takes out the waiters that the current safe time could let through. The caller wakes them
+  // after releasing mutex_.
+  [[nodiscard]] std::vector<std::shared_ptr<Synchronizer>> ExtractReachedWaiters()
+      REQUIRES(mutex_);
+
+  SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
+
   const std::string& LogPrefix() const { return prefix_; }
 
   struct InvariantViolationLoggingHelper;
@@ -176,7 +199,10 @@ class MvccManager {
   std::string prefix_;
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
-  mutable std::condition_variable cond_;
+
+  // Waiters in DoGetSafeTime and in SafeTimeForFollower.
+  mutable SafeTimeWaiters safe_time_waiters_ GUARDED_BY(mutex_);
+  mutable SafeTimeWaiters follower_safe_time_waiters_ GUARDED_BY(mutex_);
 
   struct QueueItem {
     HybridTime hybrid_time;
