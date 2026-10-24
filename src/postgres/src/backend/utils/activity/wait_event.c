@@ -360,6 +360,9 @@ pgstat_get_wait_activity(WaitEventActivity w)
 		case WAIT_EVENT_YB_IDLE_SLEEP:
 			event_name = "YbIdleSleep";
 			break;
+		case WAIT_EVENT_YB_MEMORY_WATCHER_MAIN:
+			event_name = "YbMemoryWatcherMain";
+			break;
 		case WAIT_EVENT_YB_ACTIVITY_END:
 			Assert(false);		/* should not be used to instrument */
 			break;
@@ -953,6 +956,9 @@ yb_get_wait_activity_desc(WaitEventActivity w)
 			break;
 		case WAIT_EVENT_YB_ASH_MAIN:
 			desc = "The YB ASH collector background worker is waiting in the main loop.";
+			break;
+		case WAIT_EVENT_YB_MEMORY_WATCHER_MAIN:
+			desc = "The YB memory watcher background worker is waiting in the main loop.";
 			break;
 		case WAIT_EVENT_CHECKPOINTER_MAIN:
 		case WAIT_EVENT_WAL_SENDER_MAIN:
