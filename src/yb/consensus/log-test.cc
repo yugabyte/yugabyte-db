@@ -53,7 +53,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/drive_io_stats.h"
 #include "yb/util/format.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
@@ -2478,6 +2477,8 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_NE(marker.hybrid_time(), 0);
   marker.set_monotonic_counter(42);
   ASSERT_OK(log_->WriteQuiescentMarker(marker));
+  // Every bootstrap reads it.
+  ASSERT_LT(ASSERT_RESULT(env_->GetFileSize(Log::QuiescentMarkerPath(tablet_wal_path_))), 1_KB);
   ASSERT_EQ(ASSERT_RESULT(log_->DeleteSegmentsCoveredByQuiescentMarker()), 2);
   ASSERT_EQ(log_->num_segments(), 0);
   CheckRightNumberOfSegmentFiles(0);
@@ -2509,8 +2510,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_OK(log_->Close());
 
   QuiescentMarkerPB child_marker;
-  ASSERT_OK(pb_util::ReadPBContainerFromPath(
-      env_.get(), Log::QuiescentMarkerPath(GetLogCopyPath(0)), &child_marker));
+  ASSERT_OK(Log::ReadQuiescentMarkerFile(env_.get(), GetLogCopyPath(0), &child_marker));
   ASSERT_EQ(child_marker.tablet_id(), "child");
   ASSERT_EQ(OpId::FromPB(child_marker.op_id()), last_op_id);
 

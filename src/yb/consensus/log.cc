@@ -77,6 +77,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/protobuf_util.h"
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
@@ -2310,9 +2311,7 @@ Status Log::LoadQuiescentMarker() {
     return Status::OK();
   }
   auto& marker = quiescent_marker_.emplace();
-  RETURN_NOT_OK_PREPEND(
-      pb_util::ReadPBContainerFromPath(get_env(), path, &marker),
-      Format("Failed to read quiescent marker from $0", path));
+  RETURN_NOT_OK(ReadQuiescentMarkerFile(get_env(), wal_dir_, &marker));
   SCHECK_EQ(
       marker.tablet_id(), tablet_id_, Corruption,
       Format("Quiescent marker in $0 belongs to another tablet", wal_dir_));
@@ -2329,10 +2328,14 @@ Status Log::LoadQuiescentMarker() {
   return Status::OK();
 }
 
+Status Log::ReadQuiescentMarkerFile(
+    Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker) {
+  return ReadPBWithCRCFromPath(env, QuiescentMarkerPath(wal_dir), marker);
+}
+
 Status Log::WriteQuiescentMarkerFile(
     Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker) {
-  return pb_util::WritePBContainerToPath(
-      env, QuiescentMarkerPath(wal_dir), marker, pb_util::OVERWRITE, pb_util::SYNC);
+  return WritePBWithCRCToPath(env, QuiescentMarkerPath(wal_dir), marker);
 }
 
 Status Log::WriteQuiescentMarker(const QuiescentMarkerPB& marker) {

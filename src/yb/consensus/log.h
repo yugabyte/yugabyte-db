@@ -442,6 +442,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   static std::string QuiescentMarkerPath(const std::string& wal_dir);
 
+  // Not a PB container, which would embed about 50 KB of proto descriptors read by every bootstrap.
+  static Status ReadQuiescentMarkerFile(
+      Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker);
 
   static Status WriteQuiescentMarkerFile(
       Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker);
