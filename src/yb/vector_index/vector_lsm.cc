@@ -2810,20 +2810,19 @@ class ParallelBatches {
   };
 
   void TaskDone(Task& task, const Status& status) {
-    bool enqueue;
     {
       std::lock_guard lock(mutex_);
       if (!status.ok() && status_.ok()) {
         status_ = status;
       }
-      enqueue = status_.ok() && task.more;
+      if (!status_.ok() || !task.more) {
+        // Under mutex_: Run takes mutex_ after the wait, so it cannot destroy the latch while
+        // CountDown still uses it.
+        latch_.CountDown();
+        return;
+      }
     }
-    if (enqueue) {
-      thread_pool_.Enqueue(&task);
-      return;
-    }
-    // Must be the last access to this object, Run could return right after.
-    latch_.CountDown();
+    thread_pool_.Enqueue(&task);
   }
 
   rpc::ThreadPool& thread_pool_;
