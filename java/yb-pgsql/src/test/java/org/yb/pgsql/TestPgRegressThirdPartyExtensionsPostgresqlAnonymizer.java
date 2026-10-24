@@ -16,6 +16,7 @@ import java.io.File;
 
 import java.util.Map;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
@@ -32,6 +33,13 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   @Override
   public int getTestMethodTimeoutSec() {
     return (int) BuildTypeUtil.adjustTimeout(1800);
+  }
+
+  // Each test creates and drops the extension's many tables; RF 1 keeps the tablet count low
+  // enough for a schedule to finish within the 30-minute test timeout cap on TSAN.
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
   }
 
   @Override
@@ -62,18 +70,27 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     return flagMap;
   }
 
+  // pg_regress runs in its input dir, and tests write scratch files (e.g. tmp/_pg_dump_A.sql)
+  // relative to it and read ../data, so give each run a private copy to avoid clashing with
+  // concurrent runs from the same build.
+  private File privateInputDir() throws Exception {
+    File root = new File(TestUtils.getBaseTmpDir(), "postgresql_anonymizer");
+    FileUtils.copyDirectory(regress_schedule.getParentFile(), root);
+    return new File(root, "tests");
+  }
+
   @Test
   public void schedule1() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_1_schedule");
+    runPgRegressTest(privateInputDir(), "yb_1_schedule");
   }
 
   @Test
   public void schedule2() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_2_schedule");
+    runPgRegressTest(privateInputDir(), "yb_2_schedule");
   }
 
   @Test
   public void schedule3() throws Exception {
-    runPgRegressTest(regress_schedule, "yb_3_schedule");
+    runPgRegressTest(privateInputDir(), "yb_3_schedule");
   }
 }
