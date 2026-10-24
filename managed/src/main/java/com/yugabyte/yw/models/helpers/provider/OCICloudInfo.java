@@ -16,11 +16,16 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -111,6 +116,49 @@ public class OCICloudInfo implements CloudInfoInterface {
       value = "New/Existing VCN for provider creation",
       accessMode = AccessMode.READ_ONLY)
   private VPCType vpcType = VPCType.EXISTING;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.3.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Enable cross-cloud federated IAM on"
+              + " this provider's DB nodes. Each node is given access to the storage clouds in"
+              + " crossCloudFederationTargets, using its own OCI identity instead of stored keys.")
+  @EditableInUseProvider(name = "Enable federated IAM", allowed = true)
+  public boolean enableFederatedIam;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.3.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Storage clouds this provider's DB"
+              + " nodes can reach with federated IAM, at most one entry per cloud. Only gcp is"
+              + " supported for nodes running on OCI.")
+  @EditableInUseProvider(name = "Federated IAM targets", allowed = true)
+  public List<CrossCloudFederationTarget> crossCloudFederationTargets;
+
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.3.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Base URL of the OCI identity domain"
+              + " the DB nodes exchange their instance principal at, for example"
+              + " https://idcs-<id>.identity.oraclecloud.com. Required when federated IAM is"
+              + " enabled.")
+  @EditableInUseProvider(name = "OCI identity domain URL", allowed = false)
+  public String ociIdentityDomainUrl;
+
+  @Override
+  @JsonIgnore
+  public boolean isFederatedIamEnabled() {
+    return enableFederatedIam;
+  }
+
+  /** OCI has no legacy flat fields: federation on OCI only ever existed as this list. */
+  @Override
+  @JsonIgnore
+  public List<CrossCloudFederationTarget> getEffectiveFederationTargets() {
+    return crossCloudFederationTargets == null
+        ? Collections.emptyList()
+        : crossCloudFederationTargets;
+  }
 
   @JsonIgnore
   public OciAuthType getOciAuthTypeEnum() {
