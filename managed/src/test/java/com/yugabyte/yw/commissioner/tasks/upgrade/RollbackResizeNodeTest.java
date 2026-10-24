@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -534,6 +535,39 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
       assertEquals(DEFAULT_INSTANCE_TYPE, node.cloudInfo.instance_type);
     }
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackRejectedOnOci() {
+    // PLAT-23226: the task's own check also covers a retry, which never goes through the computer.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> submitRollback(createRollbackParams()));
+    assertThat(ex.getMessage(), containsString("not supported on oci"));
+  }
+
+  @Test
+  public void testListingHidesRollbackOnOci() {
+    factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");
+    ResizeNodeParams awsParams = createRollbackParams();
+    ResizeNodeParams ociParams = createRollbackParams();
+    ociParams.getPrimaryCluster().userIntent.providerType = Common.CloudType.oci;
+
+    assertTrue(commissioner.canTaskRollback(failedResizeTask(awsParams)));
+    assertFalse(commissioner.canTaskRollback(failedResizeTask(ociParams)));
+  }
+
+  private static TaskInfo failedResizeTask(ResizeNodeParams params) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    return taskInfo;
   }
 
   @Test
