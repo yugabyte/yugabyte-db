@@ -32,6 +32,8 @@ import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 import com.google.common.base.Stopwatch;
 
+import io.netty.channel.EventLoopGroup;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -126,6 +128,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
   }
 
+  // The driver's default shuts down its event loop group with Netty's 2s quiet period, which made
+  // every Cluster.close() take 2s.
+  private static final NettyOptions FAST_CLOSE_NETTY_OPTIONS = new NettyOptions() {
+    @Override
+    public void onClusterClose(EventLoopGroup eventLoopGroup) {
+      eventLoopGroup.shutdownGracefully(0, 15, TimeUnit.SECONDS).syncUninterruptibly();
+    }
+  };
+
   public Cluster.Builder getDefaultClusterBuilder() {
     // Set default consistency level to strong consistency
     QueryOptions queryOptions = new QueryOptions();
@@ -138,7 +149,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               .withQueryOptions(queryOptions)
-              .withSocketOptions(socketOptions);
+              .withSocketOptions(socketOptions)
+              .withNettyOptions(FAST_CLOSE_NETTY_OPTIONS);
   }
 
   public ClusterAndSession connectWithTestDefaults() {
