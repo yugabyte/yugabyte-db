@@ -714,6 +714,17 @@ Default: `0`
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) updates the existing [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in place. While this parameter is `true`, refresh cannot change whether the view is populated, such as with `WITH NO DATA`. During a YSQL major upgrade, refresh runs in place.
+
+Any user can set this for the current session.
+
 ## Networking
 
 ### RPC and binding addresses
