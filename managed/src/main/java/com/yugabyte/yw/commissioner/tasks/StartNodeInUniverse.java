@@ -177,13 +177,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      // Add node to load balancer.
+      // Add node to load balancer. Only tservers are load balancer targets.
       createManageLoadBalancerTasks(
           createLoadBalancerMap(
               universe.getUniverseDetails(),
               ImmutableList.of(cluster),
               null,
-              ImmutableSet.of(currentNode)));
+              startTserver ? ImmutableSet.of(currentNode) : null));
 
       if (startTserver) {
         // Update the DNS entry for this universe.
