@@ -950,6 +950,12 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     pb.set_hide_state(SysTablesEntryPB::HIDING);
   }
 
+  // The restore undoes any DDL in progress on this table, so drop its DDL state. For a colocated
+  // table, which goes straight to HIDDEN, nothing else clears it: the reloaded master would never
+  // finish verifying that DDL, and the DDL's object locks would stay held.
+  pb.clear_ysql_ddl_txn_verifier_state();
+  pb.clear_transaction();
+
   pb.set_version(pb.version() + 1);
   return WriteEntry(
       SysRowEntryType::TABLE, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE,
