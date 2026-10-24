@@ -4836,6 +4836,7 @@ CREATE INDEX ON bnl_uniq (k1 HASH, k2 ASC);
 INSERT INTO bnl_uniq SELECT i, i % 3, i FROM generate_series(1, 30) i;
 INSERT INTO bnl_uniq SELECT i, i % 3, i + 100
   FROM generate_series(1, 30) i WHERE i % 2 = 0;
+SET yb_prefer_bnl = off;
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
     Set(yb_enable_distinct_pushdown off) */
 EXPLAIN (COSTS OFF)
@@ -4946,7 +4947,6 @@ RESET yb_bnl_enable_hashing;
 -- (45): an IN subquery uniquified as the outer of the join, a UNION, and a
 -- DISTINCT ON.
 SET yb_enable_cbo = on;
-SET yb_prefer_bnl = off;
 /*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
     Set(enable_hashagg off) */
 EXPLAIN (COSTS OFF)
