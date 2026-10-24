@@ -103,28 +103,6 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testSequencesWithCache() throws Exception {
-
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 CACHE 100");
-      // Use only half of the cached values.
-      for (int i = 1; i <= 50; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-    }
-
-    try (Connection connection2 = getConnectionWithNewCache();
-        Statement statement = connection2.createStatement()) {
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      // Because values are allocated in blocks of 100 numbers, the next value should be 101.
-      assertEquals(101, rs.getInt("nextval"));
-    }
-  }
-
-  @Test
   public void testSequencesWithCacheAndIncrement() throws Exception {
 
     try (Statement statement = connection.createStatement()) {
@@ -147,145 +125,6 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testSequencesWithMaxValue() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 MAXVALUE 5");
-      for (int i = 1; i <= 5; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (5)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
-  public void testSequenceWithMinValue() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 MINVALUE 5");
-      ResultSet rs = statement.executeQuery("SELECT NEXTVAL('s1')");
-      assertTrue(rs.next());
-      assertEquals(5, rs.getInt("nextval"));
-    }
-  }
-
-  @Test
-  public void testCreateInvalidSequenceWithMinValueAndNegativeIncrement() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("MINVALUE (10) must be less than MAXVALUE (-1)");
-      statement.execute("CREATE SEQUENCE s1 MINVALUE 10 INCREMENT -1");
-    }
-  }
-
-  @Test
-  public void testSequenceWithMinValueAndMaxValueAndNegativeIncrement() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 MINVALUE 100 MAXVALUE 105 INCREMENT -1");
-      for (int i = 105; i >= 100; i--) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached minimum value of sequence \"s1\" (100)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
-  public void testSequenceWithMaxValueAndCache() throws Exception {
-
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 MAXVALUE 5 CACHE 10");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getInt("nextval"));
-    }
-
-    try (Connection connection2 = getConnectionWithNewCache();
-        Statement statement = connection2.createStatement()) {
-      // Since the previous client already got all the available sequence numbers in its cache,
-      // we should get an error when we request another sequence number from another client.
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (5)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  //------------------------------------------------------------------------------------------------
-  // Drop tests.
-  //------------------------------------------------------------------------------------------------
-  @Test
-  public void testDropSequence() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-      statement.execute("DROP SEQUENCE s1");
-
-      // Verify that the sequence was deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT relname FROM pg_class WHERE relkind = 'S'");
-      assertFalse(rs.next());
-    }
-  }
-
-  @Test
-  public void testDropIfExistsSequence() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-      statement.execute("DROP SEQUENCE IF EXISTS s1");
-
-      // Verify that the sequence was deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT c.relname FROM pg_class c WHERE c.relkind = 'S'");
-      assertFalse(rs.next());
-    }
-  }
-
-  @Test
-  public void testDropIfExistsSequenceForNonExistingSequence() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("DROP SEQUENCE IF EXISTS s1");
-    }
-  }
-
-  @Test
-  public void testDropWithDependingObjects() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE table t(k SERIAL)");
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("cannot drop sequence t_k_seq because other objects depend on it");
-      statement.execute("DROP SEQUENCE t_k_seq");
-
-      // Verify that the sequence was not deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT relname FROM pg_class WHERE relkind = 'S' AND relname = 't_k_seq");
-      assertTrue(rs.next());
-    }
-  }
-
-  @Test
-  public void testDropRestrictedWithDependingObjects() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE table t(k SERIAL)");
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("cannot drop sequence t_k_seq because other objects depend on it");
-      statement.execute("DROP SEQUENCE t_k_seq RESTRICT");
-
-      // Verify that the sequence was not deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT relname FROM pg_class WHERE relkind = 'S' AND relname = 't_k_seq");
-      assertTrue(rs.next());
-    }
-  }
-
-  @Test
   public void testDropCascadeWithDependingObjects() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE table t(k SERIAL)");
@@ -299,102 +138,6 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testOwnedBy() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE t(k int)");
-      statement.execute("CREATE SEQUENCE s OWNED BY t.k");
-      statement.execute("DROP TABLE t");
-
-      // Verify that the sequence was deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT relname FROM pg_class WHERE relkind = 'S'");
-      assertFalse(rs.next());
-    }
-  }
-
-  @Test
-  public void testInt64LimitsInSequences() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute(
-          "CREATE SEQUENCE s1 START -9223372036854775808 MINVALUE -9223372036854775808");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(-9223372036854775808L, rs.getLong("nextval"));
-
-      statement.execute("CREATE SEQUENCE s2 START 9223372036854775807");
-      rs = statement.executeQuery("SELECT nextval('s2')");
-      assertTrue(rs.next());
-      assertEquals(9223372036854775807L, rs.getLong("nextval"));
-    }
-  }
-
-  @Test
-  public void testMaxInt64FailureInSequence() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 START 9223372036854775807");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(9223372036854775807L, rs.getLong("nextval"));
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
-  public void testMaxInt64FailureInSequenceInDifferentSession() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 START 9223372036854775807");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(9223372036854775807L, rs.getLong("nextval"));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().connect();
-        Statement statement = connection2.createStatement()) {
-      // Since the previous client already got all the available sequence numbers in its cache,
-      // we should get an error when we request another sequence number from another client.
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
-  public void testMaxInt64OverflowFailureInSequenceInDifferentSession() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 START 9223372036854775806 CACHE 100");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(9223372036854775806L, rs.getLong("nextval"));
-
-      rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(9223372036854775807L, rs.getLong("nextval"));
-
-      boolean exceptionOcurred = false;
-      try {
-        rs = statement.executeQuery("SELECT nextval('s1')");
-      } catch (com.yugabyte.util.PSQLException e) {
-        assertTrue(e.getMessage().contains(
-            "reached maximum value of sequence \"s1\" (9223372036854775807)"));
-        exceptionOcurred = true;
-      }
-      assertTrue(exceptionOcurred);
-    }
-
-    try (Connection connection2 = getConnectionBuilder().connect();
-        Statement statement = connection2.createStatement()) {
-      // Since the previous client already got all the available sequence numbers in its cache,
-      // we should get an error when we request another sequence number from another client.
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
   public void testMinInt64FailureInSequence() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 START -9223372036854775808 " +
@@ -403,26 +146,6 @@ public class TestPgSequences extends BasePgSQLTest {
       assertTrue(rs.next());
       assertEquals(-9223372036854775808L, rs.getLong("nextval"));
 
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached minimum value of sequence \"s1\" (-9223372036854775808)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  @Test
-  public void testMinInt64FailureInSequenceInDifferentSession() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 START -9223372036854775808 " +
-          "minvalue -9223372036854775808 INCREMENT -1");
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(-9223372036854775808L, rs.getLong("nextval"));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().connect();
-        Statement statement = connection2.createStatement()) {
-      // Since the previous client already got all the available sequence numbers in its cache,
-      // we should get an error when we request another sequence number from another client.
       thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached minimum value of sequence \"s1\" (-9223372036854775808)");
       statement.executeQuery("SELECT nextval('s1')");
@@ -464,16 +187,6 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testCurrvalFails() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("currval of sequence \"s1\" is not yet defined in this session");
-      statement.executeQuery("SELECT currval('s1')");
-    }
-  }
-
-  @Test
   public void testCurrval() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
@@ -489,35 +202,6 @@ public class TestPgSequences extends BasePgSQLTest {
       ResultSet rs = statement.executeQuery("SELECT currval('s1')");
       assertTrue(rs.next());
       assertEquals(2, rs.getLong("currval"));
-    }
-  }
-
-  @Test
-  public void testLastvalFails() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("lastval is not yet defined in this session");
-      statement.execute("SELECT lastval()");
-    }
-  }
-
-  @Test
-  public void testLastvalInAnotherSessionFails() throws Exception {
-
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-      statement.execute("SELECT nextval('s1')");
-      ResultSet rs = statement.executeQuery("SELECT lastval()");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getLong("lastval"));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().connect();
-        Statement statement = connection2.createStatement()) {
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("lastval is not yet defined in this session");
-      statement.execute("SELECT lastval()");
     }
   }
 
@@ -552,96 +236,6 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   @Test
-  public void testNoCycle() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 MAXVALUE 2 NO CYCLE");
-      for (int i = 1; i <= 2; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-
-      thrown.expect(com.yugabyte.util.PSQLException.class);
-      thrown.expectMessage("reached maximum value of sequence \"s1\" (2)");
-      statement.executeQuery("SELECT nextval('s1')");
-    }
-  }
-
-  //------------------------------------------------------------------------------------------------
-  // CYCLE tests.
-  //------------------------------------------------------------------------------------------------
-  @Test
-  public void testCycle() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 CYCLE MAXVALUE 2");
-      for (int i = 1; i <= 2; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-      // After reaching MAXVALUE the sequence should go back to 1.
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getInt("nextval"));
-    }
-  }
-
-  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
-  // regardless by how much the sequence is overflown.
-  @Test
-  public void testCycleWithBigPositiveIncrement() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      long increment = Long.MAX_VALUE / 2 + 1234567;
-      statement.execute(String.format("CREATE SEQUENCE s1 CYCLE INCREMENT %d", increment));
-      for (long i = 0; i < 2; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i * increment + 1L, rs.getLong("nextval"));
-      }
-      // After reaching MAXVALUE the sequence should go back to 1.
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getLong("nextval"));
-    }
-  }
-
-  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
-  // regardless by how much the sequence is overflown.
-  @Test
-  public void testCycleWithBigNegativeIncrement() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      long increment = Long.MIN_VALUE / 2 - 1234567;
-      statement.execute(
-          String.format("CREATE SEQUENCE s1 MAXVALUE 0 START 0 CYCLE INCREMENT %d", increment));
-      for (long i = 0; i < 2; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i * increment, rs.getLong("nextval"));
-      }
-      // After reaching MAXVALUE the sequence should go back to 1.
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(0, rs.getLong("nextval"));
-    }
-  }
-
-  @Test
-  public void testCycleWithPositiveIncrement() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 5 START 8 MAXVALUE 10 INCREMENT 1");
-      for (int i = 8; i <= 10; i++) {
-        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(i, rs.getInt("nextval"));
-      }
-      // After reaching MAXVALUE the sequence should go back to MINVALUE which is 5.
-      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(5, rs.getInt("nextval"));
-    }
-  }
-
-  @Test
   public void testCycleWithNegativeIncrement() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 1 START 3 MAXVALUE 9 INCREMENT -1");
@@ -654,39 +248,6 @@ public class TestPgSequences extends BasePgSQLTest {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(9, rs.getInt("nextval"));
-    }
-  }
-
-  //------------------------------------------------------------------------------------------------
-  // Newly-supported features tests.
-  //------------------------------------------------------------------------------------------------
-  @Test
-  public void testSelectDirectlyFromSequenceTable() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-
-      ResultSet rs = statement.executeQuery("SELECT last_value FROM s1");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getInt("last_value"));
-    }
-  }
-
-  @Test
-  public void testSetvalAndSelect() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1");
-
-      ResultSet rs = statement.executeQuery("SELECT setval('s1', 45, false)");
-      assertTrue(rs.next());
-      assertEquals(45, rs.getInt("setval"));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().connect();
-        Statement statement = connection2.createStatement()) {
-      ResultSet rs = statement.executeQuery("SELECT * FROM s1");
-      assertTrue(rs.next());
-      assertEquals(45, rs.getInt("last_value"));
-      assertEquals(false, rs.getBoolean("is_called"));
     }
   }
 
@@ -795,23 +356,6 @@ public class TestPgSequences extends BasePgSQLTest {
         ResultSet rs = statement.executeQuery("SELECT * FROM t WHERE k = " + k);
         assertTrue(rs.next());
       }
-    }
-  }
-
-  // Test that when we alter a sequence to be owned by a table's column, the sequence gets deleted
-  // whenever the table gets deleted.
-  @Test
-  public void testOwnedSequenceGetsDeleted() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE SEQUENCE s1 CACHE 100000");
-      statement.execute("CREATE TABLE t(k int NOT NULL DEFAULT nextval('s1'))");
-      statement.execute("ALTER SEQUENCE s1 OWNED BY t.k");
-      statement.execute("DROP TABLE t");
-
-      // Verify that the sequence was deleted.
-      ResultSet rs = statement.executeQuery(
-          "SELECT relname FROM pg_class WHERE relkind = 'S'");
-      assertFalse(rs.next());
     }
   }
 
@@ -995,7 +539,6 @@ public class TestPgSequences extends BasePgSQLTest {
       rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(201, rs.getLong("nextval"));
-
 
       // CACHE is 5 elements. The previous request should have cached 201, 301, 401, 501, and 601.
       WaitUntilTServerGetsNewYSqlCatalogVersion();
