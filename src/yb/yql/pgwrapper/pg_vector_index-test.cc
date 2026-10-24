@@ -1182,11 +1182,10 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   // are rejected and retried for the whole 10 minute YSQL client timeout, so an insert outlives
   // kRunTime and wedges the thread holder's JoinAll until the test times out.
   //
-  // The cap is also what ends the run: reaching it makes the writers exit, which sets the holder's
-  // stop flag, so it bounds how long the insert-vs-search window stays open. Keep it high enough
-  // that the usearch race still reproduces -- with the fix reverted it surfaces in every run at
-  // this cap, but only about a third of runs at 100K, where the fixed build finishes the workload
-  // in a few seconds. At 300K the hnswlib peak stays around 1.9GB, well clear of the soft limit.
+  // Reaching the cap makes the writers exit, which sets the holder's stop flag. In a regular build
+  // hnswlib does not reach it within kRunTime, so kRunTime bounds the insert-vs-search window and
+  // the cap only bounds memory: at 300K the hnswlib peak stays around 1.9GB, well clear of the soft
+  // limit.
   constexpr int64_t kMaxId = 300000;
 
   // Writers: keep inserting multi-row batches until the row cap is reached. With task_size=1 every
@@ -1204,7 +1203,7 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   }
 
   // Readers: continuously search the (mutable) chunk that writers are filling. Returned rows are
-  // not validated -- without the fix this crashes inside the usearch distance/traversal code.
+  // not validated; the test checks that concurrent search neither crashes nor fails.
   for (size_t r = 0; r != kReaders; ++r) {
     threads.AddThreadFunctor([this, &stop_flag = threads.stop_flag()] {
       auto read_conn = ASSERT_RESULT(Connect());

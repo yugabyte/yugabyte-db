@@ -27,6 +27,7 @@
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnswlib_include.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_payload_map.h"
 
@@ -49,19 +50,34 @@ struct AcceptAllVectors {
   }
 };
 
-// Uses the hnswlib distance function, so YbHnsw and hnswlib compute bitwise identical distances.
-class HnswlibMetric : public YbHnswMetric {
+// Builds the reference graph with the metric product YbHnsw searches with (UsearchMetric), so
+// YbHnsw and hnswlib compute bitwise identical distances and their results can be compared exactly.
+class UsearchSpace : public hnswlib::SpaceInterface<YbHnsw::DistanceType> {
  public:
-  explicit HnswlibMetric(hnswlib::SpaceInterface<YbHnsw::DistanceType>& space)
-      : func_(space.get_dist_func()), param_(space.get_dist_func_param()) {}
+  explicit UsearchSpace(const UsearchMetric::Impl& metric)
+      : metric_(metric), data_size_(metric.bytes_per_vector()) {}
 
-  HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) override {
-    return func_(lhs, rhs, param_);
+  size_t get_data_size() override {
+    return data_size_;
+  }
+
+  hnswlib::DISTFUNC<YbHnsw::DistanceType> get_dist_func() override {
+    return &DistFunc;
+  }
+
+  void* get_dist_func_param() override {
+    return &metric_;
   }
 
  private:
-  hnswlib::DISTFUNC<YbHnsw::DistanceType> func_;
-  void* param_;
+  static YbHnsw::DistanceType DistFunc(const void* lhs, const void* rhs, const void* arg) {
+    using unum::usearch::byte_t;
+    return (*static_cast<const UsearchMetric::Impl*>(arg))(
+        static_cast<const byte_t*>(lhs), static_cast<const byte_t*>(rhs));
+  }
+
+  UsearchMetric::Impl metric_;
+  size_t data_size_;
 };
 
 class HnswlibFilter : public hnswlib::BaseFilterFunctor<vector_index::VectorId> {
@@ -92,8 +108,10 @@ class YbHnswTest : public VectorIndexTestBase {
   }
 
   void InsertRandomVectors(size_t count) {
-    space_.emplace(dimensions_);
-    yb_hnsw_.emplace(MakeMetric(), block_cache_);
+    metric_ = UsearchMetric::Impl(
+        dimensions_, unum::usearch::metric_kind_t::l2sq_k, unum::usearch::scalar_kind_t::f32_k);
+    space_.emplace(metric_);
+    yb_hnsw_.emplace(metric_, block_cache_);
 
     index_.emplace(
         &*space_, max_vectors_, kConnectivity, kExpansionAdd, /* random_seed= */ 100,
@@ -140,11 +158,8 @@ class YbHnswTest : public VectorIndexTestBase {
   void TestSimple(bool load);
   void TestRandom(bool load, size_t background_threads);
 
-  YbHnsw::MetricPtr MakeMetric() {
-    return std::make_unique<HnswlibMetric>(*space_);
-  }
-
-  std::optional<hnswlib::L2Space> space_;
+  UsearchMetric::Impl metric_;
+  std::optional<UsearchSpace> space_;
   std::optional<IndexImpl> index_;
   vector_index::VectorPayloadMap payloads_;
   std::optional<YbHnsw> yb_hnsw_;
@@ -155,7 +170,7 @@ Status YbHnswTest::InitYbHnsw(bool load) {
   auto path = GetTestPath("0.yb_hnsw");
   if (load) {
     {
-      YbHnsw temp(MakeMetric(), block_cache_);
+      YbHnsw temp(metric_, block_cache_);
       RETURN_NOT_OK(temp.Import(*index_, path, &payloads_));
     }
     RETURN_NOT_OK(yb_hnsw_->Init(path));
