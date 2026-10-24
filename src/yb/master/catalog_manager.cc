@@ -664,6 +664,18 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
     "index yet, see #33912.");
 
+DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
+    "Temporary, until the tenant of a vector index can be specified when the index is created, "
+    "see #35312. Number of leading components of the primary key that identify the tenant of a "
+    "vector in newly created vector indexes that store the payload, see "
+    "vector_index_store_payload: all hash columns form one component, the hash group, followed by "
+    "one component per range column. 0 means vectors have no tenant. Applies only to the "
+    "yb_hnsw_hnswlib backend, and a tenant never covers the whole primary key: a larger value "
+    "means all components but the last one, so a table whose primary key is a single component "
+    "gets no tenants. The value is fixed for an index when it is created. Older releases cannot "
+    "read the payloads of an index created with a nonzero value, and write its vectors without "
+    "their tenant, so keep it 0 until the upgrade to this release is finalized.");
+
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
@@ -4957,6 +4969,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
+      // Tenants are only for the hnswlib backend. A tenant leaves at least the last component of
+      // the primary key, otherwise every row would be its own tenant.
+      if (vector_index_options.store_payload() &&
+          vector_index_options.hnsw().backend() == HnswBackend::YB_HNSW_HNSWLIB) {
+        auto num_components = Schema::NumHashGroupAndRangeComponents(indexed_table_lock->schema());
+        vector_index_options.set_tenant_hash_group_and_range_components(
+            narrow_cast<uint32_t>(std::min<size_t>(
+                FLAGS_vector_index_tenant_hash_group_and_range_components,
+                num_components ? num_components - 1 : 0)));
+      }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
