@@ -30,6 +30,9 @@ var registeredServices = []struct {
 	{"yb-collect_metrics.service", "", false},
 	{"yb-collect_metrics.timer", "", false},
 	{"otel-collector.service", "", false},
+	// OCI token refresher; the timer first, so it cannot restart the service.
+	{ociTokenTimerName, "", false},
+	{ociTokenServiceName, "", false},
 	{"node_exporter.service", "", true},
 }
 

@@ -19,8 +19,8 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>An on-prem provider reports {@code cloudInfo.cloud = "onprem"} for every node, which says
  * nothing about the underlying infrastructure. Cross-cloud federated IAM does need to know it: an
- * on-prem universe can mix AWS and GCP VMs, and a node only needs federation for the cloud it is
- * <i>not</i> running on (an AWS node reaching GCS, a GCP node reaching S3).
+ * on-prem universe can mix AWS, GCP and OCI VMs, and a node only needs federation for the cloud it
+ * is <i>not</i> running on (an AWS or OCI node reaching GCS, a GCP node reaching S3).
  *
  * <p>Detection separates "this node is not a cloud VM" from "we could not find out", because the
  * two call for different handling: the first is a final answer, the second is worth retrying later.
@@ -38,6 +38,7 @@ public class NodeCloudDetector {
   private static final String AWS_INSTANCE_ID_URL =
       "http://" + METADATA_IP + "/latest/meta-data/instance-id";
   private static final String AWS_IMDSV2_TOKEN_URL = "http://" + METADATA_IP + "/latest/api/token";
+  private static final String OCI_INSTANCE_ID_URL = "http://" + METADATA_IP + "/opc/v2/instance/id";
 
   // GCE resolves metadata.google.internal; the link-local IP is the fallback for a node that
   // cannot resolve it.
@@ -67,18 +68,25 @@ public class NodeCloudDetector {
    * Returns the cloud the node physically runs on:
    *
    * <ul>
-   *   <li>{@link CloudType#aws} or {@link CloudType#gcp} - that metadata service answered.
-   *   <li>{@link CloudType#onprem} - every probe ran and none answered, so the node is not an AWS
-   *       or GCP VM.
+   *   <li>{@link CloudType#aws}, {@link CloudType#gcp} or {@link CloudType#oci} - that metadata
+   *       service answered.
+   *   <li>{@link CloudType#onprem} - every probe ran and none answered.
    *   <li>{@code null} - at least one probe could not be run (the node was unreachable, or {@code
    *       curl} is missing), so nothing was learned.
    * </ul>
    *
    * <p>GCP is checked first because GCE requires the {@code Metadata-Flavor} header, so an answer
    * there identifies GCP unambiguously; AWS IMDS replies 404 to the GCP path and vice versa, so
-   * neither probe can produce a false positive on the other cloud.
+   * neither probe can produce a false positive on the other cloud. OCI is probed last, only when
+   * the others declined.
    */
   public CloudType detect(Universe universe, NodeDetails node, Duration probeTimeout) {
+    return detect(universe, node, probeTimeout, true);
+  }
+
+  /** As above; {@code probeOci} false skips the OCI probe, so a node on OCI reads as on-prem. */
+  public CloudType detect(
+      Universe universe, NodeDetails node, Duration probeTimeout, boolean probeOci) {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
@@ -134,11 +142,25 @@ public class NodeCloudDetector {
       return CloudType.aws;
     }
 
+    if (probeOci) {
+      ShellResponse ociResponse =
+          runProbe(
+              universe,
+              node,
+              context,
+              curl("-H", "Authorization: Bearer Oracle", OCI_INSTANCE_ID_URL));
+      if (ociResponse == null) {
+        allProbesRan = false;
+      } else if (ociResponse.isSuccess()) {
+        return CloudType.oci;
+      }
+    }
+
     if (!allProbesRan) {
       log.warn("Could not probe the node's metadata services; its cloud stays unknown");
       return null;
     }
-    log.info("Node answered neither metadata service; recording it as a physical node");
+    log.info("Node answered no metadata service; recording it as a physical node");
     return CloudType.onprem;
   }
 
@@ -158,10 +180,9 @@ public class NodeCloudDetector {
   }
 
   /**
-   * Builds a curl invocation. Every token is free of spaces and quotes on purpose: the node-agent
-   * bash wrapper single-quotes any argument that contains a space without escaping it (see {@code
-   * NodeAgentClient.getBashCommand}), so a token carrying its own quoting would produce a malformed
-   * command. curl accepts {@code -H Header:Value} without a space, which is what lets us avoid it.
+   * Builds a curl invocation. No token carries quotes: the node-agent bash wrapper single-quotes
+   * any argument that contains a space without escaping it (see {@code
+   * NodeAgentClient.getBashCommand}), which is right for OCI's header and wrong for a quoted one.
    */
   private static List<String> curl(String... args) {
     return ImmutableList.<String>builder()
