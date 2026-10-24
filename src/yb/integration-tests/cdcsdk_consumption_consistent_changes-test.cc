@@ -6936,7 +6936,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithoutGRPC
 // (including followers) and survive master leader failovers.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToFollowerMasters) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  // Scaled because after a failover the new leader's sys_catalog tablet lookup can stall for ~10s
+  // in sanitizer builds, which would otherwise let follower barriers go stale.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) =
+      10 * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
@@ -6956,7 +6959,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   ASSERT_LT(initial_wal_barrier, OpId::Max().index);
   ASSERT_LT(initial_intents_barrier, OpId::Max());
-  ASSERT_LT(initial_history_barrier, HybridTime::kMax);
+  ASSERT_LT(initial_history_barrier, HybridTime::kInvalid);
 
   ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
 
@@ -6989,9 +6992,24 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
       ASSERT_LT(initial_wal_barrier, wal_barrier);
       ASSERT_LT(intents_barrier, OpId::Max());
       ASSERT_LT(initial_intents_barrier, intents_barrier);
-      ASSERT_LT(history_barrier, HybridTime::kMax);
+      ASSERT_LT(history_barrier, HybridTime::kInvalid);
       ASSERT_LT(initial_history_barrier, history_barrier);
     }
+  };
+
+  auto all_masters_barriers_valid = [&]() {
+    for (size_t i = 0; i < num_masters; i++) {
+      auto peer = test_cluster_.mini_cluster_->mini_master(i)->tablet_peer();
+      auto wal_barrier = peer->get_cdc_min_replicated_index();
+      auto intents_barrier = peer->cdc_sdk_min_checkpoint_op_id();
+      auto history_barrier = peer->get_cdc_sdk_safe_time();
+      if (!(wal_barrier < OpId::Max().index && initial_wal_barrier < wal_barrier &&
+            intents_barrier < OpId::Max() && initial_intents_barrier < intents_barrier &&
+            history_barrier < HybridTime::kInvalid && initial_history_barrier < history_barrier)) {
+        return false;
+      }
+    }
+    return true;
   };
 
   // Verify that all masters have retention barriers that are ahead of the initial barriers.
@@ -7000,18 +7018,21 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
   // CDCMasterBgTask is correctly refreshing them.
   SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+      MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2));
   check_all_masters_barriers();
 
   // Step down the master leader to simulate a failover. Then verify that retention barriers on all
-  // masters are still valid (ahead of initial barriers). On the new leader, the barriers should not
-  // have been reset despite the stale sleep, because the leader propagation kept refreshing them.
+  // masters are still valid (ahead of initial barriers). Sleep past the stale interval so that the
+  // check fails if the new leader never refreshes the barriers. Then poll, because the new leader's
+  // sys_catalog tablet lookup can stall for ~10s in sanitizer builds before it resumes refreshing.
   ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /* new_leader_uuid */));
-  // Wait for the new leader to be elected and CDCMasterBgTask to run.
   SleepFor(
       MonoDelta::FromSeconds(
+          FLAGS_cdc_min_replicated_index_considered_stale_secs_master +
           FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  ASSERT_OK(WaitFor(
+      all_masters_barriers_valid, MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Retention barriers not valid on all masters after failover"));
   check_all_masters_barriers();
 
   // Restart all 3 masters and verify barriers are still propagated after a full cycle.
