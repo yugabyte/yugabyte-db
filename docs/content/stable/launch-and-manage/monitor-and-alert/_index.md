@@ -18,6 +18,18 @@ type: indexpage
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-monitor/" >}}
 {{< /page-finder/head >}}
 
+## Assess performance with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) assesses universe performance for you, install the official [yb-perf skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) first. The skill checks the SQL layer (slow queries, execution plans, locks, and Active Session History) and the metrics layer (Prometheus and YugabyteDB Anywhere), so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-perf
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
 {{<index/block>}}
 
   {{<index/item

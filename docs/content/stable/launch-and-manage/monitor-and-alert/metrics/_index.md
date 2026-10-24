@@ -21,6 +21,18 @@ This section describes the most frequently used metrics, along with how you can 
 
 For information on query tuning, refer to [Query tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 
+## Analyze metrics with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) analyzes these metrics for you, install the official [yb-perf skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-perf) first. The skill checks Prometheus and YugabyteDB Anywhere metrics for node hotspots, leader and tablet skew, and resource pressure, along with the SQL-layer checks those metrics can miss, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-perf
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
 ## Frequently used metrics
 
 To learn about some of the categories of metrics and how to use them for your use case, refer to the following. Note that these sections cover only the most frequently used metrics and is not an exhaustive list of all the metrics exported by YugabyteDB.
