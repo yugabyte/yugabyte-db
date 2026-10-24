@@ -226,8 +226,12 @@ UnsafeStatus PackedColumnSkipDecoderV1(
   return CallNextDecoderV1<kLast>(data, projection_index, proxy_chain);
 }
 
-inline PackedColumnDecoderV1 MakePackedColumnSkipDecoderV1(bool last) {
-  return last ? &PackedColumnSkipDecoderV1<true> : &PackedColumnSkipDecoderV1<false>;
+inline PackedColumnDecoderEntry MakeProjectionColumnSkipDecoderV1(bool last) {
+  return {
+    .decoder = {
+        .v1 = last ? &PackedColumnSkipDecoderV1<true> : &PackedColumnSkipDecoderV1<false> },
+    .decoder_args = { .column = nullptr }
+  };
 }
 
 template <bool kCheckNull, bool kLast>
@@ -311,31 +315,30 @@ UnsafeStatus RoutePackedRowV2(
 
 inline PackedColumnEntry* PrepareColumnEntryV1(
     PackedColumnEntry& column_entry, PackedColumnDecoderEntry decoder, bool last) {
-  column_entry.SetDecoders(
-      std::move(decoder),
-      { .decoder = { .v1 = MakePackedColumnSkipDecoderV1(last) },
-        .decoder_args = { .column = nullptr } }
-  );
+  column_entry.SetDecoders(std::move(decoder), MakeProjectionColumnSkipDecoderV1(last));
   return &column_entry;
+}
+
+PackedColumnDecoderEntry MakeProjectionColumnSkipDecoderV2(
+    bool last, const SchemaPacking& schema_packing, int64_t packed_index) {
+  if (packed_index != SchemaPacking::kSkippedColumnIdx) {
+    return PgTableRow::GetPackedColumnSkipperV2(
+        last, /* skip_projection_column */ true,
+        schema_packing.column_packing_data(packed_index).data_type, packed_index);
+  }
+  // Column is in the reader projection but absent from this row's schema packing
+  // (e.g. ADD COLUMN). There is no packed value to skip over.
+  return {
+    .decoder = { .v2 = MakePackedColumnSkipDecoderV2(last) },
+    .decoder_args = {}
+  };
 }
 
 inline PackedColumnEntry* PrepareColumnEntryV2(
     PackedColumnEntry& column_entry, PackedColumnDecoderEntry decoder,
     bool last, const SchemaPacking& schema_packing, int64_t packed_index) {
-  PackedColumnDecoderEntry skip_decoder;
-  if (packed_index != SchemaPacking::kSkippedColumnIdx) {
-    skip_decoder = PgTableRow::GetPackedColumnSkipperV2(
-        last, /* skip_projection_column */ true,
-        schema_packing.column_packing_data(packed_index).data_type, packed_index);
-  } else {
-    // Column is in the reader projection but absent from this row's schema packing
-    // (e.g. ADD COLUMN). There is no packed value to skip over.
-    skip_decoder = {
-      .decoder = { .v2 = MakePackedColumnSkipDecoderV2(last) },
-      .decoder_args = {}
-    };
-  }
-  column_entry.SetDecoders(std::move(decoder), std::move(skip_decoder));
+  column_entry.SetDecoders(
+      std::move(decoder), MakeProjectionColumnSkipDecoderV2(last, schema_packing, packed_index));
   return &column_entry;
 }
 
@@ -345,6 +348,7 @@ void FillDecodersV1(
     const ReaderProjection& projection,
     const SchemaPacking& schema_packing,
     const PackedRowDecoderFactory& decoder_factory,
+    const DynamicBitSet* columns,
     PackedRowDecoder::DecoderVectorBase& decoders,
     PackedRowDecoder::TrackingDecoderVector& tracking_decoders,
     PackedRowColumnUpdateTracker* column_update_tracker) {
@@ -373,7 +377,11 @@ void FillDecodersV1(
         "processing: index = " << index << ", column_id = " << column_id << ", "
         "packed_index = " << packed_index << ", last = " << last;
 
-    decoders.push_back(decoder_factory.GetColumnDecoderV1(index, packed_index, last));
+    if (!columns || columns->test(index)) {
+      decoders.push_back(decoder_factory.GetColumnDecoderV1(index, packed_index, last));
+    } else {
+      decoders.push_back(MakeProjectionColumnSkipDecoderV1(last));
+    }
     if (column_update_tracker) {
       tracking_decoders.push_back({
         .decoder = { .v1 = &PackedColumnTrackingDecoderV1 },
@@ -390,6 +398,7 @@ void FillDecodersV2(
     const ReaderProjection& projection,
     const SchemaPacking& schema_packing,
     const PackedRowDecoderFactory& decoder_factory,
+    const DynamicBitSet* columns,
     PackedRowDecoder::DecoderVectorBase& decoders,
     PackedRowDecoder::TrackingDecoderVector& tracking_decoders,
     PackedRowColumnUpdateTracker* column_update_tracker) {
@@ -434,7 +443,11 @@ void FillDecodersV2(
       }
     }
 
-    decoders.push_back(decoder_factory.GetColumnDecoderV2(index, packed_index, last));
+    if (!columns || columns->test(index)) {
+      decoders.push_back(decoder_factory.GetColumnDecoderV2(index, packed_index, last));
+    } else {
+      decoders.push_back(MakeProjectionColumnSkipDecoderV2(last, schema_packing, packed_index));
+    }
     if (column_update_tracker) {
       tracking_decoders.push_back({
         .decoder = { .v2 = MakePackedColumnTrackingDecoderV2() },
@@ -723,7 +736,9 @@ PackedRowDecoder::PackedRowDecoder() = default;
 void PackedRowDecoder::Init(
     PackedRowVersion version, const ReaderProjection& projection,
     const SchemaPacking& schema_packing, const PackedRowDecoderFactory& factory,
-    const Schema& schema, PackedRowColumnUpdateTracker* column_tracker) {
+    const Schema& schema, PackedRowColumnUpdateTracker* column_tracker,
+    const DynamicBitSet* columns) {
+  DCHECK(!columns || !column_tracker);
   schema_packing_ = &schema_packing;
   num_key_columns_ = projection.num_key_columns;
   schema_ = &schema;
@@ -733,6 +748,11 @@ void PackedRowDecoder::Init(
 
   auto index = projection.num_key_columns;
   auto num_columns = projection.columns.size();
+  if (columns) {
+    while (num_columns > index && !columns->test(num_columns - 1)) {
+      --num_columns;
+    }
+  }
   if (index == num_columns) {
     decoders_.push_back( {
       .decoder = { .router = &NopRouter },
@@ -757,12 +777,12 @@ void PackedRowDecoder::Init(
   switch (version) {
     case PackedRowVersion::kV1:
       return FillDecodersV1(
-          index, num_columns, projection, schema_packing, factory,
+          index, num_columns, projection, schema_packing, factory, columns,
           decoders_, tracking_decoders_, column_tracker);
 
     case PackedRowVersion::kV2:
       return FillDecodersV2(
-          index, num_columns, projection, schema_packing, factory,
+          index, num_columns, projection, schema_packing, factory, columns,
           decoders_, tracking_decoders_, column_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(PackedRowVersion, version);

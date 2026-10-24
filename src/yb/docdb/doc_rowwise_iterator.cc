@@ -840,6 +840,9 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
+      if (row_filter_) {
+        doc_reader_->SetRowFilter(row_filter_, row_filter_columns_);
+      }
     }
 
     if (doc_mode_ == DocMode::kGeneric) {
@@ -888,7 +891,47 @@ DocRowwiseIterator::FetchNextImpl<DocRowwiseIterator::QLTableRowPair>(
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
+  if (row_filter_ && table_row) {
+    return FetchFilteredRow(fetched_entry, table_row);
+  }
   return doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row);
+}
+
+Result<DocReaderResult> DocRowwiseIterator::FetchFilteredRow(
+    const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
+  // The reader could evaluate the filter before the row is completed.
+  if (row_filter_reads_key_columns_) {
+    // Drops values of the previous candidate row, if it was not found.
+    table_row->Reset();
+    RETURN_NOT_OK(CopyKeyColumnsToRow(projection_, table_row));
+  }
+  auto filter_result = PgRowFilterResult::kUnknown;
+  const auto doc_found = VERIFY_RESULT(doc_reader_->GetFlat(
+      &row_key_.data(), fetched_entry, table_row, &filter_result));
+  if (doc_found == DocReaderResult::kNotFound) {
+    return doc_found;
+  }
+  switch (filter_result) {
+    case PgRowFilterResult::kMatch:
+      row_filter_matched_ = true;
+      return doc_found;
+    case PgRowFilterResult::kMismatch:
+      row_filter_matched_ = false;
+      return doc_found;
+    case PgRowFilterResult::kUnknown:
+      row_filter_matched_ = VERIFY_RESULT(row_filter_->Match(*table_row));
+      return doc_found;
+    case PgRowFilterResult::kIncomplete:
+      row_filter_matched_ = VERIFY_RESULT(row_filter_->Match(*table_row));
+      if (!row_filter_matched_) {
+        return doc_found;
+      }
+      // Columns not read by the filter were not decoded, so read the row again.
+      db_iter_->Seek(row_key_.AsSlice(), seek_filter_, Full::kTrue);
+      return doc_reader_->GetFlat(
+          &row_key_.data(), VERIFY_RESULT_REF(db_iter_->Fetch()), table_row);
+  }
+  FATAL_INVALID_ENUM_VALUE(PgRowFilterResult, filter_result);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
@@ -899,7 +942,23 @@ Result<DocReaderResult> DocRowwiseIterator::FetchRow(
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {
+  if (row_filter_ && row_filter_reads_key_columns_) {
+    // Already copied by FetchFilteredRow.
+    return Status::OK();
+  }
   return CopyKeyColumnsToRow(projection_, out);
+}
+
+void DocRowwiseIterator::SetRowFilter(PgRowFilter* filter, DynamicBitSet columns) {
+  row_filter_ = filter;
+  row_filter_columns_ = std::move(columns);
+  row_filter_reads_key_columns_ = false;
+  for (size_t idx = 0; idx != projection_.num_key_columns; ++idx) {
+    row_filter_reads_key_columns_ = row_filter_reads_key_columns_ || row_filter_columns_.test(idx);
+  }
+  if (doc_reader_) {
+    doc_reader_->SetRowFilter(row_filter_, row_filter_columns_);
+  }
 }
 
 Status DocRowwiseIterator::FillRow(QLTableRowPair out) {

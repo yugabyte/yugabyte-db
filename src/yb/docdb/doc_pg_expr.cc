@@ -98,6 +98,10 @@ class ColumnIdxResolver {
     return GetColumnIdx(schema_.column_id(std::distance(columns.begin(), it)));
   }
 
+  size_t projection_size() const {
+    return projection_.size();
+  }
+
  private:
   const Schema& schema_;
   const dockv::ReaderProjection& projection_;
@@ -188,6 +192,15 @@ class TSCallExecutor {
       RETURN_NOT_OK(EvalTargetExprCalls(arena, results));
     }
     return true;
+  }
+
+  DynamicBitSet ReferencedColumns() const {
+    DynamicBitSet result;
+    result.resize(resolver_.projection_size());
+    for (const auto& [attno, var_ref] : var_map_) {
+      result.set(var_ref.var_col_idx);
+    }
+    return result;
   }
 
  private:
@@ -356,6 +369,16 @@ class DocPgExprExecutor::State {
     return tscall_executor_.has_value();
   }
 
+  std::optional<DynamicBitSet> ReferencedColumns() const {
+    if (condition_filter_) {
+      return std::nullopt;
+    }
+    if (!tscall_executor_) {
+      return DynamicBitSet();
+    }
+    return tscall_executor_->ReferencedColumns();
+  }
+
  private:
   template <class ExpressionPB>
   auto GetTSCall(const ExpressionPB& expr) -> Result<decltype(expr.tscall())> {
@@ -397,6 +420,10 @@ DocPgExprExecutor::~DocPgExprExecutor() = default;
 Result<bool> DocPgExprExecutor::Exec(
     const dockv::PgTableRow& row, ThreadSafeArena* arena, Results* results) {
   return state_->Exec(row, arena, results);
+}
+
+std::optional<DynamicBitSet> DocPgExprExecutor::ReferencedColumns() const {
+  return state_->ReferencedColumns();
 }
 
 DocPgExprExecutorBuilder::DocPgExprExecutorBuilder(
