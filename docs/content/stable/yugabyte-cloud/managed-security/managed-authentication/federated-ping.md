@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only Admin users can sign in using password authentication.
+Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account. After federated authentication is enabled, only organization Super Admin users can sign in using password authentication.
 
 Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Connect) protocol.
 
@@ -95,7 +95,8 @@ For more information, refer to the [PingOne for Enterprise](https://docs.pingide
 
 To configure federated authentication in YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Organization > Security > Access Control > Authentication**.
+1. Click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose PingOne identity provider.
 1. Enter the client ID and secret of the PingOne application you created.
 1. Enter the Authorization URL for your application.
