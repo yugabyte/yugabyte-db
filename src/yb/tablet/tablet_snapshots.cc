@@ -367,10 +367,6 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
   return dir.starts_with(kLastSnapshotPrefix);
 }
 
-Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
-  return Status::OK();
-}
-
 Status TabletSnapshots::Create(SnapshotOperation* operation) {
   return Create(CreateSnapshotData {
     .snapshot_hybrid_time = HybridTime::FromPB(operation->request()->snapshot_hybrid_time()),
@@ -395,7 +391,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below need not flush intents while additionally holding create_checkpoint_lock().
+    // Preflushing before submission does not cover intervening writes or follower catch-up.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
