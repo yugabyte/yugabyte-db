@@ -53,6 +53,8 @@ class PTExplainStmt;
 class PTExpr;
 class PTGrantRevokePermission;
 class PTGrantRevokeRole;
+class PTListPermissions;
+class PTListRoles;
 class PTIndexColumn;
 class PTInsertJsonClause;
 class PTInsertStmt;

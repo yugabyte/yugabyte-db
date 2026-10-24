@@ -56,7 +56,7 @@ public abstract class BaseAuthenticationCQLTest extends BaseCQLTest {
       Arrays.asList(ALTER, AUTHORIZE, DROP, MODIFY, SELECT);
 
   public static final List<String> ALL_PERMISSIONS_FOR_ROLE =
-      Arrays.asList(ALTER, AUTHORIZE, DROP);
+      Arrays.asList(ALTER, AUTHORIZE, DESCRIBE, DROP);
 
   public static final List<String> ALL_PERMISSIONS_FOR_ALL_ROLES =
       Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP);

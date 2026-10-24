@@ -102,7 +102,7 @@ You should see the following output:
 
 ## 2. List permissions for roles
 
-You can list all permissions granted to the various roles with the following command:
+You can list the permissions granted to roles with [LIST PERMISSIONS](../../../api/ycql/ddl_list_permissions/), which returns one row per permission, for example `LIST ALL PERMISSIONS OF developer`. You can also query the `system_auth.role_permissions` table, which returns one row per role and resource. To list all permissions granted to the various roles, run the following command:
 
 ```cql
 cassandra@ycqlsh> SELECT * FROM system_auth.role_permissions;
@@ -163,7 +163,19 @@ The resource "data" represents *all keyspaces and tables*.
 
 {{< /note >}}
 
-Granting the role `engineering` to any other role causes all those roles to inherit the `SELECT` permissions. Thus, `developer`, `qa`, and `db_admin` all inherit the `SELECT` permission.
+Granting the role `engineering` to any other role causes all those roles to inherit the `SELECT` permissions. Thus, `developer`, `qa`, and `db_admin` all inherit the `SELECT` permission. `LIST PERMISSIONS` includes inherited permissions, and shows the role that holds each one:
+
+```cql
+cassandra@ycqlsh> LIST ALL PERMISSIONS OF developer;
+```
+
+```output
+ role        | username    | resource        | permission
+-------------+-------------+-----------------+------------
+ engineering | engineering | <all keyspaces> |     SELECT
+
+(1 rows)
+```
 
 ### Grant data modify access
 
