@@ -950,6 +950,33 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
   ASSERT_OK(conn.Execute("SET log_statement = 'all'"));
 
+  // #35522: by default, relaxed mode applies only to READ ONLY transactions.
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+      });
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      });
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat(
+            "SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"),
+      "Cannot be set within a txn block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
+
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
     // TODO(#30357): Clamp uncertainty window in the storage layer.
@@ -2070,6 +2097,10 @@ TEST_P(PgRestartReadTest, ConflictsWithClampDefer) {
     auto reader = ASSERT_RESULT(Connect());
     ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
     ASSERT_OK(reader.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
+    if (std::string_view(mode) == "relaxed") {
+      // #35522: by default, relaxed mode covers only READ ONLY transactions.
+      ASSERT_OK(reader.Execute("SET default_transaction_read_only = on"));
+    }
 
     TestThreadHolder threads;
     StartConcurrentInserts(&threads, "t", kWriterStartKey);

@@ -709,8 +709,6 @@ class PgApiImpl {
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
   void SetClampUncertaintyWindow(bool clamp);
-  Status SetInTxnBlock(bool in_txn_blk);
-  Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
   Status SetDdlStateInPlainTransaction();

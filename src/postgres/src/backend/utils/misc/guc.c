@@ -311,6 +311,7 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
+static bool yb_check_bool_no_txn(bool *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool check_yb_password_reuse(int *newval, void **extra, GucSource source);
@@ -2624,6 +2625,21 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_follower_reads_behavior_before_fixing_20482,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_relaxed_read_after_commit_visibility_read_only_txns",
+			PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Apply yb_read_after_commit_visibility = relaxed only to "
+						 "READ ONLY transactions."),
+			gettext_noop("When off, relaxed mode applies to every statement, "
+						 "including writes and row locks, which can then miss "
+						 "rows that another node committed just before."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_relaxed_read_after_commit_visibility_read_only_txns,
+		true,
+		yb_check_bool_no_txn, NULL, NULL
 	},
 
 	{
@@ -8445,9 +8461,10 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Do not see read restart errors but may miss recent updates with"
-						 " staleness bounded by clock skew. This mode does not apply to"
-						 " serializable isolation level and fast path writes."
+						 " relaxed. READ ONLY transactions do not see read restart"
+						 " errors, but may miss rows that another node committed"
+						 " up to one clock skew before the read. See also"
+						 " yb_relaxed_read_after_commit_visibility_read_only_txns."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -18031,6 +18048,12 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
+}
+
+static bool
+yb_check_bool_no_txn(bool *newval, void **extra, GucSource source)
+{
+	return yb_check_no_txn(NULL, extra, source);
 }
 
 static const char *

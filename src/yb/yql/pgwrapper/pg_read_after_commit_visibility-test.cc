@@ -346,6 +346,9 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     }(config.visibility);
     ASSERT_OK(readConn.ExecuteFormat(
       "SET yb_read_after_commit_visibility = $0", visibility));
+    if (!config.is_dml && config.visibility == Visibility::RELAXED) {
+      ASSERT_OK(readConn.Execute("SET default_transaction_read_only = on"));
+    }
 
     if (!config.is_dml) {
       auto rows = ASSERT_RESULT(readConn.FetchRows<int32_t>(query));
@@ -479,9 +482,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeDuplicateKeyInsert) {
   }, "INSERT INTO kv(k) VALUES (1)");
 }
 
-// Ensure that relaxed mode doesn't apply to fast-path writes.
-// However, relaxed mode is applied to distributed txn writes.
-// So, read-after-write visibility is not guaranteed for distributed txn writes.
+// Ensure that, by default, relaxed mode applies to neither fast-path nor
+// distributed txn writes.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathUpdate) {
   RunTest(Config{
     .is_dml = true,
@@ -505,8 +507,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathDelete) {
   ASSERT_EQ(rows.size(), 0);
 }
 
-// Hidden DMLs are still DMLs. So, relaxed mode is applied to them.
-// However, duplicate key violations are not ignored.
+// Hidden DMLs are still DMLs. So, by default, relaxed mode does not apply to
+// them, and duplicate key violations are not ignored.
 TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeHiddenDmlDuplicateKey) {
   RunTest(
     Config{

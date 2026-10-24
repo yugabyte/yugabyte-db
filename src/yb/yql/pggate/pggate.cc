@@ -2280,14 +2280,6 @@ void PgApiImpl::SetClampUncertaintyWindow(bool clamp) {
   pg_txn_manager_->SetClampUncertaintyWindow(clamp);
 }
 
-Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
-  return pg_txn_manager_->SetInTxnBlock(in_txn_blk);
-}
-
-Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
-  return pg_txn_manager_->SetReadOnlyStmt(read_only_stmt);
-}
-
 Status PgApiImpl::SetDdlStateInPlainTransaction() {
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->SetDdlStateInPlainTransaction();
