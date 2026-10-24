@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
@@ -103,6 +104,8 @@ public class Commissioner {
 
   private final RuntimeConfGetter runtimeConfGetter;
 
+  private final ResourceOperatorOwned resourceOperatorOwned;
+
   // Provider breaks Guice cycle: some computers -> handlers -> Commissioner.
   private final Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers;
 
@@ -113,6 +116,7 @@ public class Commissioner {
       TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter,
+      ResourceOperatorOwned resourceOperatorOwned,
       Provider<Map<TaskType, TaskRollbackComputer>> taskRollbackComputers) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
@@ -120,6 +124,7 @@ public class Commissioner {
     this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.resourceOperatorOwned = resourceOperatorOwned;
     this.taskRollbackComputers = taskRollbackComputers;
     this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     log.info("Started Commissioner TaskPool");
@@ -338,12 +343,15 @@ public class Commissioner {
    *     updatingTaskUUID plus placementModificationTaskUuid.
    * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
    *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
+   * @param rollbackBlockedTargets the targets whose rollback is blocked for the operator, see
+   *     {@link #getRollbackBlockedUniverseUUIDs}. They get no rollback.
    */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, Set<String>> placementLockTasks,
+      Set<UUID> rollbackBlockedTargets,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null) {
       return Optional.empty();
@@ -444,6 +452,9 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
+              if (rollbackBlockedTargets.contains(task.getTargetUUID())) {
+                return false;
+              }
               // An edit's auto-rollback clears placementModificationTaskUuid but keeps
               // updatingTaskUUID so the task stays retryable. Checkpoint-based rollbacks must hold
               // the placement lock, as canRollbackTaskOnUniverse requires on submit.
@@ -691,6 +702,10 @@ public class Commissioner {
                   .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
                   .add(id);
             });
+    Set<UUID> rollbackBlockedTargets =
+        isRollbackBlockedForOperatorOwnedUniverse(task.getTargetUUID())
+            ? Set.of(task.getTargetUUID())
+            : Set.of();
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
@@ -698,7 +713,23 @@ public class Commissioner {
         taskInfo.getSubTasks(),
         updatingTaskByTargetMap,
         placementLockByTargetMap,
+        rollbackBlockedTargets,
         lastTaskByTargetMap);
+  }
+
+  /**
+   * Whether rolling back a task of the universe through the API is blocked: the operator owns the
+   * universe, whose edit it would re-apply, and the block for operator-owned resources is on. See
+   * {@link ResourceOperatorOwned#isUniverseBlocked}. Submit and the task list both use this rule.
+   */
+  public boolean isRollbackBlockedForOperatorOwnedUniverse(UUID universeUuid) {
+    return resourceOperatorOwned.isUniverseBlocked(universeUuid);
+  }
+
+  /** The universes for which {@link #isRollbackBlockedForOperatorOwnedUniverse} holds. */
+  public Set<UUID> getRollbackBlockedUniverseUUIDs(
+      Long customerId, @Nullable UUID specificTargetUuid) {
+    return resourceOperatorOwned.getBlockedUniverseUUIDs(customerId, specificTargetUuid);
   }
 
   // Returns a map of target to updating task UUID.

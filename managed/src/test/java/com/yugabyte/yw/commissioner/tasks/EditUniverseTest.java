@@ -1638,6 +1638,82 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testTaskStatusNoRollbackForOperatorOwnedUniverse() {
+    clearAbortOrPausePositions();
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    CustomerTask editCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Edit,
+            universe.getName());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // The predicate: the same failed edit is offered a rollback unless its universe is rollback
+    // blocked for the operator.
+    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe, false /* blocked */));
+    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe, true /* blocked */));
+
+    // The single-task status, with the real queries: the universe has to be marked as owned.
+    assertTrue(canRollbackInStatus(taskInfo));
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    assertFalse(canRollbackInStatus(taskInfo));
+    factory
+        .globalRuntimeConf()
+        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
+    assertTrue(canRollbackInStatus(taskInfo));
+  }
+
+  private boolean canRollbackInStatus(TaskInfo taskInfo) {
+    return commissioner
+        .mayGetStatus(taskInfo.getUuid())
+        .orElseThrow(() -> new AssertionError("expected task status"))
+        .get("canRollback")
+        .asBoolean();
+  }
+
+  @Test
+  public void testRollbackBlockedUniverseLookupsDelegateToTheOperatorRule() {
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+    Long customerId = defaultCustomer.getId();
+    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
+    assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
+
+    Universe.saveDetails(
+        universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    assertTrue(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
+    assertEquals(
+        Set.of(universeUuid), commissioner.getRollbackBlockedUniverseUUIDs(customerId, null));
+    assertEquals(
+        Set.of(universeUuid),
+        commissioner.getRollbackBlockedUniverseUUIDs(customerId, universeUuid));
+    assertTrue(
+        commissioner.getRollbackBlockedUniverseUUIDs(customerId, UUID.randomUUID()).isEmpty());
+  }
+
+  @Test
   public void testCanTaskRollbackFalseWhenAbortedAtPrecheck() {
     // PLAT-22685: an edit aborted before the freeze/checkpoint captures no state_transition_details
     // (and never took placement ownership), so submit eligibility must be false - matching listing
@@ -3192,11 +3268,17 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   /**
-   * Mirrors listing {@code canRollback}: builds the allow-retry/placement map from in-memory
-   * universe details (H2 unit tests cannot run {@code getUniverseDetailsField} JSONB SQL).
+   * Mirrors listing {@code canRollback}: builds the ownership sets from the in-memory universe
+   * details and calls {@code buildTaskStatus} directly, without the queries that fill them in
+   * production.
    */
   private boolean listingCanRollback(
       CustomerTask customerTask, TaskInfo taskInfo, Universe universe) {
+    return listingCanRollback(customerTask, taskInfo, universe, false /* operatorOwned */);
+  }
+
+  private boolean listingCanRollback(
+      CustomerTask customerTask, TaskInfo taskInfo, Universe universe, boolean operatorOwned) {
     // Re-fetch so the OneToOne TaskInfo join is populated (create() does not load it).
     CustomerTask loaded =
         CustomerTask.getOrBadRequest(customerTask.getCustomerUUID(), customerTask.getTaskUUID());
@@ -3218,7 +3300,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     ObjectNode status =
         commissioner
             .buildTaskStatus(
-                loaded, taskInfo.getSubTasks(), updatingTasks, placementLockTasks, lastTaskByTarget)
+                loaded,
+                taskInfo.getSubTasks(),
+                updatingTasks,
+                placementLockTasks,
+                operatorOwned ? Set.of(loaded.getTargetUUID()) : Set.of(),
+                lastTaskByTarget)
             .orElseThrow(() -> new AssertionError("expected task status"));
     return status.get("canRollback").asBoolean();
   }
