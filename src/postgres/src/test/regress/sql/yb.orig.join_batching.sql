@@ -1956,12 +1956,9 @@ SELECT count(*) FROM bnl_uniq t
 -- tuplestore batch (hashing off) and the left-join pass that returns
 -- unmatched outer rows. With t.v > 100 only the 15 even keys match one row
 -- each and the 15 odd keys come back unmatched, so the left joins must
--- return 30; the inner join must still return 45.
-/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
-    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
-SELECT count(*) FROM bnl_uniq t
-  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
-    ON t.k1 = d.k1 AND t.k2 = d.k2;
+-- return 30; the inner join must still return 45. Hashing is turned off by
+-- a session SET because the executor reads it after a hint's Set() has
+-- been reverted.
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
     Set(yb_enable_distinct_pushdown off) */
 EXPLAIN (COSTS OFF)
@@ -1971,8 +1968,147 @@ SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
     Set(yb_enable_distinct_pushdown off) */
 SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
   LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+SET yb_bnl_enable_hashing = off;
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
-    Set(yb_enable_distinct_pushdown off) Set(yb_bnl_enable_hashing off) */
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM bnl_uniq t
+  JOIN (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+    ON t.k1 = d.k1 AND t.k2 = d.k2;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
 SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
   LEFT JOIN bnl_uniq t ON t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100;
+RESET yb_bnl_enable_hashing;
+-- #35565: the planner builds a Unique on its own, so the bug needs no
+-- DISTINCT in the query. Each query must count every row of bnl_uniq once
+-- (45): an IN subquery uniquified as the outer of the join, a UNION, and a
+-- DISTINCT ON.
+SET yb_enable_cbo = on;
+SET yb_prefer_bnl = off;
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+SET yb_bnl_enable_hashing = off;
+/*+ Leading((d t)) YbBatchedNL(d t) Set(yb_bnl_batch_size 3)
+    Set(enable_hashagg off) */
+SELECT count(*) FROM bnl_uniq t WHERE t.k1 IN (SELECT d.k1 FROM bnl_uniq d);
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq UNION SELECT k2 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*)
+  FROM (SELECT DISTINCT ON (k1) k1, v FROM bnl_uniq ORDER BY k1, v) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+RESET yb_bnl_enable_hashing;
+-- #35565: semi and anti joins return outer rows through the same slot on
+-- their single-match and unmatched-outer passes. 15 even keys match a row
+-- with v > 100, so the semi join must return 15; with the extra
+-- k1 % 4 = 0 filter only 7 keys match, so the anti join must return 23.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE EXISTS (SELECT 1 FROM bnl_uniq t
+                WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100);
+RESET yb_bnl_enable_hashing;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
+    Set(yb_enable_distinct_pushdown off) */
+SELECT count(*) FROM (SELECT DISTINCT k1, k2 FROM bnl_uniq) d
+  WHERE NOT EXISTS (SELECT 1 FROM bnl_uniq t
+                    WHERE t.k1 = d.k1 AND t.k2 = d.k2 AND t.v > 100
+                      AND t.k1 % 4 = 0);
+RESET yb_bnl_enable_hashing;
+-- #35565: a SetOp with ALL returns its result slot once per copy of a row.
+-- Batch size 2 puts a group's second copy after the batch boundary, so
+-- each join must return 75. On master the Subquery Scan above the SetOp
+-- projects into its own slot, so these pass without the fix; they guard
+-- the PG18 SetOp, which BNL reaches directly.
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+SET yb_bnl_enable_hashing = off;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) Set(enable_hashagg off) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      EXCEPT ALL SELECT k1 FROM bnl_uniq WHERE v > 200) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+/*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 2) */
+SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
+                      INTERSECT ALL SELECT k1 FROM bnl_uniq) d
+  JOIN bnl_uniq t ON t.k1 = d.k1;
+RESET yb_bnl_enable_hashing;
+RESET yb_prefer_bnl;
+RESET yb_enable_cbo;
 DROP TABLE bnl_uniq;
