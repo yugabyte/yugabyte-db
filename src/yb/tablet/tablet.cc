@@ -4674,12 +4674,61 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
   // We take regular frontier and intents frontier first, and intents_flush_ability last. If
   // intents_flush_ability is kNoNewData, it means intents flushed op id can be at least advanced
   // to match regular db.
-  if (intents_flush_ability == rocksdb::FlushAbility::kNoNewData &&
-      FLAGS_advance_intents_flushed_op_id_to_match_regular) {
+  if (intents_flush_ability != rocksdb::FlushAbility::kNoNewData ||
+      !FLAGS_advance_intents_flushed_op_id_to_match_regular) {
+    return Status::OK();
+  }
+
+  // Like IntentsDbFlushFilter, keep the intents DB flushed OpId behind the rows a vector index
+  // holds only in memory. Bootstrap gates the replay of an xCluster external WRITE_OP on the
+  // intents DB flushed OpId, so advancing past such rows loses them from the vector index on an
+  // ungraceful restart, while the regular DB keeps them (GH#34699).
+  //
+  // Read after 'regular_op_id': rows of an operation covered by it were registered in the index
+  // while its regular DB write was applied. A registered row reaches the in-memory frontier only
+  // once its insert task completes, so an index without that frontier may still hold rows, which
+  // its flush ability reports.
+  auto new_intents_op_id = regular_op_id;
+  if (auto vector_indexes = vector_indexes_->List()) {
+    const storage::FrontierKinds frontier_kinds{
+        storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
+    for (const auto& vector_index : *vector_indexes) {
+      auto frontiers = vector_index->GetFrontiers(frontier_kinds);
+      if (!frontiers.in_memory.smallest) {
+        if (vector_index->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData) {
+          continue;
+        }
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " has inserts in progress";
+        return Status::OK();
+      }
+      auto mem_index = down_cast<const docdb::ConsensusFrontier&>(
+          *frontiers.in_memory.smallest).op_id().index;
+      if (!frontiers.flushed) {
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " was never flushed";
+        return Status::OK();
+      }
+      auto vector_index_op_id =
+          down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id();
+      // The flushed frontier can reach an op whose rows are still partly in memory, when a large
+      // transaction apply spans both. The term of the op below it is unknown, so do not advance.
+      if (vector_index_op_id.index >= mem_index) {
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " flushed " << vector_index_op_id
+                            << " with op index " << mem_index << " still in memory";
+        return Status::OK();
+      }
+      new_intents_op_id = std::min(new_intents_op_id, vector_index_op_id);
+    }
+  }
+
+  if (new_intents_op_id > intents_op_id) {
     LOG_WITH_PREFIX(INFO)
-          << "Update intents DB flushed op id from " << intents_op_id << " to " << regular_op_id;
+          << "Update intents DB flushed op id from " << intents_op_id << " to "
+          << new_intents_op_id << " (regular: " << regular_op_id << ")";
     docdb::ConsensusFrontier frontier;
-    frontier.set_op_id(regular_op_id);
+    frontier.set_op_id(new_intents_op_id);
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(
         frontier.Clone(), rocksdb::FrontierModificationMode::kUpdateIgnoreBackwards));
   }
