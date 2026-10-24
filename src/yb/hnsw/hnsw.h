@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <optional>
 #include <queue>
 
 #include <boost/range/iterator_range.hpp>
@@ -173,8 +174,17 @@ class YbHnsw {
  private:
   friend class SearchCacheScope;
 
+  // Returns the entry vector of the tenant, nullopt when the chunk has no vectors of the tenant.
+  std::optional<VectorNo> FindTenantEntry(Slice tenant, SearchCache& cache) const;
+
+  // Searches starting from entry at its level.
+  SearchResult SearchFrom(
+      const std::byte* query_vector, VectorNo entry, const vector_index::SearchOptions& options,
+      YbHnswSearchContext& context) const;
+  size_t VectorLevel(VectorNo vector) const;
+
   std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(
-      const std::byte* query_vector, SearchCache& cache) const;
+      const std::byte* query_vector, VectorNo entry, SearchCache& cache) const;
   void SearchInBaseLayer(
       const std::byte* query_vector, VectorNo best_vector, DistanceType best_dist,
       const vector_index::SearchOptions& options, YbHnswSearchContext& context) const;

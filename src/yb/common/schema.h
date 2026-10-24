@@ -672,6 +672,17 @@ class Schema : public MissingValueProvider {
     return num_key_columns_ - num_hash_key_columns_;
   }
 
+  // Returns the key component of the key column with index column_idx: all hash columns form one
+  // component, followed by one component per range column. For column_idx equal to the number of
+  // key columns, returns the number of key components.
+  static size_t KeyComponentIndex(size_t column_idx, size_t num_hash_key_columns) {
+    return column_idx < num_hash_key_columns
+        ? 0 : column_idx - num_hash_key_columns + (num_hash_key_columns ? 1 : 0);
+  }
+
+  // Returns the number of key components of the schema, see KeyComponentIndex.
+  static size_t NumKeyComponents(const SchemaPB& schema);
+
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());
@@ -1301,4 +1312,3 @@ class SchemaBuilder {
 ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
-

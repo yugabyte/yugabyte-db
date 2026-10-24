@@ -221,6 +221,7 @@ ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_vector-test)
 ADD_YB_TEST(pg_vector_index-itest)
 ADD_YB_TEST(pg_vector_index-test)
+ADD_YB_TEST(pg_vector_index_pk_routing-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(orphaned_tablet_cleanup-test)
@@ -265,6 +266,7 @@ add_dependencies(
 # Without the snapshot, the mini cluster runs initdb itself, which is too slow for this test's
 # clone scenarios under sanitizers.
 ADD_YB_TEST_DEPENDENCIES(pg_vector_index-test initial_sys_catalog_snapshot)
+ADD_YB_TEST_DEPENDENCIES(pg_vector_index_pk_routing-test initial_sys_catalog_snapshot)
 
 add_custom_target(
   update_ysql_migrations ALL

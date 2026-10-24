@@ -21,6 +21,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
@@ -82,8 +83,21 @@ void ConvertField(const Value& value, Writer& writer) {
 template <class Converter, class Type>
 using RefForConverter = std::conditional_t<HasRead<uint64_t, Converter>, Type, const Type>&;
 
+template <class Writer>
+requires(HasAppend<uint64_t, uint64_t, Writer>)
+void Convert(size_t flags, const std::string& value, Writer& writer) {
+  writer.template Append<uint64_t>(value.size());
+  writer.AppendBytes(value);
+}
+
+template <class Reader>
+requires(HasRead<uint64_t, Reader>)
+void Convert(size_t flags, std::string& value, Reader& reader) {
+  value = reader.ReadBytes(reader.template Read<uint64_t>()).ToBuffer();
+}
+
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
   ConvertField<uint64_t>(entry.size, serializer);
   ConvertField<uint64_t>(entry.block, serializer);
   ConvertField<uint64_t>(entry.last_block_index, serializer);
@@ -92,10 +106,10 @@ void Convert(size_t version, RefForConverter<Converter, LayerInfo> entry, Conver
 
 template <class Vector, class Writer>
 requires(HasAppend<uint64_t, uint64_t, Writer>)
-void ConvertVector(size_t version, const Vector& vector, Writer& writer) {
+void ConvertVector(size_t flags, const Vector& vector, Writer& writer) {
   writer.template Append<uint64_t>(vector.size());
   for (const auto& entry : vector) {
-    Convert(version, entry, writer);
+    Convert(flags, entry, writer);
   }
 }
 
@@ -107,32 +121,49 @@ void ConvertField(Value& value, Reader& reader) {
 
 template <class Vector, class Reader>
 requires(HasRead<uint64_t, Reader>)
-void ConvertVector(size_t version, Vector& vector, Reader& reader) {
+void ConvertVector(size_t flags, Vector& vector, Reader& reader) {
   auto size = reader.template Read<uint64_t>();
   vector.resize(size);
   for (size_t i = 0; i < size; ++i) {
-    Convert(version, vector[i], reader);
+    Convert(flags, vector[i], reader);
   }
 }
 
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, Config> config, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, Config> config, Converter& serializer) {
   ConvertField<uint64_t>(config.connectivity, serializer);
   ConvertField<uint64_t>(config.connectivity_base, serializer);
 }
 
+// The first byte of the footer is a set of flags for the fields it holds:
+//   0x01, always set: the fields of every release.
+//   0x02: the tenant directory, see Header::tenant_directory_block.
+// A chunk without tenants holds 0x01 alone, which older releases read as their version 1.
+constexpr uint8_t kFooterBase = 0x01;
+constexpr uint8_t kFooterTenantDirectory = 0x02;
+constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterTenantDirectory;
+
+uint8_t FooterFlags(const Header& header) {
+  return kFooterBase | (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0);
+}
+
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, Header> header, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, Header> header, Converter& serializer) {
   ConvertField<uint64_t>(header.dimensions, serializer);
   ConvertField<uint64_t>(header.vector_data_size, serializer);
   ConvertField<VectorNo>(header.entry, serializer);
   ConvertField<uint64_t>(header.max_level, serializer);
-  Convert(version, header.config, serializer);
+  Convert(flags, header.config, serializer);
   ConvertField<uint64_t>(header.max_block_size, serializer);
   ConvertField<uint64_t>(header.max_vectors_per_non_base_block, serializer);
   ConvertField<uint64_t>(header.vector_data_block, serializer);
   ConvertField<uint64_t>(header.vector_data_amount_per_block, serializer);
-  ConvertVector(version, header.layers, serializer);
+  ConvertVector(flags, header.layers, serializer);
+  if (flags & kFooterTenantDirectory) {
+    ConvertField<uint64_t>(header.tenant_directory_block, serializer);
+    ConvertField<uint64_t>(header.num_tenant_directory_blocks, serializer);
+    ConvertVector(flags, header.tenant_directory_boundaries, serializer);
+  }
 }
 
 class WriteCounter {
@@ -146,20 +177,17 @@ class WriteCounter {
     value_ += sizeof(Value);
   }
 
+  void AppendBytes(const std::string& value) {
+    value_ += value.size();
+  }
+
  private:
   size_t value_ = 0;
 };
 
-constexpr size_t kSerializationVersion = 1;
-
-template <class Out, class... Args>
-void Serialize(const Out& out, Args&&... args) {
-  Convert(kSerializationVersion, out, std::forward<Args&&>(args)...);
-}
-
 size_t SerializedSize(const Header& header) {
   WriteCounter counter;
-  Convert(kSerializationVersion, header, counter);
+  Convert(FooterFlags(header), header, counter);
   return counter.value();
 }
 
@@ -178,13 +206,19 @@ class SliceReader {
     input_.RemovePrefix(sizeof(Value));
     return result;
   }
+
+  Slice ReadBytes(size_t size) {
+    auto result = input_.Prefix(size);
+    input_.RemovePrefix(size);
+    return result;
+  }
  private:
   Slice input_;
 };
 
 template <class Out, class... Args>
-void Deserialize(size_t version, Out& out, Args&&... args) {
-  Convert(version, out, std::forward<Args&&>(args)...);
+void Deserialize(size_t flags, Out& out, Args&&... args) {
+  Convert(flags, out, std::forward<Args&&>(args)...);
 }
 
 } // namespace
@@ -339,8 +373,9 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  writer.Append<uint8_t>(kSerializationVersion);
-  Serialize(header, writer);
+  const auto flags = FooterFlags(header);
+  writer.Append<uint8_t>(flags);
+  Convert(flags, header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
     sum += block.size;
@@ -409,8 +444,11 @@ Result<Header> FileBlockCache::Load() {
   RSTATUS_DCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
   Header header;
   SliceReader reader(footer_data);
-  size_t version = reader.Read<uint8_t>();
-  Deserialize(version, header, reader);
+  size_t flags = reader.Read<uint8_t>();
+  SCHECK(
+      (flags & kFooterBase) && !(flags & ~kFooterKnownFlags), Corruption,
+      Format("Unsupported vector index file flags: $0", flags));
+  Deserialize(flags, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
   for (size_t i = 0; i < size_; i++) {

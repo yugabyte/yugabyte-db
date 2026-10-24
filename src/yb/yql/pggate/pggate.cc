@@ -1270,6 +1270,11 @@ Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int1
   return table_desc->GetColumnInfo(attr_number);
 }
 
+Result<bool> PgApiImpl::IsVectorIndexTenantColumn(
+    YbcPgTableDesc index_desc, YbcPgTableDesc table_desc, int16_t attr_number) {
+  return index_desc->IsVectorTenantColumn(*table_desc, attr_number);
+}
+
 Result<bool> PgApiImpl::DmlModifiesRow(PgStatement* handle) {
   auto& dml = VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle));
 

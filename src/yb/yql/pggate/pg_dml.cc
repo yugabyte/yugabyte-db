@@ -142,6 +142,54 @@ Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
   return result;
 }
 
+// Encodes the tenant of the rows whose key columns have the given values, see
+// PgVectorReadOptionsPB::tenant. Returns an empty string when the hash columns do not each have a
+// single value, or there is no key column with a single value.
+Result<std::string> BuildVectorTenant(
+    ThreadSafeArena& arena, const PgTableDesc& table,
+    std::span<const YbcPgVectorKeyColumn> columns) {
+  const auto num_hash_key_columns = table.num_hash_key_columns();
+  dockv::DocKey doc_key;
+  std::vector<const LWQLValuePB*> hash_values;
+  size_t num_columns = 0;
+  for (; num_columns != table.num_key_columns(); ++num_columns) {
+    PgColumn column(table.schema(), num_columns);
+    auto it = std::ranges::find(columns, column.attr_num(), &YbcPgVectorKeyColumn::attr_num);
+    if (it == columns.end() || it->nvalues != 1) {
+      break;
+    }
+    SCHECK_EQ(
+        column.internal_type(), InternalTypeOf(it->type_entity), InvalidArgument,
+        "Key value type does not match column type");
+    auto* value = arena.NewObject<LWQLValuePB>(&arena);
+    DatumToQLValue(
+        it->type_entity, /* collate_is_valid_non_c= */ false, /* collation_sortkey= */ nullptr,
+        it->datums[0], /* is_null= */ false, value);
+    auto component = dockv::KeyEntryValue::FromQLValuePB(*value, column.desc().sorting_type());
+    if (num_columns < num_hash_key_columns) {
+      hash_values.push_back(value);
+      doc_key.hashed_group().push_back(std::move(component));
+    } else {
+      doc_key.range_group().push_back(std::move(component));
+    }
+  }
+  if (num_columns == 0 || num_columns < num_hash_key_columns) {
+    return std::string();
+  }
+  if (num_hash_key_columns) {
+    doc_key.set_hash(VERIFY_RESULT(
+        table.partition_schema().PgsqlHashColumnCompoundValue(hash_values)));
+  }
+  // Dropping the group end that closes the range group leaves a byte prefix of every key whose
+  // leading key columns have these values.
+  auto key = doc_key.Encode();
+  const auto encoded = key.AsSlice();
+  RSTATUS_DCHECK(
+      !encoded.empty() && encoded[encoded.size() - 1] == dockv::KeyEntryTypeAsChar::kGroupEnd,
+      IllegalState, Format("Unexpected key encoding: $0", encoded.ToDebugHexString()));
+  return encoded.WithoutSuffix(1).ToBuffer();
+}
+
 } // namespace
 
 PgDml::SecondaryIndexQueryWrapper::SecondaryIndexQueryWrapper(
@@ -369,8 +417,15 @@ Status PgDml::HnswSetReadOptions(int ef_search) {
 Status PgDml::ANNBindKeyFilter(std::span<const YbcPgVectorKeyColumn> columns) {
   auto* secondary_index = SecondaryIndexQuery();
   // The key columns belong to the indexed table, which is only read by an index scan.
+  if (!secondary_index || !target_) {
+    return Status::OK();
+  }
+  const auto tenant = VERIFY_RESULT(BuildVectorTenant(arena(), *target_, columns));
+  if (!tenant.empty()) {
+    secondary_index->ANNSetTenant(tenant);
+  }
   // A colocated table has a single tablet, so there is nothing to route.
-  if (!secondary_index || !target_ || target_->IsColocated()) {
+  if (target_->IsColocated()) {
     return Status::OK();
   }
   const auto prefixes = VERIFY_RESULT(BuildVectorPartitionKeyPrefixes(arena(), *target_, columns));

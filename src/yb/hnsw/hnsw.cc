@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <ranges>
 
 #include "usearch/index.hpp"
 
@@ -80,6 +81,9 @@ class YbHnswIndexAdapter {
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
 
+  // Returns tenants with the indexes of their entry vectors, empty when vectors have no tenants.
+  virtual std::vector<std::pair<Slice, size_t>> TenantEntries() = 0;
+
   // Returns the payload attached to the vector, empty slice when the chunk does not store
   // payloads. index is the implementation-assigned slot of the vector, matching the payload map
   // indexing.
@@ -120,6 +124,48 @@ using NeighborsRefType = uint16_t;
 constexpr auto kNeighborsRefSize = sizeof(NeighborsRefType);
 constexpr auto kNeighborSize = sizeof(VectorNo);
 
+// Block of tenants ordered by tenant with their entry vectors: number of entries (uint32), end
+// offset of every entry (uint32), entries. An entry is the tenant followed by its entry vector.
+class TenantDirectoryBlock {
+ public:
+  explicit TenantDirectoryBlock(const std::byte* data)
+      : size_(Load<uint32_t, HnswEndian>(data)),
+        ends_(data + sizeof(uint32_t)),
+        entries_(ends_ + size_ * sizeof(uint32_t)) {}
+
+  Slice tenant(size_t index) const {
+    return Slice(entries_ + Begin(index), entries_ + End(index) - sizeof(VectorNo));
+  }
+
+  VectorNo entry(size_t index) const {
+    return Load<VectorNo, HnswEndian>(entries_ + End(index) - sizeof(VectorNo));
+  }
+
+  // Returns the entry vector of the tenant, nullopt when the block has no such tenant.
+  std::optional<VectorNo> Find(Slice tenant) const {
+    auto indexes = std::views::iota(size_t{0}, size_);
+    auto it = std::ranges::lower_bound(
+        indexes, tenant, {}, [this](size_t index) { return this->tenant(index); });
+    if (it == indexes.end() || this->tenant(*it) != tenant) {
+      return std::nullopt;
+    }
+    return entry(*it);
+  }
+
+ private:
+  size_t Begin(size_t index) const {
+    return index ? End(index - 1) : 0;
+  }
+
+  size_t End(size_t index) const {
+    return Load<uint32_t, HnswEndian>(ends_ + index * sizeof(uint32_t));
+  }
+
+  const size_t size_;
+  const std::byte* const ends_;
+  const std::byte* const entries_;
+};
+
 size_t CalcMaxVectorsPerLayerBlock(size_t max_block_size, size_t connectivity) {
   size_t max_vector_size = kNeighborsRefSize + connectivity * kNeighborSize;
   auto result = std::min<size_t>(
@@ -151,6 +197,7 @@ class YbHnswBuilder {
     RETURN_NOT_OK(BuildNonBaseLayers());
     RETURN_NOT_OK(BuildBaseLayer());
     RETURN_NOT_OK(BuildVectorDataBlocks());
+    RETURN_NOT_OK(BuildTenantDirectoryBlocks());
     RETURN_NOT_OK(FlushBlock());
     RETURN_NOT_OK(WriteFooter());
     RETURN_NOT_OK(out_->Close());
@@ -262,6 +309,61 @@ class YbHnswBuilder {
       auto* data = writer.Prepare(header_.vector_data_size);
       memcpy(data, &v.data, sizeof(VectorData));
       inspector_.NodeCoordinates(v.index, data + offsetof(VectorData, coordinates));
+    }
+    return Status::OK();
+  }
+
+  // Writes the entry vector of every tenant into tenant directory blocks ordered by tenant, see
+  // Header::tenant_directory_block.
+  Status BuildTenantDirectoryBlocks() {
+    auto tenants = inspector_.TenantEntries();
+    if (tenants.empty()) {
+      return Status::OK();
+    }
+    std::ranges::sort(tenants, {}, &std::pair<Slice, size_t>::first);
+    std::vector<std::pair<Slice, VectorNo>> entries;
+    size_t block_size = 0;
+    header_.tenant_directory_block = NextBlockId();
+    auto flush = [this, &entries]() -> Status {
+      if (header_.num_tenant_directory_blocks++) {
+        header_.tenant_directory_boundaries.push_back(entries.front().first.ToBuffer());
+      }
+      RETURN_NOT_OK(WriteTenantDirectoryBlock(entries));
+      entries.clear();
+      return Status::OK();
+    };
+    for (const auto& [tenant, index] : tenants) {
+      auto entry_size = TenantDirectoryEntrySize(tenant);
+      if (!entries.empty() && block_size + entry_size > header_.max_block_size) {
+        RETURN_NOT_OK(flush());
+      }
+      if (entries.empty()) {
+        block_size = sizeof(uint32_t);
+      }
+      block_size += entry_size;
+      entries.emplace_back(tenant, slot_map_[index]);
+    }
+    return flush();
+  }
+
+  static size_t TenantDirectoryEntrySize(Slice tenant) {
+    return sizeof(uint32_t) + tenant.size() + sizeof(VectorNo);
+  }
+
+  Status WriteTenantDirectoryBlock(const std::vector<std::pair<Slice, VectorNo>>& entries) {
+    size_t size = sizeof(uint32_t);
+    for (const auto& [tenant, _] : entries) {
+      size += TenantDirectoryEntrySize(tenant);
+    }
+    auto ends_writer = VERIFY_RESULT(StartNewBlock(size));
+    ends_writer.Append<uint32_t>(narrow_cast<uint32_t>(entries.size()));
+    auto entries_writer = ends_writer.Split(entries.size() * sizeof(uint32_t));
+    uint32_t end = 0;
+    for (const auto& [tenant, entry] : entries) {
+      entries_writer.AppendBytes(tenant);
+      entries_writer.Append<VectorNo>(entry);
+      end += narrow_cast<uint32_t>(tenant.size() + sizeof(VectorNo));
+      ends_writer.Append<uint32_t>(end);
     }
     return Status::OK();
   }
@@ -523,6 +625,10 @@ class YbHnswUsearchIndexAdapter : public YbHnswIndexAdapter {
     return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
   }
 
+  std::vector<std::pair<Slice, size_t>> TenantEntries() override {
+    return {};
+  }
+
  private:
   static VectorNoPtr NodePtr(
       unum::usearch::misaligned_ptr_gt<const unum::usearch::default_slot_t> ptr) {
@@ -602,6 +708,14 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
     return MakeNeighbors(index_.get_linklist0(CastIndex(index)));
   }
 
+  std::vector<std::pair<Slice, size_t>> TenantEntries() override {
+    std::vector<std::pair<Slice, size_t>> result;
+    for (auto [tenant, entry] : index_.getTenantEntries()) {
+      result.emplace_back(Slice(tenant), entry);
+    }
+    return result;
+  }
+
  private:
   static hnswlib::tableint CastIndex(size_t index) {
     return narrow_cast<hnswlib::tableint>(index);
@@ -641,10 +755,44 @@ YbHnsw::SearchResult YbHnsw::Search(
   SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
+  if (!header_.num_tenant_directory_blocks) {
+    DCHECK(options.tenant.empty());
+    return SearchFrom(query_vector, header_.entry, options, context);
+  }
+  auto entry = FindTenantEntry(options.tenant, context.search_cache);
+  if (!entry) {
+    return {};
+  }
+  return SearchFrom(query_vector, *entry, options, context);
+}
+
+std::optional<VectorNo> YbHnsw::FindTenantEntry(Slice tenant, SearchCache& cache) const {
+  // Number of blocks after the first one that start with a tenant not greater than tenant.
+  const auto& boundaries = header_.tenant_directory_boundaries;
+  auto block = boundaries.empty()
+      ? 0
+      : std::ranges::upper_bound(
+            boundaries, tenant, {}, [](const std::string& boundary) { return Slice(boundary); }) -
+        boundaries.begin();
+  return TenantDirectoryBlock(cache.Data(header_.tenant_directory_block + block)).Find(tenant);
+}
+
+YbHnsw::SearchResult YbHnsw::SearchFrom(
+    const std::byte* query_vector, VectorNo entry, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
   auto [best_vector, best_dist] = SearchInNonBaseLayers(
-      query_vector, context.search_cache);
+      query_vector, entry, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
+}
+
+size_t YbHnsw::VectorLevel(VectorNo vector) const {
+  // Upper layers are prefixes of vector numbers.
+  auto level = header_.max_level;
+  while (level > 0 && vector >= header_.layers[level].size) {
+    --level;
+  }
+  return level;
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -658,12 +806,12 @@ YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext&
 }
 
 std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
-    const std::byte* query_vector, SearchCache& cache) const {
-  auto best_vector = header_.entry;
+    const std::byte* query_vector, VectorNo entry, SearchCache& cache) const {
+  auto best_vector = entry;
   auto best_dist = Distance(query_vector, best_vector, cache);
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
-  for (auto level = header_.max_level; level > 0;) {
+  for (auto level = VectorLevel(entry); level > 0;) {
     auto updated = false;
     VLOG_WITH_FUNC(4)
         << "level: " << level << ", best_vector: " << best_vector << ", best_dist: " << best_dist;

@@ -272,5 +272,20 @@ bool PgTableDesc::IsIndex() const {
   return resp_.has_index_info();
 }
 
+Result<bool> PgTableDesc::IsVectorTenantColumn(
+    const PgTableDesc& indexed_table, int attr_num) const {
+  const auto num_tenant_components =
+      resp_.index_info().vector_idx_options().tenant_key_components();
+  if (!num_tenant_components) {
+    return false;
+  }
+  const auto idx = VERIFY_RESULT(indexed_table.FindColumn(attr_num));
+  if (idx >= indexed_table.num_key_columns()) {
+    return false;
+  }
+  return Schema::KeyComponentIndex(idx, indexed_table.num_hash_key_columns()) <
+         num_tenant_components;
+}
+
 }  // namespace pggate
 }  // namespace yb

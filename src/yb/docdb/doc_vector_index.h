@@ -201,6 +201,9 @@ class DocVectorIndex {
   // rather than vector count.
   virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
 
+  // options.tenant is the tenant of the query, see PgVectorReadOptionsPB::tenant. It is required
+  // when vectors belong to tenants, see PgVectorIdxOptionsPB::tenant_key_components, and ignored
+  // otherwise.
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;

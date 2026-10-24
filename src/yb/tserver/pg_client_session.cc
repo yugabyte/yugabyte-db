@@ -404,7 +404,7 @@ class VectorIndexQuery {
             ->mutable_vector_idx_options();
         vector_idx_options.set_num_top_vectors_to_remove(
             partition_state.number_of_vectors_fetched_from_tablet);
-        // Tablets don't use the prefixes, they only select the partitions above.
+        // Tablets don't use the partition key prefixes, they only select the partitions above.
         vector_idx_options.mutable_partition_key_prefixes()->clear();
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(
             table, arena, *sidecars_, new_read_req);
