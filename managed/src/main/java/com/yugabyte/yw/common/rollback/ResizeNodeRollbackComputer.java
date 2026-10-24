@@ -18,12 +18,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -110,6 +112,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
+    rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
     StateTransitionDetails details = universe.getStateTransitionDetails();
     if (details == null) {
       throw new PlatformServiceException(
@@ -485,6 +488,42 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                 c.userIntent != null
                     && Util.checkAnyProviderType(
                         c.userIntent, t -> t == Common.CloudType.kubernetes));
+  }
+
+  /**
+   * Refuses rollback when a cluster runs on a public cloud with no cloud snapshot ({@link
+   * #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type, which a
+   * failed resize may not have saved yet.
+   */
+  public static void rejectCloudWithoutSnapshot(Collection<Cluster> clusters) {
+    Common.CloudType cloud = findCloudWithoutSnapshot(clusters);
+    if (cloud != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Rollback of resize node is not supported on %s: YBA cannot read a node's current"
+                  + " instance type from this cloud",
+              cloud));
+    }
+  }
+
+  /**
+   * The failed task's own params decide the listing hint, which loads no universe. Unknown cloud
+   * types (a request that left them out) are allowed here; submit checks the universe.
+   */
+  @Override
+  public boolean canRollbackFromParams(TaskInfo failedTask) {
+    ResizeNodeParams params = Json.fromJson(failedTask.getTaskParams(), ResizeNodeParams.class);
+    return params.clusters == null || findCloudWithoutSnapshot(params.clusters) == null;
+  }
+
+  private static Common.CloudType findCloudWithoutSnapshot(Collection<Cluster> clusters) {
+    return clusters.stream()
+        .filter(c -> c.userIntent != null)
+        .flatMap(c -> c.userIntent.getAllCloudTypes().stream())
+        .filter(t -> t.isPublicCloud() && !supportsCloudSnapshot(t))
+        .findFirst()
+        .orElse(null);
   }
 
   /** Null desired field is ignored (same as ybops treating an omitted IOPS/throughput as no-op). */

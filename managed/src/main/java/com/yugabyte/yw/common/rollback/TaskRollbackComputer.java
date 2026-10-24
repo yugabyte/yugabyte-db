@@ -52,6 +52,14 @@ public interface TaskRollbackComputer {
   }
 
   /**
+   * Whether the failed task may be rolled back, judged from its own params alone. Listing and
+   * submit both apply it; it must stay cheap and load no universe. Default true.
+   */
+  default boolean canRollbackFromParams(TaskInfo failedTask) {
+    return true;
+  }
+
+  /**
    * Build the rollback submission for the failed task described by {@code context}.
    *
    * @throws com.yugabyte.yw.common.PlatformServiceException if rollback cannot proceed
