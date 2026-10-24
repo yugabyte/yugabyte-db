@@ -165,7 +165,6 @@
 #include "replication/yb_virtual_wal_client.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
-
 /*
  * Maximum size of a NOTIFY payload, including terminating NULL.  This
  * must be kept small enough so that a notification message fits on one
@@ -613,6 +612,13 @@ static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
  * Invalid, we skip all non-BEGIN entries because the listener started scanning
  * mid-transaction and must not deliver a partial transaction (doing so would
  * also break duplicate detection if the poller crashes and replays).
+ *
+ * The xids come from the replication slot's virtual WAL, which numbers txns
+ * from the same starting value every time the slot is created, so they are
+ * only unique within one incarnation of the slot.  The slot is recreated when
+ * a node's first listener registers, so this state is reset at registration
+ * (see Exec_ListenPreCommit): a stale begin_xid would otherwise make a new txn
+ * on the new slot look like a replay and get its notifications dropped.
  */
 typedef struct YbListenerQueueScanCurrentXactState
 {
@@ -1419,9 +1425,17 @@ Exec_ListenPreCommit(void)
 	 * YB note: In YB, the queue only contains the committed notifications.
 	 * These notifications were committed before this LISTEN, so we can safely
 	 * set max to head.
+	 *
+	 * The duplicate-txn scan state is reset along with the position, since
+	 * xids are only unique within one slot incarnation.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		max = head;
+		ybListenerQueueScanCurrentXactState.begin_xid = InvalidTransactionId;
+		ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+		ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
+	}
 
 	QUEUE_BACKEND_POS(MyBackendId) = max;
 	QUEUE_BACKEND_PID(MyBackendId) = MyProcPid;
@@ -3444,8 +3458,10 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 		return;
 	}
 
+	/* A leftover skip budget belongs to the previous txn's replay. */
 	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
 	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+	ybListenerQueueScanCurrentXactState.notifs_to_skip = 0;
 }
 
 /*

@@ -1022,6 +1022,56 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * When the node's only listener UNLISTENs, the poller and its replication slot are dropped, and
+   * the next LISTEN creates a new slot whose virtual WAL numbers transactions from the start again.
+   * The re-listening backend must not mistake the first transaction on the new slot for a replay
+   * of the last transaction it saw on the old slot (same xid) and skip its notifications.
+   */
+  @Test
+  public void testNotifyAfterSoloListenerRelistens() throws Exception {
+    final String channel = "relisten";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n1a", "n1b");
+      assertEquals(Arrays.asList("n1a", "n1b"),
+          payloadsOf(waitForNotification(listenerConn, channel, "n1b")));
+
+      listenerStmt.execute("UNLISTEN " + channel);
+      waitForPollerAndSlotCleanup(listenerConn);
+
+      // Same backend, so it still remembers the last transaction it saw before UNLISTEN.
+      listenerStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n2a", "n2b");
+      // An autocommit NOTIFY after the transaction marks the end of what must be delivered.
+      notifierStmt.execute("NOTIFY " + channel + ", 'n3'");
+      assertEquals("Notifications delivered after re-LISTEN",
+          Arrays.asList("n2a", "n2b", "n3"),
+          payloadsOf(waitForNotification(listenerConn, channel, "n3")));
+    }
+  }
+
+  private static void notifyInTransaction(Statement stmt, String channel, String... payloads)
+      throws Exception {
+    stmt.execute("BEGIN");
+    for (String payload : payloads) {
+      stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+    }
+    stmt.execute("COMMIT");
+  }
+
+  private static List<String> payloadsOf(List<PGNotification> notifications) {
+    List<String> payloads = new ArrayList<>();
+    for (PGNotification n : notifications) {
+      payloads.add(n.getParameter());
+    }
+    return payloads;
+  }
+
+  /**
    * When the NOTIFY queue fills up, verify that the slow listener is terminated.
    */
   @Test
