@@ -2,7 +2,7 @@
 title: YugabyteDB Aeon quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
+headcontent: Sign up for YugabyteDB Aeon and create a free Serverless Postgres cluster
 description: Get started using YugabyteDB Aeon in less than five minutes.
 layout: single
 type: docs
@@ -17,67 +17,65 @@ rightNav:
   hideH4: true
 ---
 
-The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Aeon:
+The quickest way to get started with YugabyteDB Aeon is to create a free Serverless Postgres cluster. Serverless Postgres is free up to 2 vCPU and 16Gi of memory, and no credit card is required.
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. Click **Create Cluster**.
+1. Click **Create Cluster**, select **Serverless Postgres**, and click **Choose**.
 
-The first time you log in, YugabyteDB Aeon provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
+## Create a Serverless Postgres cluster
 
-- Connect to the database
-- Load sample data and run queries
-- Explore a sample application
+To create a cluster:
 
-<!-- Following sections are duplicated in quick-start-yugabytedb-managed -->
+1. On the **Clusters** page, click **Add Cluster**.
 
-### What's next
+1. On **Choose a cluster type**, select **Serverless Postgres** and click **Choose**.
 
-- [Run a product lab](../managed-labs/) - explore core features of YugabyteDB running a demo application on globally distributed test clusters in real time.
+1. On **General**, enter a **Cluster name** and click **Next**.
 
-- [Request a free trial](../managed-freetrial/) - to try more advanced deployments, run a POC, or benchmark, request a free trial.
+1. On **Cluster Settings**, leave **PostgreSQL** as the engine and **Free** as the compute size, and click **Next**.
 
-If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
+    Any other size is billed, and you are asked to create a billing profile before the cluster is created.
 
-## Create your Sandbox cluster
+1. On **Network Access**, keep **Public Endpoint**, enter your computer's IP address under **Trusted IP Addresses**, and click **Next**. This allows you to connect to the cluster after it is created.
 
-The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
-
->**Sandbox cluster**
->
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/stable/develop/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/stable/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
->
->To try more advanced deployments, [request a free trial](../managed-freetrial/).
-
-To create your Sandbox cluster:
-
-<!--
-![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
--->
-
-1. Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
-
-1. Select Sandbox and click **Choose**.
-
-1. Enter a name for the cluster, choose the cloud provider (AWS or GCP), and choose the region in which to deploy the cluster, then click **Next**.
-
-1. Select **Enhanced Postgres Compatibility** to enable [Enhanced PostgreSQL Compatibility Mode](/stable/reference/configuration/postgresql-compatibility/), then click **Next**.
-
-1. Click **Add Current IP Address**. The IP address of your machine is added to the IP allow list. This allows you to connect to your sandbox cluster from applications and your desktop after it is created.
-
-1. Click **Next**.
-
-1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
+1. If the wizard shows **DB Credentials**, select **Use default credentials** and click **Download credentials**. You'll use the `cloud_admin` user and the password in this file to connect. The credentials are shown only once.
 
 1. Click **Create Cluster**.
 
-YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
-
-When the cluster is ready, the cluster **Overview** is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
+For details on all of the options, refer to [Serverless Postgres](../serverless/).
 
 ## Connect to the cluster
 
-Use Cloud Shell to connect to your YugabyteDB Aeon cluster from your browser, and interact with it using distributed SQL.
+1. On the **Clusters** page, open the cluster.
+
+1. On the endpoint, click **Connect**. The button is available after the endpoint has an address.
+
+1. If the dialog includes a CA certificate, click **Download CA Cert**.
+
+1. Click **Copy command** and run it in your terminal. Use `cloud_admin` as the user. When prompted, enter the password from the credentials file.
+
+You can now run SQL against your Serverless Postgres database, and connect applications using any PostgreSQL driver.
+
+### What's next
+
+- [Manage branches and compute](../serverless/#manage-a-cluster) - add branches, add compute endpoints, and resize compute.
+
+- [Run a product lab](../managed-labs/) - explore core features of YugabyteDB running a demo application on globally distributed test clusters in real time.
+
+## Go distributed with Distributed Postgres
+
+For multi-node, highly available YugabyteDB clusters, create a Distributed Postgres cluster. These are deployed across multiple nodes, zones, and regions, and are billed per vCPU.
+
+- [Create a cluster](../cloud-basics/create-clusters/) - deploy single-region and multi-region clusters.
+
+- [Request a free trial](../managed-freetrial/) - to try more advanced deployments, run a POC, or benchmark, request a free trial.
+
+The following sections show how to connect to and explore a Distributed Postgres cluster.
+
+### Connect using Cloud Shell
+
+Use Cloud Shell to connect to your Distributed Postgres cluster from your browser, and interact with it using distributed SQL.
 
 >The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
@@ -115,24 +113,24 @@ To connect to your cluster, do the following:
 >
 > For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
 
-## Explore distributed SQL
+### Explore distributed SQL
 
 When you connect to your cluster using Cloud Shell with the [YSQL API](/stable/api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
 ![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
 
-## Build an application
+### Build an application
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Aeon clusters using your favorite programming language.
 
 Before you begin, you need the following:
 
-- a cluster deployed in YugabyteDB Aeon.
+- a Distributed Postgres cluster deployed in YugabyteDB Aeon.
 - the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
 Refer to [Before you begin](/stable/develop/tutorials/build-apps/cloud-add-ip/).
 
-### Choose your language
+#### Choose your language
 
 {{< readfile "/stable/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}

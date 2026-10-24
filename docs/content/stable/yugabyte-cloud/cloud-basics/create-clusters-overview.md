@@ -71,7 +71,6 @@ YugabyteDB Aeon supports AWS, Azure, and GCP. Your choice of provider will depen
 
 | Feature | AWS | Azure | GCP |
 | :--- | :--- | :--- | :--- |
-| Sandbox | Yes | No | Yes |
 | VPC | Yes | Yes (Required) | Yes |
 | Peering | Yes | No | Yes |
 | Private Service Endpoint | Yes | Yes | No |
@@ -124,7 +123,7 @@ Note that currently, after the cluster is created, you can't change the cluster 
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. A cluster with fault tolerance of None (including your Sandbox) is subject to downtime during maintenance and outages.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. A cluster with fault tolerance of None is subject to downtime during maintenance and outages.
 
 #### Region
 
@@ -202,7 +201,7 @@ Use a staging cluster for the following tasks:
 - Testing new features. Use your staging (also known as development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
 - Testing scaling operations and disaster recovery. Find out how your environment responds to a scaling operation, outages, or the loss of a node.
 
-Create a staging cluster and configure your staging environment to connect to it. The staging cluster can be smaller than your production cluster, but you need to ensure that it has enough resources and capacity to handle a reasonable load. Sandbox clusters are too [resource-limited](../create-clusters/create-clusters-free/#limitations) for staging.
+Create a staging cluster and configure your staging environment to connect to it. The staging cluster can be smaller than your production cluster, but you need to ensure that it has enough resources and capacity to handle a reasonable load.
 
 #### Database upgrades
 

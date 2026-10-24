@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-basics
-    weight: 25
+    weight: 26
 type: indexpage
 ---
 
