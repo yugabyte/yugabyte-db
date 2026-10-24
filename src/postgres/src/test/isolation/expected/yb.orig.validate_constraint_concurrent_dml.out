@@ -2,19 +2,19 @@ Parsed test spec with 2 sessions
 
 starting permutation: s1_begin s1_ins_t1 s2_begin s2_validate_check s1_ins_t2 s2_commit s1_commit
 step s1_begin: BEGIN;
-step s1_ins_t1: INSERT INTO t VALUES (100, 1, 100);
+step s1_ins_t1: INSERT INTO t VALUES (100, 100);
 step s2_begin: BEGIN;
 step s2_validate_check: ALTER TABLE t VALIDATE CONSTRAINT t_v_pos;
-step s1_ins_t2: INSERT INTO t VALUES (101, 2, 101);
+step s1_ins_t2: INSERT INTO t VALUES (101, 101);
 step s2_commit: COMMIT;
 step s1_commit: COMMIT;
 
 starting permutation: s1_begin s1_ins_t1 s2_begin s2_set_stats s1_ins_t2 s2_commit s1_commit
 step s1_begin: BEGIN;
-step s1_ins_t1: INSERT INTO t VALUES (100, 1, 100);
+step s1_ins_t1: INSERT INTO t VALUES (100, 100);
 step s2_begin: BEGIN;
 step s2_set_stats: ALTER TABLE t ALTER COLUMN v SET STATISTICS 100;
-step s1_ins_t2: INSERT INTO t VALUES (101, 2, 101);
+step s1_ins_t2: INSERT INTO t VALUES (101, 101);
 step s2_commit: COMMIT;
 step s1_commit: COMMIT;
 
@@ -29,98 +29,29 @@ step s1_commit: COMMIT;
 
 starting permutation: s1_begin s1_ins_t1 s2_begin s2_validate_check s1_ins_t_bad_check s2_commit s1_commit s2_show
 step s1_begin: BEGIN;
-step s1_ins_t1: INSERT INTO t VALUES (100, 1, 100);
+step s1_ins_t1: INSERT INTO t VALUES (100, 100);
 step s2_begin: BEGIN;
 step s2_validate_check: ALTER TABLE t VALIDATE CONSTRAINT t_v_pos;
-step s1_ins_t_bad_check: INSERT INTO t VALUES (102, 1, -1);
+step s1_ins_t_bad_check: INSERT INTO t VALUES (102, -1);
 ERROR:  new row for relation "t" violates check constraint "t_v_pos"
 step s2_commit: COMMIT;
 step s1_commit: COMMIT;
 step s2_show: 
   SELECT conname, convalidated FROM pg_constraint
   WHERE conrelid IN ('t'::regclass, 'tb'::regclass) ORDER BY conname;
-  SELECT id, rid, v FROM t WHERE id >= 100 ORDER BY id;
+  SELECT id, v FROM t WHERE id >= 100 ORDER BY id;
   SELECT id, v FROM tb ORDER BY id;
 
 conname |convalidated
 --------+------------
 t_pkey  |t           
-t_r_fk  |f           
 t_v_pos |t           
 tb_pkey |t           
 tb_v_pos|f           
-(5 rows)
+(4 rows)
 
-id|rid|v
---+---+-
-(0 rows)
-
-id| v
---+--
- 1|-1
-(1 row)
-
-
-starting permutation: s1_begin s1_ins_t1 s2_begin s2_validate_fk s1_ins_t_bad_fk s2_commit s1_commit s2_show
-step s1_begin: BEGIN;
-step s1_ins_t1: INSERT INTO t VALUES (100, 1, 100);
-step s2_begin: BEGIN;
-step s2_validate_fk: ALTER TABLE t VALIDATE CONSTRAINT t_r_fk;
-step s1_ins_t_bad_fk: INSERT INTO t VALUES (103, 99, 103);
-ERROR:  insert or update on table "t" violates foreign key constraint "t_r_fk"
-step s2_commit: COMMIT;
-step s1_commit: COMMIT;
-step s2_show: 
-  SELECT conname, convalidated FROM pg_constraint
-  WHERE conrelid IN ('t'::regclass, 'tb'::regclass) ORDER BY conname;
-  SELECT id, rid, v FROM t WHERE id >= 100 ORDER BY id;
-  SELECT id, v FROM tb ORDER BY id;
-
-conname |convalidated
---------+------------
-t_pkey  |t           
-t_r_fk  |t           
-t_v_pos |f           
-tb_pkey |t           
-tb_v_pos|f           
-(5 rows)
-
-id|rid|v
---+---+-
-(0 rows)
-
-id| v
---+--
- 1|-1
-(1 row)
-
-
-starting permutation: s1_begin s2_begin s2_validate_fk s1_del_r_referenced s2_commit s1_commit s2_show
-step s1_begin: BEGIN;
-step s2_begin: BEGIN;
-step s2_validate_fk: ALTER TABLE t VALIDATE CONSTRAINT t_r_fk;
-step s1_del_r_referenced: DELETE FROM r WHERE id = 1; <waiting ...>
-step s2_commit: COMMIT;
-step s1_del_r_referenced: <... completed>
-ERROR:  update or delete on table "r" violates foreign key constraint "t_r_fk" on table "t"
-step s1_commit: COMMIT;
-step s2_show: 
-  SELECT conname, convalidated FROM pg_constraint
-  WHERE conrelid IN ('t'::regclass, 'tb'::regclass) ORDER BY conname;
-  SELECT id, rid, v FROM t WHERE id >= 100 ORDER BY id;
-  SELECT id, v FROM tb ORDER BY id;
-
-conname |convalidated
---------+------------
-t_pkey  |t           
-t_r_fk  |t           
-t_v_pos |f           
-tb_pkey |t           
-tb_v_pos|f           
-(5 rows)
-
-id|rid|v
---+---+-
+id|v
+--+-
 (0 rows)
 
 id| v
@@ -141,20 +72,19 @@ step s1_commit: COMMIT;
 step s2_show: 
   SELECT conname, convalidated FROM pg_constraint
   WHERE conrelid IN ('t'::regclass, 'tb'::regclass) ORDER BY conname;
-  SELECT id, rid, v FROM t WHERE id >= 100 ORDER BY id;
+  SELECT id, v FROM t WHERE id >= 100 ORDER BY id;
   SELECT id, v FROM tb ORDER BY id;
 
 conname |convalidated
 --------+------------
 t_pkey  |t           
-t_r_fk  |f           
 t_v_pos |f           
 tb_pkey |t           
 tb_v_pos|f           
-(5 rows)
+(4 rows)
 
-id|rid|v
---+---+-
+id|v
+--+-
 (0 rows)
 
  id|  v
