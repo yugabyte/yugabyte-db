@@ -2511,6 +2511,7 @@ void TSTabletManager::OpenTablet(
         .wait_queue_cgroup = wait_queue_cgroup,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .intent_cleanup_pool = raft_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
         .tier_migration_hooks = tier_migration_reconciler_->tablet_hooks(),
         .metadata_cache = metadata_cache,
