@@ -3073,12 +3073,21 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
   if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
+    // The participant's barrier, not the metadata's, decides intent GC. Like the metadata above, an
+    // initial barrier must not move it past a live, stricter barrier of another stream: that would
+    // remove intents of transactions the older stream has not streamed yet. GetLatestCheckPoint()
+    // is OpId::Max() when the barrier is unset or expired. Non-initial calls (the background
+    // advance and the stale-barrier release with OpId::Max()) still overwrite it.
+    auto intents_op_id = cdc_sdk_intents_op_id;
+    if (initial_retention_barrier) {
+      intents_op_id = std::min(intents_op_id, txn_participant->GetLatestCheckPoint());
+    }
     VLOG_WITH_PREFIX_AND_FUNC(1)
         << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
         << min_start_ht_cdc_unstreamed_txns;
     txn_participant->SetIntentRetainOpIdAndTime(
-        cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
+        intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
     if (FLAGS_cdc_immediate_transaction_cleanup) {
       CleanupIntentFiles();
     }
