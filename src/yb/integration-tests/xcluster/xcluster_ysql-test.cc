@@ -3120,7 +3120,7 @@ void XClusterYsqlTest::TestDropTableOnConsumerThenProducer(bool restart_master) 
       producer_map.at(kReplicationGroupId.ToString()).stream_map(), stream_id.ToString()));
 
   // Make sure stream is deleted from producer.
-  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(WaitForCDCStreamDeleted(producer_table_->id()));
 
   // Perform the drop on producer.
   ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
@@ -3202,7 +3202,7 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   ASSERT_TRUE(consumer_table_info->is_deleted());
 
   // Make sure stream is deleted from producer.
-  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(WaitForCDCStreamDeleted(producer_table_->id()));
 
   ASSERT_OK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
@@ -3298,7 +3298,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
       MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 
   // Make sure stream is deleted from producer.
-  ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(WaitForCDCStreamDeleted(producer_table_->id()));
 
   // Make sure cdc state table is cleaned up.
   cdc_row = ASSERT_RESULT(
