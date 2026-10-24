@@ -14610,7 +14610,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   EnqueuePendingBackfillsAfterLoad();
-  restoring_sys_catalog_ = false;
+  ClearRestoringSysCatalogIfNotFenced();
 
   if (FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
