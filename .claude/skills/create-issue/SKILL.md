@@ -70,8 +70,9 @@ For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
 ### Step 1: Decide the tracker — GitHub vs JIRA
 
 First decide whether the issue is **sensitive**: it can't be described without
-customer data, customer schema/queries, or an unfixed security vulnerability
-(see the Confidentiality section). Then:
+something on the Confidentiality list above, e.g. customer data or schema, an
+unfixed security vulnerability, or unreleased internal plans. If the sensitive
+part can be scrubbed or replaced with a placeholder, it isn't sensitive. Then:
 
 - Core DB code (`src/`, `java/`, `cmake_modules/`, `build-support/`, `.github/`,
   `.claude/`):
@@ -82,8 +83,9 @@ customer data, customer schema/queries, or an unfixed security vulnerability
     set to `Yes` (Step 3b).
 - YBA / platform code (`managed/`) → **JIRA ticket**.
 
-If the user has already named a tracker or project, honor it, except for the
-`DB` rule in Step 3b.
+If the user has already named a tracker or project, honor it, except for core
+DB code, where the routing above applies whichever tracker the user named:
+non-sensitive → GitHub, sensitive → JIRA `DB`.
 
 Why `DB` works this way: the GitHub ↔ JIRA sync never copies a JIRA
 description to GitHub. When a ticket is created in `DB` first, its summary and
@@ -173,10 +175,8 @@ issue from being created at all.
    (`customfield_11006`) is required. Pass it in `additional_fields`:
    - Sensitive (the only reason to file a `DB` ticket in JIRA) →
      `"customfield_11006": {"value": "Yes"}`.
-   - Never set it to `No` yourself. `No` publishes a GitHub issue with an
-     empty body. If the issue isn't sensitive, go back and file it with
-     Step 3a. Use `No` only if the user explicitly insists after you explain
-     this.
+   - Never set it to `No`: that publishes a GitHub issue with an empty body.
+     If the issue isn't sensitive, go back and file it with Step 3a.
 4. Load the Atlassian tool via ToolSearch, then call
    `mcp__claude_ai_Atlassian__createJiraIssue` with the confirmed summary and
    description. **Confirm the summary/description with the user before creating.**
