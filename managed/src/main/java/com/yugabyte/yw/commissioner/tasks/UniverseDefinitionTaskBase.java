@@ -4228,17 +4228,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.force = true;
               Map<String, String> gflags = new HashMap<>();
               gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-              Cluster cluster = universe.getCluster(node.placementUuid);
-              Map<String, String> nodeGFlags =
-                  GFlagsUtil.getGFlagsForNode(
-                      node, serverType, cluster, universe.getUniverseDetails().clusters);
-              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
-                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
-              }
+              addUserYsqlPgConfCsv(gflags, universe, node, serverType);
               params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+  }
+
+  /**
+   * SetFlagInMemory rebuilds ysql_pg_conf_csv from the passed gflags plus the telemetry configs.
+   * Callers that set only a few flags must also pass the node's user ysql_pg_conf_csv, or the live
+   * value loses it until the next restart.
+   */
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Universe universe, NodeDetails node, ServerType serverType) {
+    Map<String, String> nodeGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            serverType,
+            universe.getCluster(node.placementUuid),
+            universe.getUniverseDetails().clusters);
+    String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+    if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+      gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+    }
   }
 
   public void updateAndPersistAuditLoggingConfigTask() {

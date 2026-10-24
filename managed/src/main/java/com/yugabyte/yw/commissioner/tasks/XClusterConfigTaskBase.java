@@ -3434,6 +3434,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         (node, params) -> {
           params.force = true;
           params.gflags = new HashMap<>();
+          addUserYsqlPgConfCsv(params.gflags, universe, node, ServerType.TSERVER);
 
           if (action == XClusterUniverseAction.PAUSE) {
             params.gflags.put(

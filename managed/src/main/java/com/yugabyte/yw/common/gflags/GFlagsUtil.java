@@ -432,7 +432,12 @@ public class GFlagsUtil {
       }
     }
 
-    extra_gflags.putAll(getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
+    Map<String, String> ysqlGFlags =
+        getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp);
+    // Merge, don't replace: the tserver defaults above can carry new install ysql_pg_conf_csv
+    // entries (e.g. yb_enable_cbo=on). Telemetry entries win on key conflicts.
+    mergeCSVs(ysqlGFlags, extra_gflags, YSQL_PG_CONF_CSV, true);
+    extra_gflags.putAll(ysqlGFlags);
     extra_gflags.putAll(getYCQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam, universe));
 
@@ -1600,6 +1605,14 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+    // User entries win over platform defaults, but telemetry entries win over user entries.
+    String telemetryYsqlPgConfCsv = taskParams == null ? "" : getYsqlPgConfCsv(taskParams);
+    if (userGFlags.containsKey(YSQL_PG_CONF_CSV)
+        && StringUtils.isNotEmpty(telemetryYsqlPgConfCsv)) {
+      userGFlags.put(
+          YSQL_PG_CONF_CSV,
+          mergeCSVs(telemetryYsqlPgConfCsv, userGFlags.get(YSQL_PG_CONF_CSV), true));
+    }
     mergeCSVs(userGFlags, platformGFlags, ALLOWED_PREVIEW_FLAGS_CSV, true);
 
     // timestamp_hitory_retention_sec gflag should be max of platform and user values
