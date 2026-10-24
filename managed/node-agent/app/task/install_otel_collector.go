@@ -85,6 +85,14 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, nil
 	}
 
+	if h.param.GetDisableCollector() {
+		if err := h.disableOtelCollector(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		return nil, nil
+	}
+
 	userInfo, err := util.UserInfo(h.username)
 	if err != nil {
 		return nil, err
@@ -297,15 +305,22 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 }
 
 func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHome string) error {
-	otelCollectorConfigFile := filepath.Join(ybHome, "otel-collector", "config.yml")
-	otelColLogCleanupEnv := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
+	otelCollectorDir := filepath.Join(ybHome, "otel-collector")
+	otelCollectorConfigFile := filepath.Join(otelCollectorDir, "config.yml")
+	otelColLogCleanupEnv := filepath.Join(otelCollectorDir, "log_cleanup_env")
 	awsCredsFile := filepath.Join(ybHome, ".aws", "credentials")
-	gcpCredsFile := filepath.Join(ybHome, "otel-collector", "gcp_creds")
+	gcpCredsFile := filepath.Join(otelCollectorDir, "gcp_creds")
 
 	steps := []struct {
 		Desc string
 		Cmd  string
 	}{
+		// The disable path skips the package setup, which otherwise creates this directory, and
+		// can run on a node that never had the collector.
+		{
+			"ensure-otel-collector-dir",
+			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelCollectorDir, otelCollectorDir),
+		},
 		{
 			"remove-otel-collector-config-file-if-exists",
 			fmt.Sprintf(
@@ -392,6 +407,33 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		return err
 	}
 	return nil
+}
+
+// disableOtelCollector is the full install flow without the package setup, unit placement and
+// start. It skips the package so that a broken package cannot block turning export off.
+func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
+	// The full install always places the unit in the user systemd directory. No unit there means
+	// the collector never ran on this node, and systemctl stop fails on an unknown unit.
+	installed, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
+	if err != nil {
+		return err
+	}
+	if installed {
+		util.FileLogger().Infof(ctx, "Disable mode: stopping otel-collector")
+		if err := module.DisableSystemdService(
+			ctx,
+			h.username,
+			OtelCollectorService,
+			"", // Keep the unit file so that a later enable can start the service again.
+			h.logOut); err != nil {
+			return err
+		}
+	}
+	// No config file is sent in this mode, so this removes config.yml and the credentials.
+	if err := h.configureOtelCollector(ctx, ybHome); err != nil {
+		return err
+	}
+	return h.refreshLogPurgeScript(ctx, ybHome)
 }
 
 // refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template
