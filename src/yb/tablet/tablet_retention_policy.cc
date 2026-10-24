@@ -96,6 +96,13 @@ HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff 
   return committed_history_cutoff_information_;
 }
 
+void TabletRetentionPolicy::RestoreHistoryCutoffFromFlushedFrontier(HistoryCutoff value) {
+  absl::MutexLock lock(&mutex_);
+  VLOG_WITH_PREFIX(4) << __func__ << "(" << value << ")";
+  used_history_cutoff_floor_.MakeAtLeast(value);
+  committed_history_cutoff_information_.MakeAtLeast(value);
+}
+
 HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
   docdb::HistoryCutoff history_cutoff;
   {
@@ -106,6 +113,9 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     } else {
       history_cutoff = EffectiveHistoryCutoff();
       VLOG(4) << "Effective history cutoff " << history_cutoff;
+    }
+    ApplyUsedHistoryCutoffFloor(&history_cutoff);
+    if (!FLAGS_enable_history_cutoff_propagation) {
       committed_history_cutoff_information_.MakeAtLeast(history_cutoff);
     }
   }
@@ -244,6 +254,29 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
                       << ", schedules: " << AsString(metadata_.SnapshotSchedules());
 
   return allowed_cutoff;
+}
+
+void TabletRetentionPolicy::ApplyUsedHistoryCutoffFloor(HistoryCutoff* history_cutoff) {
+  // A cutoff below one already used by a compaction is unsafe, not just useless. Compaction at C
+  // keeps only the newest version of each column at or below C, so afterwards a column may have
+  // no version at or below a lower C'. Compacting at C' can then find a row's liveness entry at or
+  // below C' while every version of a column is above it, and packing that row fails for NOT NULL
+  // fixed-width columns (#35445).
+  //
+  // The floor never exceeds committed_history_cutoff_information_, which RegisterReaderTimestamp
+  // already enforces. Raising the cutoff to the floor only stops files not yet compacted at the
+  // floor from keeping versions that no registered reader can see.
+  auto apply_floor = [this](HybridTime* cutoff, HybridTime floor) {
+    // An invalid cotables cutoff means "use the primary cutoff", so it must stay invalid.
+    if (!cutoff->is_valid() || !floor.is_valid() || *cutoff >= floor) {
+      return;
+    }
+    VLOG_WITH_PREFIX(1) << "Raising history cutoff " << *cutoff << " to previously used " << floor;
+    *cutoff = floor;
+  };
+  apply_floor(&history_cutoff->primary_cutoff_ht, used_history_cutoff_floor_.primary_cutoff_ht);
+  apply_floor(&history_cutoff->cotables_cutoff_ht, used_history_cutoff_floor_.cotables_cutoff_ht);
+  used_history_cutoff_floor_.MakeAtLeast(*history_cutoff);
 }
 
 void TabletRetentionPolicy::EnableHistoryCutoffPropagation(bool value) {
