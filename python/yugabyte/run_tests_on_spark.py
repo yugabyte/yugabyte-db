@@ -1055,11 +1055,14 @@ def is_one_shot_test(rel_binary_path: str) -> bool:
 def collect_cpp_tests(
         conf: yb_dist_tests.TestConfig,
         cpp_test_program_filter_list: List[str],
-        test_descriptor_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
+        test_descriptor_filter_list: List[str],
+        cpp_test_program_skip_list: Optional[List[str]] = None
+        ) -> List[yb_dist_tests.TestDescriptor]:
     """
     Collect C++ test programs to run.
     @param cpp_test_program_filter_list: a list of C++ test program names to be used as a filter
     @param test_descriptor_filter_list: a list of individual test cases to be used as a filter
+    @param cpp_test_program_skip_list: a list of C++ test program names not to run
     """
 
     logging.info("Collecting the list of C++ test programs (locally; not a Spark job)")
@@ -1112,6 +1115,15 @@ def collect_cpp_tests(
                      "collected from ctest before filtering: {}").format(
                          set_to_comma_sep_str(cpp_test_program_filter),
                          set_to_comma_sep_str(unfiltered_test_programs)))
+
+    if cpp_test_program_skip_list:
+        cpp_test_program_skip = set(cpp_test_program_skip_list)
+        test_programs = [
+            test_program for test_program in test_programs
+            if os.path.basename(test_program) not in cpp_test_program_skip
+        ]
+        logging.info("Skipping these C++ test programs per the test conf file: %s",
+                     set_to_comma_sep_str(cpp_test_program_skip))
 
     if not test_programs:
         logging.info("Found no test programs")
@@ -1260,8 +1272,9 @@ def collect_tests(conf: yb_dist_tests.TestConfig,
     cpp_test_descriptors = []
     if args.run_cpp_tests:
         cpp_test_programs = cast(List[str], test_conf.get('cpp_test_programs'))
-        cpp_test_descriptors = collect_cpp_tests(conf, cpp_test_programs,
-                                                 test_descriptor_filter_list)
+        cpp_test_descriptors = collect_cpp_tests(
+            conf, cpp_test_programs, test_descriptor_filter_list,
+            cast(Optional[List[str]], test_conf.get('cpp_test_programs_to_skip')))
 
     java_test_descriptors = []
     if args.run_java_tests:
