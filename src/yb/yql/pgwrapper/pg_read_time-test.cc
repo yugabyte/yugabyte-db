@@ -983,6 +983,54 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(ResetMaxBatchSize(&conn));
 }
 
+// #35522: with yb_relaxed_read_after_commit_visibility_read_only_txns off,
+// relaxed mode also covers writes. A trigger, including a foreign key check,
+// can then lock or act on rows it read without the uncertainty window, so it
+// must not run.
+//
+// Scenario: in relaxed mode with the GUC off, writes that fire a foreign key
+// check from the child or the parent side, and a write that fires a user
+// trigger, all fail, also in a SERIALIZABLE transaction. The same writes
+// succeed with the GUC on.
+TEST_F(PgReadTimeTest, RelaxedModeRejectsTriggers) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE child (k INT PRIMARY KEY, pk INT REFERENCES parent)"));
+  ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION noop() RETURNS TRIGGER LANGUAGE plpgsql AS "
+      "$$BEGIN RETURN NEW; END$$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER t_noop BEFORE INSERT ON t "
+      "FOR EACH ROW EXECUTE FUNCTION noop()"));
+
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
+  constexpr auto kError =
+      "cannot run under relaxed read-after-commit visibility";
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("INSERT INTO child VALUES (1, 1)"), kError);
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("DELETE FROM parent WHERE k = 1"), kError);
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("INSERT INTO t VALUES (1)"), kError);
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("INSERT INTO child VALUES (2, 1)"), kError);
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("INSERT INTO t VALUES (2)"), kError);
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.Execute(
+      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = on"));
+  ASSERT_OK(conn.Execute("INSERT INTO child VALUES (3, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (3)"));
+}
+
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET DEFAULT_TRANSACTION_ISOLATION TO \"REPEATABLE READ\""));

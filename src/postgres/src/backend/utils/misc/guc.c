@@ -2632,7 +2632,9 @@ static struct config_bool ConfigureNamesBool[] =
 						 "READ ONLY transactions."),
 			gettext_noop("When off, relaxed mode applies to every statement, "
 						 "including writes and row locks, which can then miss "
-						 "rows that another node committed just before."),
+						 "rows that another node committed just before. "
+						 "Triggers, including foreign key checks, then "
+						 "fail."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_relaxed_read_after_commit_visibility_read_only_txns,

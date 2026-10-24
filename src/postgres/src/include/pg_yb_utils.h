@@ -1699,6 +1699,7 @@ YbIsNormalDbOidReserved(Oid db_oid)
 extern Oid	YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
+extern void YbPreventTriggerIfRelaxedRead(const char *trigname);
 extern bool YbSkipPgSnapshotManagement();
 
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();

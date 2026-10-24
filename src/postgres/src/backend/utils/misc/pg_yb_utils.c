@@ -9209,6 +9209,28 @@ YbIsReadCommittedTxn()
 	return IsYBReadCommitted() && !YbIsSeparateDDLOrInitDBMode();
 }
 
+/*
+ * #35522: a trigger, including a foreign key check, can lock or act on rows
+ * that it reads. With relaxed mode covering writes, that read can miss a row
+ * that another node committed just before. SERIALIZABLE never clamps the
+ * uncertainty window, so it could be exempt; it is rejected too for
+ * simplicity.
+ */
+void
+YbPreventTriggerIfRelaxedRead(const char *trigname)
+{
+	if (yb_read_after_commit_visibility ==
+		YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
+		!yb_relaxed_read_after_commit_visibility_read_only_txns)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("trigger \"%s\" cannot run under relaxed "
+						"read-after-commit visibility", trigname),
+				 errhint("Set yb_relaxed_read_after_commit_visibility_"
+						 "read_only_txns to on, or "
+						 "yb_read_after_commit_visibility to strict.")));
+}
+
 bool
 YbSkipPgSnapshotManagement()
 {

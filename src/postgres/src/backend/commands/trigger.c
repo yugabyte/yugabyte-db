@@ -64,6 +64,7 @@
 #include "utils/tuplestore.h"
 
 /* YB includes */
+#include "pg_yb_utils.h"
 #include "utils/yb_tuplecache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -2454,6 +2455,9 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 			!(trigdata->tg_event & AFTER_TRIGGER_DEFERRABLE) &&
 			!(trigdata->tg_event & AFTER_TRIGGER_INITDEFERRED)) ||
 		   (trigdata->tg_oldtable == NULL && trigdata->tg_newtable == NULL));
+
+	if (IsYugaByteEnabled())
+		YbPreventTriggerIfRelaxedRead(trigdata->tg_trigger->tgname);
 
 	finfo += tgindx;
 
