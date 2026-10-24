@@ -2406,6 +2406,14 @@ TEST_P(PgIndexBackfillFastDefaultClientTimeout, LowerDefaultClientTimeout) {
 class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
  public:
   int GetNumMasters() const override { return 3; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFastClientTimeout::UpdateMiniClusterOptions(options);
+    // Master failover takes ~20s under sanitizers (10 missed heartbeats, plus a possible split
+    // vote).  The ysql lease must outlast it, or the tservers kill the in-flight CREATE INDEX.
+    // Overrides the base fixture's 10s.
+    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=40000");
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
