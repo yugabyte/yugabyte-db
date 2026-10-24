@@ -242,29 +242,45 @@ Status XClusterOutboundReplicationGroup::CheckpointStreamsForInitialBootstrap(
     }
   }
 
+  // Streams recorded by an earlier attempt are not checkpointed again. That attempt's answer to
+  // whether a bootstrap is required was lost with its response, so assume one is. Looked up outside
+  // mutex_, which is not held while taking stream locks.
+  bool assume_bootstrap_required = false;
+  std::vector<std::pair<TableId, xrepl::StreamId>> streams_to_checkpoint;
+  for (const auto& [table_id, stream_id] : table_streams) {
+    if (VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(stream_id)).empty()) {
+      streams_to_checkpoint.emplace_back(table_id, stream_id);
+      continue;
+    }
+    LOG_WITH_PREFIX(INFO) << "Not checkpointing xCluster stream " << stream_id << " of table "
+                          << table_id << " again, since an earlier attempt recorded its checkpoint";
+    assume_bootstrap_required |= check_if_bootstrap_required;
+  }
+
   auto callback = [table_ids, user_cb = std::move(completion_cb),
-                   automatic_ddl_mode = automatic_ddl_mode_](Result<bool> result) {
+                   automatic_ddl_mode = automatic_ddl_mode_,
+                   assume_bootstrap_required](Result<bool> result) {
     if (!result.ok()) {
       user_cb(result.status());
       return;
     }
     // Bootstrap is always required in automatic mode.
-    user_cb(std::make_pair(std::move(table_ids), automatic_ddl_mode || *result));
+    user_cb(std::make_pair(
+        std::move(table_ids), automatic_ddl_mode || assume_bootstrap_required || *result));
   };
 
-  if (!table_ids.empty()) {
-    LOG_WITH_PREFIX(INFO) << "Checkpointing xcluster streams for " << table_ids.size()
+  if (!streams_to_checkpoint.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Checkpointing xcluster streams for " << streams_to_checkpoint.size()
                           << " table(s) in namespace " << namespace_id;
 
     RETURN_NOT_OK(helper_functions_.checkpoint_xcluster_streams_func(
-        table_streams, StreamCheckpointLocation::kCurrentEndOfWAL, epoch,
-        check_if_bootstrap_required, std::move(callback)));
+        streams_to_checkpoint, StreamCheckpointLocation::kCurrentEndOfWAL, epoch,
+        check_if_bootstrap_required, std::move(callback), /*op0_tablet_ids=*/{}));
   } else {
-    callback(false);  // Bootstrap not required if we don't have any tables.
-    // When MarkBootstrapTablesAsCheckpointed handles this empty table result it will mark the
-    // namespace as READY.
-    // So, after all tables have been checkpointed this function and
-    // MarkBootstrapTablesAsCheckpointed have to be called one extra time.
+    // Nothing to checkpoint: either an earlier attempt checkpointed all of these tables, or there
+    // are no tables left. An empty table result makes MarkBootstrapTablesAsCheckpointed mark the
+    // namespace READY, so it takes one extra call after all tables are checkpointed.
+    callback(false);
   }
 
   return Status::OK();
@@ -1112,6 +1128,8 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
     StdStatusCallback completion_cb) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(namespace_id, table_id);
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
+  std::optional<xrepl::StreamId> anchor_stream_id;
+  std::vector<TabletId> anchor_tablet_ids;
 
   {
     std::lock_guard mutex_lock(mutex_);
@@ -1139,9 +1157,40 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
 
     if (ns_table_info->has_wal_anchor_stream_id() &&
         !ns_table_info->wal_anchor_stream_id().empty()) {
-      table_streams.emplace_back(
-          table_id,
-          VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info->wal_anchor_stream_id())));
+      anchor_stream_id =
+          VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info->wal_anchor_stream_id()));
+    }
+  }
+
+  // A table stream recorded by an earlier attempt is not checkpointed again. Looked up outside
+  // mutex_, which is not held while taking stream locks.
+  const auto& table_stream_id = table_streams.front().second;
+  const auto table_stream_tablets =
+      VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(table_stream_id));
+  if (!table_stream_tablets.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Not checkpointing xCluster stream " << table_stream_id
+                          << " of table " << table_id
+                          << " again, since an earlier attempt recorded its checkpoint";
+    completion_cb(Status::OK());
+    return Status::OK();
+  }
+
+  if (anchor_stream_id) {
+    anchor_tablet_ids =
+        VERIFY_RESULT(helper_functions_.get_stream_bootstrap_tablets_func(*anchor_stream_id));
+    if (anchor_tablet_ids.empty()) {
+      // Checkpoint the anchor together with the table stream. An unrecorded anchor may have been
+      // checkpointed before (its record is skipped for an index checkpointed again after its
+      // backfill, and may fail to be written), but it kept splits blocked, so its tablets are
+      // still the current ones.
+      table_streams.emplace_back(table_id, *anchor_stream_id);
+    } else {
+      // The table stream replaces one whose DDL the target rolled back. Start it from the anchor's
+      // tablets, which may have split since, and leave the anchor's checkpoint as it is.
+      LOG_WITH_PREFIX(INFO) << "Checkpointing xCluster stream " << table_streams.front().second
+                            << " of table " << table_id << " from the tablets of WAL_ANCHOR "
+                            << "stream " << *anchor_stream_id << ": "
+                            << AsString(anchor_tablet_ids);
     }
   }
 
@@ -1155,7 +1204,8 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
         }
         LOG_IF(DFATAL, result.get()) << "No bootstrap should be needed when checkpointing OpId0";
         user_cb(Status::OK());
-      }));
+      },
+      anchor_tablet_ids));
 
   return Status::OK();
 }

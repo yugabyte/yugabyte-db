@@ -81,6 +81,9 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.xcluster_is_wal_anchor.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
+
+  // See SysCDCStreamEntryPB.xcluster_bootstrap_info.
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -832,6 +835,20 @@ message DeleteXClusterWalAnchorStreamsResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Sent by the tserver that ran BootstrapProducer, after it has written the checkpoints to
+// cdc_state.
+message RecordXClusterStreamBootstrapInfoRequestPB {
+  message StreamInfoPB {
+    optional bytes stream_id = 1;
+    repeated bytes checkpointed_tablet_ids = 2;
+  }
+  repeated StreamInfoPB streams = 1;
+}
+
+message RecordXClusterStreamBootstrapInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterOutboundReplicationGroupsRequestPB {
   optional string namespace_id = 1;
 }
@@ -1082,6 +1099,8 @@ service MasterReplication {
       returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
   rpc DeleteXClusterWalAnchorStreams(DeleteXClusterWalAnchorStreamsRequestPB)
       returns (DeleteXClusterWalAnchorStreamsResponsePB);
+  rpc RecordXClusterStreamBootstrapInfo(RecordXClusterStreamBootstrapInfoRequestPB)
+      returns (RecordXClusterStreamBootstrapInfoResponsePB);
   rpc GetXClusterOutboundReplicationGroups(
       GetXClusterOutboundReplicationGroupsRequestPB)
       returns (GetXClusterOutboundReplicationGroupsResponsePB);
