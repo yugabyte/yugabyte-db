@@ -156,6 +156,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     // allows to be on.
     new SessionParameter("scram_iterations", "4096", "1024",
       new ExceptionType[] {}),
+    // The YB PGC_OID GUC, set past INT_MAX: the saved-default and reset paths for OID GUCs are
+    // separate from the int ones.
+    new SessionParameter("yb_force_tablespace_locality_oid", "0", "4294967295",
+      new ExceptionType[] {}),
     new SessionParameter("check_function_bodies", "on", "off",
       new ExceptionType[] {}),
     new SessionParameter("default_transaction_read_only", "off", "on",
@@ -592,6 +596,40 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
             expectedValue, parameterName, fetchedValue),
             expectedValue.equals(fetchedValue));
       }
+    }
+  }
+
+  // A startup-packet value becomes the backend's reset value, and connection manager must restore
+  // the original reset value before the backend serves the next logical client
+  // (yb_reset_conn_mgr_default, which has a separate branch for PGC_OID GUCs). One client connects
+  // with yb_force_tablespace_locality_oid past INT_MAX; later clients without the option, which
+  // land on the same small pool, must see the default 0 for SHOW and after RESET.
+  @Test
+  public void testStartupOidParameterNotLeakedToNextClient() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c yb_force_tablespace_locality_oid=4294967295")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+      assertEquals("4294967295", showOidParameter(stmt));
+    }
+
+    for (int i = 0; i < 4; i++) {
+      try (Connection conn = getConnectionBuilder()
+          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+          .connect();
+          Statement stmt = conn.createStatement()) {
+        assertEquals("0", showOidParameter(stmt));
+        stmt.execute("RESET yb_force_tablespace_locality_oid");
+        assertEquals("0", showOidParameter(stmt));
+      }
+    }
+  }
+
+  private String showOidParameter(Statement stmt) throws Exception {
+    try (ResultSet rs = stmt.executeQuery("SHOW yb_force_tablespace_locality_oid")) {
+      assertTrue(rs.next());
+      return rs.getString(1);
     }
   }
 

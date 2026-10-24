@@ -213,6 +213,26 @@ struct config_enum
 };
 
 /*
+ * YB: PGC_OID variables.  An int GUC cannot hold every OID: YB allocates
+ * user OIDs above INT_MAX (normal space up to 2199999999, xCluster target
+ * space beyond).  Lives in config_generic's union as _oid, generated from
+ * guc_parameters.dat entries with type 'oid', which need min and max.
+ */
+struct yb_config_oid
+{
+	/* constant fields, must be set correctly in initial value: */
+	Oid		   *variable;
+	Oid			boot_val;
+	Oid			min;
+	Oid			max;
+	YbGucOidCheckHook check_hook;
+	YbGucOidAssignHook assign_hook;
+	GucShowHook show_hook;
+	/* variable fields, initialized at runtime: */
+	Oid			reset_val;
+};
+
+/*
  * Generic fields applicable to all types of variables
  *
  * The short description should be less than 80 chars in length. Some
@@ -289,39 +309,13 @@ struct config_generic
 		struct config_real _real;
 		struct config_string _string;
 		struct config_enum _enum;
+
+		/* YB fields */
+		struct yb_config_oid _oid;
 	};
 
 	/* YB: Saved default value in case conn mgr overrides the default */
 	GucStack   *ysql_conn_mgr_saved_default;
-};
-
-/*
- * YB_TODO_PG19MERGE: yb_config_oid hasn't been ported to the new PG layout
- * (it still embeds `struct config_generic gen` as its first field, rather than
- * living as a union member inside config_generic). PG commit
- * a13833c35f9e07fe978bf6fad984d6f5f25f59cd inverted this for PG's own types -
- * now config_generic contains the type-specific structs in a union
- * (._bool, ._int, ...) and the type-specific structs no longer have a gen field.
- * gen_guc_tables.pl will have to be updated to handle yb_config_oid (or we can
- * keep it in the individual struct + embedded config_generic form). See guc.c
- * for more info. Moved the definition below config_generic for now so that
- * the embedded struct is a complete type.
- */
-
-struct yb_config_oid
-{
-	struct config_generic gen;
-	/* constant fields, must be set correctly in initial value: */
-	Oid		   *variable;
-	Oid			boot_val;
-	Oid			min;
-	Oid			max;
-	YbGucOidCheckHook check_hook;
-	YbGucOidAssignHook assign_hook;
-	GucShowHook show_hook;
-	/* variable fields, initialized at runtime: */
-	Oid			reset_val;
-	void	   *reset_extra;
 };
 
 /* bit values in status field */

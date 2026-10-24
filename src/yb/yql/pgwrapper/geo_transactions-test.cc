@@ -1276,6 +1276,26 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestSessionVariableOverride) {
       kTablespace1, kTableName, kTableName,
       SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kGlobal, force_tablespace_bad_select);
+
+  // YB allocates user OIDs above INT_MAX (kPgUpperBoundNormalObjectId), so the OID GUC must take
+  // the whole unsigned range.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_force_tablespace_locality_oid = 4294967295"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_force_tablespace_locality_oid")),
+      "4294967295");
+  ASSERT_NOK(conn.Execute("SET yb_force_tablespace_locality_oid = -1"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SELECT vartype || ' ' || min_val || ' ' || max_val || ' ' || boot_val "
+          "FROM pg_settings WHERE name = 'yb_force_tablespace_locality_oid'")),
+      "oid 0 4294967295 0");
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET LOCAL yb_force_tablespace_locality_oid = 5"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_force_tablespace_locality_oid")),
+      "4294967295");
 }
 
 TEST_F(GeoTransactionsTablespaceLocalityTest, TestFK) {

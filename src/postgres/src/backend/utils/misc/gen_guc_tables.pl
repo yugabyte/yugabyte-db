@@ -51,6 +51,9 @@ sub validate_guc_entry
 		enum => [qw(options)],
 		bool => [],      # no extra required fields
 		string => [],    # no extra required fields
+
+		# YB
+		oid => [qw(min max)],
 	);
 
 	# All fields recognized by the generator.  "line_number" is injected
@@ -166,6 +169,14 @@ sub print_table
 		  if $entry->{assign_hook};
 		printf $ofh "\t\t\t.show_hook = %s,\n", $entry->{show_hook}
 		  if $entry->{show_hook};
+
+		# YB
+		if ($entry->{type} eq 'oid')
+		{
+			printf $ofh "\t\t\t.min = %s,\n", $entry->{min};
+			printf $ofh "\t\t\t.max = %s,\n", $entry->{max};
+		}
+
 		print $ofh "\t\t},\n";
 		print $ofh "\t},\n";
 		print $ofh "#endif\n" if $entry->{ifdef};

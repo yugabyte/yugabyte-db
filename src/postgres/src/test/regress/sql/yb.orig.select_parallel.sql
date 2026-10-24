@@ -266,6 +266,15 @@ select count(*) from tenk1;
 reset debug_parallel_query;
 reset role;
 
+-- YB: a PGC_OID GUC set in the leader reaches a parallel worker with its full
+-- unsigned value (serialize_variable / RestoreGUCState).
+set yb_force_tablespace_locality_oid = 4294967295;
+set debug_parallel_query = 1;
+explain (costs off) select current_setting('yb_force_tablespace_locality_oid');
+select current_setting('yb_force_tablespace_locality_oid');
+reset debug_parallel_query;
+reset yb_force_tablespace_locality_oid;
+
 -- Window function calculation can't be pushed to workers.
 explain (costs off, verbose)
   select count(*) from tenk1 a where (unique1, two) in

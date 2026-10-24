@@ -140,8 +140,8 @@ extern YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 extern double YBCGetTransactionPriority();
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void *extra);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void *extra);
-static bool call_oid_check_hook(struct yb_config_oid *conf, Oid *newval,
-								void **extra, GucSource source, int elevel);
+static bool yb_call_oid_check_hook(const struct config_generic *conf, Oid *newval,
+								   void **extra, GucSource source, int elevel);
 extern const char *yb_show_maxconnections(void);
 static void check_reserved_prefixes(const char *varName);
 
@@ -242,32 +242,6 @@ static const unit_conversion time_unit_conversion_table[] =
 
 	{""}						/* end of table marker */
 };
-
-/*
- * YB_TODO_PG19MERGE: the YB PGC_OID GUC (yb_force_tablespace_locality_oid) is not
- * yet ported -- guc_parameters.dat / gen_guc_tables.pl do not model PGC_OID. Kept
- * under #if 0 below until then.
- */
-#if 0
-static struct yb_config_oid ConfigureNamesOid[] =
-{
-	{
-		{"yb_force_tablespace_locality_oid", PGC_USERSET, UNGROUPED,
-			gettext_noop("Tablespace used for tablespace-based locality. Picked automatically "
-						 "if InvalidOid (default)."),
-			NULL
-		},
-		&yb_force_tablespace_locality_oid,
-		InvalidOid, 0, OID_MAX,
-		NULL, NULL, NULL
-	},
-
-	/* End-of-list marker */
-	{
-		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
-	}
-};
-#endif							/* YB_TODO_PG19MERGE: ConfigureNamesOid */
 
 /*
  * To allow continued support of obsolete names for GUC variables, we apply
@@ -878,14 +852,6 @@ extra_field_used(struct config_generic *gconf, void *extra)
 
 	if (extra == gconf->reset_extra)
 		return true;
-	/*
-	 * YB: PGC_OID has its own reset_extra outside the generic struct
-	 * (struct yb_config_oid.reset_extra), so check it explicitly.
-	 */
-	if (gconf->vartype == PGC_OID &&
-		extra == ((struct yb_config_oid *) gconf)->reset_extra)
-		return true;
-
 	for (GucStack *stack = gconf->stack; stack; stack = stack->prev)
 	{
 		if (extra == stack->prior.extra ||
@@ -932,9 +898,8 @@ set_stack_value(struct config_generic *gconf, config_var_value *val)
 		case PGC_INT:
 			val->val.intval = *gconf->_int.variable;
 			break;
-		case PGC_OID:
-			val->val.oidval =
-				*((struct yb_config_oid *) gconf)->variable;
+		case PGC_OID:			/* YB */
+			val->val.oidval = *gconf->_oid.variable;
 			break;
 		case PGC_REAL:
 			val->val.realval = *gconf->_real.variable;
@@ -1537,7 +1502,7 @@ check_GUC_init(const struct config_generic *gconf)
 			}
 		case PGC_OID:
 			{
-				const struct yb_config_oid *conf = (const struct yb_config_oid *) gconf;
+				const struct yb_config_oid *conf = &gconf->_oid;
 
 				if (*conf->variable != InvalidOid && *conf->variable != conf->boot_val)
 				{
@@ -1748,20 +1713,20 @@ InitializeOneGUCOption(struct config_generic *gconf)
 			}
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+				struct yb_config_oid *conf = &gconf->_oid;
 				Oid			newval = conf->boot_val;
 				void	   *extra = NULL;
 
 				Assert(newval >= conf->min);
 				Assert(newval <= conf->max);
-				if (!call_oid_check_hook(conf, &newval, &extra,
-										 PGC_S_DEFAULT, LOG))
+				if (!yb_call_oid_check_hook(gconf, &newval, &extra,
+											PGC_S_DEFAULT, LOG))
 					elog(FATAL, "failed to initialize %s to %u",
-						 conf->gen.name, newval);
+						 gconf->name, newval);
 				if (conf->assign_hook)
 					conf->assign_hook(newval, extra);
 				*conf->variable = conf->reset_val = newval;
-				conf->gen.extra = conf->reset_extra = extra;
+				gconf->extra = gconf->reset_extra = extra;
 				break;
 			}
 		case PGC_REAL:
@@ -2155,7 +2120,8 @@ yb_reset_conn_mgr_default(struct config_generic *gconf)
 			set_extra_field(gconf, &gconf->reset_extra, stack->prior.extra);
 			break;
 		case PGC_OID:
-			/* YB_TODO_PG19MERGE: YB-only PGC_OID lives outside the union; skip for now. */
+			gconf->_oid.reset_val = stack->prior.val.oidval;
+			set_extra_field(gconf, &gconf->reset_extra, stack->prior.extra);
 			break;
 		case PGC_REAL:
 			gconf->_real.reset_val = stack->prior.val.realval;
@@ -2264,14 +2230,14 @@ ResetAllOptions(void)
 				}
 			case PGC_OID:
 				{
-					struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+					struct yb_config_oid *conf = &gconf->_oid;
 
 					if (conf->assign_hook)
 						conf->assign_hook(conf->reset_val,
-										  conf->reset_extra);
+										  gconf->reset_extra);
 					*conf->variable = conf->reset_val;
-					set_extra_field(&conf->gen, &conf->gen.extra,
-									conf->reset_extra);
+					set_extra_field(gconf, &gconf->extra,
+									gconf->reset_extra);
 					break;
 				}
 			case PGC_REAL:
@@ -2739,17 +2705,17 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 						}
 					case PGC_OID:
 						{
-							struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+							struct yb_config_oid *conf = &gconf->_oid;
 							Oid			newval = newvalue.val.oidval;
 							void	   *newextra = newvalue.extra;
 
 							if (*conf->variable != newval ||
-								conf->gen.extra != newextra)
+								gconf->extra != newextra)
 							{
 								if (conf->assign_hook)
 									conf->assign_hook(newval, newextra);
 								*conf->variable = newval;
-								set_extra_field(&conf->gen, &conf->gen.extra,
+								set_extra_field(gconf, &gconf->extra,
 												newextra);
 								changed = true;
 							}
@@ -3664,7 +3630,7 @@ parse_and_validate_value(const struct config_generic *record,
 			break;
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) record;
+				const struct yb_config_oid *conf = &record->_oid;
 				const char *hintmsg;
 
 				if (!parse_oid(value, &newval->oidval, &hintmsg))
@@ -3681,14 +3647,14 @@ parse_and_validate_value(const struct config_generic *record,
 				{
 					ereport(elevel,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("%u is outside the valid range for parameter \"%s\" (%d .. %d)",
+							 errmsg("%u is outside the valid range for parameter \"%s\" (%u .. %u)",
 									newval->oidval, record->name,
 									conf->min, conf->max)));
 					return false;
 				}
 
-				if (!call_oid_check_hook(conf, &newval->oidval, newextra,
-										 source, elevel))
+				if (!yb_call_oid_check_hook(record, &newval->oidval, newextra,
+											source, elevel))
 					return false;
 			}
 			break;
@@ -3845,8 +3811,7 @@ yb_conn_mgr_save_default_value(struct config_generic *gconf)
 							gconf->reset_extra);
 			break;
 		case PGC_OID:
-			stack->prior.val.oidval =
-				((struct yb_config_oid *) gconf)->reset_val;
+			stack->prior.val.oidval = gconf->_oid.reset_val;
 			set_extra_field(gconf, &(stack->prior.extra),
 							gconf->reset_extra);
 			break;
@@ -4561,7 +4526,7 @@ set_config_with_handle(const char *name, config_handle *handle,
 
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) record;
+				struct yb_config_oid *conf = &record->_oid;
 
 #define newval (newval_union.oidval)
 
@@ -4575,16 +4540,16 @@ set_config_with_handle(const char *name, config_handle *handle,
 				else if (source == PGC_S_DEFAULT)
 				{
 					newval = conf->boot_val;
-					if (!call_oid_check_hook(conf, &newval, &newextra,
-											 source, elevel))
+					if (!yb_call_oid_check_hook(record, &newval, &newextra,
+												source, elevel))
 						return 0;
 				}
 				else
 				{
 					newval = conf->reset_val;
-					newextra = conf->reset_extra;
-					source = conf->gen.reset_source;
-					context = conf->gen.reset_scontext;
+					newextra = record->reset_extra;
+					source = record->reset_source;
+					context = record->reset_scontext;
 				}
 
 				if (prohibitValueChange)
@@ -4624,20 +4589,20 @@ set_config_with_handle(const char *name, config_handle *handle,
 				{
 					GucStack   *stack;
 
-					if (conf->gen.reset_source <= source)
+					if (record->reset_source <= source)
 					{
 						conf->reset_val = newval;
-						set_extra_field(&conf->gen, &conf->reset_extra,
+						set_extra_field(record, &record->reset_extra,
 										newextra);
-						conf->gen.reset_source = source;
-						conf->gen.reset_scontext = context;
+						record->reset_source = source;
+						record->reset_scontext = context;
 					}
-					for (stack = conf->gen.stack; stack; stack = stack->prev)
+					for (stack = record->stack; stack; stack = stack->prev)
 					{
 						if (stack->source <= source)
 						{
 							stack->prior.val.oidval = newval;
-							set_extra_field(&conf->gen, &stack->prior.extra,
+							set_extra_field(record, &stack->prior.extra,
 											newextra);
 							stack->source = source;
 							stack->scontext = context;
@@ -4646,8 +4611,8 @@ set_config_with_handle(const char *name, config_handle *handle,
 				}
 
 				/* Perhaps we didn't install newextra anywhere */
-				if (newextra && !extra_field_used(&conf->gen, newextra))
-					free(newextra);
+				if (newextra && !extra_field_used(record, newextra))
+					guc_free(newextra);
 				break;
 
 #undef newval
@@ -5171,9 +5136,9 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 					 *record->_int.variable);
 			return buffer;
 
-		case PGC_OID:
+		case PGC_OID:			/* YB */
 			snprintf(buffer, sizeof(buffer), "%u",
-					 *((struct yb_config_oid *) record)->variable);
+					 *record->_oid.variable);
 			return buffer;
 
 		case PGC_REAL:
@@ -5224,9 +5189,9 @@ GetConfigOptionResetString(const char *name)
 					 record->_int.reset_val);
 			return buffer;
 
-		case PGC_OID:
+		case PGC_OID:			/* YB */
 			snprintf(buffer, sizeof(buffer), "%u",
-					 ((struct yb_config_oid *) record)->reset_val);
+					 record->_oid.reset_val);
 			return buffer;
 
 		case PGC_REAL:
@@ -6011,20 +5976,18 @@ DefineCustomOidVariable(const char *name,
 						YbGucOidAssignHook assign_hook,
 						GucShowHook show_hook)
 {
-	struct yb_config_oid *var;
+	struct config_generic *var;
 
-	var = (struct yb_config_oid *)
-		init_custom_variable(name, short_desc, long_desc, context, flags,
-							 PGC_OID);
-	var->variable = valueAddr;
-	var->boot_val = bootValue;
-	var->reset_val = bootValue;
-	var->min = minValue;
-	var->max = maxValue;
-	var->check_hook = check_hook;
-	var->assign_hook = assign_hook;
-	var->show_hook = show_hook;
-	define_custom_variable(&var->gen);
+	var = init_custom_variable(name, short_desc, long_desc, context, flags, PGC_OID);
+	var->_oid.variable = valueAddr;
+	var->_oid.boot_val = bootValue;
+	var->_oid.reset_val = bootValue;
+	var->_oid.min = minValue;
+	var->_oid.max = maxValue;
+	var->_oid.check_hook = check_hook;
+	var->_oid.assign_hook = assign_hook;
+	var->_oid.show_hook = show_hook;
+	define_custom_variable(var);
 }
 
 void
@@ -6654,7 +6617,7 @@ ShowGUCOption(const struct config_generic *record, bool use_units)
 		case PGC_OID:
 			/* YB_TODO(alex@yugabyte) Is this case still needed for Pg13+ */
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) record;
+				const struct yb_config_oid *conf = &record->_oid;
 
 				if (conf->show_hook)
 					val = conf->show_hook();
@@ -6792,7 +6755,7 @@ write_one_nondefault_variable(FILE *fp, struct config_generic *gconf)
 
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+				struct yb_config_oid *conf = &gconf->_oid;
 
 				fprintf(fp, "%u", *conf->variable);
 			}
@@ -7072,7 +7035,7 @@ estimate_variable_size(struct config_generic *gconf)
 
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+				struct yb_config_oid *conf = &gconf->_oid;
 
 				/*
 				 * Instead of getting the exact display length, use max
@@ -7254,7 +7217,7 @@ serialize_variable(char **destptr, Size *maxbytes,
 
 		case PGC_OID:
 			{
-				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+				struct yb_config_oid *conf = &gconf->_oid;
 
 				do_serialize(destptr, maxbytes, "%u", *conf->variable);
 			}
@@ -8063,11 +8026,11 @@ call_int_check_hook(const struct config_generic *conf, int *newval, void **extra
 }
 
 static bool
-call_oid_check_hook(struct yb_config_oid *conf, Oid *newval, void **extra,
-					GucSource source, int elevel)
+yb_call_oid_check_hook(const struct config_generic *conf, Oid *newval, void **extra,
+					   GucSource source, int elevel)
 {
 	/* Quick success if no hook */
-	if (!conf->check_hook)
+	if (!conf->_oid.check_hook)
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -8076,14 +8039,14 @@ call_oid_check_hook(struct yb_config_oid *conf, Oid *newval, void **extra,
 	GUC_check_errdetail_string = NULL;
 	GUC_check_errhint_string = NULL;
 
-	if (!conf->check_hook(newval, extra, source))
+	if (!conf->_oid.check_hook(newval, extra, source))
 	{
 		ereport(elevel,
 				(errcode(GUC_check_errcode_value),
 				 GUC_check_errmsg_string ?
 				 errmsg_internal("%s", GUC_check_errmsg_string) :
 				 errmsg("invalid value for parameter \"%s\": %u",
-						conf->gen.name, *newval),
+						conf->name, *newval),
 				 GUC_check_errdetail_string ?
 				 errdetail_internal("%s", GUC_check_errdetail_string) : 0,
 				 GUC_check_errhint_string ?
