@@ -273,6 +273,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
     searchBaseLayer(tableint ep_id, const void *data_point, int layer) {
+        return searchBaseLayer(ep_id, data_point, layer, ef_construction_);
+    }
+
+    // Searches the layer with beam width ef, visiting only points with internal ids below limit.
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    searchBaseLayer(
+            tableint ep_id, const void *data_point, int layer, size_t ef,
+            tableint limit = std::numeric_limits<tableint>::max()) {
         VisitedList *vl = visited_list_pool_->getFreeVisitedList();
         vl_type *visited_array = vl->mass;
         vl_type visited_array_tag = vl->curV;
@@ -294,7 +302,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         while (!candidateSet.empty()) {
             std::pair<dist_t, tableint> curr_el_pair = candidateSet.top();
-            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef_construction_) {
+            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef) {
                 break;
             }
             candidateSet.pop();
@@ -326,12 +334,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
                 _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
 #endif
-                if (visited_array[candidate_id] == visited_array_tag) continue;
+                if (candidate_id >= limit || visited_array[candidate_id] == visited_array_tag) continue;
                 visited_array[candidate_id] = visited_array_tag;
                 char *currObj1 = (getDataByInternalId(candidate_id));
 
                 dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
-                if (top_candidates.size() < ef_construction_ || lowerBound > dist1) {
+                if (top_candidates.size() < ef || lowerBound > dist1) {
                     candidateSet.emplace(-dist1, candidate_id);
 #ifdef USE_SSE
                     _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
@@ -340,7 +348,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                     if (!isMarkedDeleted(candidate_id))
                         top_candidates.emplace(dist1, candidate_id);
 
-                    if (top_candidates.size() > ef_construction_)
+                    if (top_candidates.size() > ef)
                         top_candidates.pop();
 
                     if (!top_candidates.empty())
@@ -489,9 +497,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     }
 
 
+    // A candidate is dropped when it is closer than distance to the base point divided by alpha
+    // to an already selected one. Alpha other than 1 makes sense only for non-negative distances.
     void getNeighborsByHeuristic2(
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
-        const size_t M) {
+        const size_t M, float alpha = 1.0f) {
         if (top_candidates.size() < M) {
             return;
         }
@@ -516,7 +526,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                         fstdistfunc_(getDataByInternalId(second_pair.second),
                                         getDataByInternalId(curent_pair.second),
                                         dist_func_param_);
-                if (curdist < dist_to_query) {
+                // Without alpha distances are compared exactly, integer ones may not fit float.
+                if (alpha == 1.0f ? curdist < dist_to_query
+                                  : static_cast<double>(alpha) * curdist < dist_to_query) {
                     good = false;
                     break;
                 }
@@ -1038,6 +1050,50 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
             updatePoint(data_point, internal_id_replaced, 1.0);
         }
         return internal_id_replaced;
+    }
+
+
+    // Appends a point with the specified level and no links, returns its internal id.
+    // Not thread safe.
+    tableint appendPoint(const void *data_point, label_t label, int level) {
+        if (cur_element_count >= max_elements_) {
+            throw std::runtime_error("The number of elements exceeds the specified limit");
+        }
+        tableint cur_c = cur_element_count++;
+        label_lookup_[label] = cur_c;
+        element_levels_[cur_c] = level;
+        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
+        memcpy(getExternalLabeLp(cur_c), &label, sizeof(label_t));
+        memcpy(getDataByInternalId(cur_c), data_point, data_size_);
+        if (level) {
+            const auto list_mem_size = size_links_per_element_ * level + sizeof(void*);
+            linkLists_[cur_c] = (char *) malloc(list_mem_size);
+            if (linkLists_[cur_c] == nullptr)
+                throw std::runtime_error("Not enough memory: appendPoint failed to allocate linklist");
+            memset(linkLists_[cur_c], 0, list_mem_size);
+        }
+        return cur_c;
+    }
+
+
+    // Replaces links of the point on the level. Not thread safe for the same point.
+    void setLinks(tableint internal_id, int level, const tableint *links, size_t size) {
+        if (size > (level ? maxM_ : maxM0_)) {
+            throw std::runtime_error("Too many links");
+        }
+        linklistsizeint *ll = get_linklist_at_level(internal_id, level);
+        setListCount(ll, size);
+        if (size) {
+            memcpy(ll + 1, links, size * sizeof(tableint));
+        }
+    }
+
+
+    // Makes the point the entry point, the graph max level becomes the level of the point.
+    // Not thread safe.
+    void setEntryPoint(tableint internal_id) {
+        enterpoint_node_ = internal_id;
+        maxlevel_ = element_levels_[internal_id];
     }
 
 
@@ -1605,6 +1661,11 @@ class VectorIterator {
     // Prefix increment operator
     VectorIterator& operator++() {
         ++curr_internal_id_;  // Move to the next element
+        return *this;
+    }
+
+    VectorIterator& operator+=(size_t n) {
+        curr_internal_id_ += static_cast<tableint>(n);
         return *this;
     }
 

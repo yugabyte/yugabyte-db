@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/kv_util.h"
@@ -78,6 +80,56 @@ struct SearchOptions {
   }
 };
 
+/// HNSW graph of a saved vector index. Vectors are numbered from 0 to Size() - 1, a vector is
+/// present on layers from 0 to its level. Not thread safe.
+template <IndexableVectorType Vector>
+class HnswGraphReaderIf {
+ public:
+  virtual ~HnswGraphReaderIf() = default;
+
+  virtual size_t Size() const = 0;
+  virtual uint32_t EntryPoint() const = 0;
+  virtual size_t Level(uint32_t vector) const = 0;
+
+  /// Replaces out with the neighbors of the vector on the layer.
+  virtual void GetNeighbors(size_t layer, uint32_t vector, std::vector<uint32_t>& out) = 0;
+
+  virtual VectorIndexEntry<Vector> GetEntry(uint32_t vector) = 0;
+
+  /// The payload is valid until the next call to the reader.
+  virtual std::pair<VectorId, Slice> GetVectorIdAndPayload(uint32_t vector) = 0;
+};
+
+/// Runs fn for every number from 0 to count, possibly in parallel. Returns the first failure.
+using ParallelForFunc =
+    std::function<Status(size_t count, const std::function<Status(size_t)>& fn)>;
+
+/// Called periodically by long sequential steps. A failure stops them, e.g. on shutdown.
+using CheckpointFunc = std::function<Status()>;
+
+/// Builds the HNSW graph of a new vector index from the graphs of other indexes, instead of
+/// inserting all their vectors. See VectorLSM compaction.
+template <IndexableVectorType Vector>
+class HnswGraphBuilderIf {
+ public:
+  virtual ~HnswGraphBuilderIf() = default;
+
+  /// Copies vectors and the graph of the source to this empty index, keeping vector numbers.
+  virtual Status CopyGraph(
+      HnswGraphReaderIf<Vector>& source, const CheckpointFunc& checkpoint) = 0;
+
+  /// Merges vectors and the graph of the source into the graph of this index, as HNSW-Merger
+  /// does (SIGMOD 2026, "Efficient Vector Index Merging in Vector Databases"): each source vector
+  /// searches this graph for ef nearest vectors to connect with, and the found vectors get
+  /// links back to it. The source vectors are appended in the order of their numbers.
+  virtual Status MergeGraph(
+      HnswGraphReaderIf<Vector>& source, size_t ef, const ParallelForFunc& parallel_for,
+      const CheckpointFunc& checkpoint) = 0;
+
+  /// Returns ef for MergeGraph: max(2 * M, ef_construction * percentage / 100).
+  virtual size_t MergeEf(size_t percentage) const = 0;
+};
+
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf;
 
@@ -99,6 +151,11 @@ class VectorIndexReaderIf {
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
   virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
+
+  /// Returns nullptr when the index does not expose its HNSW graph.
+  virtual std::unique_ptr<HnswGraphReaderIf<Vector>> CreateHnswGraphReader() const {
+    return nullptr;
+  }
 
   Iterator begin() const { return Iterator(BeginImpl()); }
   Iterator end()   const { return Iterator(EndImpl()); }
@@ -171,6 +228,11 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   // Could be considered as a variation of cleanup paradigm rocskdb::Cleanable.
   virtual std::shared_ptr<void> Attach(std::shared_ptr<void>) = 0;
 
+  /// Returns nullptr when the index could not be built from HNSW graphs of other indexes.
+  virtual HnswGraphBuilderIf<Vector>* HnswGraphBuilder() {
+    return nullptr;
+  }
+
   virtual ~VectorIndexIf() = default;
 };
 
@@ -203,6 +265,11 @@ class VectorIndexTraitsIf {
   // Whether the implementation stores attached vector payloads in a separate payload file next
   // to the index file, because its own format cannot store them. See VectorPayloadMap.
   virtual bool StoresPayloadInSeparateFile() const {
+    return false;
+  }
+
+  /// Whether created indexes provide VectorIndexIf::HnswGraphBuilder.
+  virtual bool BuildsFromHnswGraphs() const {
     return false;
   }
 };
