@@ -52,8 +52,9 @@ public interface TaskRollbackComputer {
   }
 
   /**
-   * Whether the failed task may be rolled back, judged from its own params alone. Listing and
-   * submit both apply it; it must stay cheap and load no universe. Default true.
+   * Task-list hint: whether the failed task may be rolled back, judged from its own params alone.
+   * It runs on every task-list render, so it must stay cheap and load no universe. Submit does not
+   * use it; {@link #compute} checks the universe and gives the reason. Default true.
    */
   default boolean canRollbackFromParams(TaskInfo failedTask) {
     return true;

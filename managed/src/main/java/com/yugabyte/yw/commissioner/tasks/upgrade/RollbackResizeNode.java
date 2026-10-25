@@ -86,7 +86,11 @@ public class RollbackResizeNode extends ResizeNode {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
-    ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    if (isFirstTry) {
+      // A retry finishes a rollback that already started; refusing it would leave the universe
+      // locked with nothing left to run.
+      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    }
     requireStateTransitionDetails(universe).requireRollbackable();
   }
 

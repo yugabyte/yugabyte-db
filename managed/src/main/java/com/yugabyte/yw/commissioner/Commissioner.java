@@ -438,8 +438,8 @@ public class Commissioner {
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
-    // Listing hint: @CanRollback + error state + optional moreCondition (ownership) + the task's
-    // own params, same pattern as retryable. Submit uses canTaskRollbackDetailed (universe
+    // Listing hint: @CanRollback + error state + optional moreCondition (ownership, then the task's
+    // own params), same pattern as retryable. Submit uses canTaskRollbackDetailed (universe
     // checkpoint when present).
     boolean canRollback =
         canTaskRollback(
@@ -453,8 +453,9 @@ public class Commissioner {
                       ? placementLockTasks
                       : updatingTasks;
               return owners
-                  .getOrDefault(task.getTargetUUID(), Collections.emptySet())
-                  .contains(tf.getUuid().toString());
+                      .getOrDefault(task.getTargetUUID(), Collections.emptySet())
+                      .contains(tf.getUuid().toString())
+                  && isRollbackAllowedByParams(tf);
             });
     responseJson.put("canRollback", canRollback);
     if (isTaskPaused(taskInfo.getUuid())) {
@@ -514,22 +515,21 @@ public class Commissioner {
    * {@link #isTaskRetryable(TaskInfo, Predicate)}).
    *
    * <p>Checks {@code @CanRollback} + error state + feature flag ({@link
-   * TaskRollbackComputer#isEnabled()}), then {@code moreCondition}, then the task's own params
-   * ({@link TaskRollbackComputer#canRollbackFromParams}). The params check comes last so listing
-   * parses params only for the task that owns the universe. Listing passes placement/updating
-   * ownership without loading the universe. Submit uses {@link #canTaskRollbackDetailed(TaskInfo)}.
+   * TaskRollbackComputer#isEnabled()}), then {@code moreCondition}. Listing passes
+   * placement/updating ownership without loading the universe. Submit uses {@link
+   * #canTaskRollbackDetailed(TaskInfo)}.
    */
   public boolean canTaskRollback(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
     if (canTaskTypeRollback(taskInfo.getTaskType())
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())
         && isRollbackFeatureEnabled(taskInfo.getTaskType())) {
-      return moreCondition.test(taskInfo) && isRollbackAllowedByParams(taskInfo);
+      return moreCondition.test(taskInfo);
     }
     return false;
   }
 
   /**
-   * Overload with no extra condition (annotation + error state + feature flag + params). Prefer
+   * Listing-path overload with no extra condition (annotation + error state + feature flag). Prefer
    * {@link #canTaskRollback(TaskInfo, Predicate)} when ownership or universe checks apply.
    */
   public boolean canTaskRollback(TaskInfo taskInfo) {
@@ -546,9 +546,22 @@ public class Commissioner {
     return computer == null || computer.isEnabled();
   }
 
+  /**
+   * Listing hint from the failed task's own params. A task whose params cannot be read is left to
+   * submit, which checks the universe, so one bad row cannot break the task list.
+   */
   private boolean isRollbackAllowedByParams(TaskInfo taskInfo) {
     TaskRollbackComputer computer = taskRollbackComputers.get().get(taskInfo.getTaskType());
-    return computer == null || computer.canRollbackFromParams(taskInfo);
+    if (computer == null) {
+      return true;
+    }
+    try {
+      return computer.canRollbackFromParams(taskInfo);
+    } catch (Exception e) {
+      log.warn(
+          "canRollbackFromParams check failed for task {}: {}", taskInfo.getUuid(), e.getMessage());
+      return true;
+    }
   }
 
   /**
