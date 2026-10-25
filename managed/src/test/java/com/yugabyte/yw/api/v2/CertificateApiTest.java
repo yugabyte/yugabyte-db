@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
@@ -17,6 +18,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -25,7 +27,10 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Users;
+import io.ebean.DuplicateKeyException;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyPair;
@@ -150,6 +155,34 @@ public class CertificateApiTest extends FakeDBApplication {
   }
 
   @Test
+  public void losingALabelRaceLeavesNoFilesBehind() throws Exception {
+    createOk(spec("n2n-root", certPem, keyPem));
+    File customerCertsDir =
+        new File(AppConfigHelper.getStoragePath() + "/certs/" + customerUuid);
+    int dirsBefore = customerCertsDir.list().length;
+    int filesInDbBefore = FileData.getCount();
+
+    // What the handler's check can't see: another request saved the label in the meantime, so the
+    // insert fails after the files are written.
+    assertThrows(
+        DuplicateKeyException.class,
+        () ->
+            CertificateHelper.uploadRootCA(
+                "n2n-root",
+                customerUuid,
+                AppConfigHelper.getStoragePath(),
+                certPem,
+                keyPem,
+                CertConfigType.SelfSigned,
+                null,
+                null,
+                true));
+
+    assertEquals(dirsBefore, customerCertsDir.list().length);
+    assertEquals(filesInDbBefore, FileData.getCount());
+  }
+
+  @Test
   public void keyOfAnotherCertificateIsBadRequest() throws Exception {
     String otherKey =
         CertificateHelper.getAsPemString(CertificateHelper.getKeyPairObject().getPrivate());
@@ -234,6 +267,16 @@ public class CertificateApiTest extends FakeDBApplication {
     JsonNode cert = createOk(spec("generated-10y", null, null).put("lifetime_years", 10));
 
     assertEquals(10, lifetimeYears(cert));
+  }
+
+  @Test
+  public void lifetimeAboveLimitIsBadRequest() {
+    ObjectNode body = spec("generated-too-long", null, null).put("lifetime_years", 101);
+
+    Result result = assertPlatformException(() -> create(customerUuid, apiToken, body));
+
+    assertBadRequest(result, "lifetimeYears");
+    assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
   }
 
   @Test

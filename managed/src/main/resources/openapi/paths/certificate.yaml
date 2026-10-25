@@ -21,7 +21,7 @@
       '200':
         $ref: "../components/responses/CertificateResp.yaml"
       '400':
-        description: 'Invalid input, such as content that isn''t PEM, a key that doesn''t match the certificate, only one of cert_content and key_content, lifetime_years with an uploaded CA, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA'
+        description: 'Invalid input, such as content that isn''t PEM, only one of cert_content and key_content, lifetime_years with an uploaded CA or outside 1-100, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA or a key that doesn''t match it'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on the customer'
       '409':

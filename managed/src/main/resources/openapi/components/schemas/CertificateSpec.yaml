@@ -24,6 +24,7 @@ properties:
     description: 'Validity of a CA that YBA generates, in years. Defaults to yb.tlsCertificate.root.expiryInYears. Only for a generated CA.'
     type: integer
     format: int32
+    maximum: 100
     minimum: 1
 x-yba-api-since: 2026.2.0.0
 x-yba-api-visibility: preview
