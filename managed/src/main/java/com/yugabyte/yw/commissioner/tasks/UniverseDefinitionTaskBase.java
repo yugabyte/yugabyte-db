@@ -4774,7 +4774,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Best-effort stop of the processes on nodes a rollback is removing: YBC is stopped, the tserver
    * and master are stopped and deconfigured. Errors are ignored because a node may never have
-   * started them, and nodes without an IP are skipped.
+   * started them.
    */
   protected void createStopProcessesForRollbackTasks(
       Universe universe, Collection<NodeDetails> nodes) {
