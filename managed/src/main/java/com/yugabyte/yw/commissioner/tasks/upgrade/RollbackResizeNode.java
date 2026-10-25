@@ -189,6 +189,9 @@ public class RollbackResizeNode extends ResizeNode {
 
   private boolean cloudIopsOrThroughputDiffers(NodeDetails node, DeviceInfo desired) {
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
+    // An ephemeral-storage node has no cloud disks to compare. YBA's own disk settings still go
+    // through super.isModifyingDevice, and forward resize refuses disk changes on these nodes, so
+    // those settings match before and after.
     if (cloud == null || desired == null || !cloud.hasDataDisks()) {
       return false;
     }
