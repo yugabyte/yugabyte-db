@@ -417,6 +417,9 @@ class ReadablePBContainerFile {
 
 // Convenience functions for protobuf containers holding just one record.
 
+/// Returns whether the file at path starts with the protobuf container magic.
+Result<bool> IsPBContainerFile(Env* env, const std::string& path);
+
 // Load a "containerized" protobuf from the given path.
 // If the file does not exist, returns STATUS(NotFound, ""). Otherwise, may
 // return other Status error codes such as Status::IOError.

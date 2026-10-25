@@ -817,6 +817,18 @@ Status ReadPBContainer(
 
 } // namespace
 
+Result<bool> IsPBContainerFile(Env* env, const std::string& path) {
+  std::unique_ptr<RandomAccessFile> file;
+  RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
+  if (VERIFY_RESULT(file->Size()) < kPBContainerMagicLen) {
+    return false;
+  }
+  uint8_t scratch[kPBContainerMagicLen];
+  Slice magic;
+  RETURN_NOT_OK(env_util::ReadFully(file.get(), 0, kPBContainerMagicLen, &magic, scratch));
+  return magic == Slice(kPBContainerMagic, kPBContainerMagicLen);
+}
+
 Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
   return ReadPBContainer(env, path, msg);
 }
