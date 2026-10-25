@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <future>
+
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
@@ -30,6 +32,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/rpc/rpc.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -43,13 +47,20 @@ using namespace std::literals;
 DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_pause_sending_txn_status_requests);
+DECLARE_bool(TEST_simulate_failing_heartbeats_to_old_status_tablet);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_int32(TEST_delay_rollback_heartbeat_response_ms);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 
 namespace yb {
 namespace client {
+
+// Whether StartAndPromoteTransaction waits for the promoted transaction to be retired at its old
+// status tablet. Transactions whose heartbeats to the old status tablet are failing stay registered
+// there until commit or abort, so such tests must not wait.
+YB_STRONGLY_TYPED_BOOL(WaitForOldTxnAbort);
 
 class TransactionPromotionTest : public TransactionTestBase<MiniCluster> {
  protected:
@@ -121,7 +132,8 @@ class TransactionPromotionTest : public TransactionTestBase<MiniCluster> {
     TabletId new_status_tablet;
   };
 
-  Result<PromotedTxn> StartAndPromoteTransaction() {
+  Result<PromotedTxn> StartAndPromoteTransaction(
+      WaitForOldTxnAbort wait_for_old_txn_abort = WaitForOldTxnAbort::kTrue) {
     auto txn = std::make_shared<YBTransaction>(
         &transaction_manager_.value(), TransactionFullLocality::RegionLocal());
     RETURN_NOT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
@@ -132,8 +144,17 @@ class TransactionPromotionTest : public TransactionTestBase<MiniCluster> {
     LOG(INFO) << "Status tablet before promotion: " << old_status_tablet;
 
     RETURN_NOT_OK(txn->EnsureGlobal());
-    RETURN_NOT_OK(WaitFor([&txn] { return txn->OldTransactionAborted(); },
-                          15s * kTimeMultiplier, "old status tablet aborted"));
+    if (wait_for_old_txn_abort) {
+      RETURN_NOT_OK(WaitFor([&txn] { return txn->OldTransactionAborted(); },
+                            15s * kTimeMultiplier, "old status tablet aborted"));
+    } else {
+      // metadata() only succeeds once the transaction is registered at its new status tablet, so
+      // this also covers the transaction becoming usable again after promotion.
+      RETURN_NOT_OK(WaitFor([&txn, &old_status_tablet] {
+        auto metadata = txn->metadata();
+        return metadata.ok() && metadata->status_tablet != old_status_tablet;
+      }, 15s * kTimeMultiplier, "promoted to global status tablet"));
+    }
 
     auto new_status_tablet = VERIFY_RESULT(txn->metadata()).status_tablet;
     LOG(INFO) << "Status tablet after promotion: " << new_status_tablet;
@@ -257,6 +278,47 @@ TEST_F(TransactionPromotionTest, PromotedTransactionIntentsReadableForCDC) {
       << "CDC intents fetch returned nothing for a promoted transaction's provisional write";
 
   ASSERT_OK(t.transaction->CommitFuture().get());
+}
+
+// A promoted transaction whose old status tablet heartbeats are failing stays registered at both,
+// so a savepoint rollback sends a heartbeat to each and returns the old one's failure once both
+// complete.
+TEST_F(TransactionPromotionTest, RollbackWithHeartbeatInFlight) {
+  DisableTransactionTimeout();
+  // Disable periodic heartbeats so rpcs() occupancy reflects only the rollback heartbeat RPCs this
+  // test cares about. (CREATED and PROMOTED heartbeats used during promotion are still sent.)
+  SetDisableHeartbeatInTests(true);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) = true;
+
+  auto t = ASSERT_RESULT(StartAndPromoteTransaction(WaitForOldTxnAbort::kFalse));
+  auto& txn = t.transaction;
+
+  auto sub_txn_id = txn->IncrementAndGetSubTransactionId();
+  ASSERT_OK(WriteRow(CreateSession(txn), /*key=*/2, /*value=*/2));
+
+  auto& rpcs = transaction_manager_->rpcs();
+  ASSERT_OK(WaitFor([&rpcs] { return rpcs.TEST_NumActiveCalls() == 0; },
+                    15s * kTimeMultiplier, "promotion rpcs completed"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_rollback_heartbeat_response_ms) =
+      5000 * kTimeMultiplier;
+
+  auto rollback = std::async(std::launch::async, [&txn, sub_txn_id] {
+    return txn->RollbackToSubTransaction(sub_txn_id, TransactionRpcDeadline());
+  });
+  // The old status tablet's failure is injected without an rpc, so the registered call is the
+  // heartbeat to the new status tablet.
+  ASSERT_OK(WaitFor([&rpcs] { return rpcs.TEST_NumActiveCalls() == 1; },
+                    5s * kTimeMultiplier, "rollback heartbeat to new status tablet in flight"));
+
+  // TimedOut is the status injected for the old status tablet, so it also confirms the transaction
+  // was still registered there.
+  auto status = rollback.get();
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+
+  txn.reset();
+  ASSERT_EQ(rpcs.TEST_NumActiveCalls(), 0)
+      << "transaction destroyed with a rollback heartbeat rpc still registered";
 }
 
 }  // namespace client
