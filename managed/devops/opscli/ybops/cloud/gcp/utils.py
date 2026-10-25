@@ -152,6 +152,12 @@ class GcpMetadata():
         return GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
 
     @staticmethod
+    def zone():
+        # Of the form projects/PROJECT_NUMBER/zones/ZONE.
+        zone = GcpMetadata._query_endpoint("instance/zone")
+        return zone.split("/")[-1] if zone else None
+
+    @staticmethod
     def service_accounts():
         return GcpMetadata._query_endpoint("instance/service-accounts/")
 
@@ -589,12 +595,16 @@ class GoogleCloudAdmin():
         network = GcpMetadata.network()
         shared_vpc_project = GcpMetadata.shared_vpc_project()
         project = GcpMetadata.project()
+        zone = GcpMetadata.zone()
         if network is None or project is None:
             raise YBOpsRuntimeError("Unable to auto-discover GCP provider information")
         return {
             "network": network.split("/")[-1],
             "shared_vpc_project": shared_vpc_project,
-            "project": project
+            "project": project,
+            "zone": zone,
+            # A zone is its region plus a one-letter suffix, e.g. us-central1-a.
+            "region": zone.rsplit("-", 1)[0] if zone else None
         }
 
     def get_image(self, image, project=None):

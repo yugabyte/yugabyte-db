@@ -611,6 +611,49 @@ paths:
         noAuthz: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/host-cloud-info:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    get:
+      operationId: getHostCloudInfo
+      summary: Get the YBA host's cloud info
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns the public cloud and
+        region that YBA runs on, and the instance metadata used to create a provider
+        in the host''s VPC. Replaces the v1 host_info.'
+      tags:
+      - Customer
+      responses:
+        '200':
+          $ref: '#/components/responses/HostCloudInfoResp'
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no read permission on the customer
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   /customers/{cUUID}/customer-configs/page:
     parameters:
     - name: cUUID
@@ -5409,6 +5452,127 @@ components:
           type: integer
           format: int64
           readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloud:
+      title: HostCloud
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Public cloud that YBA runs on.'
+      type: string
+      enum:
+      - aws
+      - gcp
+      - azu
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AwsHostInfo:
+      title: AwsHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>EC2 instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        instance_id:
+          description: EC2 instance ID
+          type: string
+          readOnly: true
+        vpc_id:
+          description: VPC of the instance's primary network interface
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the instance
+          type: string
+          readOnly: true
+        region:
+          description: AWS region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcpHostInfo:
+      title: GcpHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GCE instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        project:
+          description: ID of the project that the instance belongs to
+          type: string
+          readOnly: true
+        network:
+          description: Name of the VPC network of the instance's first network interface
+          type: string
+          readOnly: true
+        shared_vpc_project:
+          description: 'Number of the project that owns that network: the host project
+            for a Shared VPC, otherwise the instance''s own project'
+          type: string
+          readOnly: true
+        zone:
+          description: GCP zone
+          type: string
+          readOnly: true
+        region:
+          description: GCP region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzuHostInfo:
+      title: AzuHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Azure VM metadata of the YBA
+        host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        subscription_id:
+          description: Azure subscription of the VM
+          type: string
+          readOnly: true
+        resource_group:
+          description: Resource group of the VM
+          type: string
+          readOnly: true
+        vm_id:
+          description: Azure VM ID
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the VM's first network interface
+          type: string
+          readOnly: true
+        region:
+          description: Azure region (location) of the VM
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfo:
+      title: HostCloudInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>The public cloud that YBA runs
+        on and its instance metadata. Part of HostCloudInfoResp. Only the object for
+        the host cloud is set.'
+      type: object
+      properties:
+        cloud:
+          description: Cloud that YBA runs on. Absent when YBA is not on AWS, GCP
+            or Azure.
+          $ref: '#/components/schemas/HostCloud'
+          readOnly: true
+        region:
+          description: Cloud region of the YBA host. Absent when the cloud is unknown
+            or its metadata service is unreachable.
+          type: string
+          readOnly: true
+        aws:
+          $ref: '#/components/schemas/AwsHostInfo'
+        gcp:
+          $ref: '#/components/schemas/GcpHostInfo'
+        azu:
+          $ref: '#/components/schemas/AzuHostInfo'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     CustomerConfigPagedQuerySpec:
@@ -12184,6 +12348,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserApiToken'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfoResp:
+      description: Cloud and instance metadata of the YBA host
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HostCloudInfo'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     CustomerConfigPagedResp:
