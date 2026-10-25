@@ -464,7 +464,6 @@ SocketBackend(StringInfo inBuf)
 	 */
 	switch (qtype)
 	{
-		/* YB_TODO_PG19MERGE: move the YB cases in this switch to enums like PG */
 		case PqMsg_Query:
 			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 			doing_extended_query_message = false;
@@ -481,7 +480,7 @@ SocketBackend(StringInfo inBuf)
 			ignore_till_sync = false;
 			break;
 
-		case 'p':				/* YB: YbParse */
+		case YbConnMgr_Parse:
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -520,7 +519,7 @@ SocketBackend(StringInfo inBuf)
 			doing_extended_query_message = false;
 			break;
 
-		case 'A':				/* YB: Auth Passthrough Request */
+		case YbConnMgr_AuthPassthroughRequest:
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -528,7 +527,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 's':				/* YB: SET SESSION PARAMETER */
+		case YbConnMgr_SetSessionParameter:
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -536,7 +535,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 'G':				/* YB: RESET ALL & RESET defaults from ConnMgr */
+		case YbConnMgr_ResetAll:
 			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -544,7 +543,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 'g':				/* YB: RESET GUC DEFAULTS from ConnMgr */
+		case YbConnMgr_ResetGucDefaults:
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -552,8 +551,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-			/* YB: YbThrowError packet */
-		case 'x':
+		case YbConnMgr_ThrowError:
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -7355,7 +7353,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'p':			/* YB: YbParse */
+			case YbConnMgr_Parse:
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7380,7 +7378,7 @@ PostgresMain(const char *dbname, const char *username)
 					SetCurrentStatementStartTimestamp();
 
 					/* YB: Get info from YbParse packet */
-					if (firstchar == 'p')
+					if (firstchar == YbConnMgr_Parse)
 					{
 						yb_parse_type = pq_getmsgbyte(&input_message);
 						yb_echo = input_message.data;
@@ -7432,7 +7430,7 @@ PostgresMain(const char *dbname, const char *username)
 					 * YB: Discard orig_name sent by ConnMgr in YbParse packet.
 					 * This is echo'd back to ConnMgr through yb_echo
 					 */
-					if (firstchar == 'p')
+					if (firstchar == YbConnMgr_Parse)
 						(void) pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
@@ -7951,7 +7949,7 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				break;
 
-			case 'A':
+			case YbConnMgr_AuthPassthroughRequest:
 				/*
 				 * YB: Auth Passthrough Request.
 				 * We should have a `startup packet` sent from Connection
@@ -8169,7 +8167,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 's':			/* YB: SET SESSION PARAMETER */
+			case YbConnMgr_SetSessionParameter:
 				if (YbIsClientYsqlConnMgr())
 				{
 					start_xact_command();
@@ -8196,7 +8194,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'G':			/* YB: RESET ALL & RESET defaults from ConnMgr */
+			case YbConnMgr_ResetAll:
 				if (YbIsClientYsqlConnMgr())
 				{
 					start_xact_command();
@@ -8214,7 +8212,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'g':			/* YB: RESET GUC DEFAULTS from ConnMgr */
+			case YbConnMgr_ResetGucDefaults:
 				if (YbIsClientYsqlConnMgr())
 				{
 					start_xact_command();
@@ -8231,7 +8229,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'x':			/* YB: YbThrowError from ConnMgr */
+			case YbConnMgr_ThrowError:
 				{
 					/*
 					 * This packet is used by ConnMgr to send error to client in
