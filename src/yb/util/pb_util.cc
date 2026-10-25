@@ -405,7 +405,7 @@ Status WritablePBContainerFile::Init(const Message& msg) {
 
   // Serialize the supplemental header.
   ContainerSupHeaderPB sup_header;
-  *sup_header.mutable_protos() = PopulateDescriptorSet(msg.GetDescriptor());
+  *sup_header.mutable_protos() = PopulateDescriptorSet(*msg.GetDescriptor());
   sup_header.set_pb_type(msg.GetTypeName());
   RETURN_NOT_OK_PREPEND(AppendMsgToBuffer(sup_header, &buf),
                         "Failed to prepare supplemental header for writing");
@@ -489,8 +489,8 @@ namespace {
 // messages that contain nested ones. Embedding whole files with all their imports costs tens of KB.
 class ReachableTypes {
  public:
-  explicit ReachableTypes(const Descriptor* root) {
-    AddMessage(root);
+  explicit ReachableTypes(const Descriptor& root) {
+    AddMessage(&root);
     for (size_t i = 0; i != messages_.size(); ++i) {
       const auto* message = messages_[i];
       for (int j = 0; j != message->field_count(); ++j) {
@@ -592,7 +592,7 @@ class ReachableTypes {
 
 } // namespace
 
-FileDescriptorSet WritablePBContainerFile::PopulateDescriptorSet(const Descriptor* desc) {
+FileDescriptorSet WritablePBContainerFile::PopulateDescriptorSet(const Descriptor& desc) {
   return ReachableTypes(desc).Result();
 }
 

@@ -341,7 +341,7 @@ class WritablePBContainerFile {
   // Returns the schemas of desc and of the types reachable from it through fields or as containers
   // of reachable nested types. Files contain only those types.
   static google::protobuf::FileDescriptorSet PopulateDescriptorSet(
-      const google::protobuf::Descriptor* desc);
+      const google::protobuf::Descriptor& desc);
 
   // Serialize the contents of 'msg' into 'buf' along with additional metadata
   // to aid in deserialization.

@@ -379,7 +379,7 @@ std::vector<std::string> CheckDescriptorSet(
 
 TEST_F(TestPBUtil, TestPopulateDescriptorSet) {
   auto check = [](const Descriptor* desc) {
-    return CheckDescriptorSet(desc, WritablePBContainerFile::PopulateDescriptorSet(desc));
+    return CheckDescriptorSet(desc, WritablePBContainerFile::PopulateDescriptorSet(*desc));
   };
   ASSERT_EQ(check(ProtoContainerTestPB::descriptor()), std::vector<std::string>({
       "yb.ProtoContainerTestPB(5 fields)"}));
