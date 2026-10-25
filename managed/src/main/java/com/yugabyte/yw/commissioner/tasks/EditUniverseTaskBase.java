@@ -773,8 +773,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
   /**
    * Nodes present in the current universe but absent from {@code before} (by name) are the ones the
-   * failed edit added. Always enqueue them for force-delete; missing instances are handled by
-   * {@code isForceDelete}. Universe details converge via restore of {@code before}.
+   * failed edit added. Always enqueue them for destroy; a missing instance is fine because destroy
+   * succeeds when it is already gone. Universe details converge via restore of {@code before}.
    */
   protected Set<NodeDetails> collectAddedNodesToDestroy(
       Universe universe, UniverseDefinitionTaskParams before) {

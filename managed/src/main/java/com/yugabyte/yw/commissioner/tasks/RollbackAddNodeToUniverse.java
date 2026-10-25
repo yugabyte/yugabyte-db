@@ -108,26 +108,7 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
 
       // Process cleanup: stop with deconfigure so leftover conf cannot be started by hand.
-      if (universe.isYbcEnabled()) {
-        createStopYbControllerTasks(nodeSet, true /* isIgnoreError */)
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      }
-      createStopServerTasks(
-              nodeSet,
-              ServerType.TSERVER,
-              params -> {
-                params.isIgnoreError = true;
-                params.deconfigure = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      createStopServerTasks(
-              nodeSet,
-              ServerType.MASTER,
-              params -> {
-                params.isIgnoreError = true;
-                params.deconfigure = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      createStopProcessesForRollbackTasks(universe, nodeSet);
 
       if (wasDecommissioned) {
         log.info(
@@ -140,7 +121,7 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
         createDestroyServerTasks(
                 universe,
                 nodeSet,
-                node -> true /* isForceDelete */,
+                forceDestroyOnlyOnOnprem(universe),
                 false /* deleteNode */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
