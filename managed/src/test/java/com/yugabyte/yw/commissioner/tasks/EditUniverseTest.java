@@ -2587,7 +2587,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
     rollbackParams.expectedUniverseVersion = -1;
     // Rollback subtask positions (no tag revert): ConsistencyCheck=0, Freeze=1, stop tserver=2,
-    // stop master=3, SetNodeState=4, Destroy=5, RestoreUniverseDetailsFromDelta=6.
+    // stop master=3, SetNodeState=4, Destroy=5, MarkUniverseForHealthScriptReUpload=6. The
+    // blacklist clear, membership check and restore come after it.
     setAbortPosition(6);
     UUID rollbackUuid;
     try {
