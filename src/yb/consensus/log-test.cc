@@ -2465,6 +2465,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_OK(AppendNoOps(&op_id, 5));
   const OpId last_op_id(1, 10);
   ASSERT_EQ(log_->num_segments(), 2);
+  ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), 1);
 
   QuiescentMarkerPB marker;
   ASSERT_TRUE(log_->CloseActiveSegment(OpId(1, 9), &marker).IsTryAgain());
@@ -2485,6 +2486,8 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(last_op_id.index)), last_op_id);
   ASSERT_NOK(log_->LookupOpId(last_op_id.index - 1));
   ASSERT_EQ(log_->GetMinReplicateIndex(), last_op_id.index + 1);
+  // A peer at L can be sent the ops after it.
+  ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), last_op_id.index);
   int num_gced = 0;
   ASSERT_OK(log_->TEST_GC(last_op_id.index, &num_gced));
   ASSERT_EQ(num_gced, 0);
@@ -2501,6 +2504,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_EQ(loaded_marker->monotonic_counter(), 42);
   ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(last_op_id.index)), last_op_id);
   ASSERT_EQ(log_->GetMinReplicateIndex(), last_op_id.index + 1);
+  ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), last_op_id.index);
 
   ASSERT_OK(AppendNoOps(&op_id, 2));
   SegmentSequence segments;
@@ -2523,6 +2527,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_OK(log_->EnsureSegmentInitialized());
   ASSERT_EQ(log_->num_segments(), 2);
   ASSERT_EQ(log_->quiescent_marker_op_id(), last_op_id);
+  ASSERT_EQ(ASSERT_RESULT(log_->MinAnchorableIndex()), last_op_id.index);
   ASSERT_OK(log_->Close());
 }
 

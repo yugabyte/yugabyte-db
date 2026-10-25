@@ -262,6 +262,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   int64_t GetMinReplicateIndex() const;
 
+  /// Returns the lowest index at which a log anchor can be registered: a peer whose last op has
+  /// this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
+  Result<int64_t> MinAnchorableIndex() const EXCLUDES(state_lock_);
+
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
   //

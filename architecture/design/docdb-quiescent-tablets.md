@@ -60,7 +60,7 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 
 **Preconditions**, all checked on the replica in `TabletPeer::EnterQuiescentMode`:
 
-1. Committed op id, last received op id and last applied op id are all L, and no operations are pending.
+1. Committed op id and last received op id are both L, and no operations are pending. An operation stays in the operation tracker until it is applied, so this also means L was applied.
 2. No Raft config change is pending.
 3. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap.
 4. The transaction participant has no transactions, including applied ones still waiting for intent cleanup.
@@ -118,6 +118,7 @@ If the WAL directory has a marker, bootstrap treats the tablet as existing even 
 | `Log::CopyTo` | Skips the last segment only if it is active, i.e. has no footer |
 | Rollover markers | Already did nothing for an empty or missing active segment |
 | `Log::GetMinReplicateIndex` | L+1 after closing the active segment or loading the marker, so ops up to L are not reported as available |
+| `Log::MinAnchorableIndex` | L, so a quiescent follower at L stays eligible as a remote bootstrap source and can anchor the leader's log at L |
 
 `log_min_seconds_to_retain` and `log_min_segments_to_retain` do not apply to a quiescent tablet.
 A table-level `wal_retention_secs` keeps its tablets out of the mode.
@@ -152,6 +153,6 @@ Open questions:
 ## Testing and measurement
 
 - **Log.** `log-test`: lazy segment allocation, closing the active segment, a marker with no segments, leftover segments up to L, a log continued after the marker, and dropping a preallocated segment.
-- **Cluster.** `quiescent_tablet-itest`: graceful and abrupt restarts with RF3 and RF1, including a tablet with no data, and no remote bootstrap after the elections. Remote bootstrap from a quiescent leader, split of a quiescent tablet, and no marker while the AutoFlag is off.
+- **Cluster.** `quiescent_tablet-itest`: graceful and abrupt restarts with RF3 and RF1, including a tablet with no data, and no remote bootstrap after the elections. Remote bootstrap from a quiescent leader and from a quiescent follower, which anchors the leader's log at L. Split of a quiescent tablet. No marker while the AutoFlag is off.
 - **Not covered yet.** Sync point crashes between entry steps, and an append racing with entry.
 - **Benchmark.** Run `many_tablets_bootstrap-itest` with graceful and non-graceful restarts. Compare restart time, bytes read and written, and fsync count with and without the mode.

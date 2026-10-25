@@ -295,6 +295,10 @@ Result<int64_t> LogCache::earliest_op_index() const {
   return ret;
 }
 
+Result<int64_t> LogCache::min_anchorable_index() const {
+  return log_->MinAnchorableIndex();
+}
+
 Result<log::ReadableLogSegmentPtr> CheckHasFooter(
     const Result<log::ReadableLogSegmentPtr>& segment) {
   RETURN_NOT_OK(segment);

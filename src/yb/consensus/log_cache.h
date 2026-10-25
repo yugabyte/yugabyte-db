@@ -169,6 +169,9 @@ class LogCache {
 
   Result<int64_t> earliest_op_index() const;
 
+  /// See Log::MinAnchorableIndex.
+  Result<int64_t> min_anchorable_index() const;
+
   Result<HybridTime> GetMinStartTimeRunningTxnsFromSegmentFooter(int64_t segment_number) const;
 
   Result<int64_t> GetMaxReplicateIndexFromSegmentFooter(int64_t segment_number) const;

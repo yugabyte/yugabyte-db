@@ -26,6 +26,11 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/master.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -36,7 +41,11 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/sync_point.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_quiescent_tablets);
+DECLARE_bool(remote_bootstrap_from_leader_only);
+DECLARE_bool(TEST_assert_remote_bootstrap_happens_from_same_zone);
+DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_int32(replication_factor);
@@ -125,6 +134,7 @@ class QuiescentTabletTest : public YBTableTestBase {
   }
 
   void TestRestart();
+  void TestRemoteBootstrap(const TabletId& tablet_id);
 
   std::atomic<int> num_remote_bootstraps_{0};
 };
@@ -184,13 +194,11 @@ TEST_F(QuiescentTabletRf1Test, Restart) {
 }
 
 // Remote bootstrap from a quiescent source carries the marker.
-TEST_F(QuiescentTabletTest, RemoteBootstrap) {
+void QuiescentTabletTest::TestRemoteBootstrap(const TabletId& tablet_id) {
   ASSERT_NO_FATALS(WriteRows(0, 100));
   ASSERT_OK(WaitAllQuiescent());
 
-  auto leader = ASSERT_RESULT(GetLeaderPeerForTablet(
-      mini_cluster(), TablePeers().front()->tablet_id()));
-  const auto tablet_id = leader->tablet_id();
+  auto leader = ASSERT_RESULT(GetLeaderPeerForTablet(mini_cluster(), tablet_id));
   tserver::MiniTabletServer* follower_ts = nullptr;
   for (size_t i = 0; i != mini_cluster()->num_tablet_servers(); ++i) {
     auto* ts = mini_cluster()->mini_tablet_server(i);
@@ -207,7 +215,7 @@ TEST_F(QuiescentTabletTest, RemoteBootstrap) {
       /* cas_config_opid_index_less_or_equal= */ std::nullopt, /* hide_only= */ false,
       /* keep_data= */ false, &error_code));
 
-  // The tombstoned replica is bootstrapped from the leader and becomes quiescent again.
+  // The tombstoned replica is remote bootstrapped and becomes quiescent again.
   ASSERT_OK(WaitAllQuiescent());
   ASSERT_RESULT(CheckWalDirs());
   auto peer = ASSERT_RESULT(follower_ts->server()->tablet_manager()->GetTablet(tablet_id));
@@ -219,6 +227,51 @@ TEST_F(QuiescentTabletTest, RemoteBootstrap) {
   ASSERT_NO_FATALS(CheckRows(100));
   ASSERT_NO_FATALS(WriteRows(100, 200));
   ASSERT_NO_FATALS(CheckRows(200));
+}
+
+TEST_F(QuiescentTabletTest, RemoteBootstrap) {
+  TestRemoteBootstrap(TablePeers().front()->tablet_id());
+}
+
+// The first tablet server is alone in its region, and the other two share a zone.
+class QuiescentTabletFollowerSourceTest : public QuiescentTabletTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_from_leader_only) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone) = true;
+    // The check breaks the addresses that the default placement does not use.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
+    QuiescentTabletTest::SetUp();
+  }
+
+  void BeforeCreateTable() override {
+    for (size_t i = 0; i != num_tablet_servers(); ++i) {
+      auto* ts = mini_cluster()->mini_tablet_server(i);
+      const auto location = i == 0 ? 0 : 1;
+      ts->options()->SetPlacement(
+          "cloud", Format("region$0", location), Format("zone$0", location));
+      ASSERT_OK(ts->Restart());
+    }
+    // Replicas of the table get the placement that the master has when it creates the table.
+    ASSERT_OK(WaitFor([this]() -> Result<bool> {
+      auto* master = VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master();
+      for (const auto& desc : master->ts_manager()->GetAllDescriptors()) {
+        if (desc->GetCloudInfo().placement_zone() == "zone") {
+          return false;
+        }
+      }
+      return true;
+    }, 30s * kTimeMultiplier, "New placement registered"));
+  }
+};
+
+// A follower in the destination's zone is the source. It anchors the quiescent leader's log at L.
+TEST_F(QuiescentTabletFollowerSourceTest, RemoteBootstrap) {
+  const auto tablet_id = TablePeers().front()->tablet_id();
+  const auto leader_uuid = mini_cluster()->mini_tablet_server(0)->server()->permanent_uuid();
+  ASSERT_OK(TransferLeadership(mini_cluster(), tablet_id, leader_uuid));
+  TestRemoteBootstrap(tablet_id);
 }
 
 // Split children start from the marker of a quiescent parent.

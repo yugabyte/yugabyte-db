@@ -1143,6 +1143,7 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
   LocalityLevel best_locality_level =
       TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
+  const auto min_anchorable_index = VERIFY_RESULT(log_cache_.min_anchorable_index());
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
     if (!it->second->cloud_info.has_value() || remote_tracked_peer == it->second ||
@@ -1151,14 +1152,15 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
     }
 
     // Consider only those followers as rbs source which are in the same term as the leader
-    // and have last_received_opid >= leader log's min available index.
+    // and have last_received_opid >= leader log's min anchorable index, since the source anchors
+    // the leader's log at its last op.
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
     // logged opid and that of the rbs source. Reject peer as an rbs source if
     // leader->last_received.index - remote_peer->last_received.index > flag_value
     OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
         remote_last_received_opid.term != queue_state_.current_term ||
-        remote_last_received_opid.index < VERIFY_RESULT(log_cache_.earliest_op_index()) ||
+        remote_last_received_opid.index < min_anchorable_index ||
         !it->second->is_last_exchange_successful) {
       continue;
     }

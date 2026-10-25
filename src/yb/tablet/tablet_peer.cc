@@ -1027,10 +1027,8 @@ Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
 
   auto consensus = VERIFY_RESULT(GetRaftConsensus());
   const auto committed_op_id = consensus->GetLastCommittedOpId();
-  const auto applied_op_id = consensus->GetLastAppliedOpId();
-  if (committed_op_id != op_id || applied_op_id != op_id) {
-    return STATUS_FORMAT(
-        TryAgain, "Last op $0, committed $1, applied $2", op_id, committed_op_id, applied_op_id);
+  if (committed_op_id != op_id) {
+    return STATUS_FORMAT(TryAgain, "Last op $0, committed $1", op_id, committed_op_id);
   }
   if (consensus->GetPendingConfigOpId().is_valid_not_empty()) {
     return STATUS(TryAgain, "Pending config change");
@@ -1040,6 +1038,7 @@ Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
   if (all_replicated_index < op_id.index) {
     return STATUS_FORMAT(TryAgain, "Replicated to all peers up to $0", all_replicated_index);
   }
+  // An operation stays tracked until it is applied, so this also checks that op_id was applied.
   if (!operation_tracker_.GetPendingOperations().empty()) {
     return STATUS(TryAgain, "Pending operations");
   }

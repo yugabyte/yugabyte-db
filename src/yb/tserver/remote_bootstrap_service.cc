@@ -661,22 +661,18 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       Format("Tablet is not running yet: $0", req->tablet_id()));
 
   const auto requested_log_index = req->op_id().index();
-  auto log_reader_result = tablet_peer->log()->GetLogReader();
+  auto min_anchorable_index = tablet_peer->log()->MinAnchorableIndex();
   RPC_RETURN_NOT_OK(
-      log_reader_result,
+      min_anchorable_index,
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Format("LogReader not available for tablet: $0", req->tablet_id()));
-  int64_t min_available_log_index = (*log_reader_result)->GetMinReplicateIndex();
-  if (min_available_log_index == -1) {
-    min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
-  }
 
-  if (requested_log_index < min_available_log_index) {
+  if (requested_log_index < *min_anchorable_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
         Format("Cannot register LogAnchor"),
-        STATUS_FORMAT(NotFound, "Requested LogAnchor index($0) < min_available_log_index($1)",
-                      requested_log_index, min_available_log_index));
+        STATUS_FORMAT(NotFound, "Requested LogAnchor index($0) < min_anchorable_index($1)",
+                      requested_log_index, *min_anchorable_index));
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_rbs_anchor_register);

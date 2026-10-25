@@ -1820,6 +1820,16 @@ int64_t Log::GetMinReplicateIndex() const {
   return min_replicate_index_.load(std::memory_order_acquire);
 }
 
+Result<int64_t> Log::MinAnchorableIndex() const {
+  auto result = VERIFY_RESULT(GetLogReader())->GetMinReplicateIndex();
+  if (result == -1) {
+    result = GetMinReplicateIndex();
+  }
+  // LookupOpId answers for the marker op id, which the ops after it need as the preceding op.
+  const auto marker_op_id = quiescent_marker_op_id();
+  return !marker_op_id.empty() && result == marker_op_id.index + 1 ? marker_op_id.index : result;
+}
+
 OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
   if (FLAGS_TEST_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
