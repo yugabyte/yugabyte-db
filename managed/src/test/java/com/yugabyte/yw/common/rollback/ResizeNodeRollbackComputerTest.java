@@ -1051,6 +1051,10 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     // PLAT-23245: YBA records EBS (GP3) storage for the node, so a cloud report without data
     // volumes can't be trusted, even for an instance type that has local storage.
     enableRollback();
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getNodes().forEach(n -> n.cloudInfo.instance_type = "c5d.large"));
     seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
     moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
     lenient()
