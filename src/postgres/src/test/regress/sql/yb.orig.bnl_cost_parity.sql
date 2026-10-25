@@ -53,15 +53,16 @@
 -- Labels tied on a ranking's keys are joined with '=' (e.g. 'BNL=NL MJ HJ');
 -- keys compare exactly, so any real movement breaks a tie visibly.
 -- Cost columns list their values in cost_rank order, work columns in
--- rt_rank order.  cost_rank != rt_rank means the cost model mis-ranks the
--- plans -- the point of these tests -- and each report prints only the
--- queries where it does: a query whose two orderings are identical, ties
--- included, is left out.  Costs are masked to one '#' per
--- integer digit to pin each plan's magnitude and the ranking without
--- churning the expected output on small cost moves.
+-- rt_rank order.  The cost model mis-ranks the plans -- the point of these
+-- tests -- where cost_rank puts a method ahead of one that rt_rank puts
+-- ahead of it, and each report prints only those queries: a tie on either
+-- side agrees with any order on the other (rank_consistent in the setup),
+-- so a query whose orderings differ only by a tie is left out.  Costs are
+-- masked to one '#' per integer digit to pin each plan's magnitude and the
+-- ranking without churning the expected output on small cost moves.
 --
--- The tests document known BNL cost-model defects (#30580 is fixed; #30565
--- and #30738 remain open, so their numbers are expected to move):
+-- The tests were written for three BNL cost-model defects, since fixed, and
+-- keep recording the rankings around them:
 --
 --   #30580  (fixed) The semi/anti/inner-unique ntuples overcount (a missing
 --           "/ batch_size") costed BNL far above HJ/MJ although it does the
@@ -69,20 +70,21 @@
 --           the 1-outer rows BNL and NL do the same work and are costed
 --           alike (see the section).
 --
---   #30565  BNL omits the cost of skipping the leading all-empty batches from
---           its startup cost.  With the outer sorted on a non-unique indexed
---           column and the first 2-3 batches matching nothing, BNL's startup
---           cost is identical to the no-skip case (and far below the merge
---           join's, which does charge the skip) -- so BNL is not the fastest
---           plan yet looks the cheapest to start.
+--   #30565  (fixed) BNL omitted the cost of skipping the leading all-empty
+--           batches from its startup cost, so with the outer sorted on a
+--           non-unique indexed column and the first 2-3 batches matching
+--           nothing it looked the cheapest to start while not the fastest
+--           plan.  The empty batches are charged to startup now, and MJ
+--           leads BNL by startup cost, total cost and work alike.
 --
---   #30738  With LIMIT, #30565's undercosted startup costs BNL below the
---           un-batched NL by (limit-adjusted) total cost, while at run time
---           it scans far more rows than NL and is slower (rt_rank worse than
---           NL's); MJ leads both orderings.  The execution-time limit
---           pushdown shrinks the first value list to values that are all
---           absent from the inner, gets an empty first scan, then falls back
---           to a full batch that scans far more rows than the LIMIT needs.
+--   #30738  (fixed) With LIMIT, the uncharged startup made BNL the cheapest
+--           plan by (limit-adjusted) total cost while it scanned far more
+--           rows than the un-batched NL: the execution-time limit pushdown
+--           shrinks the first value list to values that are all absent from
+--           the inner, gets an empty first scan, then falls back to a full
+--           batch that scans far more rows than the LIMIT needs.  MJ leads
+--           both orderings now; BNL is still costed below NL from LIMIT 100
+--           up while NL scans fewer rows.
 --
 -- The 4xx section (#18943) records no defect: it ranks DISTINCT joins whose
 -- inner is a distinct index scan against the same joins with the plain inner
@@ -195,8 +197,7 @@ base(qid, descr, tmpl) as (
     -- r.a (values 3886..5120, the top of s.y's range).  Rows with y < 3886
     -- match nothing, so with "s.y >= 1621" the first ~2 batches (y in
     -- 1621..3885) are empty before the matches at y >= 3886.  The "no-empty"
-    -- companion (s.y >= 3886) matches from the first row; BNL's startup cost is
-    -- identical in both -- the missing empty-batch cost.
+    -- companion (s.y >= 3886) matches from the first row.
     (201, '30565 empty-lead',
         'select s.y from ce.s s join @R@ r on r.a = s.y where s.y >= 1621 order by s.y'),
     (202, '30565 no-empty',
@@ -260,7 +261,7 @@ base(qid, descr, tmpl) as (
     --             pushes the limit into a tiny first value list that lands
     --             entirely in the absent range, gets an empty first scan, then
     --             falls back to a full batch and scans ~10k rows regardless of
-    --             the limit -- far more than NL.  This is the bug.
+    --             the limit -- far more than NL, which its startup cost charges.
     --   noskip -- "s.y >= 3886": matches from the very first row, so there is no
     --             leading mismatch.  Control: BNL's limit pushdown works, so BNL
     --             scans a few times NL's rows instead of tens of times.
@@ -374,11 +375,10 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 ------------------------------------------------------------------------------
 -- #30580 (fixed): the ntuples overcount used to cost BNL above HJ and MJ
 -- (cost_rank 3) on every unique / semi / anti case despite BNL doing the
--- least work; cost_rank now agrees with rt_rank (BNL first).  The pk rows
--- agree exactly and are not printed; the b and c rows differ only in the
--- tie between HJ and MJ, which do the same work on those keys.  "c inner"
--- was the unaffected control: the non-unique index hides the column's
--- uniqueness, so no semi/anti/unique costing applies.
+-- least work; cost_rank now agrees with rt_rank (BNL first) on every row,
+-- so the section prints nothing.  "c inner" was the unaffected control: the
+-- non-unique index hides the column's uniqueness, so no semi/anti/unique
+-- costing applies.
 --
 -- These probe-bound plans are dominated by round trips, so rt_rank ranks by
 -- read_reqs (then rows_scanned): BNL point-probes a whole batch per request,
@@ -387,10 +387,9 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 --
 -- The 1-outer rows pin the degenerate single-key probe, where BNL and NL do
 -- identical work (every metric ties, seeks and nexts included).  The costs
--- tie as well, and chosen shows the planner keeps NL, except on the c and "a"
--- inner joins, where BNL is costed below NL by less than 0.1, a near tie the
--- masked costs hide: a cost change that small flips cost_rank and chosen
--- together.
+-- tie as well, and the planner keeps NL, except on the c and "a" inner
+-- joins, where BNL is costed below NL by less than 0.1; either order agrees
+-- with the tie in work.
 --
 -- The left joins (...131-...147) rank like the inner joins on the same keys,
 -- 1-outer forms included.  They are the controls of the 5xx section.
@@ -418,34 +417,33 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
--- #30565: with leading empty batches (qid ...201) BNL's startup cost is
--- identical to the no-empty companion (qid ...202) and far below the merge
--- join's startup cost, even though BNL must grind through the empty batches
--- (visible as extra read requests / rows scanned vs the no-empty case).  The
--- startup cost should reflect that skip but does not -- so BNL looks the
--- cheapest to start (lowest startup_cost) while it is NOT the fastest plan
--- (rt_rank > 1; MJ does fewer round trips).  rt_rank ranks by read_reqs (then
--- rows_scanned), the round-trip cost that dominates these plans.
+-- #30565 (fixed): with leading empty batches (qid ...201) BNL must grind
+-- through the empty batches before its first row (visible as extra read
+-- requests and rows scanned against the no-empty companion, qid ...202), a
+-- skip its startup cost used to leave out, so it looked the cheapest to
+-- start while MJ did fewer round trips.  The skip is charged now: MJ leads
+-- both rows by startup cost and total cost as it leads the work, and
+-- neither row is printed.  rt_rank ranks by read_reqs (then rows_scanned),
+-- the round-trip cost that dominates these plans.
 --
 -- qid ...203 (hj-best) is the positive control: HJ genuinely wins (cheapest
 -- and joint-fewest read requests), and the cost model ranks it first too --
--- cost_rank and rt_rank agree, both led by HJ.  It confirms the misorderings
--- above are specific to BNL, not noise in the harness.
+-- cost_rank and rt_rank agree, both led by HJ, so the row is not printed.
+-- It confirms the misorderings above are specific to BNL, not noise in the
+-- harness.
 --
 -- #33001 (qid ...210-...252): a range bound on either join key limits how much
 -- of the other input the merge has to read.  On the ascending rows
 -- (...210-...212 bound the outer, ...220-...222 the inner) MJ is costed first
 -- throughout, and leads rt_rank as well except on ...210 and ...212, where BNL
 -- issues the same number of requests and scans fewer rows -- it point-probes
--- the bounded outer in a single batch.  ...211 agrees exactly and is not
--- printed.
+-- the bounded outer in a single batch.  Those two rows print, and ...221,
+-- where NL does the work of HJ yet is costed behind BNL.
 --
 -- ...230-...242 are the descending companions ("order by ... desc", planned as
 -- backward index scans on both inputs).  Read descending, the bounds swap
@@ -454,8 +452,8 @@ order by qid;
 -- ...242 the lower bound stops the merge early, so MJ scans 7717 rows to
 -- HJ's 8741; counting that puts MJ ahead of HJ by cost, as by the work.
 -- Costed as reading to the statistical extreme, the backward scans would
--- rank HJ first.  On ...230 and ...232 BNL leads both rankings, which agree
--- exactly, so those rows are not printed.
+-- rank HJ first.  On ...230 and ...232 BNL leads both rankings.  The
+-- descending rows all agree and none is printed.
 --
 -- ...250-...252 read the ...240-...242 bounds forward.  Ascending, a lower
 -- bound moves the merge's start, not its end: the outer rows below it are read
@@ -463,7 +461,7 @@ order by qid;
 -- the bound buys no round trips (rt_rank ties them).  Descending, the same
 -- bounds stop the merge early instead -- 7717 rows on ...240 against 8741
 -- here.  The clamp charges the discarded rows to startup rather than claiming
--- a saving it does not get.
+-- a saving it does not get, and the rows agree and are not printed.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
@@ -486,17 +484,15 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
--- #30738: with LIMIT, the undercosted startup costs BNL below NL by
--- (limit-adjusted) total cost, although at run time it scans far more rows
--- than NL and is slower; MJ leads both orderings.  Here the limit makes the
--- plans scan-bound, not round-trip-bound (NL's many requests are cheap empty
+-- #30738 (fixed): with LIMIT, the uncharged startup made BNL the cheapest
+-- plan by (limit-adjusted) total cost although it scanned far more rows than
+-- NL; MJ leads both orderings now.  Here the limit makes the plans
+-- scan-bound, not round-trip-bound (NL's many requests are cheap empty
 -- probes), so rt_rank ranks by rows_scanned (then read_reqs).  The "skip"
 -- rows (...301-304) have a 50-row leading mismatch: BNL's full-batch fallback
 -- scans about 10k rows against NL's 200 at LIMIT 100 and 4065 against 2000
@@ -505,8 +501,7 @@ order by qid;
 -- The "noskip" rows (...305-308) start matching at the first row -- the
 -- control where BNL's limit pushdown works and BNL scans two to five times
 -- NL's rows instead of fifty, yet is still costed below NL from LIMIT 10 up;
--- at LIMIT 1 the row prints for the tie between MJ and NL, which both scan
--- two rows.
+-- at LIMIT 1 the orderings agree as well.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
@@ -532,10 +527,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
@@ -554,7 +547,11 @@ order by qid;
 -- work_slack() so the layout flap cannot move a rank; work is printed masked
 -- like the costs, one '#' per digit.  Column a has 10 rows per value and a5
 -- has 5: at 5 a skip pays a seek and 3 nexts where the plain scan pays 5
--- nexts.
+-- nexts.  The rows that print are those where the flattered NL ties the
+-- fastest plans by work while the cost model ranks it last (...401, ...405);
+-- on a5 the orderings agree at batch size 1024, and at 512 ...402 prints,
+-- where BNL/p needs two batches and falls behind HJ and MJ by work but not
+-- by cost.
 ------------------------------------------------------------------------------
 select qid, descr,
        rank_labels(array_agg(label order by cost_rank, label),
@@ -569,10 +566,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from distinct_join_ranks join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
@@ -587,8 +582,10 @@ order by qid;
 -- ranks by read_reqs (then rows_scanned), as in the 1xx section, so cost_rank
 -- disagrees with it on ce.rC and on the ce.r semi and anti joins.  On the
 -- ce.r inner and left joins BNL's extra request ranks it behind HJ and MJ by
--- work as well, though not by the 2.6 times its cost says.  The left join
--- ranks like the inner join, as the 1xx left joins do on the unique keys.
+-- work as well, though not by the 2.6 times its cost says, so those rows are
+-- not printed; at batch size 512 the ce.r semi and anti joins agree too.  The
+-- left join ranks like the inner join, as the 1xx left joins do on the unique
+-- keys.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,
@@ -613,10 +610,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
@@ -626,9 +621,8 @@ order by qid;
 -- key column, so a batch of 16 pairs is estimated at 256 rows and a batch
 -- of 128 or more at the whole 16384-row inner.  With one batch of 1024
 -- that is about what HJ and MJ scan, and BNL, which point-probes the batch
--- in 2 or 3 requests against their 7 to 18, is costed and ranked first; on
--- ...602, where every pair has its row, the two orderings agree exactly and
--- the row is not printed.
+-- in 2 or 3 requests against their 7 to 18, is costed and ranked first, so
+-- the first pass prints nothing.
 -- With two batches of 512 (second pass) the estimate doubles while BNL's
 -- work grows by one request, and BNL falls to third by cost behind MJ and
 -- HJ on ce.r2 and ce.r2C and to second behind HJ on ce.r2H, still first by
@@ -658,10 +652,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 ------------------------------------------------------------------------------
@@ -695,10 +687,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 -- #30565 at batch size 512.
@@ -723,10 +713,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 -- #30738 at batch size 512.
@@ -754,10 +742,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 -- 4xx at batch size 512.
@@ -774,10 +760,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from distinct_join_ranks join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 -- 5xx at batch size 512.
@@ -804,10 +788,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 -- 6xx at batch size 512.
@@ -834,10 +816,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
 
 reset yb_bnl_batch_size;

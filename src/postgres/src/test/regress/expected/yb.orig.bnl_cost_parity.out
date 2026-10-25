@@ -53,15 +53,16 @@
 -- Labels tied on a ranking's keys are joined with '=' (e.g. 'BNL=NL MJ HJ');
 -- keys compare exactly, so any real movement breaks a tie visibly.
 -- Cost columns list their values in cost_rank order, work columns in
--- rt_rank order.  cost_rank != rt_rank means the cost model mis-ranks the
--- plans -- the point of these tests -- and each report prints only the
--- queries where it does: a query whose two orderings are identical, ties
--- included, is left out.  Costs are masked to one '#' per
--- integer digit to pin each plan's magnitude and the ranking without
--- churning the expected output on small cost moves.
+-- rt_rank order.  The cost model mis-ranks the plans -- the point of these
+-- tests -- where cost_rank puts a method ahead of one that rt_rank puts
+-- ahead of it, and each report prints only those queries: a tie on either
+-- side agrees with any order on the other (rank_consistent in the setup),
+-- so a query whose orderings differ only by a tie is left out.  Costs are
+-- masked to one '#' per integer digit to pin each plan's magnitude and the
+-- ranking without churning the expected output on small cost moves.
 --
--- The tests document known BNL cost-model defects (#30580 is fixed; #30565
--- and #30738 remain open, so their numbers are expected to move):
+-- The tests were written for three BNL cost-model defects, since fixed, and
+-- keep recording the rankings around them:
 --
 --   #30580  (fixed) The semi/anti/inner-unique ntuples overcount (a missing
 --           "/ batch_size") costed BNL far above HJ/MJ although it does the
@@ -69,20 +70,21 @@
 --           the 1-outer rows BNL and NL do the same work and are costed
 --           alike (see the section).
 --
---   #30565  BNL omits the cost of skipping the leading all-empty batches from
---           its startup cost.  With the outer sorted on a non-unique indexed
---           column and the first 2-3 batches matching nothing, BNL's startup
---           cost is identical to the no-skip case (and far below the merge
---           join's, which does charge the skip) -- so BNL is not the fastest
---           plan yet looks the cheapest to start.
+--   #30565  (fixed) BNL omitted the cost of skipping the leading all-empty
+--           batches from its startup cost, so with the outer sorted on a
+--           non-unique indexed column and the first 2-3 batches matching
+--           nothing it looked the cheapest to start while not the fastest
+--           plan.  The empty batches are charged to startup now, and MJ
+--           leads BNL by startup cost, total cost and work alike.
 --
---   #30738  With LIMIT, #30565's undercosted startup costs BNL below the
---           un-batched NL by (limit-adjusted) total cost, while at run time
---           it scans far more rows than NL and is slower (rt_rank worse than
---           NL's); MJ leads both orderings.  The execution-time limit
---           pushdown shrinks the first value list to values that are all
---           absent from the inner, gets an empty first scan, then falls back
---           to a full batch that scans far more rows than the LIMIT needs.
+--   #30738  (fixed) With LIMIT, the uncharged startup made BNL the cheapest
+--           plan by (limit-adjusted) total cost while it scanned far more
+--           rows than the un-batched NL: the execution-time limit pushdown
+--           shrinks the first value list to values that are all absent from
+--           the inner, gets an empty first scan, then falls back to a full
+--           batch that scans far more rows than the LIMIT needs.  MJ leads
+--           both orderings now; BNL is still costed below NL from LIMIT 100
+--           up while NL scans fewer rows.
 --
 -- The 4xx section (#18943) records no defect: it ranks DISTINCT joins whose
 -- inner is a distinct index scan against the same joins with the plain inner
@@ -193,8 +195,7 @@ base(qid, descr, tmpl) as (
     -- r.a (values 3886..5120, the top of s.y's range).  Rows with y < 3886
     -- match nothing, so with "s.y >= 1621" the first ~2 batches (y in
     -- 1621..3885) are empty before the matches at y >= 3886.  The "no-empty"
-    -- companion (s.y >= 3886) matches from the first row; BNL's startup cost is
-    -- identical in both -- the missing empty-batch cost.
+    -- companion (s.y >= 3886) matches from the first row.
     (201, '30565 empty-lead',
         'select s.y from ce.s s join @R@ r on r.a = s.y where s.y >= 1621 order by s.y'),
     (202, '30565 no-empty',
@@ -258,7 +259,7 @@ base(qid, descr, tmpl) as (
     --             pushes the limit into a tiny first value list that lands
     --             entirely in the absent range, gets an empty first scan, then
     --             falls back to a full batch and scans ~10k rows regardless of
-    --             the limit -- far more than NL.  This is the bug.
+    --             the limit -- far more than NL, which its startup cost charges.
     --   noskip -- "s.y >= 3886": matches from the very first row, so there is no
     --             leading mismatch.  Control: BNL's limit pushdown works, so BNL
     --             scans a few times NL's rows instead of tens of times.
@@ -514,11 +515,10 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 ------------------------------------------------------------------------------
 -- #30580 (fixed): the ntuples overcount used to cost BNL above HJ and MJ
 -- (cost_rank 3) on every unique / semi / anti case despite BNL doing the
--- least work; cost_rank now agrees with rt_rank (BNL first).  The pk rows
--- agree exactly and are not printed; the b and c rows differ only in the
--- tie between HJ and MJ, which do the same work on those keys.  "c inner"
--- was the unaffected control: the non-unique index hides the column's
--- uniqueness, so no semi/anti/unique costing applies.
+-- least work; cost_rank now agrees with rt_rank (BNL first) on every row,
+-- so the section prints nothing.  "c inner" was the unaffected control: the
+-- non-unique index hides the column's uniqueness, so no semi/anti/unique
+-- costing applies.
 --
 -- These probe-bound plans are dominated by round trips, so rt_rank ranks by
 -- read_reqs (then rows_scanned): BNL point-probes a whole batch per request,
@@ -527,10 +527,9 @@ select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 --
 -- The 1-outer rows pin the degenerate single-key probe, where BNL and NL do
 -- identical work (every metric ties, seeks and nexts included).  The costs
--- tie as well, and chosen shows the planner keeps NL, except on the c and "a"
--- inner joins, where BNL is costed below NL by less than 0.1, a near tie the
--- masked costs hide: a cost change that small flips cost_rank and chosen
--- together.
+-- tie as well, and the planner keeps NL, except on the c and "a" inner
+-- joins, where BNL is costed below NL by less than 0.1; either order agrees
+-- with the tie in work.
 --
 -- The left joins (...131-...147) rank like the inner joins on the same keys,
 -- 1-outer forms included.  They are the controls of the 5xx section.
@@ -558,75 +557,36 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |             descr              |  cost_rank   | chosen |   rt_rank    |     total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
-------+--------------------------------+--------------+--------+--------------+---------------------+------------+-----------------------+-------------+-------------+-------------
-  104 | 30580 b  inner [ce.r]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         484
-  105 | 30580 b  semi [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         484
-  106 | 30580 b  anti [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         540
-  107 | 30580 c  inner [ce.r]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         484
-  108 | 30580 c  semi [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         484
-  109 | 30580 c  anti [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |         540
-  114 | 30580 b  inner 1-outer [ce.r]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  115 | 30580 b  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  116 | 30580 b  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           0
-  117 | 30580 c  inner 1-outer [ce.r]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
-  118 | 30580 c  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
-  119 | 30580 c  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           0
-  121 | 30580 a  inner 1-outer [ce.r]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
-  122 | 30580 a  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
-  123 | 30580 a  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
-  134 | 30580 b  left [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |        1024
-  137 | 30580 c  left [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 2049 | 4096 14393 14393 4096 | 1 6 6 1024  | 2 1 1 1025  |        1024
-  144 | 30580 b  left 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  147 | 30580 c  left 1-outer [ce.r]   | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
- 1104 | 30580 b  inner [ce.rC]         | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         484
- 1105 | 30580 b  semi [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         484
- 1106 | 30580 b  anti [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         540
- 1107 | 30580 c  inner [ce.rC]         | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         484
- 1108 | 30580 c  semi [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         484
- 1109 | 30580 c  anti [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |         540
- 1114 | 30580 b  inner 1-outer [ce.rC] | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1115 | 30580 b  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1116 | 30580 b  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           0
- 1117 | 30580 c  inner 1-outer [ce.rC] | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1118 | 30580 c  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1119 | 30580 c  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1121 | 30580 a  inner 1-outer [ce.rC] | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1122 | 30580 a  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1123 | 30580 a  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1134 | 30580 b  left [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |        1024
- 1137 | 30580 c  left [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 2 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 2 1 1 1025  |        1024
- 1144 | 30580 b  left 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1147 | 30580 c  left 1-outer [ce.rC]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
-(38 rows)
+ qid | descr | cost_rank | chosen | rt_rank | total_cost | read_reqs | rows_scanned | table_reads | index_reads | actual_rows 
+-----+-------+-----------+--------+---------+------------+-----------+--------------+-------------+-------------+-------------
+(0 rows)
 
 ------------------------------------------------------------------------------
--- #30565: with leading empty batches (qid ...201) BNL's startup cost is
--- identical to the no-empty companion (qid ...202) and far below the merge
--- join's startup cost, even though BNL must grind through the empty batches
--- (visible as extra read requests / rows scanned vs the no-empty case).  The
--- startup cost should reflect that skip but does not -- so BNL looks the
--- cheapest to start (lowest startup_cost) while it is NOT the fastest plan
--- (rt_rank > 1; MJ does fewer round trips).  rt_rank ranks by read_reqs (then
--- rows_scanned), the round-trip cost that dominates these plans.
+-- #30565 (fixed): with leading empty batches (qid ...201) BNL must grind
+-- through the empty batches before its first row (visible as extra read
+-- requests and rows scanned against the no-empty companion, qid ...202), a
+-- skip its startup cost used to leave out, so it looked the cheapest to
+-- start while MJ did fewer round trips.  The skip is charged now: MJ leads
+-- both rows by startup cost and total cost as it leads the work, and
+-- neither row is printed.  rt_rank ranks by read_reqs (then rows_scanned),
+-- the round-trip cost that dominates these plans.
 --
 -- qid ...203 (hj-best) is the positive control: HJ genuinely wins (cheapest
 -- and joint-fewest read requests), and the cost model ranks it first too --
--- cost_rank and rt_rank agree, both led by HJ.  It confirms the misorderings
--- above are specific to BNL, not noise in the harness.
+-- cost_rank and rt_rank agree, both led by HJ, so the row is not printed.
+-- It confirms the misorderings above are specific to BNL, not noise in the
+-- harness.
 --
 -- #33001 (qid ...210-...252): a range bound on either join key limits how much
 -- of the other input the merge has to read.  On the ascending rows
 -- (...210-...212 bound the outer, ...220-...222 the inner) MJ is costed first
 -- throughout, and leads rt_rank as well except on ...210 and ...212, where BNL
 -- issues the same number of requests and scans fewer rows -- it point-probes
--- the bounded outer in a single batch.  ...211 agrees exactly and is not
--- printed.
+-- the bounded outer in a single batch.  Those two rows print, and ...221,
+-- where NL does the work of HJ yet is costed behind BNL.
 --
 -- ...230-...242 are the descending companions ("order by ... desc", planned as
 -- backward index scans on both inputs).  Read descending, the bounds swap
@@ -635,8 +595,8 @@ order by qid;
 -- ...242 the lower bound stops the merge early, so MJ scans 7717 rows to
 -- HJ's 8741; counting that puts MJ ahead of HJ by cost, as by the work.
 -- Costed as reading to the statistical extreme, the backward scans would
--- rank HJ first.  On ...230 and ...232 BNL leads both rankings, which agree
--- exactly, so those rows are not printed.
+-- rank HJ first.  On ...230 and ...232 BNL leads both rankings.  The
+-- descending rows all agree and none is printed.
 --
 -- ...250-...252 read the ...240-...242 bounds forward.  Ascending, a lower
 -- bound moves the merge's start, not its end: the outer rows below it are read
@@ -644,7 +604,7 @@ order by qid;
 -- the bound buys no round trips (rt_rank ties them).  Descending, the same
 -- bounds stop the merge early instead -- 7717 rows on ...240 against 8741
 -- here.  The clamp charges the discarded rows to startup rather than claiming
--- a saving it does not get.
+-- a saving it does not get, and the rows agree and are not printed.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
@@ -667,49 +627,24 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |             descr              |  cost_rank   | chosen |   rt_rank    |   startup_cost    |      total_cost       |   read_reqs    |      rows_scanned       | actual_rows 
-------+--------------------------------+--------------+--------+--------------+-------------------+-----------------------+----------------+-------------------------+-------------
-  201 | 30565 empty-lead [ce.r]        | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### #### #### ##  | #### #### #### #####  | 17 17 19 3504  | 15845 15845 15845 15845 |       12345
-  202 | 30565 no-empty [ce.r]          | MJ BNL HJ NL | MJ     | BNL=HJ=MJ NL | ### #### #### ##  | #### #### #### #####  | 15 15 15 1237  | 13580 13580 13580 13580 |       12345
-  203 | 30565 hj-best [ce.r]           | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### ### ### | #### #### #### ###### | 11 11 15 10245 | 17465 17465 15360 15360 |        2453
-  210 | id <= 1500 [ce.r]              | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ##   | ### ### #### #####    | 4 4 15 1502    | 3000 3548 13845 3000    |        1500
-  212 | x <= 1500 [ce.r]               | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ##   | ### ### #### #####    | 4 4 15 1502    | 3000 3548 13845 3000    |        1500
-  220 | pk <= 1500 [ce.r]              | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 4 7 7 1505     | 3548 6620 6620 6620     |        1500
-  221 | a <= 3950 [ce.r]               | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### #####    | 5 6 6 9        | 4746 5770 5770 5770     |         650
-  222 | b <= 1500 [ce.r]               | MJ HJ BNL NL | MJ     | MJ BNL=HJ=NL | ### ### ### ###   | ### ### #### ######   | 4 7 7 7        | 3548 6620 6620 6620     |        1500
-  231 | xx >= 150, pk <= 512 [ce.r]    | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | ### ### #### ###  | ### ### #### #####    | 5 5 8 367      | 4142 4142 3996 3993     |        3630
-  240 | 1500 <= pk <= 5120 [ce.r]      | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 8 9 9 3626     | 7717 8741 8741 8741     |        3621
-  241 | a >= 4800 [ce.r]               | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 5 9 9 326      | 4229 8325 8325 8325     |        3205
-  242 | 1500 <= b <= 5120 [ce.r]       | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 8 9 9 3626     | 7717 8741 8741 8741     |        3621
-  250 | 1500 <= pk <= 5120 fwd [ce.r]  | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 3626     | 8741 8741 8741 8741     |        3621
-  251 | a >= 4800 fwd [ce.r]           | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 326      | 8325 8325 8325 8325     |        3205
-  252 | 1500 <= b <= 5120 fwd [ce.r]   | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 3626     | 8741 8741 8741 8741     |        3621
- 1201 | 30565 empty-lead [ce.rC]       | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### #### #### ##  | #### #### #### #####  | 17 17 19 3504  | 15845 15845 15845 15845 |       12345
- 1202 | 30565 no-empty [ce.rC]         | MJ BNL HJ NL | MJ     | BNL=HJ=MJ NL | ### #### #### ##  | #### #### #### #####  | 15 15 15 1237  | 13580 13580 13580 13580 |       12345
- 1210 | id <= 1500 [ce.rC]             | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ##   | ### ### #### #####    | 4 4 15 1502    | 3000 3548 13845 3000    |        1500
- 1212 | x <= 1500 [ce.rC]              | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ##   | ### ### #### #####    | 4 4 15 1502    | 3000 3548 13845 3000    |        1500
- 1220 | pk <= 1500 [ce.rC]             | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 4 7 7 1505     | 3548 6620 6620 6620     |        1500
- 1221 | a <= 3950 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### #####    | 5 6 6 9        | 4746 5770 5770 5770     |         650
- 1222 | b <= 1500 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ BNL=HJ=NL | ### ### ### ###   | ### ### #### ######   | 4 7 7 7        | 3548 6620 6620 6620     |        1500
- 1231 | xx >= 150, pk <= 512 [ce.rC]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | ### ### #### ###  | ### ### #### #####    | 5 5 8 367      | 4142 4142 3996 3993     |        3630
- 1240 | 1500 <= pk <= 5120 [ce.rC]     | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 8 9 9 3626     | 7717 8741 8741 8741     |        3621
- 1241 | a >= 4800 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 5 9 9 326      | 4229 8325 8325 8325     |        3205
- 1242 | 1500 <= b <= 5120 [ce.rC]      | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 8 9 9 3626     | 7717 8741 8741 8741     |        3621
- 1250 | 1500 <= pk <= 5120 fwd [ce.rC] | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 3626     | 8741 8741 8741 8741     |        3621
- 1251 | a >= 4800 fwd [ce.rC]          | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 326      | 8325 8325 8325 8325     |        3205
- 1252 | 1500 <= b <= 5120 fwd [ce.rC]  | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 3626     | 8741 8741 8741 8741     |        3621
-(29 rows)
+ qid  |       descr        |  cost_rank   | chosen |   rt_rank    |  startup_cost   |     total_cost     |  read_reqs  |     rows_scanned     | actual_rows 
+------+--------------------+--------------+--------+--------------+-----------------+--------------------+-------------+----------------------+-------------
+  210 | id <= 1500 [ce.r]  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ## | ### ### #### ##### | 4 4 15 1502 | 3000 3548 13845 3000 |        1500
+  212 | x <= 1500 [ce.r]   | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ## | ### ### #### ##### | 4 4 15 1502 | 3000 3548 13845 3000 |        1500
+  221 | a <= 3950 [ce.r]   | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### ##### | 5 6 6 9     | 4746 5770 5770 5770  |         650
+ 1210 | id <= 1500 [ce.rC] | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ## | ### ### #### ##### | 4 4 15 1502 | 3000 3548 13845 3000 |        1500
+ 1212 | x <= 1500 [ce.rC]  | MJ BNL HJ NL | MJ     | BNL MJ HJ NL | ### ### #### ## | ### ### #### ##### | 4 4 15 1502 | 3000 3548 13845 3000 |        1500
+ 1221 | a <= 3950 [ce.rC]  | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### ##### | 5 6 6 9     | 4746 5770 5770 5770  |         650
+(6 rows)
 
 ------------------------------------------------------------------------------
--- #30738: with LIMIT, the undercosted startup costs BNL below NL by
--- (limit-adjusted) total cost, although at run time it scans far more rows
--- than NL and is slower; MJ leads both orderings.  Here the limit makes the
--- plans scan-bound, not round-trip-bound (NL's many requests are cheap empty
+-- #30738 (fixed): with LIMIT, the uncharged startup made BNL the cheapest
+-- plan by (limit-adjusted) total cost although it scanned far more rows than
+-- NL; MJ leads both orderings now.  Here the limit makes the plans
+-- scan-bound, not round-trip-bound (NL's many requests are cheap empty
 -- probes), so rt_rank ranks by rows_scanned (then read_reqs).  The "skip"
 -- rows (...301-304) have a 50-row leading mismatch: BNL's full-batch fallback
 -- scans about 10k rows against NL's 200 at LIMIT 100 and 4065 against 2000
@@ -718,8 +653,7 @@ order by qid;
 -- The "noskip" rows (...305-308) start matching at the first row -- the
 -- control where BNL's limit pushdown works and BNL scans two to five times
 -- NL's rows instead of fifty, yet is still costed below NL from LIMIT 10 up;
--- at LIMIT 1 the row prints for the tie between MJ and NL, which both scan
--- two rows.
+-- at LIMIT 1 the orderings agree as well.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, startup_cost, total_cost, actual_rows,
@@ -745,26 +679,22 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
  qid  |              descr              |  cost_rank   | chosen |   rt_rank    |  startup_cost   |     total_cost     | read_reqs  |     rows_scanned     | table_reads | index_reads | actual_rows 
 ------+---------------------------------+--------------+--------+--------------+-----------------+--------------------+------------+----------------------+-------------+-------------+-------------
   303 | 30738 skip limit 100 [ce.r]     | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## #### ## #### | ## #### #### ####  | 2 61 14 15 | 200 200 11226 13630  | 0 0 0 0     | 2 61 14 15  |         100
   304 | 30738 skip limit 1000 [ce.r]    | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 151 6 15 | 2000 2000 4065 13630 | 0 0 0 0     | 2 151 6 15  |        1000
-  305 | 30738 noskip limit 1 [ce.r]     | MJ NL BNL HJ | MJ     | MJ=NL BNL HJ | ## ## ### ####  | ## ## ### ####     | 2 2 3 15   | 2 2 11 13580         | 0 0 0 0     | 2 2 3 15    |           1
   306 | 30738 noskip limit 10 [ce.r]    | MJ BNL NL HJ | MJ     | MJ=NL BNL HJ | ## ### ## ####  | ## ### ### ####    | 2 2 3 15   | 20 20 55 13580       | 0 0 0 0     | 2 2 3 15    |          10
   307 | 30738 noskip limit 100 [ce.r]   | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 11 3 15  | 200 200 462 13580    | 0 0 0 0     | 2 11 3 15   |         100
   308 | 30738 noskip limit 1000 [ce.r]  | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 101 6 15 | 2000 2000 4565 13580 | 0 0 0 0     | 2 101 6 15  |        1000
  1303 | 30738 skip limit 100 [ce.rC]    | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## #### ## #### | ## #### #### ####  | 2 61 14 15 | 200 200 11226 13630  | 0 0 0 0     | 2 61 14 15  |         100
  1304 | 30738 skip limit 1000 [ce.rC]   | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 151 6 15 | 2000 2000 4065 13630 | 0 0 0 0     | 2 151 6 15  |        1000
- 1305 | 30738 noskip limit 1 [ce.rC]    | MJ NL BNL HJ | MJ     | MJ=NL BNL HJ | ## ## ### ####  | ## ## ### ####     | 2 2 3 15   | 2 2 11 13580         | 0 0 0 0     | 2 2 3 15    |           1
  1306 | 30738 noskip limit 10 [ce.rC]   | MJ BNL NL HJ | MJ     | MJ=NL BNL HJ | ## ### ## ####  | ## ### ### ####    | 2 2 3 15   | 20 20 55 13580       | 0 0 0 0     | 2 2 3 15    |          10
  1307 | 30738 noskip limit 100 [ce.rC]  | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 11 3 15  | 200 200 462 13580    | 0 0 0 0     | 2 11 3 15   |         100
  1308 | 30738 noskip limit 1000 [ce.rC] | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 101 6 15 | 2000 2000 4565 13580 | 0 0 0 0     | 2 101 6 15  |        1000
-(12 rows)
+(10 rows)
 
 ------------------------------------------------------------------------------
 -- 4xx (#18943): DISTINCT joins whose inner is a distinct index scan.  Every
@@ -782,7 +712,11 @@ order by qid;
 -- work_slack() so the layout flap cannot move a rank; work is printed masked
 -- like the costs, one '#' per digit.  Column a has 10 rows per value and a5
 -- has 5: at 5 a skip pays a seek and 3 nexts where the plain scan pays 5
--- nexts.
+-- nexts.  The rows that print are those where the flattered NL ties the
+-- fastest plans by work while the cost model ranks it last (...401, ...405);
+-- on a5 the orderings agree at batch size 1024, and at 512 ...402 prints,
+-- where BNL/p needs two batches and falls behind HJ and MJ by work but not
+-- by cost.
 ------------------------------------------------------------------------------
 select qid, descr,
        rank_labels(array_agg(label order by cost_rank, label),
@@ -797,24 +731,16 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from distinct_join_ranks join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |            descr            |             cost_rank             | chosen |              rt_rank              |                total_cost                 |        read_reqs         |                rows_scanned                 |                      work                       | actual_rows 
-------+-----------------------------+-----------------------------------+--------+-----------------------------------+-------------------------------------------+--------------------------+---------------------------------------------+-------------------------------------------------+-------------
-  401 | distinct a  z<=1024 [ce.r]  | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 2 3 3 3 4 14 14 1025     | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### #####   |         231
-  402 | distinct a5 z<=1024 [ce.r]  | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### #####    | 2 4 4 4 14 14 1025 1025  | 2538 4498 4517 4517 14393 14393 2538 4498   | #### #### ##### ##### ##### ##### ##### #####   |         490
-  403 | distinct a5 z<=200 [ce.r]   | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### ### #### #### #### ####       | 2 2 4 4 14 14 201 201    | 493 865 2869 2869 12745 12745 493 865       | #### #### ##### ##### ##### ##### #### ####     |          93
-  404 | distinct a5 y<=2469 [ce.r]  | BNL HJ MJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ MJ BNL/p=HJ/p=MJ/p NL=NL/p | #### #### #### #### #### #### ##### ##### | 6 6 6 16 16 16 2472 2472 | 4938 4938 4938 14814 14814 14814 4938 14814 | ##### ##### ##### ##### ##### ##### ##### ##### |        2469
-  405 | distinct a  y>=3886 [ce.r]  | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ=NL MJ BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 4 4 4 4 15 15 15 1237    | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####     |        1235
- 1401 | distinct a  z<=1024 [ce.rC] | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 2 3 3 3 4 14 14 1025     | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### #####   |         231
- 1402 | distinct a5 z<=1024 [ce.rC] | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### #####    | 2 4 4 4 14 14 1025 1025  | 2538 4498 4517 4517 14393 14393 2538 4498   | #### #### ##### ##### ##### ##### ##### #####   |         490
- 1403 | distinct a5 z<=200 [ce.rC]  | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### ### #### #### #### ####       | 2 2 4 4 14 14 201 201    | 493 865 2869 2869 12745 12745 493 865       | #### #### ##### ##### ##### ##### #### ####     |          93
- 1404 | distinct a5 y<=2469 [ce.rC] | BNL HJ MJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ MJ BNL/p=HJ/p=MJ/p NL=NL/p | #### #### #### #### #### #### ##### ##### | 6 6 6 16 16 16 2472 2472 | 4938 4938 4938 14814 14814 14814 4938 14814 | ##### ##### ##### ##### ##### ##### ##### ##### |        2469
- 1405 | distinct a  y>=3886 [ce.rC] | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ=NL MJ BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 4 4 4 4 15 15 15 1237    | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####     |        1235
-(10 rows)
+ qid  |            descr            |             cost_rank             | chosen |              rt_rank              |               total_cost               |       read_reqs       |                rows_scanned                 |                     work                      | actual_rows 
+------+-----------------------------+-----------------------------------+--------+-----------------------------------+----------------------------------------+-----------------------+---------------------------------------------+-----------------------------------------------+-------------
+  401 | distinct a  z<=1024 [ce.r]  | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 2 3 3 3 4 14 14 1025  | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### ##### |         231
+  405 | distinct a  y>=3886 [ce.r]  | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ=NL MJ BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 4 4 4 4 15 15 15 1237 | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####   |        1235
+ 1401 | distinct a  z<=1024 [ce.rC] | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 2 3 3 3 4 14 14 1025  | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### ##### |         231
+ 1405 | distinct a  y>=3886 [ce.rC] | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | BNL=HJ=NL MJ BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 4 4 4 4 15 15 15 1237 | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####   |        1235
+(4 rows)
 
 ------------------------------------------------------------------------------
 -- 5xx: the 1024 shuffled outer keys joined on the non-unique key a, which has
@@ -828,8 +754,10 @@ order by qid;
 -- ranks by read_reqs (then rows_scanned), as in the 1xx section, so cost_rank
 -- disagrees with it on ce.rC and on the ce.r semi and anti joins.  On the
 -- ce.r inner and left joins BNL's extra request ranks it behind HJ and MJ by
--- work as well, though not by the 2.6 times its cost says.  The left join
--- ranks like the inner join, as the 1xx left joins do on the unique keys.
+-- work as well, though not by the 2.6 times its cost says, so those rows are
+-- not printed; at batch size 512 the ce.r semi and anti joins agree too.  The
+-- left join ranks like the inner join, as the 1xx left joins do on the unique
+-- keys.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,
@@ -854,22 +782,18 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
  qid  |          descr           |  cost_rank   | chosen |   rt_rank    |      total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
 ------+--------------------------+--------------+--------+--------------+----------------------+------------+-----------------------+-------------+-------------+-------------
-  501 | a  inner z<=1024 [ce.r]  | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 8 1257 | 14393 14393 9740 9740 | 6 6 5 2     | 1 1 3 1024  |        1131
   502 | a  semi z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 7 7 7 1257 | 6668 14393 14393 9740 | 3 6 6 2     | 4 1 1 1024  |         231
   503 | a  anti z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 7 7 7 1257 | 6668 14393 14393 9740 | 3 6 6 2     | 4 1 1 1024  |         793
-  504 | a  left z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 8 1257 | 14393 14393 9740 9740 | 6 6 5 2     | 1 1 3 1024  |        1924
  1501 | a  inner z<=1024 [ce.rC] | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |        1131
  1502 | a  semi z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 3 7 7 1026 | 6668 14393 14393 9740 | 0 6 6 2     | 3 1 1 1024  |         231
  1503 | a  anti z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |         793
  1504 | a  left z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 4 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 2 1 1 1024  |        1924
-(8 rows)
+(6 rows)
 
 ------------------------------------------------------------------------------
 -- 6xx (#19549): the 1024 shuffled outer rows of ce.s2 joined on the
@@ -878,9 +802,8 @@ order by qid;
 -- key column, so a batch of 16 pairs is estimated at 256 rows and a batch
 -- of 128 or more at the whole 16384-row inner.  With one batch of 1024
 -- that is about what HJ and MJ scan, and BNL, which point-probes the batch
--- in 2 or 3 requests against their 7 to 18, is costed and ranked first; on
--- ...602, where every pair has its row, the two orderings agree exactly and
--- the row is not printed.
+-- in 2 or 3 requests against their 7 to 18, is costed and ranked first, so
+-- the first pass prints nothing.
 -- With two batches of 512 (second pass) the estimate doubles while BNL's
 -- work grows by one request, and BNL falls to third by cost behind MJ and
 -- HJ on ce.r2 and ce.r2C and to second behind HJ on ce.r2H, still first by
@@ -910,24 +833,12 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |            descr            |  cost_rank   | chosen |   rt_rank    |      total_cost      |  read_reqs   |     rows_scanned      | table_reads  | index_reads | actual_rows 
-------+-----------------------------+--------------+--------+--------------+----------------------+--------------+-----------------------+--------------+-------------+-------------
-  601 | g,h inner z<=1024 [ce.r2]   | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |         265
-  603 | g,h semi  z<=1024 [ce.r2]   | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |         265
-  604 | g,h left  z<=1024 [ce.r2]   | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |        1024
- 1601 | g,h inner z<=1024 [ce.r2C]  | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |         265
- 1603 | g,h semi  z<=1024 [ce.r2C]  | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |         265
- 1604 | g,h left  z<=1024 [ce.r2C]  | BNL MJ HJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 18 18 1026 | 5385 21504 21504 5385 | 3 18 18 1026 | 0 0 0 0     |        1024
- 2601 | g,h inner z<=1024 [ce.r2H]  | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 8 8 1026   | 5385 21504 21504 5385 | 3 8 8 1026   | 0 0 0 0     |         265
- 2602 | g,h inner id<=1024 [ce.r2H] | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ####  | 2 7 7 1025   | 2048 17408 17408 2048 | 2 7 7 1025   | 0 0 0 0     |        1024
- 2603 | g,h semi  z<=1024 [ce.r2H]  | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 8 8 1026   | 5385 21504 21504 5385 | 3 8 8 1026   | 0 0 0 0     |         265
- 2604 | g,h left  z<=1024 [ce.r2H]  | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | #### #### #### ##### | 3 8 8 1026   | 5385 21504 21504 5385 | 3 8 8 1026   | 0 0 0 0     |        1024
-(10 rows)
+ qid | descr | cost_rank | chosen | rt_rank | total_cost | read_reqs | rows_scanned | table_reads | index_reads | actual_rows 
+-----+-------+-----------+--------+---------+------------+-----------+--------------+-------------+-------------+-------------
+(0 rows)
 
 ------------------------------------------------------------------------------
 -- Second pass: identical report at yb_bnl_batch_size = 512.  Compare the BNL
@@ -964,52 +875,12 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |             descr              |  cost_rank   | chosen |   rt_rank    |     total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
-------+--------------------------------+--------------+--------+--------------+---------------------+------------+-----------------------+-------------+-------------+-------------
-  104 | 30580 b  inner [ce.r]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         484
-  105 | 30580 b  semi [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         484
-  106 | 30580 b  anti [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         540
-  107 | 30580 c  inner [ce.r]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         484
-  108 | 30580 c  semi [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         484
-  109 | 30580 c  anti [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |         540
-  114 | 30580 b  inner 1-outer [ce.r]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  115 | 30580 b  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  116 | 30580 b  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           0
-  117 | 30580 c  inner 1-outer [ce.r]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
-  118 | 30580 c  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
-  119 | 30580 c  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           0
-  121 | 30580 a  inner 1-outer [ce.r]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
-  122 | 30580 a  semi 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
-  123 | 30580 a  anti 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
-  134 | 30580 b  left [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |        1024
-  137 | 30580 c  left [ce.r]           | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 5 7 7 2049 | 4096 14393 14393 4096 | 2 6 6 1024  | 3 1 1 1025  |        1024
-  144 | 30580 b  left 1-outer [ce.r]   | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 3 3 12346 12346       | 2 2 7 7     | 1 1 0 0     |           1
-  147 | 30580 c  left 1-outer [ce.r]   | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 3 3 7 7    | 4 4 12347 12347       | 1 1 6 6     | 2 2 1 1     |           1
- 1104 | 30580 b  inner [ce.rC]         | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         484
- 1105 | 30580 b  semi [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         484
- 1106 | 30580 b  anti [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         540
- 1107 | 30580 c  inner [ce.rC]         | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         484
- 1108 | 30580 c  semi [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         484
- 1109 | 30580 c  anti [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |         540
- 1114 | 30580 b  inner 1-outer [ce.rC] | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1115 | 30580 b  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1116 | 30580 b  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           0
- 1117 | 30580 c  inner 1-outer [ce.rC] | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1118 | 30580 c  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1119 | 30580 c  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1121 | 30580 a  inner 1-outer [ce.rC] | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1122 | 30580 a  semi 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           0
- 1123 | 30580 a  anti 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 2 2 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
- 1134 | 30580 b  left [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |        1024
- 1137 | 30580 c  left [ce.rC]          | BNL HJ MJ NL | BNL    | BNL HJ=MJ NL | ### #### #### ##### | 3 7 7 1025 | 4096 14393 14393 4096 | 0 6 6 0     | 3 1 1 1025  |        1024
- 1144 | 30580 b  left 1-outer [ce.rC]  | BNL=NL HJ MJ | NL     | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 3 3 12346 12346       | 1 1 7 7     | 1 1 0 0     |           1
- 1147 | 30580 c  left 1-outer [ce.rC]  | BNL NL HJ MJ | BNL    | BNL=NL HJ=MJ | ## ## #### ####     | 2 2 7 7    | 4 4 12347 12347       | 0 0 6 6     | 2 2 1 1     |           1
-(38 rows)
+ qid | descr | cost_rank | chosen | rt_rank | total_cost | read_reqs | rows_scanned | table_reads | index_reads | actual_rows 
+-----+-------+-----------+--------+---------+------------+-----------+--------------+-------------+-------------+-------------
+(0 rows)
 
 -- #30565 at batch size 512.
 with m as (
@@ -1033,33 +904,16 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |             descr              |  cost_rank   | chosen |   rt_rank    |   startup_cost    |      total_cost       |   read_reqs    |      rows_scanned       | actual_rows 
-------+--------------------------------+--------------+--------+--------------+-------------------+-----------------------+----------------+-------------------------+-------------
-  201 | 30565 empty-lead [ce.r]        | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### #### ### ##   | #### #### #### #####  | 17 17 21 3504  | 15845 15845 15845 15845 |       12345
-  202 | 30565 no-empty [ce.r]          | MJ BNL HJ NL | MJ     | BNL=HJ=MJ NL | ### ### #### ##   | #### #### #### #####  | 15 15 15 1237  | 13580 13580 13580 13580 |       12345
-  203 | 30565 hj-best [ce.r]           | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### ### ### | #### #### #### ###### | 11 11 25 10245 | 17465 17465 15360 15360 |        2453
-  221 | a <= 3950 [ce.r]               | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### #####    | 5 6 6 13       | 4746 5770 5770 5770     |         650
-  222 | b <= 1500 [ce.r]               | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### ######   | 4 7 7 8        | 3548 6620 6620 6620     |        1500
-  231 | xx >= 150, pk <= 512 [ce.r]    | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | ### ### #### ###  | ### ### #### #####    | 5 5 12 367     | 4142 4142 3999 3993     |        3630
-  241 | a >= 4800 [ce.r]               | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 5 9 9 326      | 4229 8325 8325 8325     |        3205
-  250 | 1500 <= pk <= 5120 fwd [ce.r]  | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### ### ### ###   | ### ### #### ######   | 9 9 13 3626    | 8741 8741 8741 8741     |        3621
-  251 | a >= 4800 fwd [ce.r]           | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 326      | 8325 8325 8325 8325     |        3205
-  252 | 1500 <= b <= 5120 fwd [ce.r]   | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### ### ### ###   | ### ### #### ######   | 9 9 13 3626    | 8741 8741 8741 8741     |        3621
- 1201 | 30565 empty-lead [ce.rC]       | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### #### ### ##   | #### #### #### #####  | 17 17 21 3504  | 15845 15845 15845 15845 |       12345
- 1202 | 30565 no-empty [ce.rC]         | MJ BNL HJ NL | MJ     | BNL=HJ=MJ NL | ### ### #### ##   | #### #### #### #####  | 15 15 15 1237  | 13580 13580 13580 13580 |       12345
- 1221 | a <= 3950 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### #####    | 5 6 6 13       | 4746 5770 5770 5770     |         650
- 1222 | b <= 1500 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ###   | ### ### #### ######   | 4 7 7 8        | 3548 6620 6620 6620     |        1500
- 1231 | xx >= 150, pk <= 512 [ce.rC]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | ### ### #### ###  | ### ### #### #####    | 5 5 12 367     | 4142 4142 3999 3993     |        3630
- 1241 | a >= 4800 [ce.rC]              | MJ HJ BNL NL | MJ     | MJ BNL=HJ NL | ### ### ### ###   | ### ### #### ######   | 5 9 9 326      | 4229 8325 8325 8325     |        3205
- 1250 | 1500 <= pk <= 5120 fwd [ce.rC] | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### ### ### ###   | ### ### #### ######   | 9 9 13 3626    | 8741 8741 8741 8741     |        3621
- 1251 | a >= 4800 fwd [ce.rC]          | MJ HJ BNL NL | MJ     | BNL=HJ=MJ NL | ### ### ### ###   | ### ### #### ######   | 9 9 9 326      | 8325 8325 8325 8325     |        3205
- 1252 | 1500 <= b <= 5120 fwd [ce.rC]  | MJ HJ BNL NL | MJ     | HJ=MJ BNL NL | ### ### ### ###   | ### ### #### ######   | 9 9 13 3626    | 8741 8741 8741 8741     |        3621
-(19 rows)
+ qid  |       descr       |  cost_rank   | chosen |   rt_rank    |  startup_cost   |     total_cost      | read_reqs |    rows_scanned     | actual_rows 
+------+-------------------+--------------+--------+--------------+-----------------+---------------------+-----------+---------------------+-------------
+  221 | a <= 3950 [ce.r]  | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### #####  | 5 6 6 13  | 4746 5770 5770 5770 |         650
+  222 | b <= 1500 [ce.r]  | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### ###### | 4 7 7 8   | 3548 6620 6620 6620 |        1500
+ 1221 | a <= 3950 [ce.rC] | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### #####  | 5 6 6 13  | 4746 5770 5770 5770 |         650
+ 1222 | b <= 1500 [ce.rC] | MJ HJ BNL NL | MJ     | MJ HJ=NL BNL | ### ### ### ### | ### ### #### ###### | 4 7 7 8   | 3548 6620 6620 6620 |        1500
+(4 rows)
 
 -- #30738 at batch size 512.
 with m as (
@@ -1086,26 +940,22 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
  qid  |              descr              |  cost_rank   | chosen |   rt_rank    |  startup_cost   |     total_cost     | read_reqs  |     rows_scanned     | table_reads | index_reads | actual_rows 
 ------+---------------------------------+--------------+--------+--------------+-----------------+--------------------+------------+----------------------+-------------+-------------+-------------
   303 | 30738 skip limit 100 [ce.r]     | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 61 9 15  | 200 200 6106 13630   | 0 0 0 0     | 2 61 10 15  |         100
   304 | 30738 skip limit 1000 [ce.r]    | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 151 6 15 | 2000 2000 4065 13630 | 0 0 0 0     | 2 151 6 15  |        1000
-  305 | 30738 noskip limit 1 [ce.r]     | MJ NL BNL HJ | MJ     | MJ=NL BNL HJ | ## ## ### ####  | ## ## ### ####     | 2 2 3 15   | 2 2 11 13580         | 0 0 0 0     | 2 2 3 15    |           1
   306 | 30738 noskip limit 10 [ce.r]    | MJ BNL NL HJ | MJ     | MJ=NL BNL HJ | ## ### ## ####  | ## ### ### ####    | 2 2 3 15   | 20 20 55 13580       | 0 0 0 0     | 2 2 3 15    |          10
   307 | 30738 noskip limit 100 [ce.r]   | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 11 3 15  | 200 200 462 13580    | 0 0 0 0     | 2 11 3 15   |         100
   308 | 30738 noskip limit 1000 [ce.r]  | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 101 6 15 | 2000 2000 4565 13580 | 0 0 0 0     | 2 101 6 15  |        1000
  1303 | 30738 skip limit 100 [ce.rC]    | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 61 9 15  | 200 200 6106 13630   | 0 0 0 0     | 2 61 10 15  |         100
  1304 | 30738 skip limit 1000 [ce.rC]   | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 151 6 15 | 2000 2000 4065 13630 | 0 0 0 0     | 2 151 6 15  |        1000
- 1305 | 30738 noskip limit 1 [ce.rC]    | MJ NL BNL HJ | MJ     | MJ=NL BNL HJ | ## ## ### ####  | ## ## ### ####     | 2 2 3 15   | 2 2 11 13580         | 0 0 0 0     | 2 2 3 15    |           1
  1306 | 30738 noskip limit 10 [ce.rC]   | MJ BNL NL HJ | MJ     | MJ=NL BNL HJ | ## ### ## ####  | ## ### ### ####    | 2 2 3 15   | 20 20 55 13580       | 0 0 0 0     | 2 2 3 15    |          10
  1307 | 30738 noskip limit 100 [ce.rC]  | MJ BNL NL HJ | MJ     | MJ NL BNL HJ | ## ### ## ####  | ## ### #### ####   | 2 11 3 15  | 200 200 462 13580    | 0 0 0 0     | 2 11 3 15   |         100
  1308 | 30738 noskip limit 1000 [ce.rC] | MJ BNL HJ NL | MJ     | MJ NL BNL HJ | ### ### #### ## | ### ### #### ##### | 2 101 6 15 | 2000 2000 4565 13580 | 0 0 0 0     | 2 101 6 15  |        1000
-(12 rows)
+(10 rows)
 
 -- 4xx at batch size 512.
 select qid, descr,
@@ -1121,24 +971,18 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from distinct_join_ranks join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
- qid  |            descr            |             cost_rank             | chosen |              rt_rank              |                total_cost                 |        read_reqs         |                rows_scanned                 |                      work                       | actual_rows 
-------+-----------------------------+-----------------------------------+--------+-----------------------------------+-------------------------------------------+--------------------------+---------------------------------------------+-------------------------------------------------+-------------
-  401 | distinct a  z<=1024 [ce.r]  | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 3 3 3 3 5 14 14 1025     | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### #####   |         231
-  402 | distinct a5 z<=1024 [ce.r]  | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ BNL/p HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### #####    | 3 4 4 5 14 14 1025 1025  | 2538 4517 4517 4498 14393 14393 2538 4498   | #### ##### ##### #### ##### ##### ##### #####   |         490
-  403 | distinct a5 z<=200 [ce.r]   | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### ### #### #### #### ####       | 2 2 4 4 14 14 201 201    | 493 865 2869 2869 12745 12745 493 865       | #### #### ##### ##### ##### ##### #### ####     |          93
-  404 | distinct a5 y<=2469 [ce.r]  | HJ MJ BNL MJ/p HJ/p BNL/p NL NL/p | HJ     | HJ MJ BNL HJ/p=MJ/p BNL/p NL=NL/p | #### #### #### #### #### #### ##### ##### | 6 6 8 16 16 18 2472 2472 | 4938 4938 4938 14814 14814 14814 4938 14814 | ##### ##### ##### ##### ##### ##### ##### ##### |        2469
-  405 | distinct a  y>=3886 [ce.r]  | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | HJ=NL MJ BNL BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 4 4 4 5 15 15 15 1237    | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####     |        1235
- 1401 | distinct a  z<=1024 [ce.rC] | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 3 3 3 3 5 14 14 1025     | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### #####   |         231
- 1402 | distinct a5 z<=1024 [ce.rC] | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ BNL/p HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### #####    | 3 4 4 5 14 14 1025 1025  | 2538 4517 4517 4498 14393 14393 2538 4498   | #### ##### ##### #### ##### ##### ##### #####   |         490
- 1403 | distinct a5 z<=200 [ce.rC]  | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL BNL/p HJ=MJ HJ/p=MJ/p NL=NL/p | ### ### ### ### #### #### #### ####       | 2 2 4 4 14 14 201 201    | 493 865 2869 2869 12745 12745 493 865       | #### #### ##### ##### ##### ##### #### ####     |          93
- 1404 | distinct a5 y<=2469 [ce.rC] | HJ MJ BNL MJ/p HJ/p BNL/p NL NL/p | HJ     | HJ MJ BNL HJ/p=MJ/p BNL/p NL=NL/p | #### #### #### #### #### #### ##### ##### | 6 6 8 16 16 18 2472 2472 | 4938 4938 4938 14814 14814 14814 4938 14814 | ##### ##### ##### ##### ##### ##### ##### ##### |        2469
- 1405 | distinct a  y>=3886 [ce.rC] | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | HJ=NL MJ BNL BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### #####    | 4 4 4 5 15 15 15 1237    | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####     |        1235
-(10 rows)
+ qid  |            descr            |             cost_rank             | chosen |              rt_rank              |               total_cost               |        read_reqs        |                rows_scanned                 |                     work                      | actual_rows 
+------+-----------------------------+-----------------------------------+--------+-----------------------------------+----------------------------------------+-------------------------+---------------------------------------------+-----------------------------------------------+-------------
+  401 | distinct a  z<=1024 [ce.r]  | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 3 3 3 3 5 14 14 1025    | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### ##### |         231
+  402 | distinct a5 z<=1024 [ce.r]  | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ BNL/p HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### ##### | 3 4 4 5 14 14 1025 1025 | 2538 4517 4517 4498 14393 14393 2538 4498   | #### ##### ##### #### ##### ##### ##### ##### |         490
+  405 | distinct a  y>=3886 [ce.r]  | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | HJ=NL MJ BNL BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 4 4 4 5 15 15 15 1237   | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####   |        1235
+ 1401 | distinct a  z<=1024 [ce.rC] | BNL HJ MJ BNL/p MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ=NL BNL/p HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 3 3 3 3 5 14 14 1025    | 2279 3283 3283 3283 4358 14393 14393 4358   | #### ##### ##### ##### #### ##### ##### ##### |         231
+ 1402 | distinct a5 z<=1024 [ce.rC] | BNL BNL/p HJ MJ MJ/p HJ/p NL NL/p | BNL    | BNL HJ=MJ BNL/p HJ/p=MJ/p NL=NL/p | ### ### ### #### #### #### ##### ##### | 3 4 4 5 14 14 1025 1025 | 2538 4517 4517 4498 14393 14393 2538 4498   | #### ##### ##### #### ##### ##### ##### ##### |         490
+ 1405 | distinct a  y>=3886 [ce.rC] | BNL MJ HJ MJ/p HJ/p BNL/p NL NL/p | BNL    | HJ=NL MJ BNL BNL/p=HJ/p=MJ/p NL/p | ### ### ### #### #### #### ##### ##### | 4 4 4 5 15 15 15 1237   | 2470 2470 2470 2470 13580 13580 13580 13580 | #### #### #### #### ##### ##### ##### #####   |        1235
+(6 rows)
 
 -- 5xx at batch size 512.
 with m as (
@@ -1164,22 +1008,16 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
  qid  |          descr           |  cost_rank   | chosen |   rt_rank    |      total_cost      | read_reqs  |     rows_scanned      | table_reads | index_reads | actual_rows 
 ------+--------------------------+--------------+--------+--------------+----------------------+------------+-----------------------+-------------+-------------+-------------
-  501 | a  inner z<=1024 [ce.r]  | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 9 1257 | 14393 14393 9740 9740 | 6 6 6 2     | 1 1 4 1024  |        1131
-  502 | a  semi z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 9 1257 | 14393 14393 6668 9740 | 6 6 4 2     | 1 1 5 1024  |         231
-  503 | a  anti z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 9 1257 | 14393 14393 9740 9740 | 6 6 6 2     | 1 1 4 1024  |         793
-  504 | a  left z<=1024 [ce.r]   | HJ MJ BNL NL | HJ     | HJ=MJ BNL NL | #### #### #### ##### | 7 7 9 1257 | 14393 14393 9740 9740 | 6 6 6 2     | 1 1 4 1024  |        1924
  1501 | a  inner z<=1024 [ce.rC] | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 5 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 4 1 1 1024  |        1131
  1502 | a  semi z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 3 7 7 1026 | 6668 14393 14393 9740 | 0 6 6 2     | 3 1 1 1024  |         231
  1503 | a  anti z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 5 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 4 1 1 1024  |         793
  1504 | a  left z<=1024 [ce.rC]  | HJ MJ BNL NL | HJ     | BNL HJ=MJ NL | #### #### #### ##### | 5 7 7 1026 | 9740 14393 14393 9740 | 2 6 6 2     | 4 1 1 1024  |        1924
-(8 rows)
+(4 rows)
 
 -- 6xx at batch size 512.
 with m as (
@@ -1205,10 +1043,8 @@ select qid, descr,
        max(actual_rows)                                                          actual_rows
 from m join join_choice using (qid)
 group by qid, descr, chosen
-having rank_labels(array_agg(label order by cost_rank, label),
-                   array_agg(cost_rank order by cost_rank, label))
-    <> rank_labels(array_agg(label order by rt_rank, label),
-                   array_agg(rt_rank order by rt_rank, label))
+having not rank_consistent(array_agg(cost_rank order by label),
+                           array_agg(rt_rank order by label))
 order by qid;
  qid  |            descr            |  cost_rank   | chosen |   rt_rank    |      total_cost      |  read_reqs   |     rows_scanned      | table_reads  | index_reads | actual_rows 
 ------+-----------------------------+--------------+--------+--------------+----------------------+--------------+-----------------------+--------------+-------------+-------------

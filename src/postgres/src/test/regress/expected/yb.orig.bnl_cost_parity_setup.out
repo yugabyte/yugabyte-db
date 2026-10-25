@@ -239,6 +239,18 @@ begin
     return s;
 end;
 $$;
+-- rank_consistent: whether two rankings of the same labels agree, a tie on
+-- either side counting as agreement: no pair of labels that one ranking puts
+-- one way and the other the other way.  Both arrays are ordered by label.
+drop function if exists rank_consistent cascade;
+create function rank_consistent(a bigint[], b bigint[]) returns boolean
+language sql immutable as
+$$
+    select not exists (
+        select 1
+        from generate_subscripts(a, 1) i, generate_subscripts(a, 1) j
+        where a[i] < a[j] and b[i] > b[j]);
+$$;
 -- Storage-work key of the DISTINCT section (see the test header): nexts and
 -- prevs count 1, a seek counts seek_weight() nexts.  3 is DocDB's own
 -- break-even (it probes 2 nexts before it seeks), the in-memory timing of
