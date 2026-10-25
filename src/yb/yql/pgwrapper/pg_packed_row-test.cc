@@ -611,6 +611,8 @@ void PgPackedRowTest::TestCompaction(size_t num_keys, const std::string& expr_su
     if (step == 1) {
       ASSERT_OK(cluster_->FlushTablets());
     } else if (step == 2) {
+      // Compacting a peer before it applies the last writes changes its record count.
+      ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
       ASSERT_OK(cluster_->CompactTablets());
     }
 
@@ -665,6 +667,7 @@ TEST_P(PgPackedRowTest, ColocatedPackRowDisabled) {
 
   // Enable pack row for colocated table and trigger compaction.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
   ASSERT_OK(cluster_->CompactTablets());
   CheckNumRecords(cluster_.get(), 1);
 }
@@ -743,7 +746,6 @@ TEST_P(PgPackedRowTest, Serial) {
 }
 
 TEST_P(PgPackedRowTest, PackDuringCompaction) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
@@ -761,6 +763,7 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
+  ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
   ASSERT_OK(cluster_->CompactTablets());
 
   ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
@@ -772,9 +775,6 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
 
 // Check that we correctly interpret packed row size limit.
 TEST_P(PgPackedRowTest, BigValue) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-
   constexpr size_t kValueLimit = 512;
   const std::string kBigValue(kValueLimit, 'B');
   const std::string kHalfBigValue(kValueLimit / 2, 'H');
@@ -786,6 +786,7 @@ TEST_P(PgPackedRowTest, BigValue) {
   std::array<std::string, 2> values = {kBigValue, kHalfBigValue};
 
   auto check_state = [this, &conn, &values](size_t expected_num_records) -> Status {
+    RETURN_NOT_OK(WaitAllPeersApplied(cluster_.get()));
     RETURN_NOT_OK(cluster_->CompactTablets());
     auto row = VERIFY_RESULT((conn.FetchRow<std::string, std::string>(
         "SELECT v1, v2 FROM t")));

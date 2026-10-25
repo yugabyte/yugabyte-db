@@ -541,9 +541,16 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
-Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
+// Waits until every replica of each tablet has committed (and so applied) the leader's committed
+// op id. A LEADER_NOT_READY leader's committed op id may not cover every write acknowledged to
+// clients, so pass require_leader_is_ready to wait for a LEADER_AND_READY leader instead.
+Status WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready);
 
-Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);
+Status WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready);
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
