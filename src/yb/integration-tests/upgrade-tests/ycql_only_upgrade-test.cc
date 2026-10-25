@@ -22,6 +22,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
@@ -172,9 +174,9 @@ TEST_F(YcqlOnlyUpgradeTest, ContainerFiles) {
   ASSERT_EQ(tablet_ids.size(), 1);
   for (auto* ts : cluster_->tserver_daemons()) {
     ASSERT_OK(ts->LogGC(tablet_ids, /*rollover=*/true));
-    const auto path = JoinPathSegments(
+    const auto path = tablet::TabletBootstrapStateManager::FilePath(JoinPathSegments(
         ts->GetRootDir(), "yb-data", "tserver", "wals", "table-" + table_->id(),
-        "tablet-" + tablet_ids.front(), "retryable_requests");
+        "tablet-" + tablet_ids.front()));
     // The old version embeds tens of KB of descriptors in this file.
     ASSERT_OK(WaitFor(
         [&path]() -> Result<bool> {

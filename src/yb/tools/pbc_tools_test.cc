@@ -33,6 +33,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -198,9 +199,9 @@ TEST_F(PBToolsTestWithMiniCluster, DumpContainerFiles) {
   QLAddInt32HashValue(op->mutable_request(), 1);
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
   ASSERT_OK(cluster_->LogGCOnSingleTServer(0, {tablet_id}, /* rollover= */ true));
-  const auto bootstrap_state_path = JoinPathSegments(
+  const auto bootstrap_state_path = tablet::TabletBootstrapStateManager::FilePath(JoinPathSegments(
       cluster_->tablet_server(0)->GetRootDir(), "yb-data", "tserver", "wals",
-      "table-" + table_info.table_id, "tablet-" + tablet_id, "retryable_requests");
+      "table-" + table_info.table_id, "tablet-" + tablet_id));
   ASSERT_OK(WaitFor(
       [&bootstrap_state_path] { return Env::Default()->FileExists(bootstrap_state_path); },
       30s * kTimeMultiplier, "Bootstrap state file"));
@@ -209,20 +210,33 @@ TEST_F(PBToolsTestWithMiniCluster, DumpContainerFiles) {
   cluster_->Shutdown();
 
   std::set<std::string> types;
+  // Walk does not return the callback's status.
+  std::vector<std::string> failures;
   for (auto* daemon : std::initializer_list<ExternalDaemon*>{
            cluster_->master(0), cluster_->tablet_server(0)}) {
     ASSERT_OK(Env::Default()->Walk(
         daemon->GetRootDir(), Env::PRE_ORDER,
-        [&types](Env::FileType type, const std::string& dir, const std::string& name) -> Status {
-          const auto path = JoinPathSegments(dir, name);
-          if (type != Env::FILE_TYPE || !VERIFY_RESULT(IsPBContainerFile(Env::Default(), path))) {
+        [&types, &failures](
+            Env::FileType type, const std::string& dir, const std::string& name) -> Status {
+          if (type != Env::FILE_TYPE) {
             return Status::OK();
           }
-          auto output = VERIFY_RESULT(CallPBDump(path));
-          types.insert(output.stdout.substr(0, output.stdout.find(' ')));
+          const auto path = JoinPathSegments(dir, name);
+          auto status = [&types, &path]() -> Status {
+            if (!VERIFY_RESULT(IsPBContainerFile(Env::Default(), path))) {
+              return Status::OK();
+            }
+            auto output = VERIFY_RESULT(CallPBDump(path));
+            types.insert(output.stdout.substr(0, output.stdout.find(' ')));
+            return Status::OK();
+          }();
+          if (!status.ok()) {
+            failures.push_back(Format("$0: $1", path, status));
+          }
           return Status::OK();
         }));
   }
+  ASSERT_TRUE(failures.empty()) << AsString(failures);
   for (const auto* type : {
            "yb.AutoFlagsConfigPB", "yb.InstanceMetadataPB", "yb.consensus.ConsensusMetadataPB",
            "yb.consensus.TabletBootstrapStatePB", "yb.tablet.RaftGroupReplicaSuperBlockPB"}) {
