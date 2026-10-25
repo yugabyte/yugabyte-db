@@ -2278,6 +2278,55 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testRollbackEditUniverseRejectedWithoutBeforeTopology() throws InterruptedException {
+    // PLAT-23215: with no before nodes every node would count as added. The precheck must refuse
+    // before anything is stopped or destroyed.
+    doAnswer(
+            invocation -> {
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              if (!NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    enableManualEditRollback(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo failedEdit = submitTask(taskParams);
+    assertEquals(Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    int nodes = universe.getNodes().size();
+    UniverseDefinitionTaskParams current =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams emptyBefore =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    emptyBefore.nodeDetailsSet = new HashSet<>();
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(emptyBefore, current);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
+
+    stubNodeManagerOkWithInstancesPresent();
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    assertEquals(Failure, rollbackInfo.getTaskState());
+    assertThat(rollbackInfo.getErrorMessage(), containsString("no before topology"));
+    assertTrue(
+        rollbackInfo.getSubTasks().stream()
+            .noneMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleDestroyServer
+                        || t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+    assertEquals(nodes, Universe.getOrBadRequest(universe.getUniverseUUID()).getNodes().size());
+  }
+
+  @Test
   public void testRollbackEditUniverseRunOnlyPrechecksSafe() throws InterruptedException {
     // Precheck-only on a rollback-safe universe must succeed without destroying nodes.
     doAnswer(

@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
@@ -53,9 +52,9 @@ public class ConfirmEditRollbackMembership extends ServerSubTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UniverseDefinitionTaskParams before = taskParams().beforeUniverseDetails;
-    if (before == null || CollectionUtils.isEmpty(before.nodeDetailsSet)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot roll back edit universe: no before topology to check membership");
+    if (before == null || before.nodeDetailsSet == null) {
+      log.warn("No before details for membership check; skipping");
+      return;
     }
     Set<String> allowedIps = new HashSet<>();
     for (NodeDetails node : before.nodeDetailsSet) {
