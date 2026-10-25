@@ -1071,6 +1071,26 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertTrue(ex.getMessage(), ex.getMessage().contains("cloud reports no data disks"));
   }
 
+  @Test
+  public void computeIgnoresOciClusterNotBeingRolledBack() {
+    // PLAT-23226/PLAT-23245: only the clusters being rolled back decide the OCI refusal.
+    enableRollback();
+    UUID readReplicaUuid = addReadReplicaNode("rr1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getClusterByUuid(readReplicaUuid).userIntent.providerType =
+                    Common.CloudType.oci);
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    failedParams.clusters.removeIf(c -> c.uuid.equals(readReplicaUuid));
+
+    assertNotNull(
+        computer.compute(buildContext(failedParams, DateUtils.addHours(new Date(), -48))));
+  }
+
   /** Records the primary's nodes as AWS instance store: an ephemeral type and no storage type. */
   private void useInstanceStore(String instanceType) {
     universe =

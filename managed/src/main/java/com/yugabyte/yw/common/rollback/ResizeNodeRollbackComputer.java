@@ -31,8 +31,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -112,7 +114,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
-    rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    rejectCloudWithoutSnapshot(universe, failedParams.clusters);
     StateTransitionDetails details = universe.getStateTransitionDetails();
     if (details == null) {
       throw new PlatformServiceException(
@@ -528,12 +530,19 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Refuses rollback when a cluster runs on a public cloud with no cloud snapshot ({@link
-   * #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type, which a
-   * failed resize may not have saved yet.
+   * Refuses rollback when a cluster being rolled back runs on a public cloud with no cloud snapshot
+   * ({@link #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type,
+   * which a failed resize may not have saved yet. Reads the universe's copy of those clusters,
+   * whose cloud types are authoritative.
    */
-  public static void rejectCloudWithoutSnapshot(Collection<Cluster> clusters) {
-    Common.CloudType cloud = findCloudWithoutSnapshot(clusters);
+  public static void rejectCloudWithoutSnapshot(
+      Universe universe, Collection<Cluster> rolledBackClusters) {
+    Set<UUID> rolledBack = rolledBackClusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
+    Common.CloudType cloud =
+        findCloudWithoutSnapshot(
+            universe.getUniverseDetails().clusters.stream()
+                .filter(c -> rolledBack.contains(c.uuid))
+                .collect(Collectors.toList()));
     if (cloud != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,

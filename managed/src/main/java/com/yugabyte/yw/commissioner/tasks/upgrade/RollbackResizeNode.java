@@ -89,7 +89,7 @@ public class RollbackResizeNode extends ResizeNode {
     if (isFirstTry) {
       // A retry finishes a rollback that already started; refusing it would leave the universe
       // locked with nothing left to run.
-      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+      ResizeNodeRollbackComputer.rejectCloudWithoutSnapshot(universe, taskParams().clusters);
     }
     requireStateTransitionDetails(universe).requireRollbackable();
   }
