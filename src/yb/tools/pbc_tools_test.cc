@@ -11,7 +11,9 @@
 // under the License.
 //
 
+#include <fstream>
 #include <future>
+#include <set>
 
 #include "google/protobuf/text_format.h"
 
@@ -164,6 +166,42 @@ TEST_F(PBToolsTestWithMiniCluster, EncryptedBinaryToTextToEncryptedBinary) {
     rpc::RpcController controller;
     ASSERT_OK(proxy.GetTabletStatus(status_req, &status_resp, &controller));
     ASSERT_EQ(status_resp.tablet_status().table_name(), "Foobarbaz");
+  }
+}
+
+// yb-pbc-dump takes the schema from the file itself, so it checks that container headers are
+// complete for every kind of container file that a cluster writes.
+TEST_F(PBToolsTestWithMiniCluster, DumpContainerFiles) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(CreateYCQLTable(*client, client::YBTableName{YQL_DATABASE_CQL, "yugabyte", "t"}));
+
+  std::set<std::string> types;
+  for (auto* daemon : std::initializer_list<ExternalDaemon*>{
+           cluster_->master(0), cluster_->tablet_server(0)}) {
+    ASSERT_OK(Env::Default()->Walk(
+        daemon->GetRootDir(), Env::PRE_ORDER,
+        [&types](Env::FileType type, const std::string& dir, const std::string& name) -> Status {
+          if (type != Env::FILE_TYPE) {
+            return Status::OK();
+          }
+          const auto path = JoinPathSegments(dir, name);
+          // The magic of PB container files.
+          static const std::string kMagic = "yugacntr";
+          std::ifstream file(path, std::ios::binary);
+          std::string magic(kMagic.size(), 0);
+          file.read(magic.data(), magic.size());
+          if (magic != kMagic) {
+            return Status::OK();
+          }
+          auto output = VERIFY_RESULT(CallPBDump(path));
+          types.insert(output.stdout.substr(0, output.stdout.find(' ')));
+          return Status::OK();
+        }));
+  }
+  for (const auto* type : {
+           "yb.AutoFlagsConfigPB", "yb.InstanceMetadataPB", "yb.consensus.ConsensusMetadataPB",
+           "yb.tablet.RaftGroupReplicaSuperBlockPB"}) {
+    ASSERT_TRUE(types.contains(type)) << type << " is not among dumped types: " << AsString(types);
   }
 }
 
