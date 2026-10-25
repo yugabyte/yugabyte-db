@@ -8143,6 +8143,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<TableInfo*> newly_hidden_tables;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
+      index_cleanup_deferred_since_.erase(table->id());
       tables_to_remove_from_map.push_back(table.get());
       if (!table->is_system() && !table->IsSecondaryTable()) {
         tablets_to_remove_from_map.push_back(table->TakeTablets());
@@ -8152,6 +8153,21 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     if (!ShouldDeleteTable(table)) {
       continue;
     }
+    // Leave a DDL-dropped index to CheckTableDeleted, which waits for the indexed table alter to
+    // finish before marking the index DELETED; else the next statement may hit a schema version
+    // mismatch. Bounded by the same 20s cap CheckTableDeleted uses.
+    if (table->is_index()) {
+      auto indexed_table = GetTableInfo(table->indexed_table_id());
+      if (indexed_table && table->LockForRead()->has_ysql_ddl_txn_verifier_state() &&
+          indexed_table->LockForRead()->pb.has_fully_applied_schema()) {
+        auto since = index_cleanup_deferred_since_.try_emplace(
+            table->id(), CoarseMonoClock::Now()).first->second;
+        if (CoarseMonoClock::Now() - since < 20s) {
+          continue;
+        }
+      }
+    }
+    index_cleanup_deferred_since_.erase(table->id());
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
