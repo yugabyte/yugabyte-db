@@ -538,7 +538,7 @@ public class LocalNodeManager {
         break;
       case Destroy:
         if (nodeInfo == null) {
-          // Create never ran for this node, so there is nothing to destroy.
+          // Create never ran for this node, or an earlier Destroy already removed it.
           log.info("Node {} does not exist, nothing to destroy", nodeTaskParam.nodeName);
           response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
           break;
