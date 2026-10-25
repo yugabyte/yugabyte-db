@@ -400,16 +400,24 @@ from
             plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
     ) jn(join_node);
 ------------------------------------------------------------------------------
--- yb.orig.bnl_inner_estimate: a BNL's inner index scan, estimated per batch.
+-- Two-column keys.
 --
--- The one-column keys use ce.s and ce.r / ce.rC above.  For a two-column key:
+-- ce.s2 and ce.r2 are the key of yb.orig.bnl_cost_parity's 6xx section:
 --   ce.s2 : ce.s's ids and z shuffle with the pair
 --           (g, h) = ((id - 1) / 10 + 1, (id - 1) % 10 + 1), one pair per id.
 --   ce.r2 : every (g, h) of the 128 x 128 grid, one row each, so g and h are
---           independent and a batch of up to 128 keys stays within each
---           column's distinct values.  ce.r2C is its colocated twin and ce.r2H
---           holds the same rows under a hash primary key.
+--           independent and each has more distinct values than a batch of
+--           128 keys.  ce.r2C is its colocated twin and ce.r2H holds the same
+--           rows under a hash primary key.
 -- An outer row has its inner row iff its g <= 128, that is iff id <= 1280.
+--
+-- ce.s3 and ce.r3 are the key of yb.orig.bnl_inner_estimate:
+--   ce.r3 : h unique over 1..12345 and g = (h - 1) % 16 + 1, so the leading
+--           column has fewer values than any batch and the second column one
+--           row per value.  ce.r3C is its colocated twin and ce.r3H holds the
+--           same rows under a hash primary key.
+--   ce.s3 : ce.s's ids and z shuffle with the (g, h) of ce.r3's row h = id, so
+--           every outer row has its inner row.
 ------------------------------------------------------------------------------
 drop table if exists ce.s2 cascade;
 create table ce.s2 (
@@ -445,6 +453,39 @@ insert into ce.r2H select * from ce.r2;
 analyze ce.r2;
 analyze ce.r2C;
 analyze ce.r2H;
+drop table if exists ce.s3 cascade;
+create table ce.s3 (
+    id int,
+    g int,
+    h int,
+    z int,
+    primary key (id asc)
+) with (colocation = on);
+insert into ce.s3 select id, (id - 1) % 16 + 1, id, z from ce.s;
+create index nonconcurrently on ce.s3 (z asc);
+analyze ce.s3;
+drop table if exists ce.r3 cascade;
+create table ce.r3 (
+    g int,
+    h int,
+    d int,
+    primary key (g asc, h asc)
+) with (colocation = off);
+insert into ce.r3 select (h - 1) % 16 + 1, h, h from generate_series(1, 12345) h;
+create table ce.r3C (like ce.r3 including constraints including indexes)
+    with (colocation = on);
+insert into ce.r3C select * from ce.r3;
+drop table if exists ce.r3H cascade;
+create table ce.r3H (
+    g int,
+    h int,
+    d int,
+    primary key ((g, h) hash)
+) with (colocation = off);
+insert into ce.r3H select * from ce.r3;
+analyze ce.r3;
+analyze ce.r3C;
+analyze ce.r3H;
 -- bnl_inner_queries: each query joins outer s to inner r on the key under
 -- test and runs as a BNL at batch size bs.
 drop table if exists bnl_inner_queries cascade;

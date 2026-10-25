@@ -3,35 +3,51 @@
 -- DEPENDENCY: yb.orig.bnl_cost_parity_setup
 \c bnl_cost_parity_test
 delete from bnl_inner_queries;
+-- The row estimate of a batched inner scan is the batch size times the rows
+-- of one key, once for each batched key column: eqsel multiplies the key's
+-- equality selectivity by the batch size, so every key of a batch counts as
+-- present, and two batched columns each contribute the factor.  The data
+-- here meets both assumptions, so the row estimates hold and the request,
+-- seek and next verdicts stand on their own: every outer key has inner rows,
+-- the outer keys are unique, and the two-column key's leading column has
+-- fewer values than any batch.  Where the assumptions fail, the join's
+-- ranking shows it: yb.orig.bnl_cost_parity's 5xx section joins keys most of
+-- which have no inner rows, and its 6xx section a two-column key both of
+-- whose columns have more values than a batch (#19549).
+--
 -- QID categories (last digit: batch size 1 = 1024, 2 = 128, 3 = 16):
---   1xxxx: one-column key, inner ce.r (+1000 for the colocated ce.rC)
---   2xxxx: two-column key (g, h), inner ce.r2 (+1000 for the colocated ce.r2C,
---          +2000 for the hash-keyed ce.r2H)
--- Each outer is 1024 rows of ce.s or ce.s2, so every batch is full.  The
--- outer restrictions set the fraction of outer keys that have inner rows.
+--   1xxxx: one-column key, inner ce.r (+1000 for the colocated ce.rC): a with
+--          10 rows per value, the unique primary key pk and the unique
+--          secondary index on b
+--   2xxxx: two-column key (g, h), inner ce.r3 (+1000 for the colocated ce.r3C,
+--          +2000 for the hash-keyed ce.r3H)
+-- Each outer is 1024 rows, so every batch is full, in the shuffled order of
+-- z or in key order.
 insert into bnl_inner_queries
 with rels(rel, qidrel) as (
     values ('ce.r', 10000), ('ce.rC', 11000)
 ),
 keys(qidkey, descr, query) as (
     values
-    -- r.a has 10 rows per value over 3886..5120.  z is the shuffled key, so
-    -- z <= 1024 spreads the outer over 1..5120, and 231 of its 1024 keys fall
-    -- in r.a's range.  10 is the row of yb.orig.bnl_cost_parity's 5xx
-    -- section, with that file's inner filter.
-    (10, 'a  z<=1024 e<=600',
-        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y and r.e <= 600 where s.z <= 1024'),
-    (20, 'a  z<=1024 (23%)',
-        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y where s.z <= 1024'),
-    (30, 'a  x in 3374..4397 (50%)',
-        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y where s.x between 3374 and 4397'),
-    (40, 'a  x in 3886..4909 (100%)',
+    -- r.a has 10 rows per value over 3886..5120.  4291 is the 1024th smallest
+    -- z among the outer rows whose y lies in that range, so z <= 4291 with
+    -- y >= 3886 is 1024 present keys in shuffled order, and x in 3886..4909
+    -- the same number of keys in key order.  ...30 adds the inner filter of
+    -- yb.orig.bnl_cost_parity's 5xx rows.
+    (10, 'a  shuffled present',
+        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y where s.z <= 4291 and s.y >= 3886'),
+    (20, 'a  sorted 3886..4909',
         'select s.id, r.d from ce.s s join @R@ r on r.a = s.y where s.x between 3886 and 4909'),
-    (50, 'a  x in 1..1024 (0%)',
-        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y where s.x between 1 and 1024'),
-    -- The unique primary key over 1..12345: every key has its row.
-    (60, 'pk z<=1024 (100%)',
-        'select s.id, r.d from ce.s s join @R@ r on r.pk = s.y where s.z <= 1024')
+    (30, 'a  shuffled present e<=600',
+        'select s.id, r.d from ce.s s join @R@ r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886'),
+    -- The unique primary key over 1..12345 and the unique secondary index on
+    -- b, equal to pk: every outer key has its row.
+    (40, 'pk shuffled z<=1024',
+        'select s.id, r.d from ce.s s join @R@ r on r.pk = s.y where s.z <= 1024'),
+    (50, 'pk sorted x<=1024',
+        'select s.id, r.d from ce.s s join @R@ r on r.pk = s.y where s.x <= 1024'),
+    (60, 'b  shuffled z<=1024',
+        'select s.id, r.d from ce.s s join @R@ r on r.b = s.x where s.z <= 1024')
 ),
 sizes(qidbs, bs) as (
     values (1, 1024), (2, 128), (3, 16)
@@ -41,18 +57,14 @@ select r.qidrel + k.qidkey + b.qidbs, b.bs, k.descr || ' [' || r.rel || ']',
 from rels r, keys k, sizes b;
 insert into bnl_inner_queries
 with rels(rel, qidrel) as (
-    values ('ce.r2', 20000), ('ce.r2C', 21000), ('ce.r2H', 22000)
+    values ('ce.r3', 20000), ('ce.r3C', 21000), ('ce.r3H', 22000)
 ),
 keys(qidkey, descr, query) as (
     values
-    (10, 'g,h z<=1024 (26%)',
-        'select s.id, r.d from ce.s2 s join @R@ r on r.g = s.g and r.h = s.h where s.z <= 1024'),
-    (20, 'g,h id in 769..1792 (50%)',
-        'select s.id, r.d from ce.s2 s join @R@ r on r.g = s.g and r.h = s.h where s.id between 769 and 1792'),
-    (30, 'g,h id in 1..1024 (100%)',
-        'select s.id, r.d from ce.s2 s join @R@ r on r.g = s.g and r.h = s.h where s.id between 1 and 1024'),
-    (40, 'g,h id in 2049..3072 (0%)',
-        'select s.id, r.d from ce.s2 s join @R@ r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072')
+    (10, 'g,h shuffled z<=1024',
+        'select s.id, r.d from ce.s3 s join @R@ r on r.g = s.g and r.h = s.h where s.z <= 1024'),
+    (20, 'g,h sorted id<=1024',
+        'select s.id, r.d from ce.s3 s join @R@ r on r.g = s.g and r.h = s.h where s.id <= 1024')
 ),
 sizes(qidbs, bs) as (
     values (1, 1024), (2, 128), (3, 16)
@@ -63,79 +75,61 @@ from rels r, keys k, sizes b;
 select * from bnl_inner_queries order by qid;
   qid  |  bs  |               descr                |                                                  query                                                  
 -------+------+------------------------------------+---------------------------------------------------------------------------------------------------------
- 10011 | 1024 | a  z<=1024 e<=600 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 10012 |  128 | a  z<=1024 e<=600 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 10013 |   16 | a  z<=1024 e<=600 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 10021 | 1024 | a  z<=1024 (23%) [ce.r]            | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 1024
- 10022 |  128 | a  z<=1024 (23%) [ce.r]            | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 1024
- 10023 |   16 | a  z<=1024 (23%) [ce.r]            | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 1024
- 10031 | 1024 | a  x in 3374..4397 (50%) [ce.r]    | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3374 and 4397
- 10032 |  128 | a  x in 3374..4397 (50%) [ce.r]    | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3374 and 4397
- 10033 |   16 | a  x in 3374..4397 (50%) [ce.r]    | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3374 and 4397
- 10041 | 1024 | a  x in 3886..4909 (100%) [ce.r]   | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
- 10042 |  128 | a  x in 3886..4909 (100%) [ce.r]   | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
- 10043 |   16 | a  x in 3886..4909 (100%) [ce.r]   | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
- 10051 | 1024 | a  x in 1..1024 (0%) [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 1 and 1024
- 10052 |  128 | a  x in 1..1024 (0%) [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 1 and 1024
- 10053 |   16 | a  x in 1..1024 (0%) [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 1 and 1024
- 10061 | 1024 | pk z<=1024 (100%) [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
- 10062 |  128 | pk z<=1024 (100%) [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
- 10063 |   16 | pk z<=1024 (100%) [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
- 11011 | 1024 | a  z<=1024 e<=600 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 11012 |  128 | a  z<=1024 e<=600 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 11013 |   16 | a  z<=1024 e<=600 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 1024
- 11021 | 1024 | a  z<=1024 (23%) [ce.rC]           | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 1024
- 11022 |  128 | a  z<=1024 (23%) [ce.rC]           | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 1024
- 11023 |   16 | a  z<=1024 (23%) [ce.rC]           | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 1024
- 11031 | 1024 | a  x in 3374..4397 (50%) [ce.rC]   | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3374 and 4397
- 11032 |  128 | a  x in 3374..4397 (50%) [ce.rC]   | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3374 and 4397
- 11033 |   16 | a  x in 3374..4397 (50%) [ce.rC]   | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3374 and 4397
- 11041 | 1024 | a  x in 3886..4909 (100%) [ce.rC]  | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
- 11042 |  128 | a  x in 3886..4909 (100%) [ce.rC]  | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
- 11043 |   16 | a  x in 3886..4909 (100%) [ce.rC]  | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
- 11051 | 1024 | a  x in 1..1024 (0%) [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 1 and 1024
- 11052 |  128 | a  x in 1..1024 (0%) [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 1 and 1024
- 11053 |   16 | a  x in 1..1024 (0%) [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 1 and 1024
- 11061 | 1024 | pk z<=1024 (100%) [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
- 11062 |  128 | pk z<=1024 (100%) [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
- 11063 |   16 | pk z<=1024 (100%) [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
- 20011 | 1024 | g,h z<=1024 (26%) [ce.r2]          | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.z <= 1024
- 20012 |  128 | g,h z<=1024 (26%) [ce.r2]          | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.z <= 1024
- 20013 |   16 | g,h z<=1024 (26%) [ce.r2]          | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.z <= 1024
- 20021 | 1024 | g,h id in 769..1792 (50%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 20022 |  128 | g,h id in 769..1792 (50%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 20023 |   16 | g,h id in 769..1792 (50%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 20031 | 1024 | g,h id in 1..1024 (100%) [ce.r2]   | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 20032 |  128 | g,h id in 1..1024 (100%) [ce.r2]   | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 20033 |   16 | g,h id in 1..1024 (100%) [ce.r2]   | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 20041 | 1024 | g,h id in 2049..3072 (0%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 20042 |  128 | g,h id in 2049..3072 (0%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 20043 |   16 | g,h id in 2049..3072 (0%) [ce.r2]  | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 21011 | 1024 | g,h z<=1024 (26%) [ce.r2C]         | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.z <= 1024
- 21012 |  128 | g,h z<=1024 (26%) [ce.r2C]         | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.z <= 1024
- 21013 |   16 | g,h z<=1024 (26%) [ce.r2C]         | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.z <= 1024
- 21021 | 1024 | g,h id in 769..1792 (50%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 21022 |  128 | g,h id in 769..1792 (50%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 21023 |   16 | g,h id in 769..1792 (50%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 21031 | 1024 | g,h id in 1..1024 (100%) [ce.r2C]  | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 21032 |  128 | g,h id in 1..1024 (100%) [ce.r2C]  | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 21033 |   16 | g,h id in 1..1024 (100%) [ce.r2C]  | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 21041 | 1024 | g,h id in 2049..3072 (0%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 21042 |  128 | g,h id in 2049..3072 (0%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 21043 |   16 | g,h id in 2049..3072 (0%) [ce.r2C] | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 22011 | 1024 | g,h z<=1024 (26%) [ce.r2H]         | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.z <= 1024
- 22012 |  128 | g,h z<=1024 (26%) [ce.r2H]         | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.z <= 1024
- 22013 |   16 | g,h z<=1024 (26%) [ce.r2H]         | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.z <= 1024
- 22021 | 1024 | g,h id in 769..1792 (50%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 22022 |  128 | g,h id in 769..1792 (50%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 22023 |   16 | g,h id in 769..1792 (50%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 769 and 1792
- 22031 | 1024 | g,h id in 1..1024 (100%) [ce.r2H]  | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 22032 |  128 | g,h id in 1..1024 (100%) [ce.r2H]  | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 22033 |   16 | g,h id in 1..1024 (100%) [ce.r2H]  | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 1 and 1024
- 22041 | 1024 | g,h id in 2049..3072 (0%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 22042 |  128 | g,h id in 2049..3072 (0%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
- 22043 |   16 | g,h id in 2049..3072 (0%) [ce.r2H] | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id between 2049 and 3072
-(72 rows)
+ 10011 | 1024 | a  shuffled present [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 10012 |  128 | a  shuffled present [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 10013 |   16 | a  shuffled present [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 10021 | 1024 | a  sorted 3886..4909 [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
+ 10022 |  128 | a  sorted 3886..4909 [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
+ 10023 |   16 | a  sorted 3886..4909 [ce.r]        | select s.id, r.d from ce.s s join ce.r r on r.a = s.y where s.x between 3886 and 4909
+ 10031 | 1024 | a  shuffled present e<=600 [ce.r]  | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 10032 |  128 | a  shuffled present e<=600 [ce.r]  | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 10033 |   16 | a  shuffled present e<=600 [ce.r]  | select s.id, r.d from ce.s s join ce.r r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 10041 | 1024 | pk shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
+ 10042 |  128 | pk shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
+ 10043 |   16 | pk shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.z <= 1024
+ 10051 | 1024 | pk sorted x<=1024 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.x <= 1024
+ 10052 |  128 | pk sorted x<=1024 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.x <= 1024
+ 10053 |   16 | pk sorted x<=1024 [ce.r]           | select s.id, r.d from ce.s s join ce.r r on r.pk = s.y where s.x <= 1024
+ 10061 | 1024 | b  shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.b = s.x where s.z <= 1024
+ 10062 |  128 | b  shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.b = s.x where s.z <= 1024
+ 10063 |   16 | b  shuffled z<=1024 [ce.r]         | select s.id, r.d from ce.s s join ce.r r on r.b = s.x where s.z <= 1024
+ 11011 | 1024 | a  shuffled present [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 11012 |  128 | a  shuffled present [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 11013 |   16 | a  shuffled present [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.z <= 4291 and s.y >= 3886
+ 11021 | 1024 | a  sorted 3886..4909 [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
+ 11022 |  128 | a  sorted 3886..4909 [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
+ 11023 |   16 | a  sorted 3886..4909 [ce.rC]       | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y where s.x between 3886 and 4909
+ 11031 | 1024 | a  shuffled present e<=600 [ce.rC] | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 11032 |  128 | a  shuffled present e<=600 [ce.rC] | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 11033 |   16 | a  shuffled present e<=600 [ce.rC] | select s.id, r.d from ce.s s join ce.rC r on r.a = s.y and r.e <= 600 where s.z <= 4291 and s.y >= 3886
+ 11041 | 1024 | pk shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
+ 11042 |  128 | pk shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
+ 11043 |   16 | pk shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.z <= 1024
+ 11051 | 1024 | pk sorted x<=1024 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.x <= 1024
+ 11052 |  128 | pk sorted x<=1024 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.x <= 1024
+ 11053 |   16 | pk sorted x<=1024 [ce.rC]          | select s.id, r.d from ce.s s join ce.rC r on r.pk = s.y where s.x <= 1024
+ 11061 | 1024 | b  shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.b = s.x where s.z <= 1024
+ 11062 |  128 | b  shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.b = s.x where s.z <= 1024
+ 11063 |   16 | b  shuffled z<=1024 [ce.rC]        | select s.id, r.d from ce.s s join ce.rC r on r.b = s.x where s.z <= 1024
+ 20011 | 1024 | g,h shuffled z<=1024 [ce.r3]       | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 20012 |  128 | g,h shuffled z<=1024 [ce.r3]       | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 20013 |   16 | g,h shuffled z<=1024 [ce.r3]       | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 20021 | 1024 | g,h sorted id<=1024 [ce.r3]        | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 20022 |  128 | g,h sorted id<=1024 [ce.r3]        | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 20023 |   16 | g,h sorted id<=1024 [ce.r3]        | select s.id, r.d from ce.s3 s join ce.r3 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 21011 | 1024 | g,h shuffled z<=1024 [ce.r3C]      | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 21012 |  128 | g,h shuffled z<=1024 [ce.r3C]      | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 21013 |   16 | g,h shuffled z<=1024 [ce.r3C]      | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 21021 | 1024 | g,h sorted id<=1024 [ce.r3C]       | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 21022 |  128 | g,h sorted id<=1024 [ce.r3C]       | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 21023 |   16 | g,h sorted id<=1024 [ce.r3C]       | select s.id, r.d from ce.s3 s join ce.r3C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 22011 | 1024 | g,h shuffled z<=1024 [ce.r3H]      | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 22012 |  128 | g,h shuffled z<=1024 [ce.r3H]      | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 22013 |   16 | g,h shuffled z<=1024 [ce.r3H]      | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.z <= 1024
+ 22021 | 1024 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 22022 |  128 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 22023 |   16 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
+(54 rows)
 
 -- Plan validation: every query plans the batched inner scan it is meant to
 -- (Index Cond lists the batch, a ROW for the two-column key).
@@ -154,15 +148,15 @@ order by q.qid;
  10031 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
  10032 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
  10033 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 10041 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 10042 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 10043 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 10051 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 10052 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 10053 | Index Scan | r_a_idx    | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 10061 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 10062 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 10063 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
+ 10041 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
+ 10042 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
+ 10043 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
+ 10051 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
+ 10052 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
+ 10053 | Index Scan | r_pkey     | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
+ 10061 | Index Scan | r_b_idx    | (b = ANY (ARRAY[s.x, $1, $2, ..., $1023]))
+ 10062 | Index Scan | r_b_idx    | (b = ANY (ARRAY[s.x, $1, $2, ..., $127]))
+ 10063 | Index Scan | r_b_idx    | (b = ANY (ARRAY[s.x, $1, $2, ..., $15]))
  11011 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
  11012 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
  11013 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
@@ -172,165 +166,123 @@ order by q.qid;
  11031 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
  11032 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
  11033 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 11041 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 11042 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 11043 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 11051 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 11052 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 11053 | Index Scan | rc_a_idx   | (a = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 11061 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
- 11062 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
- 11063 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
- 20011 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 20012 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 20013 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 20021 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 20022 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 20023 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 20031 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 20032 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 20033 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 20041 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 20042 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 20043 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 21011 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 21012 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 21013 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 21021 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 21022 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 21023 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 21031 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 21032 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 21033 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 21041 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 21042 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 21043 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 22011 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 22012 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 22013 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 22021 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 22022 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 22023 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 22031 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 22032 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 22033 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
- 22041 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
- 22042 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
- 22043 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
-(72 rows)
+ 11041 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
+ 11042 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
+ 11043 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
+ 11051 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $1023]))
+ 11052 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $127]))
+ 11053 | Index Scan | rc_pkey    | (pk = ANY (ARRAY[s.y, $1, $2, ..., $15]))
+ 11061 | Index Scan | rc_b_idx   | (b = ANY (ARRAY[s.x, $1, $2, ..., $1023]))
+ 11062 | Index Scan | rc_b_idx   | (b = ANY (ARRAY[s.x, $1, $2, ..., $127]))
+ 11063 | Index Scan | rc_b_idx   | (b = ANY (ARRAY[s.x, $1, $2, ..., $15]))
+ 20011 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 20012 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 20013 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 20021 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 20022 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 20023 | Index Scan | r3_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 21011 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 21012 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 21013 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 21021 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 21022 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 21023 | Index Scan | r3c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 22011 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 22012 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 22013 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 22021 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 22022 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 22023 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+(54 rows)
 
 -- Per-batch estimates of the inner scan against the measured per-batch
 -- averages (see check_bnl_inner_estimates).  Rows and read requests are exact
 -- counts; seeks and nexts move with the memtable/SST layout, by far less than
--- the tolerance.
+-- the tolerance.  Every row estimate and every request estimate passes.
 --
--- One-column key (1xxxx).  The row estimate is the batch size times the rows
--- of one key, as if every key of the batch had rows: 10236 (10226 on ...50)
--- at batch size 1024, 1024 x 10 rows per value of r.a, whatever fraction of
--- the keys r.a has.  It is right when every key has its rows (...40) and on
--- the unique primary key (...60).  With 23% of the keys present (...20) it is
--- 4.4 times the 2310 rows the scan returns, with half of them (...30) 2
--- times, and with none (...50) the scan returns nothing.  ...10 is
--- yb.orig.bnl_cost_parity's 5xx row: 4907 estimated against 1131 on ce.rC.
--- Every row the scan returns joins one outer key, so the per-batch estimate
--- times the batches should be the join's own estimate, which counts the
--- fraction: on ...20 the join is estimated at 2469 rows (2310 measured).
--- Read requests, seeks and nexts follow the rows.  The requests fail where
--- the extra rows add pages: at batch size 1024, and at 128 on the
--- non-colocated ce.r except on ...30, whose estimate is one request over and
--- passes.  The seeks and nexts fail wherever the rows do.  On the dense keys
--- of ...40 the estimate charges an index seek per key that the scan reaches
--- with nexts, 10% over, inside the tolerance.  The primary key's nexts fail
--- at batch sizes 1024 and 128: two nexts are charged per key, while the scan
--- takes about one per key in a large batch (1056 for 1024 keys) and more in
--- a small one (36 for 16).
+-- a (...10 to ...30): 10 rows per key, so the scan reaches most rows with
+-- nexts.  The estimate charges 8% to 10% more seeks and 2% to 5% more nexts
+-- than the scan takes, inside the tolerance, in shuffled and in key order
+-- alike.  The inner filter of ...30 halves the rows returned and changes
+-- neither the rows scanned nor their estimate.
 --
--- Two-column key (2xxxx): the batch factor applies once per key column
--- (#19549), so a batch of 16 pairs is estimated at 256 rows (16 x 16) against 16
--- when every pair has its row (...30), and a batch of 128 at the whole table,
--- 16384 rows (128 x 128) against 128.  At 1024 the estimate is the whole table
--- against 1024.  The one-column defect above comes on top: with 26% of the
--- pairs present (...10) a batch of 1024 returns 265 rows.  The read requests
--- (16 per batch against 1 at batch sizes 1024 and 128), seeks and nexts
--- follow; the hash key's nexts at 1024 with every pair present (22031) fall
--- inside the tolerance (3276 against 2898).
+-- pk (...40, ...50): one row per key.  The estimate charges two nexts per
+-- key, the nexts a seek saves (MAX_NEXTS_TO_AVOID_SEEK); the scan takes one
+-- per key in key order, about one in a shuffled batch of 1024 and more than
+-- two in a shuffled batch of 16, so the next estimate fails except there.
+--
+-- b (...60): the unique secondary index is charged two seeks and three nexts
+-- per key where the primary key is charged one and two.  The scan takes three
+-- quarters of the seeks in a batch of 1024, and one to two nexts per key
+-- more than charged in the batches of 128 and 16.
+--
+-- g, h (2xxxx): the seek and next estimate takes each key column's IN list on
+-- its own: for h, the smaller of the batch and the 772 values of h per value
+-- of g, two nexts each, then times the 16 values of g, as if every pair of
+-- the two lists were probed: 12345 seeks for a batch of 1024 pairs, 2048 for
+-- 128, 256 for 16, and twice as many nexts.  The scan seeks once per run of
+-- consecutive pairs, 16 times per batch in key order on the range key and
+-- about once per pair or two in shuffled order and on the hash key, and takes
+-- one to three nexts per pair.
 select qid, descr, batches,
        "Row Estimates", "Roundtrip Estimates", "Seek Estimates", "Next Estimates"
 from check_bnl_inner_estimates
 order by qid;
   qid  |               descr                | batches | Row Estimates | Roundtrip Estimates | Seek Estimates | Next Estimates 
 -------+------------------------------------+---------+---------------+---------------------+----------------+----------------
- 10011 | a  z<=1024 e<=600 [ce.r]           |       1 | failed        | failed              | failed         | failed
- 10012 | a  z<=1024 e<=600 [ce.r]           |       8 | failed        | failed              | failed         | failed
- 10013 | a  z<=1024 e<=600 [ce.r]           |      64 | failed        | passed              | failed         | failed
- 10021 | a  z<=1024 (23%) [ce.r]            |       1 | failed        | failed              | failed         | failed
- 10022 | a  z<=1024 (23%) [ce.r]            |       8 | failed        | failed              | failed         | failed
- 10023 | a  z<=1024 (23%) [ce.r]            |      64 | failed        | passed              | failed         | failed
- 10031 | a  x in 3374..4397 (50%) [ce.r]    |       1 | failed        | failed              | failed         | failed
- 10032 | a  x in 3374..4397 (50%) [ce.r]    |       8 | failed        | passed              | failed         | failed
- 10033 | a  x in 3374..4397 (50%) [ce.r]    |      64 | failed        | passed              | failed         | failed
- 10041 | a  x in 3886..4909 (100%) [ce.r]   |       1 | passed        | passed              | passed         | passed
- 10042 | a  x in 3886..4909 (100%) [ce.r]   |       8 | passed        | passed              | passed         | passed
- 10043 | a  x in 3886..4909 (100%) [ce.r]   |      64 | passed        | passed              | passed         | passed
- 10051 | a  x in 1..1024 (0%) [ce.r]        |       1 | failed        | failed              | failed         | failed
- 10052 | a  x in 1..1024 (0%) [ce.r]        |       8 | failed        | failed              | failed         | failed
- 10053 | a  x in 1..1024 (0%) [ce.r]        |      64 | failed        | passed              | failed         | failed
- 10061 | pk z<=1024 (100%) [ce.r]           |       1 | passed        | passed              | passed         | failed
- 10062 | pk z<=1024 (100%) [ce.r]           |       8 | passed        | passed              | passed         | failed
- 10063 | pk z<=1024 (100%) [ce.r]           |      64 | passed        | passed              | passed         | passed
- 11011 | a  z<=1024 e<=600 [ce.rC]          |       1 | failed        | failed              | failed         | failed
- 11012 | a  z<=1024 e<=600 [ce.rC]          |       8 | failed        | passed              | failed         | failed
- 11013 | a  z<=1024 e<=600 [ce.rC]          |      64 | failed        | passed              | failed         | failed
- 11021 | a  z<=1024 (23%) [ce.rC]           |       1 | failed        | failed              | failed         | failed
- 11022 | a  z<=1024 (23%) [ce.rC]           |       8 | failed        | passed              | failed         | failed
- 11023 | a  z<=1024 (23%) [ce.rC]           |      64 | failed        | passed              | failed         | failed
- 11031 | a  x in 3374..4397 (50%) [ce.rC]   |       1 | failed        | failed              | failed         | failed
- 11032 | a  x in 3374..4397 (50%) [ce.rC]   |       8 | failed        | passed              | failed         | failed
- 11033 | a  x in 3374..4397 (50%) [ce.rC]   |      64 | failed        | passed              | failed         | failed
- 11041 | a  x in 3886..4909 (100%) [ce.rC]  |       1 | passed        | passed              | passed         | passed
- 11042 | a  x in 3886..4909 (100%) [ce.rC]  |       8 | passed        | passed              | passed         | passed
- 11043 | a  x in 3886..4909 (100%) [ce.rC]  |      64 | passed        | passed              | passed         | passed
- 11051 | a  x in 1..1024 (0%) [ce.rC]       |       1 | failed        | failed              | failed         | failed
- 11052 | a  x in 1..1024 (0%) [ce.rC]       |       8 | failed        | passed              | failed         | failed
- 11053 | a  x in 1..1024 (0%) [ce.rC]       |      64 | failed        | passed              | failed         | failed
- 11061 | pk z<=1024 (100%) [ce.rC]          |       1 | passed        | passed              | passed         | failed
- 11062 | pk z<=1024 (100%) [ce.rC]          |       8 | passed        | passed              | passed         | failed
- 11063 | pk z<=1024 (100%) [ce.rC]          |      64 | passed        | passed              | passed         | passed
- 20011 | g,h z<=1024 (26%) [ce.r2]          |       1 | failed        | failed              | failed         | failed
- 20012 | g,h z<=1024 (26%) [ce.r2]          |       8 | failed        | failed              | failed         | failed
- 20013 | g,h z<=1024 (26%) [ce.r2]          |      64 | failed        | passed              | failed         | failed
- 20021 | g,h id in 769..1792 (50%) [ce.r2]  |       1 | failed        | failed              | failed         | failed
- 20022 | g,h id in 769..1792 (50%) [ce.r2]  |       8 | failed        | failed              | failed         | failed
- 20023 | g,h id in 769..1792 (50%) [ce.r2]  |      64 | failed        | passed              | failed         | failed
- 20031 | g,h id in 1..1024 (100%) [ce.r2]   |       1 | failed        | failed              | failed         | failed
- 20032 | g,h id in 1..1024 (100%) [ce.r2]   |       8 | failed        | failed              | failed         | failed
- 20033 | g,h id in 1..1024 (100%) [ce.r2]   |      64 | failed        | passed              | failed         | failed
- 20041 | g,h id in 2049..3072 (0%) [ce.r2]  |       1 | failed        | failed              | failed         | failed
- 20042 | g,h id in 2049..3072 (0%) [ce.r2]  |       8 | failed        | failed              | failed         | failed
- 20043 | g,h id in 2049..3072 (0%) [ce.r2]  |      64 | failed        | passed              | failed         | failed
- 21011 | g,h z<=1024 (26%) [ce.r2C]         |       1 | failed        | failed              | failed         | failed
- 21012 | g,h z<=1024 (26%) [ce.r2C]         |       8 | failed        | failed              | failed         | failed
- 21013 | g,h z<=1024 (26%) [ce.r2C]         |      64 | failed        | passed              | failed         | failed
- 21021 | g,h id in 769..1792 (50%) [ce.r2C] |       1 | failed        | failed              | failed         | failed
- 21022 | g,h id in 769..1792 (50%) [ce.r2C] |       8 | failed        | failed              | failed         | failed
- 21023 | g,h id in 769..1792 (50%) [ce.r2C] |      64 | failed        | passed              | failed         | failed
- 21031 | g,h id in 1..1024 (100%) [ce.r2C]  |       1 | failed        | failed              | failed         | failed
- 21032 | g,h id in 1..1024 (100%) [ce.r2C]  |       8 | failed        | failed              | failed         | failed
- 21033 | g,h id in 1..1024 (100%) [ce.r2C]  |      64 | failed        | passed              | failed         | failed
- 21041 | g,h id in 2049..3072 (0%) [ce.r2C] |       1 | failed        | failed              | failed         | failed
- 21042 | g,h id in 2049..3072 (0%) [ce.r2C] |       8 | failed        | failed              | failed         | failed
- 21043 | g,h id in 2049..3072 (0%) [ce.r2C] |      64 | failed        | passed              | failed         | failed
- 22011 | g,h z<=1024 (26%) [ce.r2H]         |       1 | failed        | failed              | failed         | failed
- 22012 | g,h z<=1024 (26%) [ce.r2H]         |       8 | failed        | failed              | failed         | failed
- 22013 | g,h z<=1024 (26%) [ce.r2H]         |      64 | failed        | passed              | failed         | failed
- 22021 | g,h id in 769..1792 (50%) [ce.r2H] |       1 | failed        | failed              | failed         | failed
- 22022 | g,h id in 769..1792 (50%) [ce.r2H] |       8 | failed        | failed              | failed         | failed
- 22023 | g,h id in 769..1792 (50%) [ce.r2H] |      64 | failed        | passed              | failed         | failed
- 22031 | g,h id in 1..1024 (100%) [ce.r2H]  |       1 | failed        | failed              | failed         | passed
- 22032 | g,h id in 1..1024 (100%) [ce.r2H]  |       8 | failed        | failed              | failed         | failed
- 22033 | g,h id in 1..1024 (100%) [ce.r2H]  |      64 | failed        | passed              | failed         | failed
- 22041 | g,h id in 2049..3072 (0%) [ce.r2H] |       1 | failed        | failed              | failed         | failed
- 22042 | g,h id in 2049..3072 (0%) [ce.r2H] |       8 | failed        | failed              | failed         | failed
- 22043 | g,h id in 2049..3072 (0%) [ce.r2H] |      64 | failed        | passed              | failed         | failed
-(72 rows)
+ 10011 | a  shuffled present [ce.r]         |       1 | passed        | passed              | passed         | passed
+ 10012 | a  shuffled present [ce.r]         |       8 | passed        | passed              | passed         | passed
+ 10013 | a  shuffled present [ce.r]         |      64 | passed        | passed              | passed         | passed
+ 10021 | a  sorted 3886..4909 [ce.r]        |       1 | passed        | passed              | passed         | passed
+ 10022 | a  sorted 3886..4909 [ce.r]        |       8 | passed        | passed              | passed         | passed
+ 10023 | a  sorted 3886..4909 [ce.r]        |      64 | passed        | passed              | passed         | passed
+ 10031 | a  shuffled present e<=600 [ce.r]  |       1 | passed        | passed              | passed         | passed
+ 10032 | a  shuffled present e<=600 [ce.r]  |       8 | passed        | passed              | passed         | passed
+ 10033 | a  shuffled present e<=600 [ce.r]  |      64 | passed        | passed              | passed         | passed
+ 10041 | pk shuffled z<=1024 [ce.r]         |       1 | passed        | passed              | passed         | failed
+ 10042 | pk shuffled z<=1024 [ce.r]         |       8 | passed        | passed              | passed         | failed
+ 10043 | pk shuffled z<=1024 [ce.r]         |      64 | passed        | passed              | passed         | passed
+ 10051 | pk sorted x<=1024 [ce.r]           |       1 | passed        | passed              | passed         | failed
+ 10052 | pk sorted x<=1024 [ce.r]           |       8 | passed        | passed              | passed         | failed
+ 10053 | pk sorted x<=1024 [ce.r]           |      64 | passed        | passed              | passed         | failed
+ 10061 | b  shuffled z<=1024 [ce.r]         |       1 | passed        | passed              | failed         | passed
+ 10062 | b  shuffled z<=1024 [ce.r]         |       8 | passed        | passed              | passed         | failed
+ 10063 | b  shuffled z<=1024 [ce.r]         |      64 | passed        | passed              | passed         | failed
+ 11011 | a  shuffled present [ce.rC]        |       1 | passed        | passed              | passed         | passed
+ 11012 | a  shuffled present [ce.rC]        |       8 | passed        | passed              | passed         | passed
+ 11013 | a  shuffled present [ce.rC]        |      64 | passed        | passed              | passed         | passed
+ 11021 | a  sorted 3886..4909 [ce.rC]       |       1 | passed        | passed              | passed         | passed
+ 11022 | a  sorted 3886..4909 [ce.rC]       |       8 | passed        | passed              | passed         | passed
+ 11023 | a  sorted 3886..4909 [ce.rC]       |      64 | passed        | passed              | passed         | passed
+ 11031 | a  shuffled present e<=600 [ce.rC] |       1 | passed        | passed              | passed         | passed
+ 11032 | a  shuffled present e<=600 [ce.rC] |       8 | passed        | passed              | passed         | passed
+ 11033 | a  shuffled present e<=600 [ce.rC] |      64 | passed        | passed              | passed         | passed
+ 11041 | pk shuffled z<=1024 [ce.rC]        |       1 | passed        | passed              | passed         | failed
+ 11042 | pk shuffled z<=1024 [ce.rC]        |       8 | passed        | passed              | passed         | failed
+ 11043 | pk shuffled z<=1024 [ce.rC]        |      64 | passed        | passed              | passed         | passed
+ 11051 | pk sorted x<=1024 [ce.rC]          |       1 | passed        | passed              | passed         | failed
+ 11052 | pk sorted x<=1024 [ce.rC]          |       8 | passed        | passed              | passed         | failed
+ 11053 | pk sorted x<=1024 [ce.rC]          |      64 | passed        | passed              | passed         | failed
+ 11061 | b  shuffled z<=1024 [ce.rC]        |       1 | passed        | passed              | failed         | passed
+ 11062 | b  shuffled z<=1024 [ce.rC]        |       8 | passed        | passed              | passed         | failed
+ 11063 | b  shuffled z<=1024 [ce.rC]        |      64 | passed        | passed              | passed         | failed
+ 20011 | g,h shuffled z<=1024 [ce.r3]       |       1 | passed        | passed              | failed         | failed
+ 20012 | g,h shuffled z<=1024 [ce.r3]       |       8 | passed        | passed              | failed         | failed
+ 20013 | g,h shuffled z<=1024 [ce.r3]       |      64 | passed        | passed              | failed         | failed
+ 20021 | g,h sorted id<=1024 [ce.r3]        |       1 | passed        | passed              | failed         | failed
+ 20022 | g,h sorted id<=1024 [ce.r3]        |       8 | passed        | passed              | failed         | failed
+ 20023 | g,h sorted id<=1024 [ce.r3]        |      64 | passed        | passed              | failed         | failed
+ 21011 | g,h shuffled z<=1024 [ce.r3C]      |       1 | passed        | passed              | failed         | failed
+ 21012 | g,h shuffled z<=1024 [ce.r3C]      |       8 | passed        | passed              | failed         | failed
+ 21013 | g,h shuffled z<=1024 [ce.r3C]      |      64 | passed        | passed              | failed         | failed
+ 21021 | g,h sorted id<=1024 [ce.r3C]       |       1 | passed        | passed              | failed         | failed
+ 21022 | g,h sorted id<=1024 [ce.r3C]       |       8 | passed        | passed              | failed         | failed
+ 21023 | g,h sorted id<=1024 [ce.r3C]       |      64 | passed        | passed              | failed         | failed
+ 22011 | g,h shuffled z<=1024 [ce.r3H]      |       1 | passed        | passed              | failed         | failed
+ 22012 | g,h shuffled z<=1024 [ce.r3H]      |       8 | passed        | passed              | failed         | failed
+ 22013 | g,h shuffled z<=1024 [ce.r3H]      |      64 | passed        | passed              | failed         | failed
+ 22021 | g,h sorted id<=1024 [ce.r3H]       |       1 | passed        | passed              | failed         | failed
+ 22022 | g,h sorted id<=1024 [ce.r3H]       |       8 | passed        | passed              | failed         | failed
+ 22023 | g,h sorted id<=1024 [ce.r3H]       |      64 | passed        | passed              | failed         | failed
+(54 rows)
 

@@ -88,8 +88,7 @@
 --
 -- The 5xx section joins many outer rows on a non-unique key that most of them
 -- do not reach.  BNL is costed above HJ and MJ although it scans fewer rows:
--- its inner scan is estimated as if every key of a batch had rows (see
--- yb.orig.bnl_inner_estimate, which tests that estimate).
+-- its inner scan is estimated as if every key of a batch had rows.
 --
 -- The 6xx section joins a 1024-row outer on a two-column key, whose inner
 -- scan estimate applies the batch size once per key column (#19549), so
@@ -558,7 +557,7 @@ order by qid;
 -- HJ's and MJ's 14393, and makes 3 or 4 requests against their 7 on ce.rC
 -- and at most one more than theirs on ce.r.  The cost comes from BNL's inner
 -- scan, estimated as if every key of the batch had its 10 rows: 4907 rows
--- against 1131 on ce.rC (see yb.orig.bnl_inner_estimate, 11011).  rt_rank
+-- against 1131 per batch on ce.rC.  rt_rank
 -- ranks by read_reqs (then rows_scanned), as in the 1xx section, so cost_rank
 -- disagrees with it on ce.rC and on the ce.r semi and anti joins.  On the
 -- ce.r inner and left joins BNL's extra request ranks it behind HJ and MJ by
@@ -594,8 +593,8 @@ order by qid;
 -- 6xx (#19549): the 1024 shuffled outer rows of ce.s2 joined on the
 -- two-column key (g, h), which 265 of them reach, and the first 1024 ids,
 -- which all do.  The inner scan's estimate applies the batch size once per
--- key column, so a batch is estimated at the whole 16384-row inner from 128
--- keys up (see yb.orig.bnl_inner_estimate, 2xxxx).  With one batch of 1024
+-- key column, so a batch of 16 pairs is estimated at 256 rows and a batch
+-- of 128 or more at the whole 16384-row inner.  With one batch of 1024
 -- that is about what HJ and MJ scan, and BNL, which point-probes the batch
 -- in 2 or 3 requests against their 7 to 18, is costed and ranked first.
 -- With two batches of 512 (second pass) the estimate doubles while BNL's
