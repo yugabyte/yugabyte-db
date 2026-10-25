@@ -29,8 +29,12 @@ import com.yugabyte.yw.models.Users;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.Signature;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
@@ -83,6 +87,12 @@ public class CertificateApiTest extends FakeDBApplication {
     return Helpers.route(app, request);
   }
 
+  private static long lifetimeYears(JsonNode cert) {
+    return ChronoUnit.YEARS.between(
+        Instant.parse(cert.get("start_date").asText()).atZone(ZoneOffset.UTC),
+        Instant.parse(cert.get("expiry_date").asText()).atZone(ZoneOffset.UTC));
+  }
+
   private JsonNode createOk(JsonNode body) {
     Result result = create(customerUuid, apiToken, body);
     assertEquals(contentAsString(result), OK, result.status());
@@ -132,7 +142,8 @@ public class CertificateApiTest extends FakeDBApplication {
     createOk(spec("n2n-root", certPem, keyPem));
 
     Result result =
-        assertPlatformException(() -> create(customerUuid, apiToken, spec("n2n-root", certPem, keyPem)));
+        assertPlatformException(
+            () -> create(customerUuid, apiToken, spec("n2n-root", certPem, keyPem)));
 
     assertConflict(result, "Certificate with label n2n-root already exists");
     assertEquals(1, CertificateInfo.getAll(customerUuid).size());
@@ -140,10 +151,12 @@ public class CertificateApiTest extends FakeDBApplication {
 
   @Test
   public void keyOfAnotherCertificateIsBadRequest() throws Exception {
-    String otherKey = CertificateHelper.getAsPemString(CertificateHelper.getKeyPairObject().getPrivate());
+    String otherKey =
+        CertificateHelper.getAsPemString(CertificateHelper.getKeyPairObject().getPrivate());
 
     Result result =
-        assertPlatformException(() -> create(customerUuid, apiToken, spec("mismatch", certPem, otherKey)));
+        assertPlatformException(
+            () -> create(customerUuid, apiToken, spec("mismatch", certPem, otherKey)));
 
     assertEquals(400, result.status());
     assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
@@ -159,11 +172,78 @@ public class CertificateApiTest extends FakeDBApplication {
   }
 
   @Test
-  public void missingKeyIsBadRequest() {
-    Result result =
-        assertPlatformException(() -> create(customerUuid, apiToken, spec("no-key", certPem, null)));
+  public void onlyOneOfCertAndKeyIsBadRequest() {
+    Result noKey =
+        assertPlatformException(
+            () -> create(customerUuid, apiToken, spec("no-key", certPem, null)));
+    Result noCert =
+        assertPlatformException(
+            () -> create(customerUuid, apiToken, spec("no-cert", null, keyPem)));
 
-    assertBadRequest(result, "CertificateSpec.keyContent must not be null");
+    assertBadRequest(noKey, "Give both cert_content and key_content");
+    assertBadRequest(noCert, "Give both cert_content and key_content");
+  }
+
+  @Test
+  public void lifetimeWithUploadedCAIsBadRequest() {
+    ObjectNode body = spec("uploaded", certPem, keyPem).put("lifetime_years", 10);
+
+    Result result = assertPlatformException(() -> create(customerUuid, apiToken, body));
+
+    assertBadRequest(result, "lifetime_years applies only to a CA that YBA generates");
+  }
+
+  @Test
+  public void generatesRootCAWhenContentIsOmitted() throws Exception {
+    JsonNode cert = createOk(spec("generated-root", null, null));
+
+    UUID certUuid = UUID.fromString(cert.get("uuid").asText());
+    // yb.tlsCertificate.root.expiryInYears
+    assertEquals(4, lifetimeYears(cert));
+
+    CertificateInfo info = CertificateInfo.get(certUuid);
+    assertEquals(CertConfigType.SelfSigned, info.getCertType());
+    X509Certificate generated =
+        CertificateHelper.convertStringToX509CertList(
+                Files.readString(Paths.get(info.getCertificate())))
+            .get(0);
+    assertTrue(generated.getSubjectX500Principal().getName().contains("CN=generated-root"));
+    assertTrue("a CA", generated.getBasicConstraints() >= 0);
+    // The stored key is the certificate's key.
+    PrivateKey key =
+        CertificateHelper.getPrivateKey(Files.readString(Paths.get(info.getPrivateKey())));
+    Signature signer = Signature.getInstance("SHA256withRSA");
+    signer.initSign(key);
+    signer.update(new byte[] {1, 2, 3});
+    byte[] signature = signer.sign();
+    Signature verifier = Signature.getInstance("SHA256withRSA");
+    verifier.initVerify(generated.getPublicKey());
+    verifier.update(new byte[] {1, 2, 3});
+    assertTrue(verifier.verify(signature));
+
+    Audit audit =
+        Audit.getAll(customerUuid).stream()
+            .filter(a -> a.getTarget() == Audit.TargetType.Certificate)
+            .findFirst()
+            .orElseThrow();
+    assertFalse(audit.getPayload().toString().contains("PRIVATE KEY"));
+  }
+
+  @Test
+  public void generatedCAUsesRequestedLifetime() {
+    JsonNode cert = createOk(spec("generated-10y", null, null).put("lifetime_years", 10));
+
+    assertEquals(10, lifetimeYears(cert));
+  }
+
+  @Test
+  public void generatedCAWithTakenLabelIsConflict() {
+    createOk(spec("n2n-root", certPem, keyPem));
+
+    Result result =
+        assertPlatformException(() -> create(customerUuid, apiToken, spec("n2n-root", null, null)));
+
+    assertConflict(result, "Certificate with label n2n-root already exists");
   }
 
   @Test
@@ -179,7 +259,8 @@ public class CertificateApiTest extends FakeDBApplication {
         ModelFactory.testUser(
             Customer.getOrBadRequest(customerUuid), "ro@example.com", Users.Role.ReadOnly);
 
-    Result result = create(customerUuid, readOnly.upsertApiToken(), spec("n2n-root", certPem, keyPem));
+    Result result =
+        create(customerUuid, readOnly.upsertApiToken(), spec("n2n-root", certPem, keyPem));
 
     // The authorization layer answers a missing permission with 401.
     assertEquals(contentAsString(result), UNAUTHORIZED, result.status());

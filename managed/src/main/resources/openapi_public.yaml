@@ -347,7 +347,9 @@ paths:
         version 2026.2.0.0 that could change.</b></p>Adds a certificate to the customer,
         such as the root CA for node-to-node and client-to-node encryption in transit.
         A SelfSigned certificate is a CA certificate with its private key; YBA uses
-        it to sign node and client certificates.'
+        it to sign node and client certificates. The caller either uploads the CA
+        and its key, or omits both and YBA generates them, so that the key never leaves
+        YBA.'
       tags:
       - Certificate
       requestBody:
@@ -357,7 +359,8 @@ paths:
           $ref: '#/components/responses/CertificateResp'
         '400':
           description: Invalid input, such as content that isn't PEM, a key that doesn't
-            match the certificate, or (unless yb.tls.enable_config_validation is off)
+            match the certificate, only one of cert_content and key_content, lifetime_years
+            with an uploaded CA, or (unless yb.tls.enable_config_validation is off)
             a certificate that isn't a valid CA
         '401':
           description: The request has no valid API or session token, cUUID is not
@@ -5244,30 +5247,38 @@ components:
       title: CertificateSpec
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2026.2.0.0 that could change.</b></p>A certificate to add to the customer.
-        Part of CertificateCreateReq.'
+        Give cert_content and key_content to upload a CA, or omit both to have YBA
+        generate the CA and its key. Part of CertificateCreateReq.'
       type: object
       required:
       - label
       - cert_type
-      - cert_content
-      - key_content
       properties:
         label:
-          description: Name of the certificate, unique within the customer
+          description: Name of the certificate, unique within the customer. A generated
+            CA also uses it as its subject CN.
           type: string
           minLength: 1
         cert_type:
           $ref: '#/components/schemas/CertificateType'
         cert_content:
           description: PEM-encoded CA certificate, optionally followed by the rest
-            of its chain
+            of its chain. Omit, together with key_content, to have YBA generate the
+            CA.
           type: string
           minLength: 1
         key_content:
-          description: PEM-encoded private key of the CA certificate
+          description: PEM-encoded private key of the CA certificate. Omit, together
+            with cert_content, to have YBA generate the CA.
           type: string
           minLength: 1
           writeOnly: true
+        lifetime_years:
+          description: Validity of a CA that YBA generates, in years. Defaults to
+            yb.tlsCertificate.root.expiryInYears. Only for a generated CA.
+          type: integer
+          format: int32
+          minimum: 1
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     Certificate:

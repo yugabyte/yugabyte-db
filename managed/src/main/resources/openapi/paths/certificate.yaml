@@ -12,7 +12,7 @@
   post:
     operationId: createCertificate
     summary: Add a certificate
-    description: 'Adds a certificate to the customer, such as the root CA for node-to-node and client-to-node encryption in transit. A SelfSigned certificate is a CA certificate with its private key; YBA uses it to sign node and client certificates.'
+    description: 'Adds a certificate to the customer, such as the root CA for node-to-node and client-to-node encryption in transit. A SelfSigned certificate is a CA certificate with its private key; YBA uses it to sign node and client certificates. The caller either uploads the CA and its key, or omits both and YBA generates them, so that the key never leaves YBA.'
     tags:
       - Certificate
     requestBody:
@@ -21,7 +21,7 @@
       '200':
         $ref: "../components/responses/CertificateResp.yaml"
       '400':
-        description: 'Invalid input, such as content that isn''t PEM, a key that doesn''t match the certificate, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA'
+        description: 'Invalid input, such as content that isn''t PEM, a key that doesn''t match the certificate, only one of cert_content and key_content, lifetime_years with an uploaded CA, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on the customer'
       '409':
