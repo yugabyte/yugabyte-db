@@ -104,7 +104,7 @@ public class RollbackResizeNode extends ResizeNode {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     requireStateTransitionDetails(universe).requireRollbackable();
-    cloudByNode = rollbackComputer.describeCloudNodes(universe);
+    cloudByNode = rollbackComputer.describeCloudNodes(universe, taskParams().clusters);
     rollbackComputer.checkCooldownGate(
         taskParams(), universe, taskParams().getFailedTaskCreateTime(), cloudByNode);
   }
@@ -189,7 +189,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private boolean cloudIopsOrThroughputDiffers(NodeDetails node, DeviceInfo desired) {
     CloudAPI.NodeDiskSpec cloud = cloudState(node);
-    if (cloud == null || desired == null) {
+    if (cloud == null || desired == null || !cloud.hasDataDisks()) {
       return false;
     }
     return !ResizeNodeRollbackComputer.cloudAlreadyAtDesired(cloud, desired);
@@ -197,8 +197,7 @@ public class RollbackResizeNode extends ResizeNode {
 
   private CloudAPI.NodeDiskSpec cloudState(NodeDetails node) {
     if (cloudByNode == null) {
-      Universe universe = getUniverse();
-      cloudByNode = rollbackComputer.describeCloudNodes(universe);
+      cloudByNode = rollbackComputer.describeCloudNodes(getUniverse(), taskParams().clusters);
     }
     CloudAPI.NodeDiskSpec cached = cloudByNode.get(node.nodeName);
     if (cached != null) {
@@ -210,7 +209,8 @@ public class RollbackResizeNode extends ResizeNode {
         || !ResizeNodeRollbackComputer.supportsCloudSnapshot(provider.getCloudCode())) {
       return null;
     }
-    CloudAPI.NodeDiskSpec described = rollbackComputer.describeNodeCloudState(provider, node);
+    CloudAPI.NodeDiskSpec described =
+        rollbackComputer.describeNodeCloudState(getUniverse(), provider, node);
     if (cloudByNode == null) {
       cloudByNode = new HashMap<>();
     }

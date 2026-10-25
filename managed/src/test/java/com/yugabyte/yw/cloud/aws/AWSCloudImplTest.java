@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -28,7 +29,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
@@ -967,5 +970,46 @@ public class AWSCloudImplTest extends FakeDBApplication {
             .targetGroups()
             .get(0)
             .targetGroupArn());
+  }
+
+  @Test
+  public void describeNodeDataDiskSpecIsInstanceOnlyWithoutEbsDataVolumes() {
+    // PLAT-23245: an instance-store node has only its root EBS volume.
+    Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
+    software.amazon.awssdk.services.ec2.model.Instance instance =
+        software.amazon.awssdk.services.ec2.model.Instance.builder()
+            .instanceId("i-1")
+            .instanceType("c5d.large")
+            .rootDeviceName("/dev/xvda")
+            .blockDeviceMappings(
+                software.amazon.awssdk.services.ec2.model.InstanceBlockDeviceMapping.builder()
+                    .deviceName("/dev/xvda")
+                    .ebs(
+                        software.amazon.awssdk.services.ec2.model.EbsInstanceBlockDevice.builder()
+                            .volumeId("vol-root")
+                            .build())
+                    .build())
+            .build();
+    when(mockEC2Client.describeInstances(
+            any(software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest.class)))
+        .thenReturn(
+            software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse.builder()
+                .reservations(
+                    software.amazon.awssdk.services.ec2.model.Reservation.builder()
+                        .instances(instance)
+                        .build())
+                .build());
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "n1";
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.region = "us-west-2";
+    node.cloudInfo.id = "i-1";
+
+    CloudAPI.NodeDiskSpec spec = awsCloudImpl.describeNodeDataDiskSpec(defaultProvider, node).get();
+    assertFalse(spec.hasDataDisks());
+    assertEquals("c5d.large", spec.getInstanceType());
+    verify(mockEC2Client, never())
+        .describeVolumes(
+            any(software.amazon.awssdk.services.ec2.model.DescribeVolumesRequest.class));
   }
 }

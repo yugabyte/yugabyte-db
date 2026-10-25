@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.AccessLevel;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -168,6 +169,9 @@ public interface CloudAPI {
     private final Integer volumeSizeGb;
     private final Instant lastModificationStart;
 
+    @Getter(AccessLevel.NONE)
+    private final boolean hasDataDisks;
+
     public NodeDiskSpec(Integer diskIops, Integer throughput, Instant lastModificationStart) {
       this(null, diskIops, throughput, null, lastModificationStart);
     }
@@ -178,20 +182,44 @@ public interface CloudAPI {
         Integer throughput,
         Integer volumeSizeGb,
         Instant lastModificationStart) {
+      this(instanceType, diskIops, throughput, volumeSizeGb, lastModificationStart, true);
+    }
+
+    private NodeDiskSpec(
+        String instanceType,
+        Integer diskIops,
+        Integer throughput,
+        Integer volumeSizeGb,
+        Instant lastModificationStart,
+        boolean hasDataDisks) {
       this.instanceType = instanceType;
       this.diskIops = diskIops;
       this.throughput = throughput;
       this.volumeSizeGb = volumeSizeGb;
       this.lastModificationStart = lastModificationStart;
+      this.hasDataDisks = hasDataDisks;
+    }
+
+    /**
+     * A node with no persistent data disks, such as one on instance-store or local SSD. Only the
+     * instance type is known; the disk fields are null.
+     */
+    public static NodeDiskSpec instanceOnly(String instanceType) {
+      return new NodeDiskSpec(instanceType, null, null, null, null, false);
+    }
+
+    public boolean hasDataDisks() {
+      return hasDataDisks;
     }
 
     /**
      * One snapshot for a node's data disks, with {@code instanceType} attached. Disks must agree on
-     * IOPS, throughput, and size. {@code lastModificationStart} is the latest non-null start.
+     * IOPS, throughput, and size. {@code lastModificationStart} is the latest non-null start. No
+     * disks gives {@link #instanceOnly}.
      */
     public static NodeDiskSpec mergeDataDisks(String instanceType, List<NodeDiskSpec> disks) {
       if (disks == null || disks.isEmpty()) {
-        throw new PlatformServiceException(BAD_REQUEST, "node has no data disks");
+        return instanceOnly(instanceType);
       }
       Integer iops = disks.get(0).diskIops;
       Integer throughput = disks.get(0).throughput;

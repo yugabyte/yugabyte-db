@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.api.services.compute.model.Address;
+import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.ForwardingRule;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -743,5 +745,22 @@ public class GCPCloudImplTest extends FakeDBApplication {
 
     assertEquals(
         Map.of("k" + "a".repeat(62), value63), GCPCloudImpl.toLabels(Map.of(key64, value63)));
+  }
+
+  @Test
+  public void persistentDataDisksSkipsBootDiskAndLocalSsd() {
+    // PLAT-23245: a local SSD (SCRATCH) has no disk resource to describe.
+    com.google.api.services.compute.model.Instance instance =
+        new com.google.api.services.compute.model.Instance()
+            .setDisks(
+                List.of(
+                    new AttachedDisk().setIndex(0).setType("PERSISTENT").setSource("boot"),
+                    new AttachedDisk().setIndex(1).setType("SCRATCH"),
+                    new AttachedDisk().setIndex(2).setType("PERSISTENT").setSource("data")));
+    assertEquals(
+        List.of("data"),
+        GCPProjectApiClient.persistentDataDisks(instance).stream()
+            .map(AttachedDisk::getSource)
+            .collect(Collectors.toList()));
   }
 }

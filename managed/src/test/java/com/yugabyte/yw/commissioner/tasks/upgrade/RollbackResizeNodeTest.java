@@ -903,4 +903,38 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
     InstanceType.upsert(providerId, type, 1, 100d, instanceTypeDetails);
   }
+
+  @Test
+  public void testRollbackOnInstanceStoreNodesHasNoDiskUpdate() {
+    // PLAT-23245: on instance-store nodes the cloud reports no data disks. Rollback still runs and
+    // never tries to modify disks the node doesn't have.
+    String instanceStoreType = "c5d.large";
+    createInstanceType(defaultProvider.getUuid(), instanceStoreType);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              intent.instanceType = instanceStoreType;
+              intent.deviceInfo.storageType = null;
+              u.getNodes().forEach(n -> n.cloudInfo.instance_type = instanceStoreType);
+            });
+    seedFailedResize(/* changeInstance */ false, /* growVolume */ false, /* changeIops */ false);
+    lenient()
+        .when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenReturn(Optional.of(CloudAPI.NodeDiskSpec.instanceOnly(instanceStoreType)));
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.getPrimaryCluster().userIntent.instanceType = instanceStoreType;
+    rollbackParams.getPrimaryCluster().userIntent.deviceInfo.storageType = null;
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(
+                t ->
+                    t.getTaskType() == TaskType.ChangeInstanceType
+                        || (t.getTaskType() == TaskType.InstanceActions
+                            && "Disk_Update".equals(t.getTaskParams().path("type").asText()))));
+  }
 }
