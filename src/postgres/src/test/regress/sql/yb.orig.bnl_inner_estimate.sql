@@ -88,7 +88,10 @@ order by q.qid;
 -- Per-batch estimates of the inner scan against the measured per-batch
 -- averages (see check_bnl_inner_estimates).  Rows and read requests are exact
 -- counts; seeks and nexts move with the memtable/SST layout, by far less than
--- the tolerance.  Every row estimate and every request estimate passes.
+-- the tolerance.  Every row estimate and every request estimate passes.  The
+-- report lists only the cases with a failing estimate: the a cases (...10 to
+-- ...30) and the shuffled primary key in batches of 16 (...43) pass every
+-- estimate and are left out.
 --
 -- a (...10 to ...30): 10 rows per key, so the scan reaches most rows with
 -- nexts.  The estimate charges 8% to 10% more seeks and 2% to 5% more nexts
@@ -117,4 +120,6 @@ order by q.qid;
 select qid, descr, batches,
        "Row Estimates", "Roundtrip Estimates", "Seek Estimates", "Next Estimates"
 from check_bnl_inner_estimates
+where 'failed' in ("Row Estimates", "Roundtrip Estimates", "Seek Estimates",
+                   "Next Estimates")
 order by qid;
