@@ -2451,6 +2451,8 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
       << "Killed master did not leave its socket directory behind: " << socket_dir;
 
   // Only the restarted master can remove the directory.
+  // The RPC can fail before the SIGKILLed process is reaped, so Restart() alone may see it alive.
+  leader->Shutdown();
   ASSERT_OK(leader->Restart());
   ASSERT_FALSE(Env::Default()->DirExists(socket_dir))
       << "Stale socket directory was not cleaned up: " << socket_dir;
