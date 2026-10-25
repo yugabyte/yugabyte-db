@@ -1820,11 +1820,16 @@ int64_t Log::GetMinReplicateIndex() const {
   return min_replicate_index_.load(std::memory_order_acquire);
 }
 
-Result<int64_t> Log::MinAnchorableIndex() const {
+Result<int64_t> Log::EarliestOpIndex() const {
   auto result = VERIFY_RESULT(GetLogReader())->GetMinReplicateIndex();
-  if (result == -1) {
+  if (result == -1) { // No finalized log files yet.  Query the active log.
     result = GetMinReplicateIndex();
   }
+  return result;
+}
+
+Result<int64_t> Log::MinAnchorableIndex() const {
+  const auto result = VERIFY_RESULT(EarliestOpIndex());
   // LookupOpId answers for the marker op id, which the ops after it need as the preceding op.
   const auto marker_op_id = quiescent_marker_op_id();
   return !marker_op_id.empty() && result == marker_op_id.index + 1 ? marker_op_id.index : result;

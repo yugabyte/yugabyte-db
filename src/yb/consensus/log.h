@@ -262,6 +262,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   int64_t GetMinReplicateIndex() const;
 
+  /// Returns the index of the earliest op in the log.
+  Result<int64_t> EarliestOpIndex() const EXCLUDES(state_lock_);
+
   /// Returns the lowest index at which a log anchor can be registered: a peer whose last op has
   /// this index can be sent the following ops. It is L for a quiescent log, whose ops start at L+1.
   Result<int64_t> MinAnchorableIndex() const EXCLUDES(state_lock_);

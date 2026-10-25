@@ -56,7 +56,7 @@ The file is `quiescent_marker` in the WAL directory, next to the bootstrap state
 
 ## Entering the mode
 
-A replica enters the mode after nothing was appended to its log for `quiescent_tablet_idle_sec` (default 600). `TSTabletManager` keeps a priority queue of tablets ordered by when each could enter the mode: its last append time plus the idle period. A background task wakes for the earliest one, and at least once a minute to pick up new tablets and flag changes. It calls `TabletPeer::MaybeEnterQuiescentMode` for each due tablet, which tries to enter and returns the tablet's next check time. A failed attempt is retried after another idle period.
+A replica enters the mode after nothing was appended to its log for `quiescent_tablet_idle_sec` (default 600). `TSTabletManager` keeps a priority queue of tablets ordered by when each could enter the mode: its last append time plus the idle period. A background task wakes for the earliest one, and at least once a minute to pick up new tablets and `quiescent_tablet_idle_sec` raised from 0. Queued check times are not recomputed when a flag changes, so lowering `quiescent_tablet_idle_sec` or enabling `enable_quiescent_tablets` reaches an existing tablet at its next queued check, up to one old idle period later. It calls `TabletPeer::MaybeEnterQuiescentMode` for each due tablet, which tries to enter and returns the tablet's next check time. A failed attempt is retried after another idle period.
 
 **Preconditions**, all checked on the replica in `TabletPeer::EnterQuiescentMode`:
 

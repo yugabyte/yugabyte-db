@@ -167,6 +167,7 @@ class LogCache {
 
   int64_t num_cached_ops() const;
 
+  /// See Log::EarliestOpIndex.
   Result<int64_t> earliest_op_index() const;
 
   /// See Log::MinAnchorableIndex.

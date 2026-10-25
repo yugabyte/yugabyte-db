@@ -288,11 +288,7 @@ void LogCache::LogCallback(bool overwritten_cache,
 }
 
 Result<int64_t> LogCache::earliest_op_index() const {
-  auto ret = VERIFY_RESULT(log_->GetLogReader())->GetMinReplicateIndex();
-  if (ret == -1) { // No finalized log files yet.  Query the active log.
-    ret = log_->GetMinReplicateIndex();
-  }
-  return ret;
+  return log_->EarliestOpIndex();
 }
 
 Result<int64_t> LogCache::min_anchorable_index() const {
