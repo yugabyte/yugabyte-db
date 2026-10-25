@@ -62,9 +62,9 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 
 1. Committed op id, last received op id and last applied op id are all L, and no operations are pending.
 2. No Raft config change is pending.
-3. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap.
+3. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap.
 4. The transaction participant has no transactions, including applied ones still waiting for intent cleanup.
-5. No CDC or xCluster streams on the tablet.
+5. No CDC or xCluster streams on the tablet, and no table-level WAL retention (`wal_retention_secs`, which xCluster setup sets).
 6. No log anchors: remote bootstrap sessions and split parents anchor the segments.
 7. The AutoFlag is promoted (see [Upgrade and rollback](#upgrade-and-rollback)).
 
@@ -74,10 +74,10 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 2. Flush the superblock, so `LastFlushedChangeMetadataOperationOpId` covers L with lazy superblock flush. Raft already flushes consensus metadata when the term or the committed config changes.
 3. Flush the retryable requests up to L. They are stored in the bootstrap state file (`retryable_requests`, `TabletBootstrapStateFlusher::FlushBootstrapState`) together with `min_replay_txn_first_write_ht`. If an async flush is still running, the call returns `AlreadyPresent` and entry gives up.
 4. `Log::CloseActiveSegment` submits `CLOSE_SEGMENT_MARKER` to the appender thread. If the last appended op is still L, the appender drops a preallocated segment, syncs and closes the active segment, and leaves the log with no active segment. It returns the marker values of L. Otherwise entry gives up.
-5. `Log::WriteQuiescentMarker` writes the marker and publishes it in memory.
+5. `Log::WriteQuiescentMarker` writes the marker and publishes it in memory. It and step 6 hold `log_copy_mutex_` and refuse a closed log, and `Log::Close` waits for them, because remote bootstrap may delete and recreate the WAL directory of a closed log.
 6. Check the log anchors again, then delete the segments covered by the marker (`Log::DeleteSegmentsCoveredByQuiescentMarker`) and fsync the WAL directory.
 
-Giving up before step 5 needs no undo; the flushes are harmless. An append that arrives after step 4 creates a new segment at L+1, which step 6 leaves alone, and the marker stays valid. A crash between steps 5 and 6 leaves old segments next to the marker; `Log::Init` deletes them.
+Giving up before step 5 needs no undo; the flushes are harmless. An append that arrives after step 4 creates a new segment at L+1, which step 6 leaves alone, and the marker stays valid. A crash between steps 5 and 6, or an anchor found in step 6, leaves old segments next to the marker; `Log::Init` deletes them.
 
 The second anchor check orders entry with remote bootstrap. A session anchors the log, then reads the marker, then makes the RocksDB checkpoint. Entry publishes the marker, then checks anchors. So either entry sees the anchor and keeps the segments, or the session reads the new marker and its checkpoint is made after the flush in step 1.
 
@@ -117,8 +117,10 @@ If the WAL directory has a marker, bootstrap treats the tablet as existing even 
 | `Log::UpdateSegmentReadableOffset` | Updates the reader only for an active segment |
 | `Log::CopyTo` | Skips the last segment only if it is active, i.e. has no footer |
 | Rollover markers | Already did nothing for an empty or missing active segment |
+| `Log::GetMinReplicateIndex` | L+1 after closing the active segment or loading the marker, so ops up to L are not reported as available |
 
 `log_min_seconds_to_retain` and `log_min_segments_to_retain` do not apply to a quiescent tablet.
+A table-level `wal_retention_secs` keeps its tablets out of the mode.
 
 ## Components that copy the WAL
 

@@ -2987,7 +2987,7 @@ Status TSTabletManager::RegisterTabletUnlocked(const TabletId& tablet_id,
   LOG_WITH_PREFIX(INFO) << "Registered tablet " << tablet_id;
 
   {
-    // The log of a new peer has just been opened, so it cannot enter the mode earlier.
+    // The log is opened after registration, so its last append time is later than this.
     std::lock_guard lock(quiescent_checks_mutex_);
     quiescent_checks_.push(
         {CoarseMonoClock::Now() + tablet::QuiescentTabletIdleTime(), tablet_peer});

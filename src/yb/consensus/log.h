@@ -853,6 +853,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
 
+  // Also serializes quiescent marker writes and deletions of segments covered by it with Close.
   std::mutex log_copy_mutex_;
 
   // Used by GetSegmentsToGCUnlocked() as an anchor.

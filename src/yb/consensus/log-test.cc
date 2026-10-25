@@ -2484,10 +2484,13 @@ TEST_F(LogTest, QuiescentMarker) {
   CheckRightNumberOfSegmentFiles(0);
   ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(last_op_id.index)), last_op_id);
   ASSERT_NOK(log_->LookupOpId(last_op_id.index - 1));
+  ASSERT_EQ(log_->GetMinReplicateIndex(), last_op_id.index + 1);
   int num_gced = 0;
   ASSERT_OK(log_->TEST_GC(last_op_id.index, &num_gced));
   ASSERT_EQ(num_gced, 0);
   ASSERT_OK(log_->Close());
+  // Remote bootstrap may recreate the WAL dir of a closed log.
+  ASSERT_TRUE(log_->WriteQuiescentMarker(marker).IsIllegalState());
 
   BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
   ASSERT_OK(log_->EnsureSegmentInitialized());
@@ -2497,6 +2500,7 @@ TEST_F(LogTest, QuiescentMarker) {
   ASSERT_TRUE(loaded_marker);
   ASSERT_EQ(loaded_marker->monotonic_counter(), 42);
   ASSERT_EQ(ASSERT_RESULT(log_->LookupOpId(last_op_id.index)), last_op_id);
+  ASSERT_EQ(log_->GetMinReplicateIndex(), last_op_id.index + 1);
 
   ASSERT_OK(AppendNoOps(&op_id, 2));
   SegmentSequence segments;

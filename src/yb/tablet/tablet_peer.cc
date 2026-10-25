@@ -131,10 +131,6 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
-DEFINE_RUNTIME_AUTO_bool(enable_quiescent_tablets, kLocalPersisted, false, true,
-    "Replace WAL segments of an idle tablet with a quiescent marker, so its bootstrap reads no "
-    "WAL. Binaries without this feature cannot bootstrap such a tablet.");
-
 DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 600,
     "A tablet enters the quiescent mode after nothing was appended to its log for this many "
     "seconds. 0 disables entering the mode.");
@@ -142,6 +138,7 @@ DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 600,
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(enable_quiescent_tablets);
 
 DECLARE_uint64(cdc_intent_retention_ms);
 
@@ -1022,6 +1019,10 @@ Status TabletPeer::EnterQuiescentMode(const OpId& op_id) {
   if (log_->GetXReplMinReplicatedIndex() != std::numeric_limits<int64_t>::max() ||
       is_under_cdc_sdk_replication()) {
     return STATUS(NotSupported, "Tablet has xCluster or CDC streams");
+  }
+  // The table asks to keep WAL for a time, e.g. while xCluster is being set up.
+  if (meta_->wal_retention_secs() != 0) {
+    return STATUS(NotSupported, "Table WAL retention is set");
   }
 
   auto consensus = VERIFY_RESULT(GetRaftConsensus());

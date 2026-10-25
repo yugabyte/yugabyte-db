@@ -206,6 +206,15 @@ Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg);
 // If SyncMode SYNC is provided, ensures the changes are made durable.
 Status WritePBToPath(Env* env, const std::string& path, const MessageLite& msg, SyncMode sync);
 
+/// Atomically replaces the file at path with the CRC32C of the serialized msg followed by msg.
+/// Unlike a PB container, the file does not embed proto descriptors.
+Status WritePBWithCRCToPath(
+    Env* env, const std::string& path, const MessageLite& msg, SyncMode sync);
+
+/// Reads into msg a file written by WritePBWithCRCToPath.
+/// Returns Corruption if the file is truncated or its checksum does not match.
+Status ReadPBWithCRCFromPath(Env* env, const std::string& path, MessageLite* msg);
+
 // Truncate any 'bytes' or 'string' fields of this message to max_len.
 // The text "<truncated>" is appended to any such truncated fields.
 void TruncateFields(google::protobuf::Message* message, int max_len);

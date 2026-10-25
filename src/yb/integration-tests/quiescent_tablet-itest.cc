@@ -14,7 +14,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/log.h"
@@ -233,6 +235,16 @@ TEST_F(QuiescentTabletTest, Split) {
   ASSERT_NO_FATALS(CheckRows(100));
   ASSERT_NO_FATALS(WriteRows(100, 200));
   ASSERT_NO_FATALS(CheckRows(200));
+}
+
+// A table that asks to keep its WAL for a time stays out of the mode.
+TEST_F(QuiescentTabletTest, TableWalRetention) {
+  ASSERT_OK(client_->NewTableAlterer(table_name())->SetWalRetentionSecs(3600)->Alter());
+  ASSERT_NO_FATALS(WriteRows(0, 10));
+  std::this_thread::sleep_for(FLAGS_quiescent_tablet_idle_sec * 3s);
+  for (const auto& peer : TablePeers()) {
+    ASSERT_FALSE(peer->IsQuiescent());
+  }
 }
 
 TEST_F(QuiescentTabletTest, Disabled) {

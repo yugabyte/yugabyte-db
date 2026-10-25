@@ -49,7 +49,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/math_util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
 
@@ -70,19 +69,6 @@
   }
 
 namespace yb {
-
-class Env;
-
-/// Atomically replaces the file at path with the CRC32C of the serialized msg followed by msg.
-/// Unlike a PB container, the file does not embed proto descriptors.
-/// The file is written aside, synced, renamed, and its directory synced.
-Status WritePBWithCRCToPath(
-    Env* env, const std::string& path, const google::protobuf::MessageLite& msg);
-
-/// Reads into msg a file written by WritePBWithCRCToPath.
-/// Returns Corruption if the file is truncated or its checksum does not match.
-Status ReadPBWithCRCFromPath(
-    Env* env, const std::string& path, google::protobuf::MessageLite* msg);
 
 template<typename T>
 std::vector<T> GetAllPbEnumValues() {

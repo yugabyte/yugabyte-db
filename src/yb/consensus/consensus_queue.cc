@@ -78,6 +78,7 @@ using namespace yb::size_literals;
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(enable_quiescent_tablets);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
@@ -579,7 +580,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     request->set_caller_term(queue_state_.current_term);
-    queue_state_.all_replicated_op_id.ToPB(request->mutable_all_replicated_op_id());
+    if (FLAGS_enable_quiescent_tablets) {
+      queue_state_.all_replicated_op_id.ToPB(request->mutable_all_replicated_op_id());
+    }
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
     if (member_type) *member_type = peer->member_type;

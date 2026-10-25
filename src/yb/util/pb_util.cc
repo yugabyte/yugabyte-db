@@ -93,7 +93,6 @@ using google::protobuf::Reflection;
 using google::protobuf::SimpleDescriptorDatabase;
 using yb::crc::Crc;
 using yb::pb_util::internal::SequentialFileFileInputStream;
-using yb::pb_util::internal::WritableFileOutputStream;
 using std::deque;
 using std::endl;
 using std::shared_ptr;
@@ -294,22 +293,17 @@ Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
   return Status::OK();
 }
 
-Status WritePBToPath(Env* env, const std::string& path,
-                     const MessageLite& msg,
-                     SyncMode sync) {
-  const string tmp_template = MakeTempPath(path);
-  string tmp_path;
+namespace {
 
+// Writes data to a temp file and renames it over path, so a crash leaves the old file or the new.
+Status WriteToPathAtomically(
+    Env* env, const std::string& path, const Slice& data, SyncMode sync) {
+  std::string tmp_path;
   std::unique_ptr<WritableFile> file;
-  RETURN_NOT_OK(env->NewTempWritableFile(WritableFileOptions(), tmp_template, &tmp_path, &file));
+  RETURN_NOT_OK(env->NewTempWritableFile(
+      WritableFileOptions(), MakeTempPath(path), &tmp_path, &file));
   env_util::ScopedFileDeleter tmp_deleter(env, tmp_path);
-
-  WritableFileOutputStream ostream(file.get());
-  bool res = msg.SerializeToZeroCopyStream(&ostream);
-  if (!res || !ostream.Flush()) {
-    return STATUS(IOError, "Unable to serialize PB to file");
-  }
-
+  RETURN_NOT_OK_PREPEND(file->Append(data), "Failed to Append() " + tmp_path);
   if (sync == pb_util::SYNC) {
     RETURN_NOT_OK_PREPEND(file->Sync(), "Failed to Sync() " + tmp_path);
   }
@@ -320,6 +314,38 @@ Status WritePBToPath(Env* env, const std::string& path,
     RETURN_NOT_OK_PREPEND(env->SyncDir(DirName(path)), "Failed to SyncDir() parent of " + path);
   }
   return Status::OK();
+}
+
+constexpr size_t kCRCSize = sizeof(uint32_t);
+
+} // namespace
+
+Status WritePBToPath(Env* env, const std::string& path,
+                     const MessageLite& msg,
+                     SyncMode sync) {
+  faststring data;
+  RETURN_NOT_OK(SerializeToString(msg, &data));
+  return WriteToPathAtomically(env, path, data, sync);
+}
+
+Status WritePBWithCRCToPath(
+    Env* env, const std::string& path, const MessageLite& msg, SyncMode sync) {
+  faststring data;
+  data.resize(kCRCSize);
+  RETURN_NOT_OK(AppendToString(msg, &data));
+  InlineEncodeFixed32(data.data(), crc::Crc32c(data.data() + kCRCSize, data.size() - kCRCSize));
+  return WriteToPathAtomically(env, path, data, sync);
+}
+
+Status ReadPBWithCRCFromPath(Env* env, const std::string& path, MessageLite* msg) {
+  faststring data;
+  RETURN_NOT_OK(ReadFileToString(env, path, &data));
+  SCHECK_GE(data.size(), kCRCSize, Corruption, Format("Truncated file $0", path));
+  const Slice body(data.data() + kCRCSize, data.size() - kCRCSize);
+  SCHECK_EQ(
+      crc::Crc32c(body), DecodeFixed32(data.data()), Corruption,
+      Format("Checksum mismatch in $0", path));
+  return ParseFromArray(msg, body.data(), body.size());
 }
 
 Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg) {

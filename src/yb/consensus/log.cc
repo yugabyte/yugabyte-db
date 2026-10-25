@@ -77,7 +77,6 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/protobuf_util.h"
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
@@ -96,6 +95,10 @@ using namespace std::literals;  // NOLINT.
 using namespace std::placeholders;
 
 METRIC_DECLARE_gauge_int64(log_wal_sync_overdue_ms);
+
+DEFINE_RUNTIME_AUTO_bool(enable_quiescent_tablets, kLocalPersisted, false, true,
+    "Replace WAL segments of an idle tablet with a quiescent marker, so its bootstrap reads no "
+    "WAL. Binaries without this feature cannot bootstrap such a tablet.");
 
 // Log retention configuration.
 // -----------------------------
@@ -773,11 +776,13 @@ Status Log::Init() {
       get_env(), log_index_, log_prefix_, wal_dir_, table_metric_entity_.get(),
       tablet_metric_entity_.get(), read_wal_mem_tracker_));
 
-  // Segments left by a crash between writing the marker and deleting the segments it covers.
-  // The wal size metric is initialized from the remaining segments below.
+  // Segments covered by the marker remain when entering the mode crashed, or gave up after writing
+  // the marker. The wal size metric still counts them only after an in-process reopen: otherwise it
+  // is zero and loaded from the remaining segments below.
   SegmentSequence leftover_segments;
   RETURN_NOT_OK(TrimSegmentsCoveredByQuiescentMarkerUnlocked(&leftover_segments));
-  RETURN_NOT_OK(DeleteSegmentFiles(leftover_segments, /* update_metrics= */ false));
+  RETURN_NOT_OK(DeleteSegmentFiles(
+      leftover_segments, /* update_metrics= */ metrics_ && metrics_->wal_size->value() != 0));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
   // off in terms of sequence numbers.
@@ -930,6 +935,8 @@ Status Log::DoCloseActiveSegment(const OpId& expected_last_op_id, QuiescentMarke
     }
     LOG_WITH_PREFIX(INFO) << "Closed active segment at " << last_appended_entry_op_id_;
   }
+  // The segments with ops up to the marker are about to be deleted.
+  min_replicate_index_.store(last_appended_entry_op_id_.index + 1, std::memory_order_release);
   marker->set_tablet_id(tablet_id_);
   last_appended_entry_op_id_.ToPB(marker->mutable_op_id());
   marker->set_hybrid_time(last_appended_entry_hybrid_time_.ToUint64());
@@ -2044,6 +2051,9 @@ Status Log::Close() {
 
   WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
+  // Waits for a quiescent marker write or segment deletion in progress. They refuse to run on a
+  // closed log, whose WAL dir may be deleted and recreated by remote bootstrap.
+  std::lock_guard log_copy_lock(log_copy_mutex_);
   std::lock_guard l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
@@ -2325,23 +2335,29 @@ Status Log::LoadQuiescentMarker() {
   // Segments are numbered after the ones that the marker replaced.
   active_segment_sequence_number_ = std::max<uint64_t>(
       active_segment_sequence_number_, marker.last_segment_sequence_number());
+  min_replicate_index_.store(op_id.index + 1, std::memory_order_release);
   return Status::OK();
 }
 
 Status Log::ReadQuiescentMarkerFile(
     Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker) {
-  return ReadPBWithCRCFromPath(env, QuiescentMarkerPath(wal_dir), marker);
+  return pb_util::ReadPBWithCRCFromPath(env, QuiescentMarkerPath(wal_dir), marker);
 }
 
 Status Log::WriteQuiescentMarkerFile(
     Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker) {
-  return WritePBWithCRCToPath(env, QuiescentMarkerPath(wal_dir), marker);
+  return pb_util::WritePBWithCRCToPath(env, QuiescentMarkerPath(wal_dir), marker, pb_util::SYNC);
 }
 
 Status Log::WriteQuiescentMarker(const QuiescentMarkerPB& marker) {
   SCHECK_EQ(marker.tablet_id(), tablet_id_, InvalidArgument, "Quiescent marker of another tablet");
   const auto op_id = OpId::FromPB(marker.op_id());
   SCHECK_GE(op_id, quiescent_marker_op_id(), InvalidArgument, "Quiescent marker moves backward");
+  std::lock_guard log_copy_lock(log_copy_mutex_);
+  {
+    PerCpuRwSharedLock lock(state_lock_);
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Log is not open");
+  }
   RETURN_NOT_OK(WriteQuiescentMarkerFile(get_env(), wal_dir_, marker));
   LOG_WITH_PREFIX(INFO) << "Wrote quiescent marker: " << marker.ShortDebugString();
   std::lock_guard lock(state_lock_);
