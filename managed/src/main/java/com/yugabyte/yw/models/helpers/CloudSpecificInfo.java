@@ -58,9 +58,9 @@ public class CloudSpecificInfo {
   public String cloud = null;
 
   // The cloud an on-prem node physically runs on, used to pick its federation direction. Distinct
-  // from 'cloud' above, which stays "onprem". "aws"/"gcp" were detected from the node's metadata
-  // service, "onprem" means it answered neither and is a physical node, and null means we have not
-  // been able to find out yet.
+  // from 'cloud' above, which stays "onprem". "aws"/"gcp"/"oci" were detected from the node's
+  // metadata service, "onprem" means it answered none and is a physical node, and null means we
+  // have not been able to find out yet.
   @ApiModelProperty(value = "For an on-prem node, the cloud the node physically runs on")
   public String physicalCloud = null;
 

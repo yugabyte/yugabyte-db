@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh the OCI identity token used for cross-cloud federation
+
+[Timer]
+# Setup refuses an identity domain whose tokens live under 30 minutes, so at setup every run leaves
+# a token that outlives the next one. Later runs write whatever the domain issues: if its token
+# lifetime is lowered below 20 minutes, the credential has gaps until the domain's lifetime is
+# raised. An operation that happens to re-apply federation fails setup with the reason, which
+# surfaces the problem but does not fix it. Surviving a missed run takes a longer-lived token: an
+# hour-long one survives one, a 30-minute one none.
+OnBootSec=1min
+OnUnitActiveSec=20min
+Unit=yb-federation-oci-token.service
+
+[Install]
+WantedBy=timers.target
