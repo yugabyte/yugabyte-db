@@ -240,6 +240,52 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/certificates':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createCertificate
+    summary: Add a certificate
+    description: 'Adds a certificate to the customer, such as the root CA for node-to-node and client-to-node encryption in transit. A SelfSigned certificate is a CA certificate with its private key; YBA uses it to sign node and client certificates.'
+    tags:
+      - Certificate
+    requestBody:
+      $ref: "../components/requestBodies/CertificateCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CertificateResp.yaml"
+      '400':
+        description: 'Invalid input, such as content that isn''t PEM, a key that doesn''t match the certificate, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on the customer'
+      '409':
+        description: The customer already has a certificate with this label
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Certificate
+      auditTargetId: obj.getUuid().toString()
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
     - name: cUUID

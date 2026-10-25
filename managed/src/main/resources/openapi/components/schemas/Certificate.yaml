@@ -1,0 +1,34 @@
+title: Certificate
+description: A customer's certificate. Part of CertificateResp.
+type: object
+required:
+  - uuid
+  - label
+  - cert_type
+  - start_date
+  - expiry_date
+properties:
+  uuid:
+    description: UUID of the certificate
+    type: string
+    format: uuid
+    readOnly: true
+  label:
+    description: Name of the certificate
+    type: string
+    readOnly: true
+  cert_type:
+    $ref: "./CertificateType.yaml"
+    readOnly: true
+  start_date:
+    description: Start of the certificate's validity
+    type: string
+    format: date-time
+    readOnly: true
+  expiry_date:
+    description: End of the certificate's validity
+    type: string
+    format: date-time
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

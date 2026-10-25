@@ -1,0 +1,26 @@
+title: CertificateSpec
+description: A certificate to add to the customer. Part of CertificateCreateReq.
+type: object
+required:
+  - label
+  - cert_type
+  - cert_content
+  - key_content
+properties:
+  label:
+    description: 'Name of the certificate, unique within the customer'
+    type: string
+    minLength: 1
+  cert_type:
+    $ref: "./CertificateType.yaml"
+  cert_content:
+    description: 'PEM-encoded CA certificate, optionally followed by the rest of its chain'
+    type: string
+    minLength: 1
+  key_content:
+    description: PEM-encoded private key of the CA certificate
+    type: string
+    minLength: 1
+    writeOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
