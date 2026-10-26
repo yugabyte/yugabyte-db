@@ -198,6 +198,9 @@ DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInte
 DEFINE_NON_RUNTIME_bool(prioritize_tasks_by_disk, false,
     "Consider disk load when considering compaction and flush priorities.");
 
+DEFINE_test_flag(bool, use_btree_memtable, false,
+    "Use the B+-tree memtable instead of the skip list.");
+
 namespace yb {
 
 namespace {
@@ -739,8 +742,12 @@ void InitRocksDBBaseOptions(
 
   options->advise_random_on_open = FLAGS_rocksdb_advise_random_on_open;
 
-  options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
-      0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
+  if (FLAGS_TEST_use_btree_memtable) {
+    options->memtable_factory = std::make_shared<rocksdb::BTreeFactory>();
+  } else {
+    options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
+        0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
+  }
 
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
 
