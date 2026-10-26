@@ -1,0 +1,107 @@
+CREATE EXTENSION pg_stat_statements;
+-- Keep SET, SHOW and other utility statements out of the results.
+SET pg_stat_statements.track_utility = FALSE;
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- Without a limit, a long statement is stored in full.
+SELECT 'first' AS first_long_column_name, 'second' AS second_long_column_name;
+ first_long_column_name | second_long_column_name 
+------------------------+-------------------------
+ first                  | second
+(1 row)
+
+SET pg_stat_statements.yb_max_query_text_length = 20;
+SHOW pg_stat_statements.yb_max_query_text_length;
+ pg_stat_statements.yb_max_query_text_length 
+---------------------------------------------
+ 20B
+(1 row)
+
+-- A statement recorded before the limit was set keeps its full text.
+SELECT 'first' AS first_long_column_name, 'second' AS second_long_column_name;
+ first_long_column_name | second_long_column_name 
+------------------------+-------------------------
+ first                  | second
+(1 row)
+
+-- Shorter than or exactly at the limit: stored as is.
+SELECT 1 AS abc;
+ abc 
+-----
+   1
+(1 row)
+
+SELECT 1, 2 AS abc;
+ ?column? | abc 
+----------+-----
+        1 |   2
+(1 row)
+
+-- One byte over the limit: the first 20 bytes are kept, followed by "...".
+SELECT 1, 2, 3, 4;
+ ?column? | ?column? | ?column? | ?column? 
+----------+----------+----------+----------
+        1 |        2 |        3 |        4
+(1 row)
+
+-- A statement without constants is truncated the same way.
+SELECT count(*) FROM pg_am WHERE amname IS NULL;
+ count 
+-------
+     0
+(1 row)
+
+-- A two-byte character that crosses the limit is dropped whole, so only 19
+-- bytes are kept.
+SELECT 1.5 AS "aéééé";
+ aéééé 
+-------
+   1.5
+(1 row)
+
+-- A limit of 0 keeps only the "..." marker.
+SET pg_stat_statements.yb_max_query_text_length = 0;
+SELECT 1, 2, 3;
+ ?column? | ?column? | ?column? 
+----------+----------+----------
+        1 |        2 |        3
+(1 row)
+
+-- A prepared statement with bind parameters, like a batched insert from a
+-- driver, is truncated the same way.
+CREATE TABLE yb_trunc_t (a int, b int);
+SET pg_stat_statements.yb_max_query_text_length = 90;
+PREPARE yb_trunc_ins(int, int, int, int, int, int) AS INSERT INTO yb_trunc_t VALUES ($1, $2), ($3, $4), ($5, $6);
+EXECUTE yb_trunc_ins(1, 2, 3, 4, 5, 6);
+DEALLOCATE yb_trunc_ins;
+-- The password is redacted before the text is truncated, so a cut where the
+-- password was never stores part of it.
+SET pg_stat_statements.yb_max_query_text_length = 40;
+SET pg_stat_statements.track_utility = TRUE;
+CREATE ROLE yb_trunc_pw PASSWORD 'secret_value';
+SET pg_stat_statements.track_utility = FALSE;
+RESET pg_stat_statements.yb_max_query_text_length;
+SELECT query, octet_length(query) AS bytes, calls
+  FROM pg_stat_statements
+  WHERE query NOT LIKE '%pg_stat_statements%'
+  ORDER BY query COLLATE "C";
+                                             query                                             | bytes | calls 
+-----------------------------------------------------------------------------------------------+-------+-------
+ ...                                                                                           |     3 |     1
+ CREATE ROLE yb_trunc_pw PASSWORD <REDACT...                                                   |    43 |     1
+ PREPARE yb_trunc_ins(int, int, int, int, int, int) AS INSERT INTO yb_trunc_t VALUES ($1, $... |    93 |     1
+ SELECT $1 AS "aéé...                                                                          |    22 |     1
+ SELECT $1 AS abc                                                                              |    16 |     1
+ SELECT $1 AS first_long_column_name, $2 AS second_long_column_name                            |    66 |     2
+ SELECT $1, $2 AS abc                                                                          |    20 |     1
+ SELECT $1, $2, $3, $...                                                                       |    23 |     1
+ SELECT count(*) FROM...                                                                       |    23 |     1
+(9 rows)
+
+DROP ROLE yb_trunc_pw;
+DROP TABLE yb_trunc_t;
+DROP EXTENSION pg_stat_statements;
