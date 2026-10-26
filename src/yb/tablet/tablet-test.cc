@@ -47,12 +47,12 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
+
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
@@ -481,6 +481,7 @@ class TabletRetentionPolicyTest : public TabletTestBase<StringKeyTestSetup> {
     allowed_cutoff_ = {.cotables_cutoff_ht = cotables, .primary_cutoff_ht = primary};
   }
 
+  // The harness clock is logical, but clock based cutoffs need physical time.
   server::ClockPtr clock_{new server::HybridClock()};
   HybridTime now_;
   docdb::HistoryCutoff allowed_cutoff_;
@@ -504,7 +505,7 @@ TEST_F(TabletRetentionPolicyTest, HistoryCutoffDoesNotMoveBack) {
 
   // A restarted tablet gets the floor from the flushed frontier.
   policy = NewPolicy();
-  policy->RestoreHistoryCutoffFromFlushedFrontier(
+  policy->SeedHistoryCutoffFromFlushedFrontier(
       {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = high});
   cutoff = policy->GetRetentionDirective().history_cutoff;
   ASSERT_EQ(cutoff.primary_cutoff_ht, high);
@@ -519,6 +520,12 @@ TEST_F(TabletRetentionPolicyTest, CotablesHistoryCutoffDoesNotMoveBack) {
   auto cutoff = policy->GetRetentionDirective().history_cutoff;
   ASSERT_EQ(cutoff.primary_cutoff_ht, now_.AddSeconds(-10));
   ASSERT_EQ(cutoff.cotables_cutoff_ht, now_.AddSeconds(-20));
+
+  // An invalid cotables cutoff means "use the primary cutoff"; a valid floor must not replace it.
+  Allow(now_.AddSeconds(-100));
+  cutoff = policy->GetRetentionDirective().history_cutoff;
+  ASSERT_EQ(cutoff.primary_cutoff_ht, now_.AddSeconds(-10));
+  ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
 }
 
 // With propagation, the committed cutoff can pass an active local reader. The floor must not

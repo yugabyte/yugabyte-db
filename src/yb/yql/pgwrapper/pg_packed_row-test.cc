@@ -773,9 +773,10 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
   ASSERT_EQ(rows, expected_rows);
 }
 
-// sequences_data.last_value is NOT NULL in the DocDB schema, so packing a sequence row whose
-// last_value versions were all compacted away below a lower history cutoff used to fail with
-// "Wrong encoded size: 0" (#35445).
+// sequences_data.last_value is NOT NULL in the DocDB schema. Compacting below an earlier
+// compaction's cutoff could find a sequence row's liveness entry at or below the cutoff with no
+// last_value version at or below it, and packing the row failed with "Wrong encoded size: 0"
+// (#35445).
 TEST_P(PgPackedRowTest, PackSequenceAfterHistoryCutoffMovesBack) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;

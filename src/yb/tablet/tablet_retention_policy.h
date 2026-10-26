@@ -48,7 +48,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // Seeds the committed history cutoff and the floor for compaction cutoffs from the history
   // cutoff in the flushed frontier: the highest cutoff of a past compaction or, with propagation,
   // of a propagated history cutoff operation.
-  void RestoreHistoryCutoffFromFlushedFrontier(docdb::HistoryCutoff value);
+  void SeedHistoryCutoffFromFlushedFrontier(docdb::HistoryCutoff value);
 
   // Returns history cutoff for propagation.
   // It is used at tablet leader while creating request for peer.
@@ -91,9 +91,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
   docdb::HistoryCutoff committed_history_cutoff_information_ GUARDED_BY(mutex_)
       = { HybridTime::kMin, HybridTime::kMin };
-  // Highest history cutoff handed out by GetRetentionDirective or recorded in the flushed frontier.
-  // Unlike committed_history_cutoff_information_, it is not advanced by propagated cutoffs, which
-  // can be above the timestamp of an active local reader.
+  // Highest history cutoff handed out by GetRetentionDirective or found in the flushed frontier at
+  // open. Unlike committed_history_cutoff_information_, UpdateCommittedHistoryCutoff does not
+  // advance it, because a propagated cutoff can be above an active local reader.
   docdb::HistoryCutoff used_history_cutoff_floor_ GUARDED_BY(mutex_);
   CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   int disable_counter_ GUARDED_BY(mutex_) = 0;

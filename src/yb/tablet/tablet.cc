@@ -1218,7 +1218,7 @@ Status Tablet::OpenKeyValueTablet() {
   const docdb::ConsensusFrontier* consensus_frontier = nullptr;
   if (regular_flushed_frontier) {
     consensus_frontier = down_cast<const docdb::ConsensusFrontier*>(regular_flushed_frontier.get());
-    retention_policy_->RestoreHistoryCutoffFromFlushedFrontier(
+    retention_policy_->SeedHistoryCutoffFromFlushedFrontier(
         consensus_frontier->history_cutoff());
   }
 

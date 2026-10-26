@@ -96,7 +96,7 @@ HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff 
   return committed_history_cutoff_information_;
 }
 
-void TabletRetentionPolicy::RestoreHistoryCutoffFromFlushedFrontier(HistoryCutoff value) {
+void TabletRetentionPolicy::SeedHistoryCutoffFromFlushedFrontier(HistoryCutoff value) {
   absl::MutexLock lock(&mutex_);
   VLOG_WITH_PREFIX(4) << __func__ << "(" << value << ")";
   used_history_cutoff_floor_.MakeAtLeast(value);
@@ -257,15 +257,12 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
 }
 
 void TabletRetentionPolicy::ApplyUsedHistoryCutoffFloor(HistoryCutoff* history_cutoff) {
-  // A cutoff below one already used by a compaction is unsafe, not just useless. Compaction at C
-  // keeps only the newest version of each column at or below C, so afterwards a column may have
-  // no version at or below a lower C'. Compacting at C' can then find a row's liveness entry at or
-  // below C' while every version of a column is above it, and packing that row fails for NOT NULL
-  // fixed-width columns (#35445).
-  //
-  // The floor never exceeds committed_history_cutoff_information_, which RegisterReaderTimestamp
-  // already enforces. Raising the cutoff to the floor only stops files not yet compacted at the
-  // floor from keeping versions that no registered reader can see.
+  // Compacting below a cutoff already used is unsafe: a row's liveness entry can be at or below
+  // the new cutoff while no version of some column is, and packing that row fails (#35445).
+  // The floor never exceeds the committed cutoff, so it only drops history RegisterReaderTimestamp
+  // already refuses to read. Exceptions: index backfill readers skip that check but don't depend
+  // on the cutoff, and the master checks readers against the cotables cutoff, but its primary
+  // (sys catalog) data is not read at past times.
   auto apply_floor = [this](HybridTime* cutoff, HybridTime floor) {
     // An invalid cotables cutoff means "use the primary cutoff", so it must stay invalid.
     if (!cutoff->is_valid() || !floor.is_valid() || *cutoff >= floor) {
