@@ -3074,8 +3074,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
   // tserver. Its collector config still has the master target, so the edit must rewrite it.
-  @Test
-  public void testMoveMasterRefreshesOtelCollectorOnDemotedMaster() {
+  private Universe setUpMetricsExportForEdit() {
     DataDogConfig ddConfig = new DataDogConfig();
     ddConfig.setType(ProviderType.DATA_DOG);
     ddConfig.setSite("datadoghq.com");
@@ -3104,6 +3103,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     // With an architecture set, the precheck looks for a local release package the test lacks.
     RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    return universe;
+  }
+
+  @Test
+  public void testMoveMasterRefreshesOtelCollectorOnDemotedMaster() {
+    Universe universe = setUpMetricsExportForEdit();
     Set<String> oldMasters =
         universe.getMasters().stream().map(n -> n.nodeName).collect(Collectors.toSet());
     UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
@@ -3135,6 +3140,62 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     // The new master is a new node: configure already wrote its master target, so only the
     // demoted node is refreshed.
     assertEquals(demoted, refreshed);
+    // The refresh runs after the master address update that follows the demotion, so a slow
+    // node cannot delay it.
+    String demotedNode = demoted.iterator().next();
+    int demotion =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.UpdateNodeProcess
+                        && demotedNode.equals(t.getTaskParams().path("nodeName").asText())
+                        && !t.getTaskParams().path("isAdd").asBoolean())
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int addressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleConfigureServers
+                        && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()
+                        && t.getPosition() > demotion)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int refresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    assertTrue(refresh + " > " + addressUpdate, refresh > addressUpdate);
+  }
+
+  // A full move removes the old masters (ToBeRemoved) and starts new ones (ToBeAdded, configured
+  // with the master target), so no node needs a collector refresh.
+  @Test
+  public void testFullMoveDoesNotRefreshOtelCollector() {
+    Universe universe = setUpMetricsExportForEdit();
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    taskParams.expectedUniverseVersion = -1;
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setDumpEntitiesMock(universe, "", false);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+    assertEquals(
+        List.of(),
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .map(t -> t.getTaskParams().get("nodeName").asText())
+            .collect(Collectors.toList()));
   }
 
   @Test

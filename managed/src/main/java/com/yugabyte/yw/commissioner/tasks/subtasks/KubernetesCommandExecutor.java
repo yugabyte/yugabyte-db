@@ -319,8 +319,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   // A full move also runs the new StatefulSet's masters in the same release, which shares the
-  // collector config with the old one.
-  static boolean releaseHasMasters(int masterReplicas, FullMoveParams fullMoveParams) {
+  // collector config with the old one. A read replica release never runs masters, although a full
+  // move sets its masterReplicas from the placement's replication factor.
+  static boolean releaseHasMasters(
+      boolean isReadOnlyCluster, int masterReplicas, FullMoveParams fullMoveParams) {
+    if (isReadOnlyCluster) {
+      return false;
+    }
     return masterReplicas > 0 || (fullMoveParams != null && fullMoveParams.masterReplicas > 0);
   }
 
@@ -1538,7 +1543,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().isReadOnlyCluster
                     ? UniverseDefinitionTaskParams.ClusterType.ASYNC
                     : UniverseDefinitionTaskParams.ClusterType.PRIMARY,
-                releaseHasMasters(masterReplicas, taskParams().fullMoveParams));
+                releaseHasMasters(
+                    taskParams().isReadOnlyCluster, masterReplicas, taskParams().fullMoveParams));
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
                 provider,

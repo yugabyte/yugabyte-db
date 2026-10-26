@@ -2203,13 +2203,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   // when either the current or the full-move StatefulSet runs masters.
   @Test
   public void testReleaseHasMasters() {
-    assertTrue(KubernetesCommandExecutor.releaseHasMasters(1, null));
-    assertFalse(KubernetesCommandExecutor.releaseHasMasters(0, null));
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 1, null));
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, null));
     KubernetesCommandExecutor.FullMoveParams fullMove =
         new KubernetesCommandExecutor.FullMoveParams();
     fullMove.masterReplicas = 1;
-    assertTrue(KubernetesCommandExecutor.releaseHasMasters(0, fullMove));
+    assertTrue(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
+    // A read replica full move sets masterReplicas from the placement, but runs no masters.
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(true, 0, fullMove));
     fullMove.masterReplicas = 0;
-    assertFalse(KubernetesCommandExecutor.releaseHasMasters(0, fullMove));
+    assertFalse(KubernetesCommandExecutor.releaseHasMasters(false, 0, fullMove));
   }
 }

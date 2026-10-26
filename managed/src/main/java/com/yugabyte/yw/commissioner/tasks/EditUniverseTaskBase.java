@@ -668,6 +668,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       Set<NodeDetails> currentLiveMasters =
           liveNodes.stream().filter(n -> n.isMaster).collect(Collectors.toSet());
+      // Read from task params: on a retry the DB copy of a removed node can already be past
+      // ToBeRemoved.
+      Set<String> leavingNodes =
+          taskParams().nodeDetailsSet.stream()
+              .filter(n -> n.state == NodeState.ToBeRemoved)
+              .map(n -> n.nodeName)
+              .collect(Collectors.toSet());
+      Set<NodeDetails> demotedStayingNodes = new HashSet<>();
       // Now finalize the master quorum change tasks.
       createMoveMastersTasks(
           SubTaskGroupType.ConfigureUniverse,
@@ -680,11 +688,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               // Set isMaster to false before updating the addresses.
               createUpdateNodeProcessTasks(Collections.singleton(node), ServerType.MASTER, false)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-              if (node.state != NodeState.ToBeRemoved) {
-                // The node stays, so drop the master target from its collector config.
-                createOtelCollectorMetricsRefreshTasks(
-                    Collections.singleton(node), true /* ignoreErrors */);
-              }
               // Remove this node from subsequent address update as it's no longer a master.
               currentLiveMasters.remove(node);
               getOrCreateExecutionContext().removeMasterNode(node);
@@ -695,7 +698,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             }
             createMasterAddressUpdateTask(
                 universe, currentLiveMasters, allLiveTservers, false /* ignore error */);
+            if (opType == ChangeMasterConfig.OpType.RemoveMaster
+                && !leavingNodes.contains(node.nodeName)) {
+              demotedStayingNodes.add(node);
+            }
           });
+      // These nodes stay without a master, so drop the master target from their collector
+      // configs. Once, after all master moves, so a slow node cannot delay them.
+      createOtelCollectorMetricsRefreshTasks(demotedStayingNodes, true /* ignoreErrors */);
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
                 mastersToStop,
