@@ -622,4 +622,39 @@ KIWI_API static inline int kiwi_be_write_data_row_add(machine_msg_t *msg,
 	return 0;
 }
 
+KIWI_API static inline machine_msg_t *
+kiwi_be_write_protocol_negotiation(machine_msg_t *msg, uint32_t proto_version,
+				   const char *unsupported_features[],
+				   size_t nfeatures)
+{
+	int msgs_len = 0;
+	for (size_t i = 0; i < nfeatures; ++i) {
+		msgs_len +=
+			strlen(unsupported_features[i]) + 1 /* NULL-bytex */;
+	}
+
+	size_t size = sizeof(kiwi_header_t) + sizeof(uint32_t) /* version */ +
+		      sizeof(uint32_t) /* number of not supported features */ +
+		      msgs_len;
+	int offset = 0;
+	if (msg) {
+		offset = machine_msg_size(msg);
+	}
+	machine_msg_t *local_msg = machine_msg_create_or_advance(msg, size);
+	if (kiwi_unlikely(local_msg == NULL)) {
+		return NULL;
+	}
+	char *pos;
+	pos = (char *)machine_msg_data(local_msg) + offset;
+	kiwi_write8(&pos, KIWI_BE_NEGOTIATE_PROTOCOL_VERSION);
+	kiwi_write32(&pos, size - 1);
+	kiwi_write32(&pos, proto_version);
+	kiwi_write32(&pos, (uint32_t)nfeatures);
+	for (size_t i = 0; i < nfeatures; ++i) {
+		kiwi_write(&pos, unsupported_features[i],
+			   strlen(unsupported_features[i]) + 1);
+	}
+	return local_msg;
+}
+
 #endif /* KIWI_BE_WRITE_H */

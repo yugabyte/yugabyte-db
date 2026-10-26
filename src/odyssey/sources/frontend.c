@@ -241,6 +241,101 @@ yb_frontend_validate_startup_parameters(od_client_t *client)
 	return 0;
 }
 
+static void reject_unsupported_proto_version(od_client_t *client)
+{
+	od_frontend_fatal(
+		client, KIWI_FEATURE_NOT_SUPPORTED,
+		"unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u",
+		PG_PROTOCOL_MAJOR(client->startup.proto_version),
+		PG_PROTOCOL_MINOR(client->startup.proto_version),
+		PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST),
+		PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST),
+		PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST));
+}
+
+/*
+ * YB: Upstream lists only "_pq_.test_protocol_negotiation" in its reply and
+ * silently drops every other "_pq_." option, so the client treats those as
+ * accepted. Here every "_pq_." option is listed, so none is taken as accepted,
+ * and then dropped so it never reaches the backend, which would answer it with
+ * a NegotiateProtocolVersion of its own. A name too long for
+ * KIWI_MAX_NAME_SIZE is discarded on arrival, so it is neither listed nor
+ * forwarded.
+ */
+static inline int yb_is_protocol_option(kiwi_var_t *var)
+{
+	return strncmp(var->name, "_pq_.", sizeof("_pq_.") - 1) == 0;
+}
+
+static int has_unsupported_features(od_client_t *client)
+{
+	kiwi_vars_t *vars = &client->yb_startup_settings;
+
+	for (int i = 0; i < vars->size; i++) {
+		if (yb_is_protocol_option(&vars->vars[i]))
+			return 1;
+	}
+	return 0;
+}
+
+static int send_negotiate(od_client_t *client)
+{
+	kiwi_vars_t *vars = &client->yb_startup_settings;
+
+	const char **unsupported =
+		malloc((vars->size + 1) * sizeof(*unsupported));
+	if (unsupported == NULL)
+		return -1;
+	size_t nunsupported = 0;
+
+	for (int i = 0; i < vars->size; i++) {
+		if (yb_is_protocol_option(&vars->vars[i]))
+			unsupported[nunsupported++] = vars->vars[i].name;
+	}
+
+	machine_msg_t *msg = kiwi_be_write_protocol_negotiation(
+		NULL, PG_PROTOCOL_LATEST, unsupported, nunsupported);
+	free(unsupported);
+	if (msg == NULL)
+		return -1;
+
+	/* the names have been copied into msg */
+	for (int i = 0; i < vars->size;) {
+		kiwi_var_t *var = &vars->vars[i];
+
+		if (yb_is_protocol_option(var))
+			yb_kiwi_vars_remove_if_exists(vars, var->name,
+						      var->name_len);
+		else
+			i++;
+	}
+
+	return od_write(&client->io, &msg);
+}
+
+/*
+ * YB: Upstream makes this check once, after its startup loop. Here it runs at
+ * both exits of od_frontend_startup, after od_tls_frontend_accept has had the
+ * chance to reject the client (e.g. "SSL is required").
+ */
+static int yb_frontend_negotiate_protocol(od_client_t *client)
+{
+	od_instance_t *instance = client->global->instance;
+
+	if (PG_PROTOCOL_MINOR(client->startup.proto_version) >
+		    PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST) ||
+	    has_unsupported_features(client)) {
+		int rc = send_negotiate(client);
+		if (rc != 0) {
+			od_error(&instance->logger, "startup", client, NULL,
+				 "negotiation sending failed: %s",
+				 od_io_error(&client->io));
+			return -1;
+		}
+	}
+	return 0;
+}
+
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
@@ -255,11 +350,15 @@ static int od_frontend_startup(od_client_t *client)
 			goto error;
 
 		int rc = kiwi_be_read_startup(
-			machine_msg_data(msg), machine_msg_size(msg),
+			machine_msg_data(msg),
+			machine_msg_size(msg) - 1 /* extra 0-terminator */,
 			&client->startup, &client->yb_startup_settings);
 		machine_msg_free(msg);
-		if (rc == -1)
+		if (rc != KIWI_STARTUP_READ_OK) {
+			if (rc == KIWI_STARTUP_INVALID_MAJOR_ERROR)
+				reject_unsupported_proto_version(client);
 			goto error;
+		}
 		if (yb_frontend_validate_startup_parameters(client) == -1)
 			goto error;
 
@@ -289,6 +388,8 @@ static int od_frontend_startup(od_client_t *client)
 		goto error;
 
 	if (!client->startup.is_ssl_request) {
+		if (yb_frontend_negotiate_protocol(client) == -1)
+			goto error;
 		rc = od_compression_frontend_setup(
 			client, client->config_listen, &instance->logger);
 		if (rc == -1)
@@ -303,13 +404,20 @@ static int od_frontend_startup(od_client_t *client)
 			      client->config_listen->client_login_timeout);
 	if (msg == NULL)
 		return -1;
-	rc = kiwi_be_read_startup(machine_msg_data(msg), machine_msg_size(msg),
+	rc = kiwi_be_read_startup(machine_msg_data(msg),
+				  machine_msg_size(msg) -
+					  1 /* extra 0-terminator */,
 				  &client->startup,
 				  &client->yb_startup_settings);
 	machine_msg_free(msg);
-	if (rc == -1)
+	if (rc != KIWI_STARTUP_READ_OK) {
+		if (rc == KIWI_STARTUP_INVALID_MAJOR_ERROR)
+			reject_unsupported_proto_version(client);
 		goto error;
+	}
 	if (yb_frontend_validate_startup_parameters(client) == -1)
+		goto error;
+	if (yb_frontend_negotiate_protocol(client) == -1)
 		goto error;
 
 	rc = od_compression_frontend_setup(client, client->config_listen,

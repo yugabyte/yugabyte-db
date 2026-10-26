@@ -61,6 +61,10 @@ public final class PgWireProtocol {
   public static final char BE_NO_DATA = 'n';
   public static final char BE_FUNCTION_CALL_RESPONSE = 'V';
   public static final char BE_EMPTY_QUERY_RESPONSE = 'I';
+  public static final char BE_NEGOTIATE_PROTOCOL_VERSION = 'v';
+
+  public static final int SSL_REQUEST_CODE = protocolVersion(1234, 5679);
+  public static final int GSS_ENC_REQUEST_CODE = protocolVersion(1234, 5680);
 
   // ---- Tiny record for a backend message ------------------------------------
   public static class PgMessage {
@@ -95,6 +99,7 @@ public final class PgWireProtocol {
         case 'c': return "CopyDone";
         case 'N': return "NoticeResponse";
         case 'T': return "RowDescription";
+        case 'v': return "NegotiateProtocolVersion";
         default:  return "Unknown('" + type + "')";
       }
     }
@@ -107,12 +112,21 @@ public final class PgWireProtocol {
 
   // ---- Wire helpers: building frontend messages -----------------------------
 
+  public static int protocolVersion(int major, int minor) {
+    return (major << 16) | minor;
+  }
+
   public static byte[] buildStartupMessage(
       String user, String database, Map<String, String> parameters) throws IOException {
+    return buildStartupMessage(protocolVersion(3, 0), user, database, parameters);
+  }
+
+  public static byte[] buildStartupMessage(int version, String user, String database,
+                                           Map<String, String> parameters) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
     d.writeInt(0); // placeholder for length
-    d.writeInt(196608); // protocol version 3.0
+    d.writeInt(version);
     writeString(d, "user");
     writeString(d, user);
     writeString(d, "database");
@@ -366,6 +380,35 @@ public final class PgWireProtocol {
     return columns;
   }
 
+  /** The body of a NegotiateProtocolVersion message. */
+  public static class NegotiateProtocolVersion {
+    // Newest protocol version the server supports, major and minor.
+    public final int newestVersion;
+    // "_pq_." protocol options the server does not support.
+    public final List<String> unsupportedOptions;
+
+    private NegotiateProtocolVersion(int newestVersion, List<String> unsupportedOptions) {
+      this.newestVersion = newestVersion;
+      this.unsupportedOptions = unsupportedOptions;
+    }
+
+    public static NegotiateProtocolVersion parse(byte[] body) throws IOException {
+      ByteBuffer bb = ByteBuffer.wrap(body);
+      int newestVersion = bb.getInt();
+      int count = bb.getInt();
+      List<String> options = new ArrayList<>(count);
+      for (int i = 0; i < count; i++) {
+        int start = bb.position();
+        while (bb.get() != 0) {}
+        options.add(new String(body, start, bb.position() - start - 1, StandardCharsets.UTF_8));
+      }
+      if (bb.hasRemaining()) {
+        throw new IOException(bb.remaining() + " trailing bytes in NegotiateProtocolVersion");
+      }
+      return new NegotiateProtocolVersion(newestVersion, options);
+    }
+  }
+
   public static String parseCommandComplete(byte[] body) {
     int len = body.length;
     while (len > 0 && body[len - 1] == 0) {
@@ -393,13 +436,18 @@ public final class PgWireProtocol {
   /**
    * Reads backend messages until (and including) the first ReadyForQuery after
    * the authentication/startup phase. Handles AuthenticationOk,
-   * ParameterStatus, and BackendKeyData transparently, and returns the
-   * ParameterStatus messages received, in order.
+   * ParameterStatus, BackendKeyData, and NegotiateProtocolVersion
+   * transparently, and returns every message received before ReadyForQuery,
+   * in order.
    */
   public static List<PgMessage> readUntilReady(DataInputStream in) throws IOException {
-    List<PgMessage> parameterStatus = new ArrayList<>();
+    List<PgMessage> received = new ArrayList<>();
     for (;;) {
       PgMessage msg = readMessage(in);
+      if (msg.type == BE_READY_FOR_QUERY) {
+        return received;
+      }
+      received.add(msg);
       switch (msg.type) {
         case BE_AUTHENTICATION:
           int authType = ByteBuffer.wrap(msg.body).getInt(0);
@@ -409,12 +457,9 @@ public final class PgWireProtocol {
           }
           break;
         case BE_PARAMETER_STATUS:
-          parameterStatus.add(msg);
-          break;
         case BE_BACKEND_KEY_DATA:
+        case BE_NEGOTIATE_PROTOCOL_VERSION:
           break;
-        case BE_READY_FOR_QUERY:
-          return parameterStatus;
         case BE_ERROR_RESPONSE:
           throw new IOException("ErrorResponse during startup: " +
               new String(msg.body, StandardCharsets.UTF_8));

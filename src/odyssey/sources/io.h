@@ -206,7 +206,7 @@ static inline machine_msg_t *od_read_startup(od_io_t *io, uint32_t time_ms)
 		return NULL;
 
 	machine_msg_t *msg;
-	msg = machine_msg_create(sizeof(header) + size);
+	msg = machine_msg_create(sizeof(header) + size + 1 /* for extra 0 */);
 	if (msg == NULL)
 		return NULL;
 
@@ -214,6 +214,8 @@ static inline machine_msg_t *od_read_startup(od_io_t *io, uint32_t time_ms)
 	dest = machine_msg_data(msg);
 	memcpy(dest, &header, sizeof(header));
 	dest += sizeof(header);
+	/* zero-terminate for possible not terminated strings */
+	dest[size] = '\0';
 
 	rc = od_io_read(io, dest, size, time_ms);
 	if (rc == -1) {
