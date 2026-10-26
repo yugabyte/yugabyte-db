@@ -579,6 +579,14 @@ RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   return nullptr;
 }
 
+RemoteTabletServer* RemoteTablet::LeaderTServer(MarkStaleOnFailure mark_stale_on_failure) {
+  auto* result = LeaderTServer();
+  if (!result && mark_stale_on_failure) {
+    MarkStale();
+  }
+  return result;
+}
+
 bool RemoteTablet::HasLeader() const {
   return LeaderTServer() != nullptr;
 }

@@ -3213,9 +3213,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
 
-  Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
-      client::internal::RemoteTabletPtr tablet);
-
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(
       const TableId& table_id,

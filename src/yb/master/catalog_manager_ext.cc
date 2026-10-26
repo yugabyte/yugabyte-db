@@ -160,7 +160,6 @@ using google::protobuf::RepeatedPtrField;
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
-using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
@@ -3828,16 +3827,6 @@ Status CatalogManager::GetUDTypeMetadata(
     }
   }
   return Status::OK();
-}
-
-
-Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
-    client::internal::RemoteTabletPtr tablet) {
-  auto ts = tablet->LeaderTServer();
-  if (ts == nullptr) {
-    return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
-  }
-  return ts;
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
