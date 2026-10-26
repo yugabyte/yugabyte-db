@@ -473,6 +473,15 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
 }
 
+// An empty message has a zero-length body.
+TEST_F(TestPBUtil, TestEmptyMessage) {
+  ASSERT_OK(WritePBContainerToPath(env_.get(), path_, TestStringOptionalPB(), OVERWRITE, NO_SYNC));
+  TestStringOptionalPB pb;
+  pb.set_text(kTestString);
+  ASSERT_OK(ReadPBContainerFromPath(env_.get(), path_, &pb));
+  ASSERT_FALSE(pb.has_text());
+}
+
 PB_ENUM_FORMATTERS(TestPBEnum)
 
 TEST_F(TestPBUtil, TestEnumToString) {
