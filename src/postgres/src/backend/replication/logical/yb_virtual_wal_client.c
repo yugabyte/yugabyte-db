@@ -301,6 +301,14 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 		elog(DEBUG1, "Encountered an error while trying to fetch tables by "
 			 "setting yb_read_time. Will retry by resetting it.");
 		YbResetVirtualWalCatalogSnapshot();
+
+		/*
+		 * The failed lookup above may have cached a negative pg_publication
+		 * entry at the old yb_read_time. Drop it so that the retry below reads
+		 * from storage instead of being answered from that entry.
+		 */
+		CatalogCacheFlushCatalog(PublicationRelationId);
+
 		if (skip_setting_yb_read_time)
 			*skip_setting_yb_read_time = true;
 
