@@ -84,7 +84,7 @@ YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](htt
 
 - Build for retrieval-optimized generation (ROG): YugabyteDB enables you to build applications that find answers without expensive LLM calls, moving beyond traditional RAG to retrieval-optimized generation (ROG) that reduces costs while maintaining accuracy.
 
-- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. Approximate nearest neighbor search uses the `ybhnsw` index on [Vector LSM](https://www.yugabyte.com/blog/yugabytedb-vector-indexing-architecture/). See [pgvector](../additional-features/pg-extensions/extension-pgvector/).
+- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. Approximate nearest neighbor search uses the `ybhnsw` index on [Vector LSM](https://www.yugabyte.com/blog/yugabytedb-vector-indexing-architecture/). See [pgvector](/stable/additional-features/pg-extensions/extension-pgvector/).
 
 - Use any embedding model: Generate embeddings from OpenAI, Cohere, local models, or custom models, and then store them in standard `VECTOR` columns. The database treats them as numeric vectors, so you can switch embedding models by regenerating embeddings and updating your table without any schema changes.
 
