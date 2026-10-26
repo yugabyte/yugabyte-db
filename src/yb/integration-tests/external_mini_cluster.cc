@@ -2226,15 +2226,25 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
                                     const string& value) {
   server::GenericServiceProxy proxy(proxy_cache_.get(), daemon->bound_rpc_addr());
 
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromSeconds(30));
   server::SetFlagRequestPB req;
   server::SetFlagResponsePB resp;
   req.set_flag(flag);
   req.set_value(value);
   req.set_force(true);
-  RETURN_NOT_OK_PREPEND(proxy.SetFlag(req, &resp, &controller),
-                        "rpc failed");
+  auto call = [&] {
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    return proxy.SetFlag(req, &resp, &controller);
+  };
+  auto s = call();
+  // The server closes connections idle for rpc_default_keepalive_time_ms (Reactor::
+  // ScanIdleConnections), and the client never does, so reusing a cached connection right at that
+  // deadline gets EOF or ECONNRESET. SetFlag is idempotent, so retry once on a fresh connection.
+  if (s.IsNetworkError()) {
+    LOG(WARNING) << "SetFlag " << flag << " on " << daemon->id() << " hit closed connection: " << s;
+    s = call();
+  }
+  RETURN_NOT_OK_PREPEND(s, "rpc failed");
   if (resp.result() != server::SetFlagResponsePB::SUCCESS) {
     return STATUS(RemoteError, "failed to set flag",
                                resp.ShortDebugString());

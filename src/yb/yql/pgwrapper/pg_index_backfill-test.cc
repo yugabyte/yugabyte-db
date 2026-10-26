@@ -2406,6 +2406,13 @@ TEST_P(PgIndexBackfillFastDefaultClientTimeout, LowerDefaultClientTimeout) {
 class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
  public:
   int GetNumMasters() const override { return 3; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillFastClientTimeout::UpdateMiniClusterOptions(options);
+    // Killing the master leader can take longer than the suite's 10 s lease TTL to elect and load
+    // a new leader, and an expired lease kills the pg sessions.  Use the default TTL.
+    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=30000");
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
