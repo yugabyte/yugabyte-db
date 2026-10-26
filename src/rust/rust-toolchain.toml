@@ -1,0 +1,5 @@
+# Must match the toolchain in the yb build image; YugabyteRust.cmake checks `cargo --version`
+# against this channel.
+[toolchain]
+channel = "1.89.0"
+components = ["clippy", "rustfmt"]

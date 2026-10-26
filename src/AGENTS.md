@@ -135,6 +135,12 @@ the `create-pr` and `create-diff` skills re-check it before publishing.
   diff (`git show` does that better). A commit whose reasoning is obvious from the subject
   needs no body at all.
 
+## Rust
+
+Rust code lives in `src/rust/` (C++ side in `src/yb/rust_bridge/` and each component's host, such
+as `src/yb/master_host/`). Start with `src/rust/docs/README.md`; the Rust master, being built on the
+`feature-stack/hari-yb-master-rust` branch, is documented in `src/rust/master/docs/`.
+
 ## Build System
 
 The primary build entry point is `yb_build.sh` at the repository root.

@@ -1,0 +1,17 @@
+[package]
+name = "yb-cpp-host"
+description = "The cxx bridges to the C++ server process: implements yb-host-api."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cxx.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+yb-host-api.workspace = true
+
+[lints]
+workspace = true

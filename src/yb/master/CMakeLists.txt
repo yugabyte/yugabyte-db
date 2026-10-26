@@ -98,6 +98,7 @@ set(MASTER_SRCS
   master_auto_flags_manager.cc
   master_backup_service.cc
   master_call_home.cc
+  master_flag_defaults.cc
   master_client_service.cc
   master_cluster_handler.cc
   master_cluster_service.cc

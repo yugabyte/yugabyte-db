@@ -1,0 +1,59 @@
+# Copyright (c) YugabyteDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+
+# Rust code in YugabyteDB, built by CMake (cmake_modules/YugabyteRust.cmake); see docs/build.md.
+# Components move to Rust one at a time: shared crates live in common/ and tools/ and carry no
+# component name; each component's crates live in its own directory (master/).
+[workspace]
+resolver = "3"
+members = [
+    "common/yb-cpp-host",
+    "common/yb-host-api",
+    "master/master",
+    "tools/yb-cxxgen",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "Apache-2.0"
+publish = false
+
+# Direct dependencies are pinned exactly; Cargo.lock pins the rest and every build passes --locked.
+# cxx and cxx-gen must stay on the same patch version: cxx-gen writes the C++ half of the bridges
+# that the cxx runtime on the Rust side has to match.
+[workspace.dependencies]
+cxx = "=1.0.202"
+cxx-gen = "=0.7.202"
+proc-macro2 = "1"
+tracing = "=0.1.41"
+tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
+
+yb-cpp-host = { path = "common/yb-cpp-host" }
+yb-host-api = { path = "common/yb-host-api" }
+
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# A Rust panic must never unwind into C++ frames. With abort, the panic hook (yb-master-cpp-host)
+# logs through glog and the process dies with a stack trace, like a C++ CHECK failure.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+debug = "line-tables-only"

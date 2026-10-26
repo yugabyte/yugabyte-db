@@ -918,6 +918,15 @@ foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
   add_subdirectory("src/yb/${subdir_name}")
 endforeach()
 
+# Rust code (src/rust) and its C++ hosts. Needs cargo; see src/rust/docs/build.md.
+if("$ENV{YB_SKIP_RUST}" STREQUAL "1")
+  message("Skipping Rust code because YB_SKIP_RUST is set to 1")
+else()
+  include(YugabyteRust)
+  add_subdirectory(src/yb/rust_bridge)
+  add_subdirectory(src/yb/master_host)
+endif()
+
 # macOS links shared libraries strictly by default (macOS default is "-undefined error"). Unlike
 # Linux, a symbol referenced inside a shared library but defined nowhere is NOT caught at the
 # executable link (there is no equivalent of -Wl,--no-allow-shlib-undefined) -- it is only caught

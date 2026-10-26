@@ -42,6 +42,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_call_home.h"
+#include "yb/master/master_flag_defaults.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -69,20 +70,10 @@
 using std::string;
 
 DECLARE_bool(callhome_enabled);
-DECLARE_bool(evict_failed_followers);
 DECLARE_double(default_memory_limit_to_ram_ratio);
 DECLARE_int32(logbuflevel);
-DECLARE_int32(webserver_port);
-DECLARE_string(rpc_bind_addresses);
-DECLARE_bool(durable_wal_write);
-DECLARE_bool(quick_leader_election_on_create);
 DECLARE_int32(stderrthreshold);
 
-DECLARE_string(metric_node_name);
-DECLARE_int32(remote_bootstrap_max_chunk_size);
-DECLARE_bool(use_docdb_aware_bloom_filter);
-DECLARE_int32(follower_unavailable_considered_failed_sec);
-DECLARE_int32(log_min_seconds_to_retain);
 
 using namespace std::literals;
 
@@ -94,37 +85,7 @@ static int MasterMain(int argc, char** argv) {
   HybridTime::TEST_SetPrettyToString(true);
 #endif
 
-  // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = Format("0.0.0.0:$0", kMasterDefaultPort);
-  FLAGS_webserver_port = kMasterDefaultWebPort;
-  // Hotfix for https://github.com/yugabyte/yugabyte-db/issues/8731.
-  // Before enabling bloom filters for the master tablet we need to check whether master code use
-  // bloom filters properly at all, including if filter key is set correctly during scans.
-  FLAGS_use_docdb_aware_bloom_filter = false;
-
-  string host_name;
-  if (GetHostname(&host_name).ok()) {
-    FLAGS_metric_node_name = Format("$0:$1", host_name, kMasterDefaultWebPort);
-  } else {
-    LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
-  }
-
-  // For masters we always want to fsync the WAL files (except in testing).
-  FLAGS_durable_wal_write = true;
-  // The masters of a new universe start together, so the sys catalog tablet does not need to wait
-  // a full election timeout before electing its first leader.
-  FLAGS_quick_leader_election_on_create = true;
-  // Master has a lot less memory and relatively less data. So by default, let's keep the
-  // RBS chunk size small.
-  FLAGS_remote_bootstrap_max_chunk_size = 1_MB;
-
-  // A multi-node Master leader should not evict failed Master followers
-  // because there is no-one to assign replacement servers in order to maintain
-  // the desired replication factor. (It's not turtles all the way down!)
-  FLAGS_evict_failed_followers = false;
-
-  FLAGS_follower_unavailable_considered_failed_sec = 2 * MonoTime::kSecondsPerHour;
-  FLAGS_log_min_seconds_to_retain = 2 * MonoTime::kSecondsPerHour;
+  SetMasterFlagDefaults();
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(
       MasterTServerParseFlagsAndInit(MasterOptions::kServerType, /*is_master=*/true, &argc, &argv));

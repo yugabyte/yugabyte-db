@@ -1,0 +1,15 @@
+[package]
+name = "yb-cxxgen"
+description = "Build tool: writes the C++ half of the cxx bridges for CMake to compile."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cxx-gen.workspace = true
+proc-macro2.workspace = true
+
+[lints]
+workspace = true

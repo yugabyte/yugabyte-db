@@ -1,0 +1,13 @@
+[package]
+name = "yb-host-api"
+description = "Interfaces a C++ server process provides to the Rust code it hosts, with in-memory fakes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "master"
+description = "The Rust master: the static library the yb-master-rs executable links."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx.workspace = true
+tracing.workspace = true
+yb-cpp-host.workspace = true
+
+[lints]
+workspace = true
