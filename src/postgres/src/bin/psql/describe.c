@@ -3907,7 +3907,6 @@ describeOneTableDetails(const char *schemaname,
 		 * IDENTITY marker on indexes.
 		 * YB NOTE: The default replica identity of user defined tables is "CHANGE" in YB. In all
 		 * other cases the default behaviour of PG is followed.
-		 * YB_TODO_PG19MERGE: closer review of gate + rendering vs PG19 changes.
 		 */
 			tableinfo.relreplident != REPLICA_IDENTITY_INDEX &&
 			((strcmp(schemaname, "information_schema") == 0 &&
@@ -3917,7 +3916,6 @@ describeOneTableDetails(const char *schemaname,
 			  tableinfo.relreplident != YB_REPLICA_IDENTITY_CHANGE) ||
 			 (strcmp(schemaname, "pg_catalog") == 0 &&
 			  tableinfo.relreplident != REPLICA_IDENTITY_NOTHING)))
-
 		{
 			const char *s = _("Replica Identity");
 
