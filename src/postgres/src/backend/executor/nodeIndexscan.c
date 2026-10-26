@@ -1968,7 +1968,6 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			 * YB: we only support = operator for now, and it shouldn't be
 			 * possible to get here with something else.
 			 */
-			/* YB_TODO_PG19MERGE: rctype -> cmptype; COMPARE_EQ corresponds to BTEqualStrategyNumber. */
 			Assert(rcexpr->cmptype == COMPARE_EQ);
 			this_scan_key->sk_strategy = rcexpr->cmptype;
 			/* sk_subtype, sk_collation, sk_func not used in a header */
