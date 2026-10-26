@@ -214,11 +214,14 @@ export const mapCreateUniversePayload = (
         kms_config_uuid: securitySettings.kmsConfig
       },
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
+      // Auth on a disabled endpoint is rejected at create ("Cannot enable YSQL/YCQL Authentication...").
       ycql: {
-        ...omit(databaseSettings.ycql, 'confirm_pwd')
+        ...omit(databaseSettings.ycql, 'confirm_pwd'),
+        enable_auth: !!(databaseSettings.ycql?.enable && databaseSettings.ycql?.enable_auth)
       },
       ysql: {
         ...omit(databaseSettings.ysql, 'confirm_pwd'),
+        enable_auth: !!(databaseSettings.ysql?.enable && databaseSettings.ysql?.enable_auth),
         enable_connection_pooling: databaseSettings.enableConnectionPooling ?? false
       },
       networking_spec: {

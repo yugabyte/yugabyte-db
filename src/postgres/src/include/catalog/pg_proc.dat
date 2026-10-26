@@ -12367,4 +12367,10 @@
   proname => 'yb_tablegroup_size', provolatile => 'v', proparallel => 'r',
   prorettype => 'int8', proargtypes => 'oid',
   prosrc => 'yb_tablegroup_size' },
+
+{ oid => '8122',
+  descr => 'whether pg_partman uses transactional DDL and table level locks',
+  proname => 'yb_pg_partman_check_native_txn_ddl_and_locks', provolatile => 'v',
+  prorettype => 'bool', proargtypes => '',
+  prosrc => 'yb_pg_partman_check_native_txn_ddl_and_locks' },
 ]

@@ -1162,16 +1162,6 @@ bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return LockForRead()->IsXClusterDDLReplicationReplicatedDDLsTable();
 }
 
-TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablespace_id_for_table_creation_;
-}
-
-void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
-  std::lock_guard l(lock_);
-  tablespace_id_for_table_creation_ = tablespace_id;
-}
-
 google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
   auto l = LockForRead();
   return l->pb.hosted_stateful_services();

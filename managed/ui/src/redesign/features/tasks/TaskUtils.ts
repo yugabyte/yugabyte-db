@@ -172,6 +172,10 @@ export const getErrorTaskTitle = (task: Task) => {
   return `${task.typeName} ${task.target} failed: ${task.title.split(':')?.[1]}`;
 };
 
+export const getAbortedTaskTitle = (task: Task) => {
+  return `${task.typeName} ${task.target} aborted: ${task.title.split(':')?.[1]}`;
+};
+
 export const getLatestUniverseTask = (
   customerTaskList: Task[] | undefined | null,
   universeUuid: string

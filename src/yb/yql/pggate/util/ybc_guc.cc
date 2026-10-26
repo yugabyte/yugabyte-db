@@ -102,6 +102,7 @@ int yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 bool yb_disable_catalog_version_check = false;
+bool yb_read_time_skip_catalog = false;
 
 int yb_read_after_commit_visibility = 0;
 

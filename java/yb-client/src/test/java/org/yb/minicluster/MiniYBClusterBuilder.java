@@ -108,6 +108,16 @@ public class MiniYBClusterBuilder {
   }
 
   /**
+   * Sets the sync client admin operation timeout, which also bounds the wait for a master leader.
+   * @param timeoutMs timeout in milliseconds
+   * @return this instance
+   */
+  public MiniYBClusterBuilder defaultAdminOperationTimeoutMs(int timeoutMs) {
+    this.clusterParameters.defaultAdminOperationTimeoutMs = timeoutMs;
+    return this;
+  }
+
+  /**
    * Configure additional command-line flags for starting master. This replaces the list of
    * existing additional master flags.
    *

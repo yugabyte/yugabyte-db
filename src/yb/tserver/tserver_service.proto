@@ -167,6 +167,9 @@ service TabletServerService {
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
+  rpc SetActiveTableIdsForMetrics(SetActiveTableIdsForMetricsRequestPB)
+      returns (SetActiveTableIdsForMetricsResponsePB);
+
   rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
       returns (AdminExecutePgsqlResponsePB);
 
@@ -268,6 +271,28 @@ message GetMetricsRequestPB {
 message GetMetricsResponsePB {
   repeated TserverMetricsInfoPB metrics  = 1;
   optional TabletServerErrorPB error = 2;
+}
+
+message SetActiveTableIdsForMetricsRequestPB {
+  // The complete set of tables whose table-level metrics should be exported by
+  // /prometheus-metrics. Each request replaces the previous set.
+  repeated string table_ids = 1;
+
+  // Version of this list, chosen by the caller, for example a counter it increments whenever the
+  // list changes. The tablet server stores it with the list and reports it through the
+  // active_table_metrics_list_version gauge and the /tables page, so the caller can find tablet
+  // servers that hold an older list. Zero or unset means no version. 32 bits keep every value exact
+  // in Prometheus, which stores gauge values as doubles.
+  optional uint32 list_version = 2;
+}
+
+message SetActiveTableIdsForMetricsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // State of enable_active_table_metrics_filtering on this tablet server. The list is stored
+  // either way, but no scrape uses it while this is false, so the caller can surface that its
+  // list is not being applied.
+  optional bool filtering_enabled = 2;
 }
 
 message GetLogLocationRequestPB {

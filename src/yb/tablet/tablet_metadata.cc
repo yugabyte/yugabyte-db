@@ -83,6 +83,8 @@
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
+DECLARE_bool(enable_tiered_storage);
+
 DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
     "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
     "behavior of old code");
@@ -610,7 +612,9 @@ Status KvStoreInfo::LoadFromPB(
     // synthesize a single in-memory home entry to guarantee DB::Open always gets at least one
     // db_paths slot. For local superblocks this is upgraded to the full per-disk list (and
     // persisted) in RaftGroupMetadata::LoadFromSuperBlock, which has the FsManager.
-    if (tier_paths.empty()) {
+    // With tiered storage disabled tier_paths stays empty and RocksDB opens with its default
+    // single path, exactly as before the feature existed.
+    if (tier_paths.empty() && FLAGS_enable_tiered_storage) {
       tier_paths.push_back({
           .path_id = 0,
           .tier    = kDefaultStorageTier,
@@ -1017,8 +1021,14 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
-  ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
-  ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  if (FLAGS_enable_tiered_storage) {
+    ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+    ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  } else if (!data.target_storage_tier.empty()) {
+    LOG(WARNING) << "Ignoring target storage tier \"" << data.target_storage_tier
+                 << "\" for tablet " << data.raft_group_id
+                 << " because tiered storage is disabled (--enable_tiered_storage=false)";
+  }
   ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
@@ -1406,7 +1416,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     // synthesized a single in-memory home entry). Rebuild the full per-disk pin list for this node
     // via BuildTierPaths so an existing tablet can participate in tiered storage after a binary
     // upgrade, and persist it (Flush() below) so this runs once rather than on every restart.
-    if (local_superblock && !raft_group_id_.empty() &&
+    if (FLAGS_enable_tiered_storage && local_superblock && !raft_group_id_.empty() &&
         superblock.kv_store().tier_paths_size() == 0 &&
         fs_manager_ != nullptr && !kv_store_.rocksdb_dir.empty()) {
       kv_store_.tier_paths = BuildTierPaths(fs_manager_, kv_store_.rocksdb_dir);
@@ -2394,7 +2404,7 @@ void RaftGroupMetadata::EnableSchemaGC() {
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion>& versions) {
+    const docdb::CotableSchemaVersionMap& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
@@ -2589,12 +2599,18 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSplitChildMetadata(
   // Rebuild tier_paths for the child tablet. ToSuperBlock() above copied the parent's paths, but
   // the child lives in its own rocksdb_dir, so each slot needs its own directory derived from the
   // same data root as the parent slot. BuildTierPaths derives all slots from the child's home dir.
+  // With tiered storage disabled the child gets no tier_paths unless the parent already spans
+  // several disks (written while the feature was on); then the slots are rebuilt so the child can
+  // still reach SST files on non-home disks.
+  const bool rebuild_tier_paths = FLAGS_enable_tiered_storage || kv_store.tier_paths_size() > 1;
   kv_store.clear_tier_paths();
-  for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
-    auto* tppb = kv_store.add_tier_paths();
-    tppb->set_path_id(tp.path_id);
-    tppb->set_tier(tp.tier);
-    tppb->set_path(tp.path);
+  if (rebuild_tier_paths) {
+    for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
+      auto* tppb = kv_store.add_tier_paths();
+      tppb->set_path_id(tp.path_id);
+      tppb->set_tier(tp.tier);
+      tppb->set_path(tp.path);
+    }
   }
 
   partition.ToPB(superblock.mutable_partition());

@@ -44,6 +44,7 @@ DEFINE_RUNTIME_bool(tserver_heartbeat_metrics_add_leader_info, true,
             "Add leader info to metrics tserver sends to master");
 
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_bool(enable_tiered_storage);
 
 using namespace std::literals;
 
@@ -184,9 +185,10 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       path_metric->set_path_id(path);
       path_metric->set_used_space(stat->used_space);
       path_metric->set_total_space(stat->total_space);
-      // Advertise the storage tier for data roots.
-      const auto& tier = fs_mgr->GetTierForDataRoot(path);
-      path_metric->set_storage_tier(tier);
+      // Advertise the storage tier for data roots (tiered storage only).
+      if (FLAGS_enable_tiered_storage) {
+        path_metric->set_storage_tier(fs_mgr->GetTierForDataRoot(path));
+      }
     }
   }
 }

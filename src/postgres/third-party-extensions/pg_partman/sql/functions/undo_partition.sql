@@ -61,31 +61,26 @@ v_total                         bigint := 0;
 v_trig_name                     text;
 v_undo_count                    int := 0;
 
-BEGIN
-/* YB: As part of undo_partition, all data of child partitions is moved out to the
-target table and after that the child table is detached from the parent table.
-This is done in an iterative manner looping through each child.
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+yb_v_old_lock_timeout           text := current_setting('lock_timeout');
 
-The whole undo operation is executed in a transaction and while doing the
-DMLs (deleting data from child tables) and DDLs (detaching child tables), the trasaction
-is expired or aborted.
-TODO(#3109): check if works fine after transactional DDL support.
-*/
-RAISE EXCEPTION 'undo_partition not supported yet in YB';
+BEGIN
+IF NOT yb_v_use_native_txn_ddl_and_locks THEN
+    -- Moving rows out of each child and detaching it in one transaction needs transactional DDL.
+    RAISE EXCEPTION 'undo_partition requires the gflag ysql_yb_pg_partman_use_native_txn_ddl_and_locks, transactional DDL, table level locks, and DDL savepoint support to be enabled';
+END IF; -- NOT yb_v_use_native_txn_ddl_and_locks
 /*
  * For native, moves data to new, target table since data cannot be moved to parent.
  *      Leaves old parent table as is and does not change name of new table.
  * For trigger-based, moves data to parent
  */
 
-/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_native'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_native already running.';
     partitions_undone = -1;
     RETURN;
 END IF;
-*/
 
 IF p_parent_table = p_target_table THEN
     RAISE EXCEPTION 'Target table cannot be the same as the parent table';
@@ -203,6 +198,9 @@ END;
 -- Stops new time partitions from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 
+-- YB: Only native partition sets exist in YB (check_partition_type, #23123), so this trigger-based
+-- block never runs, and its LOCK ... NOWAIT doesn't need the lock_timeout bound that the child
+-- table lock below has (#33629).
 IF v_partition_type != 'native' THEN
     -- Stop data going into child tables on non-native partition sets.
 
@@ -225,9 +223,7 @@ IF v_partition_type != 'native' THEN
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
-                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_parent_tablename);
-                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -307,9 +303,12 @@ LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
-                    /* YB: ACCESS EXCLUSIVE not supported yet
+                    -- YB: NOWAIT is ignored for table locks (#33629), so a 5s lock_timeout bounds each try
+                    -- instead, leaving room for the lock's round trip through the master. A timeout raises
+                    -- lock_not_available like NOWAIT does, and this block's rollback restores lock_timeout.
+                    PERFORM set_config('lock_timeout', '5s', true);
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
-                    */
+                    PERFORM set_config('lock_timeout', yb_v_old_lock_timeout, true);
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN

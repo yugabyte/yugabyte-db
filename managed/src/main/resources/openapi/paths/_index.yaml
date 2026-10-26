@@ -505,6 +505,44 @@
       noAuthz: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/host-cloud-info':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getHostCloudInfo
+    summary: Get the YBA host's cloud info
+    description: 'Returns the public cloud and region that YBA runs on, and the instance metadata used to create a provider in the host''s VPC. Replaces the v1 host_info.'
+    tags:
+      - Customer
+    responses:
+      '200':
+        $ref: "../components/responses/HostCloudInfoResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/customer-configs/page':
   parameters:
     - name: cUUID
@@ -1601,6 +1639,31 @@
           path: customers
           sourceType: endpoint
         checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+/login:
+  post:
+    operationId: login
+    summary: Log in
+    description: 'Logs a user in with email and password and returns a session token, to be sent in the X-AUTH-TOKEN header. LDAP users log in the same way when LDAP is enabled. With SSO enabled and yb.security.allow_local_login_with_sso off, only local SuperAdmins can log in; other local users and LDAP users are refused. Does not set cookies.'
+    tags:
+      - Session
+    requestBody:
+      $ref: "../components/requestBodies/LoginReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SessionResp.yaml"
+      '400':
+        description: 'Invalid input, or an error from the LDAP server'
+      '401':
+        description: 'Invalid credentials, or local login is not permitted while SSO is enabled'
+      '500':
+        description: Server error
+    security: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/support-bundle/components':

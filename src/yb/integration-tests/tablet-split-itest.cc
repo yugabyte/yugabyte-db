@@ -160,6 +160,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_uint64(outstanding_tablet_split_limit);
 DECLARE_int64(outstanding_tablet_split_limit_per_tserver);
+DECLARE_uint64(tablet_split_rejected_candidates_log_interval_secs);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
@@ -2069,6 +2070,8 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
+  // Log every DoSplitting pass.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_rejected_candidates_log_interval_secs) = 0;
 
   // Limit the number of tablet splits.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = kTabletSplitLimit;
@@ -2084,6 +2087,8 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
   CreateTable();
   // Add some data.
   ASSERT_OK(WriteRows(kNumRowsPerBatch, 1));
+
+  StringWaiterLogSink outstanding_limit_log_sink("Outstanding split limit");
 
   // Main test loop:
   // Each loop we will split kTabletSplitLimit tablets with post split compactions disabled.
@@ -2126,6 +2131,10 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
     // There should be kTabletSplitLimit initial tablets + kTabletSplitLimit new tablets per loop.
     EXPECT_EQ(num_tablets, (split_round + 2) * kTabletSplitLimit);
   }
+
+  // From split_round 1 onward, more tablets are splittable than kTabletSplitLimit allows, so some
+  // should get rejected.
+  EXPECT_GE(outstanding_limit_log_sink.GetEventCount(), 1);
 
   // TODO (jhe) For now we need to manually delete the cluster otherwise the cluster verifier can
   // get stuck waiting for tablets that got registered but whose tablet split got cancelled by

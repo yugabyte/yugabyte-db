@@ -233,6 +233,16 @@ message SysTablesEntryPB {
 
   // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
   optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
+
+  // Marks a table known to have no custom tablespace.
+  message NoCustomTablespacePB {}
+
+  // Set at CREATE TABLE, then kept in sync with pg_class by the tablespace refresh; persisted
+  // because a HIDDEN table has no pg_class row. Neither set: not observed yet.
+  oneof tablespace {
+    bytes tablespace_id = 44;
+    NoCustomTablespacePB no_custom_tablespace = 45;
+  }
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

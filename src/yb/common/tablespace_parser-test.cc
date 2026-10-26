@@ -43,6 +43,7 @@ using std::string;
 using std::vector;
 
 DECLARE_bool(enable_tablespace_validation);
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 
@@ -292,6 +293,7 @@ TEST(TablespaceParserTest, InvalidTablespaceOptionFails) {
 }
 
 TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   const auto kLivePlacement =
       "{\"num_replicas\":3,\"placement_blocks\":["
       "{\"cloud\":\"cloud0\",\"region\":\"rack1\",\"zone\":\"zone\",\"min_num_replicas\":1},"
@@ -870,6 +872,7 @@ TEST(TablespaceParserTest, FromStringPopulatesReplicas) {
 // rejected with a clear error for an unknown tier, the wrong type, or an empty string, and absent
 // (rather than defaulted) when omitted.
 TEST(TablespaceParserTest, StorageTierParsing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   // The allowlist ("ssd", "hdd") must stay in sync with ValidStorageTiers() -- a tablespace
   // naming any other tier could never be satisfied by any tserver's --fs_data_dirs.
   for (const string& tier : {string("hdd"), string("ssd")}) {
@@ -936,6 +939,34 @@ TEST(TablespaceParserTest, StorageTierParsing) {
     ASSERT_EQ(replication_info.read_replicas_size(), 1);
     ASSERT_EQ(replication_info.read_replicas(0).storage_tier(), "hdd");
   }
+}
+
+// With tiered storage disabled (the default), storage_tier is rejected when a tablespace is
+// created (fail_on_validation_error) and dropped when the master re-reads an existing tablespace,
+// so the rest of that tablespace's placement policy keeps applying.
+TEST(TablespaceParserTest, StorageTierRequiresTieredStorage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  const string kBlocks =
+      "\"placement_blocks\":[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\","
+      "\"min_num_replicas\":1}]";
+  const string plain_live_json = "{\"num_replicas\":1," + kBlocks + "}";
+  const string tiered_live_json = "{\"num_replicas\":1,\"storage_tier\":\"hdd\"," + kBlocks + "}";
+  const string tiered_read_replica_json =
+      "{\"num_replicas\":1,\"storage_tier\":\"ssd\"," + kBlocks + "}";
+
+  auto live_result = TablespaceParser::FromString(tiered_live_json, "");
+  ASSERT_NOK_STR_CONTAINS(live_result, "enable_tiered_storage");
+
+  auto read_replica_result =
+      TablespaceParser::FromString(plain_live_json, tiered_read_replica_json);
+  ASSERT_NOK_STR_CONTAINS(read_replica_result, "enable_tiered_storage");
+
+  auto replication_info = ASSERT_RESULT(TablespaceParser::FromString(
+      tiered_live_json, tiered_read_replica_json, false /* fail_on_validation_error */));
+  ASSERT_FALSE(replication_info.live_replicas().has_storage_tier());
+  ASSERT_EQ(replication_info.live_replicas().num_replicas(), 1);
+  ASSERT_EQ(replication_info.read_replicas_size(), 1);
+  ASSERT_FALSE(replication_info.read_replicas(0).has_storage_tier());
 }
 
 } // namespace yb

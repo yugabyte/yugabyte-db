@@ -132,6 +132,10 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
 
+DEFINE_test_flag(bool, hinted_leader_election_for_existing_tablets, false,
+    "Force hinted leader elections for existing tablets too. For tests that do restarts and "
+    "expect fast leader elections.");
+
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
 
@@ -1278,7 +1282,18 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
-    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    // Start hinted election only for new tablets (CREATE TABLE / split children).
+    if (tablet_lock->pb.state() == SysTabletsEntryPB::CREATING ||
+        PREDICT_FALSE(FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+      catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    } else {
+      // prev_cstate aliases the dirty copy, which 6d(iv) may have overwritten.
+      VLOG(1) << "Skipping hinted leader election for existing tablet " << tablet->tablet_id()
+              << " reported by " << ts_desc->permanent_uuid() << ", tablet state: "
+              << SysTabletsEntryPB::State_Name(tablet_lock->pb.state()) << ", previous cstate: "
+              << tablet->metadata().state().pb.committed_consensus_state().ShortDebugString()
+              << ", reported cstate: " << cstate.ShortDebugString();
+    }
   }
 
   if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {

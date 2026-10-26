@@ -227,6 +227,9 @@ extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
 extern bool yb_disable_catalog_version_check;
 
+/* Makes yb_read_time apply only to user tables; the catalog is read as of now. */
+extern bool yb_read_time_skip_catalog;
+
 /*
  * Allows for customizing the number of rows to be prefetched.
  */

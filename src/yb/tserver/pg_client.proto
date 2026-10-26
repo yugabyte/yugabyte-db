@@ -1031,6 +1031,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1050,6 +1052,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1074,6 +1078,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1090,6 +1096,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 8;
 }
 
 message PgReadSequenceTupleResponsePB {

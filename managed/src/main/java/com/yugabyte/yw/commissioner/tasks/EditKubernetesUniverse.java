@@ -122,6 +122,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
+  /**
+   * A read-replica-only edit carries no primary cluster, and run() copies it into the task params
+   * only after the freeze. Complete the checkpoint's target, or a rollback cannot rebuild it.
+   */
+  @Override
+  protected void captureStateTransitionDelta(
+      Universe universe,
+      UniverseDefinitionTaskParams beforeUDTP,
+      UniverseDefinitionTaskParams targetUDTP) {
+    addPrimaryClusterIfMissing(targetUDTP, beforeUDTP);
+    super.captureStateTransitionDelta(universe, beforeUDTP, targetUDTP);
+  }
+
   @Override
   public void run() {
     Throwable th = null;

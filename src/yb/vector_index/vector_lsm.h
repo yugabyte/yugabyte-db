@@ -43,6 +43,7 @@ class PriorityThreadPoolSuspender;
 
 namespace yb::vector_index {
 
+class VectorLSMFileRemover;
 class VectorLSMFileMetaData;
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
@@ -107,7 +108,6 @@ struct VectorLSMOptions {
   std::string log_prefix;
   std::string storage_dir;
   VectorIndexTraits vector_index_traits;
-  size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
@@ -172,6 +172,10 @@ class VectorLSM {
   // of vectors that fit into the specified byte budget.
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
+  // Capacity of a new mutable chunk when the insert does not specify one. Controlled by runtime
+  // gflags, so a change applies from the next chunk. Returns 0 when the gflags are 0.
+  size_t DefaultChunkCapacity() const;
+
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
   Result<size_t> TotalEntries() const;
@@ -218,7 +222,6 @@ class VectorLSM {
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
-  bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
   // Test helper method to get the size of the latest chunk (highest serial number).
@@ -266,8 +269,7 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+  Status RollChunk(size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
 
@@ -297,12 +299,17 @@ class VectorLSM {
 
   Result<VectorLSMChunkFileSizes> GetChunkFileSize(uint64_t serial_no) const;
 
-  // Creates vector index and reserve at least for `min_vectors` entries.
+  // Creates a vector index sized for exactly `capacity` vectors -- the backend may round that up,
+  // but this method never does. Sizing is the caller's decision: a compaction output chunk
+  // is sized by its mem-store budget, a mutable chunk by CreateNewMutableChunk.
   Result<VectorIndexPtr> CreateVectorIndex(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) const;
+      size_t capacity, rocksdb::Cache::ReservationMode reservation_mode) const;
 
+  // Creates a mutable chunk for an insert of `num_entries` vectors. Its capacity is the context's
+  // chunk_size when the insert specifies one, as backfill does, otherwise DefaultChunkCapacity();
+  // a larger batch gets a chunk of its own size.
   Status CreateNewMutableChunk(
-      size_t min_vectors, rocksdb::Cache::ReservationMode reservation_mode) REQUIRES(mutex_);
+      size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -311,12 +318,6 @@ class VectorLSM {
       VectorIndex& index, uint64_t serial_no, const VectorLSMChunkFileSizes& sizes);
 
   uint64_t NextSerialNo() EXCLUDES(mutex_);
-
-  void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
-  void DeleteFile(const VectorLSMFileMetaData& file);
-  void ObsoleteFile(std::unique_ptr<VectorLSMFileMetaData>&& file) EXCLUDES(cleanup_mutex_);
-  void TriggerObsoleteChunksCleanup(bool async);
 
   // Returns compaction scope with a continuous subset of immutable chunks, which consists of
   // first N manifested chunks starting from the very first one (chunk N+1 is not manifested).
@@ -415,11 +416,7 @@ class VectorLSM {
   // waiting for background compactions completion and prevents new background compactions.
   bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
-  // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
-  // parallel, hence it is enough to use simple spin lock.
-  simple_spinlock cleanup_mutex_;
-  std::vector<std::unique_ptr<VectorLSMFileMetaData>> obsolete_files_ GUARDED_BY(cleanup_mutex_);
-  std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
+  std::shared_ptr<VectorLSMFileRemover> obsolete_files_remover_;
 
   Status failed_status_ GUARDED_BY(mutex_);
 

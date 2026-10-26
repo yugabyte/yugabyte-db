@@ -1,0 +1,98 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_add_fk s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id);
+ <waiting ...>
+step s2_commit: COMMIT;
+step s1_add_fk: <... completed>
+ERROR:  insert or update on table "child" violates foreign key constraint "child_fk"
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname = 'child_fk';
+
+conname|convalidated
+-------+------------
+(0 rows)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_add_fk s2_rollback s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id);
+ <waiting ...>
+step s2_rollback: ROLLBACK;
+step s1_add_fk: <... completed>
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname = 'child_fk';
+
+conname |convalidated
+--------+------------
+child_fk|t           
+(1 row)
+
+
+starting permutation: s1_begin_rc s1_add_fk s2_begin s2_delete s1_commit s2_commit s1_check_rows
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id);
+
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2; <waiting ...>
+step s1_commit: COMMIT;
+step s2_delete: <... completed>
+ERROR:  update or delete on table "parent" violates foreign key constraint "child_fk" on table "child"
+step s2_commit: COMMIT;
+step s1_check_rows: 
+  SELECT * FROM parent ORDER BY id;
+  SELECT * FROM child ORDER BY id;
+
+id
+--
+ 1
+ 2
+(2 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+
+starting permutation: s1_begin_rc s1_add_fk_cascade s2_begin s2_delete s1_commit s2_commit s1_check_rows
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_fk_cascade: 
+  ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (pid)
+    REFERENCES parent (id) ON DELETE CASCADE;
+
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2; <waiting ...>
+step s1_commit: COMMIT;
+step s2_delete: <... completed>
+step s2_commit: COMMIT;
+step s1_check_rows: 
+  SELECT * FROM parent ORDER BY id;
+  SELECT * FROM child ORDER BY id;
+
+id
+--
+ 1
+(1 row)
+
+id|pid
+--+---
+ 1|  1
+(1 row)
+

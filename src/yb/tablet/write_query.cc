@@ -147,6 +147,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   if (client_request.has_xcluster_target_applied()) {
     out_request->set_xcluster_target_applied(client_request.xcluster_target_applied());
   }
+  if (client_request.has_origination_info()) {
+    *out_request->mutable_origination_info() = client_request.origination_info();
+  }
 }
 
 template <class Code, class Resp>

@@ -293,6 +293,9 @@ class VectorIndexesUpdater {
   Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   Status Complete();
 
+  // Whether an index this update applies to takes the row with the specified key.
+  bool AppliesToRow(Slice key) const;
+
  private:
   template <class Decoder>
   Status FeedPackedRow(
@@ -328,8 +331,14 @@ class VectorIndexesUpdater {
   vector_index::VectorLSMChunkHolds& chunk_holds_;
   const bool xcluster_target_;
 
-  // TODO(#30819 vector_index) Optimize memory management
-  std::vector<DocVectorIndexInsertEntries> batches_;
+  struct IndexBatch {
+    // TODO(#30819 vector_index) Optimize memory management
+    DocVectorIndexInsertEntries entries;
+    // Got a row to apply to the index, possibly with a NULL vector, see Complete.
+    bool should_apply = false;
+  };
+
+  std::vector<IndexBatch> batches_;
   // The table the cached values below belong to, they are all replaced when it changes.
   KeyBuffer table_key_prefix_;
   std::optional<bool> table_writes_vector_reverse_mapping_;

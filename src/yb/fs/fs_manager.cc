@@ -80,6 +80,7 @@ DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
 TAG_FLAG(enable_data_block_fsync, unsafe);
 
 DECLARE_string(fs_data_dirs);
+DECLARE_bool(enable_tiered_storage);
 
 DEFINE_UNKNOWN_string(fs_wal_dirs, "",
               "Comma-separated list of directories for write-ahead logs. This is an optional "
@@ -337,6 +338,16 @@ Status FsManager::Init() {
           "Invalid storage tier \"$0\" for data dir \"$1\" in --fs_data_dirs. "
           "Valid storage tiers are: $2",
           tier, raw_root, JoinStrings(ValidStorageTiers(), ", ")));
+    }
+    // Tiered storage is a preview feature: without the flag only the default tier may appear, so
+    // a labeled data dir can never change placement or produce tier metadata.
+    if (!FLAGS_enable_tiered_storage && tier != kDefaultStorageTier) {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Storage tier \"$0\" for data dir \"$1\" in --fs_data_dirs requires tiered storage, "
+          "which is disabled. Set the preview flag --enable_tiered_storage=true to use tier "
+          "labels.",
+          tier, raw_root);
     }
 
     auto [it, inserted] = tier_by_canonicalized_fs_root_.emplace(canonical_root, tier);

@@ -30,15 +30,17 @@ v_target_tablename          text;
 v_sql                       text;
 v_total                     bigint := 0;
 
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+
 BEGIN
 
-/* YB(GH#3642): advisory lock not supported
+IF yb_v_use_native_txn_ddl_and_locks THEN
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_proc'), hashtext(p_parent_table));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'Partman undo_partition_proc already running for given parent table: %.', p_parent_table;
     RETURN;
 END IF;
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 SELECT partition_type
 INTO v_partition_type
