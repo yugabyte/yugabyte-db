@@ -49,7 +49,7 @@ For details on all of the options, refer to [Serverless Postgres](../serverless/
 
 1. On the **Clusters** page, open the cluster.
 
-1. On the endpoint, click **Connect**. The button is available after the endpoint has an address.
+1. On the endpoint, click **Connect**.
 
 1. If the dialog includes a CA certificate, click **Download CA Cert**.
 
