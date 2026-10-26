@@ -291,3 +291,27 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::real;
 
 DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
+
+---
+--- Non-equality array conditions.  DocDB binds an array only as an IN list,
+--- so such a condition is left to the recheck whatever other conditions its
+--- column has; it never becomes a bound of the column (#35030).
+---
+
+CREATE TABLE t_nonequality_array(g int, k int, PRIMARY KEY(g ASC, k ASC));
+INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+-- an IN list and a non-equality array with the same elements
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
+-- the recheck keeps the aggregate from being pushed down
+:explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
+RESET yb_enable_advanced_index_cond_fold;
+
+DROP TABLE t_nonequality_array;

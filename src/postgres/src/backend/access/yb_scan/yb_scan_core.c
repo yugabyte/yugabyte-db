@@ -2438,10 +2438,11 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 				}
 			}
 			/* INEQUALITY */
-			else if (key->sk_strategy == BTGreaterEqualStrategyNumber ||
-					 key->sk_strategy == BTGreaterStrategyNumber ||
-					 key->sk_strategy == BTLessEqualStrategyNumber ||
-					 key->sk_strategy == BTLessStrategyNumber)
+			else if (!YbIsSearchArray(key) &&
+					 (key->sk_strategy == BTGreaterEqualStrategyNumber ||
+					  key->sk_strategy == BTGreaterStrategyNumber ||
+					  key->sk_strategy == BTLessEqualStrategyNumber ||
+					  key->sk_strategy == BTLessStrategyNumber))
 			{
 				/* Contradicts IS NULL. */
 				if (fs->type == YB_FOLD_IS_NULL)
@@ -2488,6 +2489,11 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			}
 			else
 			{
+				/*
+				 * Any other key, such as a non-equality array key (DocDB binds
+				 * an array only as an IN list), is left to the recheck.
+				 */
+				ybScan->needs_recheck = true;
 				continue;
 			}
 
@@ -2590,7 +2596,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 	{
 		ScanKey		key = ybScan->keys[i];
 
-		if (YbIsSearchArray(key))
+		if (YbIsSearchArray(key) && key->sk_strategy == BTEqualStrategyNumber)
 		{
 			ListCell   *lc;
 
@@ -2754,6 +2760,12 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 			case BTGreaterStrategyNumber:
 			case BTLessStrategyNumber:
 			case BTLessEqualStrategyNumber:
+				/* DocDB binds an array only as an IN list. */
+				if (YbIsSearchArray(key))
+				{
+					ybScan->needs_recheck = true;
+					break;
+				}
 				offsets[noffsets++] = i;
 				yb_switch_fallthrough();
 

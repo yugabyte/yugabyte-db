@@ -764,6 +764,11 @@ ANALYZE r5n;
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
 
+-- A non-equality array condition on a stream column is left to the recheck,
+-- even when its array equals the stream IN list (#35030).
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :run_query
+
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;
 \set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5;'
@@ -771,6 +776,11 @@ SET yb_enable_advanced_index_cond_fold = off;
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > 1 AND r1 IN (0, 2, 4, 6, 8) AND r1 < 7 ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :run_query
+-- The stream IN list is bound first, and the non-equality array condition with
+-- the same elements is left to the recheck, not bound as a second IN list
+-- (#35030).
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 RESET yb_enable_advanced_index_cond_fold;
 
