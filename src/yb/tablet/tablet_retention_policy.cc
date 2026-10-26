@@ -260,9 +260,10 @@ void TabletRetentionPolicy::ApplyUsedHistoryCutoffFloor(HistoryCutoff* history_c
   // Compacting below a cutoff already used is unsafe: a row's liveness entry can be at or below
   // the new cutoff while no version of some column is, and packing that row fails (#35445).
   // The floor never exceeds the committed cutoff, so it only drops history RegisterReaderTimestamp
-  // already refuses to read. Exceptions: index backfill readers skip that check but don't depend
-  // on the cutoff, and the master checks readers against the cotables cutoff, but its primary
-  // (sys catalog) data is not read at past times.
+  // already refuses to read. Index backfill readers skip that check but don't depend on the
+  // cutoff. On the master, readers are checked against the cotables cutoff, which bounds the PG
+  // catalog data they read (e.g. as-of and clone reads); sys.catalog (primary) entries are only
+  // read from memory (#26293).
   auto apply_floor = [this](HybridTime* cutoff, HybridTime floor) {
     // An invalid cotables cutoff means "use the primary cutoff", so it must stay invalid.
     if (!cutoff->is_valid() || !floor.is_valid() || *cutoff >= floor) {
