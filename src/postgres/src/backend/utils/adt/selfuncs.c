@@ -8561,6 +8561,12 @@ yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 		!OidIsValid(skipop))
 		return -1.0;
 
+	/*
+	 * Only the inner's range enters the estimate, as its first key.  The
+	 * outer key needs a range too, as in mergejoinscansel, because the
+	 * comparisons below are estimated from its statistics and would otherwise
+	 * fall back to default selectivities.
+	 */
 	examine_variable(root, outervar, 0, &outervardata);
 	examine_variable(root, innervar, 0, &innervardata);
 	if (!get_variable_range(root, &outervardata, outerltop, collation,
