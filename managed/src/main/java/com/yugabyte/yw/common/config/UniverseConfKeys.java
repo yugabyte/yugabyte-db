@@ -444,6 +444,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> paActiveTableMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.active_table_metrics.enabled",
+          ScopeType.UNIVERSE,
+          "Perf Advisor Collector active table metrics",
+          "Have Perf Advisor Collector push the universe's most active and largest tables to its"
+              + " TServers, so Prometheus scrapes that opt into filtering keep table-level metrics"
+              + " only for those tables",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
