@@ -41,6 +41,7 @@ import org.yb.pgsql.PgOutputMessageDecoder.*;
 public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
   private static final String YB_OUTPUT_PLUGIN_NAME =
       PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
+  private static final String PG_OUTPUT_PLUGIN_NAME = "pgoutput";
   private static final int INT4_OID = 23;
   private static final int TEXT_OID = 25;
 
@@ -867,4 +868,89 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     stream.close();
     conn.close();
   }
+
+  // ALTER PUBLICATION ... RENAME invalidates only pgoutput's RelationSyncCache. The walsender must
+  // apply that invalidation, also when the rename runs on another node: after the streamed
+  // publication is renamed away its table is no longer published, and after renaming it back it is
+  // published again. Needs this class's mode, where the walsender applies catalog invalidations
+  // during streaming and reads the catalog as of each change.
+  @Test
+  public void testPublicationRenameInvalidatesRelSyncCacheOnSameNode() throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(false /* differentNode */);
+  }
+
+  @Test
+  public void testPublicationRenameInvalidatesRelSyncCacheOnDifferentNode() throws Exception {
+    testPublicationRenameInvalidatesRelSyncCache(true /* differentNode */);
+  }
+
+  private void testPublicationRenameInvalidatesRelSyncCache(boolean differentNode)
+      throws Exception {
+    // The walsender looks its publications up by name whenever it refreshes the publication table
+    // list, and fails if one is missing. Keep that from happening while the publication is renamed
+    // away: no implicit refresh on catalog changes, and no periodic one during the test.
+    Map<String, String> tserverFlags = getTServerFlags();
+    Map<String, String> masterFlags = getMasterFlags();
+    tserverFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication", "false");
+    masterFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication", "false");
+    tserverFlags.put("cdcsdk_publication_list_refresh_interval_secs", "10000");
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b int)");
+      stmt.execute("ALTER TABLE t1 REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    String slotName = "test_pub_rename_relsync";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    try (Connection ddlConn =
+             getConnectionBuilder().withTServer(differentNode ? 1 : 0).connect();
+         Statement stmt = ddlConn.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      result.addAll(receiveMessage(stream, 4));
+
+      stmt.execute("ALTER PUBLICATION pub RENAME TO pub_renamed");
+      // Let the new catalog version reach the walsender's node.
+      waitForTServerHeartbeat();
+      // Not published: "pub" no longer exists.
+      stmt.execute("INSERT INTO t1 VALUES (2, 2)");
+
+      stmt.execute("ALTER PUBLICATION pub_renamed RENAME TO pub");
+      waitForTServerHeartbeat();
+      stmt.execute("INSERT INTO t1 VALUES (3, 3)");
+      result.addAll(receiveMessage(stream, 4));
+    }
+
+    // pgoutput rejects replica identity CHANGE, so t1 uses DEFAULT ('d'), unlike relation().
+    PgOutputRelationMessage t1Relation = PgOutputRelationMessage.CreateForComparison(
+        "public", "t1", 'd', Arrays.asList(column("a", INT4_OID), column("b", INT4_OID)));
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        t1Relation,
+        insert("1", "1"),
+        commitMessage(),
+        beginMessage(4),
+        t1Relation,
+        insert("3", "3"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
 }

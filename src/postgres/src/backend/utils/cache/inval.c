@@ -561,6 +561,12 @@ AddRelsyncInvalidationMessage(InvalidationMsgsGroup *group,
 {
 	SharedInvalidationMessage msg;
 
+	if (yb_test_inval_message_portability)
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
+
+	if (IsYugaByteEnabled())
+		msg.rs.yb_version = (int8) YbSharedInvalRelSyncMsgVersion;
+
 	/* Don't add a duplicate item. */
 	ProcessMessageSubGroup(group, RelCacheMsgs,
 						   if (msg->rc.id == SHAREDINVALRELSYNC_ID &&
@@ -1523,6 +1529,15 @@ YbLogInvalidationMessages(const SharedInvalidationMessage *msgs, int nmsgs)
 						 msgs[i].sn.dbId,
 						 msgs[i].sn.relId);
 					break;
+				case SHAREDINVALRELSYNC_ID: /* -6 */
+					elog(DEBUG1, "msgs[%d]: id=%d yb_version=%d yb_sender_pid=%d dbId=%u relid=%u\n",
+						 i,
+						 msgs[i].id,
+						 msgs[i].rs.yb_version,
+						 msgs[i].rs.yb_sender_pid,
+						 msgs[i].rs.dbId,
+						 msgs[i].rs.relid);
+					break;
 			}
 		}
 }
@@ -1560,6 +1575,8 @@ YbCanApplyMessage(const SharedInvalidationMessage *msg)
 			return msg->rm.yb_version == YbSharedInvalRelmapMsgVersion;
 		case SHAREDINVALSNAPSHOT_ID:
 			return msg->sn.yb_version == YbSharedInvalSnapshotMsgVersion;
+		case SHAREDINVALRELSYNC_ID:
+			return msg->rs.yb_version == YbSharedInvalRelSyncMsgVersion;
 		default:
 			/* As of 2025-03-11 the above are all the message types. */
 			Assert(false);
@@ -2527,6 +2544,22 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalSnapshotMsg, dbId) == 8, "offset mismatch");
 	static_assert(offsetof(SharedInvalSnapshotMsg, relId) == 12, "offset mismatch");
 
+	/*
+	 * AddRelsyncInvalidationMessage fills this message in through rc, as
+	 * upstream does, so its layout must also match SharedInvalRelcacheMsg.
+	 */
+	static_assert(sizeof(SharedInvalRelSyncMsg) == 16, "size mismatch");
+	static_assert(sizeof(((SharedInvalRelSyncMsg *) 0)->id) == 1, "size mismatch");
+	static_assert(sizeof(((SharedInvalRelSyncMsg *) 0)->yb_version) == 1, "size mismatch");
+	static_assert(sizeof(((SharedInvalRelSyncMsg *) 0)->yb_sender_pid) == 4, "size mismatch");
+	static_assert(sizeof(((SharedInvalRelSyncMsg *) 0)->dbId) == 4, "size mismatch");
+	static_assert(sizeof(((SharedInvalRelSyncMsg *) 0)->relid) == 4, "size mismatch");
+	static_assert(offsetof(SharedInvalRelSyncMsg, id) == 0, "offset mismatch");
+	static_assert(offsetof(SharedInvalRelSyncMsg, yb_version) == 1, "offset mismatch");
+	static_assert(offsetof(SharedInvalRelSyncMsg, yb_sender_pid) == 4, "offset mismatch");
+	static_assert(offsetof(SharedInvalRelSyncMsg, dbId) == 8, "offset mismatch");
+	static_assert(offsetof(SharedInvalRelSyncMsg, relid) == 12, "offset mismatch");
+
 	static_assert(sizeof(YBSharedInvalMessageHeader) == 8, "size mismatch");
 	static_assert(sizeof(((YBSharedInvalMessageHeader *) 0)->id) == 1, "size mismatch");
 	static_assert(sizeof(((YBSharedInvalMessageHeader *) 0)->yb_version) == 1, "size mismatch");
@@ -2543,6 +2576,7 @@ YbCheckSharedInvalMessages()
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->rc) == 16, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->sm) == 24, "size mismatch");
 	static_assert(sizeof(((SharedInvalidationMessage *) 0)->sn) == 16, "size mismatch");
+	static_assert(sizeof(((SharedInvalidationMessage *) 0)->rs) == 16, "size mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, id) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, yb_header) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, cc) == 0, "offset mismatch");
@@ -2550,4 +2584,5 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalidationMessage, rc) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sm) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sn) == 0, "offset mismatch");
+	static_assert(offsetof(SharedInvalidationMessage, rs) == 0, "offset mismatch");
 }
