@@ -282,6 +282,66 @@ TEST_P(BTreeRepTest, ReaderRacesRootSplit) {
   ASSERT_EQ(KeyOf(entry), last);
 }
 
+// A reader checks a root that has one child left, then the writer replaces the root with the child
+// and splits the child as the new root: the reader must not descend the child as the whole tree.
+TEST_P(BTreeRepTest, ReaderRacesRootCollapse) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "Sync points work only in debug builds";
+#endif
+  constexpr int kNumKeys = 63;
+  constexpr int kMiddle = kNumKeys / 2;
+  std::vector<std::string> keys;
+  for (int i = 0; i != kNumKeys; ++i) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "key%03d", i);
+    keys.push_back(MakeInternalKey(buf, 1));
+  }
+  std::sort(keys.begin(), keys.end(), ModelCompare{&icmp_});
+  // Splits the root leaf in the middle: keys [0, kMiddle) on the left.
+  for (int i = 0; i != kNumKeys; ++i) {
+    if (i != kMiddle) {
+      Add(keys[i]);
+    }
+  }
+  Add(keys[kMiddle]);
+  // Erases the left leaf down to its minimum; the next erase merges the two leaves.
+  std::vector<const char*> entries;
+  {
+    std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
+    for (auto entry = iter->SeekToFirst(); entry; entry = iter->Next()) {
+      entries.push_back(entry);
+    }
+  }
+  for (int i = 0; i != kMiddle - 7; ++i) {
+    ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[i]), key_cmp_));
+  }
+
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"BTreeRep::Rebalance:CollapseRoot", "BTreeRep::Descend:Start"},
+      {"BTreeRep::Descend:RootChecked", "BTreeRep::Rebalance:ReplaceRoot"},
+      {"BTreeRepTest::ReaderRacesRootCollapse:WritesDone", "BTreeRep::Descend:FollowRoot"},
+  });
+  sync_point->EnableProcessing();
+  const char* found = nullptr;
+  std::thread reader([this, &keys, &found] {
+    std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
+    found = iter->Seek(keys.back());
+  });
+  ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[kMiddle - 7]), key_cmp_));
+  // Refills the merged root leaf and splits it in the middle.
+  for (int i = 0; i != kMiddle - 6; ++i) {
+    Add(keys[i]);
+  }
+  TEST_SYNC_POINT("BTreeRepTest::ReaderRacesRootCollapse:WritesDone");
+  reader.join();
+  sync_point->DisableProcessing();
+  sync_point->ClearTrace();
+
+  ASSERT_NE(found, nullptr);
+  ASSERT_EQ(KeyOf(found), keys.back());
+}
+
 void BTreeRepTest::TestConcurrent(size_t erase_lag, const std::function<bool(size_t)>& erasable) {
   constexpr size_t kNumKeys = yb::RegularBuildVsSanitizers(300000, 30000);
   constexpr size_t kNumReaders = 4;
