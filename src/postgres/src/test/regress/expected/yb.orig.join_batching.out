@@ -3545,14 +3545,13 @@ SELECT count(*) FROM bnl_uniq t
  Aggregate
    ->  YB Batched Nested Loop Join
          Join Filter: ((t.k1 = bnl_uniq.k1) AND (t.k2 = bnl_uniq.k2))
-         Batch Matching: Tuplestore
          ->  Unique
                ->  Sort
                      Sort Key: bnl_uniq.k1, bnl_uniq.k2
                      ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq
          ->  Index Only Scan using bnl_uniq_k1_k2_idx on bnl_uniq t
                Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(bnl_uniq.k1, bnl_uniq.k2), ROW($1, $4), ROW($2, $5)]))
-(10 rows)
+(9 rows)
 
 /*+ YbBatchedNL(t d) Set(yb_bnl_batch_size 3) Set(enable_hashagg off)
     Set(yb_enable_distinct_pushdown off) */
