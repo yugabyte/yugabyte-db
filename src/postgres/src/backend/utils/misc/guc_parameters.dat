@@ -4597,6 +4597,14 @@
   boot_val => 'false',
 },
 
+{ name => 'yb_force_tablespace_locality_oid', type => 'oid', context => 'PGC_USERSET', group => 'UNGROUPED',
+  short_desc => 'Tablespace used for tablespace-based locality. Picked automatically if InvalidOid (default).',
+  variable => 'yb_force_tablespace_locality_oid',
+  boot_val => 'InvalidOid',
+  min => '0',
+  max => 'OID_MAX',
+},
+
 { name => 'yb_format_funcs_include_yb_metadata', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Include DocDB metadata (such as tablet splits) in formatting functions exporting system catalog information.',
   flags => 'GUC_NOT_IN_SAMPLE',

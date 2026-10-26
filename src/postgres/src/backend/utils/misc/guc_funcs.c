@@ -742,6 +742,31 @@ GetConfigOptionValues(const struct config_generic *conf, const char **values)
 			}
 			break;
 
+		case PGC_OID:
+			{
+				const struct yb_config_oid *lconf = &conf->_oid;
+
+				/* min_val */
+				snprintf(buffer, sizeof(buffer), "%u", lconf->min);
+				values[9] = pstrdup(buffer);
+
+				/* max_val */
+				snprintf(buffer, sizeof(buffer), "%u", lconf->max);
+				values[10] = pstrdup(buffer);
+
+				/* enumvals */
+				values[11] = NULL;
+
+				/* boot_val */
+				snprintf(buffer, sizeof(buffer), "%u", lconf->boot_val);
+				values[12] = pstrdup(buffer);
+
+				/* reset_val */
+				snprintf(buffer, sizeof(buffer), "%u", lconf->reset_val);
+				values[13] = pstrdup(buffer);
+			}
+			break;
+
 		case PGC_REAL:
 			{
 				const struct config_real *lconf = &conf->_real;

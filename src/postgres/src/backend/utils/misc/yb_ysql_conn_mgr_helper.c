@@ -386,7 +386,7 @@ update_session_parameter_value(struct YbShmemSessionParameter *shmem_parameter_l
 					session_parameter_name, SHMEM_MAX_STRING_LEN) == 0)
 		{
 			/*
-			 * TODO: Use GetConfigOptionByNum instead of
+			 * TODO: Use GetConfigOptionValues instead of
 			 * GetConfigOptionByName.
 			 */
 			char	   *value = GetConfigOptionByName(session_parameter_name,
