@@ -139,7 +139,6 @@ You now have a fully configured YugabyteDB serverless cluster provisioned in Yug
 
 To manage a cluster, click **Clusters** in the left navigation and open the cluster. The **Cluster Branches** section lists the cluster's branches, and the compute endpoints on each branch.
 
-Use the search box and status filter to find a branch or endpoint. The branch and endpoint counts show how many are healthy or need attention.
 
 While a change is being applied, some operations are unavailable.
 
