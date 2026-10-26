@@ -913,6 +913,11 @@ message PgPerformOptionsPB {
 
   bool is_using_table_locks = 32;
 
+  // Set from process start, before ysql_enable_object_locking_infra is promoted, so that no
+  // transaction running at promotion lacks object locks (#35734). is_using_table_locks, which also
+  // needs the promoted flag, is what lets a transaction rely on them.
+  bool takes_object_locks = 39;
+
   ReadTimeOptionsPB read_time_options = 34;
 
   // When true, route the request through the HistoricalRead session kind.

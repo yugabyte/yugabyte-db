@@ -190,12 +190,6 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
  */
 void YBCSetObjectLockingInfraForCurrTxn();
 
-/*
- * Overrides the latched value with true, for a backend whose copy of the flag still lags its
- * tserver.
- */
-void YBCEnableObjectLockingInfraForCurrTxn();
-
 /* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
 bool YBCIsObjectLockingInfraEnabled();
 

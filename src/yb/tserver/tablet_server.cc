@@ -107,7 +107,6 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
@@ -318,7 +317,6 @@ DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
-DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
 DECLARE_string(tmp_dir);
@@ -3024,36 +3022,6 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   auto pg_client_service = pg_client_service_.lock();
   RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
-}
-
-// #35734: once ysql_enable_object_locking_infra is promoted, a transaction that began earlier keeps
-// running without object locks, so a global lock does not keep it away from the locked object. For
-// example, a legacy DELETE can remove a parent row while ADD FOREIGN KEY validates the child table,
-// leaving an orphaned child row. So before this tserver grants its part of a global lock, it waits
-// until it has upgraded:
-//   1. its own flag is on, so that no backend here runs ahead of its tserver;
-//   2. object_locks_required is set, so that every transaction that starts from now on takes object
-//      locks, also in a backend that has not reloaded the flag yet;
-//   3. no local backend is still in a transaction that takes no object locks.
-// The master grants a global lock only once every tserver has, so a global lock is never held while
-// such a transaction runs anywhere. Once upgraded, the tserver stays upgraded, assuming the flag is
-// never turned off again, and later global locks skip the wait.
-Status TabletServer::WaitForLegacyTxnsToEnd(CoarseTimePoint deadline) {
-  if (legacy_txns_ended_.load(std::memory_order_acquire)) {
-    return Status::OK();
-  }
-  RETURN_NOT_OK(Wait(
-      [] { return FLAGS_ysql_enable_object_locking_infra; }, deadline,
-      "Wait for ysql_enable_object_locking_infra to be on"));
-  shared_object()->SetObjectLocksRequired();
-  if (auto pg_client_service = pg_client_service_.lock(); pg_client_service) {
-    RETURN_NOT_OK(Wait(
-        [&pg_client_service] { return !pg_client_service->impl.HasSessionInLegacyTxn(); },
-        deadline, "Wait for transactions that take no object locks to end"));
-  }
-  LOG(INFO) << "No transaction that takes no object locks is left on this tserver";
-  legacy_txns_ended_.store(true, std::memory_order_release);
-  return Status::OK();
 }
 
 master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {

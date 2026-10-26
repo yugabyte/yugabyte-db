@@ -191,7 +191,6 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -1524,7 +1523,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  if (has_write_ops && !has_distributed_txn && is_txn_using_table_locks) {
+  if (has_write_ops && !has_distributed_txn && req->options().takes_object_locks()) {
     session->SetObjectLockingTxnMeta(VERIFY_RESULT(object_locking_txn_meta_provider()));
   }
 
@@ -1766,11 +1765,6 @@ class PgClientSession::Impl {
           descriptor.object_lock.Lend(*object_lock_shared_state_->get()));
     }
     oldest_read_point_serial_no_ = &descriptor.oldest_read_point_serial_no;
-    in_legacy_txn_ = &descriptor.in_legacy_txn;
-  }
-
-  bool InLegacyTxn() const {
-    return in_legacy_txn_ && in_legacy_txn_->load(std::memory_order_seq_cst);
   }
 
   Status CreateTable(
@@ -2989,7 +2983,7 @@ class PgClientSession::Impl {
         << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
-        options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
+        options.takes_object_locks(), IllegalState, "Table Locking feature not enabled.");
     RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
@@ -4735,8 +4729,7 @@ class PgClientSession::Impl {
 
   [[nodiscard]] bool IsObjectLockingEnabled() const {
     return ts_lock_manager() != nullptr &&
-           FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_enable_object_locking_infra;
+           FLAGS_enable_object_locking_for_table_locks;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
@@ -4933,8 +4926,6 @@ class PgClientSession::Impl {
   std::atomic<uint64_t>* oldest_read_point_serial_no_ = nullptr;
   // Last SHMEM serial applied into history_retention_pin_read_time_.
   std::atomic<uint64_t> applied_oldest_read_point_serial_no_{0};
-  // Points into PgSessionSharedHeader when session shared memory is active; null otherwise.
-  std::atomic<bool>* in_legacy_txn_ = nullptr;
 
   std::optional<RobustLendGuard<docdb::ObjectLockSharedState>> object_lock_lend_guard_;
 };
@@ -4991,10 +4982,6 @@ PgClientSessionDbHistoryRetentionPin PgClientSession::GetDbHistoryRetentionPin()
 
 bool PgClientSession::ClearNonPublishedOldestReadPointSerial() {
   return impl_->ClearNonPublishedOldestReadPointSerial();
-}
-
-bool PgClientSession::InLegacyTxn() const {
-  return impl_->InLegacyTxn();
 }
 
 void PgClientSession::ClearReadTimePin() {

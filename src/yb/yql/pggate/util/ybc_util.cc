@@ -961,10 +961,6 @@ void YBCSetObjectLockingInfraForCurrTxn() {
   object_locking_infra_for_curr_txn = enable_object_locking_infra;
 }
 
-void YBCEnableObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = true;
-}
-
 bool YBCIsObjectLockingInfraEnabled() {
   return object_locking_infra_for_curr_txn;
 }

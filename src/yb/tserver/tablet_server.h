@@ -497,8 +497,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
 
-  Status WaitForLegacyTxnsToEnd(CoarseTimePoint deadline) override;
-
   // Per-database oldest read HybridTime pinned by live PG sessions on this tserver.
   master::DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes();
 
@@ -563,8 +561,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void PersistClusterYsqlDbOldestPinnedReadTimesIfNeeded(const master::DbOidToHybridTimeMap& pins);
 
   std::atomic<bool> initted_{false};
-
-  std::atomic<bool> legacy_txns_ended_{false};
 
   // If true, all heartbeats will be seen as failed.
   Atomic32 fail_heartbeats_for_tests_;

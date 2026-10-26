@@ -2788,22 +2788,6 @@ void PgApiImpl::PublishOldestReadPointSerialNo(uint64_t serial_no) {
   pg_client_.PublishOldestReadPointSerialNo(serial_no);
 }
 
-bool PgApiImpl::StartTxnWithoutObjectLocks() {
-  // Publish before reading the flag, and the tserver sets the flag before reading what was
-  // published (TabletServer::WaitForLegacyTxnsToEnd): with seq_cst on both sides, at least one of
-  // the two sees the other's store.
-  pg_client_.PublishInLegacyTxn(true);
-  if (!tserver_shared_object_.object_locks_required()) {
-    return true;
-  }
-  pg_client_.PublishInLegacyTxn(false);
-  return false;
-}
-
-void PgApiImpl::EndTxnWithoutObjectLocks() {
-  pg_client_.PublishInLegacyTxn(false);
-}
-
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ChangeTxnSnapshot(read_point)));
   return pg_txn_manager_->RestoreReadPoint(read_point);

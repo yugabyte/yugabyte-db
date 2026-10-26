@@ -1430,7 +1430,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->TakesObjectLocks()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1452,7 +1452,7 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->TakesObjectLocks()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;

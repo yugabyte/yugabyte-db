@@ -927,11 +927,6 @@ class PgApiImpl {
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
   void PublishOldestReadPointSerialNo(uint64_t serial_no);
 
-  // Publishes that a transaction that takes no object locks is starting, unless the tserver
-  // already requires object locks. Returns whether the transaction may run without them.
-  bool StartTxnWithoutObjectLocks();
-  void EndTxnWithoutObjectLocks();
-
   void DdlEnableForceCatalogModification();
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);

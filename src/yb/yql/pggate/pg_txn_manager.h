@@ -198,6 +198,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool IsTableLockingEnabledForCurrentTxn() const;
 
+  // Whether transactions of this session acquire and release object locks. Unlike
+  // IsTableLockingEnabledForCurrentTxn(), this does not wait for ysql_enable_object_locking_infra:
+  // every transaction that may still run when that flag is promoted must already hold the locks
+  // a new-mode DDL relies on (#35734).
+  bool TakesObjectLocks() const { return enable_table_locking_; }
+
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
   void SetConnectedDatabaseOid(PgOid oid) { connected_database_oid_ = oid; }

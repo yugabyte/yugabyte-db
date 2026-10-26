@@ -185,10 +185,6 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual bool SkipCatalogVersionChecks() { return false; }
 
-  // Called before this server grants its part of a global object lock. A server that hosts no
-  // postgres has no transactions to wait for.
-  virtual Status WaitForLegacyTxnsToEnd(CoarseTimePoint deadline) { return Status::OK(); }
-
   virtual const std::string& permanent_uuid() const = 0;
 
   virtual Result<std::string> GetUniverseUuid() const = 0;

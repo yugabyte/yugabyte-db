@@ -127,19 +127,6 @@ class TServerSharedData {
     return ysql_catalog_prefetch_load_.load(std::memory_order_acquire);
   }
 
-  // Set once the tserver starts waiting for transactions that take no object locks to end. From
-  // then on every transaction must take them, even in a backend whose copy of
-  // ysql_enable_object_locking_infra is still off, or the wait would never end. Never cleared.
-  // seq_cst pairs with the backend's in_legacy_txn store: either the backend sees this flag, or
-  // the tserver sees its in_legacy_txn.
-  void SetObjectLocksRequired() {
-    object_locks_required_.store(true, std::memory_order_seq_cst);
-  }
-
-  bool object_locks_required() const {
-    return object_locks_required_.load(std::memory_order_seq_cst);
-  }
-
   void SetPostgresAuthKey(uint64_t auth_key) {
     postgres_auth_key_ = auth_key;
   }
@@ -206,8 +193,6 @@ class TServerSharedData {
   std::atomic<bool> fully_initialized_{false};
 
   std::atomic<uint32_t> ysql_catalog_prefetch_load_{0};
-
-  std::atomic<bool> object_locks_required_{false};
 
   std::atomic<uint64_t> db_last_prefetched_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
 };
@@ -350,8 +335,6 @@ class PgSessionSharedMemoryManager {
   void SetOldestReadPointSerialNo(uint64_t serial_no);
   // Returns a pointer into session shared memory; valid for the manager's lifetime.
   [[nodiscard]] std::atomic<uint64_t>* OldestReadPointSerialNoPtr();
-  // Returns a pointer into session shared memory; valid for the manager's lifetime.
-  [[nodiscard]] std::atomic<bool>* InLegacyTxnPtr();
 
   static Result<PgSessionSharedMemoryManager> Make(
       const std::string& instance_id, uint64_t session_id, Create create);

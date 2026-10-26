@@ -764,12 +764,6 @@ class PgClient::Impl : public BigDataFetcher {
     }
   }
 
-  void PublishInLegacyTxn(bool in_legacy_txn) {
-    if (session_shared_mem_) {
-      session_shared_mem_->InLegacyTxnPtr()->store(in_legacy_txn, std::memory_order_seq_cst);
-    }
-  }
-
   void Heartbeat(bool create) {
     {
       bool expected = false;
@@ -2261,10 +2255,6 @@ uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 void PgClient::PublishOldestReadPointSerialNo(uint64_t serial_no) {
   impl_->PublishOldestReadPointSerialNo(serial_no);
-}
-
-void PgClient::PublishInLegacyTxn(bool in_legacy_txn) {
-  impl_->PublishInLegacyTxn(in_legacy_txn);
 }
 
 Result<PgTableDescPtr> PgClient::OpenTable(

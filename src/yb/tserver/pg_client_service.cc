@@ -241,8 +241,6 @@ class LockablePgClientSession {
   pid_t pid() const { return session_.pid(); }
   PgOid TEST_database_oid() const { return session_.TEST_database_oid(); }
 
-  bool InLegacyTxn() const { return session_.InLegacyTxn(); }
-
   template <class... Args>
   explicit LockablePgClientSession(
       CoarseDuration lifetime, SharedThisSource shared_this_source, rpc::Messenger& messenger,
@@ -260,7 +258,6 @@ class LockablePgClientSession {
     session_.SetupSharedData({
         .object_lock = shared_mem_manager_.object_locking_data(),
         .oldest_read_point_serial_no = *shared_mem_manager_.OldestReadPointSerialNoPtr(),
-        .in_legacy_txn = *shared_mem_manager_.InLegacyTxnPtr(),
     });
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
         shared_mem_manager_.exchange(), shared_mem_manager_.session_id(),
@@ -2977,15 +2974,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return std::nullopt;
   }
 
-  bool HasSessionInLegacyTxn() {
-    for (const auto& session_info : session_registry_.Snapshot()) {
-      if (session_info->session().InLegacyTxn()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   std::unordered_map<PgOid, HybridTime> GetDatabasePins() {
     const uint64_t min_txn_age_micros =
         static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
@@ -3246,10 +3234,6 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 
 std::unordered_map<PgOid, HybridTime> PgClientServiceImpl::GetDatabasePins() {
   return impl_->GetDatabasePins();
-}
-
-bool PgClientServiceImpl::HasSessionInLegacyTxn() {
-  return impl_->HasSessionInLegacyTxn();
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
