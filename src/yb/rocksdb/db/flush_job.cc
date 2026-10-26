@@ -345,7 +345,9 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     if (!db_options_.disableDataSync && output_file_directory_ != nullptr) {
       RETURN_NOT_OK(output_file_directory_->Fsync());
     }
-    DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::WriteLevel0Table");
+    // The DB's log prefix lets a test tell which DB's flush reached this point.
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "FlushJob::WriteLevel0Table", const_cast<std::string*>(&db_options_.log_prefix));
     db_mutex_->Lock();
   }
 
