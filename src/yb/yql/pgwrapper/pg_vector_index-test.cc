@@ -1889,9 +1889,7 @@ void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndex());
   const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
-  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
-      cluster_.get(), "test", ListPeersFilter::kAll));
-  ASSERT_OK(WaitForVectorIndexBackfills(peers.size(), "Backfill done"));
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Backfill done"));
   if (null_vector) {
     // A row with a NULL vector adds no entry to the index, while the vectors written after the
     // schema change keep only the later schema version in the index.
@@ -1908,6 +1906,8 @@ void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
     ASSERT_OK(InsertRows(conn, 1, kNumRows, /* keep_vectors = */ false, non_transactional_writes));
   }
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // A follower that applies the rows after the flush below misses the compaction that repacks them.
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
   // Compaction repacks only rows below the history cutoff. An intents DB flush would wait for the
   // vector index, and force its flush.
   const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
@@ -1929,26 +1929,31 @@ void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
     }
     return Status::OK();
   };
-  for (const auto& peer : peers) {
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(
+           cluster_.get(), "test", ListPeersFilter::kAll))) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     auto state = ASSERT_RESULT(tablet->GetPersistentState());
     ASSERT_EQ(state.vector_indexes.size(), 1);
     ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
   }
-  peers.clear();
   ASSERT_OK(check_old_packings(true));
 
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
-  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 
   // The old packings go once the vector index flushes the writes. The replay also left their schema
   // version in the frontier of the regular DB memtable, which is not flushed without entries.
+  // So every replica, followers included, must apply the row before the flush.
   ASSERT_OK(InsertRows(
       conn, kNumRows + 1, kNumRows + 1, /* keep_vectors = */ false, non_transactional_writes));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  // The check reads a follower at its safe time. After the restart, it stays at the last replayed
+  // write, below the history cutoff of the compaction above, until the follower applies a new write
+  // or gets a safe time from the leader.
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets());
   ASSERT_OK(check_old_packings(false));
