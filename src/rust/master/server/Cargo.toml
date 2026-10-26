@@ -1,5 +1,5 @@
 [package]
-name = "master"
+name = "master-server"
 description = "The Rust master: the static library the yb-master-rs executable links."
 version.workspace = true
 edition.workspace = true

@@ -11,7 +11,7 @@
 // under the License.
 
 // main() of yb-master-rs, the Rust master. The process host is C++ and the master logic is the
-// Rust static library built from src/rust/master/master; see src/rust/master/docs/cpp-host.md.
+// Rust static library built from src/rust/master/server; see src/rust/master/docs/cpp-host.md.
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -24,7 +24,7 @@
 #include "yb/util/main_util.h"
 #include "yb/util/path_util.h"
 
-#include "master/master/src/ffi.rs.h"
+#include "master/server/src/ffi.rs.h"
 
 #if YB_LTO_ENABLED
 #include "yb/tserver/tablet_server_main_impl.h"

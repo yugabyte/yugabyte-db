@@ -97,7 +97,7 @@ set(YB_RUST_CARGO_ENV
 
 # Crates whose code only links inside a CMake-built executable (they call into the C++ host), so
 # `cargo test` cannot link their test binaries.
-set(YB_RUST_TEST_EXCLUDES --exclude master --exclude master-tserver-sim-main --exclude yb-cpp-host)
+set(YB_RUST_TEST_EXCLUDES --exclude master-server --exclude master-tserver-sim-main --exclude yb-cpp-host)
 
 # Native libraries the Rust standard library needs (from `rustc --print native-static-libs`).
 set(YB_RUST_NATIVE_LIBS gcc_s util rt pthread m dl)

@@ -25,7 +25,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 
 | Crate | Owns |
 |---|---|
-| `master` | The static library `yb-master-rs` links: flag registration, runtime, wiring |
+| `master-server` | The static library `yb-master-rs` links: flag registration, runtime, wiring |
 | `master-rpc-handlers` | Master RPC handlers; layer 1: the methods every master serves (some through the host), `NOT_THE_LEADER` for the rest |
 | `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` (layer 1: parse and re-serialize) |
 | `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |

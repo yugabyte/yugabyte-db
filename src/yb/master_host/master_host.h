@@ -12,7 +12,7 @@
 
 // The C++ process host of the Rust master: the server base, the sys-catalog tablet and the
 // replicated state machines that run inside its Raft apply (snapshot coordinator, AutoFlags), but
-// no CatalogManager. Rust drives it through master/master/src/ffi.rs and serves the master RPCs.
+// no CatalogManager. Rust drives it through master/server/src/ffi.rs and serves the master RPCs.
 //
 // In layer 1 the host is a follower only: it never starts an election and steps down at once if it
 // wins one, because nothing in Rust can act as a leader yet.
@@ -70,7 +70,7 @@ class SysCatalogTable;
 namespace master_host {
 
 class MasterInfoHandle;
-// Defined in Rust (master/master/src/ffi.rs).
+// Defined in Rust (master/server/src/ffi.rs).
 struct WebMasterList;
 
 class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHandle {
@@ -80,7 +80,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   MasterHost(const master::MasterOptions& opts, WebserverOptions public_web_opts);
   ~MasterHost();
 
-  // Bridge API (master/master/src/ffi.rs). Failures throw std::runtime_error, which cxx turns into
+  // Bridge API (master/server/src/ffi.rs). Failures throw std::runtime_error, which cxx turns into
   // a Rust Err.
 
   // Creates the file system layout, messenger and web server, and loads the sys catalog's

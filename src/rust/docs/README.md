@@ -17,7 +17,7 @@ and the Rust code on top talks to it through `cxx` bridges.
 |---|---|
 | `common/` | Crates any component uses. Named `yb-*`, never after a component. |
 | `tools/` | Shared build tools |
-| `master/` | The master's crates (`master`, `master-*`), tools and docs |
+| `master/` | The master's crates (`master-*`), tools and docs |
 | `docs/` | Docs for the shared pieces |
 
 | Crate | Owns |

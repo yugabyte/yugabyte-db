@@ -24,8 +24,8 @@ An offline vendor archive is required before the Rust master merges to main.
 CMake owns every final link, so sanitizer runtimes, tcmalloc, rpaths and the post-build steps work
 unchanged. Cargo builds three kinds of output:
 
-- **One static library per executable.** `yb-master-rs` links `libmaster.a`, built from
-  `master/master`, which depends on every other crate it needs. Two Rust static libraries in one
+- **One static library per executable.** `yb-master-rs` links `libmaster_server.a`, built from
+  `master/server`, which depends on every other crate it needs. Two Rust static libraries in one
   executable would each carry the Rust standard library.
 - **Build tools.** `yb-cxxgen` writes the C++ half of every `#[cxx::bridge]` into
   `$BUILD_ROOT/rust/cxxgen/<path>.rs.{h,cc}`. CMake compiles those with the normal flags: shared

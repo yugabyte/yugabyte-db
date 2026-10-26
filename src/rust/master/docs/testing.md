@@ -3,7 +3,7 @@
 ## Rust unit tests
 
 `./yb_build.sh <type> --target rust_checks` runs `cargo fmt --check`, `cargo clippy -D warnings` and
-`cargo test` for the workspace. `master`, `master-tserver-sim-main` and `yb-cpp-host` are excluded
+`cargo test` for the workspace. `master-server`, `master-tserver-sim-main` and `yb-cpp-host` are excluded
 from `cargo test`: their code calls into the C++ host, so it only links inside a CMake-built
 executable and is covered by C++ tests.
 

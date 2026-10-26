@@ -78,7 +78,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/ulimit_util.h"
 
-#include "master/master/src/ffi.rs.h"
+#include "master/server/src/ffi.rs.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);

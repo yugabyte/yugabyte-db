@@ -59,7 +59,7 @@ meanwhile, as a C++ leader that is not ready does.
 
 | Rust file | C++ side | Purpose |
 |---|---|---|
-| `master/master/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, `MasterInfoHandle` for handlers |
+| `master/server/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, `MasterInfoHandle` for handlers |
 
 Handlers run on other threads while the main thread owns the host, so they get a
 `MasterInfoHandle`, whose methods touch only state the host guards, rather than the host itself.

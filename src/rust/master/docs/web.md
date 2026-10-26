@@ -22,7 +22,7 @@ server's own output, and the master pages are the ones a C++ follower serves, re
 
 The functions in `master/master-path-handlers.h` are the C++ master's own code, moved out of
 `MasterPathHandlers` so both masters call them. The master list comes from Rust: the host calls
-`WebMasterList::list_masters` (`master/master/src/web.rs`), the same fan-out as the `ListMasters`
+`WebMasterList::list_masters` (`master/server/src/web.rs`), the same fan-out as the `ListMasters`
 RPC. The leader's address and scheme come from the same flags as on a C++ follower
 (`master_webserver_require_https`, `webserver_ca_certificate_file`).
 

@@ -22,7 +22,7 @@ members = [
     "common/yb-proto",
     "common/yb-web",
     "master/catalog-entity",
-    "master/master",
+    "master/server",
     "master/rpc-handlers",
     "master/tools/conformance",
     "master/tools/tserver-sim",

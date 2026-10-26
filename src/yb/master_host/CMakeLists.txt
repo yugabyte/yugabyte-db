@@ -13,14 +13,14 @@
 # The C++ host of the Rust master (yb-master-rs). See src/rust/master/docs/cpp-host.md.
 
 yb_rust_cxxgen(MASTER_HOST_CXXGEN_SRCS
-  master/master/src/ffi.rs)
+  master/server/src/ffi.rs)
 
 add_library(yb_master_host_obj OBJECT
   master_host.cc
   ${MASTER_HOST_CXXGEN_SRCS})
 target_link_libraries(yb_master_host_obj PUBLIC yb_rust_bridge_obj)
 
-yb_add_rust_staticlib(yb_master_rs master)
+yb_add_rust_staticlib(yb_master_rs master-server)
 
 add_executable(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master_host_main.cc)
 set(YB_MASTER_RS_DEPS
