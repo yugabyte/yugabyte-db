@@ -32,6 +32,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 namespace rocksdb {
@@ -312,11 +313,10 @@ void BTreeRepTest::TestConcurrent(size_t erase_lag, const std::function<bool(siz
   };
 
   std::atomic<size_t> published{0};
-  std::atomic<bool> stop{false};
   std::atomic<size_t> total_steps{0};
-  std::vector<std::thread> readers;
+  yb::TestThreadHolder thread_holder;
   for (size_t r = 0; r != kNumReaders; ++r) {
-    readers.emplace_back([&, r] {
+    thread_holder.AddThreadFunctor([&, r] {
       std::mt19937_64 reader_rng(r);
       std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
       // Keys in sorted (begin, end) must be absent from the scan: inserted after it started, or
@@ -330,7 +330,7 @@ void BTreeRepTest::TestConcurrent(size_t erase_lag, const std::function<bool(siz
         }
       };
       size_t steps = 0;
-      while (!stop.load(std::memory_order_acquire)) {
+      while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
         auto visible = published.load(std::memory_order_acquire);
         auto start = yb::RandomUniformInt<size_t>(0, sorted.size() - 1, &reader_rng);
         auto entry = iter->Seek(sorted[start].first);
@@ -377,10 +377,7 @@ void BTreeRepTest::TestConcurrent(size_t erase_lag, const std::function<bool(siz
     }
     published.store(rank + 1, std::memory_order_release);
   }
-  stop.store(true, std::memory_order_release);
-  for (auto& thread : readers) {
-    thread.join();
-  }
+  thread_holder.Stop();
   LOG(INFO) << "Reader steps: " << total_steps.load();
 }
 

@@ -15,7 +15,6 @@
 
 #include <chrono>
 #include <random>
-#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -41,12 +40,15 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-DEFINE_NON_RUNTIME_uint64(memtable_perf_entries, yb::RegularBuildVsSanitizers(1000000, 10000),
+DEFINE_NON_RUNTIME_uint64(memtable_perf_entries,
+                          yb::RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000),
                           "Entries per memtable.");
-DEFINE_NON_RUNTIME_uint64(memtable_perf_lookups, yb::RegularBuildVsSanitizers(1000000, 10000),
+DEFINE_NON_RUNTIME_uint64(memtable_perf_lookups,
+                          yb::RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000),
                           "Seeks per lookup measurement.");
 DEFINE_NON_RUNTIME_uint64(memtable_perf_readers, 4, "Reader threads during concurrent inserts.");
 DEFINE_NON_RUNTIME_string(memtable_perf_workloads, "",
@@ -391,17 +393,16 @@ std::pair<double, double> InsertWithReaders(
     std::shared_ptr<rocksdb::MemTableRepFactory> factory, bool newest) {
   MemTableHolder mem(factory);
   std::atomic<size_t> published{0};
-  std::atomic<bool> stop{false};
   std::atomic<size_t> seeks{0};
   std::atomic<uint64_t> seek_nanos{0};
-  std::vector<std::thread> readers;
+  TestThreadHolder thread_holder;
   for (size_t i = 0; i != FLAGS_memtable_perf_readers; ++i) {
-    readers.emplace_back([&, i] {
+    thread_holder.AddThreadFunctor([&, i] {
       IteratorHolder iter(mem);
       std::mt19937_64 rng(i);
       size_t count = 0;
       auto start = Clock::now();
-      for (; !stop.load(std::memory_order_acquire); ++count) {
+      for (; !thread_holder.stop_flag().load(std::memory_order_acquire); ++count) {
         auto inserted = published.load(std::memory_order_acquire);
         if (inserted == 0) {
           continue;
@@ -419,10 +420,7 @@ std::pair<double, double> InsertWithReaders(
   auto start = Clock::now();
   InsertAll(workload, &mem, &published);
   auto insert_ns = NanosPer(Clock::now() - start, workload.keys.size());
-  stop.store(true, std::memory_order_release);
-  for (auto& thread : readers) {
-    thread.join();
-  }
+  thread_holder.Stop();
   return {insert_ns, static_cast<double>(seek_nanos.load()) / std::max<size_t>(seeks, 1)};
 }
 
