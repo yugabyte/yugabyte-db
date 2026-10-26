@@ -205,6 +205,7 @@ typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> Tab
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
+YB_STRONGLY_TYPED_BOOL(MarkStaleOnFailure);
 
 struct ReplicasCount {
   ReplicasCount(int expected_live_replicas, int expected_read_replicas) {
@@ -319,6 +320,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // failed. Given that the replica list may change at any time,
   // callers should always check the result against NULL.
   RemoteTabletServer* LeaderTServer() const;
+
+  /// Same as LeaderTServer(), but optionally marks the tablet as stale when there is no leader.
+  /// A failed replica is cleared only by a refresh from master, which a stale tablet forces.
+  RemoteTabletServer* LeaderTServer(MarkStaleOnFailure mark_stale_on_failure);
 
   // Writes this tablet's TSes (across all replicas) to 'servers' for all available replicas. If a
   // replica has failed recently, check if it is available now if it is local. For remote replica,

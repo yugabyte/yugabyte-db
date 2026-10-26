@@ -1043,11 +1043,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
       auto tablets = *lookup_result;
       VLOG_WITH_FUNC(2) << "num tablets: " << tablets.size();
-      TEST_SYNC_POINT("PgClientService::PollVectorIndexReady:TabletsLookedUp");
+      TEST_SYNC_POINT_CALLBACK("PgClientService::PollVectorIndexReady:TabletsLookedUp", &tablets);
 
       ready = true;
       for (const auto& tablet : tablets) {
-        auto* leader = tablet->LeaderTServer();
+        auto* leader = tablet->LeaderTServer(client::internal::MarkStaleOnFailure::kTrue);
         if (!leader) {
           VLOG_WITH_FUNC(4) << "No leader for " << tablet->tablet_id();
           ready = false;
@@ -1065,6 +1065,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         }
         if (!status.ok()) {
           LOG_WITH_FUNC(INFO) << "Failed to query tablet " << tablet->tablet_id() << ": " << status;
+          // Leader could have moved.
+          tablet->MarkStale();
           ready = false;
           break;
         }

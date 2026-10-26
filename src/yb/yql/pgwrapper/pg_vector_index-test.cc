@@ -3696,6 +3696,45 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
+// After a network cut, other requests leave the tablet leaders marked as failed in the meta cache.
+// The readiness poll should refresh tablet locations instead of polling until the timeout.
+TEST_P(PgDistributedVectorIndexTest, CreateIndexWithFailedLeadersInMetaCache) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // So the test fails instead of hanging if CREATE INDEX never returns.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(60s * kTimeMultiplier)));
+
+  std::atomic<bool> poll_started{false};
+  std::atomic<size_t> num_marked_failed{0};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "PgClientService::PollVectorIndexReady:TabletsLookedUp",
+      [&poll_started, &num_marked_failed](void* arg) {
+        if (poll_started.exchange(true)) {
+          return;
+        }
+        auto& tablets = *static_cast<std::vector<client::internal::RemoteTabletPtr>*>(arg);
+        for (const auto& tablet : tablets) {
+          auto* leader = tablet->LeaderTServer();
+          if (leader &&
+              tablet->MarkReplicaFailed(leader, STATUS(NetworkError, "Simulated network cut"))) {
+            ++num_marked_failed;
+          }
+        }
+      });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_GT(num_marked_failed.load(), 0);
+}
+
 // The test verifies that a split is blocked if parent tablet has uncompacted vector indexes data.
 TEST_P(PgDistributedVectorIndexTest, SplitBlockedWithOrphanedPostSplitData) {
   constexpr size_t kNumRows = 80;
