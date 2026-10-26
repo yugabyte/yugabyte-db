@@ -8466,17 +8466,18 @@ brincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
  * inner's statistical first key (its minimum for an ascending outer, its
  * maximum for a descending one), adjusted for the range restrictions both
  * inputs enforce on their keys (yb_adjust_scansel_for_restrictions).  The
- * outer's own bounds remove leading mismatches the full column counts --
- * "outer.k >= c" with c >= min(inner.k) has none at all -- and the inner's
- * bounds move its effective first key: the inner's restrictions apply on
- * every probe, so outer keys before the bound find nothing.
+ * outer's own bounds remove leading mismatches the full column counts, so
+ * "outer.k >= c" with c >= min(inner.k) has none at all.  The inner's bound
+ * on the side where its keys start moves its effective first key, because
+ * the inner's restrictions apply on every probe, so outer keys before the
+ * bound find nothing.
  *
  * As in mergejoinscansel, both keys need a range in their statistics, and
  * the full-column comparison is believed only when it is not a default.
  * Unlike mergejoinscansel, there is no reconciliation with an inner start
- * fraction -- a BNL probes the inner by key and never skips through it -- and
- * no nulls-first term, so a NULLS FIRST outer's leading NULL-key rows are not
- * counted.
+ * fraction, because a BNL probes the inner by key and never skips through
+ * it, and no nulls-first term, so a NULLS FIRST outer's leading NULL-key rows
+ * are not counted.
  *
  * Returns the fraction in [0, 1], or -1.0 when no usable comparison operator
  * or statistic is available, so the caller can fall back to the conservative
@@ -8705,9 +8706,9 @@ yb_scansel_baserel_var(VariableStatData *vardata)
  *	  Selectivity of comparing 'var' against the Const 'bound' with the
  *	  opfamily operator for 'cmpstrategy', or -1.0 when the opfamily has no
  *	  (vartype, boundtype) operator.  Callers ensure 'var' has usable
- *	  statistics.  Extended statistics are kept out: the callers combine
- *	  several such selectivities into a conditional probability, which only
- *	  holds if every term comes from the same per-column model.
+ *	  statistics.  The comparison is estimated as a single clause, so only the
+ *	  column's own statistics apply, and every term yb_bounded_cmp_selectivity
+ *	  combines comes from the same per-column model.
  */
 static Selectivity
 yb_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
@@ -8874,17 +8875,17 @@ yb_bounded_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
 
 /*
  * yb_adjust_scansel_for_restrictions
- *	  Adjust a full-column scan fraction of the scanned input -- one of
- *	  mergejoinscansel's, or the Batched Nested Loop's leading-mismatch skip
- *	  (yb_bnl_outer_skip_selectivity) -- for the range restrictions both
- *	  inputs enforce: condition it on the scanned input's own restrictions,
- *	  then tighten it by the other input's bounds on its join key.
+ *	  Adjust a full-column start or end fraction of the scanned input for the
+ *	  range restrictions both inputs enforce: condition it on the scanned
+ *	  input's own restrictions, then tighten it by the other input's bounds
+ *	  on its join key.  mergejoinscansel and the Batched Nested Loop's
+ *	  leading-mismatch skip (yb_bnl_outer_skip_selectivity) both depend on it.
  *
  * On entry '*fraction' compares the scanned variable with the other input's
  * statistical extremum ('extremum', of type 'extremumtype') over every row
- * of the scanned column, but the merge reads only the rows the scan
- * produces.  The callers scale the fraction by the input path's rows, which
- * are counted after the scan's restrictions, so the share they need is the
+ * of the scanned column, but the join reads only the rows the scan
+ * produces.  The fraction is scaled by the input path's rows, which are
+ * counted after the scan's restrictions, so the share needed is the
  * comparison's share of the rows within the scanned key's own
  * range bounds (yb_bounded_cmp_selectivity).  This first step can
  * move the fraction either way: a scan restricted to k <= 100 against an
@@ -8897,12 +8898,12 @@ yb_bounded_cmp_selectivity(PlannerInfo *root, Oid opfamily, Oid collation,
  * bound such as "other.k < c" is invisible there, yet the merge is
  * guaranteed to stop at it.  Each such bound folds in as the comparison's
  * share within the scanned key's own range bounds, as in the first step, or
- * the plain comparison when the key has none: Min into an end fraction and
- * Max into a start fraction, so this second step only narrows the scanned
- * range.  Which bound reaches which fraction follows the merge direction:
- * ascending ('isgt' false), an upper bound on the other input caps where the
- * scan ends and a lower bound floors where it starts; descending, the roles
- * swap.
+ * the plain comparison when that share cannot be computed: Min into an end
+ * fraction and Max into a start fraction, so this second step only narrows
+ * the scanned range.  Which bound reaches which fraction follows the merge
+ * direction: ascending ('isgt' false), an upper bound on the other input
+ * caps where the scan ends and a lower bound floors where it starts;
+ * descending, the roles swap.
  *
  * 'scanexpr' is the scanned side of the merge clause as the planner built it,
  * of declared type 'scanvartype'; 'scanvar' holds its statistics, whose var
@@ -8991,7 +8992,8 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
 	 * reads the scanned input's first row to find it past the other input's
 	 * last key, and reads every row when it never reaches the other's first
 	 * key, so an end fraction keeps at least one row and a start fraction
-	 * stops one row short of all.
+	 * stops one row short of all.  A leading-mismatch skip loses at most that
+	 * one row.
 	 */
 	if (adjusted && scanrel != NULL)
 	{

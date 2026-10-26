@@ -39,9 +39,10 @@ delete from variants;
 ------------------------------------------------------------------------------
 -- 100: the bound's collation.  The inner bound (100) and the outer bound
 -- (110) are the two directions; only the outer one reaches the batched nested
--- loop.  120 and 130 read the inner bound descending, where the bounds swap
--- roles: 120's lower bound stops the merge and 130's upper bound moves its
--- start.  Their bounds sit where both collations estimate the same inner
+-- loop here, since an ascending inner's upper bound does not move where its
+-- keys start.  120 and 130 read the inner bound descending, where the bounds
+-- swap roles: 120's lower bound stops the merge and 130's upper bound moves
+-- its start.  Their bounds sit where both collations estimate the same inner
 -- rows (12 and 15), inside one 16-row page, so the inner scans cost the same
 -- and the merge rows differ by the clamp alone.  "c" and "posix" select the
 -- same rows, so any cost difference between them is the estimate's alone.
@@ -277,9 +278,9 @@ order by gid, vid;
 -- identically and "c" scans the fewest rows, as at 100.  At 120 the lower
 -- bound is on the side where a descending inner's keys end, which does not
 -- move the skip.  At 130 the upper bound moves where they start, so "c" is
--- credited a skip of the 11 outer rows from 'p' up ("posix" fails the
--- collation check), but a skip within the first 1024-row batch leaves the
--- startup cost unchanged.  Unlike 100, "posix" also does less work than no
+-- charged a skip of the 11 outer rows from 'p' up ("posix" fails the
+-- collation check), but a skip within the first batch leaves the startup
+-- cost unchanged.  Unlike 100, "posix" also does less work than no
 -- bound: its filter still scans all 26 inner rows but leaves 12 or 15, which
 -- fit in one 16-row page, where 100's leaves 16, which fill the page, so a
 -- second request follows.  The planner's credit to "posix" over no bound,
@@ -301,10 +302,9 @@ where gid = 200
 order by method;
 
 ------------------------------------------------------------------------------
--- 200 again, with extended statistics over (g, k).  The conditioned fractions
--- combine per-column selectivities of the join key alone, and a ratio whose
--- terms came from different models would not be a probability, so the object
--- must leave these costs alone.
+-- 200 again, with extended statistics over (g, k).  The estimates use only
+-- per-column selectivities of the join key, and g never enters them, so the
+-- object must leave these costs alone.
 --
 -- The check compares the raw costs of every (variant, method) pair before and
 -- after, symmetrically.  It asserts equality without printing a cost, and it

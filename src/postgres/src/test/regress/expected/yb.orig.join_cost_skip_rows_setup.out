@@ -4,11 +4,11 @@
 -- of reading that input or the other one, for both join methods that model
 -- it: the merge join's scan fractions (mergejoinscansel) and the batched
 -- nested loop's leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both
--- build a comparison against the other side's boundary key and condition it
--- on the scanned side's own restrictions, so the same mechanisms decide
--- whether a bound is usable: its collation, extended statistics over the
--- conditioning clauses, a binary-compatible relabeling of the join key, and
--- whether the bound falls on a value the boundary group includes.
+-- build a comparison against the other side's boundary key and adjust it for
+-- both sides' range bounds with the same function, so the same mechanisms
+-- decide whether a bound is usable: its collation, a binary-compatible
+-- relabeling of the join key, and whether the bound falls on a value the
+-- boundary group includes.
 --
 -- Every group joins an outer aliased `o` to an inner aliased `i`.  In groups
 -- 100-400 the outer's key range extends BELOW the inner's, a layout that
