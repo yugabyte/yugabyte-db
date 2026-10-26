@@ -1,0 +1,15 @@
+[package]
+name = "master-catalog-entity"
+description = "Master sys-catalog entities. Layer 1: parsing and re-serializing rows by SysRowEntryType."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protobuf.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

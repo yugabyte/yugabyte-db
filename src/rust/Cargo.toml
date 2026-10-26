@@ -18,7 +18,10 @@ resolver = "3"
 members = [
     "common/yb-cpp-host",
     "common/yb-host-api",
+    "common/yb-proto",
+    "master/catalog-entity",
     "master/master",
+    "master/tools/conformance",
     "tools/yb-cxxgen",
 ]
 
@@ -36,11 +39,16 @@ publish = false
 cxx = "=1.0.202"
 cxx-gen = "=0.7.202"
 proc-macro2 = "1"
+protobuf = "=3.7.2"
+protobuf-codegen = "=3.7.2"
+protobuf-parse = "=3.7.2"
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
 
 yb-cpp-host = { path = "common/yb-cpp-host" }
 yb-host-api = { path = "common/yb-host-api" }
+master-catalog-entity = { path = "master/catalog-entity" }
+yb-proto = { path = "common/yb-proto" }
 
 [workspace.lints.rust]
 missing_docs = "deny"

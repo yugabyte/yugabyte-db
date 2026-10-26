@@ -1,0 +1,19 @@
+[package]
+name = "yb-proto"
+description = "Rust types and RPC service tables generated from YugabyteDB's .proto files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protobuf.workspace = true
+
+[build-dependencies]
+protobuf.workspace = true
+protobuf-codegen.workspace = true
+protobuf-parse.workspace = true
+
+[lints]
+workspace = true

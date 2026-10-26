@@ -9,6 +9,7 @@ and the Rust code on top talks to it through `cxx` bridges.
 |---|---|
 | [build.md](build.md) | How CMake drives Cargo, the toolchain, crates and checks |
 | [cpp-host.md](cpp-host.md) | The shared C++ bridge code and how Rust logs and panics |
+| [proto.md](proto.md) | Generated protobuf code and why it matches the C++ runtime byte for byte |
 
 ## Layout
 
@@ -23,6 +24,7 @@ and the Rust code on top talks to it through `cxx` bridges.
 |---|---|
 | `common/yb-host-api` | Traits a C++ host provides to Rust, plus in-memory fakes for tests |
 | `common/yb-cpp-host` | The cxx implementation of those traits; logging and panic hook |
+| `common/yb-proto` | Messages and RPC service tables generated from `src/yb/**/*.proto` |
 | `tools/yb-cxxgen` | Build tool: writes the C++ half of every bridge |
 
 ## Rules every crate follows

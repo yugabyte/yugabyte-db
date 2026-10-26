@@ -1,0 +1,16 @@
+[package]
+name = "master-conformance"
+description = "Checks that the Rust master serializes real sys-catalog rows exactly as the C++ master does."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protobuf.workspace = true
+master-catalog-entity.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

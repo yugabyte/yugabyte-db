@@ -10,12 +10,14 @@ The sys-catalog tablet (Raft, WAL, DocDB) stays the shared C++ engine, hosted by
 | Doc | Covers |
 |---|---|
 | [cpp-host.md](cpp-host.md) | The master's C++ host and its bridges |
-| [testing.md](testing.md) | How the master is tested |
+| [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
 
-Shared Rust pieces (build, bridges) are documented in [src/rust/docs](../../docs/README.md).
+Shared Rust pieces (build, bridges, protobuf) are documented in [src/rust/docs](../../docs/README.md).
 
 ## Crates
 
 | Crate | Owns |
 |---|---|
 | `master` | The static library `yb-master-rs` links; `run_master` |
+| `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` (layer 1: parse and re-serialize) |
+| `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |

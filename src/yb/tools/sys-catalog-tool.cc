@@ -23,6 +23,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_options.h"
@@ -844,6 +845,8 @@ class SysCatalogTool {
 
   Status ShowChangesIn(const string& file_name, const ReadFilters& filters);
 
+  Status DumpRows(const string& file_name);
+
  protected:
   Status InitFsManager();
   Status Init();
@@ -924,6 +927,41 @@ Status SysCatalogTool::WritePBDescriptor(const Descriptor& descriptor, const str
 
   writer_->EndObject();
   return Status::OK();
+}
+
+namespace {
+
+string ToHex(const Slice& slice) {
+  string out;
+  b2a_hex(slice.data(), &out, slice.size());
+  return out;
+}
+
+} // namespace
+
+// One line per row: "<type>\t<hex id>\t<hex row>\t<hex row parsed and serialized by C++>". The
+// Rust master's conformance check (src/rust/yb-master-conformance) requires the Rust runtime to
+// serialize each row exactly as the last column does.
+Status SysCatalogTool::DumpRows(const string& file_name) {
+  RETURN_NOT_OK(Init());
+  tablet::TabletPtr tablet = sys_catalog_->tablet();
+  SCHECK(tablet, ShutdownInProgress, "SysCatalog tablet is not ready.");
+
+  std::stringstream out;
+  int num_entries = 0;
+  RETURN_NOT_OK(master::EnumerateAllSysCatalogEntries(
+      tablet.get(), *tablet->schema(),
+      [&out, &num_entries](int8_t entry_type, const Slice& id, const Slice& data) -> Status {
+        RETURN_NOT_OK(IsValid_SysRowEntryType(entry_type));
+        const auto type = static_cast<SysRowEntryType>(entry_type);
+        auto pb = VERIFY_RESULT(master::SliceToCatalogEntityPB(type, data));
+        out << master::SysRowEntryType_Name(type) << '\t' << ToHex(id) << '\t' << ToHex(data)
+            << '\t' << ToHex(pb->SerializeAsString()) << '\n';
+        ++num_entries;
+        return Status::OK();
+      }));
+  sinfo << "Writing " << num_entries << " rows to " << file_name << endl;
+  return WriteStringToFileSync(Env::Default(), Slice(out.str()), file_name);
 }
 
 Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
@@ -1059,6 +1097,27 @@ Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
   sinfo << "Filtered " << filtered_entries << " entries from " << num_entries
         << " read entries" << endl << flush;
   return stream.str();
+}
+
+// ------------------------------------------------------------------------------------------------
+// Dump-rows command
+// ------------------------------------------------------------------------------------------------
+const string kDumpRowsDescription =
+    "Write every sys-catalog row with its C++ re-serialization, one row per line. Arguments";
+
+struct DumpRowsArguments {
+  string file;
+};
+
+unique_ptr<OptionsDescription> DumpRowsOptions() {
+  auto result = std::make_unique<OptionsDescriptionImpl<DumpRowsArguments>>(kDumpRowsDescription);
+  result->desc.add_options()
+      ("file", po::value(&result->args.file)->required(), "Output file name");
+  return result;
+}
+
+Status DumpRowsExecute(const DumpRowsArguments& args) {
+  return SysCatalogTool().DumpRows(args.file);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1228,10 +1287,10 @@ Status SysCatalogTool::ShowChangesIn(const string& file_name, const ReadFilters&
 //                     post-check-result: real SysCatalog vs stored-file
 //      rollback     : includes pre-check, old data writing back, post-check-result
 #if SYS_CATALOG_WRITE_ENABLED
-#define SYS_CATALOG_ACTIONS (Help)(Dump)(ShowChanges)
+#define SYS_CATALOG_ACTIONS (Help)(Dump)(DumpRows)(ShowChanges)
 // (Update)(Rollback)
 #else
-#define SYS_CATALOG_ACTIONS (Help)(Dump)
+#define SYS_CATALOG_ACTIONS (Help)(Dump)(DumpRows)
 #endif // SYS_CATALOG_WRITE_ENABLED
 
 YB_DEFINE_ENUM(SysCatalogAction, SYS_CATALOG_ACTIONS);

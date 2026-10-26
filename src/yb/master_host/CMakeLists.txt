@@ -36,3 +36,5 @@ target_link_libraries(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} ${YB_MASTE
 # Built only on request until the LTO whole-program link is validated with a Rust static library.
 yb_add_lto_target(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} yb-master-rs "" EXCLUDE_FROM_ALL)
 
+# Checks the Rust protobuf runtime against rows dumped by `sys-catalog-tool dump-rows`.
+yb_add_rust_tool(master-conformance)
