@@ -23,11 +23,13 @@ DECLARE_string(otel_collector_traces_endpoint);
 
 namespace yb::dist_trace {
 
-// Enables distributed tracing for the lifetime of the object, pointed at an unreachable collector.
+// Enables distributed tracing for the lifetime of the object, by default pointed at an unreachable
+// collector. Restores through the setter: google::FlagSaver would not rerun the flag callback.
 class ScopedTestDistTrace {
  public:
-  ScopedTestDistTrace() : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
-    TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+  explicit ScopedTestDistTrace(const std::string& endpoint = "http://127.0.0.1:1/v1/traces")
+      : saved_endpoint_(FLAGS_otel_collector_traces_endpoint) {
+    TEST_SetOtelCollectorEndpoint(endpoint);
   }
 
   ~ScopedTestDistTrace() { TEST_SetOtelCollectorEndpoint(saved_endpoint_); }
