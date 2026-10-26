@@ -427,3 +427,4 @@
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
 | "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |
+| "Enable the node_exporter sidecar on Kubernetes universes" | "yb.kubernetes.node_exporter.enabled" | "UNIVERSE" | "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics. Pods change at their next Helm operation, for example a Kubernetes overrides edit" | "Boolean" |

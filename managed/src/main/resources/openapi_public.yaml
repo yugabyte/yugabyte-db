@@ -8241,10 +8241,11 @@ components:
           additionalProperties:
             type: string
         prometheus_metrics_types:
-          description: 'List of exports to be included in the prometheus dump. NODE_EXPORT
-            is dropped on Kubernetes
+          description: 'List of exports to be included in the prometheus dump. On
+            Kubernetes universes NODE_EXPORT is
 
-            universes, where node_exporter is not scraped.
+            collected only where the node_exporter sidecar is monitored, and dropped
+            otherwise.
 
             '
           type: array

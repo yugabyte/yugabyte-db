@@ -263,9 +263,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             }
           }
           // Also idempotent can be run again here.
-          // Mark the final software version on the universe (last subtask).
+          // Mark the final software version on the universe.
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

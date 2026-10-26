@@ -125,8 +125,7 @@ public class BundleDetails {
     CQL_EXPORT,
     YSQL_EXPORT,
     // Everything scraped for this universe's pods and volume claims - cAdvisor, kubelet and
-    // kube-state-metrics. Kubernetes universes have no node_exporter, so this is the only
-    // source of resource usage for them.
+    // kube-state-metrics.
     KUBERNETES;
   }
 

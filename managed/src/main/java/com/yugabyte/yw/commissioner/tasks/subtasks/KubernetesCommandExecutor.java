@@ -1751,6 +1751,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
       }
     }
+    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
+        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
+      nodeExporter.put("enabled", true);
+      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+    } else {
+      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+    }
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =

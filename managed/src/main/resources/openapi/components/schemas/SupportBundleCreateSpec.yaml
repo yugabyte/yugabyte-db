@@ -134,8 +134,8 @@ properties:
       type: string
   prometheus_metrics_types:
     description: |
-      List of exports to be included in the prometheus dump. NODE_EXPORT is dropped on Kubernetes
-      universes, where node_exporter is not scraped.
+      List of exports to be included in the prometheus dump. On Kubernetes universes NODE_EXPORT is
+      collected only where the node_exporter sidecar is monitored, and dropped otherwise.
     type: array
     items:
       $ref: "./PrometheusMetricsType.yaml"
