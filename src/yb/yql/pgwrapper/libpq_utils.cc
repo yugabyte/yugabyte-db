@@ -702,7 +702,6 @@ Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
 
 Status PGConn::Prepare(const std::string& stmt_name, const std::string& query) {
   VLOG(1) << __func__ << " " << stmt_name << ": " << query;
-  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   PGResultPtr res(PQprepare(impl_.get(), stmt_name.c_str(), query.c_str(), 0, nullptr));
   auto status = PQresultStatus(res.get());
   if (status != ExecStatusType::PGRES_COMMAND_OK) {
@@ -718,11 +717,10 @@ Status PGConn::Prepare(const std::string& stmt_name, const std::string& query) {
 Result<PGResultPtr> PGConn::FetchPrepared(
     const std::string& stmt_name, const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << stmt_name;
-  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   return CheckResult(
       PGResultPtr(PQexecPrepared(
           impl_.get(), stmt_name.c_str(), static_cast<int>(params.size()), params.data(), nullptr,
-          nullptr, static_cast<int>(PGResultFormat::kBinary))),
+          nullptr, 1)),
       stmt_name);
 }
 

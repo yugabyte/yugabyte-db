@@ -2271,8 +2271,8 @@ TEST_F(DistTraceSamplingTest, TestInternalConnectionNotSampled) {
   auto* ts = cluster_->tserver_daemons()[0];
   auto auth_key = ASSERT_RESULT(GetPostgresAuthKey(ts));
   auto internal = ASSERT_RESULT(CreateInternalPGConnBuilder(
-      HostPort(ts->bind_host(), ts->ysql_port()), "yugabyte", PGConnSettings::kDefaultUser,
-      auth_key, /* deadline= */ std::nullopt).Connect());
+      HostPort(ts->bind_host(), ts->ysql_port()), "yugabyte", auth_key,
+      /* deadline= */ std::nullopt).Connect());
 
   ASSERT_OK(internal.Fetch("SELECT 21"));
   ASSERT_OK(collector_.VerifyQueryNotTraced("SELECT 21"));

@@ -497,7 +497,8 @@ DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
     "starts its own trace. 0 disables sampling. A traceparent with the sampled flag clear (-00) "
     "is honoured: the query is not traced. Connections the tserver opens internally are not "
     "sampled. Requires otel_collector_traces_endpoint.");
-DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
+DEFINE_validator(ysql_yb_dist_trace_sample_rate,
+    FLAG_COND_VALIDATOR(0.0 <= _value && _value <= 1.0, "Must be in the range [0.0-1.0]"));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
