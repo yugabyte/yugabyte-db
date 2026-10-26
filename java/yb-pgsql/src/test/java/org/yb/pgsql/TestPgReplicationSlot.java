@@ -5985,4 +5985,60 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       return res.getLong("yb_restart_commit_ht");
     }
   }
+
+  /*
+   * Checks that the walsender recovers when the publication does not exist at the read time
+   * InitVirtualWal uses: the failed lookup must be retried at the latest read time and streaming
+   * must proceed. Both the failed lookup and the retry happen inside one START_REPLICATION command.
+   *
+   * This mimics the state the walsender is left in after a YSQL major version upgrade, but reaches
+   * it through a different condition: creating the publication after the slot, rather than
+   * rebuilding the catalog. This ordering is test only though. In a real deployment the publication
+   * must exist before the slot, or START_REPLICATION fails with publication not found. The test
+   * avoids that only by setting yb_ignore_read_time_in_walsender, which the connector sets only
+   * during a major version upgrade.
+   */
+  @Test
+  public void testPublicationCreatedAfterSlot() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    /* The slot is created first, so consistent snapshot time predates the publication. */
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'hello')");
+    }
+
+    try (Statement stmt = conn.createStatement()) {
+      /* Set by the connector for the duration of a YSQL major version upgrade. */
+      stmt.execute("SET yb_ignore_read_time_in_walsender = true");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    /* BEGIN, RELATION, INSERT and COMMIT, in some order. */
+    List<PgOutputMessage> result = receiveMessage(stream, 4);
+    int inserts = 0;
+    for (PgOutputMessage message : result) {
+      if (message instanceof PgOutputInsertMessage) {
+        inserts++;
+      }
+    }
+    assertEquals("The inserted row must be streamed", 1, inserts);
+
+    stream.close();
+    conn.close();
+  }
 }
