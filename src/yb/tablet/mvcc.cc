@@ -32,8 +32,6 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include <algorithm>
-
 #include <boost/circular_buffer.hpp>
 #include <boost/variant.hpp>
 
@@ -48,6 +46,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/to_stream.h"
@@ -276,9 +275,6 @@ MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
 }
 
 MvccManager::~MvccManager() {
-  std::lock_guard lock(mutex_);
-  DCHECK(safe_time_waiters_.empty());
-  DCHECK(follower_safe_time_waiters_.empty());
 }
 
 template <class SafeTimeFunc>
@@ -300,19 +296,10 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
 
     auto waiter = std::make_shared<Synchronizer>();
     waiters->emplace(min_allowed, waiter);
-    lock->unlock();
-    auto status = waiter->WaitUntil(steady_deadline);
-    lock->lock();
-    if (!status.ok()) {
-      // A waker may have taken the waiter out already. It holds its own reference, so only remove
-      // the waiter if it is still there.
-      auto [begin, end] = waiters->equal_range(min_allowed);
-      auto it = std::find_if(
-          begin, end, [&waiter](const auto& entry) { return entry.second == waiter; });
-      if (it != end) {
-        waiters->erase(it);
-      }
-    }
+    ReverseLock<std::unique_lock<std::mutex>> unlock(*lock);
+    // A timed-out waiter stays in waiters, and the deadline check on the next iteration returns
+    // TimedOut.
+    (void) waiter->WaitUntil(steady_deadline);
   }
 }
 

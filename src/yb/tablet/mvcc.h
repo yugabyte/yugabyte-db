@@ -169,7 +169,8 @@ class MvccManager {
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
   // Threads that wait for safe time, keyed by the min_allowed that they wait for. Shared ownership
-  // lets a waker signal a waiter after releasing mutex_, even if that waiter has timed out.
+  // lets a waker signal a waiter after releasing mutex_, and lets a timed-out waiter leave its
+  // entry for the next waker or StartShutdown to take out.
   using SafeTimeWaiters = std::multimap<HybridTime, std::shared_ptr<Synchronizer>>;
 
   // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.

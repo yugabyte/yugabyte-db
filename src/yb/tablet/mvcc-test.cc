@@ -429,7 +429,7 @@ TEST_F(MvccTest, ShutdownWakesSafeTimeWaiters) {
 
 // Replicates operations as on a busy tablet leader, while readers wait for safe time to reach
 // either the current time or a time far ahead of the clock.
-TEST_F(MvccTest, ReplicateWithManySafeTimeWaiters) {
+TEST_F(MvccTest, YB_DISABLE_TEST_IN_SANITIZERS(ReplicateWithManySafeTimeWaiters)) {
   constexpr int kTotalOps = 20000;
   constexpr uint64_t kAheadOfClock = 1ULL << 40;
   int op_index = 0;
@@ -444,13 +444,15 @@ TEST_F(MvccTest, ReplicateWithManySafeTimeWaiters) {
         for (size_t i = 0; i != num_readers; ++i) {
           readers.emplace_back(
               [this, &stop, &running_readers, &num_reads, readers_ahead, ahead_time] {
+            auto se = ScopeExit([&running_readers] {
+              running_readers.fetch_sub(1, std::memory_order_acq_rel);
+            });
             while (!stop.load(std::memory_order_acquire)) {
               ASSERT_OK(manager_.SafeTime(
                   readers_ahead ? ahead_time : clock_->Now(), CoarseMonoClock::now() + 60s,
                   FixedHybridTimeLease()));
               num_reads.fetch_add(1, std::memory_order_relaxed);
             }
-            running_readers.fetch_sub(1, std::memory_order_acq_rel);
           });
         }
 
