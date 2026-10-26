@@ -37,6 +37,7 @@
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
 namespace rocksdb {
@@ -98,23 +99,6 @@ inline uint64_t KeyWindow(Slice key, size_t offset) {
   char buf[sizeof(uint64_t)] = {0};
   memcpy(buf, key.data() + offset, left);
   return BigEndian::Load64(buf);
-}
-
-inline size_t CommonPrefix(Slice a, Slice b) {
-  auto size = std::min(a.size(), b.size());
-  size_t i = 0;
-  for (; i + sizeof(uint64_t) <= size; i += sizeof(uint64_t)) {
-    uint64_t wa, wb;
-    memcpy(&wa, a.data() + i, sizeof(wa));
-    memcpy(&wb, b.data() + i, sizeof(wb));
-    if (auto diff = wa ^ wb) {
-      return i + __builtin_ctzll(diff) / 8;
-    }
-  }
-  while (i < size && a[i] == b[i]) {
-    ++i;
-  }
-  return i;
 }
 
 inline Slice EntryUserKey(const char* entry) {
@@ -303,6 +287,12 @@ class BTreeRep : public MemTableRep {
   // <0 if key sorts before every key, >0 after every key, 0 if it shares their common prefix.
   // Sets *shared_len to the prefix length compared.
   int CompareWithSharedPrefix(const SearchKey& key, size_t* shared_len) const;
+
+  // The root has no parent to validate it: a root split publishes the new root before it cuts the
+  // old one, so a reader that read the old root's version after the cut must see the new root.
+  bool IsRoot(const NodeBase* node) const {
+    return root_.load(std::memory_order_acquire) == node;
+  }
 
   // A key sharing less than shared_len could have been inserted since a reader compared with it.
   bool SharedPrefixUnchanged(size_t shared_len) const {
@@ -517,7 +507,12 @@ bool BTreeRep::Descend(
     *leaf = nullptr;
     return true;
   }
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:RootLoaded");
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:ReadRootVersion");
   auto node_version = StableVersion(node);
+  if (!IsRoot(node)) {
+    return false;
+  }
   while (node->level != 0) {
     auto internal = static_cast<const Internal*>(node);
     size_t index;
@@ -791,6 +786,9 @@ uint64_t BTreeRep::EstimateCount(const SearchKey& key) const {
     double fraction = 0;
     double scale = 1;
     auto version = StableVersion(node);
+    if (!IsRoot(node)) {
+      continue;
+    }
     bool restart = false;
     while (node->level != 0) {
       auto internal = static_cast<const Internal*>(node);
@@ -883,7 +881,7 @@ size_t BTreeRep::PrefixFor(const char* low, const char* high) const {
   if (!low || !high) {
     return shared_len_.load(std::memory_order_relaxed);
   }
-  return std::min(CommonPrefix(EntryUserKey(low), EntryUserKey(high)), kMaxPrefix);
+  return std::min(EntryUserKey(low).difference_offset(EntryUserKey(high)), kMaxPrefix);
 }
 
 void BTreeRep::Fences(const PathEntry* path, size_t depth, const char** low, const char** high) {
@@ -952,7 +950,7 @@ void BTreeRep::ShrinkSharedPrefix(Slice user_key) {
     return;
   }
   auto len = shared_len_.load(std::memory_order_relaxed);
-  auto common = CommonPrefix(Slice(shared_, len), user_key);
+  auto common = Slice(shared_, len).difference_offset(user_key);
   if (common >= len) {
     return;
   }
@@ -1109,6 +1107,7 @@ void BTreeRep::SplitLeaf(
     NodeWriteLock lock(old_next);
     old_next->prev.store(right, std::memory_order_release);
   }
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::SplitLeaf:Done");
   hint_entry_ = entry;
   if (index < left_count) {
     hint_leaf_ = leaf;
@@ -1135,6 +1134,7 @@ void BTreeRep::InsertIntoParent(
     root->children[1].store(right, kPublishOrder);
     root->count.store(1, std::memory_order_relaxed);
     CHECK_LT(root->level, kMaxHeight);
+    DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::InsertIntoParent:NewRoot");
     root_.store(root, std::memory_order_release);
     return;
   }

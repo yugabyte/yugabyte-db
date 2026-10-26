@@ -29,6 +29,7 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
@@ -232,6 +233,46 @@ TEST_P(BTreeRepTest, SharedPrefixShrinks) {
   }
   ASSERT_NO_FATALS(CheckScan(model));
   ASSERT_NO_FATALS(CheckRandomWalks(model, &rng, 10000));
+}
+
+// A reader loads the root, then the root splits, then the reader reads the old root's version: the
+// old root now covers only the left half, so the reader must start over from the new root.
+TEST_P(BTreeRepTest, ReaderRacesRootSplit) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "Sync points work only in debug builds";
+#endif
+  // Fills the root leaf, keeping the middle key for the split, so the split cuts the root in half.
+  constexpr int kNumKeys = 63;
+  constexpr int kMiddle = kNumKeys / 2;
+  auto key = [](int i) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "key%03d", i);
+    return MakeInternalKey(buf, 1);
+  };
+  for (int i = 0; i != kNumKeys; ++i) {
+    if (i != kMiddle) {
+      Add(key(i));
+    }
+  }
+
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"BTreeRep::Descend:RootLoaded", "BTreeRep::InsertIntoParent:NewRoot"},
+      {"BTreeRep::SplitLeaf:Done", "BTreeRep::Descend:ReadRootVersion"},
+  });
+  sync_point->EnableProcessing();
+  std::thread writer([this, &key] {
+    Add(key(kMiddle));
+  });
+  auto last = key(GetParam() ? 0 : kNumKeys - 1);
+  std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
+  auto entry = iter->Seek(last);
+  writer.join();
+  sync_point->DisableProcessing();
+  sync_point->ClearTrace();
+
+  ASSERT_NE(entry, nullptr);
+  ASSERT_EQ(KeyOf(entry), last);
 }
 
 // One writer inserts and erases while readers seek and step. A key inserted before a reader's
