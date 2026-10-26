@@ -15,8 +15,13 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -94,35 +99,48 @@ public class SetFlagInMemory extends ServerSubTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       if (!taskParams().updateMasterAddrs) {
-        // Get the user provided Ysql pg conf csv gflag values and the pgaudit ones from the audit
-        // log
-        // config on a universe (this will be present only if DB audit log is enabled), and merge
-        // them
-        // both before setting the value in memory.
         String userProvidedYsqlPgConfCsv = gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-        String auditLogYsqlPgConfCsv =
-            GFlagsUtil.getYsqlPgConfCsv(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig());
-        String queryLogYsqlPgConfCsv =
-            GFlagsUtil.getYsqlPgConfCsv(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.getQueryLogConfig());
-        String queryAndAuditLogYsqlPgConfCsv =
-            GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
-        String finalYsqlPgConfCsv =
-            GFlagsUtil.mergeCSVs(queryAndAuditLogYsqlPgConfCsv, userProvidedYsqlPgConfCsv, true);
-        if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
-          // Keep the in-memory value matching the server's gflags file, which has the new install
-          // gflags only where they are applied. Merge default values for CSV gflags with user-set
-          // flag values.
-          if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
-            String newInstallYsqlPgConfCsv =
-                universe
-                    .getNewInstallGFlags(taskParams().serverType)
-                    .getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-            finalYsqlPgConfCsv =
-                GFlagsUtil.mergeCSVs(finalYsqlPgConfCsv, newInstallYsqlPgConfCsv, true);
+        // Read telemetry from the same source as the server's config: the VM config file has it
+        // only when the node's cluster has YSQL enabled, K8s helm overrides use only the
+        // export_telemetry_config row and only for tservers.
+        TelemetryConfig telemetryConfig = null;
+        if (!Util.isKubernetesBasedUniverse(universe)) {
+          NodeDetails node = universe.getNode(taskParams().nodeName);
+          Cluster cluster = node == null ? null : universe.getCluster(node.placementUuid);
+          if (cluster == null) {
+            cluster = universe.getUniverseDetails().getPrimaryCluster();
           }
-          gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
+          if (cluster.userIntent.enableYSQL) {
+            telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+          }
+        } else if (taskParams().serverType == ServerType.TSERVER) {
+          telemetryConfig =
+              OtelCollectorUtil.getPersistedTelemetryConfig(universe.getUniverseUUID());
+        }
+        String telemetryYsqlPgConfCsv =
+            telemetryConfig == null
+                ? ""
+                : GFlagsUtil.getYsqlPgConfCsv(
+                    telemetryConfig.getAuditLogConfig(), telemetryConfig.getQueryLogConfig());
+        // Build the value in the same order as the server's gflags file (user, then new install
+        // gflags where they are applied, then telemetry over both): GFlagsUpgrade compares the
+        // in-memory string with the target.
+        String baseYsqlPgConfCsv = userProvidedYsqlPgConfCsv;
+        if (GFlagsUtil.areNewInstallGFlagsApplied(universe)) {
+          baseYsqlPgConfCsv =
+              GFlagsUtil.mergeCSVs(
+                  baseYsqlPgConfCsv,
+                  universe
+                      .getNewInstallGFlags(taskParams().serverType)
+                      .getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
+                  true);
+        }
+        if (StringUtils.isNotBlank(baseYsqlPgConfCsv)
+            || StringUtils.isNotBlank(telemetryYsqlPgConfCsv)) {
+          gflags.put(
+              GFlagsUtil.YSQL_PG_CONF_CSV,
+              GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                  baseYsqlPgConfCsv, telemetryYsqlPgConfCsv));
         }
       }
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling

@@ -3434,18 +3434,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         (node, params) -> {
           params.force = true;
           params.gflags = new HashMap<>();
-          addUserYsqlPgConfCsv(params.gflags, universe, node, ServerType.TSERVER);
+          Map<String, String> oldGFlags =
+              GFlagsUtil.getGFlagsForNode(
+                  node,
+                  ServerType.TSERVER,
+                  universe.getUniverseDetails().getPrimaryCluster(),
+                  universe.getUniverseDetails().clusters);
+          addUserYsqlPgConfCsv(params.gflags, oldGFlags);
 
           if (action == XClusterUniverseAction.PAUSE) {
             params.gflags.put(
                 GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, Integer.toString(Integer.MAX_VALUE));
           } else if (action == XClusterUniverseAction.RESUME) {
-            Map<String, String> oldGFlags =
-                GFlagsUtil.getGFlagsForNode(
-                    node,
-                    ServerType.TSERVER,
-                    universe.getUniverseDetails().getPrimaryCluster(),
-                    universe.getUniverseDetails().clusters);
             params.gflags.put(
                 GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN,
                 oldGFlags.getOrDefault(GFlagsUtil.LOG_MIN_SECONDS_TO_RETAIN, "900"));

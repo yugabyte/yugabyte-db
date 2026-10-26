@@ -396,6 +396,37 @@ public class TlsToggleTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testTlsToggleNonRestartSetsNewInstallYsqlPgConfCsv() throws Exception {
+    UUID rootCA = UUID.randomUUID();
+    prepareUniverse(false, false, false, rootCA, rootCA);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(
+                  TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+              universe.setNewInstallGFlags(newInstallGFlags);
+            },
+            false);
+    // No user or telemetry entries: the in-memory value must still match the new install entries
+    // in the server's gflags file.
+    TlsToggleParams taskParams =
+        getTaskParams(true, false, false, rootCA, null, UpgradeOption.NON_ROLLING_UPGRADE);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockClient, atLeastOnce())
+        .setFlag(
+            any(HostAndPort.class),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq("yb_enable_cbo=on"),
+            anyBoolean());
+  }
+
+  @Test
   public void testTlsToggleWithoutChangeInParams() {
     TlsToggleParams taskParams = new TlsToggleParams();
     assertThrows(RuntimeException.class, () -> submitTask(taskParams));

@@ -66,6 +66,16 @@ import play.libs.Json;
 
 public class GFlagsUtilTest extends FakeDBApplication {
 
+  /**
+   * ysql_pg_conf_csv for user log_statement=DDL, new install yb_enable_cbo=on, and query logging
+   * with log_statement=MOD and other defaults. The gflags file and the in-memory value must both
+   * have this exact string (GFlagsUpgradeTest checks the in-memory one).
+   */
+  public static final String USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV =
+      "log_statement=MOD,yb_enable_cbo=on,log_duration=OFF,debug_print_plan=OFF,"
+          + "log_connections=OFF,log_disconnections=OFF,log_min_error_statement=ERROR,"
+          + "log_error_verbosity=DEFAULT,log_min_duration_statement=-1";
+
   @Mock private GFlagsValidation gFlagsValidation;
 
   @Before
@@ -1223,6 +1233,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
     queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
     Map<String, String> userGFlags =
         new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all,yb_enable_cbo=off"));
     Map<String, String> platformGFlags =
@@ -1240,6 +1251,88 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // User entries still win over non-telemetry platform defaults.
     assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=off"));
     assertFalse(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
+
+    // Without YSQL, getYSQLGFlags adds no telemetry entries, so the user value stays as is.
+    params.enableYSQL = false;
+    userGFlags = new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all"));
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, params);
+    assertEquals("log_statement=all", userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+  }
+
+  @Test
+  public void testProcessUserGFlagsPgConfOrderMatchesInMemoryOrder() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
+    // Platform value as getAllDefaultGFlags builds it: new install entries, then telemetry.
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                    "yb_enable_cbo=on", GFlagsUtil.getYsqlPgConfCsv(params))));
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL"));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, false, null, params);
+
+    assertEquals(
+        USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV, userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+  }
+
+  @Test
+  public void testOverrideWithTelemetryYsqlPgConfCsv() {
+    // No conflict: the base keeps its exact string and new keys are appended.
+    String base = mergeCSVs("yb_enable_cbo=off,log_statement=MOD", "", true);
+    assertEquals(base, GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(base, "log_statement=MOD"));
+    assertEquals(
+        "yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("yb_enable_cbo=off", "log_duration=ON"));
+    // Conflict: the telemetry value replaces the base one in place.
+    assertEquals(
+        "log_statement=MOD,yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "log_statement=all,yb_enable_cbo=off", "log_statement=MOD,log_duration=ON"));
+    // Keys match exactly; a case variant stays, and the telemetry entry after it wins in
+    // PostgreSQL.
+    assertEquals(
+        "Log_Statement=all,log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("Log_Statement=all", "log_statement=MOD"));
+    // As in mergeCSVs, the first base entry for a key wins.
+    assertEquals(
+        "work_mem=4MB,log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "work_mem=4MB,work_mem=64MB", "log_statement=MOD"));
+    assertEquals(
+        "log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, "log_statement=MOD"));
+    assertEquals("a=1", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("a=1", ""));
+  }
+
+  @Test
+  public void testGetLogLinePrefixPrefersQueryLogConfig() {
+    String userCsv = mergeCSVs("\"log_line_prefix='%m user '\"", "", true);
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogLinePrefix("%m api ");
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    assertEquals("%m api ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    // getYsqlPgConfCsv emits nothing for a disabled config, so the user value is in effect.
+    ysqlQueryLogConfig.setEnabled(false);
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(null, userCsv));
+    assertEquals(
+        GFlagsUtil.getLogLinePrefix(null, ""),
+        GFlagsUtil.getLogLinePrefix(queryLogConfig, "yb_enable_cbo=on"));
   }
 
   @Test
