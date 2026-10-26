@@ -221,6 +221,23 @@ message TSRegistrationPB {
   optional VersionInfoPB version_info = 4;
 }
 
+// Tserver list handed to tservers by TSHeartbeat. The version is the
+// master's tserver-list version: the leader term in the high 32 bits, a per-leader change
+// counter in the low 32. A tserver echoes it back and gets only the changes since then.
+message TServerListUpdatePB {
+  optional uint64 version = 1;
+  // The list is complete and replaces the receiver's view; otherwise it is a delta.
+  optional bool full = 2;
+  message Entry {
+    optional NodeInstancePB instance = 1;
+    optional TSRegistrationPB registration = 2;
+    optional bool alive = 3;
+  }
+  repeated Entry tservers = 3;
+  // Permanent uuids of tservers removed or replaced since the requested version.
+  repeated bytes removed = 4;
+}
+
 message TServerMetricsPB {
   optional int64 total_sst_file_size = 1;
   optional int64 total_ram_usage = 2;

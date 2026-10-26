@@ -381,8 +381,18 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // since its last heartbeat.
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
+  // TSManager's tserver-list change counter at the last change tservers see (registration,
+  // state); the key of this tserver's entry in TSManager::tserver_list_changes_.
+  uint32_t tserver_list_stamp() const {
+    return tserver_list_stamp_.load(std::memory_order_acquire);
+  }
+  void set_tserver_list_stamp(uint32_t stamp) {
+    tserver_list_stamp_.store(stamp, std::memory_order_release);
+  }
+
  private:
   mutable rw_spinlock mutex_;
+  std::atomic<uint32_t> tserver_list_stamp_{0};
   template <class TProxy>
   Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
