@@ -233,14 +233,7 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 		Desc string
 		Cmd  string
 	}{
-		{
-			"make-yb-otel-collector-dir",
-			fmt.Sprintf(
-				"mkdir -p %s && chmod 0755 %s",
-				otelCollectorDirectory,
-				otelCollectorDirectory,
-			),
-		},
+		ensureOtelCollectorDirStep(ybHome),
 		{
 			"untar-otel-collector",
 			fmt.Sprintf(
@@ -431,8 +424,8 @@ func (h *InstallOtelCollector) installedOtelCollectorUnit() (string, error) {
 	return "", nil
 }
 
-// ensureOtelCollectorDirStep creates <yb_home>/otel-collector for paths that write into it
-// without the package setup, which otherwise creates it.
+// ensureOtelCollectorDirStep creates <yb_home>/otel-collector. The package setup, the disable
+// path and the log_cleanup_env write all use it, so they create the directory the same way.
 func ensureOtelCollectorDirStep(ybHome string) struct {
 	Desc string
 	Cmd  string
