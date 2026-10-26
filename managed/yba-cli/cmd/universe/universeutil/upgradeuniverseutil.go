@@ -453,30 +453,21 @@ func RemoveOrAddZones(
 	return cloudList, nil
 }
 
-// FindClusterByType finds the cluster by type
-func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
-	return util.FindClusterByType(clusters, clusterType)
-}
-
-// MustFindPrimaryCluster returns the primary cluster, or exits if the universe has none
+// MustFindPrimaryCluster returns the primary cluster and its index in clusters,
+// or exits if the universe has none
 func MustFindPrimaryCluster(
 	clusters []ybaclient.Cluster,
 	universeName, universeUUID string,
-) ybaclient.Cluster {
-	cluster := FindClusterByType(clusters, util.PrimaryClusterType)
-	if IsClusterEmpty(cluster) {
-		logrus.Fatalln(
+) (ybaclient.Cluster, int) {
+	cluster, idx := util.FindClusterByType(clusters, util.PrimaryClusterType)
+	if idx < 0 {
+		logrus.Fatal(
 			formatter.Colorize(
 				"No primary cluster found in universe "+universeName+" ("+universeUUID+")\n",
 				formatter.RedColor),
 		)
 	}
-	return cluster
-}
-
-// IsClusterEmpty checks if a cluster is empty/not found
-func IsClusterEmpty(cluster ybaclient.Cluster) bool {
-	return cluster.GetClusterType() == ""
+	return cluster, idx
 }
 
 // IsDeviceInfoEmpty checks if a device info is empty/not found

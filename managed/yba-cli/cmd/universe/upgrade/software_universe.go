@@ -79,7 +79,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 			clusters := universeDetails.GetClusters()
 			var oldYBDBVersion string
 			if len(clusters) > 0 {
-				primaryCluster := universeutil.MustFindPrimaryCluster(
+				primaryCluster, _ := universeutil.MustFindPrimaryCluster(
 					clusters, universeName, universe.GetUniverseUUID())
 				userIntent := primaryCluster.GetUserIntent()
 				oldYBDBVersion = userIntent.GetYbSoftwareVersion()
@@ -124,7 +124,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 			)
 		}
 		var oldYBDBVersion string
-		primaryCluster := universeutil.MustFindPrimaryCluster(
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
 			clusters, universeName, universeUUID)
 		userIntent := primaryCluster.GetUserIntent()
 		oldYBDBVersion = userIntent.GetYbSoftwareVersion()

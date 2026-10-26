@@ -80,7 +80,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		primaryCluster := universeutil.MustFindPrimaryCluster(
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
 			clusters, universeName, universeUUID)
 		primaryUserIntent := primaryCluster.GetUserIntent()
 		enableClientToNodeEncrypt := primaryUserIntent.GetEnableClientToNodeEncrypt()

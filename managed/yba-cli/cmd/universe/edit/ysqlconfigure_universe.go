@@ -133,7 +133,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 
 		req := ybaclient.ConfigureYSQLFormData{}
 
-		primaryCluster := universeutil.MustFindPrimaryCluster(
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
 			clusters, universeName, universeUUID)
 		userIntent := primaryCluster.GetUserIntent()
 

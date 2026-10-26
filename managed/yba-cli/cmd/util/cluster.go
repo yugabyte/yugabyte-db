@@ -11,23 +11,18 @@ import (
 	ybaclient "github.com/yugabyte/platform-go-client"
 )
 
-// FindClusterIndexByType returns the index of the cluster by type, or -1 if not found.
+// FindClusterByType returns the cluster of the given type and its index in clusters.
+// If no cluster matches, it returns an empty cluster and -1.
 // Do not assume the primary cluster is at index 0.
-func FindClusterIndexByType(clusters []ybaclient.Cluster, clusterType string) int {
+func FindClusterByType(
+	clusters []ybaclient.Cluster,
+	clusterType string,
+) (ybaclient.Cluster, int) {
 	for idx, cluster := range clusters {
 		if strings.EqualFold(cluster.GetClusterType(), clusterType) {
-			return idx
+			return cluster, idx
 		}
 	}
 	logrus.Debug("No cluster found with type: ", clusterType)
-	return -1
-}
-
-// FindClusterByType returns the cluster by type, or an empty cluster if not found
-func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
-	idx := FindClusterIndexByType(clusters, clusterType)
-	if idx < 0 {
-		return ybaclient.Cluster{}
-	}
-	return clusters[idx]
+	return ybaclient.Cluster{}, -1
 }

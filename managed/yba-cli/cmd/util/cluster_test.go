@@ -16,29 +16,30 @@ func newCluster(clusterType string) ybaclient.Cluster {
 	return c
 }
 
-func TestFindClusterIndexByType(t *testing.T) {
+func TestFindClusterByType(t *testing.T) {
 	// Read replica first: the primary cluster is not always at index 0.
 	clusters := []ybaclient.Cluster{
 		newCluster(ReadReplicaClusterType),
 		newCluster(PrimaryClusterType),
 	}
-	if got := FindClusterIndexByType(clusters, PrimaryClusterType); got != 1 {
-		t.Errorf("primary index = %d, want 1", got)
+	tests := []struct {
+		name        string
+		clusters    []ybaclient.Cluster
+		clusterType string
+		wantIdx     int
+		wantType    string
+	}{
+		{"primary not at index 0", clusters, PrimaryClusterType, 1, PrimaryClusterType},
+		{"case insensitive", clusters, "primary", 1, PrimaryClusterType},
+		{"read replica", clusters, ReadReplicaClusterType, 0, ReadReplicaClusterType},
+		{"missing primary", clusters[:1], PrimaryClusterType, -1, ""},
+		{"nil clusters", nil, PrimaryClusterType, -1, ""},
 	}
-	if got := FindClusterIndexByType(clusters, "primary"); got != 1 {
-		t.Errorf("case-insensitive primary index = %d, want 1", got)
-	}
-	if got := FindClusterIndexByType(clusters, ReadReplicaClusterType); got != 0 {
-		t.Errorf("read replica index = %d, want 0", got)
-	}
-	if got := FindClusterIndexByType(clusters[:1], PrimaryClusterType); got != -1 {
-		t.Errorf("missing primary index = %d, want -1", got)
-	}
-	if got := FindClusterByType(clusters, PrimaryClusterType); got.GetClusterType() !=
-		PrimaryClusterType {
-		t.Errorf("FindClusterByType returned type %q", got.GetClusterType())
-	}
-	if got := FindClusterByType(nil, PrimaryClusterType); got.GetClusterType() != "" {
-		t.Errorf("FindClusterByType on nil returned type %q", got.GetClusterType())
+	for _, tt := range tests {
+		got, idx := FindClusterByType(tt.clusters, tt.clusterType)
+		if idx != tt.wantIdx || got.GetClusterType() != tt.wantType {
+			t.Errorf("%s: got (%q, %d), want (%q, %d)",
+				tt.name, got.GetClusterType(), idx, tt.wantType, tt.wantIdx)
+		}
 	}
 }

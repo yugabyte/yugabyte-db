@@ -163,7 +163,7 @@ func (c *Context) CPUArchitecture() string {
 
 func (c *Context) primaryUserIntent() ybaclient.UserIntent {
 	details := c.u.GetUniverseDetails()
-	primaryCluster := util.FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
+	primaryCluster, _ := util.FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
 	return primaryCluster.GetUserIntent()
 }
 
@@ -196,11 +196,25 @@ func (c *Context) UseSystemd() string {
 	return fmt.Sprintf("%t", userIntent.GetUseSystemd())
 }
 
+// clustersPrimaryFirst returns the clusters with the primary cluster first, so that
+// comma-separated columns list the primary value first
+func (c *Context) clustersPrimaryFirst() []ybaclient.Cluster {
+	details := c.u.GetUniverseDetails()
+	clusters := details.GetClusters()
+	_, idx := util.FindClusterByType(clusters, util.PrimaryClusterType)
+	if idx <= 0 {
+		return clusters
+	}
+	ordered := make([]ybaclient.Cluster, 0, len(clusters))
+	ordered = append(ordered, clusters[idx])
+	ordered = append(ordered, clusters[:idx]...)
+	return append(ordered, clusters[idx+1:]...)
+}
+
 // Nodes fetches the no. of nodes
 func (c *Context) Nodes() string {
-	details := c.u.GetUniverseDetails()
 	numNodes := ""
-	for i, c := range details.GetClusters() {
+	for i, c := range c.clustersPrimaryFirst() {
 		userIntent := c.GetUserIntent()
 		if i != 0 {
 			numNodes = fmt.Sprintf("%s,%s", numNodes,
@@ -214,9 +228,8 @@ func (c *Context) Nodes() string {
 
 // RF fetches replication factor of the primary cluster
 func (c *Context) RF() string {
-	details := c.u.GetUniverseDetails()
 	rf := ""
-	for i, c := range details.GetClusters() {
+	for i, c := range c.clustersPrimaryFirst() {
 		userIntent := c.GetUserIntent()
 		if i != 0 {
 			rf = fmt.Sprintf("%s,%s", rf,
@@ -230,9 +243,8 @@ func (c *Context) RF() string {
 
 // DedicatedMasters fetches if master is placed on a dedicated node
 func (c *Context) DedicatedMasters() string {
-	details := c.u.GetUniverseDetails()
 	dedicatedNodes := ""
-	for i, c := range details.GetClusters() {
+	for i, c := range c.clustersPrimaryFirst() {
 		userIntent := c.GetUserIntent()
 		if i != 0 {
 			dedicatedNodes = fmt.Sprintf("%s,%s", dedicatedNodes,

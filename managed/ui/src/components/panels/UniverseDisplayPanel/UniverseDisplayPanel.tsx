@@ -63,7 +63,8 @@ export const UniverseDisplayPanel = ({
     (provider) => (providerUuidToName[provider.uuid] = provider.name)
   );
   const hasCronBasedUniverse = universeList.data?.some((universe: Universe) => {
-    return getPrimaryCluster(universe.universeDetails.clusters)?.userIntent.useSystemd === false;
+    const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
+    return !!primaryCluster && !primaryCluster.userIntent.useSystemd;
   });
 
   const pausedUniverseUuids = new Set<string>();

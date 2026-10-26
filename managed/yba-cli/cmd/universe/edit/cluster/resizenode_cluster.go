@@ -74,16 +74,8 @@ var resizeNodeCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 
-		primaryIndex := util.FindClusterIndexByType(clusters, util.PrimaryClusterType)
-
-		if primaryIndex < 0 {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
-
-		cluster := clusters[primaryIndex]
+		cluster, primaryIndex := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 		userIntent := cluster.GetUserIntent()
 		deviceInfo := userIntent.GetDeviceInfo()
 

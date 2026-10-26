@@ -75,7 +75,7 @@ var runSampleAppsUniverseCmd = &cobra.Command{
 
 		}
 
-		primaryCluster := universeutil.MustFindPrimaryCluster(
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
 			clusters, universeName, universe.GetUniverseUUID())
 		userIntent := primaryCluster.GetUserIntent()
 		providerCode := userIntent.GetProviderType()
