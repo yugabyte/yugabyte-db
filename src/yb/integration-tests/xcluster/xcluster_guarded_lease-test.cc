@@ -44,6 +44,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_util.h"
@@ -71,6 +72,8 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_lease_relinquish_leadership);
 
+METRIC_DECLARE_gauge_int64(xcluster_guarded_info_lease_held);
+
 using namespace std::literals;
 
 namespace yb {
@@ -88,6 +91,7 @@ using pgwrapper::PGUint64;
 class XClusterGuardedLeaseTest : public PgMiniTestBase {
  protected:
   virtual MonoDelta GetLeaseDuration() const { return {10s}; }
+  virtual bool ShouldEnforceXClusterGuardedLease() const { return true; }
   static constexpr auto kUnavailableErrorMsg =
       "forbidden because the xCluster role of the database is currently unavailable";
   static constexpr auto kOidCountUnavailableErrorMsg =
@@ -96,7 +100,8 @@ class XClusterGuardedLeaseTest : public PgMiniTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) =
         narrow_cast<uint32_t>(GetLeaseDuration().ToMilliseconds());
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) =
+        ShouldEnforceXClusterGuardedLease();
     PgMiniTestBase::SetUp();
   }
 
@@ -764,6 +769,80 @@ TEST_F(XClusterGuardedLeaseLeadershipTest, TabletGetsLeaderWhenLeaseArrivesAfter
       cluster_.get(), tablet_id,
       CoarseMonoClock::Now() +
           (FLAGS_leader_failure_exp_backoff_max_delta_ms * 1ms + 10s) * kTimeMultiplier));
+}
+
+class XClusterGuardedLeaseGaugeTest : public XClusterGuardedLeaseLeadershipTest {
+ protected:
+  static Result<int64_t> GetLeaseGauge(tserver::MiniTabletServer& tserver) {
+    auto gauge = tserver.server()->metric_entity()->FindOrNull<FunctionGauge<int64_t>>(
+        METRIC_xcluster_guarded_info_lease_held);
+    SCHECK(gauge, NotFound, "TServer has no xcluster_guarded_info_lease_held gauge");
+    return gauge->value();
+  }
+
+  Status WaitForLeaseGaugeToBe(tserver::MiniTabletServer& tserver, int64_t value) {
+    return WaitFor(
+        [&tserver, value]() -> Result<bool> {
+          return VERIFY_RESULT(GetLeaseGauge(tserver)) == value;
+        },
+        GetLeaseDuration() + MonoDelta(10s * kTimeMultiplier),
+        Format("Wait for xcluster_guarded_info_lease_held to be $0", value));
+  }
+
+  Status WaitForLeaseGaugeOnAllTServersToBe(int64_t value) {
+    for (const auto& tserver : cluster_->mini_tablet_servers()) {
+      RETURN_NOT_OK(WaitForLeaseGaugeToBe(*tserver, value));
+    }
+    return Status::OK();
+  }
+
+  // Fails if any TServer other than the leaseless one reports no lease.
+  Status ExpectOtherTServersHoldLease() {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      if (i != kLeaselessTServerIndex) {
+        SCHECK_EQ(
+            VERIFY_RESULT(GetLeaseGauge(GetTServer(i))), 1, IllegalState,
+            Format("TServer $0 reports no lease", i));
+      }
+    }
+    return Status::OK();
+  }
+};
+
+// Checks that xcluster_guarded_info_lease_held starts at 1 on every TServer; that after one
+// TServer's lease runs out, it is 0 on that TServer and still 1 on the others; and that it returns
+// to 1 there once that TServer regains its lease.
+TEST_F(XClusterGuardedLeaseGaugeTest, GaugeTracksLease) {
+  ASSERT_OK(WaitForLeaseGaugeOnAllTServersToBe(1));
+
+  GetLeaselessTServer().FailHeartbeats(true);
+  ASSERT_OK(WaitForLeaseGaugeToBe(GetLeaselessTServer(), 0));
+  ASSERT_OK(ExpectOtherTServersHoldLease());
+
+  GetLeaselessTServer().FailHeartbeats(false);
+  ASSERT_OK(WaitForLeaseGaugeToBe(GetLeaselessTServer(), 1));
+}
+
+// Starts the cluster with enforce_xcluster_guarded_lease off.
+class XClusterGuardedLeaseGaugeEnforcementOffTest : public XClusterGuardedLeaseGaugeTest {
+ protected:
+  bool ShouldEnforceXClusterGuardedLease() const override { return false; }
+};
+
+// Checks that with enforce_xcluster_guarded_lease off, xcluster_guarded_info_lease_held still
+// tracks the lease itself: after one TServer's lease runs out, it is 0 on that TServer even though
+// HasXClusterGuardedInfoLease() is still true there, and it returns to 1 there once that TServer
+// regains its lease.
+TEST_F(XClusterGuardedLeaseGaugeEnforcementOffTest, GaugeTracksTrueLease) {
+  ASSERT_OK(WaitForLeaseGaugeOnAllTServersToBe(1));
+
+  GetLeaselessTServer().FailHeartbeats(true);
+  ASSERT_OK(WaitForLeaseGaugeToBe(GetLeaselessTServer(), 0));
+  ASSERT_TRUE(GetLeaselessTServer().server()->GetXClusterContext().HasXClusterGuardedInfoLease());
+  ASSERT_OK(ExpectOtherTServersHoldLease());
+
+  GetLeaselessTServer().FailHeartbeats(false);
+  ASSERT_OK(WaitForLeaseGaugeToBe(GetLeaselessTServer(), 1));
 }
 
 // Runs the real yb-tserver with the connection manager enabled and the YSQL lease disabled,

@@ -770,6 +770,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
+  int64_t GetXClusterGuardedInfoLeaseHeldForMetrics() const;
+
   std::map<std::string, std::string> ValidateConfCsvViaPg(
       const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
@@ -779,6 +781,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   HostPort pgsql_proxy_bind_address_;
 
   std::unique_ptr<TserverXClusterContext> xcluster_context_;
+
+  // Declared after xcluster_context_ so it detaches the lease gauge, which reads
+  // xcluster_context_, before xcluster_context_ is destroyed.
+  std::shared_ptr<void> xcluster_guarded_info_lease_metric_detacher_;
 
   PgMutationCounter pg_node_level_mutation_counter_;
 

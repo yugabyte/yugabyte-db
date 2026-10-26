@@ -65,7 +65,12 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
 
+  // See tserver_xcluster_context_if.h for specification.
   bool HasXClusterGuardedInfoLease() const override EXCLUDES(mutex_);
+
+  // Pure check if we have an xCluster-guarded information lease; ignores
+  // enforce_xcluster_guarded_lease.
+  bool HasUnexpiredXClusterGuardedInfoLease() const EXCLUDES(mutex_);
 
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
@@ -88,6 +93,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
  private:
   // Whether xCluster-guarded information may be given out.
   bool HasXClusterGuardedInfoUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool HasUnexpiredLeaseUnlocked() const REQUIRES_SHARED(mutex_);
 
   XClusterSafeTimeMap safe_time_map_;
 
