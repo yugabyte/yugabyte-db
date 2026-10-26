@@ -54,14 +54,12 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
 
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
-#include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -80,7 +78,10 @@
 
 using google::protobuf::Descriptor;
 using google::protobuf::DescriptorPool;
+using google::protobuf::DescriptorProto;
 using google::protobuf::DynamicMessageFactory;
+using google::protobuf::EnumDescriptor;
+using google::protobuf::EnumDescriptorProto;
 using google::protobuf::FieldDescriptor;
 using google::protobuf::FileDescriptor;
 using google::protobuf::FileDescriptorProto;
@@ -90,15 +91,14 @@ using google::protobuf::io::CodedInputStream;
 using google::protobuf::Message;
 using google::protobuf::MessageLite;
 using google::protobuf::Reflection;
+using google::protobuf::RepeatedPtrField;
 using google::protobuf::SimpleDescriptorDatabase;
 using yb::crc::Crc;
 using yb::pb_util::internal::SequentialFileFileInputStream;
 using yb::pb_util::internal::WritableFileOutputStream;
-using std::deque;
 using std::endl;
 using std::shared_ptr;
 using std::string;
-using std::unordered_set;
 using std::vector;
 using std::ostream;
 using strings::Utf8SafeCEscape;
@@ -405,8 +405,7 @@ Status WritablePBContainerFile::Init(const Message& msg) {
 
   // Serialize the supplemental header.
   ContainerSupHeaderPB sup_header;
-  PopulateDescriptorSet(msg.GetDescriptor()->file(),
-                        sup_header.mutable_protos());
+  *sup_header.mutable_protos() = PopulateDescriptorSet(*msg.GetDescriptor());
   sup_header.set_pb_type(msg.GetTypeName());
   RETURN_NOT_OK_PREPEND(AppendMsgToBuffer(sup_header, &buf),
                         "Failed to prepare supplemental header for writing");
@@ -484,45 +483,117 @@ Status WritablePBContainerFile::AppendMsgToBuffer(const Message& msg, faststring
   return Status::OK();
 }
 
-void WritablePBContainerFile::PopulateDescriptorSet(
-    const FileDescriptor* desc, FileDescriptorSet* output) {
-  // Because we don't compile protobuf with TSAN enabled, copying the
-  // static PB descriptors in this function ends up triggering a lot of
-  // race reports. We suppress the reports, but TSAN still has to walk
-  // the stack, etc, and this function becomes very slow. So, we ignore
-  // TSAN here.
-  debug::ScopedTSANIgnoreReadsAndWrites ignore_tsan;
+namespace {
 
-  FileDescriptorSet all_descs;
-
-  // Tracks all schemas that have been added to 'unemitted' at one point
-  // or another. Is a superset of 'unemitted' and only ever grows.
-  unordered_set<const FileDescriptor*> processed;
-
-  // Tracks all remaining unemitted schemas.
-  deque<const FileDescriptor*> unemitted;
-
-  InsertOrDie(&processed, desc);
-  unemitted.push_front(desc);
-  while (!unemitted.empty()) {
-    const FileDescriptor* proto = unemitted.front();
-
-    // The current schema is emitted iff we've processed (i.e. emitted) all
-    // of its dependencies.
-    bool emit = true;
-    for (int i = 0; i < proto->dependency_count(); i++) {
-      const FileDescriptor* dep = proto->dependency(i);
-      if (InsertIfNotPresent(&processed, dep)) {
-        unemitted.push_front(dep);
-        emit = false;
+// Schemas of a message type and of the types it needs: those of its fields, recursively, and the
+// messages that contain nested ones. Embedding whole files with all their imports costs tens of KB.
+class ReachableTypes {
+ public:
+  explicit ReachableTypes(const Descriptor& root) {
+    AddMessage(&root);
+    for (size_t i = 0; i != messages_.size(); ++i) {
+      const auto* message = messages_[i];
+      for (int j = 0; j != message->field_count(); ++j) {
+        const auto* field = message->field(j);
+        if (field->message_type()) {
+          AddMessage(field->message_type());
+        } else if (field->enum_type() && seen_enums_.insert(field->enum_type()).second) {
+          AddFile(field->enum_type()->file());
+          AddMessage(field->enum_type()->containing_type());
+        }
       }
     }
-    if (emit) {
-      unemitted.pop_front();
-      proto->CopyTo(all_descs.mutable_file()->Add());
+  }
+
+  FileDescriptorSet Result() const {
+    FileDescriptorSet result;
+    for (const auto* file : files_) {
+      auto& proto = *result.add_file();
+      proto.set_name(file->name());
+      proto.set_package(file->package());
+      if (file->syntax() == FileDescriptor::SYNTAX_PROTO3) {
+        proto.set_syntax("proto3");
+      }
+      std::unordered_set<const FileDescriptor*> dependencies;
+      for (int i = 0; i != file->message_type_count(); ++i) {
+        CopyMessage(file->message_type(i), proto.mutable_message_type(), &dependencies);
+      }
+      for (int i = 0; i != file->enum_type_count(); ++i) {
+        CopyEnum(file->enum_type(i), proto.mutable_enum_type());
+      }
+      // In discovery order, so that the same message type always gets the same bytes.
+      for (const auto* dependency : files_) {
+        if (dependency != file && dependencies.contains(dependency)) {
+          proto.add_dependency(dependency->name());
+        }
+      }
+    }
+    return result;
+  }
+
+ private:
+  // A nested type needs the message that contains it.
+  void AddMessage(const Descriptor* message) {
+    if (!message || !seen_messages_.insert(message).second) {
+      return;
+    }
+    messages_.push_back(message);
+    AddFile(message->file());
+    AddMessage(message->containing_type());
+  }
+
+  void AddFile(const FileDescriptor* file) {
+    if (seen_files_.insert(file).second) {
+      files_.push_back(file);
     }
   }
-  all_descs.Swap(output);
+
+  // Appends message to protos if it is reachable.
+  void CopyMessage(
+      const Descriptor* message, RepeatedPtrField<DescriptorProto>* protos,
+      std::unordered_set<const FileDescriptor*>* dependencies) const {
+    if (!seen_messages_.contains(message)) {
+      return;
+    }
+    auto* proto = protos->Add();
+    message->CopyTo(proto);
+    proto->clear_nested_type();
+    proto->clear_enum_type();
+    proto->clear_extension();
+    for (int i = 0; i != message->field_count(); ++i) {
+      const auto* field = message->field(i);
+      if (field->message_type()) {
+        dependencies->insert(field->message_type()->file());
+      } else if (field->enum_type()) {
+        dependencies->insert(field->enum_type()->file());
+      }
+    }
+    for (int i = 0; i != message->nested_type_count(); ++i) {
+      CopyMessage(message->nested_type(i), proto->mutable_nested_type(), dependencies);
+    }
+    for (int i = 0; i != message->enum_type_count(); ++i) {
+      CopyEnum(message->enum_type(i), proto->mutable_enum_type());
+    }
+  }
+
+  void CopyEnum(
+      const EnumDescriptor* enum_type, RepeatedPtrField<EnumDescriptorProto>* protos) const {
+    if (seen_enums_.contains(enum_type)) {
+      enum_type->CopyTo(protos->Add());
+    }
+  }
+
+  std::vector<const Descriptor*> messages_;
+  std::unordered_set<const Descriptor*> seen_messages_;
+  std::unordered_set<const EnumDescriptor*> seen_enums_;
+  std::vector<const FileDescriptor*> files_;
+  std::unordered_set<const FileDescriptor*> seen_files_;
+};
+
+} // namespace
+
+FileDescriptorSet WritablePBContainerFile::PopulateDescriptorSet(const Descriptor& desc) {
+  return ReachableTypes(desc).Result();
 }
 
 ReadablePBContainerFile::ReadablePBContainerFile(std::unique_ptr<RandomAccessFile> reader)
@@ -745,6 +816,18 @@ Status ReadPBContainer(
 }
 
 } // namespace
+
+Result<bool> IsPBContainerFile(Env* env, const std::string& path) {
+  std::unique_ptr<RandomAccessFile> file;
+  RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
+  if (VERIFY_RESULT(file->Size()) < kPBContainerMagicLen) {
+    return false;
+  }
+  uint8_t scratch[kPBContainerMagicLen];
+  Slice magic;
+  RETURN_NOT_OK(env_util::ReadFully(file.get(), 0, kPBContainerMagicLen, &magic, scratch));
+  return magic == Slice(kPBContainerMagic, kPBContainerMagicLen);
+}
 
 Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
   return ReadPBContainer(env, path, msg);
