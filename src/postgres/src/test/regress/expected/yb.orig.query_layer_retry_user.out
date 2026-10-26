@@ -1,0 +1,37 @@
+--
+-- A query-layer retry of a whole transaction must leave the backend as an
+-- abort followed by a replay of the same command would.  AbortTransaction
+-- restores the user id that a SECURITY DEFINER function switched to; the
+-- retry did not, so the caller kept the definer's privileges.  Scenario:
+-- retry_alice calls a superuser-owned SECURITY DEFINER function that raises
+-- a retriable kAborted (YB001) on its first attempt only, keyed on a
+-- sequence; after the retry, current_user must be retry_alice.
+--
+CREATE ROLE retry_alice;
+CREATE SEQUENCE sd_attempt;
+GRANT USAGE ON SEQUENCE sd_attempt TO retry_alice;
+CREATE FUNCTION sd() RETURNS int LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF nextval('sd_attempt') = 1 THEN
+    RAISE EXCEPTION 'injected kAborted' USING ERRCODE = 'YB001';
+  END IF;
+  RETURN 1;
+END $$;
+GRANT EXECUTE ON FUNCTION sd() TO retry_alice;
+SET ROLE retry_alice;
+SELECT sd();
+ sd 
+----
+  1
+(1 row)
+
+SELECT current_user;
+ current_user 
+--------------
+ retry_alice
+(1 row)
+
+RESET ROLE;
+DROP FUNCTION sd();
+DROP SEQUENCE sd_attempt;
+DROP ROLE retry_alice;
