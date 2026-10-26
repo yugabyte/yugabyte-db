@@ -19,7 +19,10 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -305,5 +308,51 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
       if (!SystemUtil.IS_MAC)
         assertNotEquals("Pss mem usage didn't change.", c1PssMem2, c1PssMem1);
     }
+  }
+
+  /*
+   * REFRESH MATERIALIZED VIEW runs as YB_MATVIEW_REFRESH_DDL, a type a regular backend switches to
+   * for the duration of the refresh, and CONCURRENTLY writes its diff to a temp table. That I/O
+   * must still reach the backend's per-backend stats. A direct connection keeps every statement on
+   * the same backend.
+   */
+  @Test
+  public void testPerBackendStatsAcrossMatviewRefresh() throws Exception {
+    // The refresh only switches type outside legacy catalog-op mode, which is the release default
+    // but not the debug one.
+    Map<String, String> flags = new HashMap<>();
+    flags.put("enable_object_locking_for_table_locks", "true");
+    flags.put("ysql_enable_concurrent_ddl", "true");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    restartClusterWithFlags(flags, flags);
+
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .withTServer(0)
+             .connect();
+         Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE mv_base (k int PRIMARY KEY, v int)");
+      stmt.execute("INSERT INTO mv_base SELECT g, g FROM generate_series(1, 1000) g");
+      stmt.execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM mv_base");
+      stmt.execute("CREATE UNIQUE INDEX ON mv (k)");
+      stmt.execute("UPDATE mv_base SET v = v + 1");
+
+      long before = tempRelationIo(stmt);
+      stmt.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv");
+      long after = tempRelationIo(stmt);
+      assertTrue(String.format(
+          "the refresh's temp-table I/O should be counted (before %d, after %d)",
+          before, after), after > before);
+    }
+  }
+
+  // Flushes this backend's pending stats, then sums its temp-relation I/O operations.
+  private static long tempRelationIo(Statement stmt) throws Exception {
+    stmt.execute("SELECT pg_stat_force_next_flush()");
+    ResultSet rs = stmt.executeQuery(
+        "SELECT sum(coalesce(reads, 0) + coalesce(writes, 0) + coalesce(extends, 0)) " +
+        "FROM pg_stat_get_backend_io(pg_backend_pid()) WHERE object = 'temp relation'");
+    assertTrue(rs.next());
+    return rs.getLong(1);
   }
 }

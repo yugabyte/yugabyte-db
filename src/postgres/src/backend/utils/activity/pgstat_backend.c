@@ -396,7 +396,16 @@ pgstat_tracks_backend_bktype(BackendType bktype)
 		case B_WAL_WRITER:
 			return true;
 
-		/* YB_TODO_PG19MERGE: opt YB-only BackendTypes out of backend-stats tracking for now. */
+		/*
+		 * YB: All YB backend types are tracked by default. Before
+		 * excluding a type, check that it does neither of these:
+		 * - start out as a regular backend and switch type
+		 *   mid-statement, like YB_INDEX_BACKFILL_DDL and
+		 *   YB_MATVIEW_REFRESH_DDL. Its I/O would go uncounted, and its
+		 *   stats unreadable, until it switches back.
+		 * - do counted I/O, like YB_MATVIEW_REFRESH_DDL with its temp
+		 *   table.
+		 */
 		case YB_YSQL_CONN_MGR:
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
 		case YB_YSQL_CONN_MGR_CTRL:
@@ -407,7 +416,7 @@ pgstat_tracks_backend_bktype(BackendType bktype)
 		case YB_GLOBAL_VIEW_BACKEND:
 		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
 		case YB_XCLUSTER_SETUP_BACKEND:
-			return false;
+			return true;
 	}
 
 	return false;

@@ -104,6 +104,57 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
         return connections;
     }
 
+    /*
+     * Connection manager backends serve client sessions, so like ordinary backends and
+     * walsenders they get per-backend I/O and WAL statistics. Uses the default auth passthrough
+     * mode, which keeps control backends alive.
+     */
+    @Test
+    public void testPerBackendStats() throws Exception {
+        final List<String> connMgrBackendTypes = Arrays.asList(
+            "yb-conn-mgr worker connection", "yb-conn-mgr walsender",
+            "yb-conn-mgr control connection");
+
+        try (Connection client = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withUser("yugabyte")
+                 .withPassword("yugabyte")
+                 .connect();
+             Connection replication = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withUser("yugabyte")
+                 .withPassword("yugabyte")
+                 .replicationConnect();
+             Connection direct = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                 .withUser("yugabyte")
+                 .withPassword("yugabyte")
+                 .connect()) {
+            client.createStatement().execute("SELECT 1");
+            replication.createStatement().execute("IDENTIFY_SYSTEM");
+
+            Map<String, Integer> seen = new HashMap<>();
+            ResultSet rs = direct.createStatement().executeQuery(
+                "SELECT a.backend_type, a.pid, " +
+                "(SELECT count(*) FROM pg_stat_get_backend_io(a.pid)) AS io_rows, " +
+                "(SELECT wal_records FROM pg_stat_get_backend_wal(a.pid)) AS wal_records " +
+                "FROM pg_stat_activity a WHERE a.backend_type LIKE 'yb-conn-mgr%'");
+            while (rs.next()) {
+                String backendType = rs.getString("backend_type");
+                String context = backendType + " pid " + rs.getInt("pid");
+                assertTrue(context + " should have per-backend I/O stats",
+                    rs.getLong("io_rows") > 0);
+                assertNotNull(context + " should have per-backend WAL stats",
+                    rs.getObject("wal_records"));
+                seen.merge(backendType, 1, Integer::sum);
+            }
+            LOG.info("Connection manager backends checked: {}", seen);
+            for (String backendType : connMgrBackendTypes) {
+                assertTrue("expected a " + backendType + " backend", seen.containsKey(backendType));
+            }
+        }
+    }
+
     @Test
     public void testPgStatActivityAuthBackend() throws Exception {
         restartClusterWithFlags(Collections.emptyMap(), createTserverFlags(false, true));

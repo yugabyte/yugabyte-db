@@ -383,7 +383,8 @@ pgstat_tracks_io_bktype(BackendType bktype)
 		/*
 		 * YB: these are all backend-like processes that run queries or DDL, so
 		 * they do the same IO a regular backend does and are tracked the same
-		 * way.
+		 * way. Before excluding a type, also check the conditions listed in
+		 * pgstat_tracks_backend_bktype().
 		 */
 		case YB_YSQL_CONN_MGR:
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
