@@ -1002,10 +1002,8 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   };
   for (const auto& statement : rejected) {
     SCOPED_TRACE(statement);
-    auto status = conn.Execute(statement);
-    EXPECT_NOK(status);
-    EXPECT_STR_CONTAINS(
-        status.ToString(), "under relaxed read-after-commit visibility");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute(statement), "under relaxed read-after-commit visibility");
   }
   ASSERT_OK(conn.Execute("INSERT INTO tmp VALUES (1)"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM t")), 1);
@@ -1022,7 +1020,7 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
       "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
   for (const auto& statement : rejected) {
     SCOPED_TRACE(statement);
-    EXPECT_OK(statement.starts_with("SELECT")
+    ASSERT_OK(statement.starts_with("SELECT")
                   ? ResultToStatus(conn.Fetch(statement))
                   : conn.Execute(statement));
   }
@@ -1616,6 +1614,8 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
   auto internal = ASSERT_RESULT(CreateInternalPGConnBuilder(
       pg_host_port(), "yugabyte", /*user=*/"postgres", auth_key,
       /* deadline= */ std::nullopt).Connect());
+  ASSERT_OK(internal.Execute(
+      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));

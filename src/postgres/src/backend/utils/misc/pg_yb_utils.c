@@ -9216,24 +9216,21 @@ YbIsReadCommittedTxn()
  * key check misses a child row leaves an orphan. So relaxed mode enforces
  * the READ ONLY transaction checks, unless the GUC turns them off.
  *
- * SERIALIZABLE is exempt: pggate runs it in a SERIALIZABLE DocDB
- * transaction, and PgTxnManager::SetupReadTimeOptions returns before the
- * clamp for those. That holds for DDL only with the DDL transaction block
+ * SERIALIZABLE is exempt: pggate runs a SERIALIZABLE read-write
+ * transaction as a SERIALIZABLE DocDB transaction, and
+ * PgTxnManager::SetupReadTimeOptions returns before the clamp for those. A
+ * SERIALIZABLE READ ONLY transaction runs as SNAPSHOT and is clamped, but
+ * XactReadOnly already rejects its writes. That holds for DDL only with the DDL transaction block
  * on; legacy DDL mode is not covered. Fast-path writes never lose the
  * window either, but they are rejected, for simplicity: the executor
  * decides on the fast path only after the check.
- *
- * The catalog version update that ANALYZE runs is exempt, as it is from
- * XactReadOnly (yb_catalog_version.c). Object locks make its catalog read
- * safe without a window (PgTxnManager::ClampCatalogReadTime).
  */
 bool
 YbIsRelaxedReadOnly()
 {
 	return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
 		yb_relaxed_read_after_commit_visibility_read_only_check &&
-		!IsolationIsSerializable() &&
-		!yb_is_calling_internal_sql_for_ddl;
+		!IsolationIsSerializable();
 }
 
 bool

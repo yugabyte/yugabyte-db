@@ -636,13 +636,8 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			PreventCommandDuringRecovery(GetCommandTagName(commandtag));
 	}
 
-	/*
-	 * YB: BACKFILL INDEX is exempt. It brings its own READ TIME, so relaxed
-	 * mode never sets its read time. It also runs on an internal connection
-	 * that takes the cluster-wide default of yb_read_after_commit_visibility.
-	 */
+	/* YB */
 	if ((readonly_flags & COMMAND_OK_IN_READ_ONLY_TXN) == 0 &&
-		!IsA(parsetree, YbBackfillIndexStmt) &&
 		YbIsRelaxedReadOnly())
 		PreventCommandIfReadOnly(GetCommandTagName(CreateCommandTag(parsetree)));
 

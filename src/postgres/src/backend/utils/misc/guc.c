@@ -8418,7 +8418,7 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " skew before the read. Writes, row locks and DDL fail as"
 						 " in a READ ONLY transaction, unless"
 						 " yb_relaxed_read_after_commit_visibility_read_only_check"
-						 " is off. Statements at serializable isolation level are"
+						 " is off. Serializable read-write transactions are"
 						 " allowed: relaxed mode does not apply to them. When the"
 						 " check is off, relaxed mode also applies to writes,"
 						 " except fast path writes."
