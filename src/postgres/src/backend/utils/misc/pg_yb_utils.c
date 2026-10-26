@@ -146,6 +146,7 @@
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -1073,6 +1074,32 @@ yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
 				   yb_enable_ddl_savepoint_infra);
 }
 
+/*
+ * Returns the commit timestamp on the source of the transaction currently being
+ * applied, set by the apply worker or directly by an application through
+ * pg_replication_origin_xact_setup().
+ *
+ * Returned in microseconds since the Unix epoch, the domain HybridTime uses,
+ * rather than as a TimestampTz. Zero means there is nothing usable to send,
+ * which the caller treats the same as a local write. Whether the value fits in
+ * a HybridTime is checked by pggate.
+ */
+static int64_t
+YbGetSessionReplicationOriginTimestamp(void)
+{
+	TimestampTz ts = replorigin_session_origin_timestamp;
+
+	const int64_t unix_epoch_offset = ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+									   USECS_PER_DAY);
+
+	Assert(ts == 0 || IsTransactionOrTransactionBlock());
+
+	if (ts == 0 || TIMESTAMP_NOT_FINITE(ts) || ts > PG_INT64_MAX - unix_epoch_offset)
+		return 0;
+
+	return (int64_t) yb_timestamptz_to_micros_time_t(ts);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1101,6 +1128,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
 		};

@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
@@ -1507,9 +1508,10 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
-      if (req->options().xrepl_origin_id()) {
-        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
-      }
+      write_op->SetCdrMetadata({
+          .source_origin = req->options().xrepl_origin_id(),
+          .source_write_ht = HybridTime::FromPB(req->options().xrepl_source_write_ht()),
+      });
       if (origination_info.IsSet()) {
         write_op->SetOriginationInfo(origination_info);
       }

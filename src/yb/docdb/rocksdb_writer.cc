@@ -1636,20 +1636,23 @@ Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_k
 
 Status VectorIndexesUpdater::Feed(
     rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
-  if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+  auto row_value = value;
+  RETURN_NOT_OK(dockv::ValueControlFields::Decode(&row_value));
+
+  if (row_value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
     return Status::OK();
   }
 
   auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
-  auto packed_row_version = dockv::GetPackedRowVersion(value);
+  auto packed_row_version = dockv::GetPackedRowVersion(row_value);
   if (packed_row_version.has_value()) {
     switch (*packed_row_version) {
       case dockv::PackedRowVersion::kV1:
         return FeedPackedRow<dockv::PackedRowDecoderV1>(
-            handler, sizes.prefix_size, key, value);
+            handler, sizes.prefix_size, key, row_value);
       case dockv::PackedRowVersion::kV2:
         return FeedPackedRow<dockv::PackedRowDecoderV2>(
-            handler, sizes.prefix_size, key, value);
+            handler, sizes.prefix_size, key, row_value);
     }
     FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
   }

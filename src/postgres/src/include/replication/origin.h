@@ -70,4 +70,7 @@ extern const char *replorigin_identify(uint8 info);
 extern Size ReplicationOriginShmemSize(void);
 extern void ReplicationOriginShmemInit(void);
 
+/* YB declarations */
+extern void YbAtEOXact_ReplicationOrigin(void);
+
 #endif							/* PG_ORIGIN_H */

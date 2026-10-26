@@ -1076,6 +1076,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
+
+    // The origin is sent either way, because it is not only used for stamping - CDCSDK reports it
+    // on change records. CDR metadata is not stamped on the rows when xrepl_source_write_ht is
+    // absent.
+    if (auto origin_ts = pg_callbacks_.GetSessionReplicationOriginTimestamp();
+        origin_ts > 0 && static_cast<MicrosTime>(origin_ts) <= kMaxHybridTimePhysicalMicros) {
+      options.set_xrepl_source_write_ht(
+          HybridTime::FromMicros(static_cast<MicrosTime>(origin_ts)).ToUint64());
+    }
   }
 
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));

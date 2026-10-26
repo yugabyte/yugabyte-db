@@ -933,6 +933,10 @@ message PgPerformOptionsPB {
 
   // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
   fixed64 origination_ht = 38;
+
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  fixed64 xrepl_source_write_ht = 39;
 }
 
 message PgRequestSequenceNumPB {
