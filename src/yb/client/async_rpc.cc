@@ -531,16 +531,21 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
     // Set read time for consistent read only for sequences_data table or if the table is
     // transaction-enabled and consistent read is required.
-    //
-    // A SERIALIZABLE transaction's read point carries a read time while it reads the catalog
-    // snapshot. Only the forced snapshot reads use it; the transaction's other RPCs in the same
-    // flush, e.g. the catalog writes of a DDL, must stay without one.
-    if ((!serializable || data.force_snapshot_read) &&
-        (table()->id() == kPgSequencesDataTableId ||
-         (data.need_consistent_read &&
-          table()->InternalSchema().table_properties().is_transactional()))) {
+    if (table()->id() == kPgSequencesDataTableId ||
+        (data.need_consistent_read &&
+         table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
-      if (read_time) {
+      // A SERIALIZABLE transaction's read point carries a read time while it reads the catalog
+      // snapshot. Only the forced snapshot reads use it; the transaction's other RPCs in the same
+      // flush, e.g. the catalog writes of a DDL, must stay without one.
+      if (serializable && !data.force_snapshot_read) {
+        constexpr bool kIsRead = std::is_same_v<Req, tserver::LWReadRequestPB>;
+        LOG_IF(DFATAL,
+               read_time && kIsRead &&
+               !table()->InternalSchema().table_properties().is_ysql_catalog_table())
+            << "Read time should NOT be specified for serializable isolation: "
+            << read_time.ToString();
+      } else if (read_time) {
         has_read_time = true;
         read_time.AddToPB(&req_);
       }
@@ -563,9 +568,11 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     // the intents db and land in the regular db. Only this op's read time moves; the transaction
     // and its metadata are untouched.
     //
-    // A SERIALIZABLE RPC has a read time only for a forced snapshot read (see where read_time is
-    // set above). Other SERIALIZABLE reads don't need one: they read at the latest time, which is
-    // already above those rows.
+    // A SERIALIZABLE RPC has a read time only for a forced snapshot read of a catalog table, and
+    // skip_intents doesn't apply to catalog tables. Other SERIALIZABLE reads read at the latest
+    // time, which is already above those rows.
+    LOG_IF(DFATAL, serializable && data.read_at_in_txn_limit && has_read_time)
+        << "in_txn_limit read time for a serializable read";
     if (data.read_at_in_txn_limit && has_read_time) {
       if (!SetReadTimeToInTxnLimit(read_point, &req_)) {
         // Some sessions never pick a statement in_txn_limit -- PgClientSession::UpdateReadTime

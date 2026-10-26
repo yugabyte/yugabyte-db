@@ -3674,15 +3674,20 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
-    if (options.is_catalog_snapshot() && data->transaction &&
-        data->transaction->isolation() == SERIALIZABLE_ISOLATION) {
+    if (options.uses_catalog_snapshot()) {
+      const auto serializable =
+          data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
+      // Only the reads: a catalog read can share its Perform with buffered user-table writes.
       for (const auto& op_data : data->ops) {
-        if (!op_data.op->read_only() ||
-            !op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table()) {
+        if (!op_data.op->read_only()) {
           continue;
         }
+        RSTATUS_DCHECK(
+            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
+            IllegalState, "Non-catalog read $0 uses the catalog snapshot",
+            op_data.op->table()->name());
         auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
-        if (!IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
+        if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
           read_op.set_force_snapshot_read();
         }
       }
@@ -3973,7 +3978,7 @@ class PgClientSession::Impl {
         // Therefore, override the restarted read point here with the current time.
         // This override loses the restart read information until TODO(#31142) is fixed.
         RSTATUS_DCHECK(
-          options.is_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
           IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
@@ -4070,7 +4075,7 @@ class PgClientSession::Impl {
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
-          options.is_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
           IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();

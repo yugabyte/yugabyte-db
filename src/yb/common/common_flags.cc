@@ -177,12 +177,6 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTra
     "block instead of their separate transactions. Ensure DDL atomicity is "
     "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_serializable_catalog_snapshot_reads, kLocalVolatile,
-    false, true,
-    "With object locking, read the catalog in SERIALIZABLE transactions as snapshot reads at the "
-    "catalog read time, without read intents. Masters that predate this treat such reads as "
-    "SERIALIZABLE reads, so it must stay off until every master is upgraded.");
-
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
