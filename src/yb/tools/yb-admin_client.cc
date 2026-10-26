@@ -34,6 +34,8 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include <iomanip>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -57,6 +59,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_net.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
@@ -2317,7 +2320,11 @@ Status ClusterAdminClient::FillPlacementInfo(
   // It is possible that placement_info_splits is empty, that is ok.
   // It just means we have no placement constraints on the total num replicas.
 
-  std::unordered_map<std::string, int> placement_to_min_replicas;
+  struct ReplicaLimits {
+    int64_t min_num_replicas = 0;
+    std::optional<int64_t> max_num_replicas = 0;
+  };
+  std::unordered_map<std::string, ReplicaLimits> placement_to_replica_limits;
   for (auto& placement_info_split : placement_info_splits) {
     StripWhiteSpace(&placement_info_split);
     if (placement_info_split.empty()) {
@@ -2327,21 +2334,49 @@ Status ClusterAdminClient::FillPlacementInfo(
     std::vector<std::string> placement_block_split =
         strings::Split(placement_info_split, ":", strings::AllowEmpty());
 
-    if (placement_block_split.size() == 0 || placement_block_split.size() > 2) {
+    if (placement_block_split.empty() || placement_block_split.size() > 3 ||
+        std::any_of(
+            placement_block_split.begin(), placement_block_split.end(),
+            [](const auto& component) { return component.empty(); })) {
       return STATUS(
           InvalidCommand,
-          "Each placement block must be of the form 'cloud.region.zone:[min_replica_count]'. "
+          "Each placement block must be of the form "
+          "'cloud.region.zone[:min_replica_count[:max_replica_count]]'. "
           "Invalid placement block: " + placement_info_split);
     }
 
     int min_replicas = 1;
-    if (placement_block_split.size() == 2) {
+    if (placement_block_split.size() >= 2) {
       min_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[1]));
     }
-    placement_to_min_replicas[placement_block_split[0]] += min_replicas;
+    std::optional<int64_t> max_replicas;
+    if (placement_block_split.size() == 3) {
+      max_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[2]));
+    }
+
+    auto& replica_limits = placement_to_replica_limits[placement_block_split[0]];
+    replica_limits.min_num_replicas += min_replicas;
+    if (replica_limits.max_num_replicas && max_replicas) {
+      *replica_limits.max_num_replicas += *max_replicas;
+    } else {
+      replica_limits.max_num_replicas.reset();
+    }
   }
 
-  for (auto& [placement_block, min_replicas] : placement_to_min_replicas) {
+  for (const auto& [placement_block, replica_limits] : placement_to_replica_limits) {
+    if (replica_limits.min_num_replicas < std::numeric_limits<int32_t>::min() ||
+        replica_limits.min_num_replicas > std::numeric_limits<int32_t>::max()) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated min replica count is out of range for placement block $0",
+          placement_block);
+    }
+    if (replica_limits.max_num_replicas &&
+        (*replica_limits.max_num_replicas < std::numeric_limits<int32_t>::min() ||
+         *replica_limits.max_num_replicas > std::numeric_limits<int32_t>::max())) {
+      return STATUS_FORMAT(
+          InvalidCommand, "Aggregated max replica count is out of range for placement block $0",
+          placement_block);
+    }
     std::vector<std::string> blocks = strings::Split(placement_block, ".",
                                                     strings::AllowEmpty());
     auto* pb = placement_info_pb->add_placement_blocks();
@@ -2379,7 +2414,24 @@ Status ClusterAdminClient::FillPlacementInfo(
       pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
     }
 
-    pb->set_min_num_replicas(min_replicas);
+    pb->set_min_num_replicas(static_cast<int32_t>(replica_limits.min_num_replicas));
+    if (replica_limits.max_num_replicas) {
+      pb->set_max_num_replicas(static_cast<int32_t>(*replica_limits.max_num_replicas));
+    }
+  }
+
+  // Explicit maxima require unambiguously attributing each tserver to one placement block, so
+  // they cannot be combined with wildcard (partially-specified) blocks anywhere in the placement.
+  // The master rejects this as well (CatalogManagerUtil::ValidateMaxNumReplicasFields), but
+  // failing here gives a friendlier error.
+  if (PlacementInfoHasMaxNumReplicas(*placement_info_pb)) {
+    for (const auto& block : placement_info_pb->placement_blocks()) {
+      if (IsWildcardCloudInfo(block.cloud_info())) {
+        return STATUS(InvalidCommand,
+            "Max replica counts are not supported in combination with wildcard placements. "
+            "Invalid placement block: " + block.cloud_info().ShortDebugString());
+      }
+    }
   }
 
   return Status::OK();
