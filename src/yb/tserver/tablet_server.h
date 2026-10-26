@@ -246,7 +246,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return object_lock_shared_state_manager_.get();
   }
 
-  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  void PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+
+  // The master's view of a tserver, as last sent to this one.
+  struct KnownTServer {
+    master::TSInformationPB info;
+    bool alive = false;
+  };
+
+  // Applies the tserver list delta from a TSHeartbeat response.
+  void ApplyTServerListUpdate(const master::TServerListUpdatePB& update) EXCLUDES(lock_);
+  uint64_t tserver_list_version() const EXCLUDES(lock_);
+  std::vector<KnownTServer> GetKnownTServers() const EXCLUDES(lock_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
 
   // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
@@ -618,18 +629,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Index at which master sent us the last config
   int64_t master_config_index_;
 
-  // Map of tserver connection info, keyed by the tserver uuid, that are alive from the master's
-  // perspective. It is refreshed on every successfull heartbeat exchange between the current
-  // tserver and the master leader.
-  std::unordered_map<std::string, master::TSInformationPB> live_tservers_ GUARDED_BY(lock_);
+  // Tservers the master knows, keyed by uuid, at tserver_list_version_. The heartbeater sends
+  // the version and applies the delta.
+  std::unordered_map<std::string, KnownTServer> known_tservers_ GUARDED_BY(lock_);
+  uint64_t tserver_list_version_ GUARDED_BY(lock_) = 0;
 
   // Map of 'RemoteTablerServer' shared ptrs keyed by the corresponding tsever uuid. This is used
-  // to obtain a proxy handle to the local/remote tserver. It is updated synchronously with
-  // 'live_tservers_'.
+  // to obtain a proxy handle to the local/remote tserver. It holds the alive entries of
+  // 'known_tservers_' and is updated with it.
   std::unordered_map<std::string, client::internal::RemoteTabletServerPtr>
       remote_tservers_ GUARDED_BY(lock_);
 
-  // Lock to protect live_tservers_, cluster_uuid_.
+  // Lock to protect known_tservers_, cluster_uuid_.
   mutable rw_spinlock lock_;
 
   // Proxy to call this tablet server locally.

@@ -63,6 +63,7 @@ namespace master {
 struct LeaderEpoch;
 class SysCatalogTable;
 class TSInformationPB;
+class TServerListUpdatePB;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
 using TSCountCallback = std::function<void()>;
@@ -120,7 +121,7 @@ class TSManager {
   // Lookup an existing TS descriptor from a heartbeat request. If found, update the TSDescriptor
   // using the metadata in the heartbeat request.
   Result<TSDescriptorPtr> LookupAndUpdateTSFromHeartbeat(
-      const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const;
+      const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch);
 
   Result<TSDescriptorPtr> RegisterFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
@@ -206,6 +207,10 @@ class TSManager {
   // Mark live tservers as needing a leader blacklist notification on the next heartbeat.
   void MarkTServersForLeaderBlacklistNotification();
 
+  // Fills the tserver list for a tserver holding since_version: the changes since then, or the
+  // full list when that version is unset, from another leader, aged out, or ahead of the master.
+  void FillTServerListUpdate(uint64_t since_version, TServerListUpdatePB* update) const;
+
   // Make sure all live tservers are on the expected version.
   Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;
 
@@ -254,6 +259,13 @@ class TSManager {
   void GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const;
 
+  // Call once the change is visible to readers; readers that saw an older version re-send it.
+  void StampTServerListChange(TSDescriptor& desc) EXCLUDES(version_lock_);
+  void StampTServerListChanges(const std::vector<TSDescriptorPtr>& descs) EXCLUDES(version_lock_);
+  // Moves desc from the entry of its previous change to the one at counter.
+  void StampTServerListChangeUnlocked(TSDescriptor& desc, uint32_t counter, MonoTime now)
+      REQUIRES(version_lock_);
+
   void GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const REQUIRES_SHARED(map_lock_);
   void GetDescriptorsUnlocked(
       std::function<bool(const TSDescriptorPtr&)> predicate, TSDescriptorVector* descs) const
@@ -288,6 +300,19 @@ class TSManager {
 
   // This callback will be called when the number of tablet servers reaches the given number.
   TSCountCallback ts_count_callback_ GUARDED_BY(registration_lock_);
+
+  struct TServerListChange {
+    MonoTime time;
+    std::set<std::string> ids;
+  };
+  mutable simple_spinlock version_lock_;
+  // Leader term << 32 | changes under this leader; see TServerListUpdatePB.
+  uint64_t tserver_list_version_ GUARDED_BY(version_lock_) = 0;
+  // Tserver ids by the change counter that last touched them, removals included; each id is in
+  // exactly one entry, so a delta is the entries above the requested counter.
+  std::map<uint32_t, TServerListChange> tserver_list_changes_ GUARDED_BY(version_lock_);
+  // Counters up to this have been dropped by age; a delta cannot start below it.
+  uint32_t tserver_list_horizon_ GUARDED_BY(version_lock_) = 0;
   size_t ts_count_callback_min_count_ GUARDED_BY(registration_lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
