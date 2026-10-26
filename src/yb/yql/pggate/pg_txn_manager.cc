@@ -938,7 +938,6 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
-  options.set_takes_object_locks(TakesObjectLocks());
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 

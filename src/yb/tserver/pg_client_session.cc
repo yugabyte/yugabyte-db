@@ -1523,7 +1523,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  if (has_write_ops && !has_distributed_txn && req->options().takes_object_locks()) {
+  if (has_write_ops && !has_distributed_txn && FLAGS_enable_object_locking_for_table_locks) {
     session->SetObjectLockingTxnMeta(VERIFY_RESULT(object_locking_txn_meta_provider()));
   }
 
@@ -2982,8 +2982,7 @@ class PgClientSession::Impl {
         << "Object lock for relation " << AsString(data->req.lock_oid())
         << " with lock type " << AsString(lock_type);
 
-    RSTATUS_DCHECK(
-        options.takes_object_locks(), IllegalState, "Table Locking feature not enabled.");
+    RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
     RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");

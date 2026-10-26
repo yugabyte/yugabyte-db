@@ -1255,6 +1255,47 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 
 // Test for #35734.
 //
+// A new-mode DDL writes the catalog at the latest catalog snapshot and relies on object locks,
+// not catalog write conflicts, to keep other DDLs on the same object out. A transaction that
+// started before ysql_enable_object_locking_infra was promoted runs its DDLs in legacy mode, which
+// used to take no object locks, so such a DDL ran alongside a new-mode DDL on the same table.
+//
+// legacy_conn starts its transaction before the promotion. ddl_conn then adds column c1 inside a
+// transaction block, holding its lock on t until COMMIT. legacy_conn's ADD COLUMN c2 must wait for
+// that lock; the statement timeout ends the wait.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlWaitsForConcurrentDdl) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  // Touches no table, so legacy_conn holds no lock on t that ddl_conn's ALTER would wait for.
+  ASSERT_OK(legacy_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int32_t>("SELECT 1")), 1);
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(i), "ysql_enable_object_locking_infra", "true"));
+  }
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN c1 INT"));
+
+  const auto kStatementTimeoutSec = 2;
+  ASSERT_OK(legacy_conn.ExecuteFormat("SET statement_timeout = '$0s'", kStatementTimeoutSec));
+  const auto legacy_ddl_status = legacy_conn.Execute("ALTER TABLE t ADD COLUMN c2 INT");
+  ASSERT_NOK(legacy_ddl_status);
+  ASSERT_STR_CONTAINS(legacy_ddl_status.ToString(), "canceling statement due to statement timeout");
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+}
+
+// Test for #35734.
+//
 // ADD FOREIGN KEY checks the existing child rows without row locks because its lock on parent
 // blocks every writer of parent. A transaction that started before ysql_enable_object_locking_infra
 // was promoted used to take no object locks, so its DELETE of a parent row ran during that check
