@@ -2136,6 +2136,18 @@ bool YBCCurrentTransactionUsesFastPath() {
   return result.get();
 }
 
+void YBCPublishTxnStart() {
+  if (pgapi && !YBCIsObjectLockingInfraEnabled() && !pgapi->StartTxnWithoutObjectLocks()) {
+    YBCEnableObjectLockingInfraForCurrTxn();
+  }
+}
+
+void YBCPublishTxnEnd() {
+  if (pgapi && !YBCIsObjectLockingInfraEnabled()) {
+    pgapi->EndTxnWithoutObjectLocks();
+  }
+}
+
 bool YBCIsLegacyModeForCatalogOps() {
   //
   // If object locking is enabled:

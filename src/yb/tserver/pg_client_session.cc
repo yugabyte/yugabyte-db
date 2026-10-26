@@ -1766,6 +1766,11 @@ class PgClientSession::Impl {
           descriptor.object_lock.Lend(*object_lock_shared_state_->get()));
     }
     oldest_read_point_serial_no_ = &descriptor.oldest_read_point_serial_no;
+    in_legacy_txn_ = &descriptor.in_legacy_txn;
+  }
+
+  bool InLegacyTxn() const {
+    return in_legacy_txn_ && in_legacy_txn_->load(std::memory_order_seq_cst);
   }
 
   Status CreateTable(
@@ -4928,6 +4933,8 @@ class PgClientSession::Impl {
   std::atomic<uint64_t>* oldest_read_point_serial_no_ = nullptr;
   // Last SHMEM serial applied into history_retention_pin_read_time_.
   std::atomic<uint64_t> applied_oldest_read_point_serial_no_{0};
+  // Points into PgSessionSharedHeader when session shared memory is active; null otherwise.
+  std::atomic<bool>* in_legacy_txn_ = nullptr;
 
   std::optional<RobustLendGuard<docdb::ObjectLockSharedState>> object_lock_lend_guard_;
 };
@@ -4984,6 +4991,10 @@ PgClientSessionDbHistoryRetentionPin PgClientSession::GetDbHistoryRetentionPin()
 
 bool PgClientSession::ClearNonPublishedOldestReadPointSerial() {
   return impl_->ClearNonPublishedOldestReadPointSerial();
+}
+
+bool PgClientSession::InLegacyTxn() const {
+  return impl_->InLegacyTxn();
 }
 
 void PgClientSession::ClearReadTimePin() {

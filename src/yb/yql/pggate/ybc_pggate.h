@@ -822,6 +822,13 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
 
+// Called at the start and end of every top-level transaction, except in parallel workers, whose
+// transaction belongs to their leader's. A transaction that would take no object locks is
+// published to the tserver, which waits for it to end before it grants a global object lock
+// (#35734). Once the tserver requires object locks, the starting transaction takes them instead.
+void YBCPublishTxnStart();
+void YBCPublishTxnEnd();
+
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
 // enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the

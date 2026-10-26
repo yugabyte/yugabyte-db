@@ -173,6 +173,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
   // Intended to be exported to the master in the tserver heartbeat.
   std::unordered_map<PgOid, HybridTime> GetDatabasePins();
 
+  // Whether any local backend is in a transaction that takes no object locks.
+  bool HasSessionInLegacyTxn();
+
   size_t TEST_SessionsCount();
 
   // The database recorded by the session of the backend with the given pid: kInvalidOid if the

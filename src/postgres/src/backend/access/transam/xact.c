@@ -2310,6 +2310,8 @@ StartTransaction(void)
 	if (IsYugaByteEnabled())
 	{
 		YBCSetObjectLockingInfraForCurrTxn();
+		if (!IsParallelWorker())
+			YBCPublishTxnStart();
 
 		/*
 		 * A background worker receives no messages, so it takes a fresh
@@ -2651,6 +2653,8 @@ CommitTransaction(void)
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
 	pgstat_report_xact_timestamp(0);
+	if (IsYugaByteEnabled() && !is_parallel_worker)
+		YBCPublishTxnEnd();
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -3180,6 +3184,8 @@ AbortTransaction(void)
 	}
 
 	YBCAbortTransaction();
+	if (IsYugaByteEnabled() && !is_parallel_worker)
+		YBCPublishTxnEnd();
 	YB_DIST_TRACE_END_SPAN();
 
 	/* Reset the value of the sticky connection */

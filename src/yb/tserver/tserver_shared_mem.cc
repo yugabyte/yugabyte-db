@@ -235,6 +235,10 @@ struct PgSessionSharedHeader {
   // Written by postgres via pggate; read by tserver when resolving history retention pins.
   std::atomic<uint64_t> oldest_read_point_serial_no{0};
 
+  // Set by the backend while its transaction takes no object locks. Read by the tserver before it
+  // grants a global object lock, which such a transaction would not respect (#35734).
+  std::atomic<bool> in_legacy_txn{false};
+
   // This must be the last field, since it uses a zero length array.
   SharedExchangeHeader exchange_header;
 };
@@ -597,6 +601,10 @@ class PgSessionSharedMemoryManager::Impl {
     return &header().oldest_read_point_serial_no;
   }
 
+  std::atomic<bool>* InLegacyTxnPtr() {
+    return &header().in_legacy_txn;
+  }
+
  private:
   static Result<InterprocessSharedMemoryObject> MakeSharedMemoryObject(
       bool owner, std::string_view instance_id, uint64_t session_id) {
@@ -653,6 +661,10 @@ void PgSessionSharedMemoryManager::SetOldestReadPointSerialNo(uint64_t serial_no
 
 std::atomic<uint64_t>* PgSessionSharedMemoryManager::OldestReadPointSerialNoPtr() {
   return impl_->OldestReadPointSerialNoPtr();
+}
+
+std::atomic<bool>* PgSessionSharedMemoryManager::InLegacyTxnPtr() {
+  return impl_->InLegacyTxnPtr();
 }
 
 Result<PgSessionSharedMemoryManager> PgSessionSharedMemoryManager::Make(

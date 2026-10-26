@@ -167,6 +167,7 @@ class PgClientSession final {
   struct SharedDataDescriptor {
     PgSessionObjectLockData& object_lock;
     std::atomic<uint64_t>& oldest_read_point_serial_no;
+    std::atomic<bool>& in_legacy_txn;
   };
 
   void SetupSharedData(const SharedDataDescriptor& descriptor);
@@ -197,6 +198,10 @@ class PgClientSession final {
   bool ClearNonPublishedOldestReadPointSerial();
 
   void ClearReadTimePin();
+
+  // Whether the backend is in a transaction that takes no object locks.
+  // Safe to call from another thread without holding the session lock.
+  bool InLegacyTxn() const;
 
   // Map the PG-published SHMEM oldest read-point serial to a HybridTime pin. Caller must hold the
   // session lock (Perform always calls this; heartbeat uses try_lock).
