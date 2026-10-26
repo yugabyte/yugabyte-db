@@ -197,7 +197,7 @@ If you switch from **Expert** to **Guided** and the current placement is not a *
 
 In v2026.1.3.0 and later, you can allow replication factor 9 by setting the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option.
 
-When that option is true, **Expert** mode and the Classic UI include replication factor 9, and you can raise an existing primary cluster to replication factor 9. The replication factor limits on this page apply while the option is false.
+When that option is true, **Expert** mode and the Classic UI include replication factor 9, and you can raise an existing primary cluster to replication factor 9. The replication factor limits on this page apply while the option is false. A universe that you create with replication factor 9, or raise to replication factor 9, stays at replication factor 9 if you later set the option to false.
 
 {{< /note >}}
 
