@@ -69,6 +69,8 @@ struct Workload {
   // Seek targets of present and absent rows, as internal keys.
   std::vector<std::string> hits;
   std::vector<std::string> misses;
+  // Erases each key this many inserts after it, as removing applied intents does. 0 to keep all.
+  size_t erase_lag = 0;
 };
 
 uint16_t HashOf(int64_t pk) {
@@ -206,13 +208,23 @@ Workload HashUpdates(std::mt19937_64* rng) {
 }
 
 // Intents DB: a strong intent and its reverse index entry per row, 16 rows a transaction.
-Workload Intents(std::mt19937_64* rng) {
+Workload Intents(std::mt19937_64* rng, bool ascending = false) {
   Workload result;
   result.name = "intents";
   auto rows = FLAGS_memtable_perf_entries / 2;
-  auto pks = RandomPks(rows * 2, rng);
-  std::vector<int64_t> present(pks.begin(), pks.begin() + rows);
-  std::vector<int64_t> absent(pks.begin() + rows, pks.end());
+  std::vector<int64_t> present;
+  std::vector<int64_t> absent;
+  if (ascending) {
+    for (size_t i = 0; i != rows; ++i) {
+      present.push_back(static_cast<int64_t>(i * 2));
+      absent.push_back(static_cast<int64_t>(i * 2 + 1));
+    }
+  } else {
+    auto pks = RandomPks(rows * 2, rng);
+    present.assign(pks.begin(), pks.begin() + rows);
+    absent.assign(pks.begin() + rows, pks.end());
+  }
+  auto make_doc_key = ascending ? &RangeDocKey : &HashDocKey;
   auto intent_types = dockv::GetIntentTypesForWrite(IsolationLevel::SNAPSHOT_ISOLATION);
   char intent_type[2] = {
       dockv::KeyEntryTypeAsChar::kIntentTypeSet, static_cast<char>(intent_types.ToUIntPtr())};
@@ -229,7 +241,7 @@ Workload Intents(std::mt19937_64* rng) {
       write_id = 0;
     }
     auto doc_ht = doc_ht_buffer.EncodeWithValueType(ht, write_id++);
-    auto key = HashDocKey(present[i]).Encode().ToStringBuffer();
+    auto key = make_doc_key(present[i]).Encode().ToStringBuffer();
     key.append(intent_type, sizeof(intent_type));
     key.append(doc_ht.cdata(), doc_ht.size());
     result.keys.push_back(std::move(key));
@@ -240,7 +252,23 @@ Workload Intents(std::mt19937_64* rng) {
     reverse_key.append(inverted.cdata(), inverted.size());
     result.keys.push_back(std::move(reverse_key));
   }
-  AddLookups(present, absent, HashDocKey, rng, &result);
+  AddLookups(present, absent, make_doc_key, rng, &result);
+  return result;
+}
+
+// Intents of applied transactions are erased from the memtable soon after they are written.
+Workload IntentsApplied(std::mt19937_64* rng) {
+  auto result = Intents(rng);
+  result.name = "intents_applied";
+  result.erase_lag = 64 * kRowsPerTransaction * 2;
+  return result;
+}
+
+// The same for a range partitioned table written in ascending key order.
+Workload RangeIntentsApplied(std::mt19937_64* rng) {
+  auto result = Intents(rng, /* ascending= */ true);
+  result.name = "range_intents_applied";
+  result.erase_lag = 64 * kRowsPerTransaction * 2;
   return result;
 }
 
@@ -330,10 +358,13 @@ void InsertAll(const Workload& workload, MemTableHolder* mem, std::atomic<size_t
   std::string value(kValueSize, 'v');
   Slice value_slice(value);
   rocksdb::SequenceNumber seq = 0;
-  for (const auto& key : workload.keys) {
-    Slice key_slice(key);
+  for (size_t i = 0; i != workload.keys.size(); ++i) {
+    Slice key_slice(workload.keys[i]);
     (*mem)->Add(++seq, rocksdb::kTypeValue, rocksdb::SliceParts(&key_slice, 1),
                 rocksdb::SliceParts(&value_slice, 1));
+    if (workload.erase_lag && i >= workload.erase_lag) {
+      CHECK((*mem)->Erase(workload.keys[i - workload.erase_lag]));
+    }
     if (published) {
       published->store(seq, std::memory_order_release);
     }
@@ -427,7 +458,11 @@ Results RunWorkload(
       ++entries;
     }
     results.full_scan_ns = NanosPer(Clock::now() - start, entries);
-    CHECK_EQ(entries, workload.keys.size());
+    CHECK_EQ(entries, workload.keys.size() - (
+        workload.erase_lag ? workload.keys.size() - workload.erase_lag : 0));
+  }
+  if (workload.erase_lag) {
+    return results;
   }
 
   std::vector<std::string> targets;
@@ -454,7 +489,9 @@ TEST_F(MemTableRepPerfTest, Compare) {
     {"range_sequential", &RangeSequential},
     {"hash_columns", &HashColumns},
     {"hash_updates", &HashUpdates},
-    {"intents", &Intents},
+    {"intents", [](std::mt19937_64* rng) { return Intents(rng); }},
+    {"intents_applied", &IntentsApplied},
+    {"range_intents_applied", &RangeIntentsApplied},
   };
   auto selected = StringSplit(FLAGS_memtable_perf_workloads, ',');
   std::vector<std::pair<std::string, std::shared_ptr<rocksdb::MemTableRepFactory>>> factories = {

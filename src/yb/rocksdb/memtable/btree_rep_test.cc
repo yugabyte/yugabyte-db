@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <functional>
 #include <random>
 #include <set>
 #include <thread>
@@ -145,6 +146,11 @@ class BTreeRepTest : public RocksDBTest, public ::testing::WithParamInterface<bo
     }
   }
 
+  // One writer inserts keys in random order and erases those that erasable picks, erase_lag inserts
+  // later, while readers seek and step. A key inserted before a reader's operation and never
+  // erased must not be skipped.
+  void TestConcurrent(size_t erase_lag, const std::function<bool(size_t)>& erasable);
+
   InternalKeyComparator icmp_;
   MemTable::KeyComparator key_cmp_;
   Arena arena_;
@@ -275,12 +281,9 @@ TEST_P(BTreeRepTest, ReaderRacesRootSplit) {
   ASSERT_EQ(KeyOf(entry), last);
 }
 
-// One writer inserts and erases while readers seek and step. A key inserted before a reader's
-// operation and never erased must not be skipped.
-TEST_P(BTreeRepTest, Concurrent) {
+void BTreeRepTest::TestConcurrent(size_t erase_lag, const std::function<bool(size_t)>& erasable) {
   constexpr size_t kNumKeys = yb::RegularBuildVsSanitizers(300000, 30000);
   constexpr size_t kNumReaders = 4;
-  constexpr size_t kEraseLag = 100;
   std::mt19937_64 rng(42);
 
   auto model = NewModel();
@@ -291,8 +294,7 @@ TEST_P(BTreeRepTest, Concurrent) {
       keys.push_back(key);
     }
   }
-  // Keys in insertion order, which is random. Every fourth one is erased later.
-  auto erasable = [](size_t rank) { return rank % 4 == 3; };
+  // Keys in insertion order, which is random.
   std::vector<std::pair<std::string, size_t>> sorted;
   for (size_t i = 0; i != keys.size(); ++i) {
     sorted.emplace_back(keys[i], i);
@@ -370,8 +372,8 @@ TEST_P(BTreeRepTest, Concurrent) {
   std::vector<const char*> entries;
   for (size_t rank = 0; rank != keys.size(); ++rank) {
     entries.push_back(Add(keys[rank]));
-    if (rank >= kEraseLag && erasable(rank - kEraseLag)) {
-      ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[rank - kEraseLag]), key_cmp_));
+    if (rank >= erase_lag && erasable(rank - erase_lag)) {
+      ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[rank - erase_lag]), key_cmp_));
     }
     published.store(rank + 1, std::memory_order_release);
   }
@@ -380,6 +382,50 @@ TEST_P(BTreeRepTest, Concurrent) {
     thread.join();
   }
   LOG(INFO) << "Reader steps: " << total_steps.load();
+}
+
+TEST_P(BTreeRepTest, Concurrent) {
+  TestConcurrent(/* erase_lag= */ 100, [](size_t rank) { return rank % 4 == 3; });
+}
+
+// Erasing most keys makes nodes merge and move entries while readers step across them.
+TEST_P(BTreeRepTest, ConcurrentErase) {
+  TestConcurrent(/* erase_lag= */ 2000, [](size_t rank) { return rank % 8 != 0; });
+}
+
+// Erasing every key merges the tree back into a root leaf.
+TEST_P(BTreeRepTest, EraseAll) {
+  constexpr size_t kNumKeys = yb::RegularBuildVsSanitizers(50000, 5000);
+  std::mt19937_64 rng(42);
+  for (auto order : {"random", "ascending", "descending"}) {
+    SCOPED_TRACE(order);
+    auto model = NewModel();
+    std::vector<const char*> entries;
+    while (model.size() != kNumKeys) {
+      auto key = RandomInternalKey(&rng);
+      if (model.insert(key).second) {
+        entries.push_back(Add(key));
+      }
+    }
+    auto compare = [this](const char* lhs, const char* rhs) { return key_cmp_(lhs, rhs) < 0; };
+    if (order == std::string("random")) {
+      std::shuffle(entries.begin(), entries.end(), rng);
+    } else {
+      std::sort(entries.begin(), entries.end(), compare);
+      if (order == std::string("descending")) {
+        std::reverse(entries.begin(), entries.end());
+      }
+    }
+    for (size_t i = 0; i != entries.size(); ++i) {
+      ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[i]), key_cmp_));
+      model.erase(KeyOf(entries[i]));
+      if (i % (kNumKeys / 10) == 0) {
+        ASSERT_NO_FATALS(CheckRandomWalks(model, &rng, 100));
+      }
+    }
+    ASSERT_NO_FATALS(CheckScan(model));
+    ASSERT_NO_FATALS(CheckRandomWalks(model, &rng, 10));
+  }
 }
 
 }  // namespace rocksdb
