@@ -79,7 +79,7 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 
 Giving up before step 5 needs no undo; the flushes are harmless. An append that arrives after step 4 creates a new segment at L+1, which step 6 leaves alone, and the marker stays valid. A crash between steps 5 and 6, or an anchor found in step 6, leaves old segments next to the marker; `Log::Init` deletes them.
 
-The second anchor check orders entry with remote bootstrap. A session anchors the log, then reads the marker, then makes the RocksDB checkpoint. Entry publishes the marker, then checks anchors. So either entry sees the anchor and keeps the segments, or the session reads the new marker and its checkpoint is made after the flush in step 1.
+The second anchor check orders entry with remote bootstrap. A session anchors the log, then reads the marker, then makes the RocksDB checkpoint. Entry publishes the marker, then checks anchors. So either entry sees the anchor and keeps the segments, or the session reads the new marker and its checkpoint is made after the flush in step 1. In the second case entry may be deleting the segments while the session lists them, so the session leaves the segments that its marker covers out of the WAL it ships; the destination's `Log::Init` would delete them anyway.
 
 ## Leaving the mode
 

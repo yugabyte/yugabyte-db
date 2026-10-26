@@ -422,6 +422,20 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   min_segments_to_keep = std::min(min_segments_to_keep, log_segments_.size());
   num_to_skip = std::min(num_to_skip, log_segments_.size() - min_segments_to_keep);
 
+  // The destination's Log::Init deletes segments that the marker covers. They may also be deleted
+  // here right now, if TabletPeer::EnterQuiescentMode checked anchors before we registered ours.
+  if (quiescent_marker_) {
+    size_t num_covered = 0;
+    for (const auto& segment : log_segments_) {
+      if (!segment->HasFooter() ||
+          segment->footer().max_replicate_index() > quiescent_marker_->op_id().index()) {
+        break;
+      }
+      ++num_covered;
+    }
+    num_to_skip = std::max(num_to_skip, num_covered);
+  }
+
   LOG_WITH_PREFIX(INFO)
       << "Computed WAL segments to ship: keeping=" << log_segments_.size() - num_to_skip
       << " (skipping " << num_to_skip << " of " << log_segments_.size()
@@ -430,6 +444,8 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       << ", min_segments_to_keep=" << min_segments_to_keep
       << ", lazy_sb_flush="
       << tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()
+      << ", quiescent_marker_index="
+      << (quiescent_marker_ ? quiescent_marker_->op_id().index() : -1)
       << ", last_logged_opid=" << last_logged_opid << ")";
 
   while (!log_segments_.empty() && num_to_skip) {
