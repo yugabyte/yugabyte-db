@@ -13,8 +13,7 @@
 
 #include "yb/util/dist_trace.h"
 
-#include <map>
-#include <mutex>
+#include <cstring>
 
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
@@ -28,12 +27,10 @@
 #include "opentelemetry/trace/provider.h"
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
-#include "yb/util/format.h"
-#include "yb/util/monotime.h"
+#include "yb/util/logging.h"
 #include "yb/util/signal_util.h"
 
 DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
@@ -69,11 +66,6 @@ DEFINE_NON_RUNTIME_uint32(otel_batch_max_export_batch_size, 512,
 DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
     "values are debug, info, warning, error, and none.");
-
-DEFINE_RUNTIME_uint32(otel_internal_log_throttle_secs, 10,
-    "Minimum interval in seconds between two OpenTelemetry SDK internal log lines from the same "
-    "SDK source location. The next logged line reports how many lines were suppressed. 0 "
-    "disables throttling.");
 
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
@@ -167,6 +159,10 @@ internal_log::LogLevel GetOtelInternalLogLevel() {
   return internal_log::LogLevel::Info;
 }
 
+// The batch span processor logs this once per dropped span, on the query path. A full queue would
+// otherwise flood the logs and slow queries with a synchronous log write per span.
+constexpr const char* kOtelDroppedSpanMessage = "queue is full - dropping span";
+
 class YbOtelLogHandler : public internal_log::LogHandler {
  public:
   void Handle(
@@ -174,63 +170,31 @@ class YbOtelLogHandler : public internal_log::LogHandler {
       const opentelemetry::sdk::common::AttributeMap& attributes) noexcept override {
     (void)attributes;
 
-    uint64_t suppressed = 0;
-    if (!ShouldLog(file, line, &suppressed)) {
+    const char* safe_file = file ? file : "unknown";
+    const char* safe_msg = msg ? msg : "";
+
+    if (level == internal_log::LogLevel::Warning && strstr(safe_msg, kOtelDroppedSpanMessage)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "[" << safe_file << ":" << line << "]: " << safe_msg;
       return;
     }
 
-    const char* safe_file = file ? file : "unknown";
-    const char* safe_msg = msg ? msg : "";
-    const std::string suffix =
-        suppressed ? Format(" ($0 similar lines suppressed)", suppressed) : std::string();
-
     switch (level) {
       case internal_log::LogLevel::Error:
-        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg << suffix;
+        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Warning:
-        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg << suffix;
+        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Info:
-        LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg << suffix;
+        LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Debug:
-        LOG(INFO) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg << suffix;
+        LOG(INFO) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
         break;
       case internal_log::LogLevel::None:
         break;
     }
   }
-
- private:
-  struct SiteState {
-    CoarseTimePoint last_logged;
-    uint64_t suppressed = 0;
-  };
-
-  // Throttles per SDK call site, so a flood from one site (e.g. failed exports to a dead
-  // collector) does not hide unrelated SDK messages. `file` is a __FILE__ literal, so its pointer
-  // is a stable key.
-  bool ShouldLog(const char* file, int line, uint64_t* suppressed) {
-    const auto throttle_secs = FLAGS_otel_internal_log_throttle_secs;
-    if (throttle_secs == 0) {
-      return true;
-    }
-    const auto now = CoarseMonoClock::Now();
-    std::lock_guard lock(mutex_);
-    auto& site = sites_[{file, line}];
-    if (IsInitialized(site.last_logged) &&
-        now - site.last_logged < std::chrono::seconds(throttle_secs)) {
-      ++site.suppressed;
-      return false;
-    }
-    site.last_logged = now;
-    *suppressed = std::exchange(site.suppressed, 0);
-    return true;
-  }
-
-  std::mutex mutex_;
-  std::map<std::pair<const char*, int>, SiteState> sites_ GUARDED_BY(mutex_);
 };
 
 resource_sdk::Resource CreateResource(
