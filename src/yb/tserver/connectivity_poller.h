@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
@@ -24,14 +23,13 @@ namespace yb::tserver {
 
 class ConnectivityPoller {
  public:
-  explicit ConnectivityPoller(server::RpcServerBase& server, const std::string& uuid);
+  explicit ConnectivityPoller(TabletServer& server, const std::string& uuid);
   ~ConnectivityPoller();
 
   Status Start(Cgroup* cgroup = nullptr);
 
   void Shutdown();
 
-  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
   ConnectivityStateResponsePB State();
 
  private:
