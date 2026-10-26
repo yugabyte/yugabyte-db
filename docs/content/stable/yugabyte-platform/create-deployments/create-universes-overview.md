@@ -220,8 +220,7 @@ After the universe is created, you can change placement (regions, zones, and nod
 The following limitations apply when editing an existing universe:
 
 - You can increase replication factor (or resilience in Guided mode), but you _cannot decrease_ it. The universe needs at least as many nodes/pods as the new replication factor. Increasing RF may also require more availability zones. Contact {{% support-platform %}} for help with capacity planning.
-- That edit changes placement only: regions, availability zones, and the number of nodes/pods, including replication factor. Apply other universe settings in a separate edit, including instance type, storage, Kubernetes pod resources, the Linux image, instance tags, and communication ports.
-- These edits apply to VM-based universes and to Kubernetes universes that YugabyteDB Anywhere manages directly. You cannot change replication factor after creation on a universe managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#limitations).
+- You can increase replication factor only on VM-based universes and Kubernetes universes that YugabyteDB Anywhere manages directly. You cannot change replication factor after creation on a universe managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#limitations).
 - If the current placement is not a topology **Guided** supports, **Guided** mode is unavailable and you must use **Expert**.
 
 Read replicas and other advanced placement options are configured after the primary universe is created. Refer to [Add a read replica](../read-replicas/).
