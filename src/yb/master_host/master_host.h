@@ -56,7 +56,12 @@ class TerminationMonitor;
 class Thread;
 class ThreadPool;
 
+namespace server {
+class TotalMemWatcher;
+}  // namespace server
+
 namespace master {
+class EncryptionManager;
 class MasterAutoFlagsManager;
 class MasterSnapshotCoordinator;
 class SysCatalogTable;
@@ -88,9 +93,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // Blocks until the process is asked to terminate (SIGTERM, SIGINT).
   void WaitForTermination() const;
   void ShutdownHost();
-  // Read-only access for Rust handlers, which run on other threads while the main thread owns
-  // the host. Must not outlive it.
-  std::unique_ptr<MasterInfoHandle> InfoHandle() const;
+  // Access for Rust handlers, which run on other threads while the main thread owns the host.
+  // Must not outlive it.
+  std::unique_ptr<MasterInfoHandle> InfoHandle();
 
   rust::Vec<uint8_t> InstancePB() const;
   rust::Vec<uint8_t> RegistrationPB() const;
@@ -100,6 +105,11 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   bool IsInShellMode() const;
   rust::Vec<uint8_t> FlushSysCatalogResponse() const;
   rust::Vec<uint8_t> CompactSysCatalogResponse() const;
+  // The master RPCs every C++ master serves from state the host has (RemovedMasterUpdate,
+  // CheckMasterTabletHealth, the universe key RPCs, DumpSysCatalogEntries,
+  // WriteSysCatalogEntry): the serialized response to a serialized request. The caller checks
+  // initialization where C++ does.
+  rust::Vec<uint8_t> HandleOnHost(rust::Str method, rust::Slice<const uint8_t> request);
   int32_t MasterServiceQueueLength() const;
   int32_t YsqlLeaseServiceQueueLength() const;
 
@@ -110,7 +120,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   uint16_t PublicWebPort() const;
   rust::String WebCertificateFile() const;
   rust::String WebPrivateKeyFile() const;
-  rust::String WebPrivateKeyPassword() const;
+  rust::Vec<uint8_t> WebPrivateKeyPassword() const;
   rust::String WebSslCiphers() const;
   // The addresses the Rust web server bound, and the source of the master list the web pages
   // show. Must be called before StartHost(), which advertises the addresses.
@@ -140,6 +150,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override {}
   void RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator generator) override {}
   uint32_t GetAutoFlagConfigVersion() const override;
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
   Status ReloadKeysAndCertificates() override;
   std::string GetCertificateDetails() override;
 
@@ -157,6 +169,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Status ElectedAsLeader();
   Status ResetMemoryState(const consensus::RaftConfigPB& config);
   Status GetMasterRegistration(ServerRegistrationPB* reg) const;
+  Status GoIntoShellMode();
   void RegisterWebPages();
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
@@ -170,6 +183,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<master::SysCatalogTable> sys_catalog_;
   std::unique_ptr<master::MasterSnapshotCoordinator> snapshot_coordinator_;
   std::unique_ptr<master::MasterAutoFlagsManager> auto_flags_manager_;
+  // Holds the universe keys AddUniverseKeys sends to every master.
+  std::unique_ptr<master::EncryptionManager> encryption_manager_;
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<ThreadPool> leadership_pool_;
@@ -177,6 +192,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // Published by the C++ master leader; followers hold their pg catalog history back to it.
   master::HistoryRetentionPinInfo ysql_history_retention_pin_;
   scoped_refptr<Thread> pin_refresh_thread_;
+  std::unique_ptr<server::TotalMemWatcher> total_mem_watcher_;
+  scoped_refptr<Thread> total_mem_watcher_thread_;
   CountDownLatch stop_latch_{1};
   std::unique_ptr<TerminationMonitor> termination_monitor_;
 
@@ -185,6 +202,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::vector<Endpoint> public_web_endpoints_;
   std::optional<rust::Box<WebMasterList>> web_master_list_;
   std::atomic<bool> sys_catalog_initialized_{false};
+  bool sys_catalog_started_ = false;
   // Serializes remote bootstrap requests, as CatalogManager does.
   std::mutex remote_bootstrap_mutex_;
   bool tablet_exists_ = false;
@@ -192,7 +210,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
 
 class MasterInfoHandle {
  public:
-  explicit MasterInfoHandle(const MasterHost* host) : host_(*host) {}
+  explicit MasterInfoHandle(MasterHost* host) : host_(*host) {}
 
   rust::Vec<uint8_t> InstancePB() const { return host_.InstancePB(); }
   rust::Vec<uint8_t> RegistrationPB() const { return host_.RegistrationPB(); }
@@ -206,9 +224,12 @@ class MasterInfoHandle {
   rust::Vec<uint8_t> CompactSysCatalogResponse() const {
     return host_.CompactSysCatalogResponse();
   }
+  rust::Vec<uint8_t> HandleOnHost(rust::Str method, rust::Slice<const uint8_t> request) const {
+    return host_.HandleOnHost(method, request);
+  }
 
  private:
-  const MasterHost& host_;
+  MasterHost& host_;
 };
 
 std::unique_ptr<MasterHost> CreateMasterHost();

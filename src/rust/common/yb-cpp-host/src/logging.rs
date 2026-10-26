@@ -17,6 +17,7 @@ use std::fmt::Write;
 use std::sync::Once;
 
 use tracing::field::{Field, Visit};
+use tracing::subscriber::Interest;
 use tracing::{Event, Level, Metadata, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
@@ -68,6 +69,15 @@ impl Visit for MessageVisitor {
 struct GlogLayer;
 
 impl<S: Subscriber> Layer<S> for GlogLayer {
+    fn register_callsite(&self, metadata: &'static Metadata<'static>) -> Interest {
+        // `--v` can change at runtime, so DEBUG and TRACE callsites are asked every time rather
+        // than cached as on or off.
+        match severity_for(metadata.level()) {
+            (_, 0) => Interest::always(),
+            _ => Interest::sometimes(),
+        }
+    }
+
     fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
         let (_, vlevel) = severity_for(metadata.level());
         vlevel == 0 || ffi::vlog_is_on(vlevel)

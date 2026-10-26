@@ -60,13 +60,15 @@ pub fn entity_descriptor(entry_type: SysRowEntryType) -> Result<MessageDescripto
         .unwrap_or_else(|| panic!("{name} is in catalog_entity_types.h but was not generated")))
 }
 
-/// Parses a sys-catalog row of the given type. Like the C++ master's parse, it fails when a
-/// required field is missing.
+/// Parses a sys-catalog row of the given type with the C++ runtime's semantics: it fails when a
+/// required field is missing, and enum values the build does not know go to the unknown fields.
 pub fn parse_entity(
     entry_type: SysRowEntryType,
     data: &[u8],
 ) -> Result<Box<dyn protobuf::MessageDyn>, EntityError> {
-    Ok(entity_descriptor(entry_type)?.parse_from_bytes(data)?)
+    let mut entity = entity_descriptor(entry_type)?.parse_from_bytes(data)?;
+    yb_proto::move_unknown_enum_values(&mut *entity);
+    Ok(entity)
 }
 
 /// Parses a row and serializes it again, keeping unknown fields. For a row the C++ master wrote,

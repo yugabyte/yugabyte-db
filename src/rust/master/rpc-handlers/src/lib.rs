@@ -14,9 +14,13 @@
 //!
 //! Layer 1's master is a follower that never leads. It answers what a C++ follower answers:
 //! `GetMasterRegistration`, `ListMasters`, `ListMasterRaftPeers`, `FlushSysCatalog` and
-//! `CompactSysCatalog` are served; `TSHeartbeat` gets the follower reply (the master Raft config
-//! when the tserver's is older); every other method gets `NOT_THE_LEADER`, which makes clients
-//! rerun leader discovery. Responses mirror the C++ handlers in src/yb/master, field for field.
+//! `CompactSysCatalog` are served here; [`HOST_METHODS`] are served by the C++ host with the C++
+//! master's code; `TSHeartbeat` gets the follower reply (the master Raft config when the
+//! tserver's is older); every other method gets `NOT_THE_LEADER`, which makes clients rerun
+//! leader discovery. Responses mirror the C++ handlers in src/yb/master, field for field.
+//!
+//! Not served yet, though C++ serves them on every master: `DumpState` (yb-admin
+//! dump_masters_state), and the test-only `TestRetry` and `AccessYsqlBackendsManagerTestRegister`.
 
 mod list_masters;
 
@@ -58,6 +62,8 @@ pub trait MasterInfo: Send + Sync + 'static {
     fn flush_sys_catalog(&self) -> Vec<u8>;
     /// Compacts the sys-catalog tablet; returns a serialized `CompactSysCatalogResponsePB`. Blocks.
     fn compact_sys_catalog(&self) -> Vec<u8>;
+    /// Serves one of [`HOST_METHODS`] in C++: the serialized response to `request`. Blocks.
+    fn handle_on_host(&self, method: &str, request: &[u8]) -> Result<Vec<u8>, Status>;
 }
 
 /// Settings, read when used so runtime flag changes take effect.
@@ -145,6 +151,21 @@ impl RpcHandler for MasterServiceHandler {
                     call.respond(&bytes);
                 });
             }
+            name if host_method(name).is_some() => {
+                let checks_initialized = host_method(name) == Some(true);
+                let runtime = shared.runtime.clone();
+                runtime.spawn_blocking(move || {
+                    if checks_initialized {
+                        if let Some(error) = shared.initialization_error() {
+                            return respond_with_error(call, method.error_field, error);
+                        }
+                    }
+                    match shared.info.handle_on_host(method.name, call.request()) {
+                        Ok(bytes) => call.respond(&bytes),
+                        Err(status) => call.respond_error(status),
+                    }
+                });
+            }
             _ => {
                 let error = shared.not_the_leader_error();
                 if method.response_has_required_fields {
@@ -157,6 +178,26 @@ impl RpcHandler for MasterServiceHandler {
             }
         }
     }
+}
+
+/// Methods every C++ master serves, not only the leader, that the host answers with the C++
+/// master's code, and whether C++ first checks that the catalog is initialized
+/// (`CheckIsInitializedOrRespond`; the others are `MASTER_SERVICE_IMPL_ON_ALL_MASTERS`).
+pub const HOST_METHODS: &[(&str, bool)] = &[
+    ("RemovedMasterUpdate", true),
+    ("DumpSysCatalogEntries", true),
+    ("WriteSysCatalogEntry", true),
+    ("CheckMasterTabletHealth", false),
+    ("GetUniverseKeyRegistry", false),
+    ("AddUniverseKeys", false),
+    ("HasUniverseKeyInMemory", false),
+];
+
+fn host_method(name: &str) -> Option<bool> {
+    HOST_METHODS
+        .iter()
+        .find(|(m, _)| *m == name)
+        .map(|(_, checks)| *checks)
 }
 
 impl Shared {

@@ -18,7 +18,7 @@ use protobuf::{Enum, Message};
 use yb_host_api::rpc::{FakeInboundCall, FakeResponse, FakeRpcClient};
 use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
-use yb_proto::pb::master_cluster::ListMastersResponsePB;
+use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
 use yb_proto::pb::master_ddl::CreateTableResponsePB;
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
 use yb_proto::{find_method, SERVICES};
@@ -30,6 +30,7 @@ struct FakeInfo {
     shell_mode: AtomicBool,
     role: AtomicI32,
     config: Mutex<Option<RaftConfigPB>>,
+    host_calls: Mutex<Vec<String>>,
 }
 
 impl FakeInfo {
@@ -39,6 +40,7 @@ impl FakeInfo {
             shell_mode: AtomicBool::new(false),
             role: AtomicI32::new(PeerRole::FOLLOWER as i32),
             config: Mutex::new(Some(config(&[("peer-a", 7100), ("peer-b", 7101)], 12))),
+            host_calls: Mutex::new(vec![]),
         })
     }
 }
@@ -95,6 +97,11 @@ impl MasterInfo for FakeInfo {
 
     fn compact_sys_catalog(&self) -> Vec<u8> {
         vec![]
+    }
+
+    fn handle_on_host(&self, method: &str, _request: &[u8]) -> Result<Vec<u8>, Status> {
+        self.host_calls.lock().unwrap().push(method.to_string());
+        Ok(b"host".to_vec())
     }
 }
 
@@ -183,6 +190,44 @@ fn registration_before_initialization() {
     assert_eq!(
         resp.error.code(),
         master_error_pb::Code::CATALOG_MANAGER_NOT_INITIALIZED
+    );
+}
+
+#[test]
+fn host_methods_are_served_by_the_host() {
+    let h = Harness::new();
+    for (method, _) in HOST_METHODS {
+        assert_eq!(
+            h.call(method, vec![]),
+            FakeResponse::Success(b"host".to_vec())
+        );
+    }
+    assert_eq!(
+        *h.info.host_calls.lock().unwrap(),
+        HOST_METHODS
+            .iter()
+            .map(|(m, _)| m.to_string())
+            .collect::<Vec<_>>()
+    );
+
+    // Only the CheckIsInitializedOrRespond ones wait for the catalog.
+    h.info.host_calls.lock().unwrap().clear();
+    h.info.initialized.store(false, Ordering::SeqCst);
+    let resp = RemovedMasterUpdateResponsePB::parse_from_bytes(&success(
+        h.call("RemovedMasterUpdate", vec![]),
+    ))
+    .unwrap();
+    assert_eq!(
+        resp.error.code(),
+        master_error_pb::Code::CATALOG_MANAGER_NOT_INITIALIZED
+    );
+    assert_eq!(
+        h.call("CheckMasterTabletHealth", vec![]),
+        FakeResponse::Success(b"host".to_vec())
+    );
+    assert_eq!(
+        *h.info.host_calls.lock().unwrap(),
+        vec!["CheckMasterTabletHealth".to_string()]
     );
 }
 

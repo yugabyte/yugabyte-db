@@ -14,7 +14,11 @@ master's own bridge. The shared bridges are in `src/yb/rust_bridge/`
 3. `master_rs::register_flags()` registers the flags declared in Rust.
 4. gflags parsing and glog setup (`MasterTServerParseFlagsAndInit`).
 5. `master_rs::run_master()`: creates the host, registers the Rust master services, starts the
-   host, waits for SIGTERM and shuts down.
+   host (which raises the ulimits and starts the `TotalMemWatcher` thread, as `master_main.cc`
+   does), waits for SIGTERM and shuts down.
+
+`master_main.cc` steps not taken: `MasterCallHome`, which needs the C++ `Master`, and
+`SetDefaultInitialSysCatalogSnapshotFlags`, which only matters to a master that creates a universe.
 
 ## MasterHost
 
@@ -40,16 +44,26 @@ It serves ConsensusService and RemoteBootstrapService in C++, and the remote-boo
 master added from shell mode are the same as `CatalogManager::StartRemoteBootstrap`. It cannot
 create a new universe: that would make it the first leader.
 
+The master RPCs every C++ master serves from state the host has go to `MasterHost::HandleOnHost`
+(`HOST_METHODS` in `master-rpc-handlers`): `RemovedMasterUpdate` (shell mode, as
+`CatalogManager::GoIntoShellMode`), `CheckMasterTabletHealth`, the universe key RPCs (an
+`EncryptionManager` of its own), `DumpSysCatalogEntries`, and `WriteSysCatalogEntry`, which fails as
+on a C++ master outside emergency repair mode.
+
 **Never leading.** The host turns off `enable_leader_failure_detection`, so it never starts an
 election. If an explicit leader transfer elects it, the state-change callback steps it down at
-once, and `GetMasterRegistration` reports FOLLOWER meanwhile, as a C++ leader that is not ready
-does.
+once, retrying while the step-down is refused, and `GetMasterRegistration` reports FOLLOWER
+meanwhile, as a C++ leader that is not ready does.
 
 ## Bridges
 
 | Rust file | C++ side | Purpose |
 |---|---|---|
-| `master/master/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, read-only `MasterInfoHandle` for handlers |
+| `master/master/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, `MasterInfoHandle` for handlers |
 
 Handlers run on other threads while the main thread owns the host, so they get a
-`MasterInfoHandle` with const accessors rather than the host itself.
+`MasterInfoHandle`, whose methods touch only state the host guards, rather than the host itself.
+
+C++ strings that cross into Rust (status messages, flag values) go through
+`rust::String::lossy`: `rust::Str` and `rust::String` throw on invalid UTF-8, and in a reactor or
+flag callback that would end the process.

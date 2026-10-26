@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio::sync::watch;
 
@@ -34,7 +34,7 @@ pub trait FlagBackend: Send + Sync + 'static {
     fn get(&self, name: &str) -> Option<String>;
     /// Registers a new flag; see [`FlagDef`].
     fn define(&self, def: &FlagInfo) -> Result<(), String>;
-    /// Calls `on_change` with the new value every time the flag is set, and once now.
+    /// Calls `on_change` with the new value every time the flag is set.
     fn watch(&self, name: &str, on_change: Box<dyn Fn(&str) + Send + Sync>) -> Result<(), String>;
 }
 
@@ -149,18 +149,25 @@ impl<T: FlagValue> FlagRef<T> {
             return sender.subscribe();
         }
         let (sender, receiver) = watch::channel(self.get());
-        let notify = sender.clone();
         let name = self.name;
+        // Every notification re-reads the flag and sends under one lock, so whichever send comes
+        // last carries the current value: a change between the initial read and the backend's
+        // registration, or callbacks racing each other, cannot leave a stale value behind.
+        let refresh = {
+            let sender = sender.clone();
+            let lock = Arc::new(Mutex::new(()));
+            move || {
+                let _guard = lock.lock().unwrap();
+                if let Some(parsed) = backend().get(name).and_then(|v| T::parse_flag(&v)) {
+                    sender.send_replace(parsed);
+                }
+            }
+        };
+        let on_change = refresh.clone();
         backend()
-            .watch(
-                name,
-                Box::new(move |value| {
-                    if let Some(parsed) = T::parse_flag(value) {
-                        notify.send_replace(parsed);
-                    }
-                }),
-            )
+            .watch(name, Box::new(move |_| on_change()))
             .unwrap_or_else(|e| panic!("watching gflag {name}: {e}"));
+        refresh();
         channels.insert(name, Box::new(sender));
         receiver
     }
@@ -305,7 +312,7 @@ pub struct FakeFlagBackend {
     state: Mutex<FakeState>,
 }
 
-type Watchers = Vec<Box<dyn Fn(&str) + Send + Sync>>;
+type Watchers = Vec<Arc<dyn Fn(&str) + Send + Sync>>;
 
 #[derive(Default)]
 struct FakeState {
@@ -317,12 +324,14 @@ struct FakeState {
 impl FakeFlagBackend {
     /// Sets a flag's value, defining it if needed, and notifies watchers.
     pub fn set(&self, name: &str, value: &str) {
-        let mut state = self.state.lock().unwrap();
-        state.values.insert(name.to_string(), value.to_string());
-        if let Some(watchers) = state.watchers.get(name) {
-            for watcher in watchers {
-                watcher(value);
-            }
+        let watchers = {
+            let mut state = self.state.lock().unwrap();
+            state.values.insert(name.to_string(), value.to_string());
+            state.watchers.get(name).cloned().unwrap_or_default()
+        };
+        // Outside the lock, as gflags calls update callbacks: a watcher may read flags.
+        for watcher in watchers {
+            watcher(value);
         }
     }
 
@@ -351,13 +360,14 @@ impl FlagBackend for FakeFlagBackend {
 
     fn watch(&self, name: &str, on_change: Box<dyn Fn(&str) + Send + Sync>) -> Result<(), String> {
         let mut state = self.state.lock().unwrap();
-        let value = state.values.get(name).cloned().ok_or("no such flag")?;
-        on_change(&value);
+        if !state.values.contains_key(name) {
+            return Err("no such flag".to_string());
+        }
         state
             .watchers
             .entry(name.to_string())
             .or_default()
-            .push(on_change);
+            .push(Arc::from(on_change));
         Ok(())
     }
 }

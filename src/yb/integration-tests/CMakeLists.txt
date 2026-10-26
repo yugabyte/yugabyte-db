@@ -179,7 +179,7 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(rust_master-itest)
-if(NOT YB_SKIP_RUST)
+if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
   # The executables the test runs (it is skipped when Rust is not built).
   add_dependencies(rust_master-itest
     yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master-tserver-sim master-conformance

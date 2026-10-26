@@ -1,8 +1,8 @@
 # Protobuf in Rust
 
 `common/yb-proto` generates Rust messages at build time from the `.proto` files under `src/yb`,
-never from copies. It covers the files in `ROOT_DIRS` (in `build.rs`; today `yb/master`) and
-everything they import. A component adds its directory when it moves to Rust.
+never from copies. It covers the files in `ROOT_DIRS` and `ROOT_FILES` (in `build.rs`; today `yb/master`, plus the
+tserver admin and consensus services the tserver simulator serves) and everything they import. A component adds its directory when it moves to Rust.
 
 ## Requirements
 
@@ -34,9 +34,21 @@ runtime in the host process, not from this crate.
   field-number order. Many YugabyteDB messages declare a higher-numbered field before a lower one,
   so `build.rs` sorts each message's fields by number before generating code. Without that, 870 of
   896 rows of a real sys catalog re-serialized with different bytes.
+- **Oneofs.** rust-protobuf writes every oneof after all other fields. A oneof with a member
+  numbered below some other field (`AppStatusPB.error_codes`, field 4, before fields 6, 7 and 9)
+  is generated as plain optional fields, which serialize in number order. The wire format is the
+  same; only a message that sets two members of such a oneof parses differently (C++ keeps the
+  last, Rust both).
 - **File names.** rust-protobuf names a module after the file's basename, so
   `yb/consensus/metadata.proto` and `yb/tablet/metadata.proto` are compiled as
   `consensus_metadata` and `tablet_metadata`. Packages and the wire format do not change.
+
+## Parsing like C++
+
+C++ moves a proto2 enum value its build does not know into the unknown fields, leaving the field
+unset; rust-protobuf keeps it in the field. `yb_proto::move_unknown_enum_values` applies the C++
+behavior after a parse, and `master-catalog-entity` calls it for every sys-catalog row, so a row
+from a newer release re-serializes as C++ would write it.
 
 Map fields have no defined wire order in either runtime; checks that compare bytes fall back to
 comparing content for messages with maps.

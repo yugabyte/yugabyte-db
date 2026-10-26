@@ -131,7 +131,7 @@ rust::Slice<const uint8_t> InboundCallHandle::Request() const {
 }
 
 rust::String InboundCallHandle::RemoteAddress() const {
-  return yb::ToString(call_->remote_address());
+  return rust::String::lossy(yb::ToString(call_->remote_address()));
 }
 
 int64_t InboundCallHandle::MillisToDeadline() const {
@@ -191,9 +191,12 @@ void RpcClient::Call(
       &state->controller, [state] {
         const auto status = state->controller.status();
         const auto& data = state->response.data();
+        // Status messages can carry arbitrary bytes; rust::Str would throw on invalid UTF-8.
+        const auto message =
+            status.ok() ? rust::String() : rust::String::lossy(status.ToString());
         complete_outbound(
             std::move(*state->completion), status.ok() ? 0 : static_cast<int32_t>(status.code()),
-            status.ok() ? rust::Str() : rust::Str(status.ToString()),
+            message,
             status.ok() ? rust::Slice<const uint8_t>(
                               reinterpret_cast<const uint8_t*>(data.data()), data.size())
                         : rust::Slice<const uint8_t>());

@@ -15,6 +15,7 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -33,14 +34,17 @@ pub struct TlsSettings {
     pub certificate_file: String,
     /// PEM private key; read from the certificate file when empty.
     pub private_key_file: String,
-    /// Password of the private key.
-    pub private_key_password: String,
+    /// Password of the private key; any bytes.
+    pub private_key_password: Vec<u8>,
     /// OpenSSL cipher list; OpenSSL's default when empty.
     pub ciphers: String,
     /// Whether to send `Strict-Transport-Security` (`webserver_strict_transport_security`); read
     /// per response, so a runtime flag change applies.
     pub strict_transport_security: Option<fn() -> bool>,
 }
+
+/// A client that has not finished the TLS handshake by then is dropped.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn tls_error(e: impl std::fmt::Display) -> Status {
     Status::new(
@@ -74,9 +78,8 @@ pub(crate) fn acceptor(settings: &TlsSettings) -> Result<SslAcceptor, Status> {
             .map_err(tls_error)?;
     } else {
         let pem = std::fs::read(key_file).map_err(tls_error)?;
-        let key =
-            PKey::private_key_from_pem_passphrase(&pem, settings.private_key_password.as_bytes())
-                .map_err(tls_error)?;
+        let key = PKey::private_key_from_pem_passphrase(&pem, &settings.private_key_password)
+            .map_err(tls_error)?;
         builder.set_private_key(&key).map_err(tls_error)?;
     }
     builder.check_private_key().map_err(tls_error)?;
@@ -90,10 +93,16 @@ pub(crate) async fn serve(
 ) -> Result<(), Status> {
     let acceptor = Arc::new(acceptor);
     loop {
-        let (stream, peer) = listener
-            .accept()
-            .await
-            .map_err(|e| Status::new(StatusCode::IoError, e.to_string()))?;
+        let (stream, peer) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(e) => {
+                // Usually EMFILE or ECONNABORTED. As axum::serve does for plain HTTP: keep the
+                // port, pause so a full fd table can drain.
+                tracing::warn!("Accepting a web connection: {e}");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
         let acceptor = acceptor.clone();
         let router = router.clone();
         tokio::spawn(async move {
@@ -105,8 +114,10 @@ pub(crate) async fn serve(
                 Ok(stream) => stream,
                 Err(e) => return tracing::warn!("TLS session for {peer}: {e}"),
             };
-            if let Err(e) = Pin::new(&mut stream).accept().await {
-                return tracing::debug!("TLS handshake with {peer}: {e}");
+            match tokio::time::timeout(HANDSHAKE_TIMEOUT, Pin::new(&mut stream).accept()).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return tracing::debug!("TLS handshake with {peer}: {e}"),
+                Err(_) => return tracing::debug!("TLS handshake with {peer} timed out"),
             }
             let service = TowerToHyperService::new(router);
             if let Err(e) = auto::Builder::new(TokioExecutor::new())

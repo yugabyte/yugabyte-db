@@ -70,4 +70,8 @@ impl MasterInfo for HostInfo {
     fn compact_sys_catalog(&self) -> Vec<u8> {
         self.0.compact_sys_catalog_response()
     }
+
+    fn handle_on_host(&self, method: &str, request: &[u8]) -> Result<Vec<u8>, Status> {
+        self.0.handle_on_host(method, request).map_err(host_error)
+    }
 }

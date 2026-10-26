@@ -100,6 +100,20 @@ fn registers_then_reports_in_full_then_incrementally() {
 }
 
 #[test]
+fn change_during_a_heartbeat_is_reported_again() {
+    let mut ts = tserver(0);
+    let uuid = ts.uuid().to_vec();
+    ts.create_tablet(&create_tablet_request(&uuid, "tablet1", &[&uuid]));
+    let (_, sent) = ts.heartbeat_request();
+    // AlterSchema arrives while that heartbeat is in flight.
+    assert!(ts.alter_schema(b"tablet1", 1));
+    ts.handle_heartbeat_response(&sent, &TSHeartbeatResponsePB::new());
+    let (req, _) = ts.heartbeat_request();
+    assert_eq!(req.tablet_report.updated_tablets.len(), 1);
+    assert_eq!(req.tablet_report.updated_tablets[0].schema_version(), 1);
+}
+
+#[test]
 fn truncated_report_is_sent_again() {
     let mut ts = tserver(0);
     let uuid = ts.uuid().to_vec();

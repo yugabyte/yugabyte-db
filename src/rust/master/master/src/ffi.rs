@@ -56,7 +56,7 @@ pub(crate) mod bridge {
         #[cxx_name = "ShutdownHost"]
         fn shutdown(self: Pin<&mut MasterHost>);
         #[cxx_name = "InfoHandle"]
-        fn info_handle(self: &MasterHost) -> UniquePtr<MasterInfoHandle>;
+        fn info_handle(self: Pin<&mut MasterHost>) -> UniquePtr<MasterInfoHandle>;
         #[cxx_name = "MasterServiceQueueLength"]
         fn master_service_queue_length(self: &MasterHost) -> i32;
         #[cxx_name = "YsqlLeaseServiceQueueLength"]
@@ -70,7 +70,7 @@ pub(crate) mod bridge {
         #[cxx_name = "WebPrivateKeyFile"]
         fn web_private_key_file(self: &MasterHost) -> String;
         #[cxx_name = "WebPrivateKeyPassword"]
-        fn web_private_key_password(self: &MasterHost) -> String;
+        fn web_private_key_password(self: &MasterHost) -> Vec<u8>;
         #[cxx_name = "WebSslCiphers"]
         fn web_ssl_ciphers(self: &MasterHost) -> String;
         #[cxx_name = "SetWebServer"]
@@ -99,10 +99,13 @@ pub(crate) mod bridge {
         fn flush_sys_catalog_response(self: &MasterInfoHandle) -> Vec<u8>;
         #[cxx_name = "CompactSysCatalogResponse"]
         fn compact_sys_catalog_response(self: &MasterInfoHandle) -> Vec<u8>;
+        #[cxx_name = "HandleOnHost"]
+        fn handle_on_host(self: &MasterInfoHandle, method: &str, request: &[u8])
+            -> Result<Vec<u8>>;
     }
 }
 
-// SAFETY: every MasterInfoHandle method is const and reads state the host guards itself.
+// SAFETY: MasterInfoHandle methods only touch host state the host guards itself.
 unsafe impl Send for bridge::MasterInfoHandle {}
 // SAFETY: as above.
 unsafe impl Sync for bridge::MasterInfoHandle {}

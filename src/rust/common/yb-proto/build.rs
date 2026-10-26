@@ -115,15 +115,64 @@ fn copy_renamed(src_dir: &Path, closure: &BTreeSet<String>, dir: &Path) -> Vec<P
     inputs
 }
 
-/// rust-protobuf serializes fields in declaration order, but the C++ runtime serializes them in
-/// field-number order. Rows the Rust master rewrites must be byte-identical to what a C++ master
-/// would write (skip-if-unchanged writes and the master conformance tests compare bytes), so messages are
-/// generated with their fields sorted by number. Oneof membership is by index, so it is unaffected.
-fn sort_fields_by_number(messages: &mut [DescriptorProto]) {
+/// rust-protobuf serializes fields in declaration order, and every oneof after all other fields;
+/// the C++ runtime serializes in field-number order. Rows the Rust master rewrites must be
+/// byte-identical to what a C++ master would write (skip-if-unchanged writes and the master
+/// conformance tests compare bytes), so messages are generated with their fields sorted by number,
+/// and a oneof that has a member numbered below some other field (AppStatusPB.error_codes) is
+/// generated as plain optional fields. The wire format is the same. The one difference: when a
+/// message on the wire sets two members of such a oneof, C++ keeps the last and Rust keeps both.
+fn sort_fields_by_number(proto3: bool, messages: &mut [DescriptorProto]) {
     for m in messages {
+        flatten_interleaved_oneofs(proto3, m);
         m.field.sort_by_key(|f| f.number());
-        sort_fields_by_number(&mut m.nested_type);
+        sort_fields_by_number(proto3, &mut m.nested_type);
     }
+}
+
+fn flatten_interleaved_oneofs(proto3: bool, m: &mut DescriptorProto) {
+    let in_real_oneof = |f: &protobuf::descriptor::FieldDescriptorProto| {
+        f.oneof_index.is_some() && !f.proto3_optional()
+    };
+    let flatten: Vec<bool> = (0..m.oneof_decl.len() as i32)
+        .map(|index| {
+            let members = m
+                .field
+                .iter()
+                .filter(|f| in_real_oneof(f) && f.oneof_index() == index);
+            let first_member = members.map(|f| f.number()).min();
+            let last_other = m
+                .field
+                .iter()
+                .filter(|f| !(in_real_oneof(f) && f.oneof_index() == index))
+                .map(|f| f.number())
+                .max();
+            matches!((first_member, last_other), (Some(first), Some(last)) if first < last)
+        })
+        .collect();
+    if !flatten.contains(&true) {
+        return;
+    }
+    // Plain proto3 fields have no presence, so flattening a proto3 oneof would change semantics.
+    assert!(!proto3, "{}: interleaved oneof in a proto3 file", m.name());
+    let mut new_index = Vec::with_capacity(flatten.len());
+    let mut next = 0;
+    for &f in &flatten {
+        new_index.push((!f).then(|| {
+            next += 1;
+            next - 1
+        }));
+    }
+    for field in &mut m.field {
+        if let Some(index) = field.oneof_index {
+            field.oneof_index = new_index[index as usize];
+        }
+    }
+    let mut index = 0;
+    m.oneof_decl.retain(|_| {
+        index += 1;
+        !flatten[index - 1]
+    });
 }
 
 struct NoCustomization;
@@ -260,7 +309,8 @@ fn main() {
         .parse_and_typecheck()
         .expect("parsing protos");
     for file in &mut parsed.file_descriptors {
-        sort_fields_by_number(&mut file.message_type);
+        let proto3 = file.syntax() == "proto3";
+        sort_fields_by_number(proto3, &mut file.message_type);
     }
 
     let pb_dir = out_dir.join("pb");

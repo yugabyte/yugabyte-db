@@ -23,18 +23,21 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
@@ -43,6 +46,8 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_context.h"
 #include "yb/master/sys_catalog_restore.h"
+#include "yb/master/sys_catalog_writer.h"
+#include "yb/master/encryption_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure.h"
@@ -51,6 +56,7 @@
 
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/server_base.pb.h"
+#include "yb/server/total_mem_watcher.h"
 #include "yb/server/webserver.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -70,6 +76,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/ulimit_util.h"
 
 #include "master/master/src/ffi.rs.h"
 
@@ -133,6 +140,33 @@ rust::Vec<uint8_t> PerformOnSysCatalogTablet(
       resp.mutable_error()->set_code(master::MasterErrorPB::INTERNAL_ERROR);
     }
   }
+  return ToRustBytes(resp.SerializeAsString());
+}
+
+// CheckRespErrorOrSetUnknown (master_service_base-internal.h).
+template <class Resp>
+void SetErrorIfNotOk(const Status& status, Resp* resp) {
+  if (status.ok() || resp->has_error()) {
+    return;
+  }
+  const master::MasterError master_error(status);
+  StatusToPB(status, resp->mutable_error()->mutable_status());
+  resp->mutable_error()->set_code(
+      master_error.value() == master::MasterErrorPB::Code()
+          ? master::MasterErrorPB::UNKNOWN_ERROR : master_error.value());
+}
+
+template <class Req, class Resp, class F>
+rust::Vec<uint8_t> HandleRequest(rust::Slice<const uint8_t> request, const F& f) {
+  Req req;
+  Resp resp;
+  Status status;
+  if (req.ParseFromArray(request.data(), narrow_cast<int>(request.size()))) {
+    status = f(req, &resp);
+  } else {
+    status = STATUS_FORMAT(InvalidArgument, "Unparsable $0", req.GetTypeName());
+  }
+  SetErrorIfNotOk(status, &resp);
   return ToRustBytes(resp.SerializeAsString());
 }
 
@@ -222,7 +256,7 @@ class MasterHost::SnapshotContextImpl : public master::SnapshotCoordinatorContex
     auto& sys_catalog = *host_.sys_catalog_;
     auto status = master::RestoreSysCatalogOnApply(
         restoration, tablet, sys_catalog.tablet_peer(), sys_catalog.doc_read_context(),
-        host_.snapshot_coordinator_.get(), host_.clock(), /* leader_term= */ -1,
+        host_.snapshot_coordinator_.get(), host_.clock(), /* leader_term= */ [] { return -1; },
         Format("T $0 P $1: ", master::kSysCatalogTabletId, host_.permanent_uuid()));
     // As in CatalogManager::RestoreSysCatalog: a validation failure is reported to the client
     // through the restoration, not as an apply failure.
@@ -322,6 +356,7 @@ MasterHost::MasterHost(const master::MasterOptions& opts, WebserverOptions publi
           snapshot_context_.get(), /* cm= */ nullptr, /* tablet_split_manager= */ nullptr)),
       auto_flags_manager_(std::make_unique<master::MasterAutoFlagsManager>(
           clock(), fs_manager(), /* master= */ nullptr)),
+      encryption_manager_(std::make_unique<master::EncryptionManager>()),
       maintenance_manager_(
           std::make_shared<MaintenanceManager>(MaintenanceManager::DEFAULT_OPTIONS)),
       termination_monitor_(TerminationMonitor::Create()),
@@ -484,19 +519,28 @@ Result<std::vector<ServerEntryPB>> MasterHost::ListMastersForWeb() const {
   return std::vector<ServerEntryPB>(resp.masters().begin(), resp.masters().end());
 }
 
-rust::String MasterHost::PublicWebInterface() const { return public_web_opts_.bind_interface; }
+// Flag values; invalid UTF-8 would make rust::String throw where cxx cannot catch it.
+rust::String MasterHost::PublicWebInterface() const {
+  return rust::String::lossy(public_web_opts_.bind_interface);
+}
 
 uint16_t MasterHost::PublicWebPort() const { return public_web_opts_.port; }
 
-rust::String MasterHost::WebCertificateFile() const { return public_web_opts_.certificate_file; }
-
-rust::String MasterHost::WebPrivateKeyFile() const { return public_web_opts_.private_key_file; }
-
-rust::String MasterHost::WebPrivateKeyPassword() const {
-  return public_web_opts_.private_key_password;
+rust::String MasterHost::WebCertificateFile() const {
+  return rust::String::lossy(public_web_opts_.certificate_file);
 }
 
-rust::String MasterHost::WebSslCiphers() const { return public_web_opts_.ssl_ciphers; }
+rust::String MasterHost::WebPrivateKeyFile() const {
+  return rust::String::lossy(public_web_opts_.private_key_file);
+}
+
+rust::Vec<uint8_t> MasterHost::WebPrivateKeyPassword() const {
+  return ToRustBytes(public_web_opts_.private_key_password);
+}
+
+rust::String MasterHost::WebSslCiphers() const {
+  return rust::String::lossy(public_web_opts_.ssl_ciphers);
+}
 
 void MasterHost::SetWebServer(
     const rust::Vec<rust::String>& bound_ips, uint16_t bound_port,
@@ -564,6 +608,9 @@ void MasterHost::StartHost() {
 }
 
 Status MasterHost::DoStart() {
+  // As master_main.cc does around Master::Start.
+  UlimitUtil::InitUlimits();
+  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_consensus_svc_queue_length,
@@ -581,12 +628,21 @@ Status MasterHost::DoStart() {
   registration_.reset(reg.release());
 
   RETURN_NOT_OK(sys_catalog_->Start(Bind(&MasterHost::ElectedAsLeader, Unretained(this))));
+  sys_catalog_started_ = true;
   RETURN_NOT_OK(OpenSysCatalog());
   sys_catalog_initialized_ = true;
 
   RETURN_NOT_OK(Thread::Create(
       "master_host", "pin_refresh", &MasterHost::RefreshHistoryRetentionPinLoop, this,
       &pin_refresh_thread_));
+  // Terminates the process past its memory limit, as in master_main.cc.
+  total_mem_watcher_ = server::TotalMemWatcher::Create();
+  RETURN_NOT_OK(Thread::Create(
+      "total_mem_watcher", "loop",
+      [this] {
+        total_mem_watcher_->MemoryMonitoringLoop([this] { termination_monitor_->Terminate(); });
+      },
+      &total_mem_watcher_thread_));
   google::FlushLogFiles(google::INFO);
   return Status::OK();
 }
@@ -624,13 +680,22 @@ Status MasterHost::ElectedAsLeader() {
       return;
     }
     LOG(WARNING) << "The Rust master was elected sys catalog leader; stepping down";
-    consensus::LeaderStepDownRequestPB req;
-    req.set_tablet_id(master::kSysCatalogTabletId);
-    req.set_dest_uuid(permanent_uuid());
-    consensus::LeaderStepDownResponsePB resp;
-    auto status = (*consensus)->StepDown(&req, &resp);
-    if (!status.ok() || resp.has_error()) {
-      LOG(WARNING) << "Step-down failed: " << status << " " << resp.ShortDebugString();
+    // A step-down can be refused (for example LEADER_NOT_READY_TO_STEP_DOWN while a new master is
+    // still a PRE_VOTER). The C++ followers do not elect anyone while this peer heartbeats them, so
+    // keep trying until it is no longer leader.
+    while ((*consensus)->role() == PeerRole::LEADER) {
+      consensus::LeaderStepDownRequestPB req;
+      req.set_tablet_id(master::kSysCatalogTabletId);
+      req.set_dest_uuid(permanent_uuid());
+      consensus::LeaderStepDownResponsePB resp;
+      auto status = (*consensus)->StepDown(&req, &resp);
+      if (status.ok() && !resp.has_error()) {
+        return;
+      }
+      LOG(WARNING) << "Step-down failed, retrying: " << status << " " << resp.ShortDebugString();
+      if (stop_latch_.WaitFor(MonoDelta::FromSeconds(1))) {
+        return;
+      }
     }
   });
 }
@@ -776,7 +841,7 @@ void MasterHost::WaitForTermination() const {
   termination_monitor_->WaitForTermination();
 }
 
-std::unique_ptr<MasterInfoHandle> MasterHost::InfoHandle() const {
+std::unique_ptr<MasterInfoHandle> MasterHost::InfoHandle() {
   return std::make_unique<MasterInfoHandle>(this);
 }
 
@@ -789,6 +854,10 @@ void MasterHost::ShutdownHost() {
   if (pin_refresh_thread_) {
     CHECK_OK(ThreadJoiner(pin_refresh_thread_.get()).Join());
   }
+  if (total_mem_watcher_thread_) {
+    total_mem_watcher_->Shutdown();
+    CHECK_OK(ThreadJoiner(total_mem_watcher_thread_.get()).Join());
+  }
   maintenance_manager_->Shutdown();
   if (async_client_init_) {
     async_client_init_->Shutdown();
@@ -798,8 +867,11 @@ void MasterHost::ShutdownHost() {
     leadership_pool_->Shutdown();
   }
   snapshot_coordinator_->Shutdown();
-  sys_catalog_->StartShutdown();
-  sys_catalog_->CompleteShutdown();
+  // SysCatalogTable creates its thread pools in Start(); CompleteShutdown assumes they exist.
+  if (sys_catalog_started_) {
+    sys_catalog_->StartShutdown();
+    sys_catalog_->CompleteShutdown();
+  }
   LOG(INFO) << "Rust master host shutdown complete.";
 }
 
@@ -863,6 +935,106 @@ rust::Vec<uint8_t> MasterHost::CompactSysCatalogResponse() const {
       });
 }
 
+rust::Vec<uint8_t> MasterHost::HandleOnHost(
+    rust::Str method, rust::Slice<const uint8_t> request) {
+  const std::string name(method);
+  if (name == "RemovedMasterUpdate") {
+    return HandleRequest<master::RemovedMasterUpdateRequestPB,
+                         master::RemovedMasterUpdateResponsePB>(
+        request, [this](const auto&, auto*) { return GoIntoShellMode(); });
+  }
+  if (name == "CheckMasterTabletHealth") {
+    // TabletHealthManager::CheckMasterTabletHealth.
+    return HandleRequest<master::CheckMasterTabletHealthRequestPB,
+                         master::CheckMasterTabletHealthResponsePB>(
+        request, [this](const auto&, auto* resp) -> Status {
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "Could not get sys catalog tablet consensus");
+          auto consensus = VERIFY_RESULT_PREPEND(
+              peer->GetRaftConsensus(), "Could not get sys catalog tablet consensus");
+          const auto role = consensus->role();
+          resp->set_role(role);
+          if (role != PeerRole::LEADER) {
+            resp->set_follower_lag_ms(consensus->follower_lag_ms());
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "GetUniverseKeyRegistry") {
+    return HandleRequest<master::GetUniverseKeyRegistryRequestPB,
+                         master::GetUniverseKeyRegistryResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          return encryption_manager_->GetUniverseKeyRegistry(&req, resp);
+        });
+  }
+  if (name == "AddUniverseKeys") {
+    return HandleRequest<master::AddUniverseKeysRequestPB, master::AddUniverseKeysResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          return encryption_manager_->AddUniverseKeys(&req, resp);
+        });
+  }
+  if (name == "HasUniverseKeyInMemory") {
+    return HandleRequest<master::HasUniverseKeyInMemoryRequestPB,
+                         master::HasUniverseKeyInMemoryResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          return encryption_manager_->HasUniverseKeyInMemory(&req, resp);
+        });
+  }
+  if (name == "DumpSysCatalogEntries") {
+    // CatalogManager::DumpSysCatalogEntries and FetchFromSysCatalog.
+    return HandleRequest<master::DumpSysCatalogEntriesRequestPB,
+                         master::DumpSysCatalogEntriesResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          SCHECK_PB_FIELDS_NOT_EMPTY(req, entry_type);
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          const auto type = req.entry_type();
+          const auto& filter = req.entity_id_filter();
+          return master::EnumerateSysCatalog(
+              tablet.get(), sys_catalog_->schema(), type,
+              [&](const Slice& id, const Slice& data) -> Status {
+                if (!filter.empty() && filter != id.ToString()) {
+                  return Status::OK();
+                }
+                auto entry_pb = VERIFY_RESULT(master::SliceToCatalogEntityPB(type, data));
+                auto* entry = resp->add_entries();
+                entry->set_entry_type(type);
+                entry->set_entity_id(id.ToString());
+                entry->set_pb_debug_string(entry_pb->DebugString());
+                return Status::OK();
+              });
+        });
+  }
+  if (name == "WriteSysCatalogEntry") {
+    // CatalogManager::WriteSysCatalogEntry, which needs emergency_repair_mode; CreateMasterHost
+    // refuses to start in it.
+    return HandleRequest<master::WriteSysCatalogEntryRequestPB,
+                         master::WriteSysCatalogEntryResponsePB>(
+        request, [](const auto& req, auto*) -> Status {
+          SCHECK_PB_FIELDS_NOT_EMPTY(req, entry_type);
+          SCHECK_PB_FIELDS_SET(req, op_type);
+          return STATUS(IllegalState, "Updating sys_catalog is only allowed in emergency repair mode");
+        });
+  }
+  throw std::runtime_error("The host does not serve " + name);
+}
+
+// Master::GoIntoShellMode and CatalogManager::GoIntoShellMode.
+Status MasterHost::GoIntoShellMode() {
+  std::lock_guard lock(remote_bootstrap_mutex_);
+  if (opts_.IsShellMode()) {
+    return STATUS(IllegalState, "Master is already in shell mode.");
+  }
+  LOG(INFO) << "Starting going into shell mode.";
+  opts_.SetShellMode(true);
+  maintenance_manager_->Shutdown();
+  RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
+  tablet_exists_ = false;
+  LOG(INFO) << "Done going into shell mode.";
+  return Status::OK();
+}
+
 int32_t MasterHost::MasterServiceQueueLength() const { return FLAGS_master_svc_queue_length; }
 
 int32_t MasterHost::YsqlLeaseServiceQueueLength() const {
@@ -904,6 +1076,16 @@ void MasterHost::WriteServerMetaCacheAsJson(JsonWriter* writer) {
 }
 
 const std::string& MasterHost::permanent_uuid() const { return fs_manager_->uuid(); }
+
+// Same as Master: what /varz shows as this process's flags and AutoFlags. Flags declared in Rust
+// are not in master_flags.xml, which is generated from yb-master.
+Result<std::unordered_set<std::string>> MasterHost::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
+}
+
+Result<std::unordered_set<std::string>> MasterHost::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("master_flags.xml");
+}
 
 uint32_t MasterHost::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();

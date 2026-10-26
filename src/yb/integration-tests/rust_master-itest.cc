@@ -329,7 +329,21 @@ TEST_F(RustMasterTest, AddedThroughRemoteBootstrap) {
   ASSERT_NO_FATALS(RunWorkload());
   ASSERT_OK(WaitForMastersToCatchUp());
 
+  // Served on every master, as AreNodesSafeToTakeDown expects.
+  {
+    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(new_master.get());
+    master::CheckMasterTabletHealthRequestPB req;
+    master::CheckMasterTabletHealthResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+    ASSERT_OK(proxy.CheckMasterTabletHealth(req, &resp, &controller));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+    ASSERT_EQ(resp.role(), PeerRole::FOLLOWER);
+  }
+
+  // The leader tells the removed master (RemovedMasterUpdate), which goes into shell mode.
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::REMOVE_SERVER));
+  ASSERT_OK(WaitForRole(new_master.get(), PeerRole::NON_PARTICIPANT));
 }
 
 namespace {

@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -38,14 +39,16 @@
 namespace yb::master {
 
 // Writes the sys catalog state of `restoration` into `tablet` and records the restoration's
-// progress through `coordinator`. `leader_term` is the term when this master leads, else -1; it
-// is only logged. A NotSupported status means validation rejected the restore before anything was
-// written. The caller reloads leader state afterwards when it leads.
+// progress through `coordinator`. `leader_term` returns the term when this master leads, else -1;
+// it is only logged, and read when the restore has written. A NotSupported status means
+// validation rejected the restore before anything was written. The caller reloads leader state
+// afterwards when it leads.
 Status RestoreSysCatalogOnApply(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const docdb::DocReadContext& doc_read_context, MasterSnapshotCoordinator* coordinator,
-    server::Clock* clock, int64_t leader_term, const std::string& log_prefix);
+    server::Clock* clock, const std::function<int64_t()>& leader_term,
+    const std::string& log_prefix);
 
 // Opens the sys catalog as of `restore_at` from the local checkpoint of `snapshot_id`.
 Result<std::unique_ptr<rocksdb::DB>> RestoreSysCatalogSnapshotToTmpRocksDb(

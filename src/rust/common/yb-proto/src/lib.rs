@@ -25,8 +25,10 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/pb/mod.rs"));
 }
 
+mod cpp_parse;
 mod services;
 
+pub use cpp_parse::move_unknown_enum_values;
 pub use services::{find_method, MethodDesc, ServiceDesc, SERVICES};
 
 include!(concat!(env!("OUT_DIR"), "/files.rs"));
@@ -47,5 +49,30 @@ mod tests {
         let d = message_descriptor("yb.master.SysTabletsEntryPB").unwrap();
         assert_eq!(d.name(), "SysTabletsEntryPB");
         assert!(message_descriptor("yb.master.NoSuchMessagePB").is_none());
+    }
+
+    #[test]
+    fn interleaved_oneof_serializes_in_field_number_order() {
+        use protobuf::Message;
+        // AppStatusPB: code = 1, message = 2, oneof error_codes { posix_code = 4 }, source_file = 6,
+        // source_line = 7. The C++ runtime writes them in that order.
+        let mut status = pb::wire_protocol::AppStatusPB::new();
+        status.set_code(pb::wire_protocol::app_status_pb::ErrorCode::IO_ERROR);
+        status.set_message("m".into());
+        status.set_posix_code(2);
+        status.set_source_file("f".into());
+        status.set_source_line(3);
+        let bytes = status.write_to_bytes().unwrap();
+        let tags: Vec<u8> = vec![0x08, 0x12, 0x20, 0x32, 0x38];
+        let mut found = vec![];
+        let mut i = 0;
+        while i < bytes.len() {
+            found.push(bytes[i]);
+            i += match bytes[i] & 7 {
+                0 => 2,
+                _ => 2 + bytes[i + 1] as usize,
+            };
+        }
+        assert_eq!(found, tags, "{bytes:02x?}");
     }
 }

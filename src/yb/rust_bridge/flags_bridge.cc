@@ -78,8 +78,9 @@ google::CommandLineFlagInfo FindFlag(rust::Str name) {
 
 }  // namespace
 
+// Flag values cross with invalid UTF-8 replaced: a string flag can hold any bytes.
 rust::String GetFlagValue(rust::Str name) {
-  return FindFlag(name).current_value;
+  return rust::String::lossy(FindFlag(name).current_value);
 }
 
 void DefineFlag(
@@ -120,7 +121,7 @@ std::unique_ptr<FlagSubscription> WatchFlag(rust::Str name, rust::Box<FlagWatche
       [flag_name, shared_watcher] {
         google::CommandLineFlagInfo current;
         if (google::GetCommandLineFlagInfo(flag_name.c_str(), &current)) {
-          flag_changed(**shared_watcher, current.current_value);
+          flag_changed(**shared_watcher, rust::String::lossy(current.current_value));
         }
       });
   if (!registration.ok()) {

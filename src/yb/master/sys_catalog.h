@@ -220,6 +220,9 @@ class SysCatalogTable {
   // (src/yb/master_host), which runs the same remote-bootstrap steps.
   Status OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
+  // Shutdown the tablet peer and apply pool which are not needed in shell mode for this master.
+  Status GoIntoShellMode();
+
   std::string tablet_id() const;
 
   // Update the in-memory master addresses. Report missing uuid's in the
@@ -425,9 +428,6 @@ class SysCatalogTable {
   // that we've seen in tablet servers since the master only has to boot a few
   // tablets.
   Status WaitUntilRunning();
-
-  // Shutdown the tablet peer and apply pool which are not needed in shell mode for this master.
-  Status GoIntoShellMode();
 
   // Initializes the RaftPeerPB for the local peer.
   // Crashes due to an invariant check if the rpc server is not running.

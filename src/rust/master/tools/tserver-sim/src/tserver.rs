@@ -13,7 +13,7 @@
 //! One fake tablet server: what it tells the master in heartbeats, following the protocol of
 //! `HeartbeatPoller::TryHeartbeat` (src/yb/tserver/heartbeater.cc).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use yb_proto::pb::common_net::{CloudInfoPB, HostPortPB};
 use yb_proto::pb::consensus_metadata::{ConsensusStatePB, RaftConfigPB};
@@ -39,8 +39,9 @@ struct Tablet {
 pub struct SentReport {
     has_registration: bool,
     full: bool,
-    updated: Vec<Vec<u8>>,
-    removed: Vec<Vec<u8>>,
+    /// Each reported tablet with the change generation it was reported at.
+    updated: Vec<(Vec<u8>, u64)>,
+    removed: Vec<(Vec<u8>, u64)>,
 }
 
 /// One fake tablet server.
@@ -50,10 +51,13 @@ pub struct SimTserver {
     host: String,
     port: u16,
     tablets: BTreeMap<Vec<u8>, Tablet>,
-    /// Tablets created or changed since the master last acknowledged them.
-    dirty: BTreeSet<Vec<u8>>,
-    /// Tablets deleted since the master last acknowledged them.
-    removed: BTreeSet<Vec<u8>>,
+    /// Tablets created or changed since the master last acknowledged them, with the generation of
+    /// their last change. A heartbeat is in flight without the lock held, so an acknowledgement
+    /// only clears a tablet that has not changed again since it was reported.
+    dirty: BTreeMap<Vec<u8>, u64>,
+    /// Tablets deleted since the master last acknowledged them, likewise.
+    removed: BTreeMap<Vec<u8>, u64>,
+    generation: u64,
     needs_reregister: bool,
     needs_full_report: bool,
     sequence_number: i32,
@@ -69,8 +73,9 @@ impl SimTserver {
             host,
             port,
             tablets: BTreeMap::new(),
-            dirty: BTreeSet::new(),
-            removed: BTreeSet::new(),
+            dirty: BTreeMap::new(),
+            removed: BTreeMap::new(),
+            generation: 0,
             needs_reregister: true,
             needs_full_report: false,
             sequence_number: 0,
@@ -154,20 +159,21 @@ impl SimTserver {
         let ids: Vec<Vec<u8>> = if sent.full {
             self.tablets.keys().cloned().collect()
         } else {
-            self.dirty.iter().cloned().collect()
+            self.dirty.keys().cloned().collect()
         };
         for id in ids {
             if let Some(tablet) = self.tablets.get(&id) {
                 report
                     .updated_tablets
                     .push(self.reported_tablet(&id, tablet));
-                sent.updated.push(id);
+                let generation = self.dirty.get(&id).copied().unwrap_or_default();
+                sent.updated.push((id, generation));
             }
         }
         if !sent.full {
-            for id in &self.removed {
+            for (id, generation) in &self.removed {
                 report.removed_tablet_ids.push(id.clone());
-                sent.removed.push(id.clone());
+                sent.removed.push((id.clone(), *generation));
             }
         }
         if sent.full {
@@ -215,11 +221,15 @@ impl SimTserver {
         if sent.full {
             self.needs_full_report = false;
         }
-        for id in &sent.updated {
-            self.dirty.remove(id);
+        for (id, generation) in &sent.updated {
+            if self.dirty.get(id) == Some(generation) {
+                self.dirty.remove(id);
+            }
         }
-        for id in &sent.removed {
-            self.removed.remove(id);
+        for (id, generation) in &sent.removed {
+            if self.removed.get(id) == Some(generation) {
+                self.removed.remove(id);
+            }
         }
     }
 
@@ -243,14 +253,25 @@ impl SimTserver {
             },
         );
         self.removed.remove(&id);
-        self.dirty.insert(id);
+        self.mark_dirty(id);
+    }
+
+    fn next_generation(&mut self) -> u64 {
+        self.generation += 1;
+        self.generation
+    }
+
+    fn mark_dirty(&mut self, tablet_id: Vec<u8>) {
+        let generation = self.next_generation();
+        self.dirty.insert(tablet_id, generation);
     }
 
     /// `DeleteTablet`.
     pub fn delete_tablet(&mut self, tablet_id: &[u8]) {
         if self.tablets.remove(tablet_id).is_some() {
             self.dirty.remove(tablet_id);
-            self.removed.insert(tablet_id.to_vec());
+            let generation = self.next_generation();
+            self.removed.insert(tablet_id.to_vec(), generation);
         }
     }
 
@@ -259,7 +280,7 @@ impl SimTserver {
         match self.tablets.get_mut(tablet_id) {
             Some(tablet) => {
                 tablet.schema_version = schema_version;
-                self.dirty.insert(tablet_id.to_vec());
+                self.mark_dirty(tablet_id.to_vec());
                 true
             }
             None => false,

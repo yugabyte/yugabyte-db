@@ -3147,11 +3147,11 @@ Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
     Status* complete_status) {
-  const auto leader_term = LeaderTerm();
   Status s = RestoreSysCatalogOnApply(
       restoration, tablet, tablet_peer(), doc_read_context(), &master_->snapshot_coordinator(),
-      master_->clock(), leader_term, LogPrefix());
-  if (s.ok() && leader_term >= 0) {
+      master_->clock(), [this] { return LeaderTerm(); }, LogPrefix());
+  // Leadership may have been lost while the restore ran.
+  if (s.ok() && LeaderTerm() >= 0) {
     s = ElectedAsLeaderCb();
   }
   if (!s.ok() && leader_mode) {

@@ -67,7 +67,8 @@ fn run() -> Result<(), String> {
     let mut host = ffi::bridge::create_master_host().map_err(|e| e.what().to_string())?;
     host.pin_mut().init().map_err(|e| e.what().to_string())?;
 
-    let info: Arc<dyn MasterInfo> = Arc::new(host_info::HostInfo::new(host.info_handle()));
+    let info: Arc<dyn MasterInfo> =
+        Arc::new(host_info::HostInfo::new(host.pin_mut().info_handle()));
     let rpc: Arc<dyn RpcClient> = Arc::new(CppRpcClient::new(host.pin_mut().server_handle()));
     let options = HandlerOptions {
         master_rpc_timeout: || Duration::from_millis(MASTER_RPC_TIMEOUT_MS.get().max(0) as u64),

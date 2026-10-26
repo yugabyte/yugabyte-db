@@ -47,7 +47,7 @@ struct RestoreArgs {
   const docdb::DocReadContext& doc_read_context;
   MasterSnapshotCoordinator* coordinator;
   server::Clock* clock;
-  int64_t leader_term;
+  const std::function<int64_t()>& leader_term;
   const std::string& log_prefix;
 };
 
@@ -130,7 +130,7 @@ Status RestoreSysCatalogSlowPitr(
   state.WriteToRocksDB(
       &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
 
-  LOG(INFO) << args.log_prefix << "PITR: In leader term " << args.leader_term
+  LOG(INFO) << args.log_prefix << "PITR: In leader term " << args.leader_term()
                         << ", wrote " << write_batch.size() << " entries to rocksdb";
 
 
@@ -186,7 +186,7 @@ Status RestoreSysCatalogFastPitr(
   state.WriteToRocksDB(
       &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
 
-  LOG(INFO) << args.log_prefix << "PITR: In leader term " << args.leader_term << ", wrote "
+  LOG(INFO) << args.log_prefix << "PITR: In leader term " << args.leader_term() << ", wrote "
                         << write_batch.size() << " entries to rocksdb";
 
 
@@ -214,7 +214,8 @@ Status RestoreSysCatalogOnApply(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const docdb::DocReadContext& doc_read_context, MasterSnapshotCoordinator* coordinator,
-    server::Clock* clock, int64_t leader_term, const std::string& log_prefix) {
+    server::Clock* clock, const std::function<int64_t()>& leader_term,
+    const std::string& log_prefix) {
   const RestoreArgs args{
       .tablet_peer = tablet_peer,
       .doc_read_context = doc_read_context,

@@ -15,7 +15,7 @@ server's own output, and the master pages are the ones a C++ follower serves, re
 
 | Pages | Served from |
 |---|---|
-| `/`, `/tables`, `/tablet-servers`, `/api/v1/tables`, … (every `RegisterLeaderOrRedirect` page) | Fetched from the leader with `master::RedirectToLeader`, as a C++ follower does |
+| `/`, `/tables`, `/tablet-servers`, `/api/v1/tables` and the rest (every `RegisterLeaderOrRedirect` page) | Fetched from the leader with `master::RedirectToLeader`, as a C++ follower does |
 | `/masters`, `/api/v1/masters` | `master::RenderMastersPage` / `RenderMastersJson` over the master list |
 | `/api/v1/is-leader` | 503, the C++ non-leader answer |
 | `/api/v1/version`, `/api/v1/meta-cache` | The host |
