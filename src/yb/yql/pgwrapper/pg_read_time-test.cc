@@ -975,8 +975,9 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 // Scenario: under relaxed mode, each statement that a READ ONLY transaction
 // rejects fails with the relaxed-mode error: INSERT, UPDATE, DELETE, SELECT
 // FOR UPDATE, SELECT FOR SHARE, nextval(), COPY FROM, DDL, and a write inside
-// a function that a SELECT calls. A write to a temporary table and a plain
-// SELECT succeed. With the GUC off, every statement succeeds.
+// a function that a SELECT calls. A write to a temporary table, a plain
+// SELECT, and writes and row locks in a SERIALIZABLE transaction succeed.
+// With the GUC off, every statement succeeds.
 TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
@@ -1008,6 +1009,11 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   }
   ASSERT_OK(conn.Execute("INSERT INTO tmp VALUES (1)"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM t")), 1);
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (5)"));
+  ASSERT_OK(conn.Fetch("SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+  ASSERT_OK(conn.CommitTransaction());
 
   ASSERT_OK(conn.Execute(
       "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));

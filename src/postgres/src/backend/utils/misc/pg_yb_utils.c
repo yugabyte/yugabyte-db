@@ -9216,8 +9216,10 @@ YbIsReadCommittedTxn()
  * key check misses a child row leaves an orphan. So relaxed mode enforces
  * the READ ONLY transaction checks, unless the GUC turns them off.
  *
- * SERIALIZABLE statements and fast-path writes never lose the window, but
- * they are rejected too, for simplicity.
+ * SERIALIZABLE is exempt: relaxed mode never removes its window
+ * (PgTxnManager::SetupReadTimeOptions returns before the clamp). Fast-path
+ * writes never lose the window either, but they are rejected, for
+ * simplicity: the executor decides on the fast path only after this check.
  *
  * The catalog version update that ANALYZE runs is exempt, as it is from
  * XactReadOnly (yb_catalog_version.c). Object locks make its catalog read
@@ -9228,6 +9230,7 @@ YbIsRelaxedReadOnly()
 {
 	return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
 		yb_relaxed_read_after_commit_visibility_read_only_check &&
+		!IsolationIsSerializable() &&
 		!yb_is_calling_internal_sql_for_ddl;
 }
 
