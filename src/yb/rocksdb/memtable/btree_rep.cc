@@ -304,8 +304,9 @@ class BTreeRep : public MemTableRep {
   // Sets *shared_len to the prefix length compared.
   int CompareWithSharedPrefix(const SearchKey& key, size_t* shared_len) const;
 
-  // The root has no parent to validate it: a root split publishes the new root before it cuts the
-  // old one, so a reader that read the old root's version after the cut must see the new root.
+  // The root has no parent to validate it. A root split publishes the new root before it cuts the
+  // old one, and a collapse publishes the child while it holds the old root, so a reader that read
+  // the old root's version after either change sees the new root.
   bool IsRoot(const NodeBase* node) const {
     return root_.load(std::memory_order_acquire) == node;
   }
@@ -547,6 +548,7 @@ bool BTreeRep::LeafLowerBound(
 
 bool BTreeRep::Descend(
     const SearchKey* key, Route route, const Leaf** leaf, uint64_t* version) const {
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:Start");
   const NodeBase* node = root_.load(std::memory_order_acquire);
   if (!node) {
     *leaf = nullptr;
@@ -558,6 +560,8 @@ bool BTreeRep::Descend(
   if (!IsRoot(node)) {
     return false;
   }
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:RootChecked");
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:FollowRoot");
   while (node->level != 0) {
     auto internal = static_cast<const Internal*>(node);
     size_t index;
@@ -1387,6 +1391,7 @@ void BTreeRep::Rebalance(const PathEntry* path, size_t depth) {
     return;
   }
   // An internal root left with a single child is replaced by it.
+  DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Rebalance:CollapseRoot");
   for (;;) {
     auto root = root_.load(std::memory_order_relaxed);
     if (root->level == 0) {
@@ -1396,6 +1401,8 @@ void BTreeRep::Rebalance(const PathEntry* path, size_t depth) {
     if (internal->count.load(std::memory_order_relaxed) != 0) {
       return;
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Rebalance:ReplaceRoot");
+    NodeWriteLock lock(internal);
     root_.store(internal->children[0].load(std::memory_order_relaxed), std::memory_order_release);
   }
 }
