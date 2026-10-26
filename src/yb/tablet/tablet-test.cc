@@ -468,21 +468,22 @@ class TabletRetentionPolicyTest : public TabletTestBase<StringKeyTestSetup> {
     TabletTestBase<StringKeyTestSetup>::SetUp();
     // Makes the clock based cutoff "now", so the provider's cutoff always wins.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
-    ASSERT_OK(clock_->Init());
-    now_ = clock_->Now();
+    ASSERT_OK(hybrid_clock_->Init());
+    now_ = hybrid_clock_->Now();
   }
 
   std::unique_ptr<TabletRetentionPolicy> NewPolicy() {
     return std::make_unique<TabletRetentionPolicy>(
-        clock_, [this](RaftGroupMetadata*) { return allowed_cutoff_; }, tablet()->metadata());
+        hybrid_clock_, [this](RaftGroupMetadata*) { return allowed_cutoff_; },
+        tablet()->metadata());
   }
 
-  void Allow(HybridTime primary, HybridTime cotables = HybridTime::kInvalid) {
-    allowed_cutoff_ = {.cotables_cutoff_ht = cotables, .primary_cutoff_ht = primary};
+  void Allow(HybridTime primary) {
+    allowed_cutoff_ = {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = primary};
   }
 
   // The harness clock is logical, but clock based cutoffs need physical time.
-  server::ClockPtr clock_{new server::HybridClock()};
+  server::ClockPtr hybrid_clock_{new server::HybridClock()};
   HybridTime now_;
   docdb::HistoryCutoff allowed_cutoff_;
 };
@@ -509,22 +510,6 @@ TEST_F(TabletRetentionPolicyTest, HistoryCutoffDoesNotMoveBack) {
       {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = high});
   cutoff = policy->GetRetentionDirective().history_cutoff;
   ASSERT_EQ(cutoff.primary_cutoff_ht, high);
-  ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
-}
-
-TEST_F(TabletRetentionPolicyTest, CotablesHistoryCutoffDoesNotMoveBack) {
-  auto policy = NewPolicy();
-  Allow(now_.AddSeconds(-10), now_.AddSeconds(-20));
-  policy->GetRetentionDirective();
-  Allow(now_.AddSeconds(-100), now_.AddSeconds(-200));
-  auto cutoff = policy->GetRetentionDirective().history_cutoff;
-  ASSERT_EQ(cutoff.primary_cutoff_ht, now_.AddSeconds(-10));
-  ASSERT_EQ(cutoff.cotables_cutoff_ht, now_.AddSeconds(-20));
-
-  // An invalid cotables cutoff means "use the primary cutoff"; a valid floor must not replace it.
-  Allow(now_.AddSeconds(-100));
-  cutoff = policy->GetRetentionDirective().history_cutoff;
-  ASSERT_EQ(cutoff.primary_cutoff_ht, now_.AddSeconds(-10));
   ASSERT_FALSE(cutoff.cotables_cutoff_ht.is_valid());
 }
 

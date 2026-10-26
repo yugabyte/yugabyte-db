@@ -80,7 +80,8 @@ TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
     RaftGroupMetadata* metadata)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
-      metadata_(*metadata), log_prefix_(metadata->LogPrefix()) {
+      metadata_(*metadata), log_prefix_(metadata->LogPrefix()),
+      apply_history_cutoff_floor_(!metadata->IsSysCatalog()) {
     if (PREDICT_FALSE(FLAGS_TEST_committed_history_cutoff_initial_value_usec > 0)) {
       committed_history_cutoff_information_.primary_cutoff_ht = HybridTime::FromMicros(
           FLAGS_TEST_committed_history_cutoff_initial_value_usec);
@@ -99,7 +100,7 @@ HistoryCutoff TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HistoryCutoff 
 void TabletRetentionPolicy::SeedHistoryCutoffFromFlushedFrontier(HistoryCutoff value) {
   absl::MutexLock lock(&mutex_);
   VLOG_WITH_PREFIX(4) << __func__ << "(" << value << ")";
-  used_history_cutoff_floor_.MakeAtLeast(value);
+  used_history_cutoff_floor_.MakeAtLeast(value.primary_cutoff_ht);
   committed_history_cutoff_information_.MakeAtLeast(value);
 }
 
@@ -259,22 +260,24 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
 void TabletRetentionPolicy::ApplyUsedHistoryCutoffFloor(HistoryCutoff* history_cutoff) {
   // Compacting below a cutoff already used is unsafe: a row's liveness entry can be at or below
   // the new cutoff while no version of some column is, and packing that row fails (#35445).
-  // The floor never exceeds the committed cutoff, so it only drops history RegisterReaderTimestamp
-  // already refuses to read. Index backfill readers skip that check but don't depend on the
-  // cutoff. On the master, readers are checked against the cotables cutoff, which bounds the PG
-  // catalog data they read (e.g. as-of and clone reads); sys.catalog (primary) entries are only
-  // read from memory (#26293).
-  auto apply_floor = [this](HybridTime* cutoff, HybridTime floor) {
-    // An invalid cotables cutoff means "use the primary cutoff", so it must stay invalid.
-    if (!cutoff->is_valid() || !floor.is_valid() || *cutoff >= floor) {
-      return;
-    }
-    VLOG_WITH_PREFIX(1) << "Raising history cutoff " << *cutoff << " to previously used " << floor;
-    *cutoff = floor;
-  };
-  apply_floor(&history_cutoff->primary_cutoff_ht, used_history_cutoff_floor_.primary_cutoff_ht);
-  apply_floor(&history_cutoff->cotables_cutoff_ht, used_history_cutoff_floor_.cotables_cutoff_ht);
-  used_history_cutoff_floor_.MakeAtLeast(*history_cutoff);
+  // The floor never exceeds the committed cutoff, below which RegisterReaderTimestamp rejects
+  // reads. It can override SanitizeHistoryCutoff's cap for index backfill readers, which are
+  // accepted below the committed cutoff but don't depend on it.
+  //
+  // The sys catalog is exempt: it has no NOT NULL fixed-width value columns, and CDC reads
+  // sys.catalog at past times without registering a reader (SysCatalogTable::GetTableSchema),
+  // relying only on the provider's cdc_sdk_safe_time cap.
+  if (!apply_history_cutoff_floor_) {
+    return;
+  }
+  auto& cutoff = history_cutoff->primary_cutoff_ht;
+  if (cutoff.is_valid() && used_history_cutoff_floor_.is_valid() &&
+      cutoff < used_history_cutoff_floor_) {
+    VLOG_WITH_PREFIX(1) << "Raising history cutoff " << cutoff << " to previously used "
+                        << used_history_cutoff_floor_;
+    cutoff = used_history_cutoff_floor_;
+  }
+  used_history_cutoff_floor_.MakeAtLeast(cutoff);
 }
 
 void TabletRetentionPolicy::EnableHistoryCutoffPropagation(bool value) {
