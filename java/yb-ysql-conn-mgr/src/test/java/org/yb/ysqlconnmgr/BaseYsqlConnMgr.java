@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -641,6 +642,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
 
     return true;
+  }
+
+  protected static Connection connectWithRetries(ConnectionBuilder builder, int numRetries)
+      throws Exception {
+    for (int retry = 1; retry <= numRetries; ++retry) {
+      try {
+        return builder.connect();
+      } catch (SQLException e) {
+        LOG.info("Connection attempt " + retry + " failed", e);
+        Thread.sleep(retry * 1000);
+      }
+    }
+    fail("Unable to connect after " + numRetries + " attempts");
+    return null;
   }
 
   protected static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
