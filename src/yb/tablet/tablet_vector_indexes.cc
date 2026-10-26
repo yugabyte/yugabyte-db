@@ -61,6 +61,10 @@ DEFINE_test_flag(int32, sleep_after_vector_index_backfill_chunk_ms, 0,
     "Sleep specified amount of milliseconds after flushing each vector index backfill chunk. "
     "Used to keep the backfill running long enough for a concurrent tablet split to be triggered.");
 
+DEFINE_test_flag(bool, skip_flush_deactivated_vector_indexes, false,
+    "Don't flush deactivated vector indexes, so their unflushed rows reach them after a restart "
+    "only through bootstrap replay.");
+
 DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 0,
     "If this flag is non zero, the vector index chunk created during backfill is sized so that "
     "the underlying HNSW index implementation is expected to consume at most this many bytes of "
@@ -361,10 +365,14 @@ Status TabletVectorIndexes::DoCreateIndex(
       vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
       index_table.hybrid_time, metadata().split_generation(),
       *index_table.index_info, std::move(index_context),
-      block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      // A shut down index of a replaced storage (e.g. truncate) could still be referenced, e.g. by
+      // an aborted backfill, so its tracker could still exist.
+      block_cache_, MemTracker::FindOrCreateTracker(-1, index_table.table_id, mem_tracker_),
       vector_index_metric_entity));
+  vector_index->SetDeactivatedHybridTime(index_table.vector_index_deactivated_ht);
 
-  if (!bootstrap) {
+  // A restore that reactivates the index relaunches its backfill, see ScheduleBackfillAfterRestore.
+  if (!bootstrap && !index_table.vector_index_deactivated_ht.is_valid()) {
     // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
     // ScheduleBackfill handles errors from the backfill task gracefully.
     auto read_op = tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -670,6 +678,9 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
   backfill_retry_pending_.store(false, std::memory_order_release);
   std::shared_ptr<ScopedRWOperation> read_op;
   for (const auto& vector_index : *list) {
+    if (vector_index->IsDeactivated()) {
+      continue;
+    }
     auto done = vector_index->BackfillDone();
     if (done.ok() && *done) {
       continue;
@@ -904,12 +915,81 @@ bool TabletVectorIndexes::HasActiveBackfill() const {
     return false;
   }
   for (const auto& index : *list) {
+    if (index->IsDeactivated()) {
+      continue;
+    }
     auto done = index->BackfillDone();
     if (!done.ok() || !*done) {
       return true;
     }
   }
   return false;
+}
+
+void TabletVectorIndexes::RefreshDeactivation() {
+  auto list = List();
+  if (!list) {
+    return;
+  }
+  for (const auto& index : *list) {
+    auto table_info = metadata().GetTableInfo(index->table_id());
+    if (!table_info.ok()) {
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+          << "Failed to obtain table info for " << AsString(*index) << ": "
+          << table_info.status();
+      continue;
+    }
+    auto deactivated_ht = (**table_info).vector_index_deactivated_ht;
+    if (deactivated_ht != index->deactivated_hybrid_time()) {
+      VLOG_WITH_PREFIX(1)
+          << "Vector index " << index->table_id() << " deactivated hybrid time: "
+          << index->deactivated_hybrid_time() << " -> " << deactivated_ht;
+      index->SetDeactivatedHybridTime(deactivated_ht);
+    }
+  }
+  FlushDeactivated();
+}
+
+void TabletVectorIndexes::FlushDeactivated() {
+  if (FLAGS_TEST_skip_flush_deactivated_vector_indexes) {
+    return;
+  }
+  auto list = List();
+  if (!list) {
+    return;
+  }
+  for (const auto& index : *list) {
+    if (index->IsDeactivated() && index->GetFlushAbility() == rocksdb::FlushAbility::kHasNewData) {
+      WARN_NOT_OK(index->Flush(), Format("Flush deactivated vector index $0", index->table_id()));
+    }
+  }
+}
+
+void TabletVectorIndexes::AdvanceDeactivatedFlushedOpIds(const OpId& op_id) {
+  auto list = List();
+  if (!list) {
+    return;
+  }
+  for (const auto& index : *list) {
+    if (!index->IsDeactivated()) {
+      continue;
+    }
+    auto flushed = index->GetFlushedFrontier();
+    if (flushed && flushed->op_id() >= op_id) {
+      continue;
+    }
+    auto advanced = index->AdvanceFlushedOpId(op_id);
+    if (!advanced.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to advance flushed OpId of deactivated vector index " << index->table_id()
+          << " to " << op_id << ": " << advanced.status();
+      continue;
+    }
+    VLOG_WITH_PREFIX(2)
+        << "Deactivated vector index " << index->table_id() << " flushed OpId "
+        << (flushed ? flushed->op_id() : OpId()) << " -> " << op_id
+        << (*advanced ? "" : " skipped, unflushed data");
+  }
 }
 
 uint64_t TabletVectorIndexes::MaxPersistedSplitGeneration() const {

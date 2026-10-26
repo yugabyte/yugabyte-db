@@ -815,6 +815,10 @@ class Tablet : public AbstractTablet,
   // May modify the flushed op_id of intents db.
   Status MayModifyIntentsDbFlushedOpId();
 
+  // After a regular DB flush, advances the flushed OpId of deactivated vector indexes that hold
+  // nothing unflushed to the regular DB's.
+  Status MayAdvanceDeactivatedVectorIndexesFlushedOpId();
+
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 

@@ -763,7 +763,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
-        restore_metadata.schema_version, op_id);
+        restore_metadata.schema_version, op_id, /* table_id= */ "", frontier.hybrid_time());
     tablet().metadata()->SetHidden(restore_metadata.hide);
     need_flush = true;
   }
@@ -777,7 +777,7 @@ Status TabletSnapshots::RestoreCheckpoint(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
         colocated_table_metadata.schema_version, op_id,
-        colocated_table_metadata.table_id);
+        colocated_table_metadata.table_id, frontier.hybrid_time());
     need_flush = true;
   }
 

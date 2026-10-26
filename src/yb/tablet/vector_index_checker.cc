@@ -87,6 +87,8 @@ class VectorIndexChecker {
   }
 
   Result<VectorIndexCheckResultPB> Run() {
+    // A deactivated index lacks the rows committed after its cutoff by design.
+    SCHECK(!vector_index_.IsDeactivated(), IllegalState, "Vector index is deactivated");
     SCHECK(VERIFY_RESULT(vector_index_.BackfillDone()), TryAgain,
            "Vector index backfill is in progress");
 

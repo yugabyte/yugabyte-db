@@ -351,7 +351,7 @@ void XClusterDDLQueueHandler::Shutdown() {
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
     // Optimistically unlock the advisory lock so we don't have to wait for the connection to close.
     // Use Fetch since pg_advisory_unlock_all() returns a (void) row.
-    auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_advisory_unlock_all()"));
+    auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_catalog.pg_advisory_unlock_all()"));
     // Alright if we fail here, log an error and wait for the connection to close normally.
     WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
     pg_conn_.reset();
@@ -518,12 +518,15 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   }
 
   // Set needed session variables as on source.
+  // Use set_config instead of SET to handle quoted strings.
   for (const auto& [name, value] : query_info.variables) {
     if (!IsAllowedGucVariable(name)) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring unexpected variable in DDL queue entry: " << name;
       continue;
     }
-    setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
+    setup_query << Format(
+        "SELECT pg_catalog.set_config($0, $1, false);", pgwrapper::PqEscapeLiteral(name),
+        pgwrapper::PqEscapeLiteral(value));
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
@@ -538,7 +541,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   RETURN_NOT_OK(
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
       RunAndLogQuery(
-          "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"));
+          "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"
+          "RESET search_path;"));
   return Status::OK();
 }
 
@@ -712,7 +716,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
   // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time TO '$0 ht'",
+      "RESET search_path; SET ROLE NONE; SET yb_disable_catalog_version_check = 1; "
+      "SET yb_read_time TO '$0 ht'",
       commit_time.ToUint64()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "/*+ MergeJoin(q r) */ "
