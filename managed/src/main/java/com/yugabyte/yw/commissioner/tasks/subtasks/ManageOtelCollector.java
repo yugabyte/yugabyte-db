@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 @Slf4j
 public class ManageOtelCollector extends NodeTaskBase {
@@ -124,7 +125,11 @@ public class ManageOtelCollector extends NodeTaskBase {
       manageOtelCollector();
     } catch (RuntimeException e) {
       // Never swallow a task abort.
-      if (!taskParams().ignoreErrors || e instanceof CancellationException) {
+      // An abort can arrive wrapped, e.g. an interrupted node agent call. indexOfType walks the
+      // cause chain; hasCause does not.
+      if (!taskParams().ignoreErrors
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0) {
         throw e;
       }
       log.warn(
@@ -140,7 +145,7 @@ public class ManageOtelCollector extends NodeTaskBase {
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
     Common.CloudType providerType = nodeCluster.getProviderCloudType(node);
     taskParams().useSudo =
-        isYbServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
+        taskParams().installOtelCollector && isYbServerServiceSystemLevel(universe, node);
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",

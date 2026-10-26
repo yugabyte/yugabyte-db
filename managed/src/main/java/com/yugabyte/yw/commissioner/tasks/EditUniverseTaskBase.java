@@ -643,7 +643,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> removeMasters) {
     if (!newMasters.isEmpty()) {
       // Start masters. If it is already started, it has no effect.
-      createStartMasterProcessTasks(newMasters);
+      createStartMasterProcessTasks(newMasters, false /* refreshOtelCollector */);
+      // New nodes got isMaster at freeze, so configure already wrote their master target. Only
+      // existing nodes that gain a master need the collector refresh.
+      createOtelCollectorMetricsRefreshTasks(
+          newMasters.stream()
+              .filter(n -> n.state != NodeState.ToBeAdded)
+              .collect(Collectors.toSet()),
+          true /* ignoreErrors */);
     }
     // Filter out nodes which are not in the universe.
     Set<NodeDetails> removeUniverseMasters =
@@ -675,7 +682,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               if (node.state != NodeState.ToBeRemoved) {
                 // The node stays, so drop the master target from its collector config.
-                createOtelCollectorMetricsRefreshTasks(Collections.singleton(node));
+                createOtelCollectorMetricsRefreshTasks(
+                    Collections.singleton(node), true /* ignoreErrors */);
               }
               // Remove this node from subsequent address update as it's no longer a master.
               currentLiveMasters.remove(node);

@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
@@ -37,13 +38,19 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -271,6 +278,48 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             n ->
                 assertEquals(
                     NodeDetails.NodeExporterSystemdLevel.USER, n.nodeExporterSystemdLevel));
+  }
+
+  // Configure writes the master target on a new universe, so the master start must not plan a
+  // collector refresh. The install runs during provisioning, not as ManageOtelCollector.
+  @Test
+  public void testCreateUniverseWithMetricsExportSkipsOtelCollectorRefresh() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+    exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+    metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+    taskParams.getPrimaryCluster().userIntent.metricsExportConfig = metricsExportConfig;
+    taskParams.otelCollectorEnabled = true;
+    taskParams.arch = Architecture.x86_64;
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+              metricsExportConfig;
+          u.getUniverseDetails().otelCollectorEnabled = true;
+          u.getUniverseDetails().arch = Architecture.x86_64;
+        });
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> otelTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    assertEquals(List.of(), otelTasks);
   }
 
   private UniverseDefinitionTaskParams getManagedLbTaskParams() {

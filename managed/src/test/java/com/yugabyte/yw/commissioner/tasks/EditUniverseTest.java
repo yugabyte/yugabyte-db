@@ -3132,7 +3132,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
             .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
-    assertTrue(refreshed.toString(), refreshed.containsAll(demoted));
+    // The new master is a new node: configure already wrote its master target, so only the
+    // demoted node is refreshed.
+    assertEquals(demoted, refreshed);
   }
 
   @Test

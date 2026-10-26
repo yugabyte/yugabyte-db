@@ -874,6 +874,8 @@ public class OtelCollectorConfigGenerator {
     private String region;
     private String zone;
     private UniverseDefinitionTaskParams.ClusterType clusterType;
+    // False when the helm release runs no master pods (read replica, or an AZ with no masters).
+    private boolean hasMasters;
   }
 
   /**
@@ -1295,7 +1297,10 @@ public class OtelCollectorConfigGenerator {
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
     Set<ScrapeConfigTargetType> scrapeTargets =
-        getYugabyteScrapeTargetsForK8s(apiIntent, metricsExportConfig.getScrapeConfigTargets());
+        getYugabyteScrapeTargetsForK8s(
+            apiIntent,
+            podPlacement == null || podPlacement.isHasMasters(),
+            metricsExportConfig.getScrapeConfigTargets());
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2267,14 +2272,19 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
-   * Drops the YSQL/CQL targets when the universe does not run that API (PLAT-21847). Master and
-   * tserver pods share one collector config, so per-node gating as on VMs is not possible here.
+   * Drops the YSQL/CQL targets when the universe does not run that API (PLAT-21847), and the master
+   * target when the helm release runs no master pods. Master and tserver pods in a release share
+   * one collector config, so per-pod gating as on VMs is not possible here.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
       UniverseDefinitionTaskParams.UserIntent apiIntent,
+      boolean releaseHasMasters,
       Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
+    if (!releaseHasMasters) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
     if (!apiIntent.enableYSQL) {
       targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
     }

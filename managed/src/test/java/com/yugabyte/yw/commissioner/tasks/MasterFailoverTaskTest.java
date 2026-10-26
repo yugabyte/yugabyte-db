@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -33,6 +34,7 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
@@ -163,11 +165,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     mockedMetricGroup.close();
   }
 
-  // PLAT-23125: failover keeps the old master node up as a tserver, so its collector config must
-  // drop the master target. The node is often unhealthy, so a failed refresh must not fail the
-  // failover.
-  @Test
-  public void testMasterFailoverRefreshesOtelCollectorOnOldMasterBestEffort() throws Exception {
+  private Universe enableMetricsExport() {
     DataDogConfig ddConfig = new DataDogConfig();
     ddConfig.setType(ProviderType.DATA_DOG);
     ddConfig.setSite("datadoghq.com");
@@ -195,6 +193,15 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
             });
     // With an architecture set, the precheck looks for a local release package the test lacks.
     RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    return universe;
+  }
+
+  // PLAT-23125: failover keeps the old master node up as a tserver, so its collector config must
+  // drop the master target. The node is often unhealthy, so a failed refresh must not fail the
+  // failover.
+  @Test
+  public void testMasterFailoverRefreshesOtelCollectorOnOldMasterBestEffort() throws Exception {
+    Universe universe = enableMetricsExport();
     String oldMasterIp = universe.getNode("host-n1").cloudInfo.private_ip;
     // The old master is unreachable: its collector refresh fails.
     when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
@@ -230,10 +237,114 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
                 Collectors.toMap(
                     t -> t.getTaskParams().get("nodeName").asText(),
                     t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
-    // The old master is refreshed best-effort; the new master is refreshed normally.
+    // Both refreshes are best effort: the old master and the new master.
     assertEquals(Boolean.TRUE, ignoreErrorsByNode.get("host-n1"));
     assertEquals(2, ignoreErrorsByNode.size());
-    assertEquals(1, Collections.frequency(ignoreErrorsByNode.values(), Boolean.FALSE));
+    assertEquals(0, Collections.frequency(ignoreErrorsByNode.values(), Boolean.FALSE));
+    // The old-master refresh runs after the master address update, so a hung node cannot delay
+    // it.
+    int oldMasterRefresh =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.ManageOtelCollector
+                        && "host-n1".equals(t.getTaskParams().get("nodeName").asText()))
+            .mapToInt(TaskInfo::getPosition)
+            .findFirst()
+            .getAsInt();
+    int lastAddressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleConfigureServers
+                        && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean())
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(oldMasterRefresh > lastAddressUpdate);
+  }
+
+  // A failover that could not reach the old master leaves its collector config with the master
+  // target. When the node comes back, the sync that stops its master must drop that target too.
+  @Test
+  public void testSyncMasterAddressesRefreshesOtelCollectorOnStoppedMaster() throws Exception {
+    enableMetricsExport();
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              NodeDetails node = u.getNode("host-n1");
+              node.isMaster = false;
+              node.masterState = NodeDetails.MasterState.ToStop;
+              node.autoSyncMasterAddrs = true;
+            });
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = universe.getVersion();
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.rootCA = universe.getUniverseDetails().rootCA;
+    TaskInfo taskInfo = waitForTask(commissioner.submit(TaskType.SyncMasterAddresses, taskParams));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<String, Boolean> ignoreErrorsByNode =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(
+                Collectors.toMap(
+                    t -> t.getTaskParams().get("nodeName").asText(),
+                    t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
+    assertEquals(Map.of("host-n1", true), ignoreErrorsByNode);
+  }
+
+  // A best-effort refresh must not swallow an abort, even when the interrupt arrives wrapped in a
+  // RuntimeException, as from a node agent call.
+  @Test
+  public void testMasterFailoverOtelRefreshRethrowsWrappedInterrupt() throws Exception {
+    Universe universe = enableMetricsExport();
+    String oldMasterIp = universe.getNode("host-n1").cloudInfo.private_ip;
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
+        .thenAnswer(
+            invocation -> {
+              if (oldMasterIp.equals(invocation.getArgument(0))) {
+                throw new RuntimeException(new InterruptedException("aborted"));
+              }
+              return null;
+            });
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.nodeName = "host-n1";
+    taskParams.azUuid = UUID.randomUUID();
+    taskParams.expectedUniverseVersion = -1;
+    TaskInfo taskInfo = waitForTask(commissioner.submit(TaskType.MasterFailover, taskParams));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.ManageOtelCollector
+                        && t.getTaskState() == TaskInfo.State.Failure));
+  }
+
+  // A retry after UpdateNodeProcess re-reads isMaster=false on the old master. Its collector
+  // refresh must still be planned, or the retry skips a pending subtask.
+  @Test
+  public void testMasterFailoverTaskRetriesWithMetricsExport() {
+    Universe universe = enableMetricsExport();
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.nodeName = "host-n1";
+    taskParams.azUuid = UUID.randomUUID();
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.MasterFailover,
+        CustomerTask.TargetType.Universe,
+        universe.getUniverseUUID(),
+        TaskType.MasterFailover,
+        taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

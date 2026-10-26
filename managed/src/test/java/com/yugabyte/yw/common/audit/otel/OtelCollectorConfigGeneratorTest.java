@@ -1429,6 +1429,65 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(ycqlOnlyConfig, containsString("export_type: tserver_export"));
   }
 
+  // A helm release with no master pods (read replica, or an AZ with no masters) must not scrape
+  // the master port: every pod in it would fail that scrape on each interval.
+  @Test
+  public void getOtelColConfigK8sMetricsDropsMasterTargetWithoutMasterPods() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder()
+            .metricsExportConfig(
+                createMetricsExportConfig(
+                    telemetryProvider.getUuid(),
+                    ImmutableMap.of(),
+                    15,
+                    10,
+                    MetricCollectionLevel.NORMAL))
+            .build();
+    UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
+    intent.enableYSQL = true;
+
+    String tserverOnlyConfig =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-b",
+                    UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                    false /* hasMasters */),
+                "%m [%p] ",
+                intent)
+            .getConfig();
+    assertThat(tserverOnlyConfig, not(containsString("export_type: master_export")));
+    assertThat(tserverOnlyConfig, containsString("export_type: tserver_export"));
+
+    String withMastersConfig =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-a",
+                    UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                    true /* hasMasters */),
+                "%m [%p] ",
+                intent)
+            .getConfig();
+    assertThat(withMastersConfig, containsString("export_type: master_export"));
+  }
+
   @Test
   public void getOtelColConfigK8sAuditAndQueryPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
@@ -1810,7 +1869,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             "kubernetes",
             "us-west1",
             "us-west1-a",
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            true /* hasMasters */);
     OtelCollectorConfigGenerator.K8sOtelConfig result =
         generator.getOtelColConfigK8s(
             provider,
@@ -1881,7 +1941,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             "kubernetes",
             "us-west1",
             "us-west1-a",
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            true /* hasMasters */);
     OtelCollectorConfigGenerator.K8sOtelConfig result =
         generator.getOtelColConfigK8s(
             provider,

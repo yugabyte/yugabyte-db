@@ -197,8 +197,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSwamperTargetUpdateTask(false /* removeFile */);
 
       // The node may have lost its master while stopped, and its collector config still scrapes
-      // the master port. Rewrite it for the node's current roles.
-      createOtelCollectorMetricsRefreshTasks(nodeCollection);
+      // the master port. Rewrite it for the node's current roles. A master start already did, and
+      // read replica and dedicated tserver nodes never run a master.
+      if (!startMaster
+          && cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+          && currentNode.dedicatedTo != ServerType.TSERVER) {
+        createOtelCollectorMetricsRefreshTasks(nodeCollection, true /* ignoreErrors */);
+      }
 
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);

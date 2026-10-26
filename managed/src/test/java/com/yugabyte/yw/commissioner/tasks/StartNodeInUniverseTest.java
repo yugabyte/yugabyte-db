@@ -319,6 +319,29 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   // config for its current roles.
   @Test
   public void testStartNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
+    assertEquals(Map.of("host-n1", true), startNodeWithMetricsExport(false /* startMaster */));
+  }
+
+  // The master start refreshes the node, so the later refresh for a lost master must not run
+  // again (PLAT-23125).
+  @Test
+  public void testStartNodeWithMasterStartRefreshesOtelCollectorOnce() {
+    assertEquals(Map.of("host-n1", true), startNodeWithMetricsExport(true /* startMaster */));
+  }
+
+  // A dedicated tserver node never runs a master, so its start must not rewrite the collector.
+  @Test
+  public void testStartDedicatedTserverNodeSkipsOtelCollectorRefresh() {
+    assertEquals(Map.of(), startNodeWithMetricsExport(false, true /* dedicatedTserver */));
+  }
+
+  private Map<String, Boolean> startNodeWithMetricsExport(boolean startMaster) {
+    return startNodeWithMetricsExport(startMaster, false /* dedicatedTserver */);
+  }
+
+  // Returns ignoreErrors of each ManageOtelCollector subtask, by node name.
+  private Map<String, Boolean> startNodeWithMetricsExport(
+      boolean startMaster, boolean dedicatedTserver) {
     DataDogConfig ddConfig = new DataDogConfig();
     ddConfig.setType(ProviderType.DATA_DOG);
     ddConfig.setSite("datadoghq.com");
@@ -330,7 +353,22 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     telemetryProvider.setConfig(ddConfig);
     telemetryProvider.setTags(Map.of());
     telemetryProvider.save();
-    setMasters(defaultUniverse, "host-n2");
+    Universe current = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    if (startMaster) {
+      current =
+          Universe.saveDetails(
+              current.getUniverseUUID(),
+              u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false));
+    }
+    setMasters(current, "host-n2");
+    if (startMaster) {
+      setExpectedMasters(current, "host-n1", "host-n2");
+    }
+    if (dedicatedTserver) {
+      Universe.saveDetails(
+          current.getUniverseUUID(),
+          u -> u.getNode("host-n1").dedicatedTo = UniverseTaskBase.ServerType.TSERVER);
+    }
     Universe universe =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -358,12 +396,15 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                 .collect(Collectors.toList()),
         TaskInfo.State.Success,
         taskInfo.getTaskState());
-    List<String> refreshed =
+    List<TaskInfo> refreshes =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
-            .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toList());
-    assertEquals(List.of("host-n1"), refreshed);
+    return refreshes.stream()
+        .collect(
+            Collectors.toMap(
+                t -> t.getTaskParams().get("nodeName").asText(),
+                t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
   }
 
   @Test

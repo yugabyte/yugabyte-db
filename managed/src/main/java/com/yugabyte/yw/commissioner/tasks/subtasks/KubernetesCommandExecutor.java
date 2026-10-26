@@ -318,6 +318,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  // A full move also runs the new StatefulSet's masters in the same release, which shares the
+  // collector config with the old one.
+  static boolean releaseHasMasters(int masterReplicas, FullMoveParams fullMoveParams) {
+    return masterReplicas > 0 || (fullMoveParams != null && fullMoveParams.masterReplicas > 0);
+  }
+
   public static class FullMoveParams {
     public int tsReplicas = 0;
     public int masterReplicas = 0;
@@ -1029,6 +1035,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
     }
+    int masterReplicas;
     if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
@@ -1036,8 +1043,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       overrides.put("isMultiAz", true);
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
+        masterReplicas = replicationFactorZone;
         overrides.put(
             "replicas",
             ImmutableMap.of(
@@ -1050,12 +1059,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     } else {
       if (taskParams().isReadOnlyCluster) {
+        masterReplicas = 0;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
         // When full move is progress, the userIntent.replicationFactor will not reflect the
         // correct replication factor for master, so we need to use replicationFactorZone for
         // master replicas in that case.
-        int masterReplicas =
+        masterReplicas =
             taskParams().fullMoveParams != null ? replicationFactorZone : replicationFactor;
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", masterReplicas));
       }
@@ -1527,7 +1537,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 placementZone,
                 taskParams().isReadOnlyCluster
                     ? UniverseDefinitionTaskParams.ClusterType.ASYNC
-                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                releaseHasMasters(masterReplicas, taskParams().fullMoveParams));
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
                 provider,

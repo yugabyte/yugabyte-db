@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.utils.Pair;
@@ -44,11 +46,17 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -266,6 +274,46 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, ImmutableSet.of(2, 3, 7));
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  // Resume does not change master roles, and configure already wrote the master target, so the
+  // master start must not plan a collector refresh.
+  @Test
+  public void testResumeUniverseSkipsOtelCollectorRefresh() {
+    setupUniverse(false, 1);
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(UUID.randomUUID());
+    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
+    telemetryProvider.setName("dd-tp");
+    telemetryProvider.setConfig(ddConfig);
+    telemetryProvider.setTags(Map.of());
+    telemetryProvider.save();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
+              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
+              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
+                  metricsExportConfig;
+              u.getUniverseDetails().otelCollectorEnabled = true;
+              u.getUniverseDetails().arch = Architecture.x86_64;
+            });
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageOtelCollector));
   }
 
   @Test

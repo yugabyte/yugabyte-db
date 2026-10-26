@@ -79,6 +79,9 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
                 params.isIgnoreError = isLocalProvider;
               })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      // These nodes stay up without a master, for example the old master after a failover that
+      // could not reach it. Drop the master target from their collector config. Best effort.
+      createOtelCollectorMetricsRefreshTasks(nonMasterActiveNodes, true /* ignoreErrors */);
       Set<NodeDetails> pendingMasters =
           universe.getMasters().stream()
               .filter(n -> n.autoSyncMasterAddrs)
