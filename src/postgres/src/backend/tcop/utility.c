@@ -449,6 +449,15 @@ PreventCommandIfReadOnly(const char *cmdname)
 		/* translator: %s is name of a SQL command, eg CREATE */
 				 errmsg("cannot execute %s in a read-only transaction",
 						cmdname)));
+
+	if (YbIsRelaxedReadOnly())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot execute %s under relaxed read-after-commit visibility",
+						cmdname),
+				 errhint("Set yb_read_after_commit_visibility to strict, or turn off "
+						 "yb_relaxed_read_after_commit_visibility_read_only_check to "
+						 "allow it.")));
 }
 
 /*
@@ -610,7 +619,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	/* Prohibit read/write commands in read-only states. */
 	readonly_flags = ClassifyUtilityCommandAsReadOnly(parsetree);
 	if (readonly_flags != COMMAND_IS_STRICTLY_READ_ONLY &&
-		(XactReadOnly || IsInParallelMode()))
+		(XactReadOnly || IsInParallelMode() || YbIsRelaxedReadOnly()))
 	{
 		CommandTag	commandtag = CreateCommandTag(parsetree);
 

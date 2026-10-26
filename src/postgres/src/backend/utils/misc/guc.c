@@ -311,7 +311,6 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
-static bool yb_check_bool_no_txn(bool *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
@@ -2626,20 +2625,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_relaxed_read_after_commit_visibility_read_only_txns",
+		{"yb_relaxed_read_after_commit_visibility_read_only_check",
 			PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("Apply yb_read_after_commit_visibility = relaxed only to "
-						 "READ ONLY transactions."),
-			gettext_noop("When off, relaxed mode applies to every statement, "
-						 "including writes and row locks, which can then miss "
-						 "rows that another node committed just before. "
-						 "Triggers, including foreign key checks, then "
-						 "fail."),
+			gettext_noop("Reject writes, row locks and DDL under "
+						 "yb_read_after_commit_visibility = relaxed, as a "
+						 "READ ONLY transaction does."),
+			gettext_noop("Relaxed mode removes the uncertainty window, so a "
+						 "write or row lock can miss a row that another node "
+						 "committed just before and leave the data "
+						 "inconsistent. Turn off only when that is "
+						 "acceptable."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_relaxed_read_after_commit_visibility_read_only_txns,
+		&yb_relaxed_read_after_commit_visibility_read_only_check,
 		true,
-		yb_check_bool_no_txn, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -8413,10 +8413,13 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. READ ONLY transactions do not see read restart"
-						 " errors, but may miss rows that another node committed"
-						 " up to one clock skew before the read. See also"
-						 " yb_relaxed_read_after_commit_visibility_read_only_txns."
+						 " relaxed. Reads do not see read restart errors, but may"
+						 " miss rows that another node committed up to one clock"
+						 " skew before the read. Writes, row locks and DDL fail as"
+						 " in a READ ONLY transaction, unless"
+						 " yb_relaxed_read_after_commit_visibility_read_only_check"
+						 " is off. This mode does not apply to serializable"
+						 " isolation level and fast path writes."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -17895,12 +17898,6 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
-}
-
-static bool
-yb_check_bool_no_txn(bool *newval, void **extra, GucSource source)
-{
-	return yb_check_no_txn(NULL, extra, source);
 }
 
 static const char *

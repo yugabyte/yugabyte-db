@@ -436,6 +436,8 @@ COMMIT;
     auto mode = is_concurrent_refresh ? "CONCURRENTLY" : "NONCONCURRENTLY";
 
     ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = 'relaxed'"));
+    ASSERT_OK(conn.Execute(
+        "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
     LOG(INFO) << "Starting REFRESH MATERIALIZED VIEW " << mode;
     ASSERT_OK(conn.Execute(cmd));
     LOG(INFO) << "Completed REFRESH MATERIALIZED VIEW " << mode;

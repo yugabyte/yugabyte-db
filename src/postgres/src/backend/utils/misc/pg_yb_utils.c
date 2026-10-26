@@ -9210,25 +9210,22 @@ YbIsReadCommittedTxn()
 }
 
 /*
- * #35522: a trigger, including a foreign key check, can lock or act on rows
- * that it reads. With relaxed mode covering writes, that read can miss a row
- * that another node committed just before. SERIALIZABLE never clamps the
- * uncertainty window, so it could be exempt; it is rejected too for
- * simplicity.
+ * #35522: relaxed read-after-commit visibility removes the uncertainty
+ * window, so a write or row lock can miss a row that another node committed
+ * just before and leave the data inconsistent: a parent DELETE whose foreign
+ * key check misses a child row leaves an orphan. So relaxed mode enforces
+ * the READ ONLY transaction checks, unless the GUC turns them off.
+ *
+ * The catalog version update that ANALYZE runs is exempt, as it is from
+ * XactReadOnly (yb_catalog_version.c): it reads the catalog at the catalog
+ * read time, which relaxed mode does not clamp.
  */
-void
-YbPreventTriggerIfRelaxedRead(const char *trigname)
+bool
+YbIsRelaxedReadOnly()
 {
-	if (yb_read_after_commit_visibility ==
-		YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
-		!yb_relaxed_read_after_commit_visibility_read_only_txns)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("trigger \"%s\" cannot run under relaxed "
-						"read-after-commit visibility", trigname),
-				 errhint("Set yb_relaxed_read_after_commit_visibility_"
-						 "read_only_txns to on, or "
-						 "yb_read_after_commit_visibility to strict.")));
+	return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
+		yb_relaxed_read_after_commit_visibility_read_only_check &&
+		!yb_is_calling_internal_sql_for_ddl;
 }
 
 bool

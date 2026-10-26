@@ -99,7 +99,6 @@ TEST_F(PgInjectReadRestartTest, FanOutReadRestart) {
 
   // No read restart error when one is not expected.
   ASSERT_OK(read_conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
-  ASSERT_OK(read_conn.Execute("SET default_transaction_read_only = on"));
   ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
 }
 

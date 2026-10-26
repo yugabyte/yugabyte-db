@@ -697,13 +697,8 @@ bool PgTxnManager::ShouldResetReadTime(std::optional<ReadTimeAction> read_time_a
 }
 
 bool PgTxnManager::ShouldClamp() const {
-  if (clamp_uncertainty_window_) {
-    return true;
-  }
-  return yb_read_after_commit_visibility ==
-             YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
-         (read_only_ ||
-          !yb_relaxed_read_after_commit_visibility_read_only_txns);
+  return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
+         clamp_uncertainty_window_;
 }
 
 Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(

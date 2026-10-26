@@ -862,32 +862,15 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
   ASSERT_OK(conn.Execute("SET log_statement = 'all'"));
 
-  // #35522: by default, relaxed mode applies only to READ ONLY transactions.
-  CheckReadTimePickedOnDocdb(
-      [&conn, kTable]() {
-        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
-      });
-  CheckReadTimeProvidedToDocdb(
-      [&conn, kTable]() {
-        ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
-        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
-        ASSERT_OK(conn.CommitTransaction());
-      });
-  CheckReadTimePickedOnDocdb(
-      [&conn, kTable]() {
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-        ASSERT_OK(conn.FetchFormat(
-            "SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
-        ASSERT_OK(conn.CommitTransaction());
-      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
-  ASSERT_OK(conn.Execute("BEGIN"));
+  // #35522: by default, relaxed mode rejects row locks and writes.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_NOK_STR_CONTAINS(
-      conn.Execute(
-          "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"),
-      "Cannot be set within a txn block");
-  ASSERT_OK(conn.Execute("ROLLBACK"));
+      conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable),
+      "cannot execute SELECT FOR UPDATE under relaxed read-after-commit "
+      "visibility");
+  ASSERT_OK(conn.RollbackTransaction());
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
+      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
 
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
@@ -983,52 +966,55 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(ResetMaxBatchSize(&conn));
 }
 
-// #35522: with yb_relaxed_read_after_commit_visibility_read_only_txns off,
-// relaxed mode also covers writes. A trigger, including a foreign key check,
-// can then lock or act on rows it read without the uncertainty window, so it
-// must not run.
+// #35522: relaxed mode removes the uncertainty window, so a write or row lock
+// can miss a row that another node committed just before and leave the data
+// inconsistent. Relaxed mode therefore enforces the READ ONLY transaction
+// checks unless yb_relaxed_read_after_commit_visibility_read_only_check is
+// off.
 //
-// Scenario: in relaxed mode with the GUC off, writes that fire a foreign key
-// check from the child or the parent side, and a write that fires a user
-// trigger, all fail, also in a SERIALIZABLE transaction. The same writes
-// succeed with the GUC on.
-TEST_F(PgReadTimeTest, RelaxedModeRejectsTriggers) {
+// Scenario: under relaxed mode, each statement that a READ ONLY transaction
+// rejects fails with the relaxed-mode error: INSERT, UPDATE, DELETE, SELECT
+// FOR UPDATE, SELECT FOR SHARE, nextval(), COPY FROM, DDL, and a write inside
+// a function that a SELECT calls. A write to a temporary table and a plain
+// SELECT succeed. With the GUC off, every statement succeeds.
+TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE parent (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE child (k INT PRIMARY KEY, pk INT REFERENCES parent)"));
-  ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE s"));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE tmp (k INT)"));
   ASSERT_OK(conn.Execute(
-      "CREATE FUNCTION noop() RETURNS TRIGGER LANGUAGE plpgsql AS "
-      "$$BEGIN RETURN NEW; END$$"));
-  ASSERT_OK(conn.Execute(
-      "CREATE TRIGGER t_noop BEFORE INSERT ON t "
-      "FOR EACH ROW EXECUTE FUNCTION noop()"));
+      "CREATE FUNCTION insert_row(v INT) RETURNS INT LANGUAGE plpgsql AS "
+      "$$BEGIN INSERT INTO t VALUES (v); RETURN v; END$$"));
 
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
-  ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
-  constexpr auto kError =
-      "cannot run under relaxed read-after-commit visibility";
-  ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("INSERT INTO child VALUES (1, 1)"), kError);
-  ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("DELETE FROM parent WHERE k = 1"), kError);
-  ASSERT_NOK_STR_CONTAINS(conn.Execute("INSERT INTO t VALUES (1)"), kError);
+  const std::vector<std::string> rejected = {
+      "INSERT INTO t VALUES (2)",
+      "UPDATE t SET k = 3 WHERE k = 1",
+      "DELETE FROM t WHERE k = 3",
+      "SELECT k FROM t WHERE k = 2 FOR UPDATE",
+      "SELECT k FROM t WHERE k = 2 FOR SHARE",
+      "SELECT nextval('s')",
+      "COPY t FROM '/dev/null'",
+      "CREATE TABLE t2 (k INT)",
+      "SELECT insert_row(4)",
+  };
+  for (const auto& statement : rejected) {
+    SCOPED_TRACE(statement);
+    auto status = conn.Execute(statement);
+    EXPECT_NOK(status);
+    EXPECT_STR_CONTAINS(
+        status.ToString(), "under relaxed read-after-commit visibility");
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO tmp VALUES (1)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM t")), 1);
 
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("INSERT INTO child VALUES (2, 1)"), kError);
-  ASSERT_OK(conn.RollbackTransaction());
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  ASSERT_NOK_STR_CONTAINS(conn.Execute("INSERT INTO t VALUES (2)"), kError);
-  ASSERT_OK(conn.RollbackTransaction());
-
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = on"));
-  ASSERT_OK(conn.Execute("INSERT INTO child VALUES (3, 1)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (3)"));
+      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+  for (const auto& statement : rejected) {
+    SCOPED_TRACE(statement);
+    EXPECT_OK(conn.Execute(statement));
+  }
 }
 
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
@@ -2057,10 +2043,6 @@ TEST_P(PgRestartReadTest, ConflictsWithClampDefer) {
     auto reader = ASSERT_RESULT(Connect());
     ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 0"));
     ASSERT_OK(reader.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
-    if (std::string_view(mode) == "relaxed") {
-      // #35522: by default, relaxed mode covers only READ ONLY transactions.
-      ASSERT_OK(reader.Execute("SET default_transaction_read_only = on"));
-    }
 
     TestThreadHolder threads;
     StartConcurrentInserts(&threads, "t", kWriterStartKey);

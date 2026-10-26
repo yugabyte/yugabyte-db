@@ -1925,7 +1925,7 @@ TEST_F(PgSingleTServerTest, NoSafeTimeClampingInRelaxedReadAfterCommit) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility ='relaxed'"));
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_txns = off"));
+      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
   ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
   for (int i = 0; i != 20; ++i) {
     LOG(INFO) << "Delete iteration " << i;

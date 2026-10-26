@@ -122,9 +122,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final String LOG_RESTARTS_SQL =
       "SET yb_debug_log_internal_restarts TO true";
 
-  private static final String SET_READ_ONLY_SQL =
-      "SET default_transaction_read_only TO on";
-
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
@@ -1290,11 +1287,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               setReadAfterCommitVisibility + getReadAfterCommitVisibility());
             auxRcStatement.execute(
               setReadAfterCommitVisibility + getReadAfterCommitVisibility());
-            if (getReadAfterCommitVisibility().equals("relaxed")) {
-              auxSerializableStatement.execute(SET_READ_ONLY_SQL);
-              auxRrStatement.execute(SET_READ_ONLY_SQL);
-              auxRcStatement.execute(SET_READ_ONLY_SQL);
-            }
           }
 
           for (int attempt = 0; !isExecutionDone.getAsBoolean(); ++attempt) {
