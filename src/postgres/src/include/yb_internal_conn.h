@@ -44,7 +44,8 @@
  *
  * Adding a new kind:
  *   1. Append a value to enum YbInternalConnKind (before _MAX).
- *   2. Add the matching BackendType in src/include/miscadmin.h.
+ *   2. Add the matching BackendType in src/include/miscadmin.h, and its
+ *      PG_PROCTYPE entry in src/include/postmaster/proctypelist.h.
  *   3. Add a descriptor row in yb_internal_conn.c.
  *   4. Pass the new kind to CreateInternalPGConnBuilder at the call site.
  */
@@ -79,9 +80,6 @@ typedef struct YbInternalConnKindDescriptor
 	 * pg_stat_activity.backend_type.
 	 */
 	BackendType backend_type;
-
-	/* Human-readable name used by pg_stat_activity.backend_type. */
-	const char *backend_desc;
 
 	/*
 	 * If true, this kind runs with minimal catalog cache preload (i.e.

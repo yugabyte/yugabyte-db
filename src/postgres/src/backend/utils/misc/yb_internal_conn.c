@@ -34,28 +34,24 @@ const YbInternalConnKindDescriptor
 	[YB_INTERNAL_CONN_KIND_NONE] = {
 		.wire_name = NULL,
 		.backend_type = B_BACKEND,
-		.backend_desc = NULL,	/* miscinit.c handles B_BACKEND directly */
 		.use_minimal_preload = false,
 		.preload_lists_in_minimal_mode = false,
 	},
 	[YB_INTERNAL_CONN_KIND_RELCACHE_INIT] = {
 		.wire_name = "relcache_init",
 		.backend_type = YB_RELCACHE_INIT_BACKEND,
-		.backend_desc = "yb relcache init backend",
 		.use_minimal_preload = true,
 		.preload_lists_in_minimal_mode = true,
 	},
 	[YB_INTERNAL_CONN_KIND_GLOBAL_VIEW] = {
 		.wire_name = "global_view",
 		.backend_type = YB_GLOBAL_VIEW_BACKEND,
-		.backend_desc = "yb global view backend",
 		.use_minimal_preload = false,
 		.preload_lists_in_minimal_mode = false,
 	},
 	[YB_INTERNAL_CONN_KIND_AUTO_ANALYZE] = {
 		.wire_name = "auto_analyze",
 		.backend_type = YB_AUTO_ANALYZE_BACKEND,
-		.backend_desc = "yb auto analyze backend",
 		/*
 		 * Auto-analyze is a long-lived backend running real ANALYZE work, so
 		 * it preloads normally rather than minimally.
@@ -66,7 +62,6 @@ const YbInternalConnKindDescriptor
 	[YB_INTERNAL_CONN_KIND_XCLUSTER_DDL_QUEUE] = {
 		.wire_name = "xcluster_ddl_queue",
 		.backend_type = YB_XCLUSTER_DDL_QUEUE_BACKEND,
-		.backend_desc = "yb xcluster ddl queue backend",
 		/*
 		 * The DDL-queue handler is a long-lived connection that replays
 		 * arbitrary DDL against the target, so it needs the full catalog like a
@@ -78,7 +73,6 @@ const YbInternalConnKindDescriptor
 	[YB_INTERNAL_CONN_KIND_XCLUSTER_SETUP] = {
 		.wire_name = "xcluster_setup",
 		.backend_type = YB_XCLUSTER_SETUP_BACKEND,
-		.backend_desc = "yb xcluster setup backend",
 		/*
 		 * Short-lived connections created by the master to run CREATE/DROP
 		 * EXTENSION and ddl_queue table cleanup. These run real DDL/DML, so
