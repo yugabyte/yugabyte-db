@@ -113,6 +113,8 @@ public class RedactingService {
           // onprem and certificate private keys
           .add("$..keyContent")
           .add("$..certContent")
+          .add("$..key_content")
+          .add("$..cert_content")
           .add("$..customServerCertData")
           .add("$..['customServerCertData.serverKeyContent']")
           // S3 storage credentials
