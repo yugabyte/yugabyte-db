@@ -52,6 +52,13 @@
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
 /* YB: DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 3
+/*
+ * YB: Merge scan cost model: per row passed up, a constant overhead plus one
+ * share per heap comparison, log2(streams) of them, in units of
+ * cpu_operator_cost.
+ */
+#define YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR 6.0
+#define YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR 2.0
 /* YB: Network transfer cost */
 #define YB_DEFAULT_LOCAL_ROUNDTRIP_COST 20.0
 #define YB_DEFAULT_LOCAL_TRANSFER_COST 800.0
@@ -145,6 +152,8 @@ extern PGDLLIMPORT double yb_local_roundtrip_cost;
 extern PGDLLIMPORT double yb_local_transfer_cost;
 extern PGDLLIMPORT double yb_seek_cost_factor;
 extern PGDLLIMPORT double yb_prev_cost_factor;
+extern PGDLLIMPORT double yb_merge_scan_row_cost_factor;
+extern PGDLLIMPORT double yb_merge_scan_stream_cost_factor;
 extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
 

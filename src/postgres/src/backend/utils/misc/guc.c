@@ -6965,6 +6965,33 @@ static struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_merge_scan_row_cost_factor", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the fixed cost of "
+						 "passing one row up through a merge scan's k-way "
+						 "merge, in units of cpu_operator_cost."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_merge_scan_row_cost_factor,
+		YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR, 0, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_merge_scan_stream_cost_factor", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the per-stream cost "
+						 "of a merge scan's k-way merge, in units of "
+						 "cpu_operator_cost."),
+			gettext_noop("One heap comparison per row passed up, charged "
+						 "log2(streams) times."),
+			GUC_EXPLAIN
+		},
+		&yb_merge_scan_stream_cost_factor,
+		YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR, 0, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL

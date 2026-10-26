@@ -172,6 +172,8 @@ double		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
 double		yb_prev_cost_factor = YB_DEFAULT_PREV_COST_FACTOR;
 int			yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int			yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 double		yb_inter_region_roundtrip_cost = YB_DEFAULT_INTER_REGION_ROUNDTRIP_COST;
 double		yb_inter_region_transfer_cost = YB_DEFAULT_INTER_REGION_TRANSFER_COST;
@@ -10824,17 +10826,31 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
 
-	/* TODO(#29078): cost this better. */
 	if (path->yb_index_path_info.merge_scan_stream_cols)
 	{
 		/*
-		 * We need merge index scans to cost higher than plain index scans to
-		 * avoid doing merge scan where it doesn't give any gains for upper
-		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
-		 * STD_FUZZ_FACTOR = 1.01.
+		 * The merge's own work.  On top of the index scan's cost, charge each
+		 * row passed up a constant overhead plus the cost of pulling the next
+		 * row in order from the streams, about log2(streams) comparisons.
+		 *
+		 * The merge path is only built when its order is potentially useful,
+		 * but the order can still go unused: a Sort may follow because the
+		 * merge supplies only a prefix, or the merge join it could feed is not
+		 * chosen.  On a small result the merge term can fall inside add_path's
+		 * fuzz (STD_FUZZ_FACTOR, 1.01), and then the merge path displaces the
+		 * plain one on pathkeys alone.  Keep the merge at or above 1.02 times
+		 * the plain scan so the plain path survives for that case.
 		 */
-		startup_cost *= 1.02;
-		run_cost *= 1.02;
+		int			num_streams = 1;
+		ListCell   *lc;
+		Cost		merge_cost;
+
+		foreach(lc, path->yb_index_path_info.merge_scan_stream_cols)
+			num_streams *= lfirst_node(YbMergeScanStreamColInfo, lc)->num_elems;
+		merge_cost = cpu_operator_cost * num_baserel_result_rows *
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
+		run_cost += Max(merge_cost, 0.02 * (startup_cost + run_cost));
 	}
 
 	/*
