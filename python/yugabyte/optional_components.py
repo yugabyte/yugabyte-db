@@ -23,10 +23,7 @@ COMPONENT_DESCRIPTIONS = {
 }
 
 COMPONENTS_ENABLED_BY_DEFAULT: Set[str] = {'yugabyted_ui'}
-# YB_TODO_PG19MERGE: Odyssey's src/odyssey/sources/scram.c does not compile against PG19's
-# SCRAM API, so it is not built (see build_odyssey=false in yb_build_cmd_line.sh). Re-add
-# 'odyssey' once its scram.c is updated.
-COMPONENTS_ENABLED_BY_DEFAULT_ON_LINUX: Set[str] = set()
+COMPONENTS_ENABLED_BY_DEFAULT_ON_LINUX: Set[str] = {'odyssey'}
 
 
 class OptionalComponents:
