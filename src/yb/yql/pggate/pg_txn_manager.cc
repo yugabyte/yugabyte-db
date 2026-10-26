@@ -860,8 +860,8 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   // Catalog reads of a SERIALIZABLE transaction take a read time too, and the tserver serves them
-  // as snapshot reads: read intents on catalog rows would make every concurrent DDL that writes
-  // them abort this transaction.
+  // as snapshot reads: this is to avoid taking read intents and conflict resolution for catalog
+  // reads.
   if (is_catalog_snapshot) {
     ClampCatalogReadTime(read_time_options);
     return Status::OK();

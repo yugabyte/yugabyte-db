@@ -535,9 +535,9 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
         (data.need_consistent_read &&
          table()->InternalSchema().table_properties().is_transactional())) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
-      // A SERIALIZABLE transaction's read point carries a read time while it reads the catalog
-      // snapshot. Only the forced snapshot reads use it; the transaction's other RPCs in the same
-      // flush, e.g. the catalog writes of a DDL, must stay without one.
+      // A SERIALIZABLE transaction's read point carries a read time only while it reads the
+      // catalog snapshot, and those reads are performed in the forced snapshot mode. All other
+      // operations in serializable isolation must stay without a read time.
       if (serializable && !data.force_snapshot_read) {
         constexpr bool kIsRead = std::is_same_v<Req, tserver::LWReadRequestPB>;
         LOG_IF(DFATAL,
