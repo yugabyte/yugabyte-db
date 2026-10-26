@@ -4270,7 +4270,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required"
         },
@@ -5265,7 +5264,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required",
           "regionRequired": "Select a region.",
