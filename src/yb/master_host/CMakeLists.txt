@@ -28,6 +28,7 @@ set(YB_MASTER_RS_DEPS
     yb_rust_bridge_obj
     yb_master_rs
     master
+    openssl
     ${YB_BASE_LIBS})
 if(YB_LTO_ENABLED)
   list(APPEND YB_MASTER_RS_DEPS tserver_main_impl yb_pgbackend)

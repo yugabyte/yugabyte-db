@@ -64,6 +64,22 @@ class TSRegistrationPB;
 
 using TsUuidAndTabletReplica = std::pair<ConstRefWrap<std::string>, TabletReplica>;
 
+// Pages a master that is not the leader serves without its catalog, given the result of
+// Master::ListMasters. Also used by the Rust master's C++ host (src/yb/master_host).
+
+// Fetches the page `req` asks for from the master leader.
+void RedirectToLeader(
+    const Result<std::vector<ServerEntryPB>>& masters,
+    const Result<ServerRegistrationPB>& local_reg, const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp);
+// The /masters table; `local_uuid` is shown in bold.
+void RenderMastersPage(
+    const Result<std::vector<ServerEntryPB>>& masters, const std::string& local_uuid,
+    std::stringstream* output);
+// /api/v1/masters.
+void RenderMastersJson(
+    const Result<std::vector<ServerEntryPB>>& masters, std::stringstream* output);
+
 YB_DEFINE_ENUM(TServersViewType, (kTServersDefaultView)(kTServersClocksView));
 
 // Web page support for the master.
@@ -253,7 +269,6 @@ class MasterPathHandlers {
   }
 
   void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
-  Result<std::string> GetLeaderAddress(const Webserver::WebRequest& req);
   void RootHandler(const Webserver::WebRequest& req,
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,

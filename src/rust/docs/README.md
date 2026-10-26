@@ -26,6 +26,7 @@ and the Rust code on top talks to it through `cxx` bridges.
 | `common/yb-cpp-host` | The cxx implementation of those traits: RPC bridge, gflags, logging and panic hook |
 | `common/yb-flags` | Typed gflags: `FlagRef` for existing flags, `yb_flag!` for flags declared in Rust |
 | `common/yb-proto` | Messages and RPC service tables generated from `src/yb/**/*.proto` |
+| `common/yb-web` | A server's public web port: HTTP or HTTPS, Rust routes, the rest proxied to the C++ `Webserver` |
 | `tools/yb-cxxgen` | Build tool: writes the C++ half of every bridge |
 
 ## Rules every crate follows

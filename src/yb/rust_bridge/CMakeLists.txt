@@ -35,7 +35,7 @@ add_custom_target(rust_checks
   COMMAND ${YB_RUST_CARGO_ENV} "${YB_CARGO_EXECUTABLE}" fmt --all --check
   COMMAND ${YB_RUST_CARGO_ENV} "${YB_CARGO_EXECUTABLE}" clippy --locked --workspace --all-targets
           -- -D warnings
-  COMMAND ${YB_RUST_CARGO_ENV} "${YB_CARGO_EXECUTABLE}" test --locked --workspace
-          ${YB_RUST_TEST_EXCLUDES}
+  COMMAND ${YB_RUST_CARGO_ENV} "LD_LIBRARY_PATH=${YB_RUST_OPENSSL_LIB_DIR}"
+          "${YB_CARGO_EXECUTABLE}" test --locked --workspace ${YB_RUST_TEST_EXCLUDES}
   WORKING_DIRECTORY "${YB_RUST_SRC_DIR}"
   USES_TERMINAL)

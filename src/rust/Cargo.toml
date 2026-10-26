@@ -20,6 +20,7 @@ members = [
     "common/yb-flags",
     "common/yb-host-api",
     "common/yb-proto",
+    "common/yb-web",
     "master/catalog-entity",
     "master/master",
     "master/rpc-handlers",
@@ -38,13 +39,17 @@ publish = false
 # cxx and cxx-gen must stay on the same patch version: cxx-gen writes the C++ half of the bridges
 # that the cxx runtime on the Rust side has to match.
 [workspace.dependencies]
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
 cxx = "=1.0.202"
 cxx-gen = "=0.7.202"
+hyper-util = { version = "=0.1.20", features = ["client-legacy", "http1", "server-auto", "service", "tokio"] }
+openssl = "=0.10.81"
 proc-macro2 = "1"
 protobuf = "=3.7.2"
 protobuf-codegen = "=3.7.2"
 protobuf-parse = "=3.7.2"
-tokio = { version = "=1.53.2", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "=1.53.2", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-openssl = "=0.6.5"
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
 
@@ -54,6 +59,7 @@ yb-host-api = { path = "common/yb-host-api" }
 master-catalog-entity = { path = "master/catalog-entity" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
 yb-proto = { path = "common/yb-proto" }
+yb-web = { path = "common/yb-web" }
 
 [workspace.lints.rust]
 missing_docs = "deny"
@@ -62,7 +68,7 @@ unsafe_op_in_unsafe_fn = "deny"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 
-# A Rust panic must never unwind into C++ frames. With abort, the panic hook (yb-master-cpp-host)
+# A Rust panic must never unwind into C++ frames. With abort, the panic hook (yb-cpp-host)
 # logs through glog and the process dies with a stack trace, like a C++ CHECK failure.
 [profile.dev]
 panic = "abort"

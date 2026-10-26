@@ -1,0 +1,20 @@
+[package]
+name = "yb-web"
+description = "A server's public web port: HTTP or HTTPS, proxying to the C++ Webserver on loopback."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum.workspace = true
+hyper-util.workspace = true
+openssl.workspace = true
+tokio.workspace = true
+tokio-openssl.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+
+[lints]
+workspace = true

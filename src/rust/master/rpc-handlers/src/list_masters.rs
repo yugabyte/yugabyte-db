@@ -25,60 +25,69 @@ use yb_proto::pb::master_cluster::{
 use yb_proto::pb::master_types::master_error_pb;
 use yb_proto::pb::wire_protocol::{app_status_pb, AppStatusPB, NodeInstancePB, ServerEntryPB};
 
-use crate::{master_error_from, Shared};
+use std::sync::Arc;
+use std::time::Duration;
+
+use yb_host_api::rpc::RpcClient;
+
+use crate::{master_error_from, MasterInfo, Shared};
 
 pub(crate) async fn list_masters(shared: &Shared) -> ListMastersResponsePB {
-    let mut resp = ListMastersResponsePB::new();
-    if shared.info.is_shell_mode() {
-        let mut entry = ServerEntryPB::new();
-        entry.instance_id = Some(shared.info.instance()).into();
-        match shared.info.registration() {
-            Ok(registration) => entry.registration = Some(registration).into(),
-            Err(status) => {
-                resp.error = Some(master_error_from(
-                    master_error_pb::Code::UNKNOWN_ERROR,
-                    &status,
-                ))
-                .into();
-                return resp;
-            }
-        }
-        entry.set_role(PeerRole::NON_PARTICIPANT);
-        resp.masters.push(entry);
-        return resp;
-    }
+    list_masters_response(
+        shared.info.as_ref(),
+        shared.rpc.clone(),
+        (shared.options.master_rpc_timeout)(),
+    )
+    .await
+}
 
-    let state = match shared.info.committed_consensus_state() {
-        Ok(state) if state.config.is_some() => state,
-        Ok(_) => {
-            let status = Status::new(StatusCode::NotFound, "No raft config found.");
-            resp.error = Some(master_error_from(
-                master_error_pb::Code::UNKNOWN_ERROR,
-                &status,
-            ))
-            .into();
-            return resp;
-        }
+/// The `ListMasters` response. Also what the host's web pages show.
+pub async fn list_masters_response(
+    info: &dyn MasterInfo,
+    rpc: Arc<dyn RpcClient>,
+    timeout: Duration,
+) -> ListMastersResponsePB {
+    let mut resp = ListMastersResponsePB::new();
+    match list_master_entries(info, rpc, timeout).await {
+        Ok(entries) => resp.masters = entries,
         Err(status) => {
             resp.error = Some(master_error_from(
                 master_error_pb::Code::UNKNOWN_ERROR,
                 &status,
             ))
-            .into();
-            return resp;
+            .into()
         }
-    };
+    }
+    resp
+}
+
+/// The masters of the sys-catalog Raft config, each with its registration and role as it reports
+/// them, or with an error when it cannot be reached. In shell mode, only this master.
+async fn list_master_entries(
+    info: &dyn MasterInfo,
+    rpc: Arc<dyn RpcClient>,
+    timeout: Duration,
+) -> Result<Vec<ServerEntryPB>, Status> {
+    if info.is_shell_mode() {
+        let mut entry = ServerEntryPB::new();
+        entry.instance_id = Some(info.instance()).into();
+        entry.registration = Some(info.registration()?).into();
+        entry.set_role(PeerRole::NON_PARTICIPANT);
+        return Ok(vec![entry]);
+    }
+    let state = info.committed_consensus_state()?;
+    if state.config.is_none() {
+        return Err(Status::new(StatusCode::NotFound, "No raft config found."));
+    }
     let mut peers = JoinSet::new();
     for (index, peer) in state.config.peers.iter().enumerate() {
         let peer = peer.clone();
-        let rpc = shared.rpc.clone();
-        let timeout = (shared.options.master_rpc_timeout)();
+        let rpc = rpc.clone();
         peers.spawn(async move { (index, peer_entry(rpc, peer, timeout).await) });
     }
     let mut entries: Vec<(usize, ServerEntryPB)> = peers.join_all().await;
     entries.sort_by_key(|(index, _)| *index);
-    resp.masters = entries.into_iter().map(|(_, entry)| entry).collect();
-    resp
+    Ok(entries.into_iter().map(|(_, entry)| entry).collect())
 }
 
 fn addresses(peer: &RaftPeerPB) -> Vec<(String, u16)> {
@@ -89,11 +98,7 @@ fn addresses(peer: &RaftPeerPB) -> Vec<(String, u16)> {
         .collect()
 }
 
-async fn peer_entry(
-    rpc: std::sync::Arc<dyn yb_host_api::rpc::RpcClient>,
-    peer: RaftPeerPB,
-    timeout: std::time::Duration,
-) -> ServerEntryPB {
+async fn peer_entry(rpc: Arc<dyn RpcClient>, peer: RaftPeerPB, timeout: Duration) -> ServerEntryPB {
     let addrs = addresses(&peer);
     let request = GetMasterRegistrationRequestPB::new()
         .write_to_bytes()

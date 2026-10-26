@@ -17,6 +17,8 @@
 #include "yb/client/client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/version_info.h"
+#include "yb/common/version_info.pb.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -25,9 +27,13 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/catalog_loaders.h"
+#include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_auto_flags_manager.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -44,6 +50,8 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/async_client_initializer.h"
+#include "yb/server/server_base.pb.h"
+#include "yb/server/webserver.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
@@ -57,10 +65,13 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+
+#include "master/master/src/ffi.rs.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
@@ -75,6 +86,9 @@ DECLARE_int32(master_svc_queue_length);
 DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_string(webserver_authentication_domain);
+DECLARE_string(webserver_password_file);
+DECLARE_bool(webserver_redirect_http_to_https);
 
 namespace yb::master_host {
 
@@ -296,7 +310,7 @@ class MasterHost::TabletPeerLookupImpl : public tserver::TabletPeerLookupIf {
   MasterHost& host_;
 };
 
-MasterHost::MasterHost(const master::MasterOptions& opts)
+MasterHost::MasterHost(const master::MasterOptions& opts, WebserverOptions public_web_opts)
     : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
       opts_(opts),
       sys_catalog_context_(std::make_unique<SysCatalogContextImpl>(this)),
@@ -310,7 +324,8 @@ MasterHost::MasterHost(const master::MasterOptions& opts)
           clock(), fs_manager(), /* master= */ nullptr)),
       maintenance_manager_(
           std::make_shared<MaintenanceManager>(MaintenanceManager::DEFAULT_OPTIONS)),
-      termination_monitor_(TerminationMonitor::Create()) {
+      termination_monitor_(TerminationMonitor::Create()),
+      public_web_opts_(std::move(public_web_opts)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 }
@@ -330,12 +345,27 @@ std::unique_ptr<MasterHost> CreateMasterHost() {
   if (FLAGS_emergency_repair_mode) {
     throw std::runtime_error("emergency_repair_mode needs a master leader; use the C++ master");
   }
+  if (!FLAGS_webserver_password_file.empty() || !FLAGS_webserver_authentication_domain.empty() ||
+      FLAGS_webserver_redirect_http_to_https) {
+    // Fail closed: the Rust web server implements neither web authentication nor the redirect.
+    throw std::runtime_error(
+        "webserver_password_file, webserver_authentication_domain and "
+        "webserver_redirect_http_to_https are not supported by the Rust master yet");
+  }
   InitCommonFlags();
   auto opts = master::MasterOptions::CreateMasterOptions();
   if (!opts.ok()) {
     throw std::runtime_error(opts.status().ToString());
   }
-  return std::make_unique<MasterHost>(*opts);
+  // Rust serves the configured web port and TLS; the C++ Webserver moves behind it, to loopback.
+  auto public_web_opts = opts->webserver_opts;
+  auto& web = opts->webserver_opts;
+  web.bind_interface = "127.0.0.1";
+  web.port = 0;
+  web.certificate_file.clear();
+  web.private_key_file.clear();
+  web.private_key_password.clear();
+  return std::make_unique<MasterHost>(*opts, std::move(public_web_opts));
 }
 
 void MasterHost::InitHost() {
@@ -346,7 +376,175 @@ Status MasterHost::DoInit() {
   RETURN_NOT_OK(ThreadPoolBuilder("leadership").set_max_threads(1).Build(&leadership_pool_));
   RETURN_NOT_OK(DbServerBase::Init());
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
+
+  RegisterWebPages();
   return Status::OK();
+}
+
+// The pages MasterPathHandlers::Register adds, as a master that is not the leader serves them:
+// the leader's page for every page that needs the catalog, the rest from the master list. Same
+// order, titles and nav bar entries.
+void MasterHost::RegisterWebPages() {
+  struct LeaderPage {
+    const char* path;
+    const char* alias;
+    bool is_styled;
+    bool is_on_nav_bar;
+    const char* icon;
+  };
+  static const LeaderPage kLeaderPages[] = {
+      {"/", "Home", true, true, "fa fa-home"},
+      {"/tablet-servers", "Tablet Servers", true, true, "fa fa-server"},
+      {"/tablet-server-clocks", "Tablet Server Clocks", true, false, ""},
+      {"/tables", "Tables", true, true, "fa fa-table"},
+      {"/namespaces", "Namespaces", true, true, "fa fa-table"},
+      {"/table", "", true, false, ""},
+      {"/cluster-config", "Cluster Config", true, false, ""},
+      {"/xcluster", "xCluster", true, false, ""},
+      {"/tasks", "Tasks", true, false, ""},
+      {"/tablet-replication", "Tablet Replication Health", true, false, ""},
+      {"/load-distribution", "Cluster Balancer View", true, false, ""},
+      {"/stateful-services", "Stateful Services", true, false, ""},
+      {"/ObjectLockManager", "Object Lock Manager", true, false, ""},
+      {"/api/v1/tablet-servers", "Tserver Statuses", false, false, ""},
+      {"/api/v1/health-check", "Cluster Health Check", false, false, ""},
+      {"/api/v1/tablet-replication", "Tablet Replication Health", false, false, ""},
+      {"/api/v1/tablet-under-replication", "Tablet UnderReplication Status", false, false, ""},
+      {"/dump-entities", "Dump Entities", false, false, ""},
+      {"/api/v1/namespaces", "Namespaces", false, false, ""},
+      {"/api/v1/table", "Table Info", false, false, ""},
+      {"/api/v1/tables", "Tables", false, false, ""},
+      {"/api/v1/cluster-config", "Cluster Config JSON", false, false, ""},
+      {"/api/v1/xcluster", "xCluster", false, false, ""},
+      {"/api/v1/stateful-services", "Stateful Services", false, false, ""},
+  };
+  for (const auto& page : kLeaderPages) {
+    web_server_->RegisterPathHandler(
+        page.path, page.alias,
+        [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+          ServerRegistrationPB local_reg;
+          auto status = GetMasterRegistration(&local_reg);
+          master::RedirectToLeader(
+              ListMastersForWeb(),
+              status.ok() ? Result<ServerRegistrationPB>(std::move(local_reg))
+                          : Result<ServerRegistrationPB>(status),
+              req, resp);
+        },
+        page.is_styled, page.is_on_nav_bar, page.icon);
+  }
+
+  web_server_->RegisterPathHandler(
+      "/masters", "Masters",
+      [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        master::RenderMastersPage(ListMastersForWeb(), permanent_uuid(), &resp->output);
+      },
+      /* is_styled= */ true, /* is_on_nav_bar= */ false);
+  web_server_->RegisterPathHandler(
+      "/api/v1/is-leader", "Leader Check",
+      [](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        // MasterPathHandlers::HandleCheckIfLeader on a master that is not the leader.
+        JsonWriter jw(&resp->output, JsonWriter::COMPACT);
+        jw.StartObject();
+        resp->code = 503;
+      },
+      /* is_styled= */ false, /* is_on_nav_bar= */ false);
+  web_server_->RegisterPathHandler(
+      "/api/v1/masters", "Master Statuses",
+      [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        master::RenderMastersJson(ListMastersForWeb(), &resp->output);
+      },
+      /* is_styled= */ false, /* is_on_nav_bar= */ false);
+  web_server_->RegisterPathHandler(
+      "/api/v1/version", "YB Version Information",
+      [](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        JsonWriter jw(&resp->output, JsonWriter::PRETTY);
+        VersionInfoPB version_info;
+        VersionInfo::GetVersionInfoPB(&version_info);
+        jw.Protobuf(version_info);
+      },
+      /* is_styled= */ false, /* is_on_nav_bar= */ false);
+  web_server_->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        JsonWriter writer(&resp->output, JsonWriter::COMPACT);
+        WriteServerMetaCacheAsJson(&writer);
+      },
+      /* is_styled= */ false, /* is_on_nav_bar= */ false);
+}
+
+Result<std::vector<ServerEntryPB>> MasterHost::ListMastersForWeb() const {
+  SCHECK(web_master_list_, IllegalState, "The web server is not set up");
+  auto bytes = (*web_master_list_)->ListMasters();
+  master::ListMastersResponsePB resp;
+  SCHECK(resp.ParseFromArray(bytes.data(), narrow_cast<int>(bytes.size())), Corruption,
+         "Unparsable ListMastersResponsePB from Rust");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return std::vector<ServerEntryPB>(resp.masters().begin(), resp.masters().end());
+}
+
+rust::String MasterHost::PublicWebInterface() const { return public_web_opts_.bind_interface; }
+
+uint16_t MasterHost::PublicWebPort() const { return public_web_opts_.port; }
+
+rust::String MasterHost::WebCertificateFile() const { return public_web_opts_.certificate_file; }
+
+rust::String MasterHost::WebPrivateKeyFile() const { return public_web_opts_.private_key_file; }
+
+rust::String MasterHost::WebPrivateKeyPassword() const {
+  return public_web_opts_.private_key_password;
+}
+
+rust::String MasterHost::WebSslCiphers() const { return public_web_opts_.ssl_ciphers; }
+
+void MasterHost::SetWebServer(
+    const rust::Vec<rust::String>& bound_ips, uint16_t bound_port,
+    rust::Box<WebMasterList> master_list) {
+  for (const auto& ip : bound_ips) {
+    boost::system::error_code ec;
+    const auto address = boost::asio::ip::make_address(std::string(ip), ec);
+    if (ec) {
+      throw std::runtime_error(Format("Bad web server address $0: $1", ip, ec.message()));
+    }
+    public_web_endpoints_.emplace_back(address, bound_port);
+  }
+  web_master_list_.emplace(std::move(master_list));
+}
+
+uint16_t MasterHost::LoopbackWebPort() const {
+  std::vector<Endpoint> addrs;
+  ThrowIfNotOk(web_server()->GetBoundAddresses(&addrs));
+  if (addrs.empty()) {
+    throw std::runtime_error("The C++ web server is not bound");
+  }
+  return addrs[0].port();
+}
+
+// RpcAndWebServerBase::GetRegistration and GetStatusPB, for the Rust web server.
+Status MasterHost::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
+  RETURN_NOT_OK(DbServerBase::GetRegistration(reg, server::RpcOnly::kTrue));
+  if (!rpc_only) {
+    SCHECK(!public_web_endpoints_.empty(), IllegalState, "The Rust web server is not set up");
+    const HostPort input(
+        public_web_opts_.bind_interface.empty() ? "0.0.0.0" : public_web_opts_.bind_interface,
+        public_web_opts_.port);
+    if (IsWildcardAddress(input.host()) || input.port() == 0) {
+      RETURN_NOT_OK(AddHostPortPBs(public_web_endpoints_, reg->mutable_http_addresses()));
+    } else {
+      HostPortsToPBs({input}, reg->mutable_http_addresses());
+    }
+  }
+  return Status::OK();
+}
+
+void MasterHost::GetStatusPB(server::ServerStatusPB* status) const {
+  RpcServerBase::GetStatusPB(status);
+  for (const auto& endpoint : public_web_endpoints_) {
+    auto* hp = status->add_bound_http_addresses();
+    hp->set_host(endpoint.address().to_string());
+    hp->set_port(endpoint.port());
+  }
 }
 
 Status MasterHost::InitFlags(rpc::Messenger* messenger) {

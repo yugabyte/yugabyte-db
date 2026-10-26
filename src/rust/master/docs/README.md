@@ -15,6 +15,7 @@ down if it wins one.
 | Doc | Covers |
 |---|---|
 | [cpp-host.md](cpp-host.md) | The master's C++ host and its bridges |
+| [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
 
 Shared Rust pieces (build, bridges, protobuf, flags) are documented in

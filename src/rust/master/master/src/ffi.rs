@@ -13,6 +13,7 @@
 //! The bridge to the master's C++ host (src/yb/master_host/master_host.h), and the entry points
 //! its `main()` calls.
 
+use crate::web::WebMasterList;
 use crate::{register_flags, run_master};
 
 #[cxx::bridge(namespace = "yb::master_host")]
@@ -25,6 +26,12 @@ pub(crate) mod bridge {
         /// Runs the master; returns the process exit code. Called after flag parsing.
         #[namespace = "yb::master_rs"]
         fn run_master() -> i32;
+
+        /// The master list the host's web pages show.
+        type WebMasterList;
+        /// A serialized `ListMastersResponsePB`. Blocks; called on web server threads.
+        #[cxx_name = "ListMasters"]
+        fn list_masters(self: &WebMasterList) -> Vec<u8>;
     }
 
     unsafe extern "C++" {
@@ -54,6 +61,27 @@ pub(crate) mod bridge {
         fn master_service_queue_length(self: &MasterHost) -> i32;
         #[cxx_name = "YsqlLeaseServiceQueueLength"]
         fn ysql_lease_service_queue_length(self: &MasterHost) -> i32;
+        #[cxx_name = "PublicWebInterface"]
+        fn public_web_interface(self: &MasterHost) -> String;
+        #[cxx_name = "PublicWebPort"]
+        fn public_web_port(self: &MasterHost) -> u16;
+        #[cxx_name = "WebCertificateFile"]
+        fn web_certificate_file(self: &MasterHost) -> String;
+        #[cxx_name = "WebPrivateKeyFile"]
+        fn web_private_key_file(self: &MasterHost) -> String;
+        #[cxx_name = "WebPrivateKeyPassword"]
+        fn web_private_key_password(self: &MasterHost) -> String;
+        #[cxx_name = "WebSslCiphers"]
+        fn web_ssl_ciphers(self: &MasterHost) -> String;
+        #[cxx_name = "SetWebServer"]
+        fn set_web_server(
+            self: Pin<&mut MasterHost>,
+            bound_ips: &Vec<String>,
+            bound_port: u16,
+            master_list: Box<WebMasterList>,
+        );
+        #[cxx_name = "LoopbackWebPort"]
+        fn loopback_web_port(self: &MasterHost) -> Result<u16>;
 
         #[cxx_name = "InstancePB"]
         fn instance_pb(self: &MasterInfoHandle) -> Vec<u8>;

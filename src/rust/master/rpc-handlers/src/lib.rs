@@ -20,6 +20,8 @@
 
 mod list_masters;
 
+pub use list_masters::list_masters_response;
+
 use std::sync::Arc;
 use std::time::Duration;
 

@@ -15,6 +15,7 @@
 
 mod ffi;
 mod host_info;
+mod web;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,7 +102,27 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("registering {}: {e}", service.proto_name))?;
     }
 
+    let web_listener = web::bind(&host)?;
+    let web_addrs = web_listener.local_addrs();
+    tracing::info!("Web server listening on {web_addrs:?}");
+    host.pin_mut().set_web_server(
+        &web_addrs.iter().map(|a| a.ip().to_string()).collect(),
+        web_addrs[0].port(),
+        Box::new(web::WebMasterList {
+            info: info.clone(),
+            rpc: rpc.clone(),
+            runtime: runtime.handle().clone(),
+            master_rpc_timeout: options.master_rpc_timeout,
+        }),
+    );
+
     host.pin_mut().start().map_err(|e| e.what().to_string())?;
+    let loopback_port = host.loopback_web_port().map_err(|e| e.what().to_string())?;
+    runtime.spawn(async move {
+        if let Err(e) = web_listener.serve(axum::Router::new(), loopback_port).await {
+            tracing::error!("The web server stopped: {e}");
+        }
+    });
     tracing::info!("Rust master started");
     host.wait_for_termination();
     tracing::info!("Rust master shutting down");

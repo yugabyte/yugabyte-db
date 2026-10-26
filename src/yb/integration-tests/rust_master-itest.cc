@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <map>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -37,10 +38,12 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
@@ -89,12 +92,16 @@ class RustMasterTest : public YBTest {
     return JoinPathSegments(DirName(cluster_->master(0)->exe()), name);
   }
 
-  Result<size_t> RestartFollowerAsRust() {
+  Result<size_t> RestartFollowerAsRust(
+      const std::vector<std::pair<std::string, std::string>>& extra_flags = {}) {
     const auto leader = VERIFY_RESULT(cluster_->GetLeaderMasterIndex());
     const size_t index = (leader + 1) % cluster_->num_masters();
     auto* master = cluster_->master(index);
     master->Shutdown();
     master->SetExe(rust_master_exe_);
+    for (const auto& [flag, value] : extra_flags) {
+      master->AddExtraFlag(flag, value);
+    }
     RETURN_NOT_OK(master->Restart());
     RETURN_NOT_OK(WaitForRole(master, PeerRole::FOLLOWER));
     return index;
@@ -187,6 +194,16 @@ class RustMasterTest : public YBTest {
     return rows;
   }
 
+  // The page at `path` on the master's web port, or the error for a status other than 200.
+  Result<std::string> FetchPage(ExternalMaster* master, const std::string& path) {
+    EasyCurl curl;
+    faststring buf;
+    RETURN_NOT_OK(curl.FetchURL(
+        Format("http://$0:$1$2", master->bound_rpc_hostport().host(), master->http_port(), path),
+        &buf));
+    return buf.ToString();
+  }
+
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
   std::string rust_master_exe_;
@@ -271,8 +288,20 @@ TEST_F(RustMasterTest, NeverLeads) {
   auto* rust_master = cluster_->master(rust_index);
 
   // Ask the leader to hand leadership to the Rust master. It wins the election and steps down.
-  tserver::TabletServerErrorPB::Code error_code;
-  ASSERT_OK(cluster_->StepDownMasterLeader(&error_code, rust_master->uuid()));
+  // The leader refuses until the restarted peer has caught up.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        tserver::TabletServerErrorPB::Code error_code;
+        auto status = cluster_->StepDownMasterLeader(&error_code, rust_master->uuid());
+        if (status.ok()) {
+          return true;
+        }
+        if (status.ToString().find("not caught up") != std::string::npos) {
+          return false;
+        }
+        return status;
+      },
+      kTimeout, "the leader to hand over to the Rust master"));
   const auto deadline = CoarseMonoClock::Now() + 10s;
   while (CoarseMonoClock::Now() < deadline) {
     auto registration = Registration(rust_master);
@@ -300,6 +329,106 @@ TEST_F(RustMasterTest, AddedThroughRemoteBootstrap) {
   ASSERT_OK(WaitForMastersToCatchUp());
 
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::REMOVE_SERVER));
+}
+
+namespace {
+
+// A page without what differs between two fetches: uptimes and the footer, which has each
+// binary's build time.
+std::string ComparablePage(const std::string& page) {
+  static const std::regex kUptime("<td> [^<]*[0-9]+:[0-9]{2}:[0-9]{2}</td>");
+  return std::regex_replace(page.substr(0, page.find("<footer")), kUptime, "<td>uptime</td>");
+}
+
+}  // namespace
+
+// The Rust master serves the web port; the pages are those a C++ follower serves.
+TEST_F(RustMasterTest, WebPages) {
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
+  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  auto* rust_master = cluster_->master(rust_index);
+  auto* cpp_follower = cluster_->master(3 - rust_index - leader_index);
+  client::TableHandle table;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 1, client_.get(), &table);
+
+  // Served by both followers from the master list, or fetched from the leader.
+  for (const auto& path : {
+           "/api/v1/masters"s, "/api/v1/version"s, "/api/v1/tables"s, "/api/v1/namespaces"s,
+           "/dump-entities"s, "/"s, "/tables"s}) {
+    SCOPED_TRACE(path);
+    auto rust_page = FetchPage(rust_master, path);
+    auto cpp_page = FetchPage(cpp_follower, path);
+    ASSERT_OK(rust_page);
+    ASSERT_OK(cpp_page);
+    ASSERT_EQ(ComparablePage(*rust_page), ComparablePage(*cpp_page));
+  }
+
+  // Each master shows itself in bold.
+  auto unbold = [](std::string page) {
+    for (const auto& tag : {"<b>"s, "</b>"s}) {
+      for (auto pos = page.find(tag); pos != std::string::npos; pos = page.find(tag, pos)) {
+        page.erase(pos, tag.size());
+      }
+    }
+    return page;
+  };
+  const auto rust_masters = ASSERT_RESULT(FetchPage(rust_master, "/masters"));
+  ASSERT_STR_CONTAINS(
+      rust_masters, Format("<b><a href=\"http://localhost:$0/\">", rust_master->http_port()));
+  ASSERT_EQ(
+      ComparablePage(unbold(rust_masters)),
+      ComparablePage(unbold(ASSERT_RESULT(FetchPage(cpp_follower, "/masters")))));
+
+  // Heartbeat times differ between fetches.
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(FetchPage(rust_master, "/api/v1/tablet-servers")), "\"status\":\"ALIVE\"");
+
+  // A follower answers 503.
+  auto is_leader = FetchPage(rust_master, "/api/v1/is-leader");
+  ASSERT_NOK(is_leader);
+  ASSERT_STR_CONTAINS(is_leader.status().ToString(), "HTTP 503");
+
+  // The host's own pages, through the proxy.
+  ASSERT_STR_CONTAINS(ASSERT_RESULT(FetchPage(rust_master, "/varz?raw")), "--webserver_port");
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(FetchPage(rust_master, "/prometheus-metrics")), "handler_latency");
+
+  // The registration advertises the Rust web port.
+  auto registration = ASSERT_RESULT(Registration(rust_master));
+  ASSERT_EQ(registration.registration().http_addresses_size(), 1);
+  ASSERT_EQ(registration.registration().http_addresses(0).port(), rust_master->http_port());
+}
+
+// The Rust master serves HTTPS with the C++ web server's TLS flags.
+TEST_F(RustMasterTest, WebServerHttps) {
+  const auto certs_dir = GetCertsDir();
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+      {"webserver_interface", "127.0.0.2"},
+      {"webserver_certificate_file", JoinPathSegments(certs_dir, "node.127.0.0.2.crt")},
+      {"webserver_private_key_file", JoinPathSegments(certs_dir, "node.127.0.0.2.key")},
+      {"webserver_strict_transport_security", "true"},
+  }));
+  auto* rust_master = cluster_->master(rust_index);
+  const auto url = Format("https://127.0.0.2:$0", rust_master->http_port());
+
+  EasyCurl curl;
+  curl.set_ca_cert(JoinPathSegments(certs_dir, "ca.crt"));
+  curl.set_return_headers(true);
+  faststring buf;
+  ASSERT_OK(curl.FetchURL(url + "/api/v1/version", &buf));
+  ASSERT_STR_CONTAINS(ToLowerCase(buf.ToString()), "strict-transport-security: max-age=31536000");
+  // Fetched from the C++ leader, which serves HTTP.
+  ASSERT_OK(curl.FetchURL(url + "/api/v1/tables", &buf));
+  ASSERT_STR_CONTAINS(buf.ToString(), "\"tables\"");
+
+  EasyCurl plain;
+  ASSERT_NOK(plain.FetchURL(Format("http://127.0.0.2:$0/api/v1/version", rust_master->http_port()),
+                            &buf));
+
+  auto registration = ASSERT_RESULT(Registration(rust_master));
+  ASSERT_EQ(registration.registration().http_addresses_size(), 1);
+  ASSERT_EQ(registration.registration().http_addresses(0).host(), "127.0.0.2");
 }
 
 }  // namespace yb

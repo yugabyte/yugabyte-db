@@ -22,6 +22,9 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
+
+#include <boost/asio/ip/tcp.hpp>
 
 #include "rust/cxx.h"
 
@@ -34,6 +37,8 @@
 
 #include "yb/rust_bridge/rpc_bridge.h"
 
+#include "yb/server/webserver_options.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/db_server_base.h"
@@ -41,10 +46,12 @@
 #include "yb/common/termination_monitor.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 
 class MaintenanceManager;
+class ServerEntryPB;
 class TerminationMonitor;
 class Thread;
 class ThreadPool;
@@ -58,10 +65,14 @@ class SysCatalogTable;
 namespace master_host {
 
 class MasterInfoHandle;
+// Defined in Rust (master/master/src/ffi.rs).
+struct WebMasterList;
 
 class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHandle {
  public:
-  explicit MasterHost(const master::MasterOptions& opts);
+  // `public_web_opts` are the web server settings from the flags, which the Rust web server serves;
+  // `opts.webserver_opts` are those of the C++ Webserver behind it.
+  MasterHost(const master::MasterOptions& opts, WebserverOptions public_web_opts);
   ~MasterHost();
 
   // Bridge API (master/master/src/ffi.rs). Failures throw std::runtime_error, which cxx turns into
@@ -92,6 +103,22 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   int32_t MasterServiceQueueLength() const;
   int32_t YsqlLeaseServiceQueueLength() const;
 
+  // Web. Rust serves the web port and proxies it to the C++ Webserver on an ephemeral loopback
+  // port, where the host serves the pages a C++ follower master serves.
+
+  rust::String PublicWebInterface() const;
+  uint16_t PublicWebPort() const;
+  rust::String WebCertificateFile() const;
+  rust::String WebPrivateKeyFile() const;
+  rust::String WebPrivateKeyPassword() const;
+  rust::String WebSslCiphers() const;
+  // The addresses the Rust web server bound, and the source of the master list the web pages
+  // show. Must be called before StartHost(), which advertises the addresses.
+  void SetWebServer(
+      const rust::Vec<rust::String>& bound_ips, uint16_t bound_port,
+      rust::Box<WebMasterList> master_list);
+  uint16_t LoopbackWebPort() const;
+
   // RpcServerHandle.
   Status RegisterRustService(
       size_t queue_limit, rpc::ServiceIfPtr service, rpc::ServicePriority priority) override;
@@ -100,6 +127,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
 
   // DbServerBase.
   Status InitFlags(rpc::Messenger* messenger) override;
+  Status GetRegistration(
+      ServerRegistrationPB* reg, server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
+  void GetStatusPB(server::ServerStatusPB* status) const override;
   MonoDelta default_client_timeout() override;
   void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) override;
   client::LocalTabletFilter CreateLocalTabletFilter() override;
@@ -127,6 +157,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Status ElectedAsLeader();
   Status ResetMemoryState(const consensus::RaftConfigPB& config);
   Status GetMasterRegistration(ServerRegistrationPB* reg) const;
+  void RegisterWebPages();
+  Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
   void RefreshHistoryRetentionPinLoop();
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req);
@@ -149,6 +181,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<TerminationMonitor> termination_monitor_;
 
   AtomicUniquePtr<ServerRegistrationPB> registration_;
+  const WebserverOptions public_web_opts_;
+  std::vector<Endpoint> public_web_endpoints_;
+  std::optional<rust::Box<WebMasterList>> web_master_list_;
   std::atomic<bool> sys_catalog_initialized_{false};
   // Serializes remote bootstrap requests, as CatalogManager does.
   std::mutex remote_bootstrap_mutex_;

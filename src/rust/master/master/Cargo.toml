@@ -11,6 +11,7 @@ publish.workspace = true
 crate-type = ["staticlib"]
 
 [dependencies]
+axum.workspace = true
 cxx.workspace = true
 master-rpc-handlers.workspace = true
 protobuf.workspace = true
@@ -20,6 +21,7 @@ yb-cpp-host.workspace = true
 yb-flags.workspace = true
 yb-host-api.workspace = true
 yb-proto.workspace = true
+yb-web.workspace = true
 
 [lints]
 workspace = true

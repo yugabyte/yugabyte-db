@@ -80,6 +80,9 @@ if(DEFINED LIBCXX_INCLUDE_DIR)
   string(APPEND _yb_rust_cxxflags " -stdlib=libc++ -nostdinc++ -isystem ${LIBCXX_INCLUDE_DIR}")
 endif()
 
+# openssl-sys builds against the OpenSSL the C++ code uses; CMake links it into the executables.
+get_filename_component(YB_RUST_OPENSSL_LIB_DIR "${OPENSSL_SSL_LIBRARY}" DIRECTORY)
+
 set(YB_RUST_CARGO_ENV
     env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u CPPFLAGS -u RUSTFLAGS -u PKG_CONFIG_PATH
     "CC=${_yb_rust_cc}"
@@ -87,6 +90,8 @@ set(YB_RUST_CARGO_ENV
     "CXXFLAGS=${_yb_rust_cxxflags}"
     # Tells the link-cplusplus crate (a cxx dependency) the standard library is libc++.
     CXXSTDLIB=c++
+    "OPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}"
+    "OPENSSL_LIB_DIR=${YB_RUST_OPENSSL_LIB_DIR}"
     "CARGO_TARGET_DIR=${YB_RUST_TARGET_DIR}"
     ASAN_OPTIONS=detect_leaks=0)
 

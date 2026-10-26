@@ -314,11 +314,62 @@ void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& ot
   active_tablets_count += other.active_tablets_count;
 }
 
-// Retrieve the specified URL response from the leader master
-void MasterPathHandlers::RedirectToLeader(
-    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+namespace {
+
+Result<std::vector<ServerEntryPB>> ListMastersForWeb(const Master& master) {
+  std::vector<ServerEntryPB> masters;
+  RETURN_NOT_OK(master.ListMasters(&masters));
+  return masters;
+}
+
+Result<ServerRegistrationPB> LocalRegistrationForWeb(const Master& master) {
+  ServerRegistrationPB reg;
+  RETURN_NOT_OK(master.GetMasterRegistration(&reg));
+  return reg;
+}
+
+Result<std::string> GetLeaderAddress(
+    const Result<std::vector<ServerEntryPB>>& masters,
+    const Result<ServerRegistrationPB>& local_reg, const Webserver::WebRequest& req) {
+  if (!masters.ok()) {
+    return masters.status().CloneAndPrepend("Unable to list masters during web request handling");
+  }
+  if (!local_reg.ok()) {
+    return local_reg.status().CloneAndPrepend(
+        "Unable to get local registration during web request handling");
+  }
+  const auto leader = std::find_if(masters->begin(), masters->end(), [](const auto& master) {
+    return !master.has_error() && master.role() == PeerRole::LEADER;
+  });
+  if (leader == masters->end() || leader->registration().http_addresses().empty()) {
+    return STATUS(
+        NotFound, "Unable to locate leader master to redirect this request: " + req.redirect_uri);
+  }
+  auto& reg = leader->registration();
+  auto http_broadcast_addresses = reg.broadcast_addresses();
+  for (HostPortPB& host_port : http_broadcast_addresses) {
+    host_port.set_port(reg.http_addresses(0).port());
+  }
+  return Format(
+      "$0://$1$2$3",
+      GetProtocol(),
+      HostPortPBToString(DesiredHostPort(
+          http_broadcast_addresses,
+          reg.http_addresses(),
+          reg.cloud_info(),
+          local_reg->cloud_info())),
+      req.redirect_uri,
+      req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+}
+
+} // namespace
+
+void RedirectToLeader(
+    const Result<std::vector<ServerEntryPB>>& masters,
+    const Result<ServerRegistrationPB>& local_reg, const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  auto redirect_result = GetLeaderAddress(req);
+  auto redirect_result = GetLeaderAddress(masters, local_reg, req);
   if (!redirect_result) {
     auto s = redirect_result.status();
     LOG(WARNING) << s.ToString();
@@ -343,41 +394,11 @@ void MasterPathHandlers::RedirectToLeader(
   *output << buf.ToString();
 }
 
-Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebRequest& req) {
-  vector<ServerEntryPB> masters;
-  Status s = master_->ListMasters(&masters);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to list masters during web request handling");
-    return s;
-  }
-  ServerRegistrationPB local_reg;
-  s = master_->GetMasterRegistration(&local_reg);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to get local registration during web request handling");
-    return s;
-  }
-  const auto leader = std::find_if(masters.begin(), masters.end(), [](const auto& master) {
-    return !master.has_error() && master.role() == PeerRole::LEADER;
-  });
-  if (leader == masters.end() || leader->registration().http_addresses().empty()) {
-    return STATUS(
-        NotFound, "Unable to locate leader master to redirect this request: " + req.redirect_uri);
-  }
-  auto& reg = leader->registration();
-  auto http_broadcast_addresses = reg.broadcast_addresses();
-  for (HostPortPB& host_port : http_broadcast_addresses) {
-    host_port.set_port(reg.http_addresses(0).port());
-  }
-  return Format(
-      "$0://$1$2$3",
-      GetProtocol(),
-      HostPortPBToString(DesiredHostPort(
-          http_broadcast_addresses,
-          reg.http_addresses(),
-          reg.cloud_info(),
-          local_reg.cloud_info())),
-      req.redirect_uri,
-      req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+// Retrieve the specified URL response from the leader master
+void MasterPathHandlers::RedirectToLeader(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  master::RedirectToLeader(
+      ListMastersForWeb(*master_), LocalRegistrationForWeb(*master_), req, resp);
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
@@ -3238,17 +3259,16 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
 }
 
-void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
-                                       Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  vector<ServerEntryPB> masters;
-  Status s = master_->ListMasters(&masters);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to list Masters");
+void RenderMastersPage(
+    const Result<std::vector<ServerEntryPB>>& masters_result, const std::string& local_uuid,
+    std::stringstream* output) {
+  if (!masters_result.ok()) {
+    auto s = masters_result.status().CloneAndPrepend("Unable to list Masters");
     LOG(WARNING) << s.ToString();
     *output << "<h1>" << EscapeForHtmlToString(s.ToString()) << "</h1>\n";
     return;
   }
+  const auto& masters = *masters_result;
   (*output) << "<div class='panel panel-default'>\n"
             << "<div class='panel-heading'><h2 class='panel-title'>Masters</h2></div>\n";
   (*output) << "<div class='panel-body table-responsive'>";
@@ -3283,7 +3303,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     }
     auto reg = master.registration();
     string reg_text = RegistrationToHtml(reg);
-    if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
+    if (master.instance_id().permanent_uuid() == local_uuid) {
       reg_text = Format("<b>$0</b>", reg_text);
     }
     string raft_role = master.has_role() ? PeerRole_Name(master.role()) : "N/A";
@@ -3309,6 +3329,12 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
   (*output) << "</table>";
   (*output) << "</div> <!-- panel-body -->\n";
   (*output) << "</div> <!-- panel -->\n";
+}
+
+void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
+                                       Webserver::WebResponse* resp) {
+  RenderMastersPage(
+      ListMastersForWeb(*master_), master_->instance_pb().permanent_uuid(), &resp->output);
 }
 
 namespace {
@@ -3507,21 +3533,23 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
   }
 }
 
-void MasterPathHandlers::HandleGetMastersStatus(const Webserver::WebRequest& req,
-                                                    Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  vector<ServerEntryPB> masters;
-  Status s = master_->ListMasters(&masters);
+void RenderMastersJson(
+    const Result<std::vector<ServerEntryPB>>& masters, std::stringstream* output) {
   ListMastersResponsePB pb_resp;
   JsonWriter jw(output, JsonWriter::COMPACT);
-  if (!s.ok()) {
+  if (!masters.ok()) {
     jw.Protobuf(pb_resp);
     return;
   }
-  for (const ServerEntryPB& master : masters) {
+  for (const ServerEntryPB& master : *masters) {
     pb_resp.add_masters()->CopyFrom(master);
   }
   jw.Protobuf(pb_resp);
+}
+
+void MasterPathHandlers::HandleGetMastersStatus(const Webserver::WebRequest& req,
+                                                    Webserver::WebResponse* resp) {
+  RenderMastersJson(ListMastersForWeb(*master_), &resp->output);
 }
 
 void MasterPathHandlers::HandleGetClusterConfig(

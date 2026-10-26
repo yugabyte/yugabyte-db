@@ -38,7 +38,10 @@ byproduct, so a no-op Cargo run does not relink.
 
 Cargo runs with inherited `CFLAGS`/`CXXFLAGS` removed and with yb's clang and libc++. The only C++
 Cargo itself compiles is the cxx runtime (`cxx.cc`), and it must use the same standard library as
-the code that receives `rust::String` values.
+the code that receives `rust::String` values. `openssl-sys` is pointed at the third-party OpenSSL
+(`OPENSSL_INCLUDE_DIR`, `OPENSSL_LIB_DIR`), the one the C++ code links; an executable linking a
+Rust library that uses OpenSSL lists `openssl` in its CMake link libraries. To run `cargo` by hand,
+set those two variables, and `LD_LIBRARY_PATH` to the library directory for `cargo test`.
 
 Output directories under the build root:
 

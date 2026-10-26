@@ -33,6 +33,9 @@ master and so must be the same code as on a C++ peer:
   retention pin the leader publishes, which the host reloads every
   `catalog_manager_bg_task_wait_ms`.
 
+It also runs the C++ `Webserver`, on loopback behind the Rust web port, with the pages a C++
+follower master serves (see [web.md](web.md)).
+
 It serves ConsensusService and RemoteBootstrapService in C++, and the remote-bootstrap steps for a
 master added from shell mode are the same as `CatalogManager::StartRemoteBootstrap`. It cannot
 create a new universe: that would make it the first leader.
