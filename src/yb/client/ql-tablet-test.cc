@@ -222,7 +222,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   void FillTable(int begin, int end, const TableHandle& table) {
     ASSERT_OK(WaitForTableLeaders(cluster_.get(), table->id(), 10s * kTimeMultiplier));
-    ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 10s * kTimeMultiplier));
+    ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+        cluster_.get(), 10s * kTimeMultiplier, RequireLeaderIsReady::kFalse));
     LOG(INFO) << "Start filling table";
     {
       auto session = CreateSession();

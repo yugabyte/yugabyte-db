@@ -1152,6 +1152,7 @@
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
         "perfAdvisorMetricsTab": "Metrics",
+        "perfAdvisorDatabasesTab": "Databases",
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",

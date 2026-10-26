@@ -981,7 +981,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_intent_cleanup_secs) = 0;
   // Followers may still be applying replicated intents; they must reach the flushed SST files,
   // since compaction does not clean up memtable contents.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(consumer_cluster(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      consumer_cluster(), 30s * kTimeMultiplier, RequireLeaderIsReady::kFalse));
   ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());

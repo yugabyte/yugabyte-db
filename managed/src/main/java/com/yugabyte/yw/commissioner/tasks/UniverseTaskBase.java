@@ -309,7 +309,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DecommissionNode,
           TaskType.ProvisionUniverseNodes);
 
-  // Tasks that are allowed to run if cluster placement modification task failed.
+  // Tasks that are allowed to run if cluster placement modification task failed. None of them may
+  // be a placement modification task: one would take over the failed task's placement lock and
+  // rollback checkpoint.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
   // UNIVERSE_ACTION_TO_FROZEN_TASK_MAP in "./managed/ui/src/redesign/helpers/constants.ts".
   private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
@@ -336,7 +338,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
-          TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
           TaskType.CreateSupportBundleV2,
           TaskType.CreateBackupSchedule,
@@ -348,16 +349,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EnableNodeAgentInUniverse,
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags);
-
-  /**
-   * Same as {@link #SAFE_TO_RUN_IF_UNIVERSE_BROKEN} but for a universe locked by a rollback task
-   * that itself failed. Re-provisioning nodes is not offered there; destroying the universe and
-   * reinstalling the node agent stay.
-   */
-  private static final Set<TaskType> SAFE_TO_RUN_IF_ROLLBACK_FAILED =
-      Sets.difference(
-              SAFE_TO_RUN_IF_UNIVERSE_BROKEN, ImmutableSet.of(TaskType.ProvisionUniverseNodes))
-          .immutableCopy();
 
   private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
       ImmutableSet.of(
@@ -654,10 +645,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         AllowedTasks.builder().lockedTaskType(lockedTaskType);
     if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
       builder.restricted(true);
-      builder.taskTypes(
-          TaskRollbackModule.PLACEMENT_ROLLBACK_TASK_TYPES.containsValue(lockedTaskType)
-              ? SAFE_TO_RUN_IF_ROLLBACK_FAILED
-              : SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
       if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
         builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
       }
@@ -1041,7 +1029,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
-            universe.setStateTransitionDetails(null);
+            // A task allowed on a universe broken by another task keeps that task's checkpoint.
+            if (!isPlacementLockHeldByOtherTask(universeDetails)) {
+              universe.setStateTransitionDetails(null);
+            }
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               boolean pausedTask =
                   getTaskExecutor()
@@ -1311,6 +1302,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return true;
   }
 
+  /**
+   * Whether another task holds the placement lock. The rollback checkpoint ({@code
+   * state_transition_details}) is then that task's, so this task must not write or clear it.
+   */
+  private boolean isPlacementLockHeldByOtherTask(UniverseDefinitionTaskParams universeDetails) {
+    return universeDetails.placementModificationTaskUuid != null
+        && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1441,7 +1441,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               originalCallback.accept(univ);
             }
             UniverseDefinitionTaskParams target = getTargetUniverseDetails();
-            if (target != null) {
+            // The freeze has already taken the placement lock if this task modifies placement.
+            if (target != null && !isPlacementLockHeldByOtherTask(univ.getUniverseDetails())) {
               captureStateTransitionDelta(univ, beforeDetails, target);
             }
           };

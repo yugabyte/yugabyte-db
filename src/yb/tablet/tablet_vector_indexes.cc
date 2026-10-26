@@ -81,7 +81,6 @@ DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
     "were being replaced, e.g. by a truncate or a restore.");
 
 DECLARE_bool(vector_index_include_into_post_split_compaction);
-DECLARE_uint64(vector_index_initial_chunk_size);
 
 namespace yb::tablet {
 
@@ -217,8 +216,8 @@ class IndexedTableReader {
 
 } // namespace
 
-// A way to block backfilling vector index after the first vector index chunk is flushed.
-bool TEST_block_after_backfilling_first_vector_index_chunks = false;
+// Blocks vector index backfill after it has inserted its first batch of rows into the index.
+bool TEST_block_after_backfilling_first_vector_index_batch = false;
 
 // When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
 // the indexed table's owns_vector_reverse_mapping table property.
@@ -487,16 +486,21 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     chunk_size_ = chunk_size;
   }
 
-  size_t num_chunks() const {
-    return num_chunks_;
+  // Rows collected before they are inserted into the vector index. 0 means no limit.
+  void SetMaxBatchSize(size_t max_batch_size) {
+    max_batch_size_ = max_batch_size;
+  }
+
+  size_t num_batches() const {
+    return num_batches_;
   }
 
   bool NeedFlush() {
-    return entries().size() >= FLAGS_vector_index_initial_chunk_size;
+    return max_batch_size_ && entries().size() >= max_batch_size_;
   }
 
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
-    ++num_chunks_;
+    ++num_batches_;
 
     if (reverse_mapping_backfiller_) {
       reverse_mapping_backfiller_->Apply(tablet, *this);
@@ -519,6 +523,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
     };
     auto num_entries = entries().size();
+    TEST_SYNC_POINT_CALLBACK("VectorIndexBackfillHelper::Flush:NumEntries", &num_entries);
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
     index.metrics().backfill_inserted_entries->IncrementBy(num_entries);
 
@@ -532,7 +537,8 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
  private:
   const OpId op_id_;
   size_t chunk_size_ = 0;
-  size_t num_chunks_ = 0;
+  size_t max_batch_size_ = 0;
+  size_t num_batches_ = 0;
   ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
 };
 
@@ -616,17 +622,24 @@ Status TabletVectorIndexes::Backfill(
   // vector count from its internal per-node accounting.
   const size_t bytes_limit = FLAGS_vector_index_backfill_single_chunk_size_bytes;
   const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;
+  size_t chunk_size = 0;
   if (limit != 0) {
-    size_t rows = 0;
-    while (VERIFY_RESULT(reader.FetchNext()) && rows < limit) {
-      ++rows;
+    while (VERIFY_RESULT(reader.FetchNext()) && chunk_size < limit) {
+      ++chunk_size;
     }
-    LOG_WITH_FUNC(INFO)
-        << "Backfill with chunk size " << rows
-        << " (memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
-    helper.SetChunkSize(rows);
     reader.Restart(from_key);
   }
+  helper.SetChunkSize(chunk_size);
+
+  // Insert rows in batches of the default chunk capacity, but no larger than the backfill chunk
+  // size. Either one that is 0 does not apply, and if both are 0, insert all rows at once.
+  const size_t default_chunk_capacity = vector_index->DefaultChunkCapacity();
+  const size_t max_batch_size = default_chunk_capacity && chunk_size
+      ? std::min(default_chunk_capacity, chunk_size) : std::max(default_chunk_capacity, chunk_size);
+  helper.SetMaxBatchSize(max_batch_size);
+  LOG_WITH_FUNC(INFO)
+      << "Backfill with chunk size " << chunk_size << " (batch size: " << max_batch_size
+      << ", memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
 
   for (;;) {
     if (tablet().IsShutdownRequested()) {
@@ -641,7 +654,7 @@ Status TabletVectorIndexes::Backfill(
       LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
     }
-    if (helper.num_chunks() && TEST_block_after_backfilling_first_vector_index_chunks) {
+    if (helper.num_batches() && TEST_block_after_backfilling_first_vector_index_batch) {
       std::this_thread::sleep_for(10ms);
       continue;
     }
@@ -661,7 +674,7 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
 
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Backfilled " << AsString(*vector_index) << " in " << helper.num_chunks() << " chunks";
+      << "Backfilled " << AsString(*vector_index) << " in " << helper.num_batches() << " batches";
 
   // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
   // the vector index flush, so acquire it here and pass kNoScopedOperation. Only

@@ -129,9 +129,10 @@ class CatalogManagerUtil {
 
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
-  template<class LoadState>
+  // Adds the table's running replicas to the counts of the tservers already in the map.
   static Status FillTableLoadState(
-      const scoped_refptr<TableInfo>& table_info, LoadState* state);
+      const scoped_refptr<TableInfo>& table_info,
+      std::unordered_map<TabletServerId, uint32_t>* per_ts_replica_load);
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
     std::call_once(sequences_data_table_filter_once_flag_, []() {
@@ -211,26 +212,23 @@ class CMPerTableLoadState {
   explicit CMPerTableLoadState(CMGlobalLoadState* global_state)
     : global_load_state_(global_state) {}
 
-  // Call once after per_ts_replica_load_ is filled; sorts by (table load, global load, uuid).
-  Status Init(const TSDescriptorVector& ts_descs);
+  // 'table_load' is the table's replica count per tserver; sorts by (table load, global load,
+  // uuid).
+  Status Init(
+      const TSDescriptorVector& ts_descs,
+      const std::unordered_map<TabletServerId, uint32_t>& table_load);
 
-  // Adds one replica on tserver 'uuid' and keeps the sorted order.
-  void AddReplica(const TabletServerId& uuid);
+  // Adds one replica on tserver 'idx' and keeps the sorted order.
+  void AddReplica(size_t idx);
 
   // Tserver indexes, least loaded first.
   const std::vector<size_t>& sorted_by_load() const { return sorted_; }
-
-  const TabletServerId& uuid(size_t idx) const { return uuids_[idx]; }
-
-  // Filled by CatalogManagerUtil::FillTableLoadState before Init().
-  std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
 
  private:
   bool LessLoaded(size_t a, size_t b) const;
 
   CMGlobalLoadState* global_load_state_;
   std::vector<TabletServerId> uuids_;
-  std::unordered_map<TabletServerId, size_t> index_;
   std::vector<uint32_t> table_load_;
   // Mirror of global_load_state_->per_ts_replica_load_ for the tservers in uuids_.
   std::vector<uint32_t> global_load_;
