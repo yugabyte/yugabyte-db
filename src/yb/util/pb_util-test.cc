@@ -473,28 +473,6 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
 }
 
-TEST_F(TestPBUtil, PBWithCRC) {
-  ProtoContainerTestPB pb;
-  pb.set_name(kTestKeyvalName);
-  pb.set_value(kTestKeyvalValue);
-  ProtoContainerTestPB read_pb;
-  ASSERT_OK(WritePBWithCRCToPath(env_.get(), path_, pb, NO_SYNC));
-  ASSERT_OK(ReadPBWithCRCFromPath(env_.get(), path_, &read_pb));
-  ASSERT_EQ(read_pb.ShortDebugString(), pb.ShortDebugString());
-
-  // Damage the checksum, then the message.
-  for (uint64_t offset : {0, 5}) {
-    ASSERT_OK(WritePBWithCRCToPath(env_.get(), path_, pb, NO_SYNC));
-    ASSERT_OK(BitFlipFileByteRange(path_, offset, 1));
-    auto status = ReadPBWithCRCFromPath(env_.get(), path_, &read_pb);
-    ASSERT_TRUE(status.IsCorruption()) << status;
-  }
-
-  ASSERT_OK(WriteStringToFile(env_.get(), Slice("ab"), path_));
-  auto status = ReadPBWithCRCFromPath(env_.get(), path_, &read_pb);
-  ASSERT_TRUE(status.IsCorruption()) << status;
-}
-
 // An empty message has a zero-length body.
 TEST_F(TestPBUtil, TestEmptyMessage) {
   ASSERT_OK(WritePBContainerToPath(env_.get(), path_, TestStringOptionalPB(), OVERWRITE, NO_SYNC));

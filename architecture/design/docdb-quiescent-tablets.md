@@ -52,7 +52,7 @@ A restart in the quiescent state reads no WAL. Any append returns the tablet to 
 | `entry_time` of the batch with L | `RetryableRequests::Clock().Adjust` |
 | `last_segment_sequence_number` | Numbering of the next segment |
 
-The file is `quiescent_marker` in the WAL directory, next to the bootstrap state file, so it shares the directory's lifecycle. `IsLogFileName` does not match it, so `LogReader` skips it. `WritePBWithCRCToPath` writes the CRC32C of the serialized `QuiescentMarkerPB` followed by the message to a temp file, fsyncs it, renames it and fsyncs the directory; `ReadPBWithCRCFromPath` verifies the checksum. It is not a PB container: `pb_util::WritePBContainerToPath` embeds the descriptors of the message's `.proto` file and all its imports, about 50 KB for `log.proto`, which every bootstrap would read.
+The file is `quiescent_marker` in the WAL directory, next to the bootstrap state file, so it shares the directory's lifecycle. `IsLogFileName` does not match it, so `LogReader` skips it. It is a PB container: `pb_util::WritePBContainerToPath` writes it to a temp file, fsyncs it, renames it and fsyncs the directory. The container header embeds only the descriptors of the types the message reaches (#35791), here `QuiescentMarkerPB` and `OpIdPB`, so the file stays under 1 KB, and `yb-pbc-dump` can print it.
 
 ## Entering the mode
 

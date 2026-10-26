@@ -2356,12 +2356,13 @@ Status Log::LoadQuiescentMarker() {
 
 Status Log::ReadQuiescentMarkerFile(
     Env* env, const std::string& wal_dir, QuiescentMarkerPB* marker) {
-  return pb_util::ReadPBWithCRCFromPath(env, QuiescentMarkerPath(wal_dir), marker);
+  return pb_util::ReadPBContainerFromPath(env, QuiescentMarkerPath(wal_dir), marker);
 }
 
 Status Log::WriteQuiescentMarkerFile(
     Env* env, const std::string& wal_dir, const QuiescentMarkerPB& marker) {
-  return pb_util::WritePBWithCRCToPath(env, QuiescentMarkerPath(wal_dir), marker, pb_util::SYNC);
+  return pb_util::WritePBContainerToPath(
+      env, QuiescentMarkerPath(wal_dir), marker, pb_util::OVERWRITE, pb_util::SYNC);
 }
 
 Status Log::WriteQuiescentMarker(const QuiescentMarkerPB& marker) {
