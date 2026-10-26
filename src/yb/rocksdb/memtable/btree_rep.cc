@@ -22,9 +22,12 @@
 // - Nodes on the left and right borders have a missing fence and use the prefix every key shares.
 // - Readers take no latch. They validate node versions (optimistic lock coupling) and retry.
 // - Nodes come from the memtable arena and are never freed, so a stale pointer stays readable.
+// - Erase rebalances as bbtree does, since the intents DB erases most entries of applied
+//   transactions.
 
 #include <atomic>
 #include <limits>
+#include <optional>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/endian.h"
@@ -63,6 +66,8 @@ struct NodeBase {
   std::atomic<uint16_t> prefix_len{0};
   // 0 for leaves.
   uint8_t level = 0;
+  // Set when a merge takes the node out of the tree. Its entries stay as they were.
+  std::atomic<bool> detached{false};
 };
 
 struct Leaf : NodeBase {
@@ -87,6 +92,16 @@ struct Internal : NodeBase {
 
 static_assert(sizeof(Leaf) <= kNodeSize);
 static_assert(sizeof(Internal) <= kNodeSize);
+
+// Nodes below the root keep at least this many keys, as in bbtree: removals rebalance, and 1/8
+// leaves enough room that a split half does not merge back soon.
+constexpr size_t kLeafMinCount = std::max<size_t>(Leaf::kCapacity / 8, 4);
+constexpr size_t kInternalMinCount = std::max<size_t>(Internal::kCapacity / 8, 4);
+
+inline bool IsUnderfull(const NodeBase* node) {
+  return node->count.load(std::memory_order_relaxed) <
+         (node->level == 0 ? kLeafMinCount : kInternalMinCount);
+}
 
 inline uint64_t KeyWindow(Slice key, size_t offset) {
   if (offset >= key.size()) {
@@ -256,7 +271,8 @@ class BTreeRep : public MemTableRep {
     const Leaf* leaf;
     uint64_t version;
     while (!Descend(nullptr, Route::kFirst, &leaf, &version)) {}
-    FirstFrom(leaf, pos);
+    // A merge keeps the left node, so the first leaf stays first.
+    FirstFrom(leaf, nullptr, 0, pos);
   }
 
   void SeekLast(Position* pos) const {
@@ -312,11 +328,15 @@ class BTreeRep : public MemTableRep {
   bool TrySeekLT(const SearchKey& key, Position* pos) const;
   bool TrySeekLast(Position* pos) const;
 
-  // Positions at the first entry of leaf or of a leaf after it.
-  void FirstFrom(const Leaf* leaf, Position* pos) const;
-  // Positions at the last entry of prev or of a leaf before it, where current follows prev.
-  // Returns false if a leaf was split meanwhile.
-  bool LastBefore(const Leaf* prev, const Leaf* current, Position* pos) const;
+  // Positions at the first entry of leaf or of a leaf after it, where leaf followed `from` at
+  // from_version. Returns false if `from` changed since: a merge or a move between siblings may
+  // have moved an entry across them.
+  bool FirstFrom(
+      const Leaf* leaf, const Leaf* from, uint64_t from_version, Position* pos) const;
+  // Positions at the last entry of prev or of a leaf before it, where current at current_version
+  // follows prev. Returns false if a leaf split, merged or moved entries meanwhile.
+  bool LastBefore(
+      const Leaf* prev, const Leaf* current, uint64_t current_version, Position* pos) const;
 
   // Continues from pos->entry in its leaf after that leaf changed. False if it is not there.
   bool NextInChangedLeaf(Position* pos) const;
@@ -340,7 +360,32 @@ class BTreeRep : public MemTableRep {
   Internal* NewInternal(uint8_t level);
   char* AllocateNode();
 
+  // Descends to the leaf for key, recording the path.
+  Leaf* DescendForWrite(const SearchKey& key, PathEntry* path, size_t* depth);
+
   void InsertIntoLeaf(Leaf* leaf, size_t index, const char* entry);
+  void RemoveFromLeaf(Leaf* leaf, size_t index);
+  // Removes separator index and child index + 1.
+  void RemoveFromInternal(Internal* node, size_t index);
+  void SetSeparator(Internal* node, size_t index, const char* separator);
+
+  // Fixes the underfull node at the end of the path, and the parents a merge leaves underfull, as
+  // bbtree does: a node merges with a sibling when both fit, and otherwise takes one entry from it.
+  void Rebalance(const PathEntry* path, size_t depth);
+  // Merge children left_index and left_index + 1 of parent, whose fences are low and high.
+  void MergeLeaves(Internal* parent, size_t left_index, const char* low, const char* high);
+  void MergeInternals(Internal* parent, size_t left_index, const char* low, const char* high);
+  // Move one entry between children left_index and left_index + 1 of parent.
+  void MoveBetweenLeaves(
+      Internal* parent, size_t left_index, bool to_left, const char* low, const char* high);
+  void MoveBetweenInternals(
+      Internal* parent, size_t left_index, bool to_left, const char* low, const char* high);
+  static void ChildFences(
+      const Internal* parent, size_t index, const char* low, const char* high,
+      const char** child_low, const char** child_high);
+  // Recomputes the windows if the fences give the node another prefix.
+  template <class Node>
+  void FitPrefix(Node* node, const char* low, const char* high);
   // Inserts into hint_leaf_ if key belongs there and it has room.
   bool TryInsertAtHint(const char* entry, const SearchKey& key);
   void SplitLeaf(Leaf* leaf, size_t index, const char* entry, const PathEntry* path, size_t depth);
@@ -567,10 +612,9 @@ bool BTreeRep::TrySeekGE(const SearchKey& key, Position* pos) const {
   }
   if (entry) {
     *pos = Position{leaf, version, index, entry};
-  } else {
-    FirstFrom(next, pos);
+    return true;
   }
-  return true;
+  return FirstFrom(next, leaf, version, pos);
 }
 
 bool BTreeRep::TrySeekLT(const SearchKey& key, Position* pos) const {
@@ -607,7 +651,7 @@ bool BTreeRep::TrySeekLT(const SearchKey& key, Position* pos) const {
     *pos = Position{leaf, version, index - 1, entry};
     return true;
   }
-  return LastBefore(prev, leaf, pos);
+  return LastBefore(prev, leaf, version, pos);
 }
 
 bool BTreeRep::TrySeekLast(Position* pos) const {
@@ -630,29 +674,36 @@ bool BTreeRep::TrySeekLast(Position* pos) const {
     *pos = Position{leaf, version, count - 1, entry};
     return true;
   }
-  return LastBefore(prev, leaf, pos);
+  return LastBefore(prev, leaf, version, pos);
 }
 
-void BTreeRep::FirstFrom(const Leaf* leaf, Position* pos) const {
+bool BTreeRep::FirstFrom(
+    const Leaf* leaf, const Leaf* from, uint64_t from_version, Position* pos) const {
   while (leaf) {
     auto version = StableVersion(leaf);
     auto count = LoadCount(leaf);
     auto entry = count ? leaf->keys[0].load(std::memory_order_acquire) : nullptr;
     auto next = leaf->next.load(std::memory_order_acquire);
     if (!IsUnchanged(leaf, version)) {
-      // A split keeps the lower half in place, so the leaf still starts where it did.
       continue;
+    }
+    if (from && !IsUnchanged(from, from_version)) {
+      return false;
     }
     if (entry) {
       *pos = Position{leaf, version, 0, entry};
-      return;
+      return true;
     }
+    from = leaf;
+    from_version = version;
     leaf = next;
   }
   *pos = Position();
+  return true;
 }
 
-bool BTreeRep::LastBefore(const Leaf* prev, const Leaf* current, Position* pos) const {
+bool BTreeRep::LastBefore(
+    const Leaf* prev, const Leaf* current, uint64_t current_version, Position* pos) const {
   while (prev) {
     auto version = StableVersion(prev);
     auto count = LoadCount(prev);
@@ -663,7 +714,7 @@ bool BTreeRep::LastBefore(const Leaf* prev, const Leaf* current, Position* pos) 
       continue;
     }
     // A split of prev puts a new leaf between prev and current.
-    if (next != current) {
+    if (next != current || !IsUnchanged(current, current_version)) {
       return false;
     }
     if (entry) {
@@ -671,6 +722,7 @@ bool BTreeRep::LastBefore(const Leaf* prev, const Leaf* current, Position* pos) 
       return true;
     }
     current = prev;
+    current_version = version;
     prev = prev_prev;
   }
   *pos = Position();
@@ -687,12 +739,12 @@ void BTreeRep::Next(Position* pos) const {
     if (entry) {
       ++pos->index;
       pos->entry = entry;
-    } else {
-      FirstFrom(next, pos);
+      return;
     }
-    return;
-  }
-  if (NextInChangedLeaf(pos)) {
+    if (FirstFrom(next, leaf, pos->version, pos)) {
+      return;
+    }
+  } else if (NextInChangedLeaf(pos)) {
     return;
   }
   auto key = SearchKey::OfEntry(pos->entry);
@@ -719,15 +771,16 @@ bool BTreeRep::NextInChangedLeaf(Position* pos) const {
   auto entry = found && index + 1 < count
       ? leaf->keys[index + 1].load(std::memory_order_acquire) : nullptr;
   auto next = leaf->next.load(std::memory_order_acquire);
-  if (!IsUnchanged(leaf, version) || !found) {
+  // A detached leaf no longer gets the moves between its old neighbors.
+  auto detached = leaf->detached.load(std::memory_order_relaxed);
+  if (!IsUnchanged(leaf, version) || !found || detached) {
     return false;
   }
   if (entry) {
     *pos = Position{leaf, version, index + 1, entry};
-  } else {
-    FirstFrom(next, pos);
+    return true;
   }
-  return true;
+  return FirstFrom(next, leaf, version, pos);
 }
 
 void BTreeRep::Prev(Position* pos) const {
@@ -741,7 +794,7 @@ void BTreeRep::Prev(Position* pos) const {
       pos->entry = entry;
       return;
     }
-    if (LastBefore(prev, leaf, pos)) {
+    if (LastBefore(prev, leaf, pos->version, pos)) {
       return;
     }
   } else if (PrevInChangedLeaf(pos)) {
@@ -761,14 +814,15 @@ bool BTreeRep::PrevInChangedLeaf(Position* pos) const {
   auto found = index < count && leaf->keys[index].load(std::memory_order_acquire) == pos->entry;
   auto entry = found && index > 0 ? leaf->keys[index - 1].load(std::memory_order_acquire) : nullptr;
   auto prev = leaf->prev.load(std::memory_order_acquire);
-  if (!IsUnchanged(leaf, version) || !found) {
+  auto detached = leaf->detached.load(std::memory_order_relaxed);
+  if (!IsUnchanged(leaf, version) || !found || detached) {
     return false;
   }
   if (entry) {
     *pos = Position{leaf, version, index - 1, entry};
     return true;
   }
-  return LastBefore(prev, leaf, pos);
+  return LastBefore(prev, leaf, version, pos);
 }
 
 uint64_t BTreeRep::EstimateCount(const SearchKey& key) const {
@@ -975,18 +1029,9 @@ void BTreeRep::Insert(KeyHandle handle) {
         num_entries_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
     return;
   }
-  node = root_.load(std::memory_order_relaxed);
-
   PathEntry path[kMaxHeight];
-  size_t depth = 0;
-  while (node->level != 0) {
-    auto internal = static_cast<Internal*>(node);
-    size_t index;
-    CHECK(RouteInternal(internal, &key, Route::kUpperBound, &index));
-    path[depth++] = PathEntry{internal, index};
-    node = internal->children[index].load(std::memory_order_relaxed);
-  }
-  auto leaf = static_cast<Leaf*>(node);
+  size_t depth;
+  auto leaf = DescendForWrite(key, path, &depth);
   use_hint_ = leaf == hint_leaf_;
   auto count = leaf->count.load(std::memory_order_relaxed);
   size_t index;
@@ -1039,6 +1084,19 @@ bool BTreeRep::TryInsertAtHint(const char* entry, const SearchKey& key) {
   hint_entry_ = entry;
   hint_index_ = index;
   return true;
+}
+
+Leaf* BTreeRep::DescendForWrite(const SearchKey& key, PathEntry* path, size_t* depth) {
+  NodeBase* node = root_.load(std::memory_order_relaxed);
+  *depth = 0;
+  while (node->level != 0) {
+    auto internal = static_cast<Internal*>(node);
+    size_t index;
+    CHECK(RouteInternal(internal, &key, Route::kUpperBound, &index));
+    path[(*depth)++] = PathEntry{internal, index};
+    node = internal->children[index].load(std::memory_order_relaxed);
+  }
+  return static_cast<Leaf*>(node);
 }
 
 void BTreeRep::InsertIntoLeaf(Leaf* leaf, size_t index, const char* entry) {
@@ -1224,45 +1282,313 @@ void BTreeRep::SplitInternal(
 bool BTreeRep::Erase(KeyHandle handle, const KeyComparator& comparator) {
   auto entry = static_cast<const char*>(handle);
   auto key = SearchKey::OfEntry(entry);
-  NodeBase* node = root_.load(std::memory_order_relaxed);
   size_t shared_len;
-  if (!node || CompareWithSharedPrefix(key, &shared_len) != 0) {
+  if (!root_.load(std::memory_order_relaxed) || CompareWithSharedPrefix(key, &shared_len) != 0) {
     return false;
   }
-  while (node->level != 0) {
-    auto internal = static_cast<Internal*>(node);
-    size_t index;
-    CHECK(RouteInternal(internal, &key, Route::kUpperBound, &index));
-    node = internal->children[index].load(std::memory_order_relaxed);
-  }
-  auto leaf = static_cast<Leaf*>(node);
+  PathEntry path[kMaxHeight];
+  size_t depth;
+  auto leaf = DescendForWrite(key, path, &depth);
   size_t count = leaf->count.load(std::memory_order_relaxed);
   size_t index;
   CHECK(LeafLowerBound(leaf, key, count, &index));
-  while (index == count) {
-    leaf = leaf->next.load(std::memory_order_relaxed);
-    if (!leaf) {
+  if (index == count) {
+    // The entry may start the next leaf; descend to it for its path.
+    auto next = leaf->next.load(std::memory_order_relaxed);
+    if (!next || next->count.load(std::memory_order_relaxed) == 0) {
       return false;
     }
-    index = 0;
+    auto first = next->keys[0].load(std::memory_order_relaxed);
+    if (comparator(entry, first) != 0) {
+      return false;
+    }
+    auto first_key = SearchKey::OfEntry(first);
+    leaf = DescendForWrite(first_key, path, &depth);
     count = leaf->count.load(std::memory_order_relaxed);
-  }
-  if (comparator(entry, leaf->keys[index].load(std::memory_order_relaxed)) != 0) {
+    CHECK(LeafLowerBound(leaf, first_key, count, &index));
+    CHECK_EQ(leaf->keys[index].load(std::memory_order_relaxed), first);
+  } else if (comparator(entry, leaf->keys[index].load(std::memory_order_relaxed)) != 0) {
     return false;
   }
-  // Leaves are not merged: a memtable is short-lived and erases are rare.
   {
     NodeWriteLock lock(leaf);
-    std::copy(leaf->windows + index + 1, leaf->windows + count, leaf->windows + index);
-    leaf->windows[count - 1] = kPadWindow;
-    for (auto i = index + 1; i < count; ++i) {
-      leaf->keys[i - 1].store(leaf->keys[i].load(std::memory_order_relaxed),
-                              kPublishOrder);
-    }
-    leaf->count.store(count - 1, std::memory_order_relaxed);
+    RemoveFromLeaf(leaf, index);
   }
   num_entries_.store(num_entries_.load(std::memory_order_relaxed) - 1, std::memory_order_relaxed);
+  if (depth != 0 && IsUnderfull(leaf)) {
+    Rebalance(path, depth);
+  }
   return true;
+}
+
+void BTreeRep::RemoveFromLeaf(Leaf* leaf, size_t index) {
+  auto count = leaf->count.load(std::memory_order_relaxed);
+  std::copy(leaf->windows + index + 1, leaf->windows + count, leaf->windows + index);
+  leaf->windows[count - 1] = kPadWindow;
+  for (auto i = index + 1; i < count; ++i) {
+    leaf->keys[i - 1].store(leaf->keys[i].load(std::memory_order_relaxed), kPublishOrder);
+  }
+  leaf->count.store(count - 1, std::memory_order_relaxed);
+}
+
+void BTreeRep::RemoveFromInternal(Internal* node, size_t index) {
+  auto count = node->count.load(std::memory_order_relaxed);
+  std::copy(node->windows + index + 1, node->windows + count, node->windows + index);
+  node->windows[count - 1] = kPadWindow;
+  for (auto i = index + 1; i < count; ++i) {
+    node->separators[i - 1].store(
+        node->separators[i].load(std::memory_order_relaxed), kPublishOrder);
+  }
+  for (auto i = index + 2; i <= count; ++i) {
+    node->children[i - 1].store(node->children[i].load(std::memory_order_relaxed), kPublishOrder);
+  }
+  node->count.store(count - 1, std::memory_order_relaxed);
+}
+
+void BTreeRep::Rebalance(const PathEntry* path, size_t depth) {
+  // Merges and moves change fences.
+  hint_leaf_ = nullptr;
+  use_hint_ = false;
+  for (; depth != 0; --depth) {
+    auto [parent, index] = path[depth - 1];
+    auto child = parent->children[index].load(std::memory_order_relaxed);
+    if (!IsUnderfull(child)) {
+      return;
+    }
+    if (parent->count.load(std::memory_order_relaxed) == 0) {
+      // Only the root has a single child.
+      break;
+    }
+    const char* low;
+    const char* high;
+    Fences(path, depth - 1, &low, &high);
+    auto left_index = index > 0 ? index - 1 : 0;
+    auto left = parent->children[left_index].load(std::memory_order_relaxed);
+    auto right = parent->children[left_index + 1].load(std::memory_order_relaxed);
+    if (child->level == 0) {
+      auto left_leaf = static_cast<Leaf*>(left);
+      auto right_leaf = static_cast<Leaf*>(right);
+      if (left_leaf->count.load(std::memory_order_relaxed) +
+              right_leaf->count.load(std::memory_order_relaxed) <= Leaf::kCapacity) {
+        MergeLeaves(parent, left_index, low, high);
+        continue;
+      }
+      MoveBetweenLeaves(parent, left_index, /* to_left= */ index == 0, low, high);
+      return;
+    }
+    auto left_internal = static_cast<Internal*>(left);
+    auto right_internal = static_cast<Internal*>(right);
+    if (left_internal->count.load(std::memory_order_relaxed) +
+            right_internal->count.load(std::memory_order_relaxed) + 1 <= Internal::kCapacity) {
+      MergeInternals(parent, left_index, low, high);
+      continue;
+    }
+    MoveBetweenInternals(parent, left_index, /* to_left= */ index == 0, low, high);
+    return;
+  }
+  // An internal root left with a single child is replaced by it.
+  for (;;) {
+    auto root = root_.load(std::memory_order_relaxed);
+    if (root->level == 0) {
+      return;
+    }
+    auto internal = static_cast<Internal*>(root);
+    if (internal->count.load(std::memory_order_relaxed) != 0) {
+      return;
+    }
+    root_.store(internal->children[0].load(std::memory_order_relaxed), std::memory_order_release);
+  }
+}
+
+void BTreeRep::ChildFences(
+    const Internal* parent, size_t index, const char* low, const char* high,
+    const char** child_low, const char** child_high) {
+  *child_low = index > 0 ? parent->separators[index - 1].load(std::memory_order_relaxed) : low;
+  *child_high = index < parent->count.load(std::memory_order_relaxed)
+      ? parent->separators[index].load(std::memory_order_relaxed) : high;
+}
+
+template <class Node>
+void BTreeRep::FitPrefix(Node* node, const char* low, const char* high) {
+  auto prefix_len = PrefixFor(low, high);
+  if (prefix_len != node->prefix_len.load(std::memory_order_relaxed)) {
+    RecomputeWindows(node, prefix_len);
+  }
+}
+
+void BTreeRep::MergeLeaves(
+    Internal* parent, size_t left_index, const char* low, const char* high) {
+  auto left = static_cast<Leaf*>(parent->children[left_index].load(std::memory_order_relaxed));
+  auto right =
+      static_cast<Leaf*>(parent->children[left_index + 1].load(std::memory_order_relaxed));
+  auto next = right->next.load(std::memory_order_relaxed);
+  const char* merged_low;
+  const char* unused;
+  const char* merged_high;
+  ChildFences(parent, left_index, low, high, &merged_low, &unused);
+  ChildFences(parent, left_index + 1, low, high, &unused, &merged_high);
+
+  // The right leaf keeps its entries, so a reader that read them before its version check fails
+  // still reads them in order; readers positioned in it search again (NextInChangedLeaf).
+  NodeWriteLock parent_lock(parent);
+  NodeWriteLock left_lock(left);
+  NodeWriteLock right_lock(right);
+  std::optional<NodeWriteLock> next_lock;
+  if (next) {
+    next_lock.emplace(next);
+  }
+  size_t left_count = left->count.load(std::memory_order_relaxed);
+  size_t right_count = right->count.load(std::memory_order_relaxed);
+  auto left_prefix = left->prefix_len.load(std::memory_order_relaxed);
+  for (size_t i = 0; i != right_count; ++i) {
+    auto key = right->keys[i].load(std::memory_order_relaxed);
+    left->keys[left_count + i].store(key, kPublishOrder);
+    left->windows[left_count + i] = EntryWindow(key, left_prefix);
+  }
+  left->count.store(left_count + right_count, std::memory_order_relaxed);
+  FitPrefix(left, merged_low, merged_high);
+  left->next.store(next, std::memory_order_release);
+  if (next) {
+    next->prev.store(left, std::memory_order_release);
+  }
+  right->detached.store(true, std::memory_order_relaxed);
+  RemoveFromInternal(parent, left_index);
+}
+
+void BTreeRep::MoveBetweenLeaves(
+    Internal* parent, size_t left_index, bool to_left, const char* low, const char* high) {
+  auto left = static_cast<Leaf*>(parent->children[left_index].load(std::memory_order_relaxed));
+  auto right =
+      static_cast<Leaf*>(parent->children[left_index + 1].load(std::memory_order_relaxed));
+  NodeWriteLock parent_lock(parent);
+  NodeWriteLock left_lock(left);
+  NodeWriteLock right_lock(right);
+  const char* separator;
+  if (to_left) {
+    auto key = right->keys[0].load(std::memory_order_relaxed);
+    InsertIntoLeaf(left, left->count.load(std::memory_order_relaxed), key);
+    RemoveFromLeaf(right, 0);
+    separator = right->keys[0].load(std::memory_order_relaxed);
+  } else {
+    auto key = left->keys[left->count.load(std::memory_order_relaxed) - 1].load(
+        std::memory_order_relaxed);
+    InsertIntoLeaf(right, 0, key);
+    RemoveFromLeaf(left, left->count.load(std::memory_order_relaxed) - 1);
+    separator = key;
+  }
+  SetSeparator(parent, left_index, separator);
+  const char* left_low;
+  const char* right_high;
+  const char* unused;
+  ChildFences(parent, left_index, low, high, &left_low, &unused);
+  ChildFences(parent, left_index + 1, low, high, &unused, &right_high);
+  FitPrefix(left, left_low, separator);
+  FitPrefix(right, separator, right_high);
+}
+
+void BTreeRep::MergeInternals(
+    Internal* parent, size_t left_index, const char* low, const char* high) {
+  auto left =
+      static_cast<Internal*>(parent->children[left_index].load(std::memory_order_relaxed));
+  auto right =
+      static_cast<Internal*>(parent->children[left_index + 1].load(std::memory_order_relaxed));
+  const char* merged_low;
+  const char* unused;
+  const char* merged_high;
+  ChildFences(parent, left_index, low, high, &merged_low, &unused);
+  ChildFences(parent, left_index + 1, low, high, &unused, &merged_high);
+
+  NodeWriteLock parent_lock(parent);
+  NodeWriteLock left_lock(left);
+  NodeWriteLock right_lock(right);
+  size_t left_count = left->count.load(std::memory_order_relaxed);
+  size_t right_count = right->count.load(std::memory_order_relaxed);
+  auto left_prefix = left->prefix_len.load(std::memory_order_relaxed);
+  // The separator between them comes down.
+  auto separator = parent->separators[left_index].load(std::memory_order_relaxed);
+  left->separators[left_count].store(separator, kPublishOrder);
+  left->windows[left_count] = EntryWindow(separator, left_prefix);
+  for (size_t i = 0; i != right_count; ++i) {
+    auto key = right->separators[i].load(std::memory_order_relaxed);
+    left->separators[left_count + 1 + i].store(key, kPublishOrder);
+    left->windows[left_count + 1 + i] = EntryWindow(key, left_prefix);
+  }
+  for (size_t i = 0; i != right_count + 1; ++i) {
+    left->children[left_count + 1 + i].store(
+        right->children[i].load(std::memory_order_relaxed), kPublishOrder);
+  }
+  left->count.store(left_count + 1 + right_count, std::memory_order_relaxed);
+  FitPrefix(left, merged_low, merged_high);
+  right->detached.store(true, std::memory_order_relaxed);
+  RemoveFromInternal(parent, left_index);
+}
+
+void BTreeRep::MoveBetweenInternals(
+    Internal* parent, size_t left_index, bool to_left, const char* low, const char* high) {
+  auto left =
+      static_cast<Internal*>(parent->children[left_index].load(std::memory_order_relaxed));
+  auto right =
+      static_cast<Internal*>(parent->children[left_index + 1].load(std::memory_order_relaxed));
+  NodeWriteLock parent_lock(parent);
+  NodeWriteLock left_lock(left);
+  NodeWriteLock right_lock(right);
+  // A child moves across, rotating the separators through the parent; no child's fences change.
+  auto separator = parent->separators[left_index].load(std::memory_order_relaxed);
+  size_t left_count = left->count.load(std::memory_order_relaxed);
+  const char* new_separator;
+  if (to_left) {
+    InsertIntoInternal(left, left_count, separator, right->children[0].load(
+        std::memory_order_relaxed));
+    new_separator = right->separators[0].load(std::memory_order_relaxed);
+    // Drops the right node's first separator and first child.
+    size_t right_count = right->count.load(std::memory_order_relaxed);
+    std::copy(right->windows + 1, right->windows + right_count, right->windows);
+    right->windows[right_count - 1] = kPadWindow;
+    for (size_t i = 1; i != right_count; ++i) {
+      right->separators[i - 1].store(
+          right->separators[i].load(std::memory_order_relaxed), kPublishOrder);
+    }
+    for (size_t i = 1; i <= right_count; ++i) {
+      right->children[i - 1].store(
+          right->children[i].load(std::memory_order_relaxed), kPublishOrder);
+    }
+    right->count.store(right_count - 1, std::memory_order_relaxed);
+  } else {
+    // Puts the separator and the left node's last child in front of the right node.
+    size_t right_count = right->count.load(std::memory_order_relaxed);
+    std::copy_backward(right->windows, right->windows + right_count,
+                       right->windows + right_count + 1);
+    for (auto i = right_count; i > 0; --i) {
+      right->separators[i].store(
+          right->separators[i - 1].load(std::memory_order_relaxed), kPublishOrder);
+    }
+    for (auto i = right_count + 1; i > 0; --i) {
+      right->children[i].store(right->children[i - 1].load(std::memory_order_relaxed),
+                               kPublishOrder);
+    }
+    right->separators[0].store(separator, kPublishOrder);
+    right->windows[0] =
+        EntryWindow(separator, right->prefix_len.load(std::memory_order_relaxed));
+    right->children[0].store(
+        left->children[left_count].load(std::memory_order_relaxed), kPublishOrder);
+    right->count.store(right_count + 1, std::memory_order_relaxed);
+    new_separator = left->separators[left_count - 1].load(std::memory_order_relaxed);
+    left->windows[left_count - 1] = kPadWindow;
+    left->count.store(left_count - 1, std::memory_order_relaxed);
+  }
+  SetSeparator(parent, left_index, new_separator);
+  const char* left_low;
+  const char* right_high;
+  const char* unused;
+  ChildFences(parent, left_index, low, high, &left_low, &unused);
+  ChildFences(parent, left_index + 1, low, high, &unused, &right_high);
+  FitPrefix(left, left_low, new_separator);
+  FitPrefix(right, new_separator, right_high);
+}
+
+void BTreeRep::SetSeparator(Internal* node, size_t index, const char* separator) {
+  node->separators[index].store(separator, kPublishOrder);
+  node->windows[index] = EntryWindow(separator, node->prefix_len.load(std::memory_order_relaxed));
 }
 
 bool IsBytewise(const MemTableRep::KeyComparator& compare) {
