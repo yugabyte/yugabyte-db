@@ -460,9 +460,10 @@ PreventCommandIfReadOnly(const char *cmdname)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot execute %s under relaxed read-after-commit visibility",
 						cmdname),
-				 errhint("Turn off yb_relaxed_read_after_commit_visibility_read_only_check "
-						 "to allow it, or set yb_read_after_commit_visibility to strict "
-						 "outside a transaction block.")));
+				 errhint("Relaxed mode allows only reads. To avoid read restart errors "
+						 "on writes, set yb_read_after_commit_visibility to deferred "
+						 "outside a transaction block; deferred mode waits out the "
+						 "clock skew, so it adds latency.")));
 }
 
 /*
