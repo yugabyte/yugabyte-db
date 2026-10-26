@@ -1013,7 +1013,9 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
       "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
   for (const auto& statement : rejected) {
     SCOPED_TRACE(statement);
-    EXPECT_OK(conn.Execute(statement));
+    EXPECT_OK(statement.starts_with("SELECT")
+                  ? ResultToStatus(conn.Fetch(statement))
+                  : conn.Execute(statement));
   }
 }
 
@@ -1713,6 +1715,8 @@ TEST_P(PgFastPathWriteTest, PrecedesClampDefer) {
   ASSERT_NO_FATALS(SetSessionIsolation(&conn));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
+  ASSERT_OK(conn.Execute(
+      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
 
   const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
   GenerateCSVFileForCopy(csv_filename, 1 /* num_rows */);

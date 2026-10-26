@@ -190,8 +190,10 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * against performing unsafe operations in parallel mode, but this gives a
 	 * more user-friendly error message.
 	 */
-	if ((XactReadOnly || IsInParallelMode() || YbIsRelaxedReadOnly()) &&
+	if ((XactReadOnly || IsInParallelMode()) &&
 		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+		ExecCheckXactReadOnly(queryDesc->plannedstmt);
+	else if (YbIsRelaxedReadOnly() && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->plannedstmt);
 
 	/*

@@ -455,9 +455,9 @@ PreventCommandIfReadOnly(const char *cmdname)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot execute %s under relaxed read-after-commit visibility",
 						cmdname),
-				 errhint("Set yb_read_after_commit_visibility to strict, or turn off "
-						 "yb_relaxed_read_after_commit_visibility_read_only_check to "
-						 "allow it.")));
+				 errhint("Turn off yb_relaxed_read_after_commit_visibility_read_only_check "
+						 "to allow it, or set yb_read_after_commit_visibility to strict "
+						 "outside a transaction block.")));
 }
 
 /*
@@ -619,7 +619,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	/* Prohibit read/write commands in read-only states. */
 	readonly_flags = ClassifyUtilityCommandAsReadOnly(parsetree);
 	if (readonly_flags != COMMAND_IS_STRICTLY_READ_ONLY &&
-		(XactReadOnly || IsInParallelMode() || YbIsRelaxedReadOnly()))
+		(XactReadOnly || IsInParallelMode()))
 	{
 		CommandTag	commandtag = CreateCommandTag(parsetree);
 
@@ -630,6 +630,16 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		if ((readonly_flags & COMMAND_OK_IN_RECOVERY) == 0)
 			PreventCommandDuringRecovery(GetCommandTagName(commandtag));
 	}
+
+	/*
+	 * YB: BACKFILL INDEX is exempt. It brings its own READ TIME, so relaxed
+	 * mode never sets its read time. It also runs on an internal connection
+	 * that takes the cluster-wide default of yb_read_after_commit_visibility.
+	 */
+	if ((readonly_flags & COMMAND_OK_IN_READ_ONLY_TXN) == 0 &&
+		!IsA(parsetree, YbBackfillIndexStmt) &&
+		YbIsRelaxedReadOnly())
+		PreventCommandIfReadOnly(GetCommandTagName(CreateCommandTag(parsetree)));
 
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
