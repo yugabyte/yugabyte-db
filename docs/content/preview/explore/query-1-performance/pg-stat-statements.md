@@ -65,6 +65,7 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
+| `pg_stat_statements.yb_max_query_text_length` | integer | -1 | Maximum length, in bytes, of the query text stored for each statement. Longer texts are truncated without splitting a character and end with `...`. This limits the memory used to read the `pg_stat_statements` view when the workload has very long statements, such as large batched inserts. -1 stores texts in full. The limit applies to statements recorded after it is set; existing entries keep their text until they are evicted or the statistics are reset. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
