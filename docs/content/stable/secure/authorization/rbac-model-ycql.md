@@ -71,7 +71,8 @@ Permission  | Objects                      | Operations                         
 `DROP`      | keyspace, table, role, index | DROP                                |
 `MODIFY`    | keyspace, table              | INSERT, UPDATE, DELETE, TRUNCATE    |
 `SELECT`    | keyspace, table              | SELECT                              |
-`DESCRIBE` (not implemented)  | role       | LIST ROLES                          |
+`DESCRIBE`  | role                         | LIST PERMISSIONS OF that role |
+`DESCRIBE`  | all roles                    | LIST ROLES, LIST PERMISSIONS of other roles |
 
 {{< note title="Note" >}}
 

@@ -60,7 +60,7 @@ Where
 
 ## Permissions
 
-This section describes the permissions (represented by `ALTER`, `AUTHORIZE`, `CREATE`, `DESCRIBE`, `DROP`, `MODIFY`, and `SELECT`) that are necessary to execute operations on the database objects. A permission can be granted on a specific object (represented by resources `KEYSPACE`, `TABLE`, and `ROLE`) or on a whole group of objects (represented by resources `ALL KEYSPACES`, and `ALL ROLES`). Some permissions are granted implicitly, which means that you will never see them listed when you query `system_auth.role_permissions` table. Implicitly granted permissions follow these rules:
+This section describes the permissions (represented by `ALTER`, `AUTHORIZE`, `CREATE`, `DESCRIBE`, `DROP`, `MODIFY`, and `SELECT`) that are necessary to execute operations on the database objects. A permission can be granted on a specific object (represented by resources `KEYSPACE`, `TABLE`, and `ROLE`) or on a whole group of objects (represented by resources `ALL KEYSPACES`, and `ALL ROLES`). Some permissions are granted implicitly, which means that you will never see them listed when you query the `system_auth.role_permissions` table (use [LIST PERMISSIONS](../ddl_list_permissions) with `ON` to also see the grants on parent resources). Implicitly granted permissions follow these rules:
 
 - Any permission granted on `ALL KEYSPACES` is implicitly granted on every keyspace and table in the database.
 - Any permission granted on a specific `KEYSPACE` is implicitly granted to any table in that keyspace.
@@ -86,7 +86,9 @@ Operation| Permission| Resource|
 `GRANT PERMISSION` or `REVOKE PERMISSION` on a table| `AUTHORIZE`| `ALL KEYSPACES`, `KEYSPACE`, or `TABLE`
 `GRANT ROLE` or `REVOKE ROLE`| `AUTHORIZE` | `ALL ROLES`, or `ROLE`
 `INSERT`, `UPDATE`, `DELETE`, or `TRUNCATE`| `MODIFY`| `ALL KEYSPACES`, `KEYSPACE`, or `TABLE`
-`LIST ROLES` (not yet implemented)| `DESCRIBE`| `ALL ROLES`
+`LIST ROLES` for roles other than the current role and its granted roles| `DESCRIBE`| `ALL ROLES`
+`LIST PERMISSIONS OF` a role other than the current role and its granted roles| `DESCRIBE`| `ALL ROLES`, or `ROLE`
+`LIST PERMISSIONS` without `OF`| `DESCRIBE`| `ALL ROLES`
 `SELECT`| `SELECT`| `ALL KEYSPACES`, `KEYSPACE`, or `TABLE`
 
 ## Examples
@@ -117,3 +119,4 @@ ycqlsh:example> GRANT CREATE ON ALL KEYSPACES TO tests;
 - [REVOKE ROLE](../ddl_revoke_role)
 - [GRANT PERMISSION](../ddl_grant_permission)
 - [REVOKE PERMISSION](../ddl_revoke_permission)
+- [LIST PERMISSIONS](../ddl_list_permissions)
