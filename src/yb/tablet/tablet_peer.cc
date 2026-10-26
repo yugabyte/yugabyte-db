@@ -278,7 +278,7 @@ Status TabletPeer::InitTabletPeer(
       };
     });
 
-    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();

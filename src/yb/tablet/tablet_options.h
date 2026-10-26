@@ -106,6 +106,10 @@ struct TabletInitData {
   AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
+  // Backs the tablet's serial token for intent SST file cleanup and for the regular DB flushes
+  // requested by the intents DB flush filter. Required when the tablet has a transaction
+  // participant.
+  ThreadPool* intent_cleanup_pool = nullptr;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
