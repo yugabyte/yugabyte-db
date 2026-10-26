@@ -72,6 +72,8 @@
 #include "utils/wait_event.h"
 
 /* YB includes */
+#include "access/htup_details.h"
+#include "access/transam.h"
 #include "commands/sequence_xlog.h"
 #include "pg_yb_utils.h"
 
@@ -1412,6 +1414,21 @@ YbReadSequenceBuffer(ReadBuffersOperation *operation, BlockNumber blockNum,
 	 */
 	((sequence_magic *) PageGetSpecialPointer(dp))->magic = SEQ_MAGIC;
 	PageSetAllVisible(dp);
+
+	/*
+	 * Set the tuple header as fill_seq_fork_with_data() does.
+	 * heap_form_tuple() fills it with row-value fields (length, typmod, type
+	 * OID), which share storage with xmin, xmax and cid. Left as is, xmax
+	 * reads as -1, read_seq_tuple() clears it and dirties this buffer, and the
+	 * next checkpoint fails to write it, since the relation has no file.
+	 */
+	HeapTupleHeaderSetXmin(seqtuple->t_data, FrozenTransactionId);
+	HeapTupleHeaderSetXminFrozen(seqtuple->t_data);
+	HeapTupleHeaderSetCmin(seqtuple->t_data, FirstCommandId);
+	HeapTupleHeaderSetXmax(seqtuple->t_data, InvalidTransactionId);
+	seqtuple->t_data->t_infomask |= HEAP_XMAX_INVALID;
+	ItemPointerSet(&seqtuple->t_data->t_ctid, 0, FirstOffsetNumber);
+
 	off = PageAddItemExtended(dp, (const void *) seqtuple->t_data, seqtuple->t_len,
 							  InvalidOffsetNumber, PAI_IS_HEAP);
 	if (off == InvalidOffsetNumber)
