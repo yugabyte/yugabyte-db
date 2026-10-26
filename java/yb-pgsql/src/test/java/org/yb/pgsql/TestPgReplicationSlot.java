@@ -7056,6 +7056,141 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testDropReplicationSlotWaitRetriesAcrossRpcTimeout() throws Exception {
+    // Verify that DROP_REPLICATION_SLOT ... WAIT keeps waiting even after the advisory-lock
+    // RPC deadline expires.  We force a short RPC deadline by setting
+    // ysql_client_read_write_timeout_ms to 5 seconds, then hold the slot alive for longer than
+    // that before releasing it.  The drop must succeed rather than failing with a timeout error.
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("ysql_client_read_write_timeout_ms", "5000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "drop_slot_wait_retry_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait_retry");
+      stmt.execute("CREATE TABLE t_drop_wait_retry(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait_retry VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Start the WAIT drop on a different tserver while the slot is held.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn1.createStatement()) {
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // Hold the slot alive for longer than the 5-second RPC timeout so that the first
+    // advisory-lock acquire RPC definitely times out.  The retry loop must issue a new
+    // acquire and eventually succeed.
+    Thread.sleep(15000);
+    assertTrue("DROP_REPLICATION_SLOT ... WAIT must still be blocked after the first RPC timeout",
+        dropThread.isAlive());
+    assertReplicationSlotExists(slotName, true);
+
+    // Release the slot; the retrying drop must now complete.
+    stream0.close();
+    replConn0.close();
+
+    dropThread.join(30000);
+    assertFalse("DROP_REPLICATION_SLOT ... WAIT must complete after the slot is released",
+        dropThread.isAlive());
+    if (dropError.get() != null) {
+      throw new AssertionError("DROP_REPLICATION_SLOT ... WAIT failed unexpectedly",
+          dropError.get());
+    }
+    assertReplicationSlotExists(slotName, false);
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitMaxRetriesGuc() throws Exception {
+    // Verify that yb_replication_slot_wait_max_retries caps the retry loop: when set to 2,
+    // DROP_REPLICATION_SLOT ... WAIT must fail with LOCK_NOT_AVAILABLE after 2 RPC timeouts
+    // rather than blocking indefinitely.
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("ysql_client_read_write_timeout_ms", "5000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "drop_slot_wait_max_retries_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait_maxretries");
+      stmt.execute("CREATE TABLE t_drop_wait_maxretries(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait_maxretries VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Set max retries to 2 on tserver 1 and issue DROP WAIT from there.
+    // The slot remains held by tserver 0 throughout, so the drop must hit the cap and fail.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn1.createStatement()) {
+        stmt.execute("SET yb_replication_slot_wait_max_retries = 2");
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // 2 retries x ~7s each + some margin: the drop must have exited by 30s.
+    dropThread.join(30000);
+    assertFalse("DROP_REPLICATION_SLOT ... WAIT must exit after hitting max retries",
+        dropThread.isAlive());
+
+    // The drop must have failed, not succeeded.
+    Exception err = dropError.get();
+    assertNotNull("Expected DROP_REPLICATION_SLOT ... WAIT to fail when max retries is reached",
+        err);
+    String expectedMsg = "timed out waiting for replication slot";
+    assertTrue(
+        String.format("Expected error to contain '%s', got: '%s'", expectedMsg, err.getMessage()),
+        StringUtils.containsIgnoreCase(err.getMessage(), expectedMsg));
+
+    // Slot must still exist because the drop failed.
+    assertReplicationSlotExists(slotName, true);
+
+    // Cleanup.
+    stream0.close();
+    replConn0.close();
+    Connection cleanupConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    cleanupConn.unwrap(PGConnection.class).getReplicationAPI().dropReplicationSlot(slotName);
+    cleanupConn.close();
+    assertReplicationSlotExists(slotName, false);
+  }
+
+  @Test
   public void testHybridTimeKeepAliveAutoFlushCausesDataLoss() throws Exception {
     final int kSmallRows = 10;
     final int kLargeRows = 1200;

@@ -4603,6 +4603,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_replication_slot_wait_max_retries", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum advisory-lock RPC timeout retries for "
+						 "DROP_REPLICATION_SLOT ... WAIT before giving up with "
+						 "an error. 0 retries indefinitely."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_replication_slot_wait_max_retries,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Time in milliseconds for which the notifications poller"
 						 " process waits before polling again in case the last"

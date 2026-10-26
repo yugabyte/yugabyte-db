@@ -162,6 +162,9 @@ YbBuildReplicationSlotLockTag(const char *slot_name, LOCKTAG *tag)
 						 /* objsubid= */ 2);
 }
 
+/* Number of consecutive RPC timeouts before escalating the log message to WARNING. */
+#define YB_SLOT_WAIT_WARN_RETRIES 3
+
 /*
  * YB: Try to acquire an exclusive session-level advisory lock for the
  * named replication slot.  Returns false if it is already held.
@@ -170,19 +173,84 @@ YbBuildReplicationSlotLockTag(const char *slot_name, LOCKTAG *tag)
  * static yb_slot_locktag on successful acquisition, so that the
  * ReplicationSlotShmemExit() sentinel never sees a stale "lock held"
  * value when the acquire failed.
+ *
+ * When wait=true, RPC timeouts are retried (unbounded by default, or up to
+ * yb_replication_slot_wait_max_retries if set) so that the caller blocks
+ * until the lock is granted, the backend is cancelled, or the retry cap is
+ * reached.  This matches PostgreSQL's DROP_REPLICATION_SLOT ... WAIT behaviour.
+ * CHECK_FOR_INTERRUPTS is called before each attempt so that a client disconnect
+ * or SIGINT exits the loop promptly.
+ *
+ * After YB_SLOT_WAIT_WARN_RETRIES consecutive timeouts the retry message is
+ * escalated from DEBUG1 to WARNING so that an infrastructure failure (e.g.
+ * advisory-lock tablet has no leader) is visible in the server log at the
+ * default log_min_messages level rather than silently looping forever.
+ *
+ * When yb_replication_slot_wait_max_retries > 0 and that many RPC timeouts
+ * have occurred, the function raises ERROR with ERRCODE_LOCK_NOT_AVAILABLE
+ * instead of retrying further.
  */
 static bool
 YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
 {
 	LOCKTAG		tag;
 	YbcStatus	status;
+	int			retry_count = 0;
 
 	YbBuildReplicationSlotLockTag(slot_name, &tag);
 
-	status = YBCAcquireAdvisoryLock(GetYBAdvisoryLockId(tag),
-									YB_ADVISORY_LOCK_EXCLUSIVE,
-									wait,
-									/* session= */ true);
+	for (;;)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		status = YBCAcquireAdvisoryLock(GetYBAdvisoryLockId(tag),
+										YB_ADVISORY_LOCK_EXCLUSIVE,
+										wait,
+										/* session= */ true);
+
+		/*
+		 * On a plain try (wait=false) any timeout is a real failure; on a
+		 * wait acquire a timeout just means the RPC deadline was reached
+		 * before the lock was released -- retry to match PG's no-deadline
+		 * WAIT behaviour.
+		 *
+		 * YBCStatusIsTimedOut covers both "lock still held" and infrastructure
+		 * failures (tablet leader election, unreachable tserver).  Escalate to
+		 * WARNING after YB_SLOT_WAIT_WARN_RETRIES attempts so that the latter
+		 * case is diagnosable from the server log at default log_min_messages.
+		 */
+		if (wait && status && YBCStatusIsTimedOut(status))
+		{
+			int			loglevel;
+
+			YBCFreeStatus(status);
+			retry_count++;
+			loglevel = (retry_count > YB_SLOT_WAIT_WARN_RETRIES) ? WARNING : DEBUG1;
+			ereport(loglevel,
+					(errmsg("replication slot \"%s\": advisory-lock RPC timed out"
+							" (attempt %d); the slot may still be held by another"
+							" session",
+							slot_name, retry_count)));
+
+			/*
+			 * YB: If the retries are capped, bail out
+			 * rather than looping forever -- useful when the hang is caused by
+			 * an advisory-lock tablet outage rather than normal lock contention.
+			 */
+			if (yb_replication_slot_wait_max_retries > 0 &&
+				retry_count >= yb_replication_slot_wait_max_retries)
+				ereport(ERROR,
+						(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+						 errmsg("timed out waiting for replication slot \"%s\""
+								" after %d RPC attempt(s)",
+								slot_name, retry_count)));
+
+			continue;
+		}
+
+		break;
+	}
+
 	if (!HandleStatusIgnoreSkipLocking(status))
 		return false;
 
