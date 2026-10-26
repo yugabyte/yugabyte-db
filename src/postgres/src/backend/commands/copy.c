@@ -318,6 +318,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		/* check read-only transaction and parallel mode */
 		if (XactReadOnly && !rel->rd_islocaltemp)
 			PreventCommandIfReadOnly("COPY FROM");
+
+		/* YB */
 		if (YbIsRelaxedReadOnly() && !rel->rd_islocaltemp)
 			PreventCommandIfReadOnly("COPY FROM");
 

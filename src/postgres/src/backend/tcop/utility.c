@@ -439,6 +439,10 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
  *
  * This is useful partly to ensure consistency of the error message wording;
  * some callers have checked XactReadOnly for themselves.
+ *
+ * YB: #35522, this also throws under relaxed read-after-commit visibility
+ * (YbIsRelaxedReadOnly). A caller that checks XactReadOnly for itself must
+ * check YbIsRelaxedReadOnly too, or relaxed mode lets the command through.
  */
 void
 PreventCommandIfReadOnly(const char *cmdname)
@@ -450,6 +454,7 @@ PreventCommandIfReadOnly(const char *cmdname)
 				 errmsg("cannot execute %s in a read-only transaction",
 						cmdname)));
 
+	/* YB */
 	if (YbIsRelaxedReadOnly())
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

@@ -193,7 +193,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if ((XactReadOnly || IsInParallelMode()) &&
 		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->plannedstmt);
-	else if (YbIsRelaxedReadOnly() && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+
+	/* YB */
+	if (YbIsRelaxedReadOnly() && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->plannedstmt);
 
 	/*
