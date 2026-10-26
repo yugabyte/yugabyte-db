@@ -381,7 +381,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       // removal.safe.
       createMarkRollbackUnsafeTaskOnce();
       maybeMoveMasters(
-          universe, clusters, liveNodes, newMasters, newTservers, mastersToStop, removeMasters);
+          universe,
+          clusters,
+          liveNodes,
+          newMasters,
+          existingNodesToStartMaster,
+          newTservers,
+          mastersToStop,
+          removeMasters);
     }
     if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
       // Unblacklisting ADDs can allow tablet placement; end the rollback-safe window first.
@@ -460,7 +467,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     if (!moveMastersFirst) {
       // An example task is EditUniverse where multiple nodes are moved including full-move.
       maybeMoveMasters(
-          universe, clusters, liveNodes, newMasters, newTservers, mastersToStop, removeMasters);
+          universe,
+          clusters,
+          liveNodes,
+          newMasters,
+          existingNodesToStartMaster,
+          newTservers,
+          mastersToStop,
+          removeMasters);
     }
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live after the processes are running.
@@ -638,6 +652,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Collection<Cluster> clusters,
       Set<NodeDetails> liveNodes,
       Set<NodeDetails> newMasters,
+      Set<NodeDetails> existingNodesToStartMaster,
       Set<NodeDetails> newTservers,
       Set<NodeDetails> mastersToStop,
       Set<NodeDetails> removeMasters) {
@@ -646,11 +661,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createStartMasterProcessTasks(newMasters, false /* refreshOtelCollector */);
       // New nodes got isMaster at freeze, so configure already wrote their master target. Only
       // existing nodes that gain a master need the collector refresh.
-      createOtelCollectorMetricsRefreshTasks(
-          newMasters.stream()
-              .filter(n -> n.state != NodeState.ToBeAdded)
-              .collect(Collectors.toSet()),
-          true /* ignoreErrors */);
+      createOtelCollectorMetricsRefreshTasks(existingNodesToStartMaster, true /* ignoreErrors */);
     }
     // Filter out nodes which are not in the universe.
     Set<NodeDetails> removeUniverseMasters =

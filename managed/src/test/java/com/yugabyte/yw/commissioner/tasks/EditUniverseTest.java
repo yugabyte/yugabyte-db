@@ -41,7 +41,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -67,9 +66,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
@@ -79,10 +76,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
-import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
-import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -2997,31 +2990,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   // gflags, so their collector config has no master target until it is rewritten.
   @Test
   public void testIncreaseRfRefreshesOtelCollectorOnNewMasters() {
-    DataDogConfig ddConfig = new DataDogConfig();
-    ddConfig.setType(ProviderType.DATA_DOG);
-    ddConfig.setSite("datadoghq.com");
-    ddConfig.setApiKey("apiKey");
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(UUID.randomUUID());
-    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
-    telemetryProvider.setName("dd-tp");
-    telemetryProvider.setConfig(ddConfig);
-    telemetryProvider.setTags(Map.of());
-    telemetryProvider.save();
     prepareUniverseForRfIncrease();
+    enableMetricsExport(defaultUniverse.getUniverseUUID());
     Universe universe =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
-              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
-              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
-              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
-              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
-                  metricsExportConfig;
-              u.getUniverseDetails().otelCollectorEnabled = true;
-              // ManageOtelCollector builds its install payload from the universe architecture.
-              u.getUniverseDetails().arch = Architecture.x86_64;
               // RF 1: one master, so the RF increase starts masters on the other two nodes.
               int firstIdx =
                   u.getUniverseDetails().nodeDetailsSet.stream()
@@ -3032,8 +3006,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                   .nodeDetailsSet
                   .forEach(n -> n.isMaster = n.nodeIdx == firstIdx);
             });
-    // With an architecture set, the precheck looks for a local release package the test lacks.
-    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
     factory.globalRuntimeConf().setValue(GlobalConfKeys.enableRFChange.getKey(), "true");
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     Set<String> oldMasters =
@@ -3075,33 +3047,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
   // tserver. Its collector config still has the master target, so the edit must rewrite it.
   private Universe setUpMetricsExportForEdit() {
-    DataDogConfig ddConfig = new DataDogConfig();
-    ddConfig.setType(ProviderType.DATA_DOG);
-    ddConfig.setSite("datadoghq.com");
-    ddConfig.setApiKey("apiKey");
-    TelemetryProvider telemetryProvider = new TelemetryProvider();
-    telemetryProvider.setUuid(UUID.randomUUID());
-    telemetryProvider.setCustomerUUID(defaultCustomer.getUuid());
-    telemetryProvider.setName("dd-tp");
-    telemetryProvider.setConfig(ddConfig);
-    telemetryProvider.setTags(Map.of());
-    telemetryProvider.save();
-    Universe universe =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            u -> {
-              MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-              UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
-              exporterConfig.setExporterUuid(telemetryProvider.getUuid());
-              metricsExportConfig.setUniverseMetricsExporterConfig(List.of(exporterConfig));
-              u.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig =
-                  metricsExportConfig;
-              u.getUniverseDetails().otelCollectorEnabled = true;
-              // ManageOtelCollector builds its install payload from the universe architecture.
-              u.getUniverseDetails().arch = Architecture.x86_64;
-            });
-    // With an architecture set, the precheck looks for a local release package the test lacks.
-    RuntimeConfigEntry.upsert(universe, UniverseConfKeys.validateLocalRelease.getKey(), "false");
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
     factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     return universe;
   }
