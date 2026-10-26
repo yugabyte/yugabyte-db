@@ -3825,8 +3825,7 @@ static bool
 YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 {
 	return context == PROCESS_UTILITY_TOPLEVEL ||
-		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+		context == PROCESS_UTILITY_QUERY;
 }
 
 /*
@@ -3916,12 +3915,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		};
 	}
 
-	/*
-	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
-	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
-	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
-	 * not update the original node tag.
-	 */
 	if (YbIsTopLevelOrAtomicStatement(context))
 	{
 		/*
@@ -3938,7 +3931,14 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
-		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
+		/*
+		 * Only a top-level ANALYZE runs in multiple transactions. An ANALYZE
+		 * via SPI can run with a switched user, e.g. inside REFRESH
+		 * MATERIALIZED VIEW CONCURRENTLY or a SECURITY DEFINER function, and
+		 * YBResetDdlState must not restore that user after the abort.
+		 */
+		if (context == PROCESS_UTILITY_TOPLEVEL && CheckIsAnalyzeDDL() &&
+			!ddl_transaction_state.userid_and_sec_context.is_set)
 		{
 			Oid			save_userid;
 			int			save_sec_context;
@@ -3952,10 +3952,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
-			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
-			   (context == PROCESS_UTILITY_QUERY &&
-				ddl_transaction_state.current_stmt_node_tag ==
-				T_RefreshMatViewStmt));
+			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
 
 		is_version_increment = false;
 		is_breaking_change = false;
@@ -4231,19 +4228,10 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_DropStmt:
 			{
 				/*
-				 * If this is a DROP statement that is being executed as part of
-				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
-				 * tables, and do not need to increment catalog version.
+				 * If all dropped objects are temporary, we do not need to
+				 * bump the catalog version.
 				 */
-				if (ddl_transaction_state.current_stmt_node_tag == T_RefreshMatViewStmt)
-					is_version_increment = false;
-				else
-				{
-					/*
-					 * If all dropped objects are temporary, we do not need to
-					 * bump the catalog version.
-					 */
-					DropStmt   *stmt = castNode(DropStmt, parsetree);
+				DropStmt   *stmt = castNode(DropStmt, parsetree);
 
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
@@ -4254,24 +4242,23 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					is_version_increment = false;
 					bool		marked_temp = false;
 
-						foreach(cell, stmt->objects)
+					foreach(cell, stmt->objects)
+					{
+						RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
+
+						if (!YbIsRangeVarTempRelation(rel))
+							is_version_increment = true;
+						else if (!marked_temp)
 						{
-							RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
-
-							if (!YbIsRangeVarTempRelation(rel))
-								is_version_increment = true;
-							else if (!marked_temp)
-							{
-								marked_temp = true;
-								YBMarkTxnUsesTempRelAndSetTxnId();
-							}
-							if (is_version_increment && marked_temp)
-								break;
+							marked_temp = true;
+							YBMarkTxnUsesTempRelAndSetTxnId();
 						}
-
-						if (!is_version_increment)
-							is_altering_existing_data = true;
+						if (is_version_increment && marked_temp)
+							break;
 					}
+
+					if (!is_version_increment)
+						is_altering_existing_data = true;
 				}
 				is_breaking_change = false;
 				break;
@@ -4465,13 +4452,26 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * 1. VACUUM: No-op in YugabyteDB, no catalog version increment.
 				 * 2. ANALYZE: Increment catalog version.
 				 * 3. VACUUM ANALYZE: Same as ANALYZE, increment catalog version.
-				 * 4. ANALYZE via SPI (as part of concurrent MV refresh): No catalog
-				 *    version increment.
+				 * 4. ANALYZE of only temporary tables (e.g. the ones REFRESH
+				 *    MATERIALIZED VIEW CONCURRENTLY creates): No catalog version
+				 *    increment.
 				 */
 				VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
 				bool		is_analyze = false;
-				bool		is_from_spi =
-					(ddl_transaction_state.current_stmt_node_tag != T_VacuumStmt);
+				bool		all_temp = vacuum_stmt->rels != NIL;
+				ListCell   *rel_cell;
+
+				foreach(rel_cell, vacuum_stmt->rels)
+				{
+					VacuumRelation *vrel = lfirst_node(VacuumRelation, rel_cell);
+
+					if (!vrel->relation ||
+						!YbIsRangeVarTempRelation(vrel->relation))
+					{
+						all_temp = false;
+						break;
+					}
+				}
 
 				is_breaking_change = false;
 				is_version_increment = false;
@@ -4499,11 +4499,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				/*
 				 * Cases 2 & 3: Increment catalog version for ANALYZE to force
 				 * catalog cache refresh for updated table statistics.
-				 * Case 4: Skip increment if ANALYZE is being executed as part of
-				 * concurrent MV refresh.
+				 * Case 4: Temporary tables are session-local, so only the local
+				 * tserver response cache needs to be cleared.
 				 */
-				if (is_analyze && !is_from_spi)
-					is_version_increment = true;
+				if (is_analyze)
+				{
+					if (all_temp)
+						is_altering_existing_data = true;
+					else
+						is_version_increment = true;
+				}
 
 				break;
 			}
