@@ -24,7 +24,7 @@ import org.yb.util.SkipOnTSAN;
  */
 @SkipOnTSAN
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressJoinPlans extends BasePgRegressTest {
+public class TestPgRegressLegacyJoinPlans extends BasePgRegressTest {
   // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -34,6 +34,6 @@ public class TestPgRegressJoinPlans extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_join_plans_schedule");
+    runPgRegressTest("yb_legacy_join_plans_schedule");
   }
 }
