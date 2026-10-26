@@ -90,14 +90,21 @@ PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
 
 } // anonymous namespace
 
+std::unique_ptr<ConsensusMetadata> ConsensusMetadata::CreateUnflushed(
+    FsManager* fs_manager, const string& tablet_id, const std::string& peer_uuid,
+    const RaftConfigPB& config, int64_t current_term) {
+  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
+  cmeta->set_committed_config(config);
+  cmeta->set_current_term(current_term);
+  return cmeta;
+}
+
 Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* fs_manager,
                                  const string& tablet_id,
                                  const std::string& peer_uuid,
                                  const RaftConfigPB& config,
                                  int64_t current_term) {
-  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
-  cmeta->set_committed_config(config);
-  cmeta->set_current_term(current_term);
+  auto cmeta = CreateUnflushed(fs_manager, tablet_id, peer_uuid, config, current_term);
   RETURN_NOT_OK(cmeta->Flush());
   return cmeta;
 }

@@ -1,6 +1,8 @@
 -- ########## ID TESTS NATIVE - SOURCE & TARGET TABLE  ##########
 -- Additional tests: turn off pg_jobmon logging, use source table to natively partition existing table, use target table to undo native partitioning
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 
 \set ON_ERROR_STOP true
 
@@ -33,9 +35,11 @@ CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptes
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10000', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 
--- YB: default partition creation is disabled
--- TODO(#3109): Re-enable it after transactional DDL support.
+\if :yb_use_txn_ddl_and_locks
+SELECT has_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists');
+\else \\ -- YB
 SELECT hasnt_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default doesn''t exists');
+\endif \\ -- YB
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10000', 'Check id_taptest_table_p10000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p20000', 'Check id_taptest_table_p20000 exists');

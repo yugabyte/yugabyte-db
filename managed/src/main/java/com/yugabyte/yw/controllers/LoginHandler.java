@@ -17,10 +17,12 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.jetbrains.annotations.NotNull;
+import play.mvc.Http;
 import play.mvc.Http.Status;
 
 public class LoginHandler {
@@ -39,7 +41,7 @@ public class LoginHandler {
   }
 
   @NotNull
-  Users login(CustomerLoginFormData data) {
+  public Users login(CustomerLoginFormData data) {
     boolean useOAuth = this.confGetter.getGlobalConf(GlobalConfKeys.useOauth);
     boolean useLdap = this.confGetter.getGlobalConf(GlobalConfKeys.useLdap);
     boolean allowLocalLoginWithSso =
@@ -84,5 +86,23 @@ public class LoginHandler {
           "Local login is not permitted for this account. Please sign in with SSO.");
     }
     return user;
+  }
+
+  /**
+   * Writes the audit entry for a successful login. The user is passed explicitly: a login request
+   * isn't authenticated, so RequestContext doesn't hold it.
+   */
+  public void auditLogin(Users user, Http.Request request, Audit.ActionType action) {
+    Audit.create(
+        user,
+        request.path(),
+        request.method(),
+        Audit.TargetType.User,
+        user.getUuid().toString(),
+        action,
+        null,
+        null,
+        null,
+        request.remoteAddress());
   }
 }

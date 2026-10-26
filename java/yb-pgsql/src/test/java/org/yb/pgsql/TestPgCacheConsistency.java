@@ -18,7 +18,6 @@ import static org.yb.AssertionWrappers.*;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.util.PSQLException;
 import org.hamcrest.CoreMatchers;
-import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -313,6 +312,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       try {
         if (disableHeartbeats) {
           for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            // Each SELECT waits 60 s for the catalog version, so the loop outlasts the
+            // TServers' xCluster-guarded lease, which only heartbeats renew; without the lease,
+            // the later ALTERs would be refused.  This test is not about that.
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "enforce_xcluster_guarded_lease", "false", true));
             assertTrue(miniCluster.getClient().setFlag(
                 hp, "TEST_tserver_disable_heartbeat", "true", true));
           }
@@ -888,10 +892,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   // Check that when a query fails due to a stale catalog cache, the original error information
   // (including the hint) is preserved.
   @Test
+  @BypassConnMgr(reason = "Disabling heartbeats causes Connection Manager DDL sleeps to hang")
   public void testCatalogVersionLogging() throws Exception {
-    Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
-        isTestRunningWithConnectionManager());
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement statement1 = connection1.createStatement();

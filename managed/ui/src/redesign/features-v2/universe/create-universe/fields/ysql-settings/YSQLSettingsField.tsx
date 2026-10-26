@@ -8,6 +8,7 @@
  */
 
 import { FC } from 'react';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
@@ -26,7 +27,7 @@ interface YSQLProps {
 //TODO :need to integrate enforceAuth runtime flag
 
 export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
-  const { control } = useFormContext<DatabaseSettingsProps>();
+  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings'
   });
@@ -34,6 +35,11 @@ export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
   const ysqlAuthEnabled = useWatch({ name: YSQL_AUTH_FIELD });
+
+  // Create rejects enable_auth when the YSQL endpoint is disabled.
+  useUpdateEffect(() => {
+    if (!ysqlEnabled) setValue(YSQL_AUTH_FIELD, false);
+  }, [ysqlEnabled]);
 
   return (
     <FieldContainer>

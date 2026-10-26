@@ -308,6 +308,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   void Finished(const Status& status) override;
 
+  void UnregisterAsyncTaskCallback() override;
+
  private:
   void HandleResponse(int attempt) override;
   virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }

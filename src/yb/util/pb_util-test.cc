@@ -30,12 +30,15 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/descriptor_database.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/env_util.h"
@@ -55,7 +58,10 @@
 namespace yb {
 namespace pb_util {
 
+using google::protobuf::Descriptor;
+using google::protobuf::DescriptorPool;
 using google::protobuf::FileDescriptorSet;
+using google::protobuf::SimpleDescriptorDatabase;
 using internal::WritableFileOutputStream;
 using std::ostringstream;
 using std::shared_ptr;
@@ -332,31 +338,64 @@ TEST_F(TestPBUtil, TestInterleavedReadWrite) {
   ASSERT_OK(pb_reader.Close());
 }
 
+// Builds a pool from protos, as a reader without the generated code does, checks that it
+// describes desc exactly, and returns the names of all types in protos.
+std::vector<std::string> CheckDescriptorSet(
+    const Descriptor* desc, const FileDescriptorSet& protos) {
+  SimpleDescriptorDatabase db;
+  for (const auto& file : protos.file()) {
+    EXPECT_TRUE(db.Add(file)) << file.name();
+  }
+  DescriptorPool pool(&db);
+  const auto* found = pool.FindMessageTypeByName(desc->full_name());
+  EXPECT_NE(found, nullptr);
+  if (found) {
+    EXPECT_EQ(found->DebugString(), desc->DebugString());
+  }
+
+  std::vector<std::string> result;
+  std::function<void(const std::string&, const google::protobuf::DescriptorProto&)> add_message =
+      [&](const std::string& prefix, const google::protobuf::DescriptorProto& message) {
+        const auto name = prefix + message.name();
+        result.push_back(Format("$0($1 fields)", name, message.field_size()));
+        for (const auto& nested : message.nested_type()) {
+          add_message(name + ".", nested);
+        }
+        for (const auto& nested : message.enum_type()) {
+          result.push_back(name + "." + nested.name());
+        }
+      };
+  for (const auto& file : protos.file()) {
+    for (const auto& message : file.message_type()) {
+      add_message(file.package() + ".", message);
+    }
+    for (const auto& enum_type : file.enum_type()) {
+      result.push_back(file.package() + "." + enum_type.name());
+    }
+  }
+  std::sort(result.begin(), result.end());
+  return result;
+}
+
 TEST_F(TestPBUtil, TestPopulateDescriptorSet) {
-  {
-    // No dependencies --> just one proto.
-    ProtoContainerTestPB pb;
-    FileDescriptorSet protos;
-    WritablePBContainerFile::PopulateDescriptorSet(
-        pb.GetDescriptor()->file(), &protos);
-    ASSERT_EQ(1, protos.file_size());
-  }
-  {
-    // One direct dependency --> two protos.
-    ProtoContainerTest2PB pb;
-    FileDescriptorSet protos;
-    WritablePBContainerFile::PopulateDescriptorSet(
-        pb.GetDescriptor()->file(), &protos);
-    ASSERT_EQ(2, protos.file_size());
-  }
-  {
-    // One direct and one indirect dependency --> three protos.
-    ProtoContainerTest3PB pb;
-    FileDescriptorSet protos;
-    WritablePBContainerFile::PopulateDescriptorSet(
-        pb.GetDescriptor()->file(), &protos);
-    ASSERT_EQ(3, protos.file_size());
-  }
+  auto check = [](const Descriptor* desc) {
+    return CheckDescriptorSet(desc, WritablePBContainerFile::PopulateDescriptorSet(*desc));
+  };
+  ASSERT_EQ(check(ProtoContainerTestPB::descriptor()), std::vector<std::string>({
+      "yb.ProtoContainerTestPB(5 fields)"}));
+  ASSERT_EQ(check(ProtoContainerTest3PB::descriptor()), std::vector<std::string>({
+      "yb.ProtoContainerTest2PB(1 fields)",
+      "yb.ProtoContainerTest3PB(2 fields)",
+      "yb.ProtoContainerTestPB(5 fields)"}));
+  // The message that contains a reachable nested type is kept with its fields.
+  ASSERT_EQ(check(ProtoContainerNestedTestPB::descriptor()), std::vector<std::string>({
+      "yb.ProtoContainerNestedTestPB(2 fields)",
+      "yb.ProtoContainerNestedTestPB.CountsEntry(2 fields)",
+      "yb.ProtoContainerOuterTestPB(1 fields)",
+      "yb.ProtoContainerOuterTestPB.InnerPB(2 fields)",
+      "yb.ProtoContainerOuterTestPB.InnerPB.KindPB",
+      "yb.ProtoContainerTestPB(5 fields)",
+      "yb.TestStringRequiredPB(1 fields)"}));
 }
 
 void TestPBUtil::DumpPBCToString(const string& path, bool oneline_output,
@@ -432,6 +471,15 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
   ASSERT_TRUE(CreateKnownGoodContainerFile(NO_OVERWRITE).IsAlreadyPresent());
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
   ASSERT_OK(CreateKnownGoodContainerFile(OVERWRITE));
+}
+
+// An empty message has a zero-length body.
+TEST_F(TestPBUtil, TestEmptyMessage) {
+  ASSERT_OK(WritePBContainerToPath(env_.get(), path_, TestStringOptionalPB(), OVERWRITE, NO_SYNC));
+  TestStringOptionalPB pb;
+  pb.set_text(kTestString);
+  ASSERT_OK(ReadPBContainerFromPath(env_.get(), path_, &pb));
+  ASSERT_FALSE(pb.has_text());
 }
 
 PB_ENUM_FORMATTERS(TestPBEnum)

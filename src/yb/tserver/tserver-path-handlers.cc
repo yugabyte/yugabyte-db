@@ -38,6 +38,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/cdc/cdc_service.h"
@@ -86,6 +87,7 @@
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/prometheus_metric_filter.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
@@ -114,6 +116,7 @@ DEFINE_UNKNOWN_bool(enable_intentsdb_page, false,
     "Enable displaying the contents of intentsdb page.");
 
 DECLARE_bool(enable_xcluster_stat_collection);
+DECLARE_bool(enable_active_table_metrics_filtering);
 
 namespace {
 
@@ -121,6 +124,8 @@ namespace {
 struct TabletPeerInfo {
   string namespace_name;
   string name;
+  // The table attributes the table's metrics carry, such as table_type.
+  yb::MetricAttributeMap metric_attributes;
   bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -138,6 +143,7 @@ struct TableIdentifier {
 struct TableInfo {
   string namespace_name;
   string name;
+  yb::MetricAttributeMap metric_attributes;
   bool is_hidden;
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
@@ -147,6 +153,7 @@ struct TableInfo {
   explicit TableInfo(TabletPeerInfo info)
       : namespace_name(info.namespace_name),
         name(info.name),
+        metric_attributes(std::move(info.metric_attributes)),
         is_hidden(info.is_hidden),
         num_sst_files(info.num_sst_files),
         disk_size_info(info.disk_size_info),
@@ -1096,6 +1103,8 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     auto info = TabletPeerInfo {
         .namespace_name = std::move(status.namespace_name()),
         .name = std::move(status.table_name()),
+        .metric_attributes =
+            peer->tablet_metadata()->primary_table_info()->CreateMetricAttributeMap(),
         .is_hidden = is_hidden,
         .num_sst_files = num_sst_files,
         .disk_size_info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status),
@@ -1114,6 +1123,55 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
   return table_map;
 }
 
+void PrintActiveTableMetricsList(
+    const ActiveTableIdsForMetrics& active_tables,
+    const std::map<TableIdentifier, TableInfo>& table_map,
+    HtmlPrintHelper* html_print_helper, std::stringstream* output) {
+  *output << "<h2>Active table metrics list</h2>\n"
+          << "<p>Scrapes of /prometheus-metrics that pass version=v2 and "
+          << "apply_table_IDs_filter=true export table-level metrics of YSQL user tables only "
+          << "for the tables in this list. Server-level metrics still cover every table.</p>\n";
+
+  auto summary_table = html_print_helper->CreateTablePrinter(
+      "active_table_metrics",
+      {"Filtering enabled", "Tables in list", "List version", "Last update"});
+  std::string last_update = "Never";
+  if (active_tables.last_update_time != 0) {
+    const auto now = static_cast<uint64_t>(GetCurrentTimeMicros());
+    last_update = Format(
+        "$0 ($1 s ago)", active_tables.last_update_time,
+        (now - std::min(now, active_tables.last_update_time)) / MonoTime::kMicrosecondsPerSecond);
+  }
+  summary_table.AddRow(
+      FLAGS_enable_active_table_metrics_filtering ? "Yes" : "No",
+      active_tables.table_ids ? std::to_string(active_tables.table_ids->size()) : "-",
+      active_tables.table_ids ? std::to_string(active_tables.list_version) : "-", last_update);
+  summary_table.Print();
+
+  if (!active_tables.table_ids) {
+    return;
+  }
+  // Tables hosted here are marked in the table above. The rest are listed so that an ID that does
+  // not match any table, for example a colocated table sent instead of its parent, is visible.
+  std::unordered_set<std::string> hosted_table_ids;
+  for (const auto& [identifier, _] : table_map) {
+    hosted_table_ids.insert(identifier.uuid);
+  }
+  std::vector<std::string> other_table_ids;
+  for (const auto& table_id : *active_tables.table_ids) {
+    if (!hosted_table_ids.contains(table_id)) {
+      other_table_ids.push_back(table_id);
+    }
+  }
+  std::sort(other_table_ids.begin(), other_table_ids.end());
+  *output << "<details><summary>" << other_table_ids.size()
+          << " table IDs in the list are not hosted on this tablet server</summary><ul>\n";
+  for (const auto& table_id : other_table_ids) {
+    *output << "<li>" << EscapeForHtmlToString(table_id) << "</li>\n";
+  }
+  *output << "</ul></details>\n";
+}
+
 }  // anonymous namespace
 
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
@@ -1123,10 +1181,31 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
+  const auto active_tables = tserver_->GetActiveTableIdsForMetrics();
+  // Whether a scrape that opts into active-table filtering exports the table's table-level metrics,
+  // and why. table_always_allowlist is set per scrape, so it is noted below the table instead.
+  auto TableMetricsExported = [&active_tables](
+      const std::string& table_id, const MetricEntity::AttributeMap& attributes) -> std::string {
+    if (!FLAGS_enable_active_table_metrics_filtering) {
+      return "Yes (filtering disabled)";
+    }
+    switch (GetActiveTableListExemption(attributes)) {
+      case ActiveTableListExemption::kNotYsqlTable:
+        return "Yes (not a YSQL table)";
+      case ActiveTableListExemption::kInternalTable:
+        return "Yes (created by YugabyteDB)";
+      case ActiveTableListExemption::kNone:
+        break;
+    }
+    if (!active_tables.table_ids) {
+      return "No (no list received)";
+    }
+    return active_tables.table_ids->contains(table_id) ? "Yes (in list)" : "No (not in list)";
+  };
 
   auto html_table = html_print_helper.CreateTablePrinter(
       "table", {"Namespace", "Table name", "Table UUID", "State", "Num SST Files", "On-disk size",
-                "Raft roles"});
+                "Raft roles", "Table metrics exported**"});
 
   for (const auto& table_iter : table_map) {
     const auto& identifier = table_iter.first;
@@ -1146,11 +1225,21 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     }
     role_counts_html << "</ul>";
 
-    html_table.AddRow(
+    auto& row = html_table.AddRow(
         EscapeForHtmlToString(info.namespace_name), EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
-        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files,
-        tables_disk_size_html, role_counts_html.str());
+        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files);
+    // The size cell is a multi-line list, which the page's sort script can only compare as text,
+    // so pass the displayed total as a numeric sort key. While that estimate is still unset the
+    // always-current active size stands in, so new tables sort by size too.
+    const auto& size_info = info.disk_size_info;
+    row.AddColumn(
+        tables_disk_size_html,
+        static_cast<size_t>(
+            size_info.total_on_disk_size > 0 ? size_info.total_on_disk_size
+                                             : size_info.active_on_disk_size));
+    row.AddColumn(role_counts_html.str());
+    row.AddColumn(TableMetricsExported(identifier.uuid, info.metric_attributes));
   }
 
   html_table.Print();
@@ -1159,6 +1248,11 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     *output << "<p>* Some tablets did not provide disk size estimates,"
             << " and were not added to the displayed totals.</p>";
   }
+  *output << "<p>** Whether /prometheus-metrics scrapes that pass version=v2 and "
+          << "apply_table_IDs_filter=true export the table's table-level metrics. Metrics matching "
+          << "a scrape's table_always_allowlist are exported for every table.</p>";
+
+  PrintActiveTableMetricsList(active_tables, table_map, &html_print_helper, output);
 }
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,

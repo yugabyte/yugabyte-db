@@ -277,6 +277,12 @@ function(ADD_YB_BENCHMARK REL_BENCHMARK_NAME)
     RUNTIME_OUTPUT_DIRECTORY "${YB_BUILD_ROOT}/benchmarks-${DIR_PREFIX}")
   target_link_libraries(${BINARY_NAME} yb_benchmark_main ${ARG_DEPS})
   add_dependencies(benchmarks ${BINARY_NAME})
+
+  # In an LTO build, <name>-lto is the benchmark linked the way release servers are: statically,
+  # as one LTO unit, so cross-library inlining is measured. It is built only when requested by name
+  # (yb_build.sh --cxx-benchmark does that), not by the default build or the benchmarks target,
+  # because each such link is slow and memory-hungry and the dynamic build already catches breakage.
+  yb_add_lto_target("${BINARY_NAME}" "${BINARY_NAME}-lto" "" EXCLUDE_FROM_ALL)
 endfunction()
 
 # Builds every benchmark added with ADD_YB_BENCHMARK. Created unconditionally so that

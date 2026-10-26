@@ -4520,6 +4520,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 	YbcSlotEntryDescriptor *yb_slot_entries = NULL;
 	size_t		yb_num_slot_entries = 0;
+	bool		yb_slot_entries_fetched = false;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -4528,9 +4529,6 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
-
-	if (IsYugaByteEnabled())
-		YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -4648,6 +4646,13 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 			{
 				int64_t		lag_metric = -1;
 				int			slotno;
+
+				/* Only fetch slot entries if there is an active walsender. */
+				if (!yb_slot_entries_fetched)
+				{
+					YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
+					yb_slot_entries_fetched = true;
+				}
 
 				for (slotno = 0; slotno < yb_num_slot_entries; slotno++)
 				{

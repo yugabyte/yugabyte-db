@@ -1,0 +1,20 @@
+title: HostCloudInfo
+description: The public cloud that YBA runs on and its instance metadata. Part of HostCloudInfoResp. Only the object for the host cloud is set.
+type: object
+properties:
+  cloud:
+    description: 'Cloud that YBA runs on. Absent when YBA is not on AWS, GCP or Azure.'
+    $ref: "./HostCloud.yaml"
+    readOnly: true
+  region:
+    description: Cloud region of the YBA host. Absent when the cloud is unknown or its metadata service is unreachable.
+    type: string
+    readOnly: true
+  aws:
+    $ref: "./AwsHostInfo.yaml"
+  gcp:
+    $ref: "./GcpHostInfo.yaml"
+  azu:
+    $ref: "./AzuHostInfo.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

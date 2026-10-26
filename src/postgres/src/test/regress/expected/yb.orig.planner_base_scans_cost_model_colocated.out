@@ -1,4 +1,6 @@
 -- This file tests the YB CBO base scans cost model in colocated tables.
+-- TODO(#35145): these are costing-code tests, not cost model tests; move
+-- them to yb.orig.planner_costing_sanity.
 CREATE DATABASE base_scans_cost_model WITH COLOCATION = TRUE;
 \c base_scans_cost_model
 SET yb_enable_base_scans_cost_model = ON;

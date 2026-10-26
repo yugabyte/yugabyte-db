@@ -200,7 +200,7 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
 
   const std::string& prototype_type = prototype_->name();
   prometheus_attributes_.clear();
-  if (prototype_type == "tablet" || prototype_type == "table") {
+  if (prototype_type == kTabletMetricEntityName || prototype_type == kTableMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["table_id"];
     prometheus_attributes_["table_id"] = aggregation_id_for_pre_aggregation_;
     prometheus_attributes_["table_name"] = EscapePrometheusLabelValue(attributes_["table_name"]);

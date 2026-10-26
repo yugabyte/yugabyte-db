@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite.h>
 
@@ -347,5 +351,17 @@ const Value& ExtractValue(const google::protobuf::MapPair<Key, Value>& p) {
 }
 
 } // namespace map_util
+
+// Collects trace-tagged request fields as (dotted-path, text-value) pairs. Repeated elements
+// share one key with `*` in place of the index (req.ops.*.write.table_id), whose value is the
+// sorted set of distinct values joined by ", ".
+class TracingAttributeCollector {
+ public:
+  void Add(std::string key, std::string value);
+  std::vector<std::pair<std::string, std::string>> Finish();
+
+ private:
+  std::map<std::string, std::set<std::string>> entries_;
+};
 
 } // namespace yb::rpc

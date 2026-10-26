@@ -1097,11 +1097,18 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 		else
 			hashEntry->lastUsedTime = *lastUsedTime;
 
-		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->query_instr != NULL)
+		if (queryDesc != NULL && queryDesc->query_instr != NULL)
+		{
 			/*
-			 * Get the total elapsed time (in milliseconds) from the query descriptor.
+			 * qpmProcess passes 0 for both. avg_est_cost is estTotalCost / cnt,
+			 * so a repeat execution must add planTree->total_cost or the
+			 * average decays toward 0.
 			 */
-			totalTime = INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total);
+			if (totalTime == 0.0)
+				totalTime = INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total);
+			if (estTotalCost == 0.0)
+				estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
+		}
 
 		if (totalTime > 0.0)
 		{
@@ -1207,12 +1214,14 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			lruEntry = &(qpmLruClock->entries[lruSlot]);
 
-			if (qpmNumEntries() == yb_qpm_configuration.max_cache_size + 1)
+			/*
+			 * Evict when the clock hands back an occupied slot.  That
+			 * happens below max_cache_size too: a hole later in the sweep
+			 * does not stop an earlier !referenced row from being chosen.
+			 * An empty slot is reused without a hash remove.
+			 */
+			if (lruEntry->hashEntry != NULL)
 			{
-				/*
-				 * Delete the victim to keep the number
-				 * of entries == yb_qpm_configuration.max_cache_size.
-				 */
 				YbQpmHashEntry *removedEntry = hash_search(qpmHashTable,
 														   &(lruEntry->hashEntry->key),
 														   HASH_REMOVE,

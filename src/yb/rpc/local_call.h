@@ -15,10 +15,13 @@
 
 #pragma once
 
+#include <set>
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/scheduler.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/dist_trace.h"
@@ -43,8 +46,11 @@ class LocalOutboundCall : public OutboundCall {
       AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars,
       const MemTrackerPtr& mem_tracker) override;
 
+  // Non-null buffers_holder lets the call time out at its deadline, see
+  // RpcController::set_local_call_buffers_holder.
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall(
-      CallStateListenerFactory* call_state_listener_factory);
+      CallStateListenerFactory* call_state_listener_factory,
+      std::shared_ptr<void> buffers_holder);
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
@@ -61,8 +67,6 @@ class LocalOutboundCall : public OutboundCall {
 
   bool is_local() const override { return true; }
 
-  ThreadPoolTag pool_tag() const;
-
  protected:
   void Serialize(ByteBlocks* output) override;
 
@@ -71,6 +75,8 @@ class LocalOutboundCall : public OutboundCall {
 
  private:
   friend class LocalYBInboundCall;
+
+  void TimeOut();
 
   AnyMessageConstPtr req_;
 
@@ -82,10 +88,21 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
-                     CoarseTimePoint deadline,
+                     AnyMessageConstPtr request, AnyMessagePtr response, ThreadPoolTag pool_tag,
+                     CoarseTimePoint deadline, std::shared_ptr<void> buffers_holder,
                      CallStateListenerFactory* call_state_listener_factory);
 
   bool IsLocalCall() const override { return true; }
+
+  // Request and response are owned by the caller, and stay valid until this call responds.
+  const AnyMessageConstPtr& request() const { return request_; }
+  const AnyMessagePtr& response() const { return response_; }
+
+  // Whether the caller should get TimedOut at the deadline, without waiting for the handler.
+  bool can_time_out() const { return can_time_out_; }
+
+  // Fails the outbound call with TimedOut, unless this call has already responded.
+  void TimeOut();
 
   const Endpoint& remote_address() const override;
   const Endpoint& local_address() const override;
@@ -119,7 +136,17 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
 
+  const AnyMessageConstPtr request_;
+  const AnyMessagePtr response_;
+  const ThreadPoolTag pool_tag_;
   const CoarseTimePoint deadline_;
+
+  // Keeps request_ and response_ alive after the outbound call has timed out.
+  std::shared_ptr<void> buffers_holder_;
+  const bool can_time_out_;
+
+  // Set by whichever comes first: the response or the timeout.
+  std::atomic<bool> completed_{false};
 };
 
 template <class Params, class F>
@@ -127,11 +154,10 @@ auto HandleCall(InboundCallPtr call, F f) {
   auto yb_call = std::static_pointer_cast<YBInboundCall>(call);
   if (yb_call->IsLocalCall()) {
     auto local_call = std::static_pointer_cast<LocalYBInboundCall>(yb_call);
-    auto outbound_call = local_call->outbound_call();
     auto* req = yb::down_cast<const typename Params::RequestType*>(
-        Params::CastMessage(outbound_call->request()));
+        Params::CastMessage(local_call->request()));
     auto* resp = yb::down_cast<typename Params::ResponseType*>(
-        Params::CastMessage(outbound_call->response()));
+        Params::CastMessage(local_call->response()));
     RpcContext rpc_context(std::move(local_call));
     // Current only for the synchronous part of the handler; the span itself lives on the call and
     // ends at respond time, possibly on another thread.
@@ -149,15 +175,27 @@ auto HandleCall(InboundCallPtr call, F f) {
   }
 }
 
+// Tracks local calls being handled, and times out the ones that can time out.
 class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
  public:
-  void Enqueue(const InboundCallPtr& call) EXCLUDES(lock_);
+  explicit LocalYBInboundCallTracker(Scheduler& scheduler) : scheduler_(scheduler) {}
+
+  void Enqueue(const LocalYBInboundCallPtr& call) EXCLUDES(lock_);
   void CallProcessed(InboundCall* call) override EXCLUDES(lock_);
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp);
 
  private:
+  void ScheduleTimeoutCheck(CoarseTimePoint deadline) REQUIRES(lock_);
+  void CheckTimeouts(ScheduledTaskId task_id, const Status& status) EXCLUDES(lock_);
+
+  Scheduler& scheduler_;
   std::mutex lock_;
-  std::unordered_map<int64_t, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
+  std::unordered_map<int64_t, LocalYBInboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
+
+  // Deadlines and instance ids of the calls that can time out.
+  std::set<std::pair<CoarseTimePoint, int64_t>> deadlines_ GUARDED_BY(lock_);
+  CoarseTimePoint next_timeout_check_ GUARDED_BY(lock_) = CoarseTimePoint::max();
+  ScheduledTaskId timeout_check_task_ GUARDED_BY(lock_) = kUninitializedScheduledTaskId;
 };
 
 } // namespace rpc

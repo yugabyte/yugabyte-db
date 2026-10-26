@@ -285,7 +285,7 @@ func loadYAMLConfig(filePath string) (map[string]map[string]any, error) {
 	}
 	configData, err := os.ReadFile(absConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("Parsing config file failed with: %v", err)
+		return nil, fmt.Errorf("Parsing config file %s failed with: %v", absConfigPath, err)
 	}
 	var ynpConfig map[string]map[string]any
 	if err := yaml.Unmarshal(configData, &ynpConfig); err != nil {
@@ -400,7 +400,7 @@ func handleCommand(
 		// Generate the config file from YBA and exit.
 		generatedFilepath, err := generateYnpConfigFileFromYba(ctx, &pArgs.Args)
 		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Failed to generate config file: %v", err)
+			util.ConsoleLogger().Errorf(ctx, "Failed to generate config file: %v", err)
 			return err
 		}
 		util.ConsoleLogger().Infof(ctx, "Generated config file written to: %s", generatedFilepath)

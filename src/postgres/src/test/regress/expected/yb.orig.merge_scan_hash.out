@@ -592,7 +592,12 @@ EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_ha
 EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
 (output identical to previous)
 -- Same thing with backwards scan.
+-- Third hint is to use merge scan as the second hint ends up using sort.
+-- Fourth and fifth hints are same as previous third and fourth hints, except Set(enable_sort off) is added to them.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 0)*/'
+\set Q5 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
@@ -608,6 +613,8 @@ EXPLAIN (VERBOSE, COSTS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM
 (6 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
+(output identical to previous)
+EXPLAIN (VERBOSE, COSTS OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Index Scan Backward using h3r2n_pkey on public.h3r2n
@@ -619,7 +626,7 @@ EXPLAIN (VERBOSE, COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FRO
    Merge Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
 (7 rows)
 
-EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
+EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Merge
@@ -633,5 +640,5 @@ EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_ha
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
 (9 rows)
 
-EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
+EXPLAIN (VERBOSE, COSTS OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
 (output identical to previous)

@@ -1867,6 +1867,8 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
       } else {
         PrepareChangeRequest(&change_req, stream_id, tablet_ids[i], cp->second, i);
       }
+      // cdc_proxy_ is pinned to one tserver; let it forward to the leader if leadership moved.
+      change_req.set_serve_as_proxy(true);
 
       // If the stream is configured for explicit checkpointing, then we will populate the
       // explicit_cdc_sdk_checkpoint field as well.
@@ -1942,6 +1944,11 @@ Result<int64> CDCSDKYsqlTest::GetChangeRecordCount(
 
           tablet_ids.erase(find(tablet_ids.begin(), tablet_ids.end(), tablet_ids[i]));
 
+          break;
+        } else if (status.IsNotFound() &&
+                   change_resp.error().code() == CDCErrorPB::TABLET_NOT_FOUND) {
+          // "Not leader" (e.g. leader moved mid-read) or tablet not yet on the leader.
+          LOG(INFO) << "Retrying GetChanges on " << tablet_ids[i] << ": " << status;
           break;
         } else {
           RETURN_NOT_OK(status);

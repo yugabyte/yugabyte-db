@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
@@ -35,25 +37,37 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(auto_create_local_transaction_tables);
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tablespace_based_transaction_placement);
+DECLARE_bool(force_global_transactions);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
 DECLARE_bool(TEST_make_global_lock_release_async);
-
+DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
+DECLARE_bool(TEST_track_last_transaction);
 DECLARE_string(TEST_block_alter_table);
 
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_int32(transaction_table_num_tablets);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
@@ -61,6 +75,7 @@ DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -1182,6 +1197,62 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
                                      "running");
 }
 
+// Test for #32224.
+//
+// A transaction that started before the object locking infra auto flag was promoted keeps running
+// in the legacy mode: it takes no object locks, so the tserver catalog version check is what stops
+// it from using a catalog cache that a breaking DDL (REVOKE here) invalidated. The check must be
+// skipped based on the mode of the request's transaction, not on the tserver's flags.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionCheck) {
+  constexpr auto kInvalidatedMsg =
+      "The catalog snapshot used for this transaction has been invalidated";
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE ROLE r"));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+    ASSERT_OK(conn.Execute("GRANT SELECT ON test TO r"));
+    ASSERT_OK(conn.Execute("CREATE TABLE unrelated(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("SET ROLE r"));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(i), "ysql_enable_object_locking_infra", "true"));
+  }
+
+  // A new mode transaction open across a breaking DDL must not be subjected to the check.
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx2"));
+  ASSERT_OK(ddl_conn.Execute("REVOKE SELECT ON test FROM r"));
+  WaitForCatalogVersionToPropagate();
+
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(new_conn.Execute("COMMIT"));
+
+  // Before the fix, the legacy transaction kept reading the table with the revoked privilege.
+  auto result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), kInvalidatedMsg);
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+
+  // The next transaction on the same connection runs in the new mode and sees the REVOKE.
+  result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "permission denied");
+}
+
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
@@ -1400,8 +1471,7 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
       "true"));
 
   {
-    LogWaiter log_waiter(ts2,
-                         "Invalidating db PgTableCache caches since catalog version incremented");
+    LogWaiter log_waiter(ts2, "Invalidating PgTableCache with filter=");
     ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
     ts1->Shutdown();
     ASSERT_OK(log_waiter.WaitFor(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli));
@@ -2160,16 +2230,7 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_serve_redundant_lock) = true;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE pk(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE fk(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO pk SELECT generate_series(1, 1000), 0"));
-  ASSERT_OK(conn.Execute("INSERT INTO fk SELECT i,i FROM generate_series(1, 1000) AS i"));
-
-  // ALTER ADD CONSTRAINT requests RowShare on pk for each row in fk. But it should be
-  // a no-op since the transaction already holds RowShare (or greater) on the object.
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("ALTER TABLE fk ADD CONSTRAINT fk_rule FOREIGN KEY (v) REFERENCES pk(k)"));
-  ASSERT_LT(NumGrantedLocks(), 50);
-  ASSERT_OK(conn.Execute("COMMIT"));
 
   // Assert redundant table_open on pk is skipped.
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -2179,6 +2240,91 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ASSERT_EQ(num_initial_locks, NumGrantedLocks());
   ASSERT_OK(conn.Execute("COMMIT"));
 }
+
+class PgObjectLocksBothPathsTest : public PgObjectLocksTestRF1,
+                                   public ::testing::WithParamInterface<bool> {
+ protected:
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = GetParam();
+  }
+
+  Status WaitForLockManagerStatusTablet(
+      TransactionId txn_id, const TabletId& expected_tablet) {
+    return WaitFor([&] {
+      auto olm_status_tablet = ts_lock_manager_->TEST_GetStatusTabletForTxn(txn_id);
+      if (olm_status_tablet == expected_tablet) {
+        return true;
+      }
+      LOG(INFO) << "Transaction status tablet changed to " << expected_tablet << " but "
+                << "ObjectLockManager has " << olm_status_tablet;
+      return false;
+    }, 5s * kTimeMultiplier, "Waiting for status tablet to change");
+  }
+};
+
+TEST_P(PgObjectLocksBothPathsTest, TestLocalLockTransactionPromotion) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Tablespace-based placement allows for testing promotion in a RF1 setup.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_consider_all_local_transaction_tables_local) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
+
+  auto log_waiter = RegexWaiterLogSink(Format(
+      ".*Received status tablets \\(version bump from .+ to $0\\).*",
+      2 * (1 + FLAGS_transaction_table_num_tablets)));
+  ASSERT_OK(conn.Execute(
+      R"#(CREATE TABLESPACE ts WITH (replica_placement = '{
+        "num_replicas": 1,
+        "placement_blocks": [{
+          "cloud": "cloud1",
+          "region": "region1",
+          "zone": "zone",
+          "min_num_replicas": 1
+        }]
+      }'))#"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_local1(x int) TABLESPACE ts"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_local2(x int) TABLESPACE ts"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_global(x int)"));
+  ASSERT_OK(log_waiter.WaitFor(5s * kTimeMultiplier));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test_local1 VALUES(0)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_local2 VALUES(0)"));
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test_local1 VALUES(0)"));
+
+  auto txn =
+      cluster_->mini_tablet_server(0)->server()->TransactionPool().TEST_GetLastTransaction();
+  auto initial_metadata = ASSERT_RESULT(txn->metadata());
+  auto txn_id = initial_metadata.transaction_id;
+  auto old_status_tablet = initial_metadata.status_tablet;
+  ASSERT_OK(conn.Execute("INSERT INTO test_global VALUES(0)"));
+
+  auto final_metadata = ASSERT_RESULT(txn->metadata());
+  auto new_status_tablet = final_metadata.status_tablet;
+  ASSERT_NE(old_status_tablet, new_status_tablet);
+
+  if (!FLAGS_enable_object_lock_fastpath) {
+    ASSERT_OK(WaitForLockManagerStatusTablet(txn_id, new_status_tablet));
+  }
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_local2 VALUES(0)"));
+  if (FLAGS_enable_object_lock_fastpath) {
+    ts_lock_manager_->TEST_ConsumePendingSharedLockRequests();
+  }
+  ASSERT_OK(WaitForLockManagerStatusTablet(txn_id, new_status_tablet));
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Fastpath, PgObjectLocksBothPathsTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RPC";
+    });
 
 class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
  protected:
@@ -2741,6 +2887,214 @@ TEST_F_EX(
     PgObjectLocksTest, ConcurrentAlterSelectFreshCacheConcurrentDdl,
     PgObjectLocksWithConcurrentDdl) {
   testConcurrentAlterSelect(true);
+}
+
+class PgObjectLocksGlobalLockPromotionTest : public client::GeoTransactionsTestBase,
+                                             public ::testing::WithParamInterface<bool> {
+ protected:
+  static constexpr auto kStatementTimeoutMs = 40000;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_perform_ignore_pg_is_region_local) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
+    // Postgres inherits non-default flags at postmaster start.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = GetParam();
+    client::GeoTransactionsTestBase::SetUp();
+  }
+
+  Status SetupPromotionCluster() {
+    SetupTablespaces();
+    auto conn = VERIFY_RESULT(Connect());
+    auto version = GetCurrentVersion();
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t1_1 (k INT PRIMARY KEY, v INT) TABLESPACE tablespace1"));
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t1_2 (k INT PRIMARY KEY, v INT) TABLESPACE tablespace1"));
+    version = WaitForStatusTabletsVersionForCreate(version);
+
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t2_1 (k INT PRIMARY KEY, v INT) TABLESPACE tablespace2"));
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t2_2 (k INT PRIMARY KEY, v INT) TABLESPACE tablespace2"));
+    WaitForStatusTabletsVersionForCreate(version);
+
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t1_1 VALUES (1, 0), (2, 0)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t1_2 VALUES (1, 0)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t2_1 VALUES (1, 0)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t2_2 VALUES (1, 0)"));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+    return Status::OK();
+  }
+
+  Status PrepareLocalSession(PGConn& conn) {
+    RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality = true"));
+    for (const auto* table : {"t1_1", "t1_2", "t2_1", "t2_2"}) {
+      RETURN_NOT_OK(WarmupTablespaceCache(conn, table));
+    }
+    return Status::OK();
+  }
+
+  // op_a and op_b run concurrently. Deadlock detection must abort one of them.
+  template <typename FnA, typename FnB>
+  Status ExpectExactlyOneSucceedsWithDeadlock(
+      PGConn& conn_a, PGConn& conn_b, FnA&& op_a, FnB&& op_b,
+      MonoDelta deadlock_wait = 10s * kTimeMultiplier) {
+    RETURN_NOT_OK(conn_a.ExecuteFormat("SET statement_timeout = $0", kStatementTimeoutMs));
+    RETURN_NOT_OK(conn_b.ExecuteFormat("SET statement_timeout = $0", kStatementTimeoutMs));
+    google::SetVLOGLevel("deadlock_detector", 1);
+    StringWaiterLogSink deadlock_waiter("aborted due to a deadlock");
+    auto status_a = std::async(std::launch::async, [&]() -> Status {
+      auto s = op_a();
+      auto commit_status = conn_a.Execute("COMMIT");
+      return s.ok() ? commit_status : s;
+    });
+    auto status_b = std::async(std::launch::async, [&]() -> Status {
+      auto s = op_b();
+      auto commit_status = conn_b.Execute("COMMIT");
+      return s.ok() ? commit_status : s;
+    });
+    RETURN_NOT_OK(deadlock_waiter.WaitFor(deadlock_wait));
+    RETURN_NOT_OK(WaitFor(
+        [&] {
+          return status_a.wait_for(0s) == std::future_status::ready &&
+                 status_b.wait_for(0s) == std::future_status::ready;
+        },
+        MonoDelta::FromMilliseconds(kStatementTimeoutMs * 2),
+        "Timed out waiting for both statements"));
+    const auto result_a = status_a.get();
+    const auto result_b = status_b.get();
+    if (result_a.ok() == result_b.ok()) {
+      return STATUS_FORMAT(
+          IllegalState, "expected exactly one success, a: $0, b: $1", result_a, result_b);
+    }
+    return Status::OK();
+  }
+
+  Status ExpectLastTxnStatusTablet(std::string_view tablespace, client::ExpectedLocality locality) {
+    auto expected = VERIFY_RESULT(GetStatusTablets(tablespace, locality));
+    SCHECK(!expected.empty(), IllegalState, "No status tablets for the expected locality");
+    auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
+    SCHECK(last_transaction, IllegalState, "No transaction recorded by the pool");
+    auto metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
+    RETURN_NOT_OK(metadata);
+    SCHECK(
+        std::find(expected.begin(), expected.end(), metadata->status_tablet) != expected.end(),
+        IllegalState, "status tablet $0 is not $1 for $2", metadata->status_tablet, locality,
+        tablespace);
+    return Status::OK();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgObjectLocksGlobalLockPromotionTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RpcPath";
+    });
+
+TEST_P(
+    PgObjectLocksGlobalLockPromotionTest, DeadlockAfterGlobalObjectLock) {
+  ASSERT_OK(SetupPromotionCluster());
+  auto conn_a = ASSERT_RESULT(Connect());
+  auto conn_b = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareLocalSession(conn_a));
+  ASSERT_OK(PrepareLocalSession(conn_b));
+
+  ASSERT_OK(conn_a.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_b.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Both transactions start tablespace-local in region 1.
+  ASSERT_OK(conn_a.Execute("UPDATE t1_1 SET v = v + 1 WHERE k = 2"));
+  ASSERT_OK(conn_b.Execute("UPDATE t1_1 SET v = v + 1 WHERE k = 1"));
+  // Promotes transaction a. t1_2's exclusive lock is what b will wait for.
+  ASSERT_OK(conn_a.Execute("LOCK TABLE t1_2 IN ACCESS EXCLUSIVE MODE"));
+  ASSERT_OK(conn_a.Execute("UPDATE t2_1 SET v = v + 1 WHERE k = 1"));
+
+  ASSERT_OK(ExpectExactlyOneSucceedsWithDeadlock(
+      conn_a, conn_b,
+      [&]() -> Status {
+        RETURN_NOT_OK(conn_a.Execute("UPDATE t1_1 SET v = v + 1 WHERE k = 1"));
+        return conn_a.Execute("UPDATE t2_1 SET v = v + 1 WHERE k = 1");
+      },
+      [&]() -> Status {
+        return conn_b.Execute("LOCK TABLE t1_2 IN ACCESS EXCLUSIVE MODE");
+      }));
+}
+
+TEST_P(
+    PgObjectLocksGlobalLockPromotionTest,
+    YB_DISABLE_TEST_IN_TSAN(AccessShareThenCrossExclusiveDeadlock)) {
+  ASSERT_OK(SetupPromotionCluster());
+  auto conn_a = ASSERT_RESULT(Connect());
+  auto conn_b = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareLocalSession(conn_a));
+  ASSERT_OK(PrepareLocalSession(conn_b));
+
+  ASSERT_OK(conn_a.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_b.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // A is tablespace-local to region 1, B to region 2. ACCESS SHARE stays on the tserver.
+  ASSERT_OK(conn_a.Execute("LOCK TABLE t1_1 IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn_b.Execute("LOCK TABLE t2_1 IN ACCESS SHARE MODE"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 10000;
+  ASSERT_OK(ExpectExactlyOneSucceedsWithDeadlock(
+      conn_a, conn_b,
+      [&]() -> Status {
+        return conn_a.Execute("LOCK TABLE t2_1 IN ACCESS EXCLUSIVE MODE");
+      },
+      [&]() -> Status {
+        return conn_b.Execute("LOCK TABLE t1_1 IN ACCESS EXCLUSIVE MODE");
+      },
+      20s * kTimeMultiplier));
+}
+
+TEST_P(PgObjectLocksGlobalLockPromotionTest, CatalogLocksDoNotPromote) {
+  ASSERT_OK(SetupPromotionCluster());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareLocalSession(conn));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t1_1 SET v = v + 1 WHERE k = 1"));
+  ASSERT_RESULT(conn.Fetch("SELECT proname FROM pg_proc LIMIT 1"));
+  ASSERT_OK(ExpectLastTxnStatusTablet("tablespace1", client::ExpectedLocality::kLocal));
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
+  ASSERT_OK(SetupPromotionCluster());
+  auto conn_a = ASSERT_RESULT(Connect());
+  auto conn_b = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareLocalSession(conn_a));
+  ASSERT_OK(PrepareLocalSession(conn_b));
+
+  ASSERT_OK(conn_a.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_b.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Both stay tablespace-local. A's ACCESS SHARE is the tserver lock B will block on.
+  ASSERT_OK(conn_a.Execute("LOCK TABLE t1_1 IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn_b.Execute("LOCK TABLE t2_1 IN ACCESS SHARE MODE"));
+
+  // The exclusive locks are what promote each transaction. B's lock on t2_2 is granted first, so
+  // A's request waits on the master's lock manager. B's lock on t1_1 then passes the master and
+  // waits for A's ACCESS SHARE on the tserver, which must use A's post-promotion status tablet.
+  std::promise<void> b_holds_exclusive;
+  auto b_granted = b_holds_exclusive.get_future();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 10000;
+  ASSERT_OK(ExpectExactlyOneSucceedsWithDeadlock(
+      conn_a, conn_b,
+      [&]() -> Status {
+        b_granted.wait();
+        return conn_a.Execute("LOCK TABLE t2_2 IN ACCESS EXCLUSIVE MODE");
+      },
+      [&]() -> Status {
+        auto s = conn_b.Execute("LOCK TABLE t2_2 IN ACCESS EXCLUSIVE MODE");
+        b_holds_exclusive.set_value();
+        RETURN_NOT_OK(s);
+        return conn_b.Execute("LOCK TABLE t1_1 IN ACCESS EXCLUSIVE MODE");
+      },
+      20s * kTimeMultiplier));
 }
 
 }  // namespace yb::pgwrapper

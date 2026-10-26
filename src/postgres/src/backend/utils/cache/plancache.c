@@ -1307,16 +1307,24 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	 * faking the read results in postgres. However the boundParams needs to
 	 * be passed for the creation of the plan and hence we would need to
 	 * enforce a custom plan.
+	 *
+	 * INSERT ON CONFLICT is excluded from this rule because its pushdown plan
+	 * does not depend on bound parameter values.  Allowing it to use a generic
+	 * plan avoids replanning on every execution.
 	 */
 	if (plansource->gplan && list_length(plansource->gplan->stmt_list))
 	{
 		PlannedStmt *pstmt = linitial_node(PlannedStmt,
 										   plansource->gplan->stmt_list);
 
-		if (YBCIsSingleRowModify(pstmt))
-		{
+		ModifyTable *mt = (pstmt->planTree && IsA(pstmt->planTree, ModifyTable)) ?
+			castNode(ModifyTable, pstmt->planTree) :
+			NULL;
+		bool yb_is_ioc = mt &&
+			YbOnConflictClauseIsExplicitlySpecified(mt->onConflictAction);
+
+		if (!yb_is_ioc && YBCIsSingleRowModify(pstmt))
 			return true;
-		}
 	}
 
 	avg_custom_cost = plansource->total_custom_cost / plansource->num_custom_plans;

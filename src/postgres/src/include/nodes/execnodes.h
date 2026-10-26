@@ -689,6 +689,13 @@ typedef struct ResultRelInfo
 	 * currently supported only for the DO NOTHING clause.
 	 */
 	bool		ri_ybUseIndexOnlyScanForIocRead;
+
+	/*
+	 * YB: should INSERT ON CONFLICT resolution be pushed to DocDB for this
+	 * execution? This combines plan-time eligibility with the current
+	 * pushdown GUC setting for the ON CONFLICT action.
+	 */
+	bool		ri_ybUseIocPushdown;
 } ResultRelInfo;
 
 /* ----------------
@@ -1918,7 +1925,7 @@ typedef struct IndexScanState
 	Size		iss_PscanLen;
 
 	/* YB specific attributes. */
-	bool		yb_iss_might_recheck;
+	bool		yb_iss_might_recheck;	/* legacy cost model only */
 	List	   *yb_iss_aggrefs;
 } IndexScanState;
 
@@ -1973,7 +1980,7 @@ typedef struct IndexOnlyScanState
 	int			ioss_NameCStringCount;
 
 	/* YB specific attributes. */
-	bool		yb_ioss_might_recheck;
+	bool		yb_ioss_might_recheck;	/* legacy cost model only */
 	List	   *yb_ioss_aggrefs;
 	int			yb_ioss_num_decoded_pk_cols;		/* number of decoded PK columns */
 	AttrNumber *yb_ioss_decoded_pk_base_attnums;	/* base table attnums */

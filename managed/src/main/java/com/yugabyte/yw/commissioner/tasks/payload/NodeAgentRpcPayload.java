@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
+import com.yugabyte.yw.nodeagent.ConfigureNodeExporterInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.GcsConfig;
@@ -443,6 +445,25 @@ public class NodeAgentRpcPayload {
     installYbcInputBuilder.addAllMountPoints(
         getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
     return installYbcInputBuilder.build();
+  }
+
+  public ConfigureNodeExporterInput setUpConfigureNodeExporterBits(
+      Universe universe, NodeDetails nodeDetails, boolean tlsEnabled) {
+    String ybHome =
+        Util.getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid))
+            .getYbHome();
+    ConfigureNodeExporterInput.Builder input =
+        ConfigureNodeExporterInput.newBuilder()
+            .setYbHomeDir(ybHome)
+            .setNodeExporterPort(nodeDetails.nodeExporterPort)
+            .setTlsEnabled(tlsEnabled);
+    if (tlsEnabled) {
+      // cloud.py names the files after the address node-agent connects to, the private IP.
+      String certPrefix =
+          CertificateHelper.getCertsNodeDir(ybHome) + "/node." + nodeDetails.cloudInfo.private_ip;
+      input.setCertFile(certPrefix + ".crt").setKeyFile(certPrefix + ".key");
+    }
+    return input.build();
   }
 
   public ConfigureServerInput setUpConfigureServerBits(
@@ -876,10 +897,9 @@ public class NodeAgentRpcPayload {
             Path localGflagDirPath = tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
             // Validate directory exists
             if (Files.isDirectory(localGflagDirPath)) {
-              String providerUUID =
-                  Util.getProviderForNode(nodeDetails, universe).getUuid().toString();
-              String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-              String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+              String remoteGFlagPath =
+                  GFlagsUtil.getRemoteGFlagFilesPath(
+                      Util.getProviderForNode(nodeDetails, universe));
 
               // Ensure remote directory exists
               try {

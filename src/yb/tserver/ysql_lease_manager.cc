@@ -56,6 +56,7 @@ class YSQLLeaseManager::Impl {
       EXCLUDES(lease_toggle_lock_, lock_);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerLeaseRefresh();
   void StartTSLocalLockManager() EXCLUDES(lock_);
 
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
@@ -181,6 +182,8 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
 }
 
 Status YSQLLeaseManager::Impl::StartYSQLLeaseRefresher() { return lease_client_.Start(); }
+
+void YSQLLeaseManager::Impl::TriggerLeaseRefresh() { lease_client_.TriggerASAP(); }
 
 void YSQLLeaseManager::Impl::StartTSLocalLockManager() {
   std::lock_guard l(lock_);
@@ -315,6 +318,8 @@ YSQLLeaseManager::~YSQLLeaseManager() = default;
 YSQLLeaseInfo YSQLLeaseManager::GetYSQLLeaseInfo() const { return impl_->GetYSQLLeaseInfo(); }
 
 Status YSQLLeaseManager::StartYSQLLeaseRefresher() { return impl_->StartYSQLLeaseRefresher(); }
+
+void YSQLLeaseManager::TriggerLeaseRefresh() { impl_->TriggerLeaseRefresh(); }
 
 void YSQLLeaseManager::StartTSLocalLockManager() {
   return impl_->StartTSLocalLockManager();

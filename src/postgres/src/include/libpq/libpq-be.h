@@ -53,6 +53,9 @@ typedef struct
 #include "libpq/hba.h"
 #include "libpq/pqcomm.h"
 
+/* YB includes */
+#include "common/pg_yb_conn_mgr_protocol.h"
+
 
 /*
  * GSSAPI specific state information
@@ -198,6 +201,15 @@ typedef struct Port
 	 * (yb_ycm_internal_client_cert) fails to parse in be_tls_open_server().
 	 */
 	bool		yb_forwarded_cert_parse_failed;
+
+	/*
+	 * YB: tls-server-end-point hash of the certificate the connection manager
+	 * presented on the logical connection (yb_ycm_internal_server_cert_hash).
+	 * The length is 0 when it was not provided.  Stored inline since the
+	 * auth passthrough startup packet is parsed in a transaction context.
+	 */
+	uint8		yb_logical_conn_server_cert_hash[YB_SERVER_CERT_HASH_MAX_LEN];
+	int			yb_logical_conn_server_cert_hash_len;
 
 	/*
 	 * YB: W3C traceparent from the "yb_dist_traceparent" startup-packet param

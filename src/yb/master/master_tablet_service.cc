@@ -79,6 +79,12 @@ METRIC_DEFINE_counter(server, ysql_catalog_prefetch_rejections,
                       yb::MetricUnit::kRequests,
                       "Number of YSQL catalog prefetches rejected because "
                       "master_max_concurrent_ysql_catalog_prefetches was exceeded");
+METRIC_DEFINE_counter(server, ysql_catalog_prefetch_new_admissions,
+                      "YSQL New Catalog Prefetch Admissions",
+                      yb::MetricUnit::kRequests,
+                      "Number of YSQL catalog prefetch reads admitted as newly starting rather "
+                      "than continuing a prefetch already under way, which is the share "
+                      "master_new_ysql_catalog_prefetch_percent applies to");
 
 DEFINE_test_flag(int32, ysql_catalog_prefetch_rejections_to_inject, 0,
     "Reject exactly this many YSQL catalog prefetches with the same retryable error the "
@@ -175,7 +181,9 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
       ysql_catalog_prefetches_in_progress_(
           METRIC_ysql_catalog_prefetches_in_progress.Instantiate(master->metric_entity(), 0)),
       ysql_catalog_prefetch_rejections_(
-          METRIC_ysql_catalog_prefetch_rejections.Instantiate(master->metric_entity())) {
+          METRIC_ysql_catalog_prefetch_rejections.Instantiate(master->metric_entity())),
+      ysql_catalog_prefetch_new_admissions_(
+          METRIC_ysql_catalog_prefetch_new_admissions.Instantiate(master->metric_entity())) {
   AutoInitCatalogPrefetchLimit();
 }
 
@@ -194,9 +202,9 @@ std::atomic<int32_t> rejections_injected{0};
   });
 }
 
-[[nodiscard]] bool IsCacheRefreshPrefetch(const tserver::ReadRequestMsg& req) {
+[[nodiscard]] bool IsHighPriorityPrefetch(const tserver::ReadRequestMsg& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
-    return op.catalog_prefetch_kind() == YSQL_CATALOG_PREFETCH_CACHE_REFRESH;
+    return op.catalog_prefetch_kind() == YSQL_CATALOG_PREFETCH_HIGH_PRIORITY;
   });
 }
 
@@ -212,9 +220,18 @@ std::atomic<int32_t> rejections_injected{0};
   return req->has_paging_state();
 }
 
+// A request continuing a prefetch already under way, so holding it to the limit for prefetches
+// that have not started would shed a connection that has already paid for most of one. Two
+// shapes: a later paging round of a request, and a later request of a prefetch that is several
+// of them, which carries no paging state of its own and so can only say so outright. The flag
+// says the client has had a request served, not that this master served it -- a prefetch whose
+// earlier requests its own node answered from the response cache arrives here flagged, on the
+// first request the leader sees. Admitting that one is the point: it is the cheapest connection
+// left to finish.
 [[nodiscard]] bool IsPrefetchContinuation(const tserver::ReadRequestMsg& req) {
   return std::ranges::any_of(req.pgsql_batch(), [](const auto& op) {
-    return op.catalog_prefetch_kind() != YSQL_CATALOG_PREFETCH_NONE && HasPagingState(op);
+    return op.catalog_prefetch_kind() != YSQL_CATALOG_PREFETCH_NONE &&
+           (HasPagingState(op) || op.catalog_prefetch_continuation());
   });
 }
 
@@ -254,12 +271,16 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
 
   // Only the opening read of a connection-startup prefetch is held to the lower watermark. Once a
   // sequence is under way its later reads use the whole limit -- refusing one of them wastes every
-  // read before it -- and so does a backend refreshing its catalog cache, which is blocked on the
-  // data rather than merely waiting to begin. One new prefetch is always admissible, or a small
-  // limit (<= 0) would admit nothing at all.
-  const auto effective_limit = (IsPrefetchContinuation(req) || IsCacheRefreshPrefetch(req))
-      ? limit
-      : NewPrefetchLimit(limit);
+  // read before it -- and so does a prefetch something is already blocked on rather than merely
+  // waiting to begin. The read that precedes authentication is one of those: it carries a handful
+  // of small tables, and where the node can serve the large prefetch behind it from its own
+  // response cache, admitting it is what lets a connection finish without coming back here. The
+  // client asks for the priority whenever yb_enable_stale_catalog_prefetch is on, which is wider
+  // than that condition -- it cannot be evaluated before the database is known -- so some of
+  // these grants buy nothing. One new prefetch is always admissible, or a small limit (<= 0)
+  // would admit nothing at all.
+  const bool is_new = !IsPrefetchContinuation(req) && !IsHighPriorityPrefetch(req);
+  const auto effective_limit = is_new ? NewPrefetchLimit(limit) : limit;
 
   class Admission {
    public:
@@ -290,6 +311,9 @@ Result<std::shared_ptr<void>> MasterTabletServiceImpl::AdmitRead(
     return reject(Format("$0 already in progress, limit is $1", taken, effective_limit));
   }
 
+  if (is_new) {
+    ysql_catalog_prefetch_new_admissions_->Increment();
+  }
   ysql_catalog_prefetches_in_progress_->Increment();
   return std::make_shared<Admission>(ysql_catalog_prefetches_in_progress_);
 }

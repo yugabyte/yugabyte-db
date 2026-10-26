@@ -118,8 +118,11 @@ YbMaybeLockMasterCatalogVersion()
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
 	 *
+	 * (3) We skip the lock for a statement that can never increment the catalog version, because
+	 *		 it cannot conflict on this row. See YbDdlCannotIncrementCatalogVersion().
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
+		!YBCurrentStmtCannotIncrementCatalogVersion() &&
 		YBCIsLegacyModeForCatalogOps() &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{

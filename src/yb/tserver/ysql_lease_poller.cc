@@ -85,6 +85,7 @@ class YsqlLeaseClient::Impl {
   void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
   void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
+  void TriggerASAP();
 
  private:
   MasterLeaderFinder finder_;
@@ -115,6 +116,10 @@ void YsqlLeaseClient::UpdateMasterAddresses(server::MasterAddressesPtr master_ad
   impl_->UpdateMasterAddresses(std::move(master_addresses));
 }
 
+void YsqlLeaseClient::TriggerASAP() {
+  impl_->TriggerASAP();
+}
+
 YsqlLeaseClient::~YsqlLeaseClient() {
   Shutdown();
 }
@@ -135,7 +140,16 @@ Status YsqlLeaseClient::Impl::Start() {
     cgroup = cm->SystemHighCgroup();
   }
 #endif
-  return poll_scheduler_.Start(cgroup);
+  RETURN_NOT_OK(poll_scheduler_.Start(cgroup));
+  // PostgreSQL is not started before the first lease is acquired, so do not wait a full interval
+  // before asking for it. If the tablet server has not registered with the master yet, the request
+  // fails and TriggerASAP is called again once it registers.
+  TriggerASAP();
+  return Status::OK();
+}
+
+void YsqlLeaseClient::Impl::TriggerASAP() {
+  poll_scheduler_.TriggerASAP();
 }
 
 void YsqlLeaseClient::Impl::Shutdown() {

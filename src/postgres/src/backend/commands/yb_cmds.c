@@ -1321,6 +1321,38 @@ ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
 	return result;
 }
 
+/*
+ * Whether an ALTER TABLE subcommand on a partitioned table needs to trickle
+ * down to its child partitions in DocDB.
+ */
+static bool
+YbATCmdAltersPartitions(AlterTableCmd *cmd)
+{
+	return (cmd->subtype == AT_DropExpression ||
+			(cmd->recurse &&
+			 (cmd->subtype == AT_AddColumn ||
+			  cmd->subtype == AT_DropColumn ||
+			  cmd->subtype == AT_AddConstraint ||
+			  cmd->subtype == AT_DropConstraint ||
+			  cmd->subtype == AT_ValidateConstraint)));
+}
+
+bool
+YbATAltersPartitions(List **subcmds, int subcmds_size)
+{
+	ListCell   *lcmd;
+
+	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
+	{
+		foreach(lcmd, subcmds[cmd_idx])
+		{
+			if (YbATCmdAltersPartitions((AlterTableCmd *) lfirst(lcmd)))
+				return true;
+		}
+	}
+	return false;
+}
+
 static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
@@ -1331,28 +1363,14 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 
-	if (isPartitionOfAlteredTable)
-	{
-		/*
-		 * This function was invoked on a child partition table to reflect
-		 * the effects of Alter on its parent.
-		 */
-		if (!(cmd->subtype == AT_DropExpression ||
-			  (cmd->recurse &&
-			   (cmd->subtype == AT_AddColumn ||
-				cmd->subtype == AT_DropColumn ||
-				cmd->subtype == AT_AddConstraint ||
-				cmd->subtype == AT_DropConstraint ||
-				cmd->subtype == AT_ValidateConstraint))))
-		{
-			/*
-			 * This is not an alter command on a partitioned table that
-			 * needs to trickle down to its child partitions. Nothing to
-			 * do.
-			 */
-			return handles;
-		}
-	}
+	/*
+	 * When invoked on a child partition table to reflect the effects of
+	 * Alter on its parent, there is nothing to do for commands that don't
+	 * trickle down to the child partitions.
+	 */
+	if (isPartitionOfAlteredTable && !YbATCmdAltersPartitions(cmd))
+		return handles;
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:
@@ -1566,6 +1584,19 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					}
 					ReleaseSysCache(typeTuple);
 				}
+
+				/*
+				 * These take ShareUpdateExclusiveLock, which doesn't conflict
+				 * with concurrent writers, and change nothing those writers
+				 * depend on. A schema version bump would fail them with a
+				 * non-retryable schema version mismatch inside a transaction
+				 * block.
+				 */
+				if (YBCIsObjectLockingEnabled() &&
+					(cmd->subtype == AT_ValidateConstraint ||
+					 cmd->subtype == AT_SetStatistics))
+					break;
+
 				/*
 				 * For these cases a YugaByte metadata does not need to be updated
 				 * but we still need to increment the schema version.

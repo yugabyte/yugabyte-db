@@ -242,6 +242,10 @@ extern bool yb_check_toast_catcache_threshold(int *newval, void **extra,
 											  GucSource source);
 extern bool yb_check_password_validity_source(int *newval, void **extra,
 											  GucSource source);
+extern bool check_yb_password_reuse(int *newval, void **extra,
+									GucSource source);
+extern bool check_yb_allow_prehashed_passwords(bool *newval, void **extra,
+											   GucSource source);
 extern bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra,
 											   GucSource source);
 extern void yb_set_neg_catcache_ids(const char *newval, void *extra);

@@ -148,6 +148,12 @@ class LoadBalancerMockedBase : public YBTest {
     return task_added;
   }
 
+  // cb_.HandleAddIfMissingPlacement modifies state to account for the corresponding add.
+  Result<bool> HandleAddIfMissingPlacement(const TabletId& tablet_id, TabletServerId* out_to_ts)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
+    return cb_.HandleAddIfMissingPlacement(tablet_id, out_to_ts);
+  }
+
   // cb_.HandleAddReplicas modifies state to account for the corresponding add.
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
@@ -155,7 +161,7 @@ class LoadBalancerMockedBase : public YBTest {
     return cb_.HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
   }
 
-  // cb_.HandleRemoveReplicas modifies state to account for the corresponding add.
+  // cb_.HandleRemoveReplicas modifies state to account for the corresponding remove.
   Result<bool> HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleRemoveReplicas(out_tablet_id, out_from_ts);

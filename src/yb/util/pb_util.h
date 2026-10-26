@@ -89,7 +89,7 @@
 namespace google {
 namespace protobuf {
 
-class FileDescriptor;
+class Descriptor;
 class FileDescriptorSet;
 class MessageLite;
 class Message;
@@ -338,13 +338,10 @@ class WritablePBContainerFile {
  private:
   FRIEND_TEST(TestPBUtil, TestPopulateDescriptorSet);
 
-  // Write the protobuf schemas belonging to 'desc' and all of its
-  // dependencies to 'output'.
-  //
-  // Schemas are written in dependency order (i.e. if A depends on B which
-  // depends on C, the order is C, B, A).
-  static void PopulateDescriptorSet(const google::protobuf::FileDescriptor* desc,
-                                    google::protobuf::FileDescriptorSet* output);
+  // Returns the schemas of desc and of the types reachable from it through fields or as containers
+  // of reachable nested types. Files contain only those types.
+  static google::protobuf::FileDescriptorSet PopulateDescriptorSet(
+      const google::protobuf::Descriptor& desc);
 
   // Serialize the contents of 'msg' into 'buf' along with additional metadata
   // to aid in deserialization.
@@ -419,6 +416,9 @@ class ReadablePBContainerFile {
 };
 
 // Convenience functions for protobuf containers holding just one record.
+
+/// Returns whether the file at path starts with the protobuf container magic.
+Result<bool> IsPBContainerFile(Env* env, const std::string& path);
 
 // Load a "containerized" protobuf from the given path.
 // If the file does not exist, returns STATUS(NotFound, ""). Otherwise, may

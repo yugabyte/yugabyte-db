@@ -63,6 +63,7 @@
 
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_cache_util.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
@@ -72,6 +73,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
@@ -122,6 +124,16 @@ class TserverXClusterContextIf;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
 
+// The active table list last accepted by SetActiveTableIdsForMetrics.
+struct ActiveTableIdsForMetrics {
+  // Null until the first list is accepted.
+  std::shared_ptr<const std::unordered_set<std::string>> table_ids;
+  // Version supplied by the caller with the list, zero if none.
+  uint32_t list_version = 0;
+  // Physical time in microseconds of the last accepted request, zero until then.
+  uint64_t last_update_time = 0;
+};
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
@@ -171,6 +183,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
+
+  Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> table_ids, uint32_t list_version) override;
+
+  // Returns the active table list last accepted by SetActiveTableIdsForMetrics.
+  ActiveTableIdsForMetrics GetActiveTableIdsForMetrics() const;
+
+  void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -339,6 +359,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
 
+  void SetYsqlDbLastPrefetchedCatalogVersion(
+      uint32_t db_oid, uint64_t catalog_version) EXCLUDES(lock_) override;
+
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
       StdStatusCallback callback) EXCLUDES(lock_) override;
@@ -398,6 +421,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerYSQLLeaseRefresh();
 
   /// Stops the ysql lease manager threads, which call back into the PG supervisor to restart or
   /// kill PG. Idempotent, also invoked by Shutdown.
@@ -522,7 +546,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
-  void SetCronLeaderLease(MonoTime cron_leader_lease_end);
+  void SetCronLeaseEnd(MonoTime lease_end);
+
+  void SetCronCanStartJobs(bool can_start);
 
   // Loads cluster_ysql_db_oldest_pinned_read_times_ in memory from the persisted pins file
   // on disk. Called on tserver startup to prevent accidental compaction before heartbeat.
@@ -602,6 +628,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
 
+  // A prefetch this node has cached for a database it has no shared memory slot for yet. A fill
+  // can complete before this node has learned the database exists, and failing to record it then
+  // is permanent rather than momentary: the response cache keeps the entry that fill left, every
+  // later connection is served from it, and SetYsqlDbLastPrefetchedCatalogVersion is only ever
+  // called from that cache's fill observer, so no fill records the key again. Held here until
+  // the slot arrives, bounded by the number of databases this tserver has yet to hear about.
+  std::unordered_map<uint32_t, uint64_t> ysql_db_pending_last_prefetched_ GUARDED_BY(lock_);
+
   // Cluster-wide per-database history retention pins, aggregated by the master across all live
   // tservers and refreshed when a heartbeat response advertises a ready cluster pin map.
   // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still
@@ -673,12 +707,17 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   ClusterConfig cluster_config_;
 
+  mutable std::mutex active_table_metrics_mutex_;
+  ActiveTableIdsForMetrics active_table_ids_for_metrics_ GUARDED_BY(active_table_metrics_mutex_);
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_last_update_time_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_table_count_;
+  scoped_refptr<AtomicGauge<uint64_t>> active_table_metrics_list_version_;
+
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
-  void InvalidatePgTableCache();
-  void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-                              const std::unordered_set<uint32_t>& db_oids_deleted);
+  void InvalidatePgTableCache(
+      const std::optional<PgTableCacheInvalidationFilter>& filter = std::nullopt);
 
   void ScheduleCheckLaggingCatalogVersions();
   Status CheckYsqlLaggingCatalogVersions();

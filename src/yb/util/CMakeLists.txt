@@ -111,6 +111,7 @@ set(UTIL_SRCS
   backoff_waiter.cc
   bitmap.cc
   bloom_filter.cc
+  byte_buffer.cc
   bytes_formatter.cc
   cache_metrics.cc
   cgroups.cc
@@ -223,6 +224,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  storage_tier.cc
   strand.cc
   string_case.cc
   string_trim.cc

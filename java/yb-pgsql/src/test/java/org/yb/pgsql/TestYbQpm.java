@@ -553,6 +553,49 @@ public class TestYbQpm extends BasePgSQLTest {
   }
 
   /**
+   * Validate that when reset punches a hole, the next slot evicted
+   * leaves the system in a consistent state even if the victim slot
+   * is not the hole itself.
+   */
+  @Test
+  public void testYbQpmClockLruEmptySlot() throws Exception {
+    int cacheSize = 8;
+
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_max_cache_size=" + cacheSize);
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_cache_replacement_algorithm=simple_clock_lru");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track=none");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track_catalog_queries=false");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL)");
+
+      String ts = "'2025-01-01 00:00:00+00'";
+      for (int planId = 1; planId <= cacheSize + 1; ++planId)
+        stmt.execute("SELECT yb_pg_stat_plans_insert(1, 1, 1, " + planId +
+            ", 'h', 'p', " + ts + ", " + ts + ", 1.0, 1.0)");
+
+      stmt.execute("SELECT yb_pg_stat_plans_reset(1, 1, 1, 3)");
+
+      for (int planId = cacheSize + 2; planId <= cacheSize + 3; ++planId)
+        stmt.execute("SELECT yb_pg_stat_plans_insert(1, 1, 1, " + planId +
+            ", 'h', 'p', " + ts + ", " + ts + ", 1.0, 1.0)");
+
+      checkCountStar(stmt, cacheSize);
+
+      try (ResultSet rs = stmt.executeQuery(
+          "SELECT COUNT(*) cnt FROM yb_pg_stat_plans " +
+          "WHERE dbid = 1 AND userid = 1 AND queryid = 1 AND planid = " +
+          (cacheSize + 3) + " /* __YB_STAT_PLANS_SKIP */")) {
+        assertTrue(rs.next());
+        assertEquals(rs.getLong("cnt"), 1);
+        assertFalse(rs.next());
+      }
+    }
+  }
+
+  /**
    * testYbQpmTrueLru
    *   (1) tests the true LRU replacement algorithm
    *   (2) checks 'calls', which is the number of times the plans are used
@@ -1388,7 +1431,7 @@ public class TestYbQpm extends BasePgSQLTest {
     List<QueryInfo> list = Arrays.asList(queryInfo);
     Collections.shuffle(list, randLocal);
 
-    QueryInfo[] shuffledQueryInfo = (QueryInfo[]) list.toArray();
+    QueryInfo[] shuffledQueryInfo = list.toArray(new QueryInfo[0]);
 
     return shuffledQueryInfo;
   }
@@ -1441,6 +1484,7 @@ public class TestYbQpm extends BasePgSQLTest {
                 executeStmts(shuffledQueryInfo, false, debug, null);
 
             } catch (Exception e) {
+                LOG.error("Stress thread " + threadId + " failed", e);
                 hitException = true;
             }
 

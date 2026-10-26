@@ -233,6 +233,16 @@ message SysTablesEntryPB {
 
   // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
   optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
+
+  // Marks a table known to have no custom tablespace.
+  message NoCustomTablespacePB {}
+
+  // Set at CREATE TABLE, then kept in sync with pg_class by the tablespace refresh; persisted
+  // because a HIDDEN table has no pg_class row. Neither set: not observed yet.
+  oneof tablespace {
+    bytes tablespace_id = 44;
+    NoCustomTablespacePB no_custom_tablespace = 45;
+  }
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -482,6 +492,16 @@ message SysXClusterConfigEntryPB {
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
   // Local NamespaceId -> xCluster info for that namespace.
   map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
+}
+
+// The data of the PERSISTENCE_BLOCK_MAP singleton.  Kept out of SysXClusterConfigEntryPB because
+// every change to that entry bumps its version, which makes every TServer reapply the producer
+// registry.
+message SysPersistenceBlockMapEntryPB {
+  // Bumped on every change to the map below, starts at 0.
+  required uint64 version = 1;
+
+  optional PersistenceBlockMapPB persistence_block_map = 2;
 }
 
 // The cluster-wide history retention pin for the ysql catalog tables, which live in the sys catalog

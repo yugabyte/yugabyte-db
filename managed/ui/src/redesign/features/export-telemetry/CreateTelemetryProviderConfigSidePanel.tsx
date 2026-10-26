@@ -1,9 +1,9 @@
-import { FC } from 'react';
+import { FC, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { useForm, FormProvider, useFieldArray } from 'react-hook-form';
-import { Box, Typography, MenuItem, Divider, IconButton } from '@material-ui/core';
+import { Box, Collapse, Typography, MenuItem, Divider, IconButton } from '@material-ui/core';
 import { CloseSharp } from '@material-ui/icons';
 import clsx from 'clsx';
 
@@ -16,7 +16,8 @@ import {
   YBSelect,
   YBTooltip,
   YBPasswordField,
-  YBButton
+  YBButton,
+  YBCheckboxField
 } from '../../components';
 import { YBDropZoneField } from '../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
 import { createErrorMessage } from '../universe/universe-form/utils/helpers';
@@ -27,10 +28,18 @@ import {
   ExportLogPayload,
   TelemetryProviderItem
 } from './types';
-import { DATADOG_SITES, LOKI_AUTH_TYPES, OTLP_AUTH_TYPES, OTLP_PROTOCOLS } from './constants';
+import {
+  DATADOG_SITES,
+  LOKI_AUTH_TYPES,
+  OTLP_AUTH_TYPES,
+  OTLP_PROTOCOLS,
+  S3_PARTITIONS,
+  S3_MARSHALERS
+} from './constants';
 import { headerItemsToRecord, headerRecordToItems } from './utils';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
 import InfoIcon from '../../assets/info-message.svg?img';
+import TriangleArrowDownIcon from '@app/redesign/assets/approved/triangle-arrow-down.svg';
 
 //RBAC
 import { RuntimeConfigKey } from '../../helpers/constants';
@@ -50,11 +59,9 @@ interface CreateTelemetryProviderConfigSidePanelProps {
 
 const TRANSLATION_KEY_PREFIX = 'exportTelemetry';
 
-export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderConfigSidePanelProps> = ({
-  open,
-  onClose,
-  formProps
-}) => {
+export const CreateTelemetryProviderConfigSidePanel: FC<
+  CreateTelemetryProviderConfigSidePanelProps
+> = ({ open, onClose, formProps }) => {
   const classes = useExportTelemetryStyles();
   const pillClasses = usePillStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -76,13 +83,16 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         }
       };
 
+  const [isS3AdvancedExpanded, setIsS3AdvancedExpanded] = useState(isViewMode);
+
   const formMethods = useForm<ExportLogFormFields>({
     defaultValues: formDefaultValues,
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
 
-  const { control, handleSubmit, watch, setValue, getValues, unregister, clearErrors } = formMethods;
+  const { control, handleSubmit, watch, setValue, getValues, unregister, clearErrors } =
+    formMethods;
   const {
     fields: headerFields,
     append: appendHeader,
@@ -120,13 +130,16 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs()
   );
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const runtimeConfigEntries = runtimeConfigQuery.data?.configEntries ?? [];
   const isLokiTelemetryEnabled =
     runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.LOKI_TELEMETRY_ALLOW)
-      ?.value ?? false;
+      ?.value === 'true';
   const isOtlpTelemetryEnabled =
     runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.OTLP_TELEMETRY_ALLOW)
-      ?.value ?? false;
+      ?.value === 'true';
+  const isS3TelemetryEnabled =
+    runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.S3_TELEMETRY_ALLOW)
+      ?.value === 'true';
 
   const handleFormSubmit = handleSubmit(async (values) => {
     try {
@@ -184,6 +197,22 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
       if (values.config.type === TelemetryProviderType.DYNATRACE) {
         payload.config.endpoint = values.config?.endpoint;
         payload.config.apiToken = values.config?.apiToken;
+      }
+      if (values.config.type === TelemetryProviderType.S3) {
+        payload.config.bucket = values.config?.bucket;
+        payload.config.region = values.config?.region;
+        payload.config.accessKey = values.config?.accessKey;
+        payload.config.secretKey = values.config?.secretKey;
+        payload.config.directoryPrefix = values.config?.directoryPrefix?.trim() || undefined;
+        payload.config.filePrefix = values.config?.filePrefix?.trim() || undefined;
+        payload.config.partition = values.config?.partition ?? 'minute';
+        payload.config.marshaler = values.config?.marshaler ?? 'OTLP_JSON';
+        payload.config.roleArn = values.config?.roleArn;
+        payload.config.endpoint = values.config?.endpoint;
+        payload.config.disableSSL = values.config?.disableSSL ?? false;
+        payload.config.forcePathStyle = values.config?.forcePathStyle ?? false;
+        payload.config.includeUniverseAndNodeInPrefix =
+          values.config?.includeUniverseAndNodeInPrefix ?? false;
       }
       if (values.config.type === TelemetryProviderType.OTLP) {
         payload.config.endpoint = values.config?.endpoint;
@@ -905,6 +934,297 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     );
   };
 
+  const renderS3Form = () => {
+    const partitionValue = watch('config.partition') ?? 'minute';
+    const marshalerValue = watch('config.marshaler') ?? 'OTLP_JSON';
+    return (
+      <>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+          <YBLabel>
+            {t('s3.bucket')} &nbsp;
+            <YBTooltip title={t('s3.bucketTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            rules={{ required: t('s3.validationFieldRequired') }}
+            name="config.bucket"
+            placeholder={t('s3.bucketPlaceholder')}
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'S3Form-Bucket'
+            }}
+          />
+        </Box>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+          <YBLabel>
+            {t('s3.region')} &nbsp;
+            <YBTooltip title={t('s3.regionTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            rules={{ required: t('s3.validationFieldRequired') }}
+            name="config.region"
+            placeholder={t('s3.regionPlaceholder')}
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'S3Form-Region'
+            }}
+          />
+        </Box>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+          <YBLabel>
+            {t('s3.accessKey')} &nbsp;
+            <YBTooltip title={t('s3.accessKeyTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            rules={{ required: t('s3.validationFieldRequired') }}
+            name="config.accessKey"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'S3Form-AccessKey'
+            }}
+          />
+        </Box>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+          <YBLabel>
+            {t('s3.secretKey')} &nbsp;
+            <YBTooltip title={t('s3.secretKeyTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBPasswordField
+            control={control}
+            rules={{ required: t('s3.validationFieldRequired') }}
+            name="config.secretKey"
+            fullWidth
+            disabled={isViewMode}
+            hidePasswordButton={isViewMode}
+            inputProps={{
+              'data-testid': 'S3Form-SecretKey'
+            }}
+          />
+        </Box>
+        <Box className={classes.advancedSectionContainer} mt={3}>
+          <button
+            type="button"
+            className={classes.advancedToggle}
+            onClick={() => setIsS3AdvancedExpanded((isExpanded) => !isExpanded)}
+            data-testid="S3Form-AdvancedToggle"
+          >
+            <span
+              className={clsx(
+                classes.advancedToggleIcon,
+                !isS3AdvancedExpanded && classes.advancedToggleIconCollapsed
+              )}
+            >
+              <TriangleArrowDownIcon width={24} height={24} />
+            </span>
+            <Typography className={classes.advancedToggleLabel}>{t('s3.advanced')}</Typography>
+          </button>
+          <Collapse in={isS3AdvancedExpanded}>
+            <Box className={classes.advancedSection}>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.directoryPrefix')} &nbsp;
+                  <YBTooltip title={t('s3.directoryPrefixTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.directoryPrefix"
+                  placeholder={t('s3.directoryPrefixPlaceholder')}
+                  fullWidth
+                  disabled={isViewMode}
+                  inputProps={{
+                    'data-testid': 'S3Form-DirectoryPrefix'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.filePrefix')} &nbsp;
+                  <YBTooltip title={t('s3.filePrefixTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.filePrefix"
+                  placeholder={t('s3.filePrefixPlaceholder')}
+                  fullWidth
+                  disabled={isViewMode}
+                  inputProps={{
+                    'data-testid': 'S3Form-FilePrefix'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.partition')} &nbsp;
+                  <YBTooltip title={t('s3.partitionTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBSelect
+                  fullWidth
+                  value={partitionValue}
+                  onChange={(e) =>
+                    setValue('config.partition', e.target.value as 'hour' | 'minute')
+                  }
+                  disabled={isViewMode}
+                  inputProps={{
+                    'data-testid': 'S3Form-Partition'
+                  }}
+                >
+                  {S3_PARTITIONS.map((item) => (
+                    <MenuItem
+                      key={item.value}
+                      value={item.value}
+                      data-testid={`S3Form-Partition-${item.value}`}
+                    >
+                      {t(`s3.${item.labelKey}`)}
+                    </MenuItem>
+                  ))}
+                </YBSelect>
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.marshaler')} &nbsp;
+                  <YBTooltip title={t('s3.marshalerTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBSelect
+                  fullWidth
+                  value={marshalerValue}
+                  onChange={(e) =>
+                    setValue('config.marshaler', e.target.value as 'OTLP_JSON' | 'SUMO_IC')
+                  }
+                  disabled={isViewMode}
+                  inputProps={{
+                    'data-testid': 'S3Form-Marshaler'
+                  }}
+                >
+                  {S3_MARSHALERS.map((item) => (
+                    <MenuItem
+                      key={item.value}
+                      value={item.value}
+                      data-testid={`S3Form-Marshaler-${item.value}`}
+                    >
+                      {t(`s3.${item.labelKey}`)}
+                    </MenuItem>
+                  ))}
+                </YBSelect>
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.roleArn')} &nbsp;
+                  <YBTooltip title={t('s3.roleArnTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.roleArn"
+                  placeholder={t('s3.roleArnPlaceholder')}
+                  fullWidth
+                  disabled={isViewMode}
+                  inputProps={{
+                    'data-testid': 'S3Form-RoleArn'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBLabel>
+                  {t('s3.endpoint')} &nbsp;
+                  <YBTooltip title={t('s3.endpointTooltip')}>
+                    <img src={InfoIcon} />
+                  </YBTooltip>
+                </YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.endpoint"
+                  placeholder={t('s3.endpointPlaceholder')}
+                  fullWidth
+                  disabled={isViewMode}
+                  shouldUnregister
+                  inputProps={{
+                    'data-testid': 'S3Form-Endpoint'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+                <YBCheckboxField
+                  control={control}
+                  name="config.disableSSL"
+                  disabled={isViewMode}
+                  label={
+                    <>
+                      {t('s3.disableSSL')} &nbsp;
+                      <YBTooltip title={t('s3.disableSSLTooltip')}>
+                        <img src={InfoIcon} />
+                      </YBTooltip>
+                    </>
+                  }
+                  inputProps={{
+                    'data-testid': 'S3Form-DisableSSL'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={1}>
+                <YBCheckboxField
+                  control={control}
+                  name="config.forcePathStyle"
+                  disabled={isViewMode}
+                  label={
+                    <>
+                      {t('s3.forcePathStyle')} &nbsp;
+                      <YBTooltip title={t('s3.forcePathStyleTooltip')}>
+                        <img src={InfoIcon} />
+                      </YBTooltip>
+                    </>
+                  }
+                  inputProps={{
+                    'data-testid': 'S3Form-ForcePathStyle'
+                  }}
+                />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={1}>
+                <YBCheckboxField
+                  control={control}
+                  name="config.includeUniverseAndNodeInPrefix"
+                  disabled={isViewMode}
+                  label={
+                    <>
+                      {t('s3.includeUniverseAndNodeInPrefix')} &nbsp;
+                      <YBTooltip title={t('s3.includeUniverseAndNodeInPrefixTooltip')}>
+                        <img src={InfoIcon} />
+                      </YBTooltip>
+                    </>
+                  }
+                  inputProps={{
+                    'data-testid': 'S3Form-IncludeUniverseAndNodeInPrefix'
+                  }}
+                />
+              </Box>
+            </Box>
+          </Collapse>
+        </Box>
+      </>
+    );
+  };
+
   const canCreateTelemetryProvider = hasNecessaryPerm(ApiPermissionMap.CREATE_TELEMETRY_PROVIDER);
 
   const TELEMETRY_PROVIDER_OPTIONS = [
@@ -951,6 +1271,19 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </div>
       ),
       value: TelemetryProviderType.AWS_CLOUDWATCH
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.s3')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.S3
     },
     {
       label: (
@@ -1009,7 +1342,18 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
       ),
       value: TelemetryProviderType.OTLP
     }
-  ];
+  ].filter((option) => {
+    if (isViewMode) {
+      return true;
+    }
+    if (option.value === TelemetryProviderType.S3) {
+      return isS3TelemetryEnabled;
+    }
+    if (option.value === TelemetryProviderType.LOKI) {
+      return isLokiTelemetryEnabled;
+    }
+    return true;
+  });
   return (
     <YBSidePanel
       open={open}
@@ -1071,9 +1415,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             {providerTypeValue === TelemetryProviderType.GCP_CLOUD_MONITORING &&
               renderGCPCloudForm()}
             {providerTypeValue === TelemetryProviderType.LOKI &&
-              isLokiTelemetryEnabled &&
+              (isLokiTelemetryEnabled || isViewMode) &&
               renderLokiForm()}
             {providerTypeValue === TelemetryProviderType.DYNATRACE && renderDynatraceForm()}
+            {providerTypeValue === TelemetryProviderType.S3 &&
+              (isS3TelemetryEnabled || isViewMode) &&
+              renderS3Form()}
             {providerTypeValue === TelemetryProviderType.OTLP &&
               (isOtlpTelemetryEnabled || isViewMode) &&
               renderOtlpForm()}
