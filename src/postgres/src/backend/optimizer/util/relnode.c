@@ -2072,9 +2072,15 @@ get_appendrel_parampathinfo(RelOptInfo *appendrel, Relids required_outer)
 	Assert(!bms_overlap(appendrel->relids, required_outer));
 
 	/* If we already have a PPI for this parameterization, just return it */
-	/* YB: an unbatched one; create_append_path can add batched ones */
-	if ((ppi = yb_find_batched_param_path_info(appendrel, required_outer,
-											   NULL)))
+	/*
+	 * YB: Under the cost-based optimizer, only an unbatched one, as built
+	 * below.  get_baserel_parampathinfo and get_joinrel_parampathinfo can
+	 * add batched ones to appendrel->ppilist.
+	 */
+	if ((ppi = (yb_enable_base_scans_cost_model ?
+				yb_find_batched_param_path_info(appendrel, required_outer,
+												NULL) :
+				find_param_path_info(appendrel, required_outer))))
 		return ppi;
 
 	/* Else build the ParamPathInfo */
