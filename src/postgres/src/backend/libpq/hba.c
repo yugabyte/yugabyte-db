@@ -2944,7 +2944,12 @@ check_ident_usermap(IdentLine *identLine, const char *usermap_name,
 		return;
 
 	/* Get the target role's OID.  Note we do not error out for bad role. */
-	roleid = get_role_oid(pg_user, true);
+	/*
+	 * YB: YCQL reaches here via ybgate in multi-threaded mode, where catalog
+	 * lookups raise an error. The OID only serves "+group" membership checks,
+	 * which is_member() treats as no match when the OID is invalid.
+	 */
+	roleid = IsMultiThreadedMode() ? InvalidOid : get_role_oid(pg_user, true);
 
 	/* Match? */
 	if (token_has_regexp(identLine->system_user))
