@@ -989,27 +989,28 @@ auto MakeExcludeFromCompactionFunction(const F& f) {
   return std::make_shared<rocksdb::CompactionFileExcluder>(f);
 }
 
+// Largest op index whose rows are all flushed. The flushed frontier alone could overstate it: a
+// single apply op id may span both a flushed and an unflushed batch of a large transaction. So it
+// is clamped to one below the smallest op id that is still only in memory.
+int64_t LargestFlushedOpIndex(const storage::FrontierInfo& frontiers) {
+  int64_t result = std::numeric_limits<int64_t>::min();
+  if (frontiers.flushed) {
+    result = down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id().index;
+  }
+  if (frontiers.in_memory.smallest) {
+    result = std::min(result, down_cast<const docdb::ConsensusFrontier&>(
+        *frontiers.in_memory.smallest).op_id().index - 1);
+  }
+  return result;
+}
+
 struct Tablet::IntentsDbFlushFilterState {
   VectorIndexList vector_indexes;
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(
-      const storage::UserFrontierPtr& flushed_frontier,
-      const storage::UserFrontierPtr& smallest_mem_frontier) {
-    int64_t flushed_index = std::numeric_limits<int64_t>::min();
-    if (flushed_frontier) {
-      flushed_index = static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier).op_id().index;
-    }
-    // The flushed frontier alone could overstate what is durable: a single apply op id may span
-    // both a flushed and an unflushed batch of a large transaction. So clamp the largest flushed
-    // index to one below the smallest op id that is still only in memory.
-    if (smallest_mem_frontier) {
-      auto mem_index =
-          static_cast<const docdb::ConsensusFrontier&>(*smallest_mem_frontier).op_id().index;
-      flushed_index = std::min(flushed_index, mem_index - 1);
-    }
-    largest_flushed_index.push_back(flushed_index);
+  void AddLargestFlushedIndex(const storage::FrontierInfo& frontiers) {
+    largest_flushed_index.push_back(LargestFlushedOpIndex(frontiers));
   }
 
   bool HasNewData(int64_t memtable_op_index) const {
@@ -1058,14 +1059,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       // flushed.
       const storage::FrontierKinds frontier_kinds{
           storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
-      auto regular_frontiers = regular_db_->GetFrontiers(frontier_kinds);
-      state->AddLargestFlushedIndex(
-          regular_frontiers.flushed, regular_frontiers.in_memory.smallest);
+      state->AddLargestFlushedIndex(regular_db_->GetFrontiers(frontier_kinds));
       if (state->vector_indexes) {
         for (const auto& vector_index : *state->vector_indexes) {
-          auto vector_frontiers = vector_index->GetFrontiers(frontier_kinds);
-          state->AddLargestFlushedIndex(
-              vector_frontiers.flushed, vector_frontiers.in_memory.smallest);
+          state->AddLargestFlushedIndex(vector_index->GetFrontiers(frontier_kinds));
         }
       }
       VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -4681,41 +4678,32 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
   // ungraceful restart, while the regular DB keeps them (GH#34699).
   //
   // Read after 'regular_op_id': rows of an operation covered by it were registered in the index
-  // while its regular DB write was applied. A registered row reaches the in-memory frontier only
-  // once its insert task completes, so an index without that frontier may still hold rows, which
-  // its flush ability reports.
+  // while its regular DB write was applied, so the flush ability reports them even before their
+  // insert tasks complete and reach the in-memory frontier. Such rows belong to chunks after the
+  // flushed one, so the flushed OpId bounds them.
   auto new_intents_op_id = regular_op_id;
   if (auto vector_indexes = vector_indexes_->List()) {
     const storage::FrontierKinds frontier_kinds{
         storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
     for (const auto& vector_index : *vector_indexes) {
       auto frontiers = vector_index->GetFrontiers(frontier_kinds);
-      if (!frontiers.in_memory.smallest) {
-        if (vector_index->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData) {
-          continue;
-        }
-        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
-                            << vector_index->ToString() << " has inserts in progress";
-        return Status::OK();
+      if (vector_index->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData) {
+        continue;
       }
-      auto mem_index = down_cast<const docdb::ConsensusFrontier&>(
-          *frontiers.in_memory.smallest).op_id().index;
+      // A clamped index has no term, so only the flushed OpId itself can bound the advance.
       if (!frontiers.flushed) {
         VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
                             << vector_index->ToString() << " was never flushed";
         return Status::OK();
       }
-      auto vector_index_op_id =
-          down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id();
-      // The flushed frontier can reach an op whose rows are still partly in memory, when a large
-      // transaction apply spans both. The term of the op below it is unknown, so do not advance.
-      if (vector_index_op_id.index >= mem_index) {
+      auto flushed_op_id = down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id();
+      if (LargestFlushedOpIndex(frontiers) < flushed_op_id.index) {
         VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
-                            << vector_index->ToString() << " flushed " << vector_index_op_id
-                            << " with op index " << mem_index << " still in memory";
+                            << vector_index->ToString() << " flushed " << flushed_op_id
+                            << " with rows of that op still in memory";
         return Status::OK();
       }
-      new_intents_op_id = std::min(new_intents_op_id, vector_index_op_id);
+      new_intents_op_id = std::min(new_intents_op_id, flushed_op_id);
     }
   }
 
