@@ -17890,6 +17890,17 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	}
 
 	/*
+	 * The statement already picked its read time under the old value, e.g. a
+	 * function SET clause in an autocommit SELECT. PGC_S_TEST only validates
+	 * a stored value, as in CREATE FUNCTION ... SET or ALTER ROLE ... SET.
+	 */
+	if (source != PGC_S_TEST && FirstSnapshotSet)
+	{
+		GUC_check_errdetail("Cannot be set after the first query of a txn.");
+		return false;
+	}
+
+	/*
 	 * If YSQL Connection Manager is enabled, make the connection sticky
 	 * for any variables that can only be set outside the context of an
 	 * explicit transaction block.

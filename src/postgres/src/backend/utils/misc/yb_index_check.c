@@ -255,7 +255,7 @@ yb_index_check(PG_FUNCTION_ARGS)
 {
 	Oid			indexoid = PG_GETARG_OID(0);
 	bool		multi_snapshot_mode = !PG_GETARG_BOOL(1);
-	int			savedGUCLevel = -1;
+	int			saved_visibility = yb_read_after_commit_visibility;
 	int			log_num_errors = PG_GETARG_INT32(2);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext per_query_ctx;
@@ -332,14 +332,13 @@ yb_index_check(PG_FUNCTION_ARGS)
 						"errors when executed from within a transaction "
 						"block.")));
 
+	/*
+	 * Set the variable rather than the GUC: the GUC refuses a change after the
+	 * statement's first snapshot, which a user function's SET clause must not
+	 * bypass. Each batch here takes a new snapshot, so relaxed mode applies.
+	 */
 	if (!is_txn_block)
-	{
-		savedGUCLevel = NewGUCNestLevel();
-
-		(void) set_config_option("yb_read_after_commit_visibility", "relaxed",
-								 PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE,
-								 true, 0, false);
-	}
+		yb_read_after_commit_visibility = YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY;
 
 	/*
 	 * Check every leaf index. do_index_check() releases the locks on the leaves
@@ -349,26 +348,31 @@ yb_index_check(PG_FUNCTION_ARGS)
 	ListCell   *lc;
 	bool		aborted = false;
 
-	foreach(lc, leaf_indexes)
+	PG_TRY();
 	{
-		Oid			leaf_indexoid = lfirst_oid(lc);
-
-		if (!aborted)
+		foreach(lc, leaf_indexes)
 		{
-			do_index_check(leaf_indexoid, multi_snapshot_mode, &log_store);
-			aborted = should_abort_execution(&log_store);
-		}
-		else
-		{
-			Oid			baserelid = IndexGetRelation(leaf_indexoid, false);
+			Oid			leaf_indexoid = lfirst_oid(lc);
 
-			UnlockRelationOid(leaf_indexoid, AccessShareLock);
-			UnlockRelationOid(baserelid, AccessShareLock);
+			if (!aborted)
+			{
+				do_index_check(leaf_indexoid, multi_snapshot_mode, &log_store);
+				aborted = should_abort_execution(&log_store);
+			}
+			else
+			{
+				Oid			baserelid = IndexGetRelation(leaf_indexoid, false);
+
+				UnlockRelationOid(leaf_indexoid, AccessShareLock);
+				UnlockRelationOid(baserelid, AccessShareLock);
+			}
 		}
 	}
-
-	if (!is_txn_block)
-		AtEOXact_GUC(false, savedGUCLevel);
+	PG_FINALLY();
+	{
+		yb_read_after_commit_visibility = saved_visibility;
+	}
+	PG_END_TRY();
 
 	/*
 	 * yb_index_check() uses multiple snapshots in multi_snapshot_mode. Verify

@@ -1026,6 +1026,40 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   }
 }
 
+// #35522: a statement picks its read time once, under the mode in effect when
+// it starts. A function SET clause that changes the mode afterwards would let
+// the function's writes run under strict mode on that relaxed read time.
+//
+// Scenario: under relaxed mode, an autocommit SELECT calls a function that
+// switches to strict mode, by its SET clause or by a SET statement after a
+// read, and inserts a row. Each call must fail when the switch applies, and no
+// row is inserted. check_function_bodies is off because CREATE FUNCTION
+// applies the SET clause to validate the body.
+TEST_F(PgReadTimeTest, ReadAfterCommitVisibilityFixedForTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("SET check_function_bodies = off"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_set_clause(v INT) RETURNS INT "
+      "LANGUAGE plpgsql SET yb_read_after_commit_visibility = strict AS "
+      "$$BEGIN INSERT INTO t VALUES (v); RETURN v; END$$"));
+  ASSERT_OK(conn.Execute("RESET check_function_bodies"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION insert_row_set_statement(v INT) RETURNS INT "
+      "LANGUAGE plpgsql AS "
+      "$$BEGIN PERFORM count(*) FROM t; "
+      "SET yb_read_after_commit_visibility = strict; "
+      "INSERT INTO t VALUES (v); RETURN v; END$$"));
+
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = relaxed"));
+  for (const auto* call :
+       {"SELECT insert_row_set_clause(1)", "SELECT insert_row_set_statement(2)"}) {
+    SCOPED_TRACE(call);
+    ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), "after the first query");
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
+}
+
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET DEFAULT_TRANSACTION_ISOLATION TO \"REPEATABLE READ\""));
@@ -2118,37 +2152,6 @@ TEST_P(PgClampDeferReadTest, PrecedesEnsureReadTime) {
       ASSERT_OK(conn.Fetch("SELECT count(*) FROM t"));
     });
   }
-}
-
-TEST_P(PgClampDeferReadTest, DoesNotApplyIfReadTimeIsAlreadyPicked) {
-  if (isolation() != IsolationLevel::SNAPSHOT_ISOLATION) {
-    return;
-  }
-  auto setup = ASSERT_RESULT(Connect());
-  ASSERT_OK(setup.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(setup.ExecuteFormat(
-      "INSERT INTO t SELECT i, 0 FROM generate_series(1, $0) i", kSeedRows));
-
-  auto reader = ASSERT_RESULT(Connect());
-  ASSERT_NO_FATALS(SetSessionIsolation(&reader));
-  ASSERT_OK(reader.Execute("SET yb_max_query_layer_retries = 60"));
-  ASSERT_OK(reader.ExecuteFormat(
-      "CREATE FUNCTION clamp_after_read_time() RETURNS bigint AS "
-      "'BEGIN"
-      "   PERFORM count(*) FROM t WHERE k <= $0;"
-      "   SET yb_read_after_commit_visibility = relaxed;"
-      "   RETURN (SELECT count(*) FROM t WHERE k <= $0);"
-      " END' LANGUAGE plpgsql", kSeedRows));
-
-  TestThreadHolder threads;
-  StartConcurrentInserts(&threads, "t", kWriterStartKey);
-
-  RunFor(10s * kTimeMultiplier, [&reader] {
-    ASSERT_OK(reader.Execute("SET yb_read_after_commit_visibility = strict"));
-    ASSERT_EQ(
-        ASSERT_RESULT(reader.FetchRow<PGUint64>("SELECT clamp_after_read_time()")), kSeedRows);
-  });
-  threads.Stop();
 }
 
 } // namespace yb::pgwrapper
