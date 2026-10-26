@@ -403,14 +403,15 @@ reset yb_enable_cbo;
 
 -- The other direction: the hint selects a scan type the session disables.
 -- The hint lifts the session's setting only while the relation's paths are
--- generated, but the scan copy costed for the pushed-down aggregate keeps the
--- hinted path's cost, without disable_cost, so the plan check reports
--- nothing.  One case for each scan type the copy is costed for (#35083).
+-- generated, but the scan copy costed for the pushed-down aggregate stays
+-- enabled like the hinted path, so the plan check reports nothing.  One case
+-- for each scan type the copy is costed for (#35083).
 set yb_enable_cbo = on;
 set enable_seqscan = off;
 /*+ SeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 reset enable_seqscan;
 set enable_indexscan = off;
+/*+ IndexScan(tab t2_a2_idx) */ explain (hints on, costs off) select count(*) from t2 tab where a2=1;
 /*+ IndexOnlyScan(tab t2_a2_idx) */ explain (hints on, costs off) select count(*) from t2 tab where a2=1;
 reset enable_indexscan;
 set enable_bitmapscan = off;
