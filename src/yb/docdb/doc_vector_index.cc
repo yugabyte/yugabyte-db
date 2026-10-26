@@ -142,9 +142,16 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
           block_cache, hnsw_options, mem_tracker);
-    case HnswBackend::YB_HNSW_HNSWLIB:
+    case HnswBackend::YB_HNSW_HNSWLIB: {
+      vector_index::VectorTenantExtractor tenant_extractor;
+      if (options.tenant_key_components()) {
+        tenant_extractor = [](Slice payload) -> Result<Slice> {
+          return VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload)).tenant;
+        };
+      }
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, mem_tracker);
+          block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
+    }
     case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
     case HnswBackend::DEPRECATED_HNSWLIB:
       break;
@@ -214,7 +221,7 @@ void VectorToYSQL(const Vector& vector, ValueBuffer* out) {
 
 template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
-    const DocVectorIndexInsertEntry& entry, bool store_payload) {
+    const DocVectorIndexInsertEntry& entry, bool store_payload, size_t tenant_key_components) {
 
   RSTATUS_DCHECK(!entry.value.empty(), InvalidArgument, "Vector value is not specified");
   RSTATUS_DCHECK(
@@ -227,12 +234,19 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   }
   ValueBuffer payload;
   if (store_payload) {
+    auto tenant_prefix_size = VERIFY_RESULT(dockv::DocVectorTenantPrefixSize(
+        entry.ybctid.AsSlice(), tenant_key_components));
+    // Master caps tenant_key_components by the number of key components of the table.
+    SCHECK(
+        tenant_prefix_size, Corruption,
+        Format("Ybctid $0 has fewer than $1 key components",
+               entry.ybctid.AsSlice().ToDebugHexString(), tenant_key_components));
     if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
       // Sorts after every key of the row.
       dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
-      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), *tenant_prefix_size);
     } else {
-      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice());
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), *tenant_prefix_size);
     }
   }
   return vector_index::VectorLSMInsertEntry<Vector> {
@@ -458,7 +472,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     if (!FLAGS_TEST_vector_index_skip_insert) {
       lsm_entries.reserve(entries.size());
       for (const auto& entry : entries) {
-        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(entry, StoresPayload())));
+        lsm_entries.push_back(VERIFY_RESULT(ConvertEntry<Vector>(
+            entry, StoresPayload(), options_.tenant_key_components())));
       }
     }
     vector_index::VectorLSMInsertContext context {
@@ -484,7 +499,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), VERIFY_RESULT(LsmSearchOptions(options))));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
@@ -648,6 +663,29 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
+  }
+
+  // Replaces the query tenant in options with the tenant of the index, see
+  // PgVectorReadOptionsPB::tenant.
+  Result<vector_index::SearchOptions> LsmSearchOptions(vector_index::SearchOptions options) const {
+    const auto num_key_components = options_.tenant_key_components();
+    if (!num_key_components) {
+      options.tenant = Slice();
+      return options;
+    }
+    // The query tenant could have more key components than the tenants of the index.
+    std::optional<size_t> tenant_size;
+    if (!options.tenant.empty()) {
+      tenant_size = VERIFY_RESULT(
+          dockv::DocVectorTenantPrefixSize(options.tenant, num_key_components));
+    }
+    SCHECK(
+        tenant_size, InvalidArgument,
+        Format("Search of a vector index with tenants needs equality conditions with a single "
+               "value on the first $0 primary key components, all hash columns counting as one",
+               num_key_components));
+    options.tenant = options.tenant.Prefix(*tenant_size);
+    return options;
   }
 
   // Detects whether a new split occurred. If so, records the new split generation and

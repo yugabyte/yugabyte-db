@@ -883,8 +883,11 @@ std::string DocDbStatsToString(const DocDBStatistics* doc_db_stats) {
   return ss.str();
 }
 
-// Returns the keys of the rows with intents visible at the read time, in key order.
-Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData& data) {
+// Returns the keys of the rows of tenant with intents visible at the read time, in key order.
+// Postgres does not push the tenant equalities of an index with tenants down, see
+// PgVectorReadOptionsPB::tenant, so the filter of the request lets the rows of other tenants pass.
+Result<std::vector<std::string>> ReadIntentRowKeys(
+    const PgsqlReadOperationData& data, Slice tenant) {
   std::unique_ptr<YQLRowwiseIteratorIf> iterator_holder;
   FilteringIterator iterator(&iterator_holder);
   auto projection = CreateProjection(data.doc_read_context.schema(), data.request);
@@ -896,7 +899,10 @@ Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData&
   dockv::PgTableRow row(projection);
   // TODO(vector_index) Use limit during prefetch.
   while (VERIFY_RESULT(iterator_impl.PgFetchNext(&row))) {
-    result.push_back(iterator_impl.GetTupleId().ToBuffer());
+    auto key = iterator_impl.GetTupleId();
+    if (key.starts_with(tenant)) {
+      result.push_back(key.ToBuffer());
+    }
   }
   return result;
 }
@@ -2844,7 +2850,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   Slice vector_slice(options.vector().binary_value());
   size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
-  auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_));
+  auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_, options.tenant()));
   table_iter_.reset();
   PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_, intent_keys);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
@@ -2870,6 +2876,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .max_num_results = max_results,
         .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
+        .tenant = options.tenant(),
       },
       could_have_missing_entries,
       *reverse_mapping_reader
