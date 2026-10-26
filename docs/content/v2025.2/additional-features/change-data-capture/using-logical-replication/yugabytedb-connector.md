@@ -75,7 +75,7 @@ For example, `dz.2.5.2.yb.2025.2.3` is connector patch 3 for the v2025.2 series,
 
 A connector release supports every YugabyteDB release in the release series it was built for, and all earlier releases, but *not later release series*. For example, connector release `dz.2.5.2.yb.2026.1.2.0.1` supports YugabyteDB v2025.2 and earlier, and every v2026.1 release (including those after v2026.1.2.0), but not v2026.2 or later.
 
-You don't need to match the connector to your YugabyteDB release, and not every YugabyteDB release has a matching connector release. Upgrade the connector before you upgrade YugabyteDB to a release series later than the one the connector was built for, or when a later connector release has a fix or feature you need. For more information, see [Upgrade the connector](/stable/additional-features/change-data-capture/using-logical-replication/upgrade-connector/).
+Because connectors are backward compatible with YugabyteDB releases, you don't need to match the connector to the database release; use the latest stable connector release regardless of the YugabyteDB version you are running. If a connector release for a particular YugabyteDB version is not available, use the latest released connector.
 
 ## How the connector works
 
