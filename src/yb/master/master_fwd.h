@@ -85,6 +85,7 @@ class RetrySpecificTSRpcTask;
 class RetrySpecificTSRpcTaskWithTable;
 class SnapshotCoordinatorContext;
 class SnapshotState;
+class SysCatalogContext;
 class SysCatalogTable;
 class SysCatalogWriter;
 class SysConfigInfo;

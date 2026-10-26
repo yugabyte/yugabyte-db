@@ -7,17 +7,24 @@ C++ master. Until then the branch builds both: the C++ `yb-master` and the Rust 
 The sys-catalog tablet (Raft, WAL, DocDB) stays the shared C++ engine, hosted by
 `src/yb/master_host/`. Rust owns the master logic above it.
 
+In layer 1 the Rust master is a follower only. It joins a quorum of C++ masters, on an existing
+master's data or by remote bootstrap from shell mode, applies everything they replicate, and
+answers the RPCs a C++ follower answers. It never leads: it does not start elections and steps
+down if it wins one.
+
 | Doc | Covers |
 |---|---|
 | [cpp-host.md](cpp-host.md) | The master's C++ host and its bridges |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
 
-Shared Rust pieces (build, bridges, protobuf) are documented in [src/rust/docs](../../docs/README.md).
+Shared Rust pieces (build, bridges, protobuf, flags) are documented in
+[src/rust/docs](../../docs/README.md).
 
 ## Crates
 
 | Crate | Owns |
 |---|---|
-| `master` | The static library `yb-master-rs` links; `run_master` |
+| `master` | The static library `yb-master-rs` links: flag registration, runtime, wiring |
+| `master-rpc-handlers` | Master RPC handlers; layer 1: follower-servable methods, `NOT_THE_LEADER` |
 | `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` (layer 1: parse and re-serialize) |
 | `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |

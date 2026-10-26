@@ -3184,18 +3184,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::unique_ptr<rocksdb::DB>> RestoreSnapshotToTmpRocksDb(
       tablet::Tablet* tablet, const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
-  Status RestoreSysCatalogCommon(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
-    std::reference_wrapper<const ScopedRWOperation> pending_op,
-    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
-    docdb::KeyValuePairPB* restore_kv);
-
-  Status RestoreSysCatalogSlowPitr(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
-
-  Status RestoreSysCatalogFastPitr(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
-
   Status RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
       Status* complete_status) override;

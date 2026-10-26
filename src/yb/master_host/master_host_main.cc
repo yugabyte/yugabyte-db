@@ -34,6 +34,8 @@ namespace yb::master_host {
 
 static int MasterHostMain(int argc, char** argv) {
   master::SetMasterFlagDefaults();
+  // Flags declared in Rust must be registered before gflags parses the command line.
+  master_rs::register_flags();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       master::MasterOptions::kServerType, /*is_master=*/true, &argc, &argv));
   return master_rs::run_master();

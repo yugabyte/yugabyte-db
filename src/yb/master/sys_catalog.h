@@ -48,6 +48,7 @@
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_context.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -125,7 +126,7 @@ class SysCatalogTable {
   // the consensus configuration's progress, any long running tasks (e.g., scanning
   // tablets) should be performed asynchronously (by, e.g., submitting
   // them to a to a separate threadpool).
-  SysCatalogTable(Master* master, MetricRegistry* metrics);
+  SysCatalogTable(SysCatalogContext* context, MetricRegistry* metrics);
 
   ~SysCatalogTable();
 
@@ -214,6 +215,12 @@ class SysCatalogTable {
 
   // Create a new tablet peer with information from the metadata
   void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
+
+  // Opens the tablet after a remote bootstrap. Used by CatalogManager and by the Rust master's host
+  // (src/yb/master_host), which runs the same remote-bootstrap steps.
+  Status OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
+
+  std::string tablet_id() const;
 
   // Update the in-memory master addresses. Report missing uuid's in the
   // config when check_missing_uuids is set to true.
@@ -402,14 +409,10 @@ class SysCatalogTable {
 
   Status SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
-  Status OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
-
   // Use the master options to generate a new consensus configuration.
   // In addition, resolve all UUIDs of this consensus configuration.
   Status SetupConfig(const MasterOptions& options,
                      consensus::RaftConfigPB* committed_config);
-
-  std::string tablet_id() const;
 
   // Conventional "T xxx P xxxx..." prefix for logging.
   std::string LogPrefix() const;
@@ -505,7 +508,7 @@ class SysCatalogTable {
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
-  Master* master_;
+  SysCatalogContext* const context_;
 
   ElectedLeaderCallback leader_cb_;
 

@@ -545,7 +545,8 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags, size_t index)
 }  // anonymous namespace
 
 Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
-    const std::string& peer_addrs, uint16_t rpc_port, bool shell_mode) {
+    const std::string& peer_addrs, uint16_t rpc_port, bool shell_mode,
+    const std::string& exe_override) {
   if (rpc_port == 0) {
     rpc_port = AllocateFreePort();
   }
@@ -555,7 +556,7 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
             << " to start a new external mini-cluster master with index " << add_new_master_at_;
 
   string addr = MasterAddressForPort(rpc_port);
-  string exe = GetBinaryPath(GetMasterBinaryName());
+  string exe = exe_override.empty() ? GetBinaryPath(GetMasterBinaryName()) : exe_override;
 
   vector<string> flags = opts_.extra_master_flags;
   // Disable WAL fsync for tests
@@ -612,8 +613,8 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   return master;
 }
 
-Result<ExternalMasterPtr> ExternalMiniCluster::StartShellMaster() {
-  return StartMaster(/*peer_addrs=*/"", /*rpc_port=*/0, /*shell_mode=*/true);
+Result<ExternalMasterPtr> ExternalMiniCluster::StartShellMaster(const std::string& exe) {
+  return StartMaster(/*peer_addrs=*/"", /*rpc_port=*/0, /*shell_mode=*/true, exe);
 }
 
 std::string ExternalMiniCluster::MasterAddressForPort(uint16_t port) const {

@@ -16,6 +16,7 @@
 //! than on the cxx bridges, so `cargo test -p <crate>` runs without linking any C++. The in-memory fakes
 //! next to each trait are what those tests use.
 
+pub mod rpc;
 pub mod status;
 
 pub use status::{Status, StatusCode};

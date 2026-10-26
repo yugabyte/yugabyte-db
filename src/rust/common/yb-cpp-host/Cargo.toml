@@ -9,8 +9,10 @@ publish.workspace = true
 
 [dependencies]
 cxx.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+yb-flags.workspace = true
 yb-host-api.workspace = true
 
 [lints]

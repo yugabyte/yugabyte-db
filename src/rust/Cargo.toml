@@ -17,10 +17,12 @@
 resolver = "3"
 members = [
     "common/yb-cpp-host",
+    "common/yb-flags",
     "common/yb-host-api",
     "common/yb-proto",
     "master/catalog-entity",
     "master/master",
+    "master/rpc-handlers",
     "master/tools/conformance",
     "tools/yb-cxxgen",
 ]
@@ -42,12 +44,15 @@ proc-macro2 = "1"
 protobuf = "=3.7.2"
 protobuf-codegen = "=3.7.2"
 protobuf-parse = "=3.7.2"
+tokio = { version = "=1.53.2", features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
 
 yb-cpp-host = { path = "common/yb-cpp-host" }
+yb-flags = { path = "common/yb-flags" }
 yb-host-api = { path = "common/yb-host-api" }
 master-catalog-entity = { path = "master/catalog-entity" }
+master-rpc-handlers = { path = "master/rpc-handlers" }
 yb-proto = { path = "common/yb-proto" }
 
 [workspace.lints.rust]

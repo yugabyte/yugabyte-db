@@ -360,15 +360,17 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Empty leader and tablet server blacklists.
   Status ClearBlacklist(ExternalMaster* master);
 
-  // Start a new master with `peer_addrs` as the master_addresses parameter.
+  // Start a new master with `peer_addrs` as the master_addresses parameter. `exe` overrides the
+  // master binary, e.g. to start the Rust master (yb-master-rs).
   // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
   // cluster.
   Result<ExternalMasterPtr> StartMaster(
-      const std::string& peer_addrs, uint16_t rpc_port = 0, bool shell_mode = false);
+      const std::string& peer_addrs, uint16_t rpc_port = 0, bool shell_mode = false,
+      const std::string& exe = "");
 
   // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
   // cluster.
-  Result<ExternalMasterPtr> StartShellMaster();
+  Result<ExternalMasterPtr> StartShellMaster(const std::string& exe = "");
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
   // When use_hostport is true, the master is deemed as dead and its UUID is not used.

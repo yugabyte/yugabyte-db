@@ -104,9 +104,13 @@ struct SnapshotScheduleRestoration {
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
+  // `cm` and `tablet_split_manager` are used only on the leader (polling schedules, finishing
+  // restorations, RPC handlers). The Rust master's host passes null for both and a context whose
+  // LeaderTerm() is always -1, so it runs only what every master runs: Load, ApplyWritePair and
+  // the *Replicated apply hooks.
   MasterSnapshotCoordinator(
       SnapshotCoordinatorContext* context, CatalogManager* cm,
-      TabletSplitManager& tablet_split_manager);
+      TabletSplitManager* tablet_split_manager);
   ~MasterSnapshotCoordinator();
 
   // Creates a snapshot starting from a predefined set of entries. Used in the old workflow of

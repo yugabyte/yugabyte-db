@@ -288,6 +288,7 @@ class Master : public tserver::DbServerBase {
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
+  std::unique_ptr<SysCatalogContext> sys_catalog_context_;
   std::unique_ptr<SysCatalogTable> sys_catalog_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;

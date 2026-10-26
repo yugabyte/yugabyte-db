@@ -60,7 +60,9 @@
 #include "yb/master/master_util.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_context.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
@@ -166,16 +168,71 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 namespace yb {
 namespace master {
 
+namespace {
+
+class MasterSysCatalogContext : public SysCatalogContext {
+ public:
+  explicit MasterSysCatalogContext(Master* master) : master_(master) {}
+
+  rpc::Messenger* Messenger() override { return master_->messenger(); }
+  rpc::ProxyCache& ProxyCache() override { return master_->proxy_cache(); }
+  const std::shared_future<client::YBClient*>& ClientFuture() const override {
+    return master_->client_future();
+  }
+  FsManager* GetFsManager() override { return master_->fs_manager(); }
+  server::Clock* GetClock() override { return master_->clock(); }
+  const std::shared_ptr<MemTracker>& GetMemTracker() const override {
+    return master_->mem_tracker();
+  }
+  MaintenanceManager* GetMaintenanceManager() override { return master_->maintenance_manager(); }
+  const MasterOptions& Options() const override { return master_->opts(); }
+  CloudInfoPB MakeCloudInfoPB() const override { return master_->MakeCloudInfoPB(); }
+  Status GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const override {
+    return master_->GetRegistration(reg, rpc_only);
+  }
+
+  void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) override {
+    master_->SetMasterAddresses(std::move(master_addresses));
+  }
+  Status ResetMemoryState(const consensus::RaftConfigPB& config) override {
+    return master_->ResetMemoryState(config);
+  }
+  Status InformRemovedMaster(const HostPortPB& hp_pb) override {
+    return master_->InformRemovedMaster(hp_pb);
+  }
+
+  tablet::SnapshotCoordinator* SnapshotCoordinator() override {
+    return &master_->snapshot_coordinator();
+  }
+  AutoFlagsManagerBase* AutoFlagsManager() override { return master_->GetAutoFlagsManagerImpl(); }
+  docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) override {
+    return master_->catalog_manager_impl()->AllowedHistoryCutoffProvider(metadata);
+  }
+
+  scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id) override {
+    return master_->catalog_manager()->GetTableInfo(table_id);
+  }
+  Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const override {
+    return master_->ysql_manager().GetVersionSpecificCatalogTableId(table_id);
+  }
+
+ private:
+  Master* const master_;
+};
+
+}  // namespace
+
 Master::Master(const MasterOptions& opts)
     : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
       state_(kStopped),
       metric_entity_cluster_(
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       master_tablet_server_(new MasterTabletServer(this, metric_entity())),
-      sys_catalog_(new SysCatalogTable(this, metric_registry_.get())),
+      sys_catalog_context_(std::make_unique<MasterSysCatalogContext>(this)),
+      sys_catalog_(new SysCatalogTable(sys_catalog_context_.get(), metric_registry_.get())),
       ts_manager_(new TSManager(*sys_catalog_)),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
-      auto_flags_manager_(new MasterAutoFlagsManager(*this)),
+      auto_flags_manager_(new MasterAutoFlagsManager(clock(), fs_manager(), this)),
       ysql_backends_manager_(new YsqlBackendsManager(
           this, catalog_manager_->object_lock_info_manager(), catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
@@ -186,7 +243,7 @@ Master::Master(const MasterOptions& opts)
           new TabletSplitManager(*this, metric_entity(), metric_entity_cluster())),
       clone_state_manager_(CloneStateManager::Create(catalog_manager(), this, &sys_catalog())),
       snapshot_coordinator_(new MasterSnapshotCoordinator(
-          catalog_manager_impl(), catalog_manager_impl(), tablet_split_manager())),
+          catalog_manager_impl(), catalog_manager_impl(), &tablet_split_manager())),
       test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),

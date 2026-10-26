@@ -23,7 +23,8 @@ and the Rust code on top talks to it through `cxx` bridges.
 | Crate | Owns |
 |---|---|
 | `common/yb-host-api` | Traits a C++ host provides to Rust, plus in-memory fakes for tests |
-| `common/yb-cpp-host` | The cxx implementation of those traits; logging and panic hook |
+| `common/yb-cpp-host` | The cxx implementation of those traits: RPC bridge, gflags, logging and panic hook |
+| `common/yb-flags` | Typed gflags: `FlagRef` for existing flags, `yb_flag!` for flags declared in Rust |
 | `common/yb-proto` | Messages and RPC service tables generated from `src/yb/**/*.proto` |
 | `tools/yb-cxxgen` | Build tool: writes the C++ half of every bridge |
 

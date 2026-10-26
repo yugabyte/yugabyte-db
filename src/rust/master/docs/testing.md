@@ -20,3 +20,18 @@ build/latest/bin/master-conformance rows.tsv
 `dump-rows` writes each row with the C++ runtime's re-serialization. `master-conformance` checks
 that Rust produces the same bytes, and that unknown fields of every wire type appended to the row
 survive. It exits non-zero on any mismatch.
+
+## Integration tests
+
+`src/yb/integration-tests/rust_master-itest.cc` runs the Rust master in a quorum of C++ masters
+(ExternalMiniCluster; skipped when `yb-master-rs` is not built):
+
+```bash
+./yb_build.sh release --cxx-test rust_master-itest --gtest_filter RustMasterTest.FollowerKeepsSameCatalog
+```
+
+| Test | Checks |
+|---|---|
+| `FollowerKeepsSameCatalog` | A C++ follower restarted as Rust on its own data stays a follower through YCQL DDL, an index, a snapshot schedule and a PITR restore; serves `GetMasterRegistration` and `ListMasters`; answers `NOT_THE_LEADER` to leader-only methods. With the cluster stopped, its sys-catalog rows and `auto_flags_config` equal a C++ follower's, and all rows pass the conformance check. |
+| `NeverLeads` | A leader transfer to the Rust master ends with a C++ leader; the Rust master never reports LEADER. |
+| `AddedThroughRemoteBootstrap` | A shell-mode Rust master is added with `ChangeConfig`, remote-bootstraps the sys catalog, follows a workload, and is removed. |

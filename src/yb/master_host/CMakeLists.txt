@@ -16,6 +16,7 @@ yb_rust_cxxgen(MASTER_HOST_CXXGEN_SRCS
   master/master/src/ffi.rs)
 
 add_library(yb_master_host_obj OBJECT
+  master_host.cc
   ${MASTER_HOST_CXXGEN_SRCS})
 target_link_libraries(yb_master_host_obj PUBLIC yb_rust_bridge_obj)
 

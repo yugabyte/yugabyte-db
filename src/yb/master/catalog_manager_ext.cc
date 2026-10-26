@@ -65,6 +65,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_restore.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
@@ -115,9 +116,6 @@ DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "Enable namespace-based snapshot creation based on namespace_id. Can be disabled to fallback "
     "to the old snapshot creation workflow where client provides the set of tables to collect as "
     "part of snapshot");
-
-DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
-    "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
 DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
@@ -3143,173 +3141,18 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 
 Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(
     tablet::Tablet* tablet, const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
-  std::string log_prefix = LogPrefix();
-  // Remove ": " to patch suffix.
-  log_prefix.erase(log_prefix.size() - 2);
-
-  // Restore master snapshot and load it to RocksDB.
-  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, restore_at));
-  rocksdb::Options rocksdb_options;
-  tablet->InitRocksDBOptions(
-      &rocksdb_options, log_prefix + " [TMP]: ", docdb::StorageDbType::kRegular);
-
-  return rocksdb::DB::Open(rocksdb_options, dir);
-}
-
-Status CatalogManager::RestoreSysCatalogCommon(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
-    std::reference_wrapper<const ScopedRWOperation> tablet_pending_op,
-    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
-    docdb::KeyValuePairPB* restore_kv) {
-  // Restore master snapshot and load it to RocksDB.
-  auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(
-      tablet, restoration->snapshot_id, restoration->restore_at));
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
-
-  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
-  auto db_pending_op = ScopedRWOperation();
-
-  // Load objects to restore and determine obsolete objects.
-  auto schema_packing_provider = &tablet->GetSchemaPackingProvider();
-  RETURN_NOT_OK(state->LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
-  // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
-  // catalog state.
-  RETURN_NOT_OK(
-      state->LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
-  RETURN_NOT_OK(state->Process());
-
-  // Restore the pg_catalog tables.
-  // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
-  // use tablet peer reference counter for doc read context.
-  auto doc_read_context = SharedField(
-      tablet_peer(), &this->doc_read_context());
-  if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
-    // Restore sequences_data table.
-    RETURN_NOT_OK(state->PatchSequencesDataObjects());
-
-    RETURN_NOT_OK(state->ProcessPgCatalogRestores(
-        doc_db, tablet->doc_db(), write_batch, doc_read_context, schema_packing_provider,
-        tablet->metadata()));
-  }
-
-  // Crash for tests.
-  MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
-
-  // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
-
-  // Updates the restoration state to indicate that sys catalog phase has completed.
-  // Also, initializes the master side perceived list of tables/tablets/namespaces
-  // that need to be restored for verification post sys catalog load.
-  // Also, re-initializes the tablet list since it could have been changed from the
-  // time of snapshot creation.
-  // Also, generates the restoration state entry.
-  // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
-  // rpcs can be retried.
-  *restore_kv = VERIFY_RESULT(
-      master_->snapshot_coordinator().UpdateRestorationAndGetWritePair(restoration));
-
-  return Status::OK();
-}
-
-Status CatalogManager::RestoreSysCatalogSlowPitr(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
-
-  // Creating this scopedRWOperation guarantees that rocksdb will be alive during the
-  // entire duration of this function. If shutdown is issued in parallel then it will
-  // wait for this operation to complete before starting shutdown rocksdb.
-  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
-
-  RestoreSysCatalogState state(restoration);
-  docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
-  docdb::KeyValuePairPB restore_kv;
-
-  RETURN_NOT_OK(RestoreSysCatalogCommon(
-      restoration, tablet, tablet_pending_op, &state, &write_batch, &restore_kv));
-
-  // Apply write batch to RocksDB.
-  state.WriteToRocksDB(
-      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
-
-  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm()
-                        << ", wrote " << write_batch.size() << " entries to rocksdb";
-
-  if (LeaderTerm() >= 0) {
-    RETURN_NOT_OK(ElectedAsLeaderCb());
-  }
-
-  return Status::OK();
-}
-
-Status CatalogManager::RestoreSysCatalogFastPitr(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
-  // As of 19 May 2023, rocksdb shutdown can only be issued either on a raft apply path
-  // or via TabletPeer shutdown. Since this particular operation is in the raft apply path
-  // we can be sure that there won't be any concurrent shutdowns issued since raft apply is
-  // sequential and tabletpeer shutdown waits for all pending raft apply to finish before
-  // triggering a shutdown. So we don't need a ScopedRWOperation guarding this area against
-  // Rocsdb shutdowns. Create a dummy ScopedRWOperation here.
-  ScopedRWOperation tablet_pending_op;
-
-  docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
-  RestoreSysCatalogState state(restoration);
-  docdb::KeyValuePairPB restore_kv;
-
-  RETURN_NOT_OK(RestoreSysCatalogCommon(
-      restoration, tablet, tablet_pending_op, &state, &write_batch, &restore_kv));
-
-  if (state.IsYsqlRestoration()) {
-    // Set Hybrid Time filter for pg catalog tables.
-    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownStorages(
-        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kTrue);
-
-    std::lock_guard<std::mutex> lock(tablet->create_checkpoint_lock_);
-
-    tablet->CompleteShutdownStorages(op_pauses);
-
-    rocksdb::Options rocksdb_opts;
-    tablet->InitRocksDBOptions(
-        &rocksdb_opts, tablet->LogPrefix(), docdb::StorageDbType::kRegular);
-    docdb::RocksDBPatcher patcher(tablet->metadata()->rocksdb_dir(), rocksdb_opts);
-    RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));
-
-    RETURN_NOT_OK(tablet->OpenKeyValueTablet());
-    RETURN_NOT_OK(tablet->EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start));
-
-    // Ensure that op_pauses stays in scope throughout this function.
-    for (auto* op_pause : op_pauses.AsArray()) {
-      DFATAL_OR_RETURN_NOT_OK(op_pause->status());
-    }
-  }
-
-  // Apply write batch to RocksDB.
-  state.WriteToRocksDB(
-      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
-
-  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm() << ", wrote "
-                        << write_batch.size() << " entries to rocksdb";
-
-  if (LeaderTerm() >= 0) {
-    RETURN_NOT_OK(ElectedAsLeaderCb());
-  }
-
-  return Status::OK();
+  return RestoreSysCatalogSnapshotToTmpRocksDb(tablet, snapshot_id, restore_at, LogPrefix());
 }
 
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
     Status* complete_status) {
-  Status s;
-  if (FLAGS_enable_fast_pitr) {
-    s = RestoreSysCatalogFastPitr(restoration, tablet);
-  } else {
-    s = RestoreSysCatalogSlowPitr(restoration, tablet);
+  const auto leader_term = LeaderTerm();
+  Status s = RestoreSysCatalogOnApply(
+      restoration, tablet, tablet_peer(), doc_read_context(), &master_->snapshot_coordinator(),
+      master_->clock(), leader_term, LogPrefix());
+  if (s.ok() && leader_term >= 0) {
+    s = ElectedAsLeaderCb();
   }
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)

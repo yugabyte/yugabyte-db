@@ -12,8 +12,14 @@ crate-type = ["staticlib"]
 
 [dependencies]
 cxx.workspace = true
+master-rpc-handlers.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 yb-cpp-host.workspace = true
+yb-flags.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
 
 [lints]
 workspace = true

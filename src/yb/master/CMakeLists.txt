@@ -129,6 +129,7 @@ set(MASTER_SRCS
   snapshot_transfer_manager.cc
   state_with_tablets.cc
   sys_catalog.cc
+  sys_catalog_restore.cc
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc

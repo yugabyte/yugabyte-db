@@ -1,7 +1,8 @@
 # The master's C++ host
 
-`src/yb/master_host/` holds the C++ side of the Rust master: `main()` and the master's own bridges.
-The shared bridges are in `src/yb/rust_bridge/` ([src/rust/docs/cpp-host.md](../../docs/cpp-host.md)).
+`src/yb/master_host/` holds the C++ side of the Rust master: `main()`, `MasterHost` and the
+master's own bridge. The shared bridges are in `src/yb/rust_bridge/`
+([src/rust/docs/cpp-host.md](../../docs/cpp-host.md)).
 
 ## main()
 
@@ -10,11 +11,42 @@ The shared bridges are in `src/yb/rust_bridge/` ([src/rust/docs/cpp-host.md](../
 1. `argv[0]` dispatch: a basename starting with `yb-tserver` runs `TabletServerMain` (LTO builds
    only), as `master_main.cc` does.
 2. `SetMasterFlagDefaults()`, shared with the C++ master, overrides server flag defaults.
-3. gflags parsing and glog setup (`MasterTServerParseFlagsAndInit`).
-4. `yb::master_rs::run_master()` from the Rust static library.
+3. `master_rs::register_flags()` registers the flags declared in Rust.
+4. gflags parsing and glog setup (`MasterTServerParseFlagsAndInit`).
+5. `master_rs::run_master()`: creates the host, registers the Rust master services, starts the
+   host, waits for SIGTERM and shuts down.
+
+## MasterHost
+
+`MasterHost` is a `DbServerBase` without a `CatalogManager`. It runs the parts of the C++ master
+that live inside the sys-catalog tablet's Raft apply, because they change what is on disk on every
+master and so must be the same code as on a C++ peer:
+
+- `SysCatalogTable`, through `SysCatalogContext` (the interface the C++ `Master` implements too).
+- `MasterSnapshotCoordinator`, with a context whose `LeaderTerm()` is always -1, so only the
+  apply-time paths run: `Load`, `ApplyWritePair`, and the `*Replicated` hooks.
+- PITR restores of the sys catalog through `RestoreSysCatalogOnApply`
+  (`src/yb/master/sys_catalog_restore.cc`), shared with `CatalogManager`.
+- `MasterAutoFlagsManager` for `auto_flags_config` and AutoFlags ops.
+- The follower half of the sys-catalog history cutoff: snapshot retention,
+  `timestamp_syscatalog_history_retention_interval_sec`, CDCSDK safe time, and the YSQL history
+  retention pin the leader publishes, which the host reloads every
+  `catalog_manager_bg_task_wait_ms`.
+
+It serves ConsensusService and RemoteBootstrapService in C++, and the remote-bootstrap steps for a
+master added from shell mode are the same as `CatalogManager::StartRemoteBootstrap`. It cannot
+create a new universe: that would make it the first leader.
+
+**Never leading.** The host turns off `enable_leader_failure_detection`, so it never starts an
+election. If an explicit leader transfer elects it, the state-change callback steps it down at
+once, and `GetMasterRegistration` reports FOLLOWER meanwhile, as a C++ leader that is not ready
+does.
 
 ## Bridges
 
 | Rust file | C++ side | Purpose |
 |---|---|---|
-| `master/master/src/ffi.rs` | called from `master_host_main.cc` | Entry points into Rust |
+| `master/master/src/ffi.rs` | `master_host.h`, `master_host_main.cc` | Entry points, `MasterHost` control, read-only `MasterInfoHandle` for handlers |
+
+Handlers run on other threads while the main thread owns the host, so they get a
+`MasterInfoHandle` with const accessors rather than the host itself.

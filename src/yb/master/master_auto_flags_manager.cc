@@ -237,10 +237,11 @@ Result<bool> AreAutoFlagsCompatible(
 
 constexpr auto kYbMasterProcessName = "yb-master";
 
-MasterAutoFlagsManager::MasterAutoFlagsManager(Master& master)
-    : AutoFlagsManagerBase(kYbMasterProcessName, master.clock(), master.fs_manager()),
+MasterAutoFlagsManager::MasterAutoFlagsManager(
+    server::Clock* clock, FsManager* fs_manager, Master* master)
+    : AutoFlagsManagerBase(kYbMasterProcessName, clock, fs_manager),
       master_(master),
-      catalog_manager_(master.catalog_manager_impl()),
+      catalog_manager_(master ? master->catalog_manager_impl() : nullptr),
       update_lock_(mutex_, std::defer_lock) {}
 
 Status MasterAutoFlagsManager::Init(
@@ -313,6 +314,7 @@ Status MasterAutoFlagsManager::CreateConfigForNewCluster() {
 }
 
 Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_config) {
+  SCHECK(catalog_manager_, NotSupported, "AutoFlags config changes need a C++ master leader");
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
   auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
@@ -394,15 +396,16 @@ Status MasterAutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsCo
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::PromoteAutoFlags(
     const AutoFlagClass max_flag_class, const bool force_version_change) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
+  SCHECK(master_, NotSupported, "AutoFlags promotion needs a C++ master leader");
 
   SCHECK(
       max_flag_class == AutoFlagClass::kLocalVolatile ||
-          !master_.ysql_manager().IsMajorUpgradeInProgress(),
+          !master_->ysql_manager().IsMajorUpgradeInProgress(),
       InvalidArgument,
       "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
 
   RETURN_NOT_OK_PREPEND(
-      master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
+      master_->ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
       "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version");
 
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)

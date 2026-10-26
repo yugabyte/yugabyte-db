@@ -243,7 +243,7 @@ class MasterSnapshotCoordinator::Impl {
  public:
   Impl(
       SnapshotCoordinatorContext* context, CatalogManager* cm,
-      TabletSplitManager& tablet_split_manager)
+      TabletSplitManager* tablet_split_manager)
       : context_(*context), cm_(cm), tablet_split_manager_(tablet_split_manager),
         poller_(std::bind(&Impl::Poll, this)) {}
 
@@ -2058,7 +2058,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      tablet_split_manager_.ReenableSplittingFor(kPitrFeatureName);
+      tablet_split_manager_->ReenableSplittingFor(kPitrFeatureName);
     }
 
     // After PITR restore, advance per-DB OID counters past any hidden tables'
@@ -2366,7 +2366,7 @@ class MasterSnapshotCoordinator::Impl {
 
   SnapshotCoordinatorContext& context_;
   CatalogManager* cm_;
-  TabletSplitManager& tablet_split_manager_;
+  TabletSplitManager* const tablet_split_manager_;
 
   // Guards the maps below and their members. Members should not be accessed without holding the
   // mutex to avoid data races, though this is currently unenforced.
@@ -2537,7 +2537,7 @@ void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
 
 MasterSnapshotCoordinator::MasterSnapshotCoordinator(
     SnapshotCoordinatorContext* context, CatalogManager* cm,
-    TabletSplitManager& tablet_split_manager)
+    TabletSplitManager* tablet_split_manager)
     : impl_(new Impl(context, cm, tablet_split_manager)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}

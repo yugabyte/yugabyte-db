@@ -17,5 +17,7 @@
 //! the executable that links this crate, so its code only links as part of such an executable.
 //! Its own tests run as C++ tests; other crates use the traits in `yb-host-api` instead.
 
-mod ffi;
+pub mod ffi;
+pub mod flags;
 pub mod logging;
+pub mod rpc;

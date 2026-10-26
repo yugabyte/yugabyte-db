@@ -46,7 +46,10 @@ YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  explicit MasterAutoFlagsManager(Master& master);
+  // `master` is null in the Rust master's host (src/yb/master_host), which uses only the parts every
+  // master runs: Init, LoadFromMasterLeader and ProcessAutoFlagsConfigOperation on Raft apply.
+  // Promotion and config changes need the C++ master leader and return NotSupported without it.
+  MasterAutoFlagsManager(server::Clock* clock, FsManager* fs_manager, Master* master);
 
   virtual ~MasterAutoFlagsManager() {}
 
@@ -110,7 +113,7 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
 
-  Master& master_;
+  Master* const master_;
   CatalogManager* catalog_manager_;
   UniqueLock<std::shared_mutex> update_lock_;
 };

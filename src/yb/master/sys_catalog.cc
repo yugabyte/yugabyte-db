@@ -188,14 +188,14 @@ std::string SysCatalogTable::schema_column_id() { return kSysCatalogTableColId; 
 
 std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableColMetadata; }
 
-SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics)
+SysCatalogTable::SysCatalogTable(SysCatalogContext* context, MetricRegistry* metrics)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
           kLogPrefix, TableType::YQL_TABLE_TYPE,
           docdb::Index::kFalse, std::make_shared<dockv::SchemaPackingRegistry>(kLogPrefix),
           BuildTableSchema(), kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
-      master_(master) {}
+      context_(context) {}
 
 SysCatalogTable::~SysCatalogTable() {}
 
@@ -292,7 +292,7 @@ Status SysCatalogTable::ConvertConfigToMasterAddresses(
     return STATUS(IllegalState, "Trying to load distributed config, but had missing uuids.");
   }
 
-  master_->SetMasterAddresses(loaded_master_addresses);
+  context_->SetMasterAddresses(loaded_master_addresses);
 
   return Status::OK();
 }
@@ -405,7 +405,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   }, data_root_dir));
 
   RaftConfigPB config;
-  RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),
+  RETURN_NOT_OK_PREPEND(SetupConfig(context_->Options(), &config),
                         "Failed to initialize distributed config");
 
   RETURN_NOT_OK(CreateAndFlushConsensusMeta(fs_manager, config, consensus::kMinimumTerm));
@@ -421,7 +421,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   // Now resolve UUIDs.
   // By the time a SysCatalogTable is created and initted, the masters should be
   // starting up, so this should be fine to do.
-  DCHECK(master_->messenger());
+  DCHECK(context_->Messenger());
   RaftConfigPB resolved_config;
   resolved_config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
@@ -434,7 +434,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
     // See KUDU-526.
     RETURN_NOT_OK_PREPEND(
       consensus::SetPermanentUuidForRemotePeer(
-        &master_->proxy_cache(),
+        &context_->ProxyCache(),
         std::chrono::milliseconds(FLAGS_master_discovery_timeout_ms),
         list,
         &new_peer),
@@ -489,7 +489,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
-    auto client_future = master_->client_future();
+    auto client_future = context_->ClientFuture();
 
     // Check if client was already initialized, otherwise we don't have to refresh master leader,
     // since it will be fetched as part of initialization.
@@ -533,7 +533,7 @@ void SysCatalogTable::SysCatalogStateChanged(
                    << " servers in new config and " << old_count << " servers in old config.";
     }
 
-    Status s = master_->ResetMemoryState(context->change_record.new_config());
+    Status s = context_->ResetMemoryState(context->change_record.new_config());
     if (!s.ok()) {
       LOG(WARNING) << "Change Memory state failed " << s.ToString();
       DCHECK(false);
@@ -553,8 +553,8 @@ void SysCatalogTable::SysCatalogStateChanged(
                   Format("Could not find uuid=$0 in config.", context->remove_uuid));
       WARN_NOT_OK(
           inform_removed_master_pool_->SubmitFunc(
-              [this, host_port = DesiredHostPort(peer, master_->MakeCloudInfoPB())]() {
-            WARN_NOT_OK(master_->InformRemovedMaster(host_port),
+              [this, host_port = DesiredHostPort(peer, context_->MakeCloudInfoPB())]() {
+            WARN_NOT_OK(context_->InformRemovedMaster(host_port),
                         "Failed to inform removed master " + host_port.ShortDebugString());
           }),
           Format("Error submitting removal task for uuid=$0", context->remove_uuid));
@@ -573,10 +573,10 @@ Status SysCatalogTable::GoIntoShellMode() {
   // Remove on-disk log, cmeta and tablet superblocks.
   RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer()->tablet_metadata(),
                                           tablet::TABLET_DATA_DELETED,
-                                          master_->fs_manager()->uuid(),
+                                          context_->GetFsManager()->uuid(),
                                           yb::OpId()));
   RETURN_NOT_OK(tablet_peer()->tablet_metadata()->DeleteSuperBlock());
-  RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout());
+  RETURN_NOT_OK(context_->GetFsManager()->DeleteFileSystemLayout());
   std::shared_ptr<tablet::TabletPeer> null_tablet_peer(nullptr);
   std::atomic_store(&tablet_peer_, null_tablet_peer);
   inform_removed_master_pool_.reset();
@@ -590,17 +590,17 @@ Status SysCatalogTable::GoIntoShellMode() {
 void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   InitLocalRaftPeerPB();
 
-  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(master_->messenger(),
-                                                                      &master_->proxy_cache(),
+  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(context_->Messenger(),
+                                                                      &context_->ProxyCache(),
                                                                       local_peer_pb_.cloud_info());
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
+      metadata, local_peer_pb_, scoped_refptr<server::Clock>(context_->GetClock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
+      metric_registry_, nullptr /* tablet_splitter */, context_->ClientFuture());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -621,8 +621,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       metadata->raft_group_id(), metadata->fs_manager(), metadata->wal_dir());
   RETURN_NOT_OK(bootstrap_state_manager->Init());
 
-  consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
-  retryable_requests.SetServerClock(master_->clock());
+  consensus::RetryableRequests retryable_requests(context_->GetMemTracker(), LogPrefix());
+  retryable_requests.SetServerClock(context_->GetClock());
   retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
@@ -635,15 +635,15 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   mem_manager_ = std::make_shared<tserver::TabletMemoryManager>(
       &tablet_options,
-      master_->mem_tracker(),
+      context_->GetMemTracker(),
       kDefaultMasterBlockCacheSizePercentage,
       GetMetricEntity(),
       get_peers_lambda);
 
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = master_->client_future(),
-      .clock = scoped_refptr<server::Clock>(master_->clock()),
+      .client_future = context_->ClientFuture(),
+      .clock = scoped_refptr<server::Clock>(context_->GetClock()),
       .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .parent_block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
       .parent_block_based_table_builder_mem_tracker =
@@ -665,13 +665,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       // initdb is much faster with transactions disabled.
       .txns_enabled = tablet::TransactionsEnabled(!FLAGS_create_initial_sys_catalog_snapshot),
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
-      .snapshot_coordinator = &master_->snapshot_coordinator(),
+      .snapshot_coordinator = context_->SnapshotCoordinator(),
       .tablet_splitter = nullptr,
-      .allowed_history_cutoff_provider = std::bind(
-          &CatalogManager::AllowedHistoryCutoffProvider, master_->catalog_manager_impl(),
-          std::placeholders::_1),
+      .allowed_history_cutoff_provider =
+          [context = context_](tablet::RaftGroupMetadata* metadata) {
+            return context->AllowedHistoryCutoff(metadata);
+          },
       .transaction_manager_provider = nullptr,
-      .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
+      .auto_flags_manager = context_->AutoFlagsManager(),
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
@@ -699,10 +700,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   RETURN_NOT_OK_PREPEND(
       tablet_peer()->InitTabletPeer(
           tablet,
-          master_->mem_tracker(),
-          master_->messenger(),
-          master_->messenger()->ThreadPoolPtr(),
-          &master_->proxy_cache(),
+          context_->GetMemTracker(),
+          context_->Messenger(),
+          context_->Messenger()->ThreadPoolPtr(),
+          &context_->ProxyCache(),
           log,
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
@@ -719,7 +720,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");
 
-  tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
+  tablet_peer()->RegisterMaintenanceOps(context_->GetMaintenanceManager());
 
   if (!tablet->schema()->Equals(doc_read_context_->schema())) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
@@ -908,9 +909,9 @@ Status SysCatalogTable::GetTableSchema(
 // Other methods
 // ==================================================================
 void SysCatalogTable::InitLocalRaftPeerPB() {
-  local_peer_pb_.set_permanent_uuid(master_->fs_manager()->uuid());
+  local_peer_pb_.set_permanent_uuid(context_->GetFsManager()->uuid());
   ServerRegistrationPB reg;
-  CHECK_OK(master_->GetRegistration(&reg, server::RpcOnly::kTrue));
+  CHECK_OK(context_->GetRegistration(&reg, server::RpcOnly::kTrue));
   TakeRegistration(&reg, &local_peer_pb_);
 }
 
@@ -1399,7 +1400,7 @@ Status SysCatalogTable::ReadPgClassInfo(
       table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
     }
 
-    auto table_info = master_->catalog_manager()->GetTableInfo(table_id);
+    auto table_info = context_->GetTableInfo(table_id);
 
     if (!table_info) {
       // Some relations (eg: primary key indexes) may exist in pg_class but not in
@@ -2309,7 +2310,7 @@ Result<PgTableReadData> SysCatalogTable::TableReadData(
     const TableId& original_table_id, const ReadHybridTime& read_ht) const {
   PgTableReadData result;
   const TableId table_id =
-      VERIFY_RESULT(master_->ysql_manager().GetVersionSpecificCatalogTableId(original_table_id));
+      VERIFY_RESULT(context_->GetVersionSpecificCatalogTableId(original_table_id));
   result.table_id = table_id;
   result.tablet = VERIFY_RESULT(Tablet());
   result.table_info = VERIFY_RESULT(result.tablet->metadata()->GetTableInfo(table_id));

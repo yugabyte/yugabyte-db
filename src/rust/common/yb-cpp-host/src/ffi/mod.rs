@@ -13,4 +13,6 @@
 //! cxx bridge declarations. Each file here is listed in src/yb/rust_bridge/CMakeLists.txt so that
 //! its C++ half is generated and compiled.
 
+pub mod flags;
 pub(crate) mod log;
+pub mod rpc;
