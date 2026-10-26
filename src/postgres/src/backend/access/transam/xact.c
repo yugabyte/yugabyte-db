@@ -2371,16 +2371,6 @@ YBCRestartWriteTransaction()
 		RollbackAndReleaseCurrentSubTransaction();
 
 	/*
-	 * Control may have escaped a SECURITY DEFINER function, which leaves
-	 * undoing its user switch to the abort; without this the retry runs with
-	 * the definer's privileges.  The transaction-start user that
-	 * AbortTransaction restores would be wrong here: a SET ROLE earlier in an
-	 * extended-protocol batch is not replayed, and its role GUC stays set.
-	 */
-	SetUserIdAndSecContext(GetOuterUserId(),
-						   CurrentTransactionState->prevSecContext);
-
-	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
