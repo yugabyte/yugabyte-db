@@ -22,7 +22,7 @@ Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.co
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector doesn't support later release series, and running it against one can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector is backward compatible only; running it against a later release series is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
 - _Before upgrading YugabyteDB to v2026.1.2.0 or later_, including from an earlier v2026.1 release, if your connector is `dz.1.9.5.yb.grpc.2026.1.1` or earlier. Those versions fail to start against v2026.1.2.0 and later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 - _On YugabyteDB v2024.2_, if your connector is earlier than `dz.1.9.5.yb.grpc.2024.2.3`, which v2024.2 requires. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 - _When a release fixes a bug or security issue_ that affects your deployment.

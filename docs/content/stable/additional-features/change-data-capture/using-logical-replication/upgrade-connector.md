@@ -22,7 +22,7 @@ Check [yugabyte/debezium GitHub releases](https://github.com/yugabyte/debezium/r
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector doesn't support later release series, and running it against one can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer release series is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
 - _When a release fixes a bug or security issue_ that affects your deployment.
 - _When a release adds a feature or improvement_ that you need.
 
