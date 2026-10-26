@@ -4134,7 +4134,10 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
         continue;
       }
       for (const auto& vector_index : *list) {
-        index_table_ids.push_back(vector_index->table_id());
+        // A deactivated index cannot be checked, see CheckVectorIndex.
+        if (!vector_index->IsDeactivated()) {
+          index_table_ids.push_back(vector_index->table_id());
+        }
       }
     }
     auto consensus = peer->GetConsensus();

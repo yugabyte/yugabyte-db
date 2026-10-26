@@ -581,6 +581,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
 
+  // A prefetch this node has cached for a database it has no shared memory slot for yet. A fill
+  // can complete before this node has learned the database exists, and failing to record it then
+  // is permanent rather than momentary: the response cache keeps the entry that fill left, every
+  // later connection is served from it, and SetYsqlDbLastPrefetchedCatalogVersion is only ever
+  // called from that cache's fill observer, so no fill records the key again. Held here until
+  // the slot arrives, bounded by the number of databases this tserver has yet to hear about.
+  std::unordered_map<uint32_t, uint64_t> ysql_db_pending_last_prefetched_ GUARDED_BY(lock_);
+
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
   // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of
   // (current_version, inval messages) pairs. If the message value is nullopt, it means a SQL

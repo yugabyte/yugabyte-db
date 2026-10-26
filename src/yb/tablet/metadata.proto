@@ -88,6 +88,11 @@ message TableInfoPB {
   // Whether we can skip table tombstone check for this table
   // (only applies to colocated tables).
   optional bool skip_table_tombstone_check = 15;
+
+  // For a vector index table: hybrid time of the operation that removed the index from its indexed
+  // table's index map. The index can stay on the tablet after that, e.g. while a snapshot schedule
+  // retains a dropped index, but rows written after this time are not added to it.
+  optional fixed64 vector_index_deactivated_ht = 18;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on

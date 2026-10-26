@@ -78,6 +78,7 @@ class CountingVectorIndex : public DocVectorIndex {
   Status ModifyFlushedFrontier(const ConsensusFrontier&) override {
     LOG(FATAL) << "Unexpected call";
   }
+  Result<bool> AdvanceFlushedOpId(const OpId&) override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForFlush() override { LOG(FATAL) << "Unexpected call"; }
   storage::FrontierInfo GetFrontiers(storage::FrontierKinds) override {
     LOG(FATAL) << "Unexpected call";
