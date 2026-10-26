@@ -29,3 +29,5 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-rpc-handlers` | Master RPC handlers; layer 1: follower-servable methods, `NOT_THE_LEADER` |
 | `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` (layer 1: parse and re-serialize) |
 | `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |
+| `tools/tserver-sim` (`master-tserver-sim`) | Fake tservers that load a master: registration, heartbeats, tablet reports, tablet RPCs |
+| `tools/tserver-sim-main` | The static library of the `master-tserver-sim` executable: flags and the C++ host bridge |

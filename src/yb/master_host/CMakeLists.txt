@@ -40,3 +40,18 @@ yb_add_lto_target(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} yb-master-rs "
 
 # Checks the Rust protobuf runtime against rows dumped by `sys-catalog-tool dump-rows`.
 yb_add_rust_tool(master-conformance)
+
+# Fake tservers for loading a master (src/rust/master/docs/testing.md). Its own executable with its
+# own Rust static library.
+yb_rust_cxxgen(TSERVER_SIM_CXXGEN_SRCS
+  master/tools/tserver-sim-main/src/ffi.rs)
+yb_add_rust_staticlib(yb_master_tserver_sim_rs master-tserver-sim-main)
+add_executable(master-tserver-sim
+  tserver_sim_main.cc
+  tserver_sim_host.cc
+  ${TSERVER_SIM_CXXGEN_SRCS})
+target_link_libraries(master-tserver-sim
+  yb_rust_bridge_obj
+  yb_master_tserver_sim_rs
+  server_process
+  ${YB_BASE_LIBS})

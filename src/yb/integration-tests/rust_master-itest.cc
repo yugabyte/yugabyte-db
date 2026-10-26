@@ -26,6 +26,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
@@ -429,6 +430,27 @@ TEST_F(RustMasterTest, WebServerHttps) {
   auto registration = ASSERT_RESULT(Registration(rust_master));
   ASSERT_EQ(registration.registration().http_addresses_size(), 1);
   ASSERT_EQ(registration.registration().http_addresses(0).host(), "127.0.0.2");
+}
+
+// master-tserver-sim registers fake tservers with the leader of a quorum that has a Rust
+// follower. Only registration and heartbeats: fake replicas cannot share Raft groups with the
+// cluster's real tservers, so the run creates no tables.
+TEST_F(RustMasterTest, TserverSimulator) {
+  ASSERT_RESULT(RestartFollowerAsRust());
+  constexpr int kFakeTservers = 10;
+  std::string output;
+  ASSERT_OK(Subprocess::Call(
+      {BinaryPath("master-tserver-sim"),
+       "--tserver_sim_master_addresses=" + cluster_->GetMasterAddresses(),
+       "--tserver_sim_first_ip=127.250.0.1",
+       Format("--tserver_sim_rpc_port=$0", cluster_->AllocateFreePort()),
+       Format("--tserver_sim_num_tservers=$0", kFakeTservers),
+       "--tserver_sim_heartbeat_interval_ms=100", "--tserver_sim_steady_state_sec=1",
+       "--tserver_sim_num_tables=0"},
+      &output));
+  ASSERT_STR_CONTAINS(output, Format("\"num_tservers\": $0", kFakeTservers));
+  const auto tservers = ASSERT_RESULT(client_->ListTabletServers());
+  ASSERT_EQ(tservers.size(), cluster_->num_tablet_servers() + kFakeTservers);
 }
 
 }  // namespace yb

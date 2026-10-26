@@ -1,0 +1,18 @@
+[package]
+name = "master-tserver-sim"
+description = "Fake tablet servers that load a master: registration, heartbeats, tablet reports, tablet RPCs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protobuf.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

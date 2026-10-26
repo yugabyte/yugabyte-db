@@ -1,0 +1,24 @@
+[package]
+name = "master-tserver-sim-main"
+description = "The static library the master-tserver-sim executable links: flags and the C++ host bridge."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx.workspace = true
+master-tserver-sim.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-cpp-host.workspace = true
+yb-flags.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

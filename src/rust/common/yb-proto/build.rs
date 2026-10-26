@@ -13,9 +13,9 @@
 //! Generates Rust code from the `.proto` files under `src/yb`, never from copies.
 //!
 //! Outputs in `OUT_DIR`:
-//! - `pb/`: rust-protobuf messages for every `.proto` file in `ROOT_DIRS` and everything those
-//!   import, transitively.
-//! - `services.rs`: the wire name and methods of every RPC service in `ROOT_DIRS`.
+//! - `pb/`: rust-protobuf messages for every `.proto` file in `ROOT_DIRS` and `ROOT_FILES` and
+//!   everything those import, transitively.
+//! - `services.rs`: the wire name and methods of every RPC service in those roots.
 //! - `files.rs`: the descriptors of every generated file, for lookups by message name.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,6 +29,13 @@ use protobuf::UnknownValueRef;
 /// Directories (under src/) whose `.proto` files are generated, with their imports. A component's
 /// directory is added when that component moves to Rust.
 const ROOT_DIRS: &[&str] = &["yb/master"];
+
+/// Single files generated the same way: the tserver services the master calls, which the tserver
+/// simulator (master/tools/tserver-sim) serves.
+const ROOT_FILES: &[&str] = &[
+    "yb/tserver/tserver_admin.proto",
+    "yb/consensus/consensus.proto",
+];
 
 /// Field number of `custom_service_name` in yb/rpc/service.proto.
 const CUSTOM_SERVICE_NAME_OPTION: u32 = 50011;
@@ -66,7 +73,8 @@ fn imports(source: &str) -> Vec<String> {
         .collect()
 }
 
-/// The `.proto` files in `ROOT_DIRS` and everything they import, except google/protobuf/*.
+/// The `.proto` files in `ROOT_DIRS` and `ROOT_FILES` and everything they import, except
+/// google/protobuf/*.
 fn proto_closure(src_dir: &Path) -> BTreeSet<String> {
     let mut stack = Vec::new();
     for dir in ROOT_DIRS {
@@ -77,6 +85,7 @@ fn proto_closure(src_dir: &Path) -> BTreeSet<String> {
             }
         }
     }
+    stack.extend(ROOT_FILES.iter().map(|f| f.to_string()));
     let mut closure = BTreeSet::new();
     while let Some(path) = stack.pop() {
         if path.starts_with("google/protobuf/") || !closure.insert(path.clone()) {
@@ -166,6 +175,7 @@ fn is_root(file: &FileDescriptorProto) -> bool {
     ROOT_DIRS
         .iter()
         .any(|dir| file.name().starts_with(&format!("{dir}/")))
+        || ROOT_FILES.iter().any(|f| renamed(f) == file.name())
 }
 
 fn write_services(files: &[FileDescriptorProto], out: &Path) {

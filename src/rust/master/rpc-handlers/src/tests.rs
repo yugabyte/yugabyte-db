@@ -207,7 +207,10 @@ fn leader_only_methods_answer_not_the_leader() {
 #[test]
 fn every_method_gets_an_answer() {
     let h = Harness::new();
-    for service in SERVICES {
+    for service in SERVICES
+        .iter()
+        .filter(|s| s.proto_name.starts_with("yb.master."))
+    {
         for method in service.methods {
             match h.call(method.name, vec![]) {
                 FakeResponse::Success(_) | FakeResponse::Error(_) => {}

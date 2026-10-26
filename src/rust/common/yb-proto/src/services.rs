@@ -72,12 +72,16 @@ mod tests {
             .find(|s| s.proto_name == "yb.master.MasterBackup")
             .unwrap();
         assert_eq!(backup.wire_name, "yb.master.MasterBackup");
-        for s in SERVICES
-            .iter()
-            .filter(|s| s.proto_name != "yb.master.MasterBackup")
-        {
+        for s in SERVICES.iter().filter(|s| {
+            s.proto_name.starts_with("yb.master.") && s.proto_name != "yb.master.MasterBackup"
+        }) {
             assert_eq!(s.wire_name, "yb.master.MasterService", "{}", s.proto_name);
         }
+        let consensus = SERVICES
+            .iter()
+            .find(|s| s.proto_name == "yb.consensus.ConsensusService")
+            .unwrap();
+        assert_eq!(consensus.wire_name, "yb.consensus.ConsensusService");
     }
 
     #[test]

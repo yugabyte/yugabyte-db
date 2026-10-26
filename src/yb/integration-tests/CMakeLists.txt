@@ -179,6 +179,12 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(rust_master-itest)
+if(NOT YB_SKIP_RUST)
+  # The executables the test runs (it is skipped when Rust is not built).
+  add_dependencies(rust_master-itest
+    yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master-tserver-sim master-conformance
+    sys-catalog-tool)
+endif()
 ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)

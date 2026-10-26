@@ -25,6 +25,8 @@ members = [
     "master/master",
     "master/rpc-handlers",
     "master/tools/conformance",
+    "master/tools/tserver-sim",
+    "master/tools/tserver-sim-main",
     "tools/yb-cxxgen",
 ]
 
@@ -58,6 +60,7 @@ yb-flags = { path = "common/yb-flags" }
 yb-host-api = { path = "common/yb-host-api" }
 master-catalog-entity = { path = "master/catalog-entity" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
+master-tserver-sim = { path = "master/tools/tserver-sim" }
 yb-proto = { path = "common/yb-proto" }
 yb-web = { path = "common/yb-web" }
 

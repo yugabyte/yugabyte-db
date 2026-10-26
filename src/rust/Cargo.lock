@@ -548,6 +548,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "master-tserver-sim"
+version = "0.1.0"
+dependencies = [
+ "protobuf",
+ "tokio",
+ "tracing",
+ "yb-host-api",
+ "yb-proto",
+]
+
+[[package]]
+name = "master-tserver-sim-main"
+version = "0.1.0"
+dependencies = [
+ "cxx",
+ "master-tserver-sim",
+ "tokio",
+ "tracing",
+ "yb-cpp-host",
+ "yb-flags",
+ "yb-host-api",
+ "yb-proto",
+]
+
+[[package]]
 name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
