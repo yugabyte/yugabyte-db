@@ -2018,7 +2018,8 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
   // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
   // which is not retried for a manual split, so the split never completes.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
