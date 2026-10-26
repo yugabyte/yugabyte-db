@@ -147,8 +147,7 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertFalse(input.getRefreshScriptOnly());
     assertEquals("", input.getOtelColPackagePath());
     assertEquals("", input.getOtelColConfigFile());
-    verify(mockNodeAgentClient, never())
-        .uploadFile(any(), anyString(), anyString(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());
   }
 
   @Test
@@ -175,8 +174,7 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
 
     assertTrue(input.getRefreshScriptOnly());
     assertFalse(input.getDisableCollector());
-    verify(mockNodeAgentClient, never())
-        .uploadFile(any(), anyString(), anyString(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());
   }
 
   @Test

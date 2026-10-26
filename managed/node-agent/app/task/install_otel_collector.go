@@ -10,11 +10,14 @@ import (
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 const OtelCollectorService = "otel-collector.service"
+
+const otelCollectorRootUnitName = "otel-collector"
 
 const (
 	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
@@ -32,6 +35,8 @@ type InstallOtelCollector struct {
 	param     *pb.InstallOtelCollectorInput
 	username  string
 	logOut    util.Buffer
+	// Where a root-level unit lives, on nodes provisioned with root systemd.
+	rootUnitPath string
 }
 
 func NewInstallOtelCollectorHandler(
@@ -39,9 +44,10 @@ func NewInstallOtelCollectorHandler(
 	username string,
 ) *InstallOtelCollector {
 	return &InstallOtelCollector{
-		param:    param,
-		username: username,
-		logOut:   util.NewBuffer(module.MaxBufferCapacity),
+		param:        param,
+		username:     username,
+		logOut:       util.NewBuffer(module.MaxBufferCapacity),
+		rootUnitPath: filepath.Join(systemSystemdUnitDir, OtelCollectorService),
 	}
 }
 
@@ -87,6 +93,10 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 
 	if h.param.GetDisableCollector() {
 		if err := h.disableOtelCollector(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		if err := h.refreshLogPurgeScript(ctx, h.param.GetYbHomeDir()); err != nil {
 			util.FileLogger().Error(ctx, err.Error())
 			return nil, err
 		}
@@ -305,22 +315,15 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 }
 
 func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHome string) error {
-	otelCollectorDir := filepath.Join(ybHome, "otel-collector")
-	otelCollectorConfigFile := filepath.Join(otelCollectorDir, "config.yml")
-	otelColLogCleanupEnv := filepath.Join(otelCollectorDir, "log_cleanup_env")
+	otelCollectorConfigFile := filepath.Join(ybHome, "otel-collector", "config.yml")
+	otelColLogCleanupEnv := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
 	awsCredsFile := filepath.Join(ybHome, ".aws", "credentials")
-	gcpCredsFile := filepath.Join(otelCollectorDir, "gcp_creds")
+	gcpCredsFile := filepath.Join(ybHome, "otel-collector", "gcp_creds")
 
 	steps := []struct {
 		Desc string
 		Cmd  string
 	}{
-		// The disable path skips the package setup, which otherwise creates this directory, and
-		// can run on a node that never had the collector.
-		{
-			"ensure-otel-collector-dir",
-			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelCollectorDir, otelCollectorDir),
-		},
 		{
 			"remove-otel-collector-config-file-if-exists",
 			fmt.Sprintf(
@@ -409,31 +412,71 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	return nil
 }
 
+// installedOtelCollectorUnit returns the name to stop the collector's unit by, or "" when the node
+// has no unit, because systemctl stop fails on an unknown unit.
+func (h *InstallOtelCollector) installedOtelCollectorUnit() (string, error) {
+	isUser, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
+	if err != nil {
+		return "", err
+	}
+	if isUser {
+		return OtelCollectorService, nil
+	}
+	if _, err := os.Stat(h.rootUnitPath); err == nil {
+		// The YNP rootsystemd sudoers rules name the unit without the .service suffix.
+		return otelCollectorRootUnitName, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return "", nil
+}
+
+// ensureOtelCollectorDirStep creates <yb_home>/otel-collector for paths that write into it
+// without the package setup, which otherwise creates it.
+func ensureOtelCollectorDirStep(ybHome string) struct {
+	Desc string
+	Cmd  string
+} {
+	dir := filepath.Join(ybHome, "otel-collector")
+	return struct {
+		Desc string
+		Cmd  string
+	}{
+		"ensure-otel-collector-dir",
+		fmt.Sprintf("mkdir -p %s && chmod 0755 %s", dir, dir),
+	}
+}
+
 // disableOtelCollector is the full install flow without the package setup, unit placement and
 // start. It skips the package so that a broken package cannot block turning export off.
 func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
-	// The full install always places the unit in the user systemd directory. No unit there means
-	// the collector never ran on this node, and systemctl stop fails on an unknown unit.
-	installed, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
+	unit, err := h.installedOtelCollectorUnit()
 	if err != nil {
 		return err
 	}
-	if installed {
+	if unit != "" {
 		util.FileLogger().Infof(ctx, "Disable mode: stopping otel-collector")
 		if err := module.DisableSystemdService(
 			ctx,
 			h.username,
-			OtelCollectorService,
+			unit,
 			"", // Keep the unit file so that a later enable can start the service again.
 			h.logOut); err != nil {
 			return err
 		}
 	}
-	// No config file is sent in this mode, so this removes config.yml and the credentials.
-	if err := h.configureOtelCollector(ctx, ybHome); err != nil {
+	// configureOtelCollector writes into this directory, and only the package setup creates it.
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		ensureOtelCollectorDirStep(ybHome),
+	}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
 		return err
 	}
-	return h.refreshLogPurgeScript(ctx, ybHome)
+	// No config file is sent in this mode, so this removes config.yml and the credentials.
+	return h.configureOtelCollector(ctx, ybHome)
 }
 
 // refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template
@@ -527,18 +570,14 @@ func shellSingleQuote(s string) string {
 // missing). Used by the refresh-only path to propagate audit-log retention
 // changes even when otel-collector isn't being (re)installed.
 func (h *InstallOtelCollector) writeLogCleanupEnv(ctx context.Context, ybHome string) error {
-	otelDir := filepath.Join(ybHome, "otel-collector")
-	envPath := filepath.Join(otelDir, "log_cleanup_env")
+	envPath := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
 	steps := []struct {
 		Desc string
 		Cmd  string
 	}{
 		// Refresh-only mode can run on universes that never had otel-collector
 		// installed, so ensure the directory exists before writing the env file.
-		{
-			"ensure-otel-collector-dir",
-			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelDir, otelDir),
-		},
+		ensureOtelCollectorDirStep(ybHome),
 	}
 	steps = append(steps, logCleanupEnvSteps(envPath,
 		h.param.GetYcqlAuditLogLevel(),
