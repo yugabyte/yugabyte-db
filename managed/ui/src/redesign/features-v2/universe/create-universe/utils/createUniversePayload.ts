@@ -322,13 +322,14 @@ export const mapCreateUniversePayload = (
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode,
             aws_instance_profile: otherAdvancedSettings.awsArnString,
-            ...(providerType === CloudType.kubernetes &&
-              !isEmpty(otherAdvancedSettings.universeOverrides) && {
-                helm_overrides: otherAdvancedSettings.universeOverrides,
-                ...(!isEmpty(otherAdvancedSettings.azOverrides) && {
-                  az_helm_overrides: otherAdvancedSettings.azOverrides
-                })
+            ...(providerType === CloudType.kubernetes && {
+              ...(!isEmpty(otherAdvancedSettings.universeOverrides) && {
+                helm_overrides: otherAdvancedSettings.universeOverrides
+              }),
+              ...(!isEmpty(otherAdvancedSettings.azOverrides) && {
+                az_helm_overrides: otherAdvancedSettings.azOverrides
               })
+            })
           }
         }
       ]
