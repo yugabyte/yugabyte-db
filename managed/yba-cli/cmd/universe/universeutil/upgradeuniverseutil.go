@@ -455,13 +455,23 @@ func RemoveOrAddZones(
 
 // FindClusterByType finds the cluster by type
 func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
-	for _, cluster := range clusters {
-		if strings.EqualFold(cluster.GetClusterType(), clusterType) {
-			return cluster
-		}
+	return util.FindClusterByType(clusters, clusterType)
+}
+
+// MustFindPrimaryCluster returns the primary cluster, or exits if the universe has none
+func MustFindPrimaryCluster(
+	clusters []ybaclient.Cluster,
+	universeName, universeUUID string,
+) ybaclient.Cluster {
+	cluster := FindClusterByType(clusters, util.PrimaryClusterType)
+	if IsClusterEmpty(cluster) {
+		logrus.Fatalln(
+			formatter.Colorize(
+				"No primary cluster found in universe "+universeName+" ("+universeUUID+")\n",
+				formatter.RedColor),
+		)
 	}
-	logrus.Debug("No cluster found with type: ", clusterType)
-	return ybaclient.Cluster{}
+	return cluster
 }
 
 // IsClusterEmpty checks if a cluster is empty/not found

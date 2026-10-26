@@ -161,19 +161,21 @@ func (c *Context) CPUArchitecture() string {
 	return details.GetArch()
 }
 
+func (c *Context) primaryUserIntent() ybaclient.UserIntent {
+	details := c.u.GetUniverseDetails()
+	primaryCluster := util.FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
+	return primaryCluster.GetUserIntent()
+}
+
 // ProviderCode fetches the Cloud provider used in the universe
 func (c *Context) ProviderCode() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return userIntent.GetProviderType()
 }
 
 // ProviderUUID fetches the Cloud provider used in the universe
 func (c *Context) ProviderUUID() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	for _, p := range Providers {
 		if strings.Compare(p.GetUuid(), userIntent.GetProvider()) == 0 {
 			return fmt.Sprintf("%s(%s)", p.GetName(), p.GetUuid())
@@ -184,17 +186,13 @@ func (c *Context) ProviderUUID() string {
 
 // AccessKey fetches the Cloud provider used in the universe
 func (c *Context) AccessKey() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return userIntent.GetAccessKeyCode()
 }
 
 // UseSystemd fetches the Cloud provider used in the universe
 func (c *Context) UseSystemd() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetUseSystemd())
 }
 
@@ -248,65 +246,49 @@ func (c *Context) DedicatedMasters() string {
 
 // Version fetches YBDB of the primary cluster
 func (c *Context) Version() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return userIntent.GetYbSoftwareVersion()
 }
 
 // YSQLAuthEnabled fetches password of the primary cluster
 func (c *Context) YSQLAuthEnabled() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableYSQLAuth())
 }
 
 // YCQLAuthEnabled fetches password of the primary cluster
 func (c *Context) YCQLAuthEnabled() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableYCQLAuth())
 }
 
 // EnableYSQL fetches if ysql is enabled
 func (c *Context) EnableYSQL() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableYSQL())
 }
 
 // EnableConnectionPooling fetches if connection pooling is enabled
 func (c *Context) EnableConnectionPooling() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableConnectionPooling())
 }
 
 // EnableYCQL fetches if ycql is enabled
 func (c *Context) EnableYCQL() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableYCQL())
 }
 
 // NtoNTLS fetches if ntontls is enabled
 func (c *Context) NtoNTLS() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableNodeToNodeEncrypt())
 }
 
 // CtoNTLS fetches if ctontls is enabled
 func (c *Context) CtoNTLS() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return fmt.Sprintf("%t", userIntent.GetEnableClientToNodeEncrypt())
 }
 
@@ -361,17 +343,13 @@ func (c *Context) EncryptionRestType() string {
 
 // UniverseOverrides for kubernetes universes
 func (c *Context) UniverseOverrides() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	return userIntent.GetUniverseOverrides()
 }
 
 // AZOverrides for kubernetes universes
 func (c *Context) AZOverrides() string {
-	details := c.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
-	userIntent := primaryCluster.GetUserIntent()
+	userIntent := c.primaryUserIntent()
 	azOverrides := ""
 	for k, v := range userIntent.GetAzOverrides() {
 		azOverrides = fmt.Sprintf("%s:\n%s\n", k, v)

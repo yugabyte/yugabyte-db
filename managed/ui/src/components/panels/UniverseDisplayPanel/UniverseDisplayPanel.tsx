@@ -27,7 +27,7 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../actions/customers';
 import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
-import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
+import { getIsKubernetesUniverse, getPrimaryCluster } from '@app/utils/UniverseUtils';
 import {
   isUniverseRevampExperienceEnabled,
   useOnboardingNewExperienceEnabled
@@ -63,7 +63,7 @@ export const UniverseDisplayPanel = ({
     (provider) => (providerUuidToName[provider.uuid] = provider.name)
   );
   const hasCronBasedUniverse = universeList.data?.some((universe: Universe) => {
-    return !universe.universeDetails.clusters[0].userIntent.useSystemd;
+    return getPrimaryCluster(universe.universeDetails.clusters)?.userIntent.useSystemd === false;
   });
 
   const pausedUniverseUuids = new Set<string>();
