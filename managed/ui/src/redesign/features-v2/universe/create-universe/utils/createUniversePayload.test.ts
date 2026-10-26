@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mapCreateUniversePayload } from './createUniversePayload';
+import { getCreateEITPayload, mapCreateUniversePayload } from './createUniversePayload';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CertType, SecuritySettingsProps } from '../steps/security-settings/dtos';
 
 // Placement and node-spec derivation are covered elsewhere; stub them so the fixture stays small.
 vi.mock('./placementAndAvailability', () => ({
@@ -86,5 +87,61 @@ describe('mapCreateUniversePayload helm overrides', () => {
     );
     expect(spec).not.toHaveProperty('helm_overrides');
     expect(spec).not.toHaveProperty('az_helm_overrides');
+  });
+});
+
+const k8sSettings = (overrides: Partial<SecuritySettingsProps>): SecuritySettingsProps => ({
+  enableIPV6: false,
+  enableExposingService: false,
+  enableNodeToNodeEncryption: true,
+  enableClientToNodeEncryption: true,
+  certType: CertType.SELF_SIGNED,
+  ...overrides
+});
+
+describe('getCreateEITPayload (kubernetes)', () => {
+  it('disables EIT when the master toggle is off even if N2N/C2N are still true', () => {
+    const payload = getCreateEITPayload(
+      k8sSettings({
+        enableBothEncryption: false,
+        certType: CertType.CUSTOM,
+        rootCertificate: 'cert-uuid'
+      }),
+      CloudType.kubernetes
+    );
+    expect(payload).toEqual({
+      root_and_client_root_ca_same: true,
+      enable_node_to_node_encrypt: false,
+      enable_client_to_node_encrypt: false,
+      root_ca: '',
+      client_root_ca: ''
+    });
+  });
+
+  it('enables both sides with a self-signed cert', () => {
+    const payload = getCreateEITPayload(
+      k8sSettings({ enableBothEncryption: true }),
+      CloudType.kubernetes
+    );
+    expect(payload.enable_node_to_node_encrypt).toBe(true);
+    expect(payload.enable_client_to_node_encrypt).toBe(true);
+    expect(payload.root_ca).toBe('');
+    expect(payload.client_root_ca).toBe('');
+  });
+
+  it('sends the custom cert only for the enabled side', () => {
+    const payload = getCreateEITPayload(
+      k8sSettings({
+        enableBothEncryption: true,
+        enableClientToNodeEncryption: false,
+        certType: CertType.CUSTOM,
+        rootCertificate: 'cert-uuid'
+      }),
+      CloudType.kubernetes
+    );
+    expect(payload.enable_node_to_node_encrypt).toBe(true);
+    expect(payload.enable_client_to_node_encrypt).toBe(false);
+    expect(payload.root_ca).toBe('cert-uuid');
+    expect(payload.client_root_ca).toBe('');
   });
 });
