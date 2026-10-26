@@ -440,8 +440,9 @@ func ensureOtelCollectorDirStep(ybHome string) struct {
 	}
 }
 
-// disableOtelCollector is the full install flow without the package setup, unit placement and
-// start. It skips the package so that a broken package cannot block turning export off.
+// disableOtelCollector stops the collector and removes its config without the package setup, so
+// that a broken package cannot block turning export off. Unlike the full install, which always
+// stops the user unit, it stops the root unit when the node has no user unit.
 func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
 	unit, err := h.installedOtelCollectorUnit()
 	if err != nil {

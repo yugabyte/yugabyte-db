@@ -376,6 +376,9 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(n1.getVersion()).thenReturn("2025.2.1.0-b1");
     when(n2.getVersion()).thenReturn("2025.2.1.0-b1");
     when(n3.getVersion()).thenReturn("2025.2.0.0-b0");
+    when(n1.isOnYbaVersion()).thenCallRealMethod();
+    when(n2.isOnYbaVersion()).thenCallRealMethod();
+    when(n3.isOnYbaVersion()).thenCallRealMethod();
     when(n1.getUuid()).thenReturn(uuid1);
     when(n2.getUuid()).thenReturn(uuid2);
     when(n3.getUuid()).thenReturn(uuid3);

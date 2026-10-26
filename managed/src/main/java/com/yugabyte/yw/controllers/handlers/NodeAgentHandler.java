@@ -12,7 +12,6 @@ import com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -147,7 +146,6 @@ public class NodeAgentHandler {
       List<Map<String, Object>> joinResults, Collection<NodeAgent> nodeAgents) {
     Date startTime =
         Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
-    String ybaVersion = nodeAgentManager.getSoftwareVersion();
     Map<UUID, NodeAgent> uuidNodeAgentMap =
         nodeAgents.stream().collect(Collectors.toMap(NodeAgent::getUuid, Function.identity()));
     return joinResults.stream()
@@ -156,8 +154,7 @@ public class NodeAgentHandler {
               NodeAgent nodeAgent = uuidNodeAgentMap.get(r.get("uuid"));
               NodeAgentResp nodeAgentResp = new NodeAgentResp(nodeAgent);
               nodeAgentResp.setReachable(nodeAgent.getUpdatedAt().after(startTime));
-              nodeAgentResp.setVersionMatched(
-                  Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true));
+              nodeAgentResp.setVersionMatched(nodeAgent.isOnYbaVersion());
               Object obj = r.get("provider_name");
               if (obj != null) {
                 nodeAgentResp.setProviderName((String) obj);
