@@ -34,6 +34,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
+#include "storage/lock.h"
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
@@ -1708,4 +1709,17 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 															char *traceparent_out);
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
+/*
+ * YB: db_oid namespace for internal advisory locks. InvalidOid cannot collide
+ * with user advisory locks, which always use MyDatabaseId.
+ */
+#define YB_INTERNAL_ADVISORY_LOCK_DB_OID	InvalidOid
+
+/* YB: classid for replication slot advisory locks. */
+#define ADVISORY_LOCK_CLASSID_REPL_SLOT	2
+
+extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
+extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
+
 #endif							/* PG_YB_UTILS_H */

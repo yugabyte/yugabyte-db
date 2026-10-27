@@ -3227,7 +3227,13 @@ ybNotifsPollerInit(void)
 
 		CheckSlotRequirements();
 		Assert(!MyReplicationSlot);
-		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ true);
+		/*
+		 * It is possible that there was a previous instance of poller process
+		 * which got crashed but its advisory lock on the slot still exists. The
+		 * lock cleanup can take upto pg_client_session_expiration_ms. Wait for
+		 * that by setting nowait arg as false.
+		 */
+		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ false);
 		publications = ybNotifsPublications();
 
 		YBCInitVirtualWal(publications);
