@@ -58,8 +58,9 @@
  *
  * YB_AGG_PARENT tells the plan node that the parent node is an Agg node.  This
  * context is used to signal the plan node to make an extra effort to determine
- * whether aggregates can be pushed down.  It should only be set for plan nodes
- * that have no children, such as IndexOnlyScan.
+ * whether aggregates can be pushed down.  IndexScan and IndexOnlyScan act on
+ * it.  A YbBitmapTableScan determines its recheck information on every init,
+ * so it and the nodes below it, which receive the flag too, ignore it.
  */
 #define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
 #define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */

@@ -77,16 +77,16 @@ typedef struct YbAggPushdownInfo
 /*
  * YB: Who decides whether the scan below a plain Agg evaluates the Agg's
  * aggregates in DocDB.  The zero value leaves it to ExecInitAgg, which
- * checks the initialized scan state (yb_agg_pushdown_supported); that is
- * every Agg planned without the YB cost model and every Agg not built from
- * an AggPath.  An AggPath planned under the YB cost model records the
- * planner's answer.  The legacy cost model does not cost a pushed-down scan,
- * so a planner decision would gain nothing there and would change which
+ * checks the initialized scan state (yb_agg_pushdown_supported).  It marks
+ * every Agg planned without the YB cost model, and every Agg not built from
+ * an AggPath, which is hashed or has grouping sets and so is never pushed
+ * down.  An AggPath planned under the YB cost model records the planner's
+ * answer.  The legacy cost model does not cost a pushed-down scan, so a
+ * planner decision would gain nothing there and would change which
  * aggregates those modes push down.  Either way, ExecInitAgg evaluates the
  * aggregates itself when the scan's index AM says at init that the scan
  * might recheck its index conditions.  Legacy cost model only:
- * YB_AGG_PUSHDOWN_BY_EXECUTOR.  Its other users, the Aggs not built from an
- * AggPath, are never pushed down by yb_agg_pushdown_supported.
+ * YB_AGG_PUSHDOWN_BY_EXECUTOR.
  */
 typedef enum YbAggPushdownDecision
 {

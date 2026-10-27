@@ -2141,13 +2141,13 @@ lookup_hash_entries(AggState *aggstate)
  * Evaluates whether plan supports pushdowns of aggregates to DocDB, and sets
  * yb_pushdown_supported accordingly in AggState.
  *
- * Legacy cost model only: this runs for an Agg planned without the YB cost
- * model (YB_AGG_PUSHDOWN_BY_EXECUTOR).  Under the YB cost model the planner
- * decides on the paths (yb_agg_pushdown_eligible) and ExecInitAgg takes its
- * answer unless the scan might recheck; the per-Aggref rules are the
- * planner's (yb_aggref_function_pushable, yb_aggref_arg_type_pushable).
- * Remove with the legacy cost model modes, together with the code marked the
- * same way.
+ * Legacy cost model only: this decides for an Agg marked
+ * YB_AGG_PUSHDOWN_BY_EXECUTOR (see YbAggPushdownDecision).  Under the YB
+ * cost model the planner decides on the paths (yb_agg_pushdown_eligible)
+ * and ExecInitAgg takes its answer unless the scan might recheck; the
+ * per-Aggref rules are the planner's (yb_aggref_function_pushable,
+ * yb_aggref_arg_type_pushable).  Remove with the legacy cost model modes,
+ * together with the code marked the same way.
  */
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
