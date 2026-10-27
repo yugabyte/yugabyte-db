@@ -208,6 +208,9 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
     SetMixedModeSaopPushdown("true");
     CheckExprs(prefix, expressions, "0");
     CheckExprs(prefix, expressions, "11");
+    CheckExprs(prefix, expressions, "15");
+    // A version with no special handling, such as the source of a later major upgrade.
+    CheckExprs(prefix, expressions, "19");
   }
 
   /* CheckFailure
@@ -252,12 +255,15 @@ public class TestPushdownCompatibilityMode extends BasePgSQLTest {
       if (expr.behaviour == Behaviour.kNotPushable) {
         CheckFilters(prefix, kLocalFilter, expr);
       } else if (expr.behaviour == Behaviour.kPushable) {
-        if (compatibility == "11")
+        if (compatibility != "0")
           CheckFilters(prefix, kLocalFilter, expr);
         else
           CheckFilters(prefix, kStorageFilter, expr);
       } else if (expr.behaviour == Behaviour.kMMPushable) {
-        CheckFilters(prefix, kStorageFilter, expr);
+        if (compatibility != "0" && compatibility != "11")
+          CheckFilters(prefix, kLocalFilter, expr);
+        else
+          CheckFilters(prefix, kStorageFilter, expr);
       } else {
         CheckFailure(prefix, expr);
       }

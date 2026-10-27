@@ -662,8 +662,8 @@ YbCanPushdownExpr(Expr *pg_expr, List **colrefs, Oid relid)
 	}
 	else if (yb_major_version_upgrade_compatibility > 0)
 	{
-		/* YB_UPGRADE: Handle this case for each new PG version. */
-		Assert(false);
+		/* Mixed mode of any later major upgrade: no pushdown. */
+		return false;
 	}
 
 	return !yb_pushdown_walker((Node *) pg_expr, colrefs);
