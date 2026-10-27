@@ -82,8 +82,14 @@ message CDCStreamInfoPB {
   // See SysCDCStreamEntryPB.xcluster_is_wal_anchor.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
 
+  // See SysCDCStreamEntryPB.cdcsdk_ysql_publications_bound_stream.
+  optional bool cdcsdk_ysql_publications_bound_stream = 20 [default = false];
+
+  // See SysCDCStreamEntryPB.cdcsdk_ysql_bound_publication_name.
+  optional string cdcsdk_ysql_bound_publication_name = 21;
+
   // See SysCDCStreamEntryPB.xcluster_bootstrap_info.
-  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 22;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -700,6 +706,30 @@ message XClusterEnsureSequenceUpdatesAreInWalResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message XClusterStopPersistingRequestPB {
+  repeated string namespace_ids = 1;
+}
+
+message XClusterStopPersistingResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterStartPersistingRequestPB {
+  repeated string namespace_ids = 1;
+}
+
+message XClusterStartPersistingResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterGetPersistenceBlockMapRequestPB {
+}
+
+message XClusterGetPersistenceBlockMapResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysPersistenceBlockMapEntryPB persistence_block_map = 2;
+}
+
 message GetXClusterStreamsRequestPB {
   required string replication_group_id = 1;
   required string namespace_id = 2;
@@ -1059,6 +1089,12 @@ service MasterReplication {
       returns (IsXClusterBootstrapRequiredResponsePB);
   rpc XClusterEnsureSequenceUpdatesAreInWal(XClusterEnsureSequenceUpdatesAreInWalRequestPB)
       returns (XClusterEnsureSequenceUpdatesAreInWalResponsePB);
+  rpc XClusterStopPersisting(XClusterStopPersistingRequestPB)
+      returns (XClusterStopPersistingResponsePB);
+  rpc XClusterStartPersisting(XClusterStartPersistingRequestPB)
+      returns (XClusterStartPersistingResponsePB);
+  rpc XClusterGetPersistenceBlockMap(XClusterGetPersistenceBlockMapRequestPB)
+      returns (XClusterGetPersistenceBlockMapResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
   rpc RepairOutboundXClusterReplicationGroupAddTable(

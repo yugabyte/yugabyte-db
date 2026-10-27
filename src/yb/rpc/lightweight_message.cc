@@ -382,5 +382,26 @@ ThreadSafeArena& empty_arena() {
   return arena;
 }
 
+void TracingAttributeCollector::Add(std::string key, std::string value) {
+  entries_[std::move(key)].insert(std::move(value));
+}
+
+std::vector<std::pair<std::string, std::string>> TracingAttributeCollector::Finish() {
+  std::vector<std::pair<std::string, std::string>> result;
+  result.reserve(entries_.size());
+  for (auto& [key, values] : entries_) {
+    std::string joined;
+    for (const auto& value : values) {
+      if (!joined.empty()) {
+        joined += ", ";
+      }
+      joined += value;
+    }
+    result.emplace_back(std::move(key), std::move(joined));
+  }
+  entries_.clear();
+  return result;
+}
+
 } // namespace rpc
 } // namespace yb

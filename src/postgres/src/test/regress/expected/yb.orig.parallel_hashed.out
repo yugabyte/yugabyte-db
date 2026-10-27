@@ -493,12 +493,12 @@ EXPLAIN (costs off)
 select * from
   (SELECT count(*) FROM pctest1 WHERE c > 10) ss
   right join (values (1),(2),(3)) v(x) on true;
-                         QUERY PLAN                         
-------------------------------------------------------------
+               QUERY PLAN               
+----------------------------------------
  Nested Loop Left Join
    ->  Values Scan on "*VALUES*"
    ->  Finalize Aggregate
-         ->  Index Only Scan using pctest1_c_idx on pctest1
+         ->  Seq Scan on pctest1
                Storage Filter: (c > 10)
                Partial Aggregate: true
 (6 rows)

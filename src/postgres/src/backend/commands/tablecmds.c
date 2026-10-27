@@ -139,6 +139,7 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "nodes/bitmapset.h"
+#include "optimizer/cost.h"
 #include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "statistics/statistics.h"
@@ -5496,10 +5497,13 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
-	 * If this is a partitioned table, prepare alter table handles for all
-	 * the partitions as well.
+	 * YB: If this is a partitioned table and a subcommand trickles down to
+	 * the partitions, prepare alter table handles for all the partitions as
+	 * well. Lock them before reading them.
 	 */
-	List	   *children = find_all_inheritors(main_relid, NoLock, NULL);
+	List	   *children = (YbATAltersPartitions(info->subcmds, AT_NUM_PASSES) ?
+							find_all_inheritors(main_relid, lockmode, NULL) :
+							NIL);
 	ListCell   *child;
 
 	foreach(child, children)
@@ -13039,13 +13043,19 @@ validateForeignKeyConstraint(char *conname,
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
-	 * YB Note: YB handles LEFT JOIN inefficiently. So skip this approach and
-	 * call trigger on each row instead. As triggers can buffer the FK check.
-	 * We skip this approach by adding the condition !IsYBRelation(rel).
-	 * The original condition in vanilla postgres is only
-	 *   if (RI_Initial_Check(&trig, rel, pkrel))
+	 *
+	 * YB: this query takes no row locks, so it is safe only if table locks
+	 * ensure that all new writes invisible to the scan apply FK triggers.
+	 * ADD FOREIGN KEY: its ShareRowExclusiveLock blocks writers during the
+	 * check. VALIDATE: the same lock, taken by ADD ... NOT VALID, waited
+	 * out every writer that started before the triggers existed. YB table
+	 * locks block writers only if object locking is enabled, i.e. the
+	 * non-legacy DDL mode. Without them, a DELETE could remove the parent
+	 * of a child row that the check passed and leave that child orphaned.
 	 */
-	if (!IsYBRelation(rel) && RI_Initial_Check(&trig, rel, pkrel))
+	if ((!IsYBRelation(rel) ||
+		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*

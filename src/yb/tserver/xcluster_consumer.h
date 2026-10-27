@@ -161,6 +161,9 @@ class XClusterConsumer : public XClusterConsumerIf {
   // polled for.
   void TriggerPollForNewTablets() EXCLUDES (master_data_mutex_);
 
+  Result<std::shared_ptr<client::XClusterRemoteClientHolder>> CreateSourceClient(
+      const xcluster::ReplicationGroupId& replication_group_id) REQUIRES_SHARED(master_data_mutex_);
+
   // Loop through pollers and check if they should still be polling, if not, shut them down.
   void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 

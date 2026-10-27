@@ -77,7 +77,21 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Request request, Class<T> paramType) {
+      Http.Request request, Class<T> paramType, RuntimeConfGetter confGetter) {
+    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
+    // V1 clients send the legacy flat schema; persist/operate on ProviderSpecification.
+    Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+    return taskParams;
+  }
+
+  /**
+   * Binds JSON to task params without converting old provider fields to ProviderSpecification. Used
+   * when the caller will merge with an existing universe first (conversion must run after merge
+   * because array fields like providerSpecifications are replaced, not deep-merged).
+   */
+  private static <T extends UniverseDefinitionTaskParams>
+      T bindFormDataToTaskParamsWithoutProviderConversion(
+          Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -136,12 +150,17 @@ public class UniverseControllerRequestBinder {
    * DB. Request gflags stay unless a value still contains the platform redaction token.
    */
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Request request, Class<T> paramType, Universe universe) {
-    T taskParams = bindFormDataToTaskParams(request, paramType);
+      Http.Request request, Class<T> paramType, Universe universe, RuntimeConfGetter confGetter) {
+    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
     if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
       return taskParams;
     }
-    return mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
+    T merged = mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
+    // Convert after merge so request flat-field updates win and Spec arrays are not replaced
+    // with a partial Spec built from the request alone.
+    Util.convertOldSchemaToProviderSpecifications(confGetter, merged);
+    return merged;
   }
 
   /** Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. */
@@ -255,8 +274,9 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
-      Http.Request request, Class<T> paramType, Universe universe) {
+      Http.Request request, Class<T> paramType, UUID universeUUID, RuntimeConfGetter confGetter) {
     try {
+      Universe universe = Universe.getOrBadRequest(universeUUID);
       ObjectNode formData = (ObjectNode) request.body().asJson();
       ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
       List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
@@ -308,7 +328,7 @@ public class UniverseControllerRequestBinder {
               currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
             }
           }
-
+          Util.convertSingleProviderSpecToOldSchema(confGetter, currentCluster.userIntent);
           JsonNode currentClusterJson = Json.mapper().valueToTree(currentCluster);
           CommonUtils.deepMerge(currentClusterJson, clusterJson);
           UniverseDefinitionTaskParams.Cluster cluster =
@@ -350,6 +370,9 @@ public class UniverseControllerRequestBinder {
       if (!UpgradeWithGFlags.class.isAssignableFrom(paramType)) {
         copyGFlagsFromUniverseDetails(taskParams, universe);
       }
+
+      // V1 clients send the legacy flat schema; persist/operate on ProviderSpecification.
+      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
 
       return taskParams;
     } catch (JsonProcessingException exception) {

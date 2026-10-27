@@ -49,6 +49,8 @@ DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(use_fast_next_for_iteration);
 DECLARE_int32(max_nexts_to_avoid_seek);
+DECLARE_int32(max_prevs_to_avoid_seek);
+DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
 namespace docdb {
@@ -185,6 +187,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestClusteredFilterRange();
   void TestClusteredFilterRangeWithTableTombstone();
   void TestClusteredFilterRangeWithTableTombstoneReverseScan();
+  void TestCdrStampedTombstoneReverseScan();
   void TestClusteredFilterHybridScan();
   void TestClusteredFilterSubsetCol();
   void TestClusteredFilterSubsetCol2();
@@ -209,6 +212,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestPackedRow();
   void TestDeleteMarkerWithPackedRow();
   void TestUpdatePackedRow();
+  void TestUpperBoundExcludesIntentAtBound();
   // Restore doesn't use delete tombstones for rows, instead marks all columns
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
@@ -671,6 +675,68 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
         {int32:5,int32:6,int32:10}
       )#",
       HybridTime::FromMicros(1000));
+}
+
+// A tombstone written by a replication apply carries a CDR stamp, so its value no longer begins
+// with kTombstone. The fast backward scan path reads the row entry's value type directly, so it has
+// to look past the control fields - otherwise the delete goes unnoticed and the row still reads.
+void DocRowwiseIteratorTest::TestCdrStampedTombstoneReverseScan() {
+  ASSERT_TRUE(FLAGS_use_fast_backward_scan) << "this covers the fast backward scan path";
+
+  Schema test_schema(
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       // Non-key columns
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
+
+  const KeyEntryValues range_components{
+      KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
+  const auto encoded_doc_key = DocKey(test_schema, range_components).Encode();
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(12_ColId)),
+      QLValue::Primitive(10), HybridTime::FromMicros(1000)));
+
+  {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+    auto dwb = MakeDocWriteBatch();
+    dwb.SetCdrMetadata({.source_origin = 42, .source_write_ht = HybridTime::FromMicros(1500)});
+    ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+    ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2000)));
+  }
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_LESS_THAN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+
+  const KeyEntryValues empty_key_components;
+  std::optional<int32_t> empty_hash_code;
+  static const DocKey default_doc_key;
+  DocPgsqlScanSpec spec(
+      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
+      PgsqlConditionPBPtr(&cond), empty_hash_code, empty_hash_code, default_doc_key,
+      /* is_forward_scan */ false);
+
+  // Built directly rather than through CreateIteratorAndValidate, which turns fast backward scan
+  // off - the path under test here is exactly the one it disables.
+  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(3000)), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(test_schema);
+  dockv::PgTableRow row(reader_projection);
+  ASSERT_FALSE(ASSERT_RESULT(iter->PgFetchNext(&row))) << "deleted row was returned";
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
@@ -1848,6 +1914,65 @@ void DocRowwiseIteratorTest::TestDeleteMarkerWithPackedRow() {
       HybridTime::FromMicros(1100));
 }
 
+// An intent for a whole row has the row's doc key as its key prefix, with no hybrid time suffix,
+// and IntentAwareIterator::SatisfyBounds lets it pass when the upper bound is equal to that doc
+// key. Checks that the bound set by SetUpperBound still excludes such a row and that each row is
+// returned for exactly one range.
+void DocRowwiseIteratorTest::TestUpperBoundExcludesIntentAtBound() {
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  TransactionStatusManagerMock txn_status_manager;
+  const auto txn = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+
+  // Row 1 is written by a transaction which is committed but not applied, so it is present only
+  // as an intent for the whole row.
+  SetCurrentTransactionId(txn);
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey1, HybridTime::FromMicros(500),
+      {
+          {30_ColId, QLValue::Primitive("row1_c")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e")},
+      });
+  ResetCurrentTransactionId();
+  txn_status_manager.Commit(txn, HybridTime::FromMicros(600));
+
+  InsertPackedRow(
+      kVersion, schema_packing, kEncodedDocKey2, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row2_c")},
+      });
+
+  DocDBDebugDumpToConsole();
+
+  const auto txn_context =
+      TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection(), doc_read_context(), txn_context, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(2000)), pending_op);
+  ASSERT_OK(iter->InitForTableType(YQL_TABLE_TYPE, Slice(), SkipSeek::kTrue));
+
+  auto fetch_range = [&](Slice lower_bound, Slice upper_bound) -> Result<std::string> {
+    iter->SetUpperBound(upper_bound);
+    iter->SeekToDocKeyPrefix(lower_bound);
+    return ConvertIteratorRowsToString(iter.get(), IteratorMode::kGeneric, projection());
+  };
+
+  const std::string kRow1 =
+      R"#({string:"row1",int64:11111,string:"row1_c",int64:10000,string:"row1_e"})#" "\n";
+  const std::string kRow2 = R"#({string:"row2",int64:22222,string:"row2_c",null,null})#" "\n";
+
+  // Row 1 belongs to the range which starts at its doc key, and only to it.
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), kEncodedDocKey1)), "");
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey1, kEncodedDocKey2)), kRow1);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(kEncodedDocKey2, Slice())), kRow2);
+  ASSERT_EQ(ASSERT_RESULT(fetch_range(Slice(), Slice())), kRow1 + kRow2);
+}
+
 void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
@@ -2414,6 +2539,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstoneReverseScan
   TestClusteredFilterRangeWithTableTombstoneReverseScan();
 }
 
+TEST_F(DocRowwiseIteratorTest, CdrStampedTombstoneReverseScan) {
+  TestCdrStampedTombstoneReverseScan();
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
   TestClusteredFilterHybridScan();
 }
@@ -2504,6 +2633,10 @@ TEST_F(DocRowwiseIteratorTest, DeleteMarkerWithPackedRow) {
 
 TEST_F(DocRowwiseIteratorTest, UpdatePackedRow) {
   TestUpdatePackedRow();
+}
+
+TEST_F(DocRowwiseIteratorTest, UpperBoundExcludesIntentAtBound) {
+  TestUpperBoundExcludesIntentAtBound();
 }
 
 TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {
@@ -2625,6 +2758,344 @@ TEST_F(DocRowwiseIteratorTest, HtRollbackUpdatedRow) {
       expected,
       expected_max_seen_ht,
       &projection);
+}
+
+// Fast backward scan over a tablet that holds one applied row P and, just above it, one committed
+// but not yet applied row D, i.e. D exists in the intents DB only. Mirrors a YSQL secondary index
+// row: the root key holds the whole (packed) row. See GH #34839.
+//
+// D's transaction may write no weak intent on a key prefix that sorts between P and D: there is no
+// such prefix for a single range column key, and skip_prefix_locks skips them. Writing D without
+// partial range key intents reproduces that layout. The only weak intent left below D is the one on
+// the top-level key, which is outside the key bounds of a post-split child tablet.
+class FastBackwardScanSplitChildTest : public DocRowwiseIteratorTest {
+ protected:
+  void WriteRow(
+      const KeyBytes& doc_key, HybridTime ht, const std::string& c_value,
+      dockv::PartialRangeKeyIntents partial_range_key_intents =
+          dockv::PartialRangeKeyIntents::kTrue) {
+    constexpr int kVersion = 0;
+    auto& schema_packing = ASSERT_RESULT(
+        doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+    dockv::RowPackerV1 packer(
+        kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
+        /* value_control_fields= */ Slice());
+    ASSERT_OK(packer.AddValue(30_ColId, QLValue::Primitive(c_value)));
+    auto packed_row = ASSERT_RESULT(packer.Complete());
+
+    auto dwb = MakeDocWriteBatch();
+    // As pggate does for YSQL writes. With skip_prefix_locks, this keeps the top-level intent weak.
+    dwb.SetIncludesPk(true);
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(doc_key), dockv::ValueControlFields(), ValueRef(packed_row)));
+    ASSERT_OK(WriteToRocksDB(
+        dwb, ht, /* decode_dockey= */ true, /* increment_write_id= */ true,
+        partial_range_key_intents));
+  }
+
+  // Writes P as an applied row (or only its delete marker) at prev_ht, and D as a transaction
+  // committed at kCommitTime.
+  void WriteRows(
+      const KeyBytes& prev_key, HybridTime prev_ht, const KeyBytes& key,
+      dockv::PartialRangeKeyIntents partial_range_key_intents,
+      dockv::SkipPrefixLocks skip_prefix_locks, bool prev_deleted) {
+    ASSERT_OK(DestroyRocksDB());
+    ASSERT_OK(InitRocksDBDir());
+    ASSERT_OK(OpenRocksDB());
+    ResetMonotonicCounter();
+
+    if (prev_deleted) {
+      ASSERT_OK(DeleteSubDoc(DocPath(prev_key), prev_ht));
+    } else {
+      WriteRow(prev_key, prev_ht, "p");
+    }
+
+    SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    SetSkipPrefixLocks(skip_prefix_locks);
+    SetCurrentTransactionId(kTxn);
+    WriteRow(key, 1500_usec_ht, "d", partial_range_key_intents);
+    ResetCurrentTransactionId();
+    SetSkipPrefixLocks(dockv::SkipPrefixLocks::kFalse);
+    txn_status_manager_.emplace();
+    txn_status_manager_->Commit(kTxn, kCommitTime);
+
+    DocDBDebugDumpToConsole();
+  }
+
+  void SetupData(
+      dockv::PartialRangeKeyIntents partial_range_key_intents, const KeyBytes& prev_key,
+      HybridTime prev_ht, bool prev_deleted = false) {
+    WriteRows(
+        prev_key, prev_ht, kLongKey, partial_range_key_intents, dockv::SkipPrefixLocks::kFalse,
+        prev_deleted);
+  }
+
+  void SetupData(dockv::PartialRangeKeyIntents partial_range_key_intents) {
+    SetupData(partial_range_key_intents, kShortKey, 1000_usec_ht);
+  }
+
+  // Tablet key bounds as for a post-split child: the top-level key "!" is below the lower bound.
+  KeyBounds SplitChildBounds() {
+    return KeyBounds(Slice(&dockv::KeyEntryTypeAsChar::kString, 1), Slice());
+  }
+
+  TransactionOperationContext TxnOpContext() {
+    return {TransactionId::GenerateRandom(), &*txn_status_manager_};
+  }
+
+  // Runs a fast backward scan of the split child tablet and returns the rows.
+  Result<std::vector<std::string>> ScanRows(const std::vector<GStringPiece>& column_names) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+    const auto key_bounds = SplitChildBounds();
+    const DocDB db{rocksdb(), intents_db(), &key_bounds};
+
+    Schema projection;
+    RETURN_NOT_OK(doc_read_context().schema().TEST_CreateProjectionByNames(
+        column_names, &projection));
+    const KeyEntryValues empty_key_components;
+    DocPgsqlScanSpec spec(
+        doc_read_context().schema(), rocksdb::kDefaultQueryId, /* arena= */ nullptr,
+        /* encoded_hashed_components= */ {}, empty_key_components, /* condition= */ nullptr,
+        /* hash_code= */ std::nullopt, /* max_hash_code= */ std::nullopt,
+        /* start_doc_key= */ DocKey(), /* is_forward_scan= */ false,
+        /* lower_doc_key= */ DocKey(), /* upper_doc_key= */ dockv::MakeDocKey("zzz", int64_t{0}));
+
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = MakeIterator(
+        projection, doc_read_context(), TxnOpContext(), db,
+        ReadOperationData::FromSingleReadTime(kReadTime), pending_op);
+    RETURN_NOT_OK(iter->Init(spec));
+    SCHECK(iter->TEST_use_fast_backward_scan(), IllegalState, "Fast backward scan is not used");
+
+    dockv::ReaderProjection reader_projection(projection);
+    dockv::PgTableRow row(reader_projection);
+    std::vector<std::string> rows;
+    while (VERIFY_RESULT(iter->PgFetchNext(&row))) {
+      rows.push_back(VERIFY_RESULT(
+          PgTableRowToString(doc_read_context().schema(), row, &projection)));
+    }
+    return rows;
+  }
+
+  static constexpr auto kCommitTime = 1600_usec_ht;
+  static constexpr auto kReadTime = 2000_usec_ht;
+
+  // P's doc key is shorter than D's.
+  const KeyBytes kShortKey = dockv::MakeDocKey("a", int64_t{1}).Encode();
+  const KeyBytes kLongKey = dockv::MakeDocKey("dddddddddddddddd", int64_t{2}).Encode();
+  const TransactionId kTxn = TransactionId::GenerateRandom();
+  std::optional<TransactionStatusManagerMock> txn_status_manager_;
+};
+
+// Replays the IntentAwareIterator calls of a fast backward scan: DocRowwiseIterator positions on
+// the last row via SeekPrevDocKey, then GetHelperBase installs the row's root doc key as the lower
+// bound and leaves the root record with Prev(). Every entry fetched after that must belong to the
+// row, as GetSubKeys() strips root_doc_key_ by length only.
+TEST_F(FastBackwardScanSplitChildTest, PrevStaysWithinRowLowerBound) {
+  const auto upper = dockv::MakeDocKey("zzz", int64_t{0}).Encode();
+  for (auto partial_range_key_intents :
+       {dockv::PartialRangeKeyIntents::kTrue, dockv::PartialRangeKeyIntents::kFalse}) {
+    for (auto split_child : {false, true}) {
+      SCOPED_TRACE(Format(
+          "partial_range_key_intents: $0, split_child: $1",
+          partial_range_key_intents, split_child));
+      SetupData(partial_range_key_intents);
+
+      const auto key_bounds = split_child ? SplitChildBounds() : KeyBounds();
+      const DocDB db{rocksdb(), intents_db(), &key_bounds};
+      IntentAwareIteratorFlags flags;
+      flags.Set(IntentAwareIteratorFlag::kFastBackwardScan);
+      auto iter = CreateIntentAwareIterator(
+          db, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, TxnOpContext(),
+          ReadOperationData::FromSingleReadTime(kReadTime), /* file_filter= */ nullptr,
+          /* iterate_upper_bound= */ nullptr, flags);
+
+      iter->SeekPrevDocKey(upper.AsSlice());
+      {
+        const auto& entry = ASSERT_RESULT(iter->Fetch()).get();
+        ASSERT_TRUE(entry.valid);
+        ASSERT_EQ(entry.key.ToDebugHexString(), kLongKey.AsSlice().ToDebugHexString());
+      }
+
+      IntentAwareIteratorLowerboundScope row_bound(kLongKey.AsSlice(), iter.get());
+      iter->Prev();
+      const auto& entry = ASSERT_RESULT(iter->Fetch()).get();
+      LOG(INFO) << "partial_range_key_intents: " << partial_range_key_intents
+                << ", split_child: " << split_child << ", entry after Prev(): "
+                << (entry.valid ? SubDocKey::DebugSliceToString(entry.key) : "<invalid>");
+      EXPECT_TRUE(!entry.valid || entry.key.starts_with(kLongKey.AsSlice()))
+          << "Fetched key outside of the row's lower bound: "
+          << SubDocKey::DebugSliceToString(entry.key);
+    }
+  }
+}
+
+// The same with D written with skip_prefix_locks, which writes no weak intents on hash or range key
+// prefixes, so a hash key, the shape of a hash partitioned index row, is exposed too.
+TEST_F(FastBackwardScanSplitChildTest, PrevStaysWithinRowLowerBoundSkipPrefixLocks) {
+  auto hash_key = [](const std::string& a, int64_t b) {
+    return DocKey(
+        0x9000, dockv::MakeKeyEntryValues("h"), dockv::MakeKeyEntryValues(a, b)).Encode();
+  };
+  struct KeyShape {
+    std::string name;
+    KeyBytes prev_key;
+    KeyBytes key;
+    KeyBytes upper;
+    KeyBounds split_child_bounds;
+  };
+  const std::vector<KeyShape> shapes = {
+      {"range", kShortKey, kLongKey, dockv::MakeDocKey("zzz", int64_t{0}).Encode(),
+       SplitChildBounds()},
+      // A split child of a hash partitioned table starts at a hash code, above the top-level key.
+      {"hash", hash_key("a", 1), hash_key("dddddddddddddddd", 2), hash_key("zzz", 0),
+       KeyBounds(Slice("G\x80\x00", 3), Slice())},
+  };
+  for (const auto& shape : shapes) {
+    for (auto skip_prefix_locks : {dockv::SkipPrefixLocks::kFalse, dockv::SkipPrefixLocks::kTrue}) {
+      SCOPED_TRACE(Format("key: $0, skip_prefix_locks: $1", shape.name, skip_prefix_locks));
+      WriteRows(
+          shape.prev_key, 1000_usec_ht, shape.key, dockv::PartialRangeKeyIntents::kTrue,
+          skip_prefix_locks, /* prev_deleted= */ false);
+
+      const DocDB db{rocksdb(), intents_db(), &shape.split_child_bounds};
+      IntentAwareIteratorFlags flags;
+      flags.Set(IntentAwareIteratorFlag::kFastBackwardScan);
+      auto iter = CreateIntentAwareIterator(
+          db, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId, TxnOpContext(),
+          ReadOperationData::FromSingleReadTime(kReadTime), /* file_filter= */ nullptr,
+          /* iterate_upper_bound= */ nullptr, flags);
+
+      iter->SeekPrevDocKey(shape.upper.AsSlice());
+      {
+        const auto& entry = ASSERT_RESULT(iter->Fetch()).get();
+        ASSERT_TRUE(entry.valid);
+        ASSERT_EQ(entry.key.ToDebugHexString(), shape.key.AsSlice().ToDebugHexString());
+      }
+
+      IntentAwareIteratorLowerboundScope row_bound(shape.key.AsSlice(), iter.get());
+      iter->Prev();
+      const auto& entry = ASSERT_RESULT(iter->Fetch()).get();
+      EXPECT_TRUE(!entry.valid || entry.key.starts_with(shape.key.AsSlice()))
+          << "Fetched key outside of the row's lower bound: "
+          << SubDocKey::DebugSliceToString(entry.key);
+    }
+  }
+}
+
+// End-to-end fast backward scan of the same layout with a key-only projection, as for a secondary
+// index. Without the bounds re-check in IntentAwareIterator::Prev(), a release build spins forever
+// in ByteBufferBase::EnsureCapacity, called from DoReadColumnBackward.
+TEST_F(FastBackwardScanSplitChildTest, Scan) {
+  SetupData(dockv::PartialRangeKeyIntents::kFalse);
+  ASSERT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b"}))), AsString(std::vector<std::string>{
+      R"#({string:"dddddddddddddddd",int64:2,missing,missing,missing})#",
+      R"#({string:"a",int64:1,missing,missing,missing})#"}));
+}
+
+// P's key is the same length as D's or longer (the 16 and 20 character variants), and P is older
+// or newer than D. Without the fix, reading D consumed P, so P was missing.
+TEST_F(FastBackwardScanSplitChildTest, ScanKeepsPreviousRow) {
+  for (const auto& prev_a : {"aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaa"}) {
+    for (auto prev_ht : {1000_usec_ht, 1800_usec_ht}) {
+      SCOPED_TRACE(Format("previous row: $0, written at: $1", prev_a, prev_ht));
+      SetupData(
+          dockv::PartialRangeKeyIntents::kFalse, dockv::MakeDocKey(prev_a, int64_t{1}).Encode(),
+          prev_ht);
+      EXPECT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b"}))), AsString(std::vector<std::string>{
+          R"#({string:"dddddddddddddddd",int64:2,missing,missing,missing})#",
+          Format(R"#({string:"$0",int64:1,missing,missing,missing})#", prev_a)}));
+    }
+  }
+}
+
+// P has the same key length as D and is newer. Without the fix, P was taken for D's root record:
+// D got P's values, and P was missing.
+TEST_F(FastBackwardScanSplitChildTest, ScanDoesNotMixRows) {
+  SetupData(
+      dockv::PartialRangeKeyIntents::kFalse,
+      dockv::MakeDocKey("aaaaaaaaaaaaaaaa", int64_t{1}).Encode(), 1800_usec_ht);
+  ASSERT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b", "c"}))), AsString(std::vector<std::string>{
+      R"#({string:"dddddddddddddddd",int64:2,string:"d",missing,missing})#",
+      R"#({string:"aaaaaaaaaaaaaaaa",int64:1,string:"p",missing,missing})#"}));
+}
+
+// P is only a newer delete marker with the same key length as D, e.g. after compaction removed the
+// deleted row's older versions. Without the fix, D was taken as deleted and was missing.
+TEST_F(FastBackwardScanSplitChildTest, ScanAfterNewerDelete) {
+  SetupData(
+      dockv::PartialRangeKeyIntents::kFalse,
+      dockv::MakeDocKey("aaaaaaaaaaaaaaaa", int64_t{1}).Encode(), 1800_usec_ht,
+      /* prev_deleted= */ true);
+  ASSERT_EQ(AsString(ASSERT_RESULT(ScanRows({"a", "b"}))), AsString(std::vector<std::string>{
+      R"#({string:"dddddddddddddddd",int64:2,missing,missing,missing})#"}));
+}
+
+// GH #35147: in a fast backward scan of a colocated table, column C of the last row B has
+// more updates than max_prevs_to_avoid_seek, so it is read with a forward Seek(). Nothing
+// in the IntentsDB follows C within the table, so that Seek() leaves the intent iterator
+// invalid. Row A has a committed but not yet applied update of C, newer than its applied
+// value, and the scan must return it.
+TEST_F(DocRowwiseIteratorTest, FastBackwardScanColocatedSeesIntentAfterForwardSeek) {
+  constexpr ColocationId kColocationId(0x4001);
+  Schema schema = doc_read_context().schema();
+  schema.set_colocation_id(kColocationId);
+  const auto read_context = DocReadContext::TEST_Create(schema);
+  const DocKey high_key(schema, dockv::MakeKeyEntryValues("b", int64_t{1}));
+  const DocKey low_key(schema, dockv::MakeKeyEntryValues("a", int64_t{1}));
+
+  auto write_c = [this](const DocKey& doc_key, HybridTime ht, const std::string& value) {
+    auto dwb = MakeDocWriteBatch();
+    ASSERT_OK(dwb.TEST_SetPrimitive(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(30_ColId)),
+        QLValue::Primitive(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, ht));
+  };
+
+  write_c(high_key, 1000_usec_ht, "h1");
+  write_c(high_key, 1100_usec_ht, "h2");
+  write_c(high_key, 1200_usec_ht, "h3");
+  write_c(low_key, 1000_usec_ht, "applied");
+
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+  const auto txn_id = TransactionId::GenerateRandom();
+  SetCurrentTransactionId(txn_id);
+  write_c(low_key, 1500_usec_ht, "committed");
+  ResetCurrentTransactionId();
+  TransactionStatusManagerMock txn_status_manager;
+  txn_status_manager.Commit(txn_id, 1600_usec_ht);
+  DocDBDebugDumpToConsole();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = 2;
+
+  Schema projection;
+  ASSERT_OK(schema.TEST_CreateProjectionByNames({"a", "b", "c"}, &projection));
+  const KeyEntryValues empty_key_components;
+  DocPgsqlScanSpec spec(
+      schema, rocksdb::kDefaultQueryId, /* arena = */ nullptr,
+      /* encoded_hashed_components = */ {}, empty_key_components, /* condition = */ nullptr,
+      /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt,
+      /* start_doc_key = */ DocKey(), /* is_forward_scan = */ false,
+      /* lower_doc_key = */ DocKey(schema), /* upper_doc_key = */ DocKey(
+          schema, KeyEntryValues{KeyEntryValue(dockv::KeyEntryType::kHighest)}));
+
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      projection, read_context, {TransactionId::GenerateRandom(), &txn_status_manager}, doc_db(),
+      ReadOperationData::FromSingleReadTime(2000_usec_ht), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(projection);
+  dockv::PgTableRow row(reader_projection);
+  std::vector<std::string> rows;
+  while (ASSERT_RESULT(iter->PgFetchNext(&row))) {
+    rows.push_back(ASSERT_RESULT(PgTableRowToString(schema, row, &projection)));
+  }
+  ASSERT_EQ(AsString(rows), AsString(std::vector<std::string>{
+      R"#({string:"b",int64:1,string:"h3",missing,missing})#",
+      R"#({string:"a",int64:1,string:"committed",missing,missing})#"}));
 }
 
 }  // namespace docdb

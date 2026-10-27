@@ -169,7 +169,10 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 				{
 					Const	   *const_node = castNode(Const, tle->expr);
 
-					/* Already checked by yb_agg_pushdown_supported */
+					/*
+					 * Checked by yb_agg_pushdown_supported or, under the YB
+					 * cost model, yb_agg_pushdown_eligible.
+					 */
 					Assert(const_node->constisnull || const_node->constbyval);
 
 					YbcPgExpr	const_handle;

@@ -1632,6 +1632,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -2496,4 +2505,23 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent checker offloaded to run asynchronously on its own schedule",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> conditionalGetEnabled =
+      new ConfKeyInfo<>(
+          "yb.api.conditional_get.enabled",
+          ScopeType.GLOBAL,
+          "HTTP conditional GET (ETag / 304)",
+          "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when"
+              + " the client sends a matching If-None-Match ETag, skipping heavy response"
+              + " construction. When disabled, those endpoints always return a full 200 body.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
 }

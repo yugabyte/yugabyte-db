@@ -41,6 +41,7 @@
 #include "access/yb_cost.h"
 #include "catalog/pg_am.h"
 #include "optimizer/planner.h"
+#include "optimizer/yb_agg_pushdown.h"
 #include "pg_yb_utils.h"
 
 typedef enum
@@ -71,6 +72,16 @@ static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 /* YB declarations */
 static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 											 RelOptInfo *rel, Path *subpath);
+static Path *yb_agg_pushdown_subpath(PlannerInfo *root, AggPath *aggpath,
+									 Path *subpath, AggStrategy aggstrategy,
+									 AggSplit aggsplit);
+static Path *yb_copy_scan_path(Path *path);
+static Path *yb_copy_append_path(AppendPath *append, Path *child);
+static Path *yb_copy_subqueryscan_path(PlannerInfo *root,
+									   SubqueryScanPath *sqpath, Path *child);
+static bool yb_member_subqueryscan_is_trivial(RelOptInfo *sqrel,
+											  PathTarget *target);
+static void yb_cost_agg_pushdown_scan(PlannerInfo *root, Path *copy);
 
 
 /*****************************************************************************
@@ -4053,6 +4064,14 @@ create_agg_path(PlannerInfo *root,
 {
 	AggPath    *pathnode = makeNode(AggPath);
 
+	/*
+	 * YB: under the YB cost model, a plain Agg whose aggregates DocDB can
+	 * evaluate is marked for pushdown and hangs on a copy of its scan path
+	 * costed for that collapsed result stream.
+	 */
+	subpath = yb_agg_pushdown_subpath(root, pathnode, subpath, aggstrategy,
+									  aggsplit);
+
 	pathnode->path.pathtype = T_Agg;
 	pathnode->path.parent = rel;
 	yb_assign_unique_path_node_id(root, (Path *) pathnode);
@@ -5555,11 +5574,12 @@ yb_create_unique_path(PlannerInfo *root,
  *
  * Cost
  * ====
- * Distinct index scans are so useful because they are retrieved efficiently
- * and pull fewer tuples from the underlying storage. Hence, we need to adjust
- * the cost accordingly. For that, we first estimate the number of distinct
- * tuples that will be returned by the prefix and then scale down the cost of
- * the path by the selectivity of the scan.
+ * Under the YB cost model the copy is costed anew by yb_cost_index, which
+ * reads the prefix length off the path and models the scan's skip loop: one
+ * row read and one skip per prefix group, with seek-forward standing in for
+ * the skip's seek when groups are small.  Its row estimate is the number of
+ * groups that yield a row.  Under the legacy cost model the regular scan's
+ * run cost is scaled down by the ratio of distinct groups to rows.
  *
  * Unique Node
  * ===========
@@ -5617,6 +5637,8 @@ yb_create_unique_path(PlannerInfo *root,
  * 			index scan. This value is sent to DocDB as a scan parameter.
  * 'yb_distinct_nkeys' is the number of pathkeys corresponding to the distinct
  * 			prefix.
+ * 'loop_count' is the number of repetitions of the scan, as for
+ * 			create_index_path.
  *
  * Returns a polymorphic path.
  * - either a bare distinct index scan path
@@ -5627,16 +5649,12 @@ yb_create_distinct_index_path(PlannerInfo *root,
 							  IndexOptInfo *index,
 							  IndexPath *basepath,
 							  int yb_distinct_prefixlen,
-							  int yb_distinct_nkeys)
+							  int yb_distinct_nkeys,
+							  double loop_count)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
-	int			numDistinctRows;
+	Cardinality	numDistinctRows;
 	bool		ignore_prefix_for_uniqkeys;
-	List	   *prefixExprs;
-	ListCell   *lc;
-	int			i;
-	Selectivity selectivity;
-	double		run_cost = 0;
 
 	/*
 	 * XXX: Memcpy'ing the index scan path the same way it is done in the
@@ -5670,38 +5688,57 @@ yb_create_distinct_index_path(PlannerInfo *root,
 		yb_get_uniqkeys(index,
 						ignore_prefix_for_uniqkeys ? 0 : yb_distinct_prefixlen);
 
-	/* Estimate cost. */
-	prefixExprs = NIL;
-	i = 0;
-	foreach(lc, index->indextlist)
-	{
-		TargetEntry *tle;
-
-		if (i >= yb_distinct_prefixlen)
-			break;
-
-		tle = (TargetEntry *) lfirst(lc);
-		prefixExprs = lappend(prefixExprs, tle->expr);
-		i++;
-	}
-	pathnode->path.rows = clamp_row_est(pathnode->path.rows);
-	numDistinctRows = estimate_num_groups(root,
-										  prefixExprs,
-										  pathnode->path.rows,
-										  NULL,
-										  NULL);
-	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
-
 	/*
-	 * TODO(#18943): model distinct index scan cost. startup_cost has to reflect
-	 * the extra work to fill the first batch.
+	 * A range-partitioned index whose prefix misses some of the pathkeys
+	 * gets no Unique node on top (see below), so DocDB may return duplicate
+	 * rows from different tablets and the path has no uniqkeys.  Clear them
+	 * before the costing, which reads them.
 	 */
-	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
-	run_cost *= selectivity;
-	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
-	pathnode->path.rows = numDistinctRows;
-	pathnode->indextotalcost *= selectivity;
-	pathnode->indexselectivity *= selectivity;
+	if (index->nhashcolumns == 0 && yb_distinct_nkeys < 0)
+		pathnode->path.yb_path_info.yb_uniqkeys = NIL;
+
+	/* Estimate cost. */
+	if (IsYugaByteEnabled() &&
+		yb_enable_base_scans_cost_model &&
+		index->relam == LSM_AM_OID)
+	{
+		yb_cost_index(pathnode, root, loop_count, false /* partial_path */ );
+		numDistinctRows = pathnode->path.rows;
+	}
+	else
+	{
+		List	   *prefixExprs = NIL;
+		ListCell   *lc;
+		int			i = 0;
+		Selectivity selectivity;
+		double		run_cost;
+
+		foreach(lc, index->indextlist)
+		{
+			TargetEntry *tle;
+
+			if (i >= yb_distinct_prefixlen)
+				break;
+
+			tle = (TargetEntry *) lfirst(lc);
+			prefixExprs = lappend(prefixExprs, tle->expr);
+			i++;
+		}
+		pathnode->path.rows = clamp_row_est(pathnode->path.rows);
+		numDistinctRows = estimate_num_groups(root,
+											  prefixExprs,
+											  pathnode->path.rows,
+											  NULL,
+											  NULL);
+		selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
+
+		run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
+		run_cost *= selectivity;
+		pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
+		pathnode->path.rows = numDistinctRows;
+		pathnode->indextotalcost *= selectivity;
+		pathnode->indexselectivity *= selectivity;
+	}
 
 	Assert(yb_distinct_prefixlen >= index->nhashcolumns);
 	/*
@@ -5766,12 +5803,6 @@ yb_create_distinct_index_path(PlannerInfo *root,
 			return (Path *)
 				yb_create_unique_path(root, index->rel, (Path *) pathnode,
 									  yb_distinct_nkeys, numDistinctRows);
-
-		/*
-		 * Unique path cannot be added on top => possible duplicate tuples
-		 * => no uniqkeys.
-		 */
-		pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 	}
 
 	return (Path *) pathnode;
@@ -5826,4 +5857,401 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 		yb_convert_subquery_uniqkeys(rel,
 									 subpath->yb_path_info.yb_uniqkeys,
 									 make_tlist_from_pathtarget(subpath->pathtarget));
+}
+
+/*
+ * Decide whether a plain Agg pushes its aggregates into the scan below and
+ * hand back the subpath the Agg hangs on.  When the aggregates are pushed
+ * down and the scan has a YB cost function, that is a copy of the scan path
+ * costed for the collapsed result stream (one partial-aggregate row per DocDB
+ * read request), under fresh copies of the path layers that sat between the
+ * Agg and the scan.  The relation's pathlist keeps the original scan path, so
+ * Append and Gather consumers of the pathlist still see its uncollapsed
+ * costs.
+ *
+ * The executor runs the Agg directly above the scan not only when the scan
+ * is the Agg's subpath: create_projection_plan folds a dummy ProjectionPath
+ * into the plan below it, and setrefs.c removes an Append with a single
+ * child plan whose parallel awareness matches its own (a partitioned or
+ * inheritance parent pruned to one child) and a SubqueryScan without quals
+ * whose target list is its subplan's (an ORDER BY subquery that an index
+ * orders), provided the aggregates read only columns that each layer passes
+ * through as plain columns (yb_aggrefs_below_appendrel,
+ * yb_aggrefs_below_subqueryscan).  Those layers are looked through, in any
+ * nesting, and rebuilt over the costed copy.  A SubqueryScan the Agg reaches
+ * directly gets the physical target list, which is its subplan's; one under
+ * an Append gets an exact target list, which must be checked
+ * (yb_member_subqueryscan_is_trivial).  create_agg_plan still withdraws the
+ * pushdown when any node other than the scan is left below the Agg, or the
+ * scan node ends up with quals of its own.  A LIMIT or OFFSET, even a no-op
+ * one, fences the subquery off from the Agg as it does from pull-up.
+ *
+ * TID scans have no YB cost function: a pushed-down Agg keeps the original
+ * TidPath and its PostgreSQL cost.
+ *
+ * Without the YB cost model nothing here runs: the AggPath keeps
+ * YB_AGG_PUSHDOWN_BY_EXECUTOR and ExecInitAgg decides from the initialized
+ * scan state (yb_agg_pushdown_supported).
+ */
+static Path *
+yb_agg_pushdown_subpath(PlannerInfo *root, AggPath *aggpath, Path *subpath,
+						AggStrategy aggstrategy, AggSplit aggsplit)
+{
+	List	   *wrappers = NIL;	/* layers above the scan, innermost first */
+	List	   *wrapper_roots = NIL;	/* each layer's PlannerInfo */
+	List	   *appends = NIL;	/* the AppendPaths among them */
+	PlannerInfo *scan_root = root;	/* the current layer's PlannerInfo */
+	Path	   *scan = subpath;
+	List	   *aggrefs;
+	PathTarget *input_target;
+	Path	   *copy;
+	ListCell   *lc;
+	ListCell   *lc2;
+
+	if (!IsYugaByteEnabled() || !yb_enable_base_scans_cost_model)
+		return subpath;
+
+	aggpath->yb_pushdown_decision = YB_AGG_PUSHDOWN_PLANNED_OFF;
+	if (aggstrategy != AGG_PLAIN || aggsplit == AGGSPLIT_FINAL_DESERIAL)
+		return subpath;
+
+	aggrefs = yb_agg_pushdown_aggrefs(root);
+	if (aggrefs == NIL)
+		return subpath;
+
+	for (;;)
+	{
+		if (IsA(scan, ProjectionPath))
+		{
+			ProjectionPath *proj = (ProjectionPath *) scan;
+
+			/*
+			 * apply_scanjoin_target_to_paths wraps a path in a ProjectionPath
+			 * when the scan/join target differs from the relation's
+			 * reltarget; only a dummy one leaves no Result node behind.
+			 */
+			if (!proj->dummypp)
+				return subpath;
+			wrappers = lcons(scan, wrappers);
+			wrapper_roots = lcons(scan_root, wrapper_roots);
+			scan = proj->subpath;
+		}
+		else if (IsA(scan, AppendPath))
+		{
+			AppendPath *append = (AppendPath *) scan;
+			Path	   *child;
+
+			if (list_length(append->subpaths) != 1)
+				return subpath;
+			child = (Path *) linitial(append->subpaths);
+
+			/*
+			 * create_append_path gives a single-child Append its child's
+			 * pathkeys, so create_append_plan puts no Sort above the child.
+			 */
+			Assert(pathkeys_contained_in(append->path.pathkeys,
+										 child->pathkeys));
+
+			aggrefs = yb_aggrefs_below_appendrel(scan_root, child->parent,
+												 aggrefs);
+			if (aggrefs == NIL)
+				return subpath;
+			appends = lappend(appends, append);
+			wrappers = lcons(scan, wrappers);
+			wrapper_roots = lcons(scan_root, wrapper_roots);
+			scan = child;
+		}
+		else if (IsA(scan, SubqueryScanPath))
+		{
+			RelOptInfo *sqrel = scan->parent;
+			Query	   *subquery = sqrel->subroot->parse;
+
+			/*
+			 * A qual stays on the SubqueryScan node, and a parameterized
+			 * one belongs to a lateral join.
+			 */
+			if (scan->param_info != NULL ||
+				sqrel->baserestrictinfo != NIL ||
+				subquery->limitOffset != NULL ||
+				subquery->limitCount != NULL)
+				return subpath;
+			if (IS_OTHER_REL(sqrel) &&
+				!yb_member_subqueryscan_is_trivial(sqrel, scan->pathtarget))
+				return subpath;
+			aggrefs = yb_aggrefs_below_subqueryscan(scan_root, sqrel,
+													aggrefs);
+			if (aggrefs == NIL)
+				return subpath;
+			wrappers = lcons(scan, wrappers);
+			wrapper_roots = lcons(scan_root, wrapper_roots);
+			scan_root = sqrel->subroot;
+			scan = ((SubqueryScanPath *) scan)->subpath;
+		}
+		else
+			break;
+	}
+
+	switch (nodeTag(scan))
+	{
+		case T_Path:
+			if (scan->pathtype != T_SeqScan)
+				return subpath;
+			break;
+		case T_IndexPath:
+		case T_YbBitmapTablePath:
+		case T_TidPath:
+			break;
+		default:
+			return subpath;
+	}
+	if (scan->param_info != NULL || !scan->parent->is_yb_relation)
+		return subpath;
+
+	/*
+	 * setrefs.c removes a single-child Append only when its child plan has
+	 * the Append's parallel awareness.  The layers in between fold into the
+	 * scan plan, which keeps the scan path's awareness, so compare each
+	 * Append with the scan rather than with its own child path: a dummy
+	 * ProjectionPath or a SubqueryScanPath is never parallel aware.
+	 */
+	foreach(lc, appends)
+	{
+		if (((AppendPath *) lfirst(lc))->path.parallel_aware !=
+			scan->parallel_aware)
+			return subpath;
+	}
+
+	/* A partitionwise Agg hangs directly on a member's scan. */
+	aggrefs = yb_aggrefs_below_appendrel(scan_root, scan->parent, aggrefs);
+	if (aggrefs == NIL)
+		return subpath;
+
+	/*
+	 * The target list the scan node ends up with: a dummy projection directly
+	 * above the scan hands the scan plan its own target, while an Append
+	 * relabels its child's target list without changing its expressions.
+	 */
+	input_target = scan->pathtarget;
+	if (wrappers != NIL && IsA(linitial(wrappers), ProjectionPath))
+		input_target = ((Path *) linitial(wrappers))->pathtarget;
+
+	if (!yb_agg_pushdown_eligible(scan_root, aggrefs, scan, input_target))
+		return subpath;
+
+	aggpath->yb_pushdown_decision = YB_AGG_PUSHDOWN_PLANNED_ON;
+
+	if (IsA(scan, TidPath))
+		return subpath;
+
+	copy = yb_copy_scan_path(scan);
+	copy->yb_agg_pushdown = yb_make_agg_pushdown_info(root);
+	yb_cost_agg_pushdown_scan(scan_root, copy);
+
+	forboth(lc, wrappers, lc2, wrapper_roots)
+	{
+		Path	   *wrapper = (Path *) lfirst(lc);
+		PlannerInfo *wrapper_root = (PlannerInfo *) lfirst(lc2);
+
+		if (IsA(wrapper, ProjectionPath))
+			copy = (Path *) create_projection_path(wrapper_root,
+												   wrapper->parent, copy,
+												   wrapper->pathtarget);
+		else if (IsA(wrapper, SubqueryScanPath))
+			copy = yb_copy_subqueryscan_path(wrapper_root,
+											 (SubqueryScanPath *) wrapper,
+											 copy);
+		else
+			copy = yb_copy_append_path((AppendPath *) wrapper, copy);
+	}
+	return copy;
+}
+
+/*
+ * Flat-copy a scan path for re-costing.  The sub-structures the cost
+ * functions use (index clauses, bitmap qual tree, pathtarget) stay shared:
+ * costing reads them, and the memos it leaves there (the ybctid width on
+ * IndexOptInfo, clause selectivities on RestrictInfo) hold the same value
+ * for the copy as for the original.  The copy keeps the original's
+ * ybUniqueId, so a hint that names the scan by uid also covers the copy.
+ */
+static Path *
+yb_copy_scan_path(Path *path)
+{
+	switch (nodeTag(path))
+	{
+		case T_Path:
+			{
+				Path	   *copy;
+
+				FLAT_COPY_PATH(copy, path, Path);
+				return copy;
+			}
+		case T_IndexPath:
+			{
+				IndexPath  *copy;
+
+				FLAT_COPY_PATH(copy, path, IndexPath);
+				return (Path *) copy;
+			}
+		case T_YbBitmapTablePath:
+			{
+				YbBitmapTablePath *copy;
+
+				FLAT_COPY_PATH(copy, path, YbBitmapTablePath);
+				return (Path *) copy;
+			}
+		default:
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(path));
+			return NULL;		/* keep compiler quiet */
+	}
+}
+
+/*
+ * Flat-copy a single-child AppendPath over a re-costed child.  Such an
+ * Append is a no-op that setrefs.c removes (yb_agg_pushdown_subpath checked
+ * its parallel awareness against the scan's, not against 'child', which can
+ * be a layer that is never parallel aware), so, as in create_append_path, it
+ * takes the child's row count and costs; everything else, the ybUniqueId
+ * included, is the original's.
+ */
+static Path *
+yb_copy_append_path(AppendPath *append, Path *child)
+{
+	AppendPath *copy;
+
+	Assert(list_length(append->subpaths) == 1);
+
+	FLAT_COPY_PATH(copy, append, AppendPath);
+	copy->subpaths = list_make1(child);
+	copy->path.rows = child->rows;
+	copy->path.startup_cost = child->startup_cost;
+	copy->path.total_cost = child->total_cost;
+	return (Path *) copy;
+}
+
+/*
+ * Flat-copy a SubqueryScanPath over a re-costed subpath.  Without quals the
+ * scan passes the subpath's rows through, so cost_subqueryscan sizes it by
+ * the collapsed row count and adds only its per-row overhead.
+ */
+static Path *
+yb_copy_subqueryscan_path(PlannerInfo *root, SubqueryScanPath *sqpath,
+						  Path *child)
+{
+	SubqueryScanPath *copy;
+
+	Assert(sqpath->path.param_info == NULL);
+	Assert(sqpath->path.parent->baserestrictinfo == NIL);
+
+	FLAT_COPY_PATH(copy, sqpath, SubqueryScanPath);
+	copy->subpath = child;
+	cost_subqueryscan(copy, root, copy->path.parent, NULL);
+	return (Path *) copy;
+}
+
+/*
+ * Whether setrefs.c removes the SubqueryScan of the appendrel member 'sqrel'
+ * (a UNION ALL member that was not pulled up) whose path emits 'target'.
+ * create_append_plan asks its children for an exact target list, so the
+ * SubqueryScan emits 'target', and trivial_subqueryscan removes it only when
+ * that list is its subplan's: one plain Var per subquery output, in order,
+ * with no resjunk output.
+ */
+static bool
+yb_member_subqueryscan_is_trivial(RelOptInfo *sqrel, PathTarget *target)
+{
+	List	   *sub_tlist = sqrel->subroot->processed_tlist;
+	AttrNumber	attno = 1;
+	ListCell   *lc;
+	ListCell   *lc2;
+
+	if (list_length(target->exprs) != list_length(sub_tlist))
+		return false;
+	forboth(lc, target->exprs, lc2, sub_tlist)
+	{
+		Var		   *var = (Var *) lfirst(lc);
+
+		if (!IsA(var, Var) || var->varno != sqrel->relid ||
+			var->varattno != attno ||
+			lfirst_node(TargetEntry, lc2)->resjunk)
+			return false;
+		attno++;
+	}
+	return true;
+}
+
+/*
+ * Cost a scan path copy marked yb_agg_pushdown through the cost function its
+ * constructor uses, so that pushdown mode starts from the inputs the original
+ * was costed with.  A plain Agg sits above every join, so the copy is
+ * unparameterized and loop_count is 1.0; partial_path is false because the
+ * copy already carries the original's parallel_workers and parallel_aware.
+ * An index whose access method has no YB cost function keeps its PostgreSQL
+ * cost.  'root' is the scan's own PlannerInfo; what the costing takes from
+ * the Agg is on the copy.
+ *
+ * The copy keeps the original's disabled state, and the zero cost
+ * pg_hint_plan gives the partial paths a Parallel hint names so that they
+ * win.  pg_hint_plan applies a scan-method hint through the enable_* GUCs
+ * only while the relation's paths are generated, so the re-costing charges
+ * disable_cost by the session's settings rather than by the hint's.  A copy
+ * that lost the charge would win on its real cost and hide a failed hint
+ * from pg_hint_plan's disabled-node check; a copy that gained the charge
+ * would make the check report a followed hint as failed.
+ */
+static void
+yb_cost_agg_pushdown_scan(PlannerInfo *root, Path *copy)
+{
+	bool		hint_zeroed = (copy->ybIsHinted && copy->startup_cost == 0 &&
+							   copy->total_cost == 0);
+	bool		disabled = (copy->startup_cost >= disable_cost);
+
+	Assert(copy->yb_agg_pushdown);
+	Assert(copy->param_info == NULL);
+
+	switch (copy->pathtype)
+	{
+		case T_SeqScan:
+			yb_cost_seqscan(copy, root, copy->parent, copy->param_info);
+			break;
+		case T_IndexScan:
+		case T_IndexOnlyScan:
+			{
+				IndexPath  *ipath = (IndexPath *) copy;
+
+				if (ipath->indexinfo->relam == LSM_AM_OID)
+					yb_cost_index(ipath, root, 1.0, false);
+				else
+					cost_index(ipath, root, 1.0, false);
+				break;
+			}
+		case T_YbBitmapTableScan:
+			{
+				YbBitmapTablePath *bpath = (YbBitmapTablePath *) copy;
+
+				yb_cost_bitmap_table_scan(copy, root, copy->parent,
+										  copy->param_info, bpath->bitmapqual,
+										  1.0);
+				break;
+			}
+		default:
+			elog(ERROR, "unrecognized node type: %d",
+				 (int) copy->pathtype);
+	}
+
+	if (hint_zeroed)
+	{
+		copy->startup_cost = 0;
+		copy->total_cost = 0;
+	}
+	else if (disabled && copy->startup_cost < disable_cost)
+	{
+		copy->startup_cost += disable_cost;
+		copy->total_cost += disable_cost;
+	}
+	else if (!disabled && copy->startup_cost >= disable_cost)
+	{
+		copy->startup_cost -= disable_cost;
+		copy->total_cost -= disable_cost;
+	}
 }

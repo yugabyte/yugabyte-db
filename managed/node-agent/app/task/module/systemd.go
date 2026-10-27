@@ -330,7 +330,14 @@ func KillSystemdServiceLeftovers(
 		// Cancel the pending restart first, so the kill below cannot hit a tserver that the restart
 		// timer starts in between. Leftovers of a KillMode=process unit survive the stop.
 		cmd := fmt.Sprintf("%s stop %s", cmdPrefix, serverName)
-		_, err := RunShellCmdWithRetry(ctx, SystemdBackOff, cmdUser, "StopSystemdService", cmd, logOut)
+		_, err := RunShellCmdWithRetry(
+			ctx,
+			SystemdBackOff,
+			cmdUser,
+			"StopSystemdService",
+			cmd,
+			logOut,
+		)
 		if err != nil {
 			return err
 		}
@@ -344,7 +351,8 @@ func KillSystemdServiceLeftovers(
 	}
 	cgroup := values["ControlGroup"]
 	failed := values["ActiveState"] == "failed"
-	util.FileLogger().Infof(ctx, "Killing leftover processes in cgroup %s of %s", cgroup, serverName)
+	util.FileLogger().
+		Infof(ctx, "Killing leftover processes in cgroup %s of %s", cgroup, serverName)
 	logOut.WriteLine("Killing leftover processes in cgroup %s of %s", cgroup, serverName)
 	// Default kill target is all processes in the unit cgroup, including sub-cgroups. The kill is
 	// resent on every poll, which also retries it across transient dbus errors.

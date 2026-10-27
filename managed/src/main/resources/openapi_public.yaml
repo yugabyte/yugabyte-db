@@ -26,8 +26,12 @@ tags:
   description: Authentication operations on YBA
 - name: Backup and Restore
   description: Operations related to universe backup and restore
+- name: Certificate
+  description: Certificate management
 - name: Continuous Backup
   description: CRUD operations for Continuous YBA Backups
+- name: Customer
+  description: Customer management
 - name: Customer Configuration
   description: Customer configuration management
 - name: Disaster Recovery
@@ -48,6 +52,8 @@ tags:
   description: Point-in-time recovery configuration management
 - name: Perf Advisor Endpoint
   description: CRUD operations for external Perf Advisor destinations
+- name: Session
+  description: Session management
 - name: Support Bundle
   description: Support bundle management for universes
 - name: Task
@@ -323,6 +329,63 @@ paths:
           sourceType: endpoint
       x-yba-api-since: 2024.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/certificates:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createCertificate
+      summary: Add a certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Adds a certificate to the customer,
+        such as the root CA for node-to-node and client-to-node encryption in transit.
+        A SelfSigned certificate is a CA certificate with its private key; YBA uses
+        it to sign node and client certificates. The caller either uploads the CA
+        and its key, or omits both and YBA generates them, so that the key never leaves
+        YBA.'
+      tags:
+      - Certificate
+      requestBody:
+        $ref: '#/components/requestBodies/CertificateCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/CertificateResp'
+        '400':
+          description: Invalid input, such as content that isn't PEM, only one of
+            cert_content and key_content, lifetime_years with an uploaded CA or outside
+            1-100, or (unless yb.tls.enable_config_validation is off) a certificate
+            that isn't a valid CA or a key that doesn't match it
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no create permission on the customer
+        '409':
+          description: The customer already has a certificate with this label
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Certificate
+        auditTargetId: obj.getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -519,6 +582,136 @@ paths:
           path: customers
           sourceType: endpoint
       x-yba-api-since: 2024.2.0.0
+      x-yba-api-visibility: preview
+  /customers:
+    post:
+      operationId: registerCustomer
+      summary: Register a customer
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Creates a customer and its primary
+        user, and returns an API token for that user. The first customer on a YBA
+        instance can be registered without authentication, and its user becomes a
+        SuperAdmin. Further customers can only be registered by a SuperAdmin on a
+        multi-tenant YBA instance (yb.multiTenant), and their users are Admins.'
+      tags:
+      - Customer
+      requestBody:
+        $ref: '#/components/requestBodies/CustomerRegistrationReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/CustomerRegistrationResp'
+        '400':
+          description: Invalid input, such as a password that violates the password
+            policy
+        '401':
+          description: Customers already exist and the request has no valid API token
+        '403':
+          description: Customers already exist and the caller is not a SuperAdmin
+        '409':
+          description: A customer already exists on a single-tenant or SSO-enabled
+            YBA instance, or a user with this email already exists
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      x-yba-api-audit:
+        auditTargetType: Customer
+        auditTargetId: obj.getCustomerUuid().toString()
+        auditActionType: Register
+      x-yba-api-authz:
+        noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/api-token:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    put:
+      operationId: generateApiToken
+      summary: Generate an API token
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Generates a new API token for
+        the calling user and returns it. The previous token stops working. The caller
+        authenticates with an API token or a session token (from login), and must
+        belong to the customer.'
+      tags:
+      - Customer
+      requestBody:
+        $ref: '#/components/requestBodies/ApiTokenReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserApiTokenResp'
+        '401':
+          description: The request has no valid API or session token
+        '403':
+          description: The caller does not belong to this customer
+        '404':
+          description: Customer not found
+        '409':
+          description: api_token_version is not the caller's current API token version,
+            e.g. because the token was rotated concurrently
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Customer
+        auditTargetId: cUUID.toString()
+        auditActionType: GenerateApiToken
+      x-yba-api-authz:
+        noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/host-cloud-info:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    get:
+      operationId: getHostCloudInfo
+      summary: Get the YBA host's cloud info
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns the public cloud and
+        region that YBA runs on, and the instance metadata used to create a provider
+        in the host''s VPC. Replaces the v1 host_info.'
+      tags:
+      - Customer
+      responses:
+        '200':
+          $ref: '#/components/responses/HostCloudInfoResp'
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no read permission on the customer
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/customer-configs/page:
     parameters:
@@ -1679,6 +1872,37 @@ paths:
         checkOnlyPermission: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  /login:
+    post:
+      operationId: login
+      summary: Log in
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Logs a user in with email and
+        password and returns a session token, to be sent in the X-AUTH-TOKEN header.
+        LDAP users log in the same way when LDAP is enabled. With SSO enabled and
+        yb.security.allow_local_login_with_sso off, only local SuperAdmins can log
+        in; other local users and LDAP users are refused. Does not set cookies.'
+      tags:
+      - Session
+      requestBody:
+        $ref: '#/components/requestBodies/LoginReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionResp'
+        '400':
+          description: Invalid input, or an error from the LDAP server
+        '401':
+          description: Invalid credentials, or local login is not permitted while
+            SSO is enabled
+        '500':
+          description: Server error
+      security: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+        noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   /customers/{cUUID}/support-bundle/components:
     parameters:
     - name: cUUID
@@ -2522,7 +2746,13 @@ paths:
       summary: Get a YugabyteDB Universe
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2024.2.0.0 that could change.</b></p>Get details of a single YugabyteDB
-        Universe.'
+        Universe.
+
+        Early access: when the runtime flag yb.api.conditional_get.enabled is set,
+        this endpoint supports conditional requests. Send a previously returned ETag
+        in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields
+        derived from related resources (for example DR configs or pricing) may be
+        stale in that case.'
       tags:
       - Universe
       responses:
@@ -2544,6 +2774,9 @@ paths:
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+      x-yba-api-conditional-get:
+        provider: com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider
+        resourcePathSegment: universes
       x-yba-api-since: 2024.2.0.0
       x-yba-api-visibility: preview
     put:
@@ -4444,6 +4677,11 @@ components:
       type: apiKey
       name: X-AUTH-YW-API-TOKEN
       in: header
+    authTokenAuth:
+      type: apiKey
+      name: X-AUTH-TOKEN
+      in: header
+      description: Session token returned by login
   schemas:
     ResourceDefinition:
       title: ResourceDefinition
@@ -4994,6 +5232,93 @@ components:
         type:
           description: The data type of the flag.
           type: string
+    CertificateType:
+      title: CertificateType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Kind of certificate. SelfSigned:
+        a root CA whose certificate and private key YBA holds and uses to sign node
+        and client certificates.'
+      type: string
+      enum:
+      - SelfSigned
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    CertificateSpec:
+      title: CertificateSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A certificate to add to the customer.
+        Give cert_content and key_content to upload a CA, or omit both to have YBA
+        generate the CA and its key. Part of CertificateCreateReq.'
+      type: object
+      required:
+      - label
+      - cert_type
+      properties:
+        label:
+          description: Name of the certificate, unique within the customer. A generated
+            CA also uses it as its subject CN.
+          type: string
+          minLength: 1
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+        cert_content:
+          description: PEM-encoded CA certificate, optionally followed by the rest
+            of its chain. Omit, together with key_content, to have YBA generate the
+            CA.
+          type: string
+          minLength: 1
+        key_content:
+          description: PEM-encoded private key of the CA certificate. Omit, together
+            with cert_content, to have YBA generate the CA.
+          type: string
+          minLength: 1
+          writeOnly: true
+        lifetime_years:
+          description: Validity of a CA that YBA generates, in years. Defaults to
+            yb.tlsCertificate.root.expiryInYears. Only for a generated CA.
+          type: integer
+          format: int32
+          maximum: 100
+          minimum: 1
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    Certificate:
+      title: Certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A customer''s certificate. Part
+        of CertificateResp.'
+      type: object
+      required:
+      - uuid
+      - label
+      - cert_type
+      - start_date
+      - expiry_date
+      properties:
+        uuid:
+          description: UUID of the certificate
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          description: Name of the certificate
+          type: string
+          readOnly: true
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+          readOnly: true
+        start_date:
+          description: Start of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+        expiry_date:
+          description: End of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupInfo:
       title: ContinuousBackupInfo
       description: 'ContinuousBackupInfo
@@ -5149,6 +5474,253 @@ components:
           format: uuid
           example: 89a46d52-4edd-4736-922a-35177a0b990c
           readOnly: true
+    CustomerRegistrationSpec:
+      title: CustomerRegistrationSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>CustomerRegistrationSpec
+
+
+        Customer to register and its primary user. Part of CustomerRegistrationReq.
+
+        '
+      type: object
+      required:
+      - code
+      - name
+      - email
+      - password
+      properties:
+        code:
+          description: Customer code
+          type: string
+          example: admin
+          maxLength: 15
+          minLength: 1
+        name:
+          description: Customer name
+          type: string
+          example: Example Customer
+          minLength: 3
+        email:
+          description: Email of the primary user. Must be unique on the YBA instance.
+          type: string
+          format: email
+          example: admin@example.com
+        password:
+          description: Password of the primary user. Must satisfy the YBA password
+            policy.
+          type: string
+          format: password
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    CustomerRegistration:
+      title: CustomerRegistration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>CustomerRegistration
+
+
+        Registered customer and the API token of its primary user. Part of CustomerRegistrationResp.
+
+        '
+      type: object
+      required:
+      - customer_uuid
+      - user_uuid
+      - api_token
+      - api_token_version
+      properties:
+        customer_uuid:
+          description: UUID of the registered customer
+          type: string
+          format: uuid
+          readOnly: true
+        user_uuid:
+          description: UUID of the primary user
+          type: string
+          format: uuid
+          readOnly: true
+        api_token:
+          description: API token of the primary user, to be sent in the X-AUTH-YW-API-TOKEN
+            header
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of the API token
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    ApiTokenSpec:
+      title: ApiTokenSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Optional condition for generating
+        an API token. Part of ApiTokenReq.'
+      type: object
+      properties:
+        api_token_version:
+          description: The caller's current API token version. When set, a new token
+            is generated only if it still matches, so that two concurrent rotations
+            do not silently replace each other.
+          type: integer
+          format: int64
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserApiToken:
+      title: UserApiToken
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A user''s newly generated API
+        token. Part of UserApiTokenResp.'
+      type: object
+      required:
+      - customer_uuid
+      - user_uuid
+      - api_token
+      - api_token_version
+      properties:
+        customer_uuid:
+          description: UUID of the user's customer
+          type: string
+          format: uuid
+          readOnly: true
+        user_uuid:
+          description: UUID of the user
+          type: string
+          format: uuid
+          readOnly: true
+        api_token:
+          description: The new API token, to be sent in the X-AUTH-YW-API-TOKEN header
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of the new API token
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloud:
+      title: HostCloud
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Public cloud that YBA runs on.'
+      type: string
+      enum:
+      - aws
+      - gcp
+      - azu
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AwsHostInfo:
+      title: AwsHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>EC2 instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        instance_id:
+          description: EC2 instance ID
+          type: string
+          readOnly: true
+        vpc_id:
+          description: VPC of the instance's primary network interface
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the instance
+          type: string
+          readOnly: true
+        region:
+          description: AWS region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcpHostInfo:
+      title: GcpHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GCE instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        project:
+          description: ID of the project that the instance belongs to
+          type: string
+          readOnly: true
+        network:
+          description: Name of the VPC network of the instance's first network interface
+          type: string
+          readOnly: true
+        shared_vpc_project:
+          description: 'Number of the project that owns that network: the host project
+            for a Shared VPC, otherwise the instance''s own project'
+          type: string
+          readOnly: true
+        zone:
+          description: GCP zone
+          type: string
+          readOnly: true
+        region:
+          description: GCP region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzuHostInfo:
+      title: AzuHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Azure VM metadata of the YBA
+        host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        subscription_id:
+          description: Azure subscription of the VM
+          type: string
+          readOnly: true
+        resource_group:
+          description: Resource group of the VM
+          type: string
+          readOnly: true
+        vm_id:
+          description: Azure VM ID
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the VM's first network interface
+          type: string
+          readOnly: true
+        region:
+          description: Azure region (location) of the VM
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfo:
+      title: HostCloudInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>The public cloud that YBA runs
+        on and its instance metadata. Part of HostCloudInfoResp. Only the object for
+        the host cloud is set.'
+      type: object
+      properties:
+        cloud:
+          description: Cloud that YBA runs on. Absent when YBA is not on AWS, GCP
+            or Azure.
+          $ref: '#/components/schemas/HostCloud'
+          readOnly: true
+        region:
+          description: Cloud region of the YBA host. Absent when the cloud is unknown
+            or its metadata service is unreachable.
+          type: string
+          readOnly: true
+        aws:
+          $ref: '#/components/schemas/AwsHostInfo'
+        gcp:
+          $ref: '#/components/schemas/GcpHostInfo'
+        azu:
+          $ref: '#/components/schemas/AzuHostInfo'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedQuerySpec:
       title: CustomerConfigPagedQuerySpec
       description: 'Paged list of customer configurations (storage, alerts, call-home,
@@ -7037,6 +7609,56 @@ components:
           items:
             $ref: '#/components/schemas/RestoreKeyspaceInfo'
           description: Restore keyspaces for this page.
+    LoginSpec:
+      title: LoginSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Credentials of the user logging
+        in. Part of LoginReq.'
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          description: Email of the user
+          type: string
+          example: admin@example.com
+          minLength: 5
+        password:
+          description: Password of the user
+          type: string
+          format: password
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    Session:
+      title: Session
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Session of a logged-in user.
+        Part of SessionResp.'
+      type: object
+      required:
+      - auth_token
+      - customer_uuid
+      - user_uuid
+      properties:
+        auth_token:
+          description: Session token, to be sent in the X-AUTH-TOKEN header. It expires
+            after yb.authtoken.token_expiry (12 hours by default)
+          type: string
+          readOnly: true
+        customer_uuid:
+          description: UUID of the user's customer
+          type: string
+          format: uuid
+          readOnly: true
+        user_uuid:
+          description: UUID of the user
+          type: string
+          format: uuid
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleComponentType:
       title: SupportBundleComponentType
       description: Support bundle component type (same values as V1 BundleDetails.ComponentType).
@@ -7619,10 +8241,11 @@ components:
           additionalProperties:
             type: string
         prometheus_metrics_types:
-          description: 'List of exports to be included in the prometheus dump. NODE_EXPORT
-            is dropped on Kubernetes
+          description: 'List of exports to be included in the prometheus dump. On
+            Kubernetes universes NODE_EXPORT is
 
-            universes, where node_exporter is not scraped.
+            collected only where the node_exporter sidecar is monitored, and dropped
+            otherwise.
 
             '
           type: array
@@ -11846,6 +12469,14 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/GflagMetadata'
+    CertificateResp:
+      description: The added certificate
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Certificate'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupResp:
       description: Continuous Backup Config
       content:
@@ -11858,6 +12489,30 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/YBATask'
+    CustomerRegistrationResp:
+      description: Registered customer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CustomerRegistration'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserApiTokenResp:
+      description: Generated API token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserApiToken'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfoResp:
+      description: Cloud and instance metadata of the YBA host
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HostCloudInfo'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedResp:
       description: Customer configurations visible to the caller for this page
       content:
@@ -11956,6 +12611,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/RestoreKeyspacePagedResp'
+    SessionResp:
+      description: Session of the logged-in user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleComponentsResp:
       description: List of available support bundle component types
       content:
@@ -12056,6 +12719,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedQuerySpec'
+    CertificateCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CertificateSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupCreateReq:
       required: true
       content:
@@ -12068,6 +12739,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ContinuousRestoreSpec'
+    CustomerRegistrationReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CustomerRegistrationSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    ApiTokenReq:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiTokenSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CustomerConfigPagedReq:
       required: true
       content:
@@ -12164,6 +12851,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/RestoreKeyspacePagedQuerySpec'
+    LoginReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleCreateReq:
       required: true
       content:

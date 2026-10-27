@@ -206,16 +206,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "appear in stats or monitoring/observability methods. Since the client is unaware of " +
         "this statement, the test fails.";
 
-  protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
-      "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
-        "backend type column shows 'yb-conn-mgr worker connection' instead of 'client-backend'." +
-        "Additionally, there is no guarantee that each logical connection will create a unique " +
-        "backend with Connection Manager, so the expected number of rows in the table may not " +
-        "match the number of connections created. Furthermore, the query column in the table " +
-        "typically displays a RESET ALL statement if the backend is used to execute any query " +
-        "with Connection Manager. Since this test heavily relies on the output of " +
-        "pg_stat_activity, we are skipping it.";
-
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
         "expected state due to the way physical connections are attached and detached from " +

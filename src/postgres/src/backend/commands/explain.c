@@ -167,7 +167,8 @@ static void escape_yaml(StringInfo buf, const char *str);
 
 /* YB declarations */
 static void show_yb_planning_stats_common(double num_seeks,
-										  double num_nexts_prevs,
+										  double num_nexts,
+										  double num_prevs,
 										  double num_table_pages,
 										  double num_index_pages,
 										  int docdb_result_width,
@@ -5136,13 +5137,14 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 }
 
 static void
-show_yb_planning_stats_common(double num_seeks, double num_nexts_prevs,
-							  double num_table_pages, double num_index_pages,
-							  int docdb_result_width, ExplainState *es)
+show_yb_planning_stats_common(double num_seeks, double num_nexts,
+							  double num_prevs, double num_table_pages,
+							  double num_index_pages, int docdb_result_width,
+							  ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL, num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL, num_nexts_prevs, 0,
-						 es);
+	ExplainPropertyFloat("Estimated Nexts", NULL, num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Prevs", NULL, num_prevs, 0, es);
 
 	/*
 	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
@@ -5164,7 +5166,8 @@ static void
 show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	show_yb_planning_stats_common(planinfo->estimated_num_seeks,
-								  planinfo->estimated_num_nexts_prevs,
+								  planinfo->estimated_num_nexts,
+								  planinfo->estimated_num_prevs,
 								  planinfo->estimated_num_table_result_pages,
 								  planinfo->estimated_num_index_result_pages,
 								  planinfo->estimated_docdb_result_width,
@@ -5184,7 +5187,8 @@ static void
 show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	show_yb_planning_stats_common(planinfo->estimated_num_bmscan_seeks,
-								  planinfo->estimated_num_bmscan_nexts_prevs,
+								  planinfo->estimated_num_bmscan_nexts,
+								  planinfo->estimated_num_bmscan_prevs,
 								  -1,
 								  planinfo->estimated_num_bmscan_result_pages,
 								  planinfo->estimated_ybctid_width,
@@ -5597,6 +5601,9 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 							node->onConflictAction == ONCONFLICT_NOTHING ?
 							"NOTHING" : "UPDATE",
 							es);
+
+		if (mtstate->resultRelInfo->ri_ybUseIocPushdown)
+			ExplainPropertyBool("Conflict Resolution Pushdown", true, es);
 
 		/*
 		 * Don't display arbiter indexes at all when DO NOTHING variant

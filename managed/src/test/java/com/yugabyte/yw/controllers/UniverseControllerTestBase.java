@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -235,6 +236,9 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     lenient().when(mockRuntimeConfig.getString("yb.filepaths.tmpDirectory")).thenReturn("/tmp");
     lenient()
         .when(mockRuntimeConfig.getBoolean("yb.ui.feature_flags.enable_earlyoom"))
+        .thenReturn(true);
+    lenient()
+        .when(mockRuntimeConfig.getBoolean(GlobalConfKeys.conditionalGetEnabled.getKey()))
         .thenReturn(true);
     lenient().when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
     lenient().when(kubernetesManagerFactory.getManager()).thenReturn(mock(KubernetesManager.class));

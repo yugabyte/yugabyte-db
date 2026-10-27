@@ -105,6 +105,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         .orElse(null);
   }
 
+  /**
+   * A read-replica-only edit carries no primary cluster, and the primary is not edited by it. Adds
+   * a copy of the pre-edit primary to {@code target} when it has none.
+   */
+  protected static void addPrimaryClusterIfMissing(
+      UniverseDefinitionTaskParams target, UniverseDefinitionTaskParams before) {
+    Cluster beforePrimary = before.getPrimaryCluster();
+    if (target.getPrimaryCluster() == null && beforePrimary != null) {
+      target.clusters.add(Json.fromJson(Json.toJson(beforePrimary), Cluster.class));
+    }
+  }
+
   public static class KubernetesPlacement {
     public PlacementInfo placementInfo;
     public Map<UUID, Integer> masters;

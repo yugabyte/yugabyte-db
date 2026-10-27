@@ -16,9 +16,10 @@
 #include <cstdint>
 #include <future>
 #include <memory>
-#include <unordered_set>
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/tserver/pg_cache_util.h"
 
 #include "yb/util/result.h"
 
@@ -50,7 +51,7 @@ class PgDbCache {
   Result<ColocationInfo> GetColocationInfo(uint32_t db_oid);
 
   // Drops cached entries for the given db_oids
-  void Invalidate(const std::unordered_set<uint32_t>& db_oids_deleted);
+  void Invalidate(const PgTableCacheInvalidationFilter::DroppedDbs& dropped_dbs);
 
   // Drops all cached entries.
   void Clear();

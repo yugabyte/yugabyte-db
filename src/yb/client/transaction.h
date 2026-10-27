@@ -243,16 +243,17 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
-  // Returns the op_id the server should verify before serving a read on this tablet, so the read
-  // sees all of this transaction's pending async writes. Returns OpId::Invalid() if there are no
-  // pending writes, or IllegalState if pending writes span 2+ terms (unsupported).
-  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const;
+  // Last pending async write of each term, for the server to verify before serving a read.
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
 
   // Set callback for when the transaction is aborted remotely (as opposed to being aborted during
   // a method call on this YBTransaction).
   void RemoteAbortCallback(std::function<void(void)> callback);
+
+  // Set callback for when the transaction is promoted.
+  void PromotionCallback(std::function<void(TabletId)> callback);
 
  private:
   class Impl;

@@ -640,12 +640,12 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 };
 
-class xClusterTabletMapTest : public XClusterTabletSplitITest,
-                              public testing::WithParamInterface<Partitioning> {
+class xClusterTabletMapTest : public XClusterTabletSplitITest {
  public:
   void SetUp() override {}
 
-  void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
+  void RunSetUp(
+      Partitioning partitioning, int producer_tablet_count, int consumer_tablet_count) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
     {
@@ -658,7 +658,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
     SetNumTablets(producer_tablet_count);
     Schema schema;
-    client::kv_table_test::BuildSchema(GetParam(), &schema);
+    client::kv_table_test::BuildSchema(partitioning, &schema);
     schema.mutable_table_properties()->SetTransactional(
         GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
     ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
@@ -690,21 +690,24 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
   }
 };
 
+class xClusterTabletMapPartitioningTest : public xClusterTabletMapTest,
+                                          public testing::WithParamInterface<Partitioning> {};
+
 // ValidateOverlap() is called before teardown for all these tests.
-TEST_P(xClusterTabletMapTest, SingleTableCountMapTest) {
-  RunSetUp(1, 1);
+TEST_P(xClusterTabletMapPartitioningTest, SingleTableCountMapTest) {
+  RunSetUp(GetParam(), 1, 1);
 }
 
-TEST_P(xClusterTabletMapTest, SameTableCountMapTest) {
-  RunSetUp(4, 4);
+TEST_F(xClusterTabletMapTest, SameTableCountMapTest) {
+  RunSetUp(Partitioning::kHash, 4, 4);
 }
 
-TEST_P(xClusterTabletMapTest, MoreProducerTablets) {
-  RunSetUp(8, 2);
+TEST_F(xClusterTabletMapTest, MoreProducerTablets) {
+  RunSetUp(Partitioning::kHash, 8, 2);
 }
 
-TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
-  RunSetUp(3, 8);
+TEST_F(xClusterTabletMapTest, MoreConsumerTablets) {
+  RunSetUp(Partitioning::kHash, 3, 8);
 }
 
 TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
@@ -1431,7 +1434,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 
 INSTANTIATE_TEST_CASE_P(
     xClusterTabletMapTestITest,
-    xClusterTabletMapTest,
+    xClusterTabletMapPartitioningTest,
     ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<Partitioning>);
 

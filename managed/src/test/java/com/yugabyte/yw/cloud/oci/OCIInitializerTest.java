@@ -101,7 +101,15 @@ public class OCIInitializerTest extends FakeDBApplication {
     assertEquals("OptimizedX9", OCIPriceUtil.familyFromShape("VM.Optimized3.Flex"));
     assertEquals("E2Micro", OCIPriceUtil.familyFromShape("VM.Standard.E2.1.Micro"));
     assertEquals("E2", OCIPriceUtil.familyFromShape("VM.Standard.E2.2"));
-    assertEquals(null, OCIPriceUtil.familyFromShape("VM.DenseIO.E4.Flex"));
+    assertEquals("DenseIOE4", OCIPriceUtil.familyFromShape("VM.DenseIO.E4.Flex"));
+    assertEquals("DenseIOE4", OCIPriceUtil.familyFromShape("BM.DenseIO.E4.128"));
+    assertEquals("DenseIOE5", OCIPriceUtil.familyFromShape("VM.DenseIO.E5.Flex"));
+    assertEquals("DenseIOE5", OCIPriceUtil.familyFromShape("BM.DenseIO.E5.128"));
+    assertEquals("DenseIOX7", OCIPriceUtil.familyFromShape("VM.DenseIO2.16"));
+    assertEquals("DenseIOX7", OCIPriceUtil.familyFromShape("BM.DenseIO2.52"));
+    assertEquals("HPCX7", OCIPriceUtil.familyFromShape("BM.HPC2.36"));
+    assertEquals("HPCE5", OCIPriceUtil.familyFromShape("BM.HPC.E5.144"));
+    assertEquals(null, OCIPriceUtil.familyFromShape("VM.DenseIO.E6.Ax.Flex"));
     assertEquals(null, OCIPriceUtil.familyFromShape("VM.GPU.A10.1"));
   }
 
@@ -330,5 +338,32 @@ public class OCIInitializerTest extends FakeDBApplication {
     assertNotNull(blockVpu);
     assertEquals(
         OCIPriceUtil.monthlyToHourly(0.0017), blockVpu.getPriceDetails().pricePerHour, 1e-9);
+
+    PriceComponent denseE4Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("DenseIOE4"));
+    assertNotNull(denseE4Ocpu);
+    assertEquals(0.025, denseE4Ocpu.getPriceDetails().pricePerHour, 0.0001);
+    PriceComponent denseE4Nvme =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode("DenseIOE4"));
+    assertNotNull(denseE4Nvme);
+    assertEquals(0.0612, denseE4Nvme.getPriceDetails().pricePerHour, 0.0001);
+
+    PriceComponent denseX7Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("DenseIOX7"));
+    assertNotNull(denseX7Ocpu);
+    assertEquals(0.1275, denseX7Ocpu.getPriceDetails().pricePerHour, 0.0001);
+    assertEquals(
+        null,
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.nvmeComponentCode("DenseIOX7")));
+
+    PriceComponent hpcX7Ocpu =
+        PriceComponent.get(
+            provider.getUuid(), region.getCode(), OCIPriceUtil.ocpuComponentCode("HPCX7"));
+    assertNotNull(hpcX7Ocpu);
+    assertEquals(0.075, hpcX7Ocpu.getPriceDetails().pricePerHour, 0.0001);
   }
 }

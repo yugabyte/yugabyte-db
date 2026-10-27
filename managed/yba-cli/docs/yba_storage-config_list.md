@@ -20,7 +20,7 @@ yba storage-config list
 
 ```
   -n, --name string   [Optional] Name of the storage configuration.
-  -c, --code string   [Optional] Code of the storage configuration, defaults to list all storage configurations. Allowed values: s3, gcs, nfs, az.
+  -c, --code string   [Optional] Code of the storage configuration, defaults to list all storage configurations. Allowed values: s3, gcs, nfs, az, oci.
   -h, --help          help for list
 ```
 

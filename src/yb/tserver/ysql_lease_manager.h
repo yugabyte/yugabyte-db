@@ -26,6 +26,8 @@ class YSQLLeaseManager {
   YSQLLeaseInfo GetYSQLLeaseInfo() const;
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
   Status StartYSQLLeaseRefresher();
+  // Asks the master for a lease without waiting for the next refresh interval.
+  void TriggerLeaseRefresh();
   void StartTSLocalLockManager();
   void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;

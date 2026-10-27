@@ -146,6 +146,7 @@ set(MASTER_SRCS
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/handle_new_schema_for_automatic_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
+  xcluster/persistence_block_map.cc
   xcluster/xcluster_bootstrap_helper.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc

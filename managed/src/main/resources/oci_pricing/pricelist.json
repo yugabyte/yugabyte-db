@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-08-14T09:09:55.872Z",
+  "lastUpdated": "2026-10-08T14:38:16.165Z",
   "currency": "USD",
   "computeFamilies": {
     "A1": {
@@ -16,6 +16,20 @@
     },
     "B1": {
       "ocpuPerHour": 0.0638,
+      "memoryGbPerHour": 0.0
+    },
+    "DenseIOE4": {
+      "ocpuPerHour": 0.025,
+      "memoryGbPerHour": 0.0015,
+      "nvmeTbPerHour": 0.0612
+    },
+    "DenseIOE5": {
+      "ocpuPerHour": 0.03,
+      "memoryGbPerHour": 0.002,
+      "nvmeTbPerHour": 0.0612
+    },
+    "DenseIOX7": {
+      "ocpuPerHour": 0.1275,
       "memoryGbPerHour": 0.0
     },
     "E2": {
@@ -41,6 +55,14 @@
     "E6": {
       "ocpuPerHour": 0.03,
       "memoryGbPerHour": 0.002
+    },
+    "HPCE5": {
+      "ocpuPerHour": 0.044,
+      "memoryGbPerHour": 0.0
+    },
+    "HPCX7": {
+      "ocpuPerHour": 0.075,
+      "memoryGbPerHour": 0.0
     },
     "OptimizedX9": {
       "ocpuPerHour": 0.054,

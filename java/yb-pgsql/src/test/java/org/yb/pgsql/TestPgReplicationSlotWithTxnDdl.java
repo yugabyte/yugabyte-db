@@ -43,6 +43,8 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
       PgReplicationSlotTestUtil.YB_OUTPUT_PLUGIN_NAME;
   private static final int INT4_OID = 23;
   private static final int TEXT_OID = 25;
+  private static final int INT8_OID = 20;
+  private static final int VARCHAR_OID = 1043;
 
   @Override
   protected int getInitialNumTServers() {
@@ -746,6 +748,136 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     assertEquals(insert("2", "two", "20"), result.get(6));
     assertEquals(commitMessage(), normalizeLsn(result.get(7)));
     assertLsnsIncrease(result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // An autocommit table rewrite: the DDL txn's first records are catalog changes, and its rewrite
+  // INSERTs land on the new tablets, which are polled only after the publication refresh the
+  // rewrite triggers (#35242).
+  @Test
+  public void autocommitAlterColumnTypeRewrite() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, c int, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one', 10), (2, 'two', 20)");
+      stmt.execute("ALTER TABLE t1 ALTER COLUMN b TYPE varchar(100) USING upper(b), "
+          + "ALTER COLUMN c TYPE bigint");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 30)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("1", "one", "10"),
+        insert("2", "two", "20"),
+        commitMessage(),
+        beginMessage(3),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT8_OID)),
+        insert("1", "ONE", "10"),
+        insert("2", "TWO", "20"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT8_OID)),
+        insert("3", "three", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // After a rewrite the table's relfilenode no longer equals its OID. DDLs on it must still be
+  // detected from the catalog changes, else rows using a newly added column cannot be decoded.
+  @Test
+  public void addColumnInsideTransactionAfterRewrite() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int, b text, PRIMARY KEY (a ASC))");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ALTER COLUMN b TYPE varchar(100)");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'three', 30)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 14);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(3),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID)),
+        insert("2", "two"),
+        relation("t1", column("a", INT4_OID), column("b", VARCHAR_OID), column("c", INT4_OID)),
+        insert("3", "three", "30"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // An autocommit ADD COLUMN writes only to the catalog, so its txn has no user tablet BEGIN or
+  // COMMIT.
+  @Test
+  public void autocommitAddColumn() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    // The DDL txn has no changes, so it is not streamed.
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(4),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
 
     stream.close();
     conn.close();

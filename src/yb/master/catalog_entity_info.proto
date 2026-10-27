@@ -233,6 +233,16 @@ message SysTablesEntryPB {
 
   // Marker to indicate that the xCluster source still has a WAL_ANCHOR stream to clean up.
   optional bytes xcluster_pending_wal_anchor_deletion_source_table_id = 43;
+
+  // Marks a table known to have no custom tablespace.
+  message NoCustomTablespacePB {}
+
+  // Set at CREATE TABLE, then kept in sync with pg_class by the tablespace refresh; persisted
+  // because a HIDDEN table has no pg_class row. Neither set: not observed yet.
+  oneof tablespace {
+    bytes tablespace_id = 44;
+    NoCustomTablespacePB no_custom_tablespace = 45;
+  }
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -484,6 +494,16 @@ message SysXClusterConfigEntryPB {
   map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
 }
 
+// The data of the PERSISTENCE_BLOCK_MAP singleton.  Kept out of SysXClusterConfigEntryPB because
+// every change to that entry bumps its version, which makes every TServer reapply the producer
+// registry.
+message SysPersistenceBlockMapEntryPB {
+  // Bumped on every change to the map below, starts at 0.
+  required uint64 version = 1;
+
+  optional PersistenceBlockMapPB persistence_block_map = 2;
+}
+
 // The cluster-wide history retention pin for the ysql catalog tables, which live in the sys catalog
 // tablet as cotables. Only the master leader learns the pins, from tserver heartbeats; it publishes
 // them here so that master followers, which never see a heartbeat, do not compact away catalog
@@ -702,10 +722,26 @@ message SysCDCStreamEntryPB {
   // that an in flight DDL can be retried.
   optional bool xcluster_is_wal_anchor = 19 [default = false];
 
+  // Signifies the stream whose table set is governed by the publication named in
+  // cdcsdk_ysql_bound_publication_name.
+  // Set at creation for streams created with a bound publication while feature flag
+  // cdcsdk_enable_publication_scoped_replication_slots is enabled.
+  // It is false for streams created before the feature (including pre-upgrade streams, where this
+  // field is absent), with feature flag off, or without a publication.
+  optional bool cdcsdk_ysql_publications_bound_stream = 20 [default = false];
+
+  // Publication this stream is statically bound to. Set exactly for publications bound streams
+  // (cdcsdk_ysql_publications_bound_stream above), unset for regular streams.
+  optional string cdcsdk_ysql_bound_publication_name = 21;
+
+  // For publications bound streams: whether a newly created table is added to the stream, which
+  // holds when the bound publication is FOR ALL TABLES.
+  optional bool cdcsdk_ysql_include_new_tables = 22 [default = false];
+
   // Used to set up the target of an xCluster stream. Recording it lets the table split while the
   // stream is INITIATED, so a recorded checkpoint is never redone. Streams that are checkpointed
   // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
-  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 20;
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 23;
 }
 
 message XClusterStreamBootstrapInfoPB {

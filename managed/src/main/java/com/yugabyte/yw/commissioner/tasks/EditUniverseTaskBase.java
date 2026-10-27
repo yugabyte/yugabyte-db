@@ -917,8 +917,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Capture ADD IPs before destroy removes nodes from YBA details.
     params.destroyedNodeIps =
         nodesToDestroy.stream()
-            .filter(n -> n.cloudInfo != null && StringUtils.isNotBlank(n.cloudInfo.private_ip))
-            .map(n -> n.cloudInfo.private_ip)
+            .flatMap(n -> Util.getNodeIps(n).stream())
             .collect(Collectors.toSet());
     ConfirmEditRollbackMembership task = createTask(ConfirmEditRollbackMembership.class);
     task.initialize(params);

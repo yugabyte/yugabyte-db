@@ -988,6 +988,44 @@ TEST_F(TestRpc, DumpLocalCall) {
   latch.Wait();
 }
 
+// A local call with a buffers holder times out at its deadline, while the handler keeps using
+// the buffers until it responds.
+TEST_F(TestRpc, LocalCallTimeout) {
+  constexpr auto kSleep = 2s;
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  HostPort empty_addr;
+  Proxy p(server_messenger(), empty_addr);
+
+  struct Buffers {
+    rpc_test::SleepRequestPB req;
+    rpc_test::SleepResponsePB resp;
+  };
+  auto buffers = std::make_shared<Buffers>();
+  buffers->req.set_sleep_micros(narrow_cast<uint32_t>(ToMicroseconds(kSleep)));
+  buffers->req.set_deferred(true);
+  auto& req = buffers->req;
+  auto& resp = buffers->resp;
+  std::weak_ptr<Buffers> weak_buffers = buffers;
+
+  RpcController controller;
+  controller.set_timeout(MonoDelta::FromMilliseconds(200));
+  controller.set_local_call_buffers_holder(std::move(buffers));
+  CountDownLatch latch(1);
+  const auto start = CoarseMonoClock::now();
+  p.AsyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller,
+      latch.CountDownCallback());
+  latch.Wait();
+  ASSERT_LT(CoarseMonoClock::now() - start, kSleep);
+  ASSERT_TRUE(controller.status().IsTimedOut()) << controller.status();
+  ASSERT_FALSE(weak_buffers.expired());
+
+  ASSERT_OK(WaitFor(
+      [&weak_buffers] { return weak_buffers.expired(); }, kSleep * 2,
+      "Buffers released after the handler responded"));
+}
+
 #if YB_GPERFTOOLS_TCMALLOC
 
 namespace {

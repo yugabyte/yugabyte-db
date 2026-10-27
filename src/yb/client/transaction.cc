@@ -110,7 +110,8 @@ DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
 
 DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
-                 "Inject delay before sending initial heartbeat to new transaction status tablet.");
+                 "Inject delay before sending the initial heartbeat to the new status tablet of a "
+                 "transaction being promoted.");
 
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
@@ -119,6 +120,10 @@ DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "If disabled, do not send involved tablets on heartbeats for pending "
                     "transactions. This behavior is needed to support fetching old transactions "
                     "and their involved tablets in order to support yb_lock_status/pg_locks.");
+
+DEFINE_RUNTIME_uint32(max_pending_async_write_checks_per_tablet, 1000,
+    "Maximum number of pending async write checks a read can carry for one tablet, one per leader "
+    "term with pending writes. A transaction that exceeds it is aborted.");
 
 namespace yb {
 namespace client {
@@ -828,23 +833,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
-      auto tablet_id = op->tablet->tablet_id();
-      auto status = STATUS_FORMAT(
-            IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
-      VLOG_WITH_PREFIX(4) << "Prepare, rejected: " << status;
-      return status;
-    }
-
-    VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     // We start the promotion first, to avoid sending transaction status move RPCs to tablets
     // that were first involved in the transaction with this batch of changes.
-    auto status = StartPromotionToGlobal();
-    if (!status.ok()) {
-      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
-                  << " rejected (promotion failed): " << status;
-      return status;
-    }
+    RETURN_NOT_OK(StartPromotionToGlobal(op));
     return true;
   }
 
@@ -854,15 +845,34 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (metadata_.locality.IsGlobal()) {
         return Status::OK();
       }
+      RETURN_NOT_OK(CheckRunningUnlocked());
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
     return Status::OK();
   }
 
-  Status StartPromotionToGlobal() REQUIRES(mutex_) {
+  Status StartPromotionToGlobal(internal::InFlightOp* violating_op = nullptr) REQUIRES(mutex_) {
     if (metadata_.locality.IsGlobal()) {
-      return STATUS(IllegalState, "Global transactions cannot be promoted");
+      auto status = STATUS(IllegalState, "Global transactions cannot be promoted");
+      LOG_WITH_PREFIX(DFATAL) << "Promotion failed: " << status;
+      return status;
+    }
+
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+      auto status = violating_op
+          ? STATUS_FORMAT(
+                IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0",
+                violating_op->tablet->tablet_id())
+          : STATUS(
+                IllegalState, "FLAGS_auto_promote_nonlocal_transactions_to_global set to false");
+      VLOG_WITH_PREFIX(4) << (violating_op ? "Prepare, rejected: " : "EnsureGlobal, rejected: ")
+                          << status;
+      return status;
+    }
+
+    if (violating_op) {
+      VLOG_WITH_PREFIX(2) << "Prepare, rejected (promotion required)";
     }
 
     auto running_state = TransactionState::kRunning;
@@ -1392,44 +1402,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const
+  Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
       EXCLUDES(async_write_query_mutex_) {
+    OpIds result;
     std::lock_guard l(async_write_query_mutex_);
     auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
-    if (!write_query || write_query->op_ids.empty()) {
-      return OpId::Invalid();
+    if (!write_query) {
+      return result;
     }
-    // Pending writes across >2 terms means the tablet leader moved more than once before the
-    // earlier async writes were confirmed complete. Currently we don't support this (the server's
-    // VerifyAsyncWriteReceived only handles same-term and one-term-ago), so fail client-side and
-    // abort the transaction.
-    auto min_op = *write_query->op_ids.begin();
-    auto max_op = *write_query->op_ids.rbegin();
-    if (max_op.term - min_op.term > 1) {
-      auto status = STATUS_EC_FORMAT(
-          IllegalState, TransactionError(TransactionErrorCode::kAborted),
-          "Tablet $0: tablet leader moved more than once before async writes completed "
-          "(min_op: $1, max_op: $2)",
-          tablet_id, min_op, max_op);
-      write_pipelining_abort_ = true;
-      return status;
+    // Get the last op per term, since a later leader may have overwritten an earlier term's writes.
+    const auto& op_ids = write_query->op_ids;
+    const auto max_checks = FLAGS_max_pending_async_write_checks_per_tablet;
+    for (auto it = op_ids.begin(); it != op_ids.end();) {
+      if (result.size() == max_checks) {
+        write_pipelining_abort_ = true;
+        return STATUS_EC_FORMAT(
+            IllegalState, TransactionError(TransactionErrorCode::kAborted),
+            "Tablet $0: async writes are pending in more than $1 leader terms", tablet_id,
+            max_checks);
+      }
+      auto next_term_begin = op_ids.lower_bound(OpId(it->term + 1, 0));
+      result.push_back(*std::prev(next_term_begin));
+      it = next_term_begin;
     }
-
-    // Now we either have pending writes within the same term, or across 2 consecutive terms.
-    //
-    // In either case, we return the max op_id of the earliest pending term - raft's prefix property
-    // covers all earlier writes from that term.
-    // - If the pending writes are in the same term, then this max covers all pending writes.
-    // - If the pending writes are across 2 terms, then the leader will locally have the writes from
-    //   the greater term, so there's no need to check for those.
-    //
-    // If leader moves before we can send this read, then the server will also validate:
-    // - If the pending writes are in the same term, then verifying the new leader has the last
-    //   write is still sufficient (we are only at a 1 term difference which is supported).
-    // - If the pending writes are across 2 terms, then we now have a write that is 2+ terms old, so
-    //   the server will abort the transaction.
-    auto next_term_begin = write_query->op_ids.lower_bound(OpId(min_op.term + 1, 0));
-    return *std::prev(next_term_begin);
+    return result;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -1492,6 +1488,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void RemoteAbortCallback(std::function<void(void)> callback) {
     std::lock_guard lock(mutex_);
     remote_abort_callback_ = std::move(callback);
+  }
+
+  void PromotionCallback(std::function<void(TabletId)> callback) {
+    std::lock_guard lock(mutex_);
+    promotion_callback_ = std::move(callback);
   }
 
  private:
@@ -1919,6 +1920,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       std::lock_guard lock(mutex_);
       cleanup_waiter_.swap(waiter);
       old_status_tablet_state_.store(OldTransactionState::kAborted, std::memory_order_release);
+      LOG_IF_WITH_PREFIX(DFATAL, promotion_callback_)
+          << "promotion callback not called yet at time of old transaction abort";
     }
 
     if (waiter) {
@@ -2024,7 +2027,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         SendHeartbeatToNewTablet(promoting));
         }
       };
-      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
+      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0) && promoting) {
         manager_->client()->messenger()->scheduler().Schedule(
             std::move(send_new_heartbeat),
             std::chrono::milliseconds(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms));
@@ -2360,6 +2363,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
+            ExecutePromotionCallback();
             SendUpdateTransactionPromotingRpcs();
           }
           FALLTHROUGH_INTENDED;
@@ -2374,7 +2378,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
           ASH_ENABLE_CONCURRENT_UPDATES();
-          SET_WAIT_STATUS(OnCpu_Passive);
           manager_->client()->messenger()->scheduler().Schedule(
               [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id,
                   wait_state = wait_state_](
@@ -2455,6 +2458,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
+  void ExecutePromotionCallback() {
+    TRACE_TO(trace_, __func__);
+    std::function<void(TabletId)> promotion_callback;
+    TabletId status_tablet;
+    {
+      std::lock_guard lock(mutex_);
+      if (!promotion_callback_) {
+        return;
+      }
+      promotion_callback.swap(promotion_callback_);
+      status_tablet = status_tablet_->tablet_id();
+    }
+    promotion_callback(std::move(status_tablet));
+  }
+
   void SendUpdateTransactionPromotingRpcs() EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "SendUpdateTransactionPromotingRpcs()";
@@ -2498,7 +2516,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionPromotingRpcs()";
 
     std::vector<TabletId> participant_tablets;
-    std::function<void(const TabletId&)> start_location_update;
+    std::function<void(TabletId)> start_location_update;
     tserver::UpdateTransactionRequestPB req;
     {
       UniqueLock lock(mutex_);
@@ -2757,7 +2775,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   // This is a pointer to the wait state that was created while
   // processing the inbound call, we use this to update the
-  // threadlocal wait state ptr when changing threads.
+  // threadlocal wait state ptr when changing threads. That call may still be in flight, so
+  // don't overwrite its wait status just to mark a pending timer.
   const ash::WaitStateInfoPtr wait_state_;
 
   std::atomic<MicrosTime> start_;
@@ -2876,6 +2895,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   OriginationInfo origination_info_ GUARDED_BY(mutex_);
 
   std::function<void(void)> remote_abort_callback_ GUARDED_BY(mutex_);
+  std::function<void(TabletId)> promotion_callback_ GUARDED_BY(mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -3126,8 +3146,8 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-Result<OpId> YBTransaction::GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const {
-  return impl_->GetAsyncWriteOpIdForReadCheck(tablet_id);
+Result<OpIds> YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {
+  return impl_->GetAsyncWriteOpIdsForReadCheck(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -3138,6 +3158,10 @@ void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_
 
 void YBTransaction::RemoteAbortCallback(std::function<void(void)> callback) {
   impl_->RemoteAbortCallback(std::move(callback));
+}
+
+void YBTransaction::PromotionCallback(std::function<void(TabletId)> callback) {
+  impl_->PromotionCallback(std::move(callback));
 }
 
 } // namespace client

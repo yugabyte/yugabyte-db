@@ -42,6 +42,7 @@ create type index_plan_rows as (
     "Storage Index Filter" text,
     "Storage Filter" text,
     "Filter" text,
+    "Partial Aggregate" bool,
     "Actual Loops" float8,
     "Plan Rows" float8,
     "Total Cost" float8,
@@ -198,6 +199,21 @@ create index nonconcurrently rc_skw2_idx  on sn.rC (skw2 asc) include (vv);
 create index nonconcurrently rc_skw3_idx  on sn.rC (skw3 asc) include (vv);
 insert into sn.rC select * from sn.r;
 analyze sn.rC;
+-- Composite primary key for distinct scans of the base table itself: g
+-- repeats every value 10 times, so a distinct scan on it skips from group to
+-- group with a seek.
+create table sn.rp (
+    g int,
+    pk int,
+    v int,
+    primary key (g asc, pk asc)
+) with (colocation = off);
+insert into sn.rp select (i - 1) / 10 + 1, i, i from generate_series(1, 12345) i;
+analyze sn.rp;
+create table sn.rpC (like sn.rp including constraints including indexes including statistics)
+    with (colocation = on);
+insert into sn.rpC select * from sn.rp;
+analyze sn.rpC;
 drop table if exists queries cascade;
 create table queries (qid int, query text, primary key (qid asc));
 create table explain_query_options (with_analyze bool not null);
@@ -207,6 +223,11 @@ insert into explain_query_options values (false);
 -- lookup and base-table fetch into a single index-side RPC, while the
 -- planner attributes that bundled work to the table side; we move
 -- act_index into act_table for that case (act_table + act_index invariant).
+--
+-- A scan under a pushed-down aggregate ("Partial Aggregate") returns one
+-- partial-aggregate row per read op (one per request here: each scan reads
+-- one tablet), so the same est == act invariant applies with the request
+-- count in place of the row pagination.
 --
 -- This view is parallel-aware: it derives per-scan planned/actual loop
 -- counts from the enclosing Gather via parallel_context and exposes
@@ -224,6 +245,7 @@ insert into explain_query_options values (false);
 --      Index Only Scan                  : act_table = 0,  act_index > 0
 --      colocated     non-PK Index Scan  : act_table > 0,  act_index = 0
 --      non-colocated non-PK Index Scan  : act_table > 0,  act_index > 0
+--      A Distinct Index [Only] Scan follows the scan kind it derives from.
 drop view if exists check_roundtrip_estimates;
 create view check_roundtrip_estimates as
 with recursive plan_tree as (
@@ -266,7 +288,7 @@ plan_rows as (
 scan_nodes as (
     select *
     from plan_rows
-    where "Node Type" like 'Index% Scan%' or "Node Type" = 'Seq Scan'
+    where "Node Type" like '%Index% Scan%' or "Node Type" = 'Seq Scan'
 ),
 parallel_context as (
     select
@@ -313,6 +335,7 @@ select
     "Storage Index Filter",
     "Storage Filter",
     "Filter",
+    coalesce("Partial Aggregate", false) "Partial Aggregate",
     est_table "Estimated Table Roundtrips",
     est_index "Estimated Index Roundtrips",
     act_table "Storage Table Read Requests",
@@ -380,13 +403,14 @@ from (
         case
             when "Node Type" = 'Seq Scan' then 'seq'
             when "Index Name" like '%_pkey' then 'pk'
-            when "Node Type" like 'Index Only Scan%' then 'ios'
+            when "Node Type" like '%Index Only Scan%' then 'ios'
             else 'idx'
         end scan_kind,
         "Index Cond",
         "Storage Index Filter",
         "Storage Filter",
         "Filter",
+        "Partial Aggregate",
         est_table,
         est_index,
         act_table,
@@ -424,7 +448,7 @@ from (
             -- Normalize colocated non-PK Index Scan actuals; see header comment.
             case
                 when "Index Name" not like '%_pkey'
-                    and "Node Type" not like 'Index Only Scan%'
+                    and "Node Type" not like '%Index Only Scan%'
                     and "Index Name" like 'rc_%' then
                     coalesce("Storage Table Read Requests", 0)
                     + coalesce("Storage Index Read Requests", 0)
@@ -432,7 +456,7 @@ from (
             end act_table,
             case
                 when "Index Name" not like '%_pkey'
-                    and "Node Type" not like 'Index Only Scan%'
+                    and "Node Type" not like '%Index Only Scan%'
                     and "Index Name" like 'rc_%' then 0::float8
                 else coalesce("Storage Index Read Requests", 0)
             end act_index

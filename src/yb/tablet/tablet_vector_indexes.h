@@ -130,6 +130,19 @@ class TabletVectorIndexes :
 
   void LaunchBackfillsIfNecessary();
 
+  // Reloads TableInfo::vector_index_deactivated_ht of every index from the tablet metadata, after
+  // an alter changed the index map of an indexed table, and flushes the deactivated indexes.
+  void RefreshDeactivation() EXCLUDES(vector_indexes_mutex_);
+
+  // Flushes deactivated indexes holding unflushed rows. Nothing else flushes them since they get no
+  // new rows, while their unflushed rows keep the log and the intents DB from being cleaned up.
+  void FlushDeactivated() EXCLUDES(vector_indexes_mutex_);
+
+  // Advances the flushed OpId of deactivated indexes holding nothing unflushed to op_id, the
+  // regular DB's flushed OpId. Otherwise it stays where the index was deactivated, and bootstrap
+  // replays all the log after it.
+  void AdvanceDeactivatedFlushedOpIds(const OpId& op_id) EXCLUDES(vector_indexes_mutex_);
+
   // Relaunches backfills after a restore replaced the storages: the restored checkpoint could have
   // been taken before a backfill finished, e.g. by a replica still bootstrapping.
   void ScheduleBackfillAfterRestore();
@@ -152,16 +165,26 @@ class TabletVectorIndexes :
 
   // Stamps `frontier` as flushed on every vector index, see
   // DocVectorIndex::ModifyFlushedFrontier.
-  Status ModifyFlushedFrontier(const docdb::ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode);
 
-  void FillMaxPersistentOpIds(
-      boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
+  void FillPersistentStates(
+      boost::container::small_vector_base<VectorIndexPersistentState>& out,
+      bool invalid_if_no_new_data);
+
+  // Lowers the schema versions in `min_schema_versions` to those of the data the indexes have not
+  // flushed. Bootstrap replays it into them, decoding the rows with the schema packings they were
+  // written with, even if the regular DB repacked them (GH#35466).
+  void FillMinSchemaVersion(docdb::CotableSchemaVersionMap* min_schema_versions) const;
 
   bool TEST_HasIndexes() const {
     return has_vector_indexes_.load();
   }
 
-  Status Verify();
+  // Checks the specified vector index, see CheckVectorIndex.
+  Result<VectorIndexCheckResultPB> Check(
+      const TableId& index_table_id, size_t max_inconsistencies, CoarseTimePoint deadline)
+      EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
@@ -198,6 +221,8 @@ class TabletVectorIndexes :
 
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
+
+  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;

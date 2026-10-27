@@ -395,6 +395,30 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- No plan can be found using the hint. Should generate warnings.
 /*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
+-- Same under the YB cost model: the scan copy costed for the pushed-down
+-- aggregate keeps the disabled cost, so the plan check still reports the scan.
+set yb_enable_cbo = on;
+/*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+reset yb_enable_cbo;
+
+-- The other direction: the hint selects a scan type the session disables.
+-- The hint lifts the session's setting only while the relation's paths are
+-- generated, but the scan copy costed for the pushed-down aggregate stays
+-- enabled like the hinted path, so the plan check reports nothing.  One case
+-- for each scan type the copy is costed for (#35083).
+set yb_enable_cbo = on;
+set enable_seqscan = off;
+/*+ SeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+reset enable_seqscan;
+set enable_indexscan = off;
+/*+ IndexScan(tab t2_a2_idx) */ explain (hints on, costs off) select count(*) from t2 tab where a2=1;
+/*+ IndexOnlyScan(tab t2_a2_idx) */ explain (hints on, costs off) select count(*) from t2 tab where a2=1;
+reset enable_indexscan;
+set enable_bitmapscan = off;
+/*+ BitmapScan(tab t2_a2_idx) */ explain (hints on, costs off) select count(*) from t2 tab where a2=1;
+reset enable_bitmapscan;
+reset yb_enable_cbo;
+
 -- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
 -- NoSeqScan: still no valid path.
 /*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;

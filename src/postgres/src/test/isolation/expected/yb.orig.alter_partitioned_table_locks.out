@@ -1,0 +1,133 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_begin s1_create_ac_part s2_add_column s1_commit s3_insert_ac s3_select_ac
+step s1_begin: BEGIN;
+step s1_create_ac_part: CREATE TABLE ac_p_7_b0 PARTITION OF ac_p_7 FOR VALUES IN (0);
+step s2_add_column: ALTER TABLE ac_p ADD COLUMN x2 int DEFAULT 2; <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_column: <... completed>
+step s3_insert_ac: INSERT INTO ac_p VALUES (702, 0, 'r'), (703, 1, 'r');
+step s3_select_ac: SELECT tableoid::regclass, * FROM ac_p ORDER BY a;
+tableoid |  a|b|c|x2
+---------+---+-+-+--
+ac_p_7_b0|702|0|r| 2
+ac_p_7_b1|703|1|r| 2
+(2 rows)
+
+
+starting permutation: s1_begin s1_create_dc_part s2_drop_pk_column s1_commit s3_insert_dc s3_select_dc
+step s1_begin: BEGIN;
+step s1_create_dc_part: CREATE TABLE dc_p_7_b0 PARTITION OF dc_p_7 FOR VALUES IN (0);
+step s2_drop_pk_column: ALTER TABLE dc_p DROP COLUMN c; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_pk_column: <... completed>
+step s3_insert_dc: INSERT INTO dc_p VALUES (702, 0), (703, 1);
+step s3_select_dc: SELECT tableoid::regclass, * FROM dc_p ORDER BY a;
+tableoid |  a|b
+---------+---+-
+dc_p_7_b0|702|0
+dc_p_7_b1|703|1
+(2 rows)
+
+
+starting permutation: s1_begin_rr s1_count s2_add_pk s1_count s1_commit s3_count
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_count: SELECT count(*) FROM ap_p_7_b1;
+count
+-----
+   50
+(1 row)
+
+step s2_add_pk: ALTER TABLE ap_p ADD PRIMARY KEY (a, b); <waiting ...>
+step s1_count: SELECT count(*) FROM ap_p_7_b1;
+count
+-----
+   50
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_add_pk: <... completed>
+step s3_count: SELECT count(*) FROM ap_p_7_b1;
+count
+-----
+   50
+(1 row)
+
+
+starting permutation: s1_begin_rr s1_count_fk s2_add_fk s1_count_fk s1_commit s3_insert_fk_bad
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_count_fk: SELECT count(*) FROM fk_p_7_b1;
+count
+-----
+   50
+(1 row)
+
+step s2_add_fk: ALTER TABLE fk_p ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES fk_ref (id);
+step s1_count_fk: SELECT count(*) FROM fk_p_7_b1;
+count
+-----
+   50
+(1 row)
+
+step s1_commit: COMMIT;
+step s3_insert_fk_bad: INSERT INTO fk_p_7_b1 VALUES (751, 1, 99);
+ERROR:  insert or update on table "fk_p_7_b1" violates foreign key constraint "fk_c"
+
+starting permutation: s1_begin s1_insert_fk_bad s2_add_fk s1_commit s3_count_fk
+step s1_begin: BEGIN;
+step s1_insert_fk_bad: INSERT INTO fk_p_7_b1 VALUES (750, 1, 99);
+step s2_add_fk: ALTER TABLE fk_p ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES fk_ref (id); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_fk: <... completed>
+ERROR:  insert or update on table "fk_p_7_b1" violates foreign key constraint "fk_c"
+step s3_count_fk: SELECT count(*) FROM fk_p_7_b1;
+count
+-----
+   51
+(1 row)
+
+
+starting permutation: s1_begin s1_count_sib s2_detach_sib s1_count_sib_root s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_detach_sib: ALTER TABLE sib_p DETACH PARTITION sib_p_a;
+step s1_count_sib_root: SELECT count(*) FROM sib_p;
+count
+-----
+    2
+(1 row)
+
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_count_sib s2_owner_sib s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_owner_sib: ALTER TABLE sib_p OWNER TO CURRENT_USER;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_count_sib s2_only_default_sib s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_only_default_sib: ALTER TABLE ONLY sib_p ALTER COLUMN b SET DEFAULT 5;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_analyze_sib s2_attach_sib s1_commit
+step s1_begin: BEGIN;
+step s1_analyze_sib: ANALYZE sib_p_b;
+step s2_attach_sib: ALTER TABLE sib_p ATTACH PARTITION sib_q FOR VALUES FROM (300) TO (400);
+step s1_commit: COMMIT;

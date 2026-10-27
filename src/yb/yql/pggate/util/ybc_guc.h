@@ -187,6 +187,12 @@ extern bool yb_enable_consistent_replication_from_hash_range;
 extern bool yb_enable_replication_slot_exclusive_lock;
 
 /*
+ * GUC variable bounding the number of advisory-lock RPC retries for
+ * DROP_REPLICATION_SLOT ... WAIT. 0 means retry indefinitely.
+ */
+extern int yb_replication_slot_wait_max_retries;
+
+/*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
  * streams.
  */
@@ -226,6 +232,9 @@ extern int yb_xcluster_consistency_level;
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
 extern bool yb_disable_catalog_version_check;
+
+/* Makes yb_read_time apply only to user tables; the catalog is read as of now. */
+extern bool yb_read_time_skip_catalog;
 
 /*
  * Allows for customizing the number of rows to be prefetched.

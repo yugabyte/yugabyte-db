@@ -420,6 +420,35 @@ Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
   return Status::OK();
 }
 
+Status XClusterClient::StopPersisting(const std::vector<NamespaceId>& namespace_ids) {
+  master::XClusterStopPersistingRequestPB req;
+  req.mutable_namespace_ids()->Add(namespace_ids.begin(), namespace_ids.end());
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterStopPersisting, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::StartPersisting(const std::vector<NamespaceId>& namespace_ids) {
+  master::XClusterStartPersistingRequestPB req;
+  req.mutable_namespace_ids()->Add(namespace_ids.begin(), namespace_ids.end());
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterStartPersisting, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<master::SysPersistenceBlockMapEntryPB> XClusterClient::GetPersistenceBlockMap() {
+  master::XClusterGetPersistenceBlockMapRequestPB req;
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(XClusterGetPersistenceBlockMap, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.persistence_block_map();
+}
+
 Status XClusterClient::AddNamespaceToXClusterReplication(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::string& target_master_addresses, const NamespaceId& source_namespace_id) {

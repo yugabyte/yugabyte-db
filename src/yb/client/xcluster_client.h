@@ -37,6 +37,7 @@ class CDCStreamOptionsPB;
 class InsertHistoricalColocatedSchemaPackingResponsePB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
+class SysPersistenceBlockMapEntryPB;
 }  // namespace master
 
 namespace rpc {
@@ -152,6 +153,12 @@ class XClusterClient {
   // complete.
   Status AddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
+
+  // See XClusterManager::StopPersisting and StartPersisting.
+  Status StopPersisting(const std::vector<NamespaceId>& namespace_ids);
+  Status StartPersisting(const std::vector<NamespaceId>& namespace_ids);
+
+  Result<master::SysPersistenceBlockMapEntryPB> GetPersistenceBlockMap();
 
   // Starts the addition of namespace to inbound replication group.
   // IsAlterXClusterReplicationDone must be called in order to wait for the operation to complete.

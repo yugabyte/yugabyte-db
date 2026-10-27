@@ -31,7 +31,10 @@ import {
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
 import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
-import { toClusterStorageSpec } from '../edit-hardware/EditHardwareStorageUtils';
+import {
+  effectiveMasterDeviceInfo,
+  toClusterStorageSpec
+} from '../edit-hardware/EditHardwareStorageUtils';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
   const context = useContext(EditPlacementContext);
@@ -331,9 +334,11 @@ export const buildMasterAllocationEditPayload = (
         storage_spec: tserverStorageSpec
       };
 
-      const masterInstanceType = instanceSettings.masterInstanceType ?? tserverInstanceType;
+      const masterInstanceType = instanceSettings.keepMasterTserverSame
+        ? tserverInstanceType
+        : (instanceSettings.masterInstanceType ?? tserverInstanceType);
       const masterStorageSpec = toClusterStorageSpec(
-        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo,
+        effectiveMasterDeviceInfo(instanceSettings),
         node_spec.master?.storage_spec ?? tserverStorageSpec
       );
 

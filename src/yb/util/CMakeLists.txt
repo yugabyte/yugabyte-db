@@ -110,8 +110,8 @@ set(UTIL_SRCS
   background_task.cc
   backoff_waiter.cc
   bitmap.cc
-  bitmap.cc
   bloom_filter.cc
+  byte_buffer.cc
   bytes_formatter.cc
   cache_metrics.cc
   cgroups.cc
@@ -127,6 +127,7 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  dynamic_bitset.cc
   symbolize.cc
   libbacktrace_util.cc
   source_location.cc
@@ -223,6 +224,7 @@ set(UTIL_SRCS
   status.cc
   status_callback.cc
   stol_utils.cc
+  storage_tier.cc
   strand.cc
   string_case.cc
   string_trim.cc
@@ -401,6 +403,7 @@ ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(disk_space_checker-test)
 ADD_YB_TEST(drive_io_stats-test)
+ADD_YB_TEST(dynamic_bitset-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)

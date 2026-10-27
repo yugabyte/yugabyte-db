@@ -83,6 +83,8 @@
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
+DECLARE_bool(enable_tiered_storage);
+
 DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
     "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
     "behavior of old code");
@@ -258,7 +260,8 @@ TableInfo::TableInfo(const TableInfo& other,
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
   CompleteInit();
 }
@@ -283,7 +286,8 @@ TableInfo::TableInfo(const TableInfo& other,
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   CompleteInit();
 }
 
@@ -305,7 +309,8 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
-      deleted_cols(other.deleted_cols) {
+      deleted_cols(other.deleted_cols),
+      vector_index_deactivated_ht(other.vector_index_deactivated_ht) {
   CompleteInit();
 }
 
@@ -355,6 +360,9 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
 
   if (pb.has_wal_retention_secs()) {
     wal_retention_secs = pb.wal_retention_secs();
+  }
+  if (pb.has_vector_index_deactivated_ht()) {
+    vector_index_deactivated_ht = HybridTime::FromPB(pb.vector_index_deactivated_ht());
   }
 
   RETURN_NOT_OK(dockv::PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
@@ -429,6 +437,9 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   op_id.ToPB(pb->mutable_op_id());
   pb->set_pg_table_id(pg_table_id);
   pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
+  if (vector_index_deactivated_ht.is_valid()) {
+    pb->set_vector_index_deactivated_ht(vector_index_deactivated_ht.ToPB());
+  }
 }
 
 const Schema& TableInfo::schema() const {
@@ -499,7 +510,8 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
                           cotable_id,
                           schema_version,
                           deleted_cols,
-                          wal_retention_secs) &&
+                          wal_retention_secs,
+                          vector_index_deactivated_ht) &&
          DereferencedEqual(lhs.doc_read_context,
                            rhs.doc_read_context,
                            &docdb::DocReadContext::TEST_Equals) &&
@@ -600,7 +612,9 @@ Status KvStoreInfo::LoadFromPB(
     // synthesize a single in-memory home entry to guarantee DB::Open always gets at least one
     // db_paths slot. For local superblocks this is upgraded to the full per-disk list (and
     // persisted) in RaftGroupMetadata::LoadFromSuperBlock, which has the FsManager.
-    if (tier_paths.empty()) {
+    // With tiered storage disabled tier_paths stays empty and RocksDB opens with its default
+    // single path, exactly as before the feature existed.
+    if (tier_paths.empty() && FLAGS_enable_tiered_storage) {
       tier_paths.push_back({
           .path_id = 0,
           .tier    = kDefaultStorageTier,
@@ -1007,8 +1021,14 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
-  ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
-  ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  if (FLAGS_enable_tiered_storage) {
+    ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
+    ret->kv_store_.target_storage_tier = data.target_storage_tier;
+  } else if (!data.target_storage_tier.empty()) {
+    LOG(WARNING) << "Ignoring target storage tier \"" << data.target_storage_tier
+                 << "\" for tablet " << data.raft_group_id
+                 << " because tiered storage is disabled (--enable_tiered_storage=false)";
+  }
   ret->kv_store_.target_tier_path_id = 0;
   RETURN_NOT_OK(ret->Flush());
   return ret;
@@ -1396,7 +1416,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     // synthesized a single in-memory home entry). Rebuild the full per-disk pin list for this node
     // via BuildTierPaths so an existing tablet can participate in tiered storage after a binary
     // upgrade, and persist it (Flush() below) so this runs once rather than on every restart.
-    if (local_superblock && !raft_group_id_.empty() &&
+    if (FLAGS_enable_tiered_storage && local_superblock && !raft_group_id_.empty() &&
         superblock.kv_store().tier_paths_size() == 0 &&
         fs_manager_ != nullptr && !kv_store_.rocksdb_dir.empty()) {
       kv_store_.tier_paths = BuildTierPaths(fs_manager_, kv_store_.rocksdb_dir);
@@ -1662,9 +1682,10 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const OpId& op_id,
-                                  const TableId& table_id) {
+                                  const TableId& table_id,
+                                  HybridTime hybrid_time) {
   std::lock_guard lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id, hybrid_time);
 }
 
 void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
@@ -1672,7 +1693,8 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const OpId& op_id,
-                                  const TableId& table_id) {
+                                  const TableId& table_id,
+                                  HybridTime hybrid_time) {
   DCHECK(data_mutex_.is_locked());
   DCHECK(schema.has_column_ids());
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
@@ -1712,7 +1734,9 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                       << " to Schema version " << version
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
+  auto old_index_map = it->second->index_map;
   it->second.swap(new_table_info);
+  UpdateVectorIndexDeactivationUnlocked(*old_index_map, index_map, hybrid_time);
   // Update op id if it is a change metadata operation.
   // We don't update if the passed op id is invalid. Cases when this will happen:
   // 1. If we are replaying during tablet bootstrap and last_flushed_change_metadata_op_id
@@ -1722,6 +1746,49 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
   // we get a new change metadata operation request post tablet bootstrap.
   // 2. During remote bootstrap in RemoteBootstrapClient::Start.
   OnChangeMetadataOperationAppliedUnlocked(op_id);
+}
+
+void RaftGroupMetadata::UpdateVectorIndexDeactivationUnlocked(
+    const IndexMap& old_index_map, const IndexMap& new_index_map, HybridTime hybrid_time) {
+  // Removed by a DROP INDEX alter, or by a restore to before the index was created. A snapshot
+  // schedule can keep the index on the tablet, but no restore needs its rows written after
+  // hybrid_time: after a drop, a restore can bring it back only as of a time before the YSQL
+  // commit, which precedes this operation, and after a restore to before its creation, bringing it
+  // back would be a forward restore. Remote bootstrap passes no hybrid time and leaves the map as
+  // is.
+  if (hybrid_time.is_valid()) {
+    for (const auto& [index_id, _] : old_index_map) {
+      if (!new_index_map.contains(index_id)) {
+        SetVectorIndexDeactivatedHtUnlocked(index_id, hybrid_time);
+      }
+    }
+  }
+  // Added back by a restore to before the drop. A newly created index has no cutoff to clear.
+  for (const auto& [index_id, _] : new_index_map) {
+    if (!old_index_map.contains(index_id)) {
+      SetVectorIndexDeactivatedHtUnlocked(index_id, HybridTime());
+    }
+  }
+}
+
+void RaftGroupMetadata::SetVectorIndexDeactivatedHtUnlocked(
+    const TableId& index_id, HybridTime hybrid_time) {
+  auto it = kv_store_.tables.find(index_id);
+  if (it == kv_store_.tables.end() || !it->second->IsVectorIndex() ||
+      it->second->vector_index_deactivated_ht == hybrid_time) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO)
+      << "Vector index " << index_id << " deactivated hybrid time: "
+      << it->second->vector_index_deactivated_ht << " -> " << hybrid_time;
+  const auto& old_info = *it->second;
+  auto new_info = std::make_shared<TableInfo>(
+      old_info, old_info.schema(), *old_info.index_map, std::vector<DeletedColumn>(),
+      old_info.schema_version);
+  new_info->vector_index_deactivated_ht = hybrid_time;
+  auto status = SetTableInfoUnlocked(it, new_info);
+  LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
+      << "Failed to set deactivated hybrid time of vector index " << index_id << ": " << status;
 }
 
 void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
@@ -1786,9 +1853,10 @@ void RaftGroupMetadata::SetSchemaAndTableName(
     const Schema& schema, const IndexMap& index_map,
     const std::vector<DeletedColumn>& deleted_cols,
     const SchemaVersion version, const std::string& namespace_name,
-    const std::string& table_name, const OpId& op_id, const TableId& table_id) {
+    const std::string& table_name, const OpId& op_id, const TableId& table_id,
+    HybridTime hybrid_time) {
   std::lock_guard lock(data_mutex_);
-  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id, hybrid_time);
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
@@ -2336,7 +2404,7 @@ void RaftGroupMetadata::EnableSchemaGC() {
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion>& versions) {
+    const docdb::CotableSchemaVersionMap& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
@@ -2531,12 +2599,18 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSplitChildMetadata(
   // Rebuild tier_paths for the child tablet. ToSuperBlock() above copied the parent's paths, but
   // the child lives in its own rocksdb_dir, so each slot needs its own directory derived from the
   // same data root as the parent slot. BuildTierPaths derives all slots from the child's home dir.
+  // With tiered storage disabled the child gets no tier_paths unless the parent already spans
+  // several disks (written while the feature was on); then the slots are rebuilt so the child can
+  // still reach SST files on non-home disks.
+  const bool rebuild_tier_paths = FLAGS_enable_tiered_storage || kv_store.tier_paths_size() > 1;
   kv_store.clear_tier_paths();
-  for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
-    auto* tppb = kv_store.add_tier_paths();
-    tppb->set_path_id(tp.path_id);
-    tppb->set_tier(tp.tier);
-    tppb->set_path(tp.path);
+  if (rebuild_tier_paths) {
+    for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
+      auto* tppb = kv_store.add_tier_paths();
+      tppb->set_path_id(tp.path_id);
+      tppb->set_tier(tp.tier);
+      tppb->set_path(tp.path);
+    }
   }
 
   partition.ToPB(superblock.mutable_partition());

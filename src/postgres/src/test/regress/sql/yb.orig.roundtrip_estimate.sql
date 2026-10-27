@@ -12,6 +12,14 @@ delete from queries;
 --   5xxxx: seeknext-style contiguous index ranges
 --   6xxxx: narrow ybctid-projecting PK Index Scan width probes
 --   7xxxx: serial-only cardinality-estimate consistency cases
+--   8xxxx: distinct index scans (groups per page): 801xx/802xx forward and
+--          backward Distinct Index Only Scans over the seeknext-style
+--          columns, 803xx/804xx Distinct Index Scans on a composite primary
+--          key's prefix, 805xx-808xx the same scans without DISTINCT; +1000
+--          for the colocated tables.  Scan kind 6 in 1xxxx and 4 in
+--          3xxxx/4xxxx are Distinct Index Only Scans on ce.r(a); kinds 7 and
+--          5 are the same scans without DISTINCT.
+--   9xxxx: pushed-down aggregates and their non-pushed controls
 
 -- generate colocation x scan kind x index cond range combinations
 insert into queries (qid, query)
@@ -31,13 +39,25 @@ scans(qidoff, target, predicol) as (
            (3, 'b',  'b'),   -- Index Only Scan on non-PK index
            -- request ybctid.  returning ybctid from IOS unsupported.
            (4, 'ybctid, *',  'pk'),  -- Index Scan using PK index
-           (5, 'ybctid, v',  'b')    -- Index Scan using non-PK index
+           (5, 'ybctid, v',  'b'),   -- Index Scan using non-PK index
+           (6, 'distinct a', 'a'),   -- Distinct Index Only Scan on non-PK index
+           (7, 'a', 'a')             -- the same scan without DISTINCT
 )
 select
     10000 + r.qidrel + rng.qidbase + s.qidoff as qid,
     'select ' || s.target || ' from ' || r.rel || ' where ' ||
     replace(rng.predicate, '##COL##', s.predicol) as query
 from relations r, ranges rng, scans s;
+
+-- Distinct Index Only Scans over bl: two groups of about 6000 rows, and the
+-- same scans without DISTINCT.  Column c is unique, and a one-row-per-group
+-- distinct scan ties with the plain scan, which the Unique above the distinct
+-- path then loses; it is not listed.
+insert into queries values
+    (10902, $$select distinct bl from ce.r$$),
+    (10903, $$select bl from ce.r$$),
+    (11902, $$select distinct bl from ce.rC$$),
+    (11903, $$select bl from ce.rC$$);
 
 -- generate colocation x scan kind x filter combination queries:
 -- (index cond, +storage [index] filter, +storage table filter, +local filter)
@@ -82,6 +102,10 @@ in_list(qidoff, target, predicol, items) as (
            (2, 'v', 'b',
             '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
            (3, 'b', 'b',
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+           (4, 'distinct a', 'a',
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+           (5, 'a', 'a',
             '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345')
 )
 select
@@ -99,7 +123,9 @@ with relations(rel, qidrel) as (
 in_list(qidoff, target, predicol, items) as (
     values (1, '*', 'pk', '1, 2, 3, 4, 5, 6, 7, 8'),
            (2, 'v', 'b',  '1, 2, 3, 4, 5, 6, 7, 8'),
-           (3, 'b', 'b', '1, 2, 3, 4, 5, 6, 7, 8')
+           (3, 'b', 'b', '1, 2, 3, 4, 5, 6, 7, 8'),
+           (4, 'distinct a', 'a', '1, 2, 3, 4, 5, 6, 7, 8'),
+           (5, 'a', 'a', '1, 2, 3, 4, 5, 6, 7, 8')
 )
 select
     40000 + r.qidrel + il.qidoff as qid,
@@ -154,6 +180,121 @@ from colocations c_colo,
      columns c
 where not (s.is_only_scan and c.col = 'pk');
 
+-- distinct index scans over the seeknext-style columns: f3 skips with nexts
+-- (group size at the forward seek-forward threshold), the rest with a seek
+-- per group; dv1 is a single group.  f1's one-row groups tie with the plain
+-- scan and are left out, and so is backward f3, whose plan changes with the
+-- fetch limit while the fetch-limit variants below require it to stay fixed.
+-- 805xx/806xx are the same scans without DISTINCT.
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('',  0),
+           ('C', 1000)
+),
+columns(col_id, col) as (
+    values (2, 'f3'), (3, 'f4'), (4, 'f10'), (5, 'f100'), (6, 'dv1')
+),
+scans(qidbase, is_backward, is_distinct) as (
+    values (100, false, true),  -- distinct index only scan
+           (200, true,  true),  -- backward distinct index only scan
+           (500, false, false), -- index only scan
+           (600, true,  false)  -- backward index only scan
+)
+select
+    80000 + c_colo.qidcolo + s.qidbase + c.col_id as qid,
+    'select ' || case when s.is_distinct then 'distinct ' else '' end || c.col ||
+    ' from sn.r' || c_colo.colo ||
+    case when s.is_backward then ' order by ' || c.col || ' desc' else '' end as query
+from colocations c_colo,
+     scans s,
+     columns c
+where not (s.is_backward and s.is_distinct and c.col = 'f3');
+
+-- distinct scans on the composite primary key's prefix read the base table
+-- itself (Distinct Index Scan rather than Distinct Index Only Scan).
+insert into queries values
+    (80301, $$select distinct g from sn.rp$$),
+    (80302, $$select distinct g from sn.rp where g <= 100$$),
+    (80303, $$select distinct g from sn.rp where g in (1, 100, 1000)$$),
+    (80401, $$select distinct g from sn.rp order by g desc$$),
+    (81301, $$select distinct g from sn.rpC$$),
+    (81302, $$select distinct g from sn.rpC where g <= 100$$),
+    (81303, $$select distinct g from sn.rpC where g in (1, 100, 1000)$$),
+    (81401, $$select distinct g from sn.rpC order by g desc$$);
+
+-- the same scans without DISTINCT: plain Index Scans on the primary key.
+-- The unbounded ones keep the index's order, since without it they would be
+-- Seq Scans.
+insert into queries values
+    (80701, $$select g from sn.rp order by g$$),
+    (80702, $$select g from sn.rp where g <= 100$$),
+    (80703, $$select g from sn.rp where g in (1, 100, 1000)$$),
+    (80801, $$select g from sn.rp order by g desc$$),
+    (81701, $$select g from sn.rpC order by g$$),
+    (81702, $$select g from sn.rpC where g <= 100$$),
+    (81703, $$select g from sn.rpC where g in (1, 100, 1000)$$),
+    (81801, $$select g from sn.rpC order by g desc$$);
+
+-- Pushed-down aggregates (#20955): DocDB returns one partial-aggregate row
+-- per read request, so the scan's roundtrips do not follow the row
+-- pagination of its matching rows: one request for a Seq Scan, PK Index
+-- Scan or Index Only Scan, one table request per ybctid batch for a
+-- non-colocated secondary Index Scan.  d and e have no index, so min/max
+-- over them stay a plain Agg (an indexed column would become a MinMaxAgg
+-- InitPlan) and sum/min/max/avg over them need the base table, which turns
+-- the b-range scans into Index Scans; count(*) over the b range stays an
+-- Index Only Scan unless its filter needs e.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+aggs(qidagg, agg) as (
+    values (000, 'count(*)'),
+           (100, 'sum(d)'),
+           (200, 'min(d), max(e)'),
+           (300, 'avg(d)')
+),
+scans(qidoff, predicate) as (
+    -- Seq Scan + storage filter (d has no index)
+    values (1, 'd between 1 and 5000'),
+    -- PK Index Scan, + storage filter
+           (2, 'pk between 1 and 5000'),
+           (3, 'pk between 1 and 5000 and pk % 100 <= 33'),
+    -- non-PK index: Index Only Scan for count(*) on 4 and 5, Index Scan
+    -- otherwise (sum/min/max/avg read d and e from the table, and 6
+    -- filters on e), + storage index filter, + storage table filter
+           (4, 'b between 1 and 5000'),
+           (5, 'b between 1 and 5000 and b % 100 <= 33'),
+           (6, 'b between 1 and 5000 and e % 100 <= 33')
+)
+select
+    90000 + r.qidrel + a.qidagg + s.qidoff as qid,
+    'select ' || a.agg || ' from ' || r.rel || ' where ' ||
+    s.predicate as query
+from relations r, aggs a, scans s;
+
+-- Not pushed down (#20955): a local filter, an aggregate over a join and an
+-- internal transition type (sum over bigint) keep the row-pagination
+-- estimate.  99005 also counts v so that the scan fetches a wide row: the
+-- 8kB variant's page estimate holds only for wide rows.
+insert into queries values
+    (99001, $$select count(*) from ce.r
+        where pk between 1 and 5000 and non_pushable(pk) <= 5000$$),
+    (99002, $$select sum(d) from ce.r
+        where b between 1 and 5000 and non_pushable(b) <= 5000$$),
+    (99003, $$select count(*) from ce.r
+        where b between 1 and 5000 and non_pushable(b) <= 5000$$),
+    (99004, $$/*+ HashJoin(r rc) */
+        select count(*) from ce.r r join ce.rC rc on r.pk = rc.pk
+        where r.pk between 1 and 5000 and rc.pk between 1 and 5000$$),
+    (99005, $$select sum(d::bigint), count(v) from ce.r
+        where pk between 1 and 5000$$),
+    (99011, $$select count(*) from ce.rC
+        where pk between 1 and 5000 and non_pushable(pk) <= 5000$$),
+    (99012, $$select sum(d) from ce.rC
+        where b between 1 and 5000 and non_pushable(b) <= 5000$$);
+
 set enable_seqscan = off;
 set enable_bitmapscan = off;
 set yb_enable_bitmapscan = off;
@@ -168,7 +309,7 @@ update explain_query_options set with_analyze = false;
 create temp table baseline_scan_nodes as
 select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
        "Index Name", "Index Cond", "Storage Index Filter",
-       "Storage Filter", "Filter"
+       "Storage Filter", "Filter", "Partial Aggregate"
 from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
 select * from baseline_scan_nodes order by qid, nid;
 
@@ -196,12 +337,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -230,12 +371,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -264,12 +405,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter"
+        "Storage Filter", "Filter", "Partial Aggregate"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -287,5 +428,41 @@ select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
+
+-- yb_enable_index_aggregate_pushdown = off (#20955): an Index Scan (not an
+-- Index Only Scan) keeps its aggregate on the PG side, so the planner costs
+-- it by row pagination; Seq Scans and Index Only Scans stay pushed down.
+-- The resets restore the default fetch limit, where a 5000-row scan takes
+-- more than one request, so a non-pushed estimate differs from a pushed one.
+reset yb_fetch_size_limit;
+reset yb_fetch_row_limit;
+set yb_enable_index_aggregate_pushdown = off;
+
+update explain_query_options set with_analyze = false;
+
+-- the scans still pushed down: no Index Scan among them.
+select qid, nid, "Node Type", "Index Name", "Partial Aggregate"
+from check_roundtrip_estimates
+where qid between 90000 and 99999 and "Partial Aggregate"
+order by qid, nid;
+
+update explain_query_options set with_analyze = true;
+
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t,
+       "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total,
+       "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where qid between 90000 and 99999
+  and ("Total Estimates" <> 'passed' or "Field Layout" <> 'passed')
+order by qid, nid;
+
+reset yb_enable_index_aggregate_pushdown;
 
 drop table baseline_scan_nodes;

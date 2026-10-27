@@ -22,6 +22,15 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/subprocess.h"
+
 namespace yb {
 
 const MonoDelta kRpcTimeout = 5s * kTimeMultiplier;
@@ -94,6 +103,38 @@ class YcqlOnlyUpgradeTest : public UpgradeTestBase {
     return ValidateRows();
   }
 
+  // Dumps every container file of the stopped cluster with the yb-pbc-dump in bin_path, then
+  // restarts the cluster.
+  Status DumpContainerFiles(const std::string& bin_path) {
+    cluster_->Shutdown();
+    const auto tool = JoinPathSegments(bin_path, "yb-pbc-dump");
+    // Walk does not return the callback's status.
+    std::vector<std::string> failures;
+    for (auto* daemon : cluster_->daemons()) {
+      RETURN_NOT_OK(Env::Default()->Walk(
+          daemon->GetRootDir(), Env::PRE_ORDER,
+          [&tool, &failures](
+              Env::FileType type, const std::string& dir, const std::string& name) -> Status {
+            const auto path = JoinPathSegments(dir, name);
+            if (type != Env::FILE_TYPE) {
+              return Status::OK();
+            }
+            auto is_container = pb_util::IsPBContainerFile(Env::Default(), path);
+            std::string output, error;
+            auto status = !is_container.ok() ? is_container.status()
+                : *is_container ? Subprocess::Call({tool, path}, &output, &error)
+                : Status::OK();
+            if (!status.ok()) {
+              failures.push_back(Format("$0: $1 $2", path, status, error));
+            }
+            return Status::OK();
+          }));
+    }
+    SCHECK(failures.empty(), IllegalState, Format("$0 failed: $1", tool, AsString(failures)));
+    RETURN_NOT_OK(cluster_->Restart());
+    return WaitForClusterToStabilize();
+  }
+
   client::TableHandle table_;
   int32 row_count_ = 0;
 };
@@ -113,6 +154,38 @@ TEST_F(YcqlOnlyUpgradeTest, TestUpgrade) {
 TEST_F(YcqlOnlyUpgradeTest, TestRollback) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(/*delay_between_nodes=*/3s, /*auto_finalize=*/false));
   ASSERT_OK(InsertRowsAndValidate());
+
+  ASSERT_OK(RollbackClusterToOldVersion());
+  ASSERT_OK(InsertRowsAndValidate());
+}
+
+// Container file headers embed the descriptors of the message type: all types of its .proto file
+// and its imports in the old version, only the needed ones in the current version. The yb-pbc-dump
+// and the daemons of each version must read the files written by the other one.
+TEST_F(YcqlOnlyUpgradeTest, ContainerFiles) {
+  ASSERT_OK(DumpContainerFiles(current_version_bin_path()));
+  ASSERT_OK(UpgradeClusterToCurrentVersion(/*delay_between_nodes=*/3s, /*auto_finalize=*/false));
+  ASSERT_OK(InsertRowsAndValidate());
+
+  // A log rollover writes the bootstrap state file of a tablet that has writes to save.
+  std::vector<TabletId> tablet_ids;
+  std::vector<std::string> ranges;
+  ASSERT_OK(client_->GetTablets(table_.name(), /*max_tablets=*/0, &tablet_ids, &ranges));
+  ASSERT_EQ(tablet_ids.size(), 1);
+  for (auto* ts : cluster_->tserver_daemons()) {
+    ASSERT_OK(ts->LogGC(tablet_ids, /*rollover=*/true));
+    const auto path = tablet::TabletBootstrapStateManager::FilePath(JoinPathSegments(
+        ts->GetRootDir(), "yb-data", "tserver", "wals", "table-" + table_->id(),
+        "tablet-" + tablet_ids.front()));
+    // The old version embeds tens of KB of descriptors in this file.
+    ASSERT_OK(WaitFor(
+        [&path]() -> Result<bool> {
+          return Env::Default()->FileExists(path) &&
+                 VERIFY_RESULT(Env::Default()->GetFileSize(path)) < 4_KB;
+        },
+        30s * kTimeMultiplier, "Bootstrap state file written by the current version"));
+  }
+  ASSERT_OK(DumpContainerFiles(old_version_bin_path()));
 
   ASSERT_OK(RollbackClusterToOldVersion());
   ASSERT_OK(InsertRowsAndValidate());

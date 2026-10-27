@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -247,6 +248,14 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
        LOG.error(e.getMessage());
       return null;
     }
+  }
+
+  // /connections is served by the YSQL webserver, which the postmaster on that node starts after
+  // the node's connection manager is already listening. waitForDatabaseToStart only verifies
+  // TSERVER_IDX, and nodes come up serially, so a test reading stats off any other node can beat
+  // that node's webserver to the port.
+  protected void waitForConnectionStats(int tserverIndex) throws Exception {
+    TestUtils.waitFor(() -> getConnectionStats(tserverIndex) != null, 30000);
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
@@ -657,6 +666,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return true;
   }
 
+  protected static Connection connectWithRetries(ConnectionBuilder builder, int numRetries)
+      throws Exception {
+    for (int retry = 1; retry <= numRetries; ++retry) {
+      try {
+        return builder.connect();
+      } catch (SQLException e) {
+        LOG.info("Connection attempt " + retry + " failed", e);
+        Thread.sleep(retry * 1000);
+      }
+    }
+    fail("Unable to connect after " + numRetries + " attempts");
+    return null;
+  }
+
   protected static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
     try (Statement stmt = conn.createStatement()) {
       ResultSet rs = stmt.executeQuery(query);
@@ -683,7 +706,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
                                            throws Exception {
     HashSet<Integer> pids = new HashSet<>();
     ResultSet rs;
-    for (int i = 0; i < 10; i++) {
+    // Right after startup few idle backends may exist, so for the non-sticky
+    // case keep sampling (bounded) until a second backend shows up.
+    for (int i = 0; i < 10 || (!expectedSticky && pids.size() < 2 && i < 200); i++) {
       rs = stmt.executeQuery("SELECT pg_backend_pid()");
       assertTrue(rs.next());
       pids.add(rs.getInt(1));

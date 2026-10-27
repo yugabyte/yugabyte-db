@@ -44,6 +44,12 @@ struct mm_tls_ctx {
 	mm_tls_t *key;
 	SSL_CTX *tls_ctx;
 	mm_tls_ctx_t *next;
+	/*
+	 * YB: tls-server-end-point hash of tls_ctx's certificate, computed once
+	 * when the server context is created. 0 when unavailable.
+	 */
+	unsigned char yb_cert_hash[EVP_MAX_MD_SIZE];
+	int yb_cert_hash_len;
 };
 
 struct mm_io {

@@ -481,7 +481,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
-  c->data_->client_name_ = data_->client_name_ + "_" + c->data_->id_.ToString();
+  c->data_->client_name_ = data_->client_name_ + "_" + c->id().ToString();
 
   // Init messenger.
   if (messenger) {
@@ -1609,7 +1609,10 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     uint64_t *consistent_snapshot_time_out,
     const std::optional<ReplicationSlotLsnType>& lsn_type,
     const std::optional<ReplicationSlotOrderingMode>& ordering_mode,
-    const std::vector<TableId>& bound_table_ids) {
+    const std::vector<TableId>& bound_table_ids,
+    const std::optional<std::string>& bound_publication_name,
+    const std::vector<TableId>& bound_publication_table_ids,
+    bool bound_publication_all_tables) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1645,6 +1648,16 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     auto* bound = req.mutable_cdcsdk_stream_create_options()->mutable_bound_table_ids();
     for (const auto& id : bound_table_ids) {
       bound->add_table_ids(id);
+    }
+  }
+  if (bound_publication_name.has_value()) {
+    auto* create_options = req.mutable_cdcsdk_stream_create_options();
+    create_options->set_bound_publication_name(*bound_publication_name);
+    create_options->set_bound_publication_all_tables(bound_publication_all_tables);
+    // Set even when empty: an empty publication binds the stream to no tables.
+    auto* member_ids = create_options->mutable_bound_publication_table_ids();
+    for (const auto& id : bound_publication_table_ids) {
+      member_ids->add_table_ids(id);
     }
   }
 
@@ -2625,40 +2638,19 @@ const std::string& YBClient::proxy_uuid() const {
 }
 
 const ClientId& YBClient::id() const {
-  return data_->id_;
+  return data_->request_id_allocator_->client_id();
 }
 
 const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  auto& requests = data_->requests_;
-  auto id = requests.request_id_seq++;
-  requests.running_requests.insert(id);
-  return std::make_pair(id, *requests.running_requests.begin());
+internal::RequestIdAllocation YBClient::NextRequestIdAndMinRunningRequestId() {
+  return data_->request_id_allocator_->Next();
 }
 
 void YBClient::AddMetaCacheInfo(JsonWriter* writer) const {
   data_->meta_cache_->AddAllTabletInfo(writer);
-}
-
-void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
-  if (request_id_range.empty()) {
-    return;
-  }
-  std::lock_guard lock(data_->tablet_requests_mutex_);
-  for (const auto& id : request_id_range) {
-    auto& requests = data_->requests_.running_requests;
-    auto it = requests.find(id);
-    if (it != requests.end()) {
-      requests.erase(it);
-    } else {
-      LOG_WITH_PREFIX(DFATAL) << "RequestsFinished called for an unknown request: "
-                              << id;
-    }
-  }
 }
 
 void YBClient::LookupTabletByKey(

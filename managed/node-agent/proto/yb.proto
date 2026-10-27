@@ -259,6 +259,24 @@ message ConfigureCloudFederationOutput {
     string detail = 2;
 }
 
+// Input to point node_exporter's web config at the node's TLS certificate (or at nothing, for
+// plain HTTP) and make the running exporter serve that scheme.
+message ConfigureNodeExporterInput {
+    string ybHomeDir = 1;
+    uint32 nodeExporterPort = 2;
+    bool tlsEnabled = 3;
+    // Server certificate and key; required when tlsEnabled is true.
+    string certFile = 4;
+    string keyFile = 5;
+}
+
+message ConfigureNodeExporterOutput {
+    // Scheme the exporter serves when the task returns: "http" or "https".
+    string scheme = 1;
+    // True if the task restarted the exporter to switch schemes.
+    bool restarted = 2;
+}
+
 message SetupCGroupInput {
     string ybHomeDir = 1;
     uint32 pgMaxMemMb = 2;
