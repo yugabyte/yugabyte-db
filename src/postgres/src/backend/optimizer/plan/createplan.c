@@ -2225,15 +2225,6 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 }
 
 /*
- * YB_TODO_PG19MERGE: PG commit 24225ad9aafc576295e210026d8ffa9f50d61145 removed
- * the existing create_unique_plan definition and renamed create_upper_unique_plan
- * to create_unique_plan with some changes in the definition. YB had
- * `yb_assign_unique_plan_node_id(root, (Plan *) sort);` between
- * `make_sort_from_sortclauses` and `label_sort_with_costsize` in the
- * UNIQUE_PATH_SORT branch. Port if needed.
- */
-
-/*
  * create_gather_plan
  *
  *	  Create a Gather plan for 'best_path' and (recursively) plans

@@ -5853,19 +5853,8 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 	 * YB: The following code was modified to fix a PG bug detailed in #19021.
 	 * Note to PG15 mergers: temp_sjinfo was previously known as "norm_sjinfo".
 	 */
-	temp_sjinfo.type = T_SpecialJoinInfo;
-	temp_sjinfo.min_lefthand = outerrel->relids;
-	temp_sjinfo.min_righthand = innerrel->relids;
-	temp_sjinfo.syn_lefthand = outerrel->relids;
-	temp_sjinfo.syn_righthand = innerrel->relids;
+	init_dummy_sjinfo(&temp_sjinfo, outerrel->relids, innerrel->relids);
 	temp_sjinfo.jointype = (jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI;
-	/* we don't bother trying to make the remaining fields valid */
-	temp_sjinfo.lhs_strict = false;
-	/* YB_TODO_PG19MERGE: SpecialJoinInfo.delay_upper_joins removed in PG19. */
-	temp_sjinfo.semi_can_btree = false;
-	temp_sjinfo.semi_can_hash = false;
-	temp_sjinfo.semi_operators = NIL;
-	temp_sjinfo.semi_rhs_exprs = NIL;
 
 	/*
 	 * Get the JOIN_SEMI or JOIN_ANTI selectivity of the join clauses.
@@ -7836,8 +7825,6 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 	/* TODO(#20956): Columns needed for rechecking need to be added */
 	if (bms_num_members(attrs) > 0)
 	{
-		/* YB_TODO_PG19MERGE: PG19 removed destructive bms_first_member;
-		 * use non-destructive bms_next_member iteration. */
 		int			bms_index = -1;
 
 		attrs = yb_expand_whole_row_attrs(attrs,
