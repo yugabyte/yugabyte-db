@@ -458,8 +458,8 @@ static void build_pertrans_for_aggref(AggStatePerTrans pertrans,
 
 /* YB declarations */
 static void yb_agg_pushdown_supported(AggState *aggstate);
-static bool yb_agg_scan_might_recheck(ScanState *ss);
 static void yb_agg_pushdown(AggState *aggstate);
+static bool yb_agg_scan_might_recheck(ScanState *ss);
 
 
 /*
@@ -2310,31 +2310,6 @@ yb_agg_pushdown_supported(AggState *aggstate)
 }
 
 /*
- * Whether the scan below the Agg might recheck its index conditions in a way
- * that a pushed-down aggregate row cannot satisfy, as the scan's index AM
- * answered at init; an index scan asks only when the Agg sets
- * EXEC_FLAG_YB_AGG_PARENT.  A bitmap table scan pushes the recheck of its
- * pushable index quals down with the request, so only a local recheck qual
- * matters there.  The answer withdraws the executor's own decision
- * (yb_agg_pushdown_supported) and the planner's alike.
- */
-static bool
-yb_agg_scan_might_recheck(ScanState *ss)
-{
-	if (IsA(ss, IndexScanState))
-		return castNode(IndexScanState, ss)->yb_iss_might_recheck;
-	if (IsA(ss, IndexOnlyScanState))
-		return castNode(IndexOnlyScanState, ss)->yb_ioss_might_recheck;
-	if (IsA(ss, YbBitmapTableScanState))
-	{
-		YbBitmapTableScanState *btss = castNode(YbBitmapTableScanState, ss);
-
-		return btss->btss_might_recheck && btss->recheck_local_quals;
-	}
-	return false;
-}
-
-/*
  * Populates aggregate pushdown information in the scan state.
  */
 static void
@@ -2382,6 +2357,31 @@ yb_agg_pushdown(AggState *aggstate)
 	 * operators.
 	 */
 	ps->ps_ProjInfo = NULL;
+}
+
+/*
+ * Whether the scan below the Agg might recheck its index conditions in a way
+ * that a pushed-down aggregate row cannot satisfy, as the scan's index AM
+ * answered at init; an index scan asks only when the Agg sets
+ * EXEC_FLAG_YB_AGG_PARENT.  A bitmap table scan pushes the recheck of its
+ * pushable index quals down with the request, so only a local recheck qual
+ * matters there.  The answer withdraws the executor's own decision
+ * (yb_agg_pushdown_supported) and the planner's alike.
+ */
+static bool
+yb_agg_scan_might_recheck(ScanState *ss)
+{
+	if (IsA(ss, IndexScanState))
+		return castNode(IndexScanState, ss)->yb_iss_might_recheck;
+	if (IsA(ss, IndexOnlyScanState))
+		return castNode(IndexOnlyScanState, ss)->yb_ioss_might_recheck;
+	if (IsA(ss, YbBitmapTableScanState))
+	{
+		YbBitmapTableScanState *btss = castNode(YbBitmapTableScanState, ss);
+
+		return btss->btss_might_recheck && btss->recheck_local_quals;
+	}
+	return false;
 }
 
 /*
