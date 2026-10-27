@@ -52,9 +52,11 @@ add_dependencies(
 
 set(PQ_UTILS_SRCS
     libpq_test_utils.cc
-    libpq_utils.cc)
+    libpq_utils.cc
+    pgvector_helpers.cc)
 set(PQ_UTILS_DEPS
     pq
+    vector_index
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils

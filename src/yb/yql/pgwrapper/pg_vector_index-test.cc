@@ -80,6 +80,7 @@
 #include "yb/vector_index/vector_lsm.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pgvector_helpers.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -368,7 +369,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
        const std::string& build_options = kDefaultIndexBuildOptions) {
     return conn.ExecuteFormat(
         "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) WITH ($3)",
-        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
+        pgwrapper::VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
         column.empty() ? "embedding" : column, build_options);
   }
 
@@ -483,37 +484,6 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return expected;
   }
 
-  const char* VectorOpsName() const {
-    using vector_index::DistanceKind;
-    return VectorOpsName(distance_kind_);
-  }
-
-  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
-    using vector_index::DistanceKind;
-    switch (distance_kind) {
-      case DistanceKind::kL2Squared:
-        return "vector_l2_ops";
-      case DistanceKind::kInnerProduct:
-        return "vector_ip_ops";
-      case DistanceKind::kCosine:
-        return "vector_cosine_ops";
-    }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
-  }
-
-  const char* VectorOp() const {
-    using vector_index::DistanceKind;
-    switch (distance_kind_) {
-      case DistanceKind::kL2Squared:
-        return "<->";
-      case DistanceKind::kInnerProduct:
-        return "<#>";
-      case DistanceKind::kCosine:
-        return "<=>";
-    }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
-  }
-
   unum::usearch::metric_kind_t UsearchMetricKind() const {
     using vector_index::DistanceKind;
     switch (distance_kind_) {
@@ -529,7 +499,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   template <class Vector>
   std::string DistanceToQuery(const Vector& vector) const {
-    return Format("embedding $0 '$1'", VectorOp(), vector);
+    return Format("embedding $0 '$1'", pgwrapper::DistanceOpName(distance_kind_), vector);
   }
 
   template <class Vector>
@@ -6067,7 +6037,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit) {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
-        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
+        "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+        pgwrapper::DistanceOpName(distance_kind_), limit))));
   }
 
   static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
@@ -6204,7 +6175,8 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const auto kQuery = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kQueryLimit);
 
   ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
 
@@ -6243,7 +6215,8 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const std::string kQuery = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kQueryLimit);
 
   // Will be triggered only on the second page of the query simulating reverse-mapping misses.
   ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
@@ -6432,7 +6405,8 @@ TEST_F(PgVectorIndexUtilTest, SstDumpStoredYbctid) {
   // Search resolves rows from the ybctids stored in the vector index and skips both the deleted
   // row and the vector left behind by the update, because it fetches the row they point to.
   const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kNumRows);
   auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[1, 3, 4, 5]");
@@ -6593,7 +6567,8 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
 
   const auto query = Format(
-      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kNumRows);
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kNumRows);
   auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
@@ -7275,7 +7250,8 @@ TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
           "CREATE TABLE t$0 (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS",
           i));
       ASSERT_OK(db_conn.ExecuteFormat(
-          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i, VectorOpsName()));
+          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i,
+          pgwrapper::VectorOpsName(distance_kind_)));
     }
   }
 
@@ -8413,7 +8389,8 @@ class PgVectorIndexStorageSetCapacityTest
   Status CreateVectorIndex(PGConn& conn, size_t idx) {
     return conn.ExecuteFormat(
         "CREATE INDEX vi_$0 ON $1 USING ybhnsw ($2 $3) WITH ($4)",
-        idx, TableForIndex(idx), ColumnForIndex(idx), VectorOpsName(), kCheapIndexBuildOptions);
+        idx, TableForIndex(idx), ColumnForIndex(idx), pgwrapper::VectorOpsName(distance_kind_),
+        kCheapIndexBuildOptions);
   }
 
   Result<PGConn> MakeTabletWithIndexes() {
@@ -8492,7 +8469,8 @@ class PgVectorIndexStorageSetCapacityTest
       // TEST_fail_on_seq_scan_with_vector_indexes is on, so the read has to go through the index.
       auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
           "SELECT id FROM $0 ORDER BY $1 $2 '$3' LIMIT $4",
-          TableForIndex(i), ColumnForIndex(i), VectorOp(), AsString(Vector(1)), kNumRows)));
+          TableForIndex(i), ColumnForIndex(i), pgwrapper::DistanceOpName(distance_kind_),
+          AsString(Vector(1)), kNumRows)));
       ASSERT_EQ(rows, expected) << "Vector index " << i;
     }
   }
