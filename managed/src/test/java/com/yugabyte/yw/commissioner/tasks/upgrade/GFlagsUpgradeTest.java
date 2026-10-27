@@ -1384,8 +1384,19 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConf() throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("log_statement=DDL");
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConfCaseVariant()
+      throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("Log_Statement=all");
+  }
+
+  private void verifyNonRestartTelemetryPgConfWinsOverUserPgConf(String userPgConfCsv)
+      throws Exception {
     Map<String, String> userTserverGFlags =
-        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL");
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv);
     YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
     ysqlQueryLogConfig.setEnabled(true);
     ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
@@ -1429,8 +1440,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             eq(GFlagsUtilTest.USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV),
             anyBoolean());
     verify(mockClient, never())
-        .setFlag(
-            any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), contains("log_statement=DDL"), anyBoolean());
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), contains(userPgConfCsv), anyBoolean());
   }
 
   @Test

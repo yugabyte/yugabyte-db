@@ -236,7 +236,8 @@ public class GFlagsUtil {
   private static final CSVFormat CSV_FORMAT =
       CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
-      Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
+      Pattern.compile(
+          "^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$", Pattern.CASE_INSENSITIVE);
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
   public static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
@@ -1960,35 +1961,43 @@ public class GFlagsUtil {
    * Applies the audit/query log ysql_pg_conf_csv entries over a user or platform value. A base
    * entry whose key telemetry also sets is replaced in place and new keys are appended, so a base
    * without conflicts keeps its entries and their order (GFlagsUpgrade compares the printed string
-   * with the server's value). With no telemetry entries, the base comes back unchanged. Otherwise,
-   * as in mergeCSVs, keys match exactly and the first base entry for a key wins. A base key that
-   * differs only in case stays where it is, and PostgreSQL applies the last entry for a key: an
-   * appended telemetry entry wins over it, but it wins over a telemetry entry that replaced an
-   * earlier exact-case entry in place.
+   * with the server's value). PostgreSQL setting names are case-insensitive, so a telemetry key
+   * replaces the first base entry for that key in any case and drops the later ones. Other base
+   * keys match exactly and the first entry for a key wins, as in mergeCSVs, also when there are no
+   * telemetry entries.
    */
   public static String overrideWithTelemetryYsqlPgConfCsv(String baseCsv, String telemetryCsv) {
     if (StringUtils.isEmpty(telemetryCsv)) {
-      return StringUtils.defaultString(baseCsv);
+      return mergeCSVs(StringUtils.defaultString(baseCsv), "", true);
     }
     Map<String, String> telemetryEntries = new LinkedHashMap<>();
     for (String entry : parseCSVEntries(telemetryCsv)) {
-      telemetryEntries.putIfAbsent(getKey(entry).orElse(entry), entry);
+      telemetryEntries.putIfAbsent(getCaseInsensitiveKey(entry), entry);
     }
     Set<String> baseKeys = new HashSet<>();
+    Set<String> appliedTelemetryKeys = new HashSet<>();
     Set<String> result = new LinkedHashSet<>();
     for (String entry : parseCSVEntries(StringUtils.defaultString(baseCsv))) {
-      String key = getKey(entry).orElse(entry);
-      if (baseKeys.add(key)) {
-        result.add(telemetryEntries.getOrDefault(key, entry));
+      String telemetryKey = getCaseInsensitiveKey(entry);
+      if (telemetryEntries.containsKey(telemetryKey)) {
+        if (appliedTelemetryKeys.add(telemetryKey)) {
+          result.add(telemetryEntries.get(telemetryKey));
+        }
+      } else if (baseKeys.add(getKey(entry).orElse(entry))) {
+        result.add(entry);
       }
     }
     telemetryEntries.forEach(
         (key, entry) -> {
-          if (!baseKeys.contains(key)) {
+          if (!appliedTelemetryKeys.contains(key)) {
             result.add(entry);
           }
         });
     return printCSVEntries(result);
+  }
+
+  private static String getCaseInsensitiveKey(String entry) {
+    return getKey(entry).orElse(entry).toLowerCase(Locale.ROOT);
   }
 
   private static List<String> parseCSVEntries(String csv) {

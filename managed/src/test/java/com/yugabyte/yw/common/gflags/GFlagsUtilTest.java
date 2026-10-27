@@ -1278,13 +1278,17 @@ public class GFlagsUtilTest extends FakeDBApplication {
                 GFlagsUtil.YSQL_PG_CONF_CSV,
                 GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
                     "yb_enable_cbo=on", GFlagsUtil.getYsqlPgConfCsv(params))));
-    Map<String, String> userGFlags =
-        new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL"));
+    // A case variant of a telemetry key gives the same value: PostgreSQL ignores the case.
+    for (String userPgConfCsv : List.of("log_statement=DDL", "Log_Statement=all")) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv));
 
-    GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, false, null, params);
+      GFlagsUtil.processUserGFlags(
+          node, userGFlags, new HashMap<>(platformGFlags), false, null, params);
 
-    assertEquals(
-        USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV, userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+      assertEquals(
+          USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV, userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    }
   }
 
   @Test
@@ -1300,20 +1304,29 @@ public class GFlagsUtilTest extends FakeDBApplication {
         "log_statement=MOD,yb_enable_cbo=off,log_duration=ON",
         GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
             "log_statement=all,yb_enable_cbo=off", "log_statement=MOD,log_duration=ON"));
-    // Keys match exactly; a case variant stays, and the telemetry entry after it wins in
-    // PostgreSQL.
+    // PostgreSQL setting names are case-insensitive: a telemetry key replaces the first base
+    // entry for it in any case and drops the later ones.
     assertEquals(
-        "Log_Statement=all,log_statement=MOD",
+        "log_statement=MOD",
         GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("Log_Statement=all", "log_statement=MOD"));
-    // As in mergeCSVs, the first base entry for a key wins.
     assertEquals(
-        "work_mem=4MB,log_statement=MOD",
+        "log_statement=MOD,work_mem=4MB",
         GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
-            "work_mem=4MB,work_mem=64MB", "log_statement=MOD"));
+            "log_statement=ddl,work_mem=4MB,Log_Statement=all", "log_statement=MOD"));
+    // Other keys match exactly and, as in mergeCSVs, the first base entry for a key wins.
+    assertEquals(
+        "work_mem=4MB,Work_Mem=8MB,log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "work_mem=4MB,Work_Mem=8MB,work_mem=64MB", "log_statement=MOD"));
     assertEquals(
         "log_statement=MOD",
         GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, "log_statement=MOD"));
+    // With no telemetry entries, the base is printed as mergeCSVs prints it.
     assertEquals("a=1", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("a=1", ""));
+    assertEquals("", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, null));
+    String userCsv = "work_mem=4MB,work_mem=64MB,\"log_line_prefix='%m [%p] '\"";
+    assertEquals(
+        mergeCSVs(userCsv, "", true), GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(userCsv, ""));
   }
 
   @Test
@@ -1330,6 +1343,10 @@ public class GFlagsUtilTest extends FakeDBApplication {
     ysqlQueryLogConfig.setEnabled(false);
     assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
     assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(null, userCsv));
+    // PostgreSQL ignores the case of setting names.
+    assertEquals(
+        "%m upper ",
+        GFlagsUtil.getLogLinePrefix(null, mergeCSVs("\"LOG_LINE_PREFIX='%m upper '\"", "", true)));
     assertEquals(
         GFlagsUtil.getLogLinePrefix(null, ""),
         GFlagsUtil.getLogLinePrefix(queryLogConfig, "yb_enable_cbo=on"));

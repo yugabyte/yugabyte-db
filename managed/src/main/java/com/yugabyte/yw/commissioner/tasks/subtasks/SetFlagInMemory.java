@@ -137,10 +137,14 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         }
         if (StringUtils.isNotBlank(baseYsqlPgConfCsv)
             || StringUtils.isNotBlank(telemetryYsqlPgConfCsv)) {
+          // K8s helm overrides pass the user value through unchanged when there is no telemetry.
           gflags.put(
               GFlagsUtil.YSQL_PG_CONF_CSV,
-              GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
-                  baseYsqlPgConfCsv, telemetryYsqlPgConfCsv));
+              Util.isKubernetesBasedUniverse(universe)
+                      && StringUtils.isBlank(telemetryYsqlPgConfCsv)
+                  ? baseYsqlPgConfCsv
+                  : GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                      baseYsqlPgConfCsv, telemetryYsqlPgConfCsv));
         }
       }
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling
