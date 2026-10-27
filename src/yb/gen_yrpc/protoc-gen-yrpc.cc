@@ -49,6 +49,7 @@
 #include "yb/gen_yrpc/proxy_generator.h"
 #include "yb/gen_yrpc/service_generator.h"
 #include "yb/gen_yrpc/substitutions.h"
+#include "yb/gen_yrpc/trace_generator.h"
 
 using namespace std::placeholders;
 
@@ -95,6 +96,7 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
     subs.Push(name_info.Create());
 
     Generate<ForwardGenerator>(file, gen_context, &subs, name_info.forward(), need_messages);
+    Generate<TraceGenerator>(file, gen_context, &subs, name_info.trace());
 
     if (file->service_count() != 0) {
       Generate<ServiceGenerator>(file, gen_context, &subs, name_info.service());
