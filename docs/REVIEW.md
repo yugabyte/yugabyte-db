@@ -22,9 +22,8 @@ code version a page describes:
 | `docs/content/v2025.2/**`, `v2025.1/**`, `v2024.2/**` | That named series | The same-named release branch |
 | `docs/content/stable/releases/{ybdb,yba}-releases/vX.Y.md` | Release series X.Y, regardless of the `stable/` prefix | Branch `X.Y`, and the build tag named in each release section |
 
-None of those release branches or build tags are in the review checkout, and
-the reviewer has no git, shell, or network access with which to fetch them.
-Guides in the version folders below narrow this down per tree.
+Technical advisories under `docs/content/stable/releases/techadvisories/`
+state the affected versions explicitly; the same rule applies to them.
 
 ## Evidence rules
 
@@ -45,5 +44,3 @@ Guides in the version folders below narrow this down per tree.
   `docs/data/currentVersions.json`), other sections of the same file,
   `docs/data/currentVersions.json`, and the shortcode/layout definitions
   under `docs/layouts/`.
-- Do not attempt to run git, a shell, or fetch a URL to get around any of
-  this. State that a point is unverifiable in this review instead.
