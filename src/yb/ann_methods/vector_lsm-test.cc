@@ -788,7 +788,7 @@ TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
 
 // An empty insert, e.g. of rows with NULL vectors, creates a mutable chunk of vectors_per_chunk
 // capacity. A larger batch goes to a new chunk, and the frontiers of the empty insert are kept.
-TEST_F(VectorLSMUsearchTest, BatchAboveCapacityOfEmptyChunk) {
+TEST_F(VectorLSMHnswlibTest, BatchAboveCapacityOfEmptyChunk) {
   constexpr size_t kDimensions = 8;
   static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kDefaultChunkSize);
 
