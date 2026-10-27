@@ -544,11 +544,23 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 * consuming replication slots via Walsender.
 	 */
 	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Failover slots are synced to physical standbys, which YB does not
+		 * have, and yb-master does not store the option.  Reject it rather
+		 * than create a slot that reports failover = false.
+		 */
+		if (failover)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("failover is not supported")));
+
 		return YbReplicationSlotCreateForDB(name, two_phase, yb_plugin_name,
 											yb_snapshot_action,
 											yb_consistent_snapshot_time,
 											lsn_type, yb_ordering_mode,
 											MyDatabaseId);
+	}
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -1431,6 +1443,15 @@ ReplicationSlotAlter(const char *name, const bool *failover,
 
 	Assert(MyReplicationSlot == NULL);
 	Assert(failover || two_phase);
+
+	/*
+	 * YB: yb-master does not store failover or two_phase, so changing them
+	 * here would only touch the local copy and still report success.
+	 */
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s is not supported", "ALTER_REPLICATION_SLOT")));
 
 	ReplicationSlotAcquire(name, false, true);
 

@@ -4467,6 +4467,40 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn.close();
   }
 
+  // yb-master does not store failover or two_phase, so requests to set them must fail instead of
+  // reporting success, through both the walsender and the SQL function.
+  @Test
+  public void testFailoverAndAlterReplicationSlotNotSupported() throws Exception {
+    try (Connection conn = getConnectionBuilder().replicationConnect();
+         Statement stmt = conn.createStatement()) {
+      runInvalidQuery(stmt,
+          "CREATE_REPLICATION_SLOT test_slot_failover LOGICAL pgoutput "
+              + "(FAILOVER true, SNAPSHOT 'nothing')",
+          "failover is not supported");
+
+      stmt.execute("CREATE_REPLICATION_SLOT test_slot LOGICAL pgoutput (SNAPSHOT 'nothing')");
+      runInvalidQuery(stmt, "ALTER_REPLICATION_SLOT test_slot (FAILOVER true)",
+          "ALTER_REPLICATION_SLOT is not supported");
+      runInvalidQuery(stmt, "ALTER_REPLICATION_SLOT test_slot (TWO_PHASE true)",
+          "ALTER_REPLICATION_SLOT is not supported");
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      runInvalidQuery(stmt,
+          "SELECT * FROM pg_create_logical_replication_slot("
+              + "'test_slot_failover_fn', 'pgoutput', false, false, true /* failover */)",
+          "failover is not supported");
+
+      ResultSet rs = stmt.executeQuery(
+          "SELECT slot_name, failover, two_phase FROM pg_replication_slots");
+      assertTrue(rs.next());
+      assertEquals("test_slot", rs.getString("slot_name"));
+      assertFalse(rs.getBoolean("failover"));
+      assertFalse(rs.getBoolean("two_phase"));
+      assertFalse(rs.next());
+    }
+  }
+
   @Test
   public void testWalStatusLost() throws Exception {
     Map<String, String> tserverFlags = super.getTServerFlags();

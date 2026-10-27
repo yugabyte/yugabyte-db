@@ -35,6 +35,7 @@ SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false)
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_plugin', 'unsupported_plugin', false);
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'pgoutput', true);
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
+SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_failover', 'pgoutput', false, false, true);
 -- invalid lsn_type and ordering_mode values.
 SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, false, 'INVALID');
 SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_ordering_mode', 'pgoutput', false, false, false, 'SEQUENCE', 'INVALID');

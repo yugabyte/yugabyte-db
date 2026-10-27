@@ -96,6 +96,8 @@ ERROR:  temporary replication slot is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19263. React with thumbs up to raise its priority.
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
 ERROR:  YSQL only supports logical replication slots
+SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_failover', 'pgoutput', false, false, true);
+ERROR:  failover is not supported
 -- invalid lsn_type and ordering_mode values.
 SELECT * FROM pg_create_logical_replication_slot('testslot_invalid_lsn_type', 'pgoutput', false, false, false, 'INVALID');
 ERROR:  lsn type can only be SEQUENCE or HYBRID_TIME
