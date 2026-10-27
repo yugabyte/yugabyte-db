@@ -1208,8 +1208,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testInUseProviderCanEnableFederatedIam() throws InterruptedException {
+    // Even a universe still marked from before federation was turned off does not block it.
     Universe universe = ModelFactory.createUniverse("univ", defaultCustomer.getId());
-    setFederationConfigured(universe, false);
+    setFederationConfigured(universe, true);
 
     // The universes opt in afterwards, through the universe-level enable.
     Provider p = Provider.getOrBadRequest(provider.getUuid());

@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -1211,12 +1212,16 @@ public class CloudProviderHelper {
   /**
    * Nodes of a universe with federated IAM configured were set up from the provider's federation
    * settings, so those settings, including turning federation off, cannot change under them.
-   * Turning it on for a provider whose universes have none configured is still allowed.
+   * Turning it on is always allowed: no node can be using settings the provider does not have.
    */
   private void checkFederatedIamNotInUse(Provider provider, Provider editProviderReq) {
-    if (new HashSet<>(CloudInfoInterface.getCrossCloudFederationTargets(provider))
-        .equals(
-            new HashSet<>(CloudInfoInterface.getCrossCloudFederationTargets(editProviderReq)))) {
+    List<CrossCloudFederationTarget> currentTargets =
+        CloudInfoInterface.getCrossCloudFederationTargets(provider);
+    if (currentTargets.isEmpty()
+        || new HashSet<>(currentTargets)
+            .equals(
+                new HashSet<>(
+                    CloudInfoInterface.getCrossCloudFederationTargets(editProviderReq)))) {
       return;
     }
     UUID providerUUID = provider.getUuid();
