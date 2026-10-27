@@ -145,3 +145,59 @@ ERROR:  permission denied to create event trigger "pgaudit_ddl_command_end"
 HINT:  Must be superuser or a member of the yb_db_admin role to create an event trigger.
 DROP EXTENSION PGAudit;
 ERROR:  extension "pgaudit" does not exist
+--
+-- Test yugabyte as a bootstrap superuser, like postgres
+--
+RESET SESSION AUTHORIZATION;
+SELECT current_user;
+ current_user 
+--------------
+ yugabyte
+(1 row)
+
+CREATE ROLE regress_yb_role;
+CREATE ROLE regress_yb_member;
+CREATE ROLE regress_yb_admin;
+GRANT regress_yb_role TO regress_yb_admin WITH ADMIN OPTION;
+-- yugabyte can name itself as the grantor; the grant is recorded under postgres
+GRANT regress_yb_role TO regress_yb_member WITH ADMIN OPTION GRANTED BY CURRENT_ROLE;
+GRANT regress_yb_role TO regress_yb_member GRANTED BY yugabyte;
+NOTICE:  role "regress_yb_member" has already been granted membership in role "regress_yb_role" by role "postgres"
+SELECT member::regrole, grantor::regrole, admin_option FROM pg_auth_members
+  WHERE roleid = 'regress_yb_role'::regrole ORDER BY member::regrole::text;
+      member       | grantor  | admin_option 
+-------------------+----------+--------------
+ regress_yb_admin  | postgres | t
+ regress_yb_member | postgres | t
+(2 rows)
+
+-- a plain REVOKE removes that grant
+REVOKE regress_yb_role FROM regress_yb_member;
+SELECT pg_has_role('regress_yb_member', 'regress_yb_role', 'MEMBER');
+ pg_has_role 
+-------------
+ f
+(1 row)
+
+-- a non-superuser cannot give ADMIN OPTION to a bootstrap superuser
+SET ROLE regress_yb_admin;
+GRANT regress_yb_role TO yugabyte WITH ADMIN OPTION; -- error
+ERROR:  ADMIN option cannot be granted back to your own grantor
+GRANT regress_yb_role TO postgres WITH ADMIN OPTION; -- error
+ERROR:  ADMIN option cannot be granted back to your own grantor
+RESET ROLE;
+-- yugabyte cannot lose SUPERUSER, be renamed or dropped, or give up what it owns
+SET SESSION AUTHORIZATION postgres;
+ALTER ROLE yugabyte NOSUPERUSER; -- error
+ERROR:  permission denied to alter role
+DETAIL:  The bootstrap superuser must have the SUPERUSER attribute.
+ALTER ROLE yugabyte RENAME TO regress_yb_renamed; -- error
+ERROR:  cannot rename yugabyte
+DROP ROLE yugabyte; -- error
+ERROR:  cannot drop role yugabyte because it is required by the database system
+REASSIGN OWNED BY yugabyte TO regress_yb_member; -- error
+ERROR:  cannot reassign ownership of objects owned by role yugabyte because they are required by the database system
+DROP OWNED BY yugabyte; -- error
+ERROR:  cannot drop objects owned by role yugabyte because they are required by the database system
+RESET SESSION AUTHORIZATION;
+DROP ROLE regress_yb_role, regress_yb_member, regress_yb_admin;

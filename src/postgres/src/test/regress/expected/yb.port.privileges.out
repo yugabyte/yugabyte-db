@@ -247,7 +247,6 @@ ALTER FUNCTION leak(integer,integer) OWNER TO regress_priv_user1;
 GRANT regress_priv_role TO regress_priv_user1 WITH ADMIN OPTION GRANTED BY regress_priv_role; -- error, doesn't have ADMIN OPTION
 ERROR:  permission denied to grant privileges as role "regress_priv_role"
 DETAIL:  The grantor must have the ADMIN option on role "regress_priv_role".
-SET SESSION AUTHORIZATION postgres; -- YB: only the bootstrap superuser can grant here (#35001)
 GRANT regress_priv_role TO regress_priv_user1 WITH ADMIN OPTION GRANTED BY CURRENT_ROLE;
 REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY foo; -- error
 ERROR:  role "foo" does not exist
@@ -255,7 +254,6 @@ REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY reg
 WARNING:  role "regress_priv_user1" has not been granted membership in role "regress_priv_role" by role "regress_priv_user2"
 REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_USER;
 REVOKE regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_ROLE;
-RESET SESSION AUTHORIZATION; -- YB
 DROP ROLE regress_priv_role;
 SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT session_user, current_user;

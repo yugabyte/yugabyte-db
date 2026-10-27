@@ -133,3 +133,35 @@ DROP EXTENSION orafce;
 REVOKE yb_db_admin FROM regress_priv_user;
 CREATE EXTENSION PGAudit;
 DROP EXTENSION PGAudit;
+
+--
+-- Test yugabyte as a bootstrap superuser, like postgres
+--
+RESET SESSION AUTHORIZATION;
+SELECT current_user;
+CREATE ROLE regress_yb_role;
+CREATE ROLE regress_yb_member;
+CREATE ROLE regress_yb_admin;
+GRANT regress_yb_role TO regress_yb_admin WITH ADMIN OPTION;
+-- yugabyte can name itself as the grantor; the grant is recorded under postgres
+GRANT regress_yb_role TO regress_yb_member WITH ADMIN OPTION GRANTED BY CURRENT_ROLE;
+GRANT regress_yb_role TO regress_yb_member GRANTED BY yugabyte;
+SELECT member::regrole, grantor::regrole, admin_option FROM pg_auth_members
+  WHERE roleid = 'regress_yb_role'::regrole ORDER BY member::regrole::text;
+-- a plain REVOKE removes that grant
+REVOKE regress_yb_role FROM regress_yb_member;
+SELECT pg_has_role('regress_yb_member', 'regress_yb_role', 'MEMBER');
+-- a non-superuser cannot give ADMIN OPTION to a bootstrap superuser
+SET ROLE regress_yb_admin;
+GRANT regress_yb_role TO yugabyte WITH ADMIN OPTION; -- error
+GRANT regress_yb_role TO postgres WITH ADMIN OPTION; -- error
+RESET ROLE;
+-- yugabyte cannot lose SUPERUSER, be renamed or dropped, or give up what it owns
+SET SESSION AUTHORIZATION postgres;
+ALTER ROLE yugabyte NOSUPERUSER; -- error
+ALTER ROLE yugabyte RENAME TO regress_yb_renamed; -- error
+DROP ROLE yugabyte; -- error
+REASSIGN OWNED BY yugabyte TO regress_yb_member; -- error
+DROP OWNED BY yugabyte; -- error
+RESET SESSION AUTHORIZATION;
+DROP ROLE regress_yb_role, regress_yb_member, regress_yb_admin;
