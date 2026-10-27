@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YnpProviderUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -87,6 +88,8 @@ public class NodeInstanceController extends AuthenticatedController {
   @Inject Commissioner commissioner;
 
   @Inject NodeConfigValidator nodeConfigValidator;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -404,7 +407,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
     List<String> createdNodeUuids = new ArrayList<>(nodeDataList.size());
     Provider provider = az.getProvider();
-    YnpProviderUtil.checkYnpManagedProvider(provider, request, "Adding a node instance");
+    YnpProviderUtil.checkYnpManagedProvider(
+        confGetter, provider, request, "Adding a node instance");
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {

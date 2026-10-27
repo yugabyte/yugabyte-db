@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.common.annotations;
 
+import com.google.inject.Inject;
 import com.google.re2j.Matcher;
 import com.google.re2j.Pattern;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YnpProviderUtil;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Provider;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +27,13 @@ public class BlockYnpManagedProviderHandler extends Action<BlockYnpManagedProvid
   private static final Pattern PROVIDER_PATTERN =
       Pattern.compile(String.format(".*/providers/%s/?.*", UUID_PATTERN));
 
+  private final RuntimeConfGetter confGetter;
+
+  @Inject
+  BlockYnpManagedProviderHandler(RuntimeConfGetter confGetter) {
+    this.confGetter = confGetter;
+  }
+
   @Override
   public CompletionStage<Result> call(Http.Request request) {
     UUID providerUUID = getUUIDFromPath(PROVIDER_PATTERN, request.path());
@@ -39,7 +48,8 @@ public class BlockYnpManagedProviderHandler extends Action<BlockYnpManagedProvid
       return delegate.call(request);
     }
     try {
-      YnpProviderUtil.checkYnpManagedProvider(provider.get(), request, configuration.operation());
+      YnpProviderUtil.checkYnpManagedProvider(
+          confGetter, provider.get(), request, configuration.operation());
     } catch (PlatformServiceException e) {
       log.warn(
           "Blocking API call {}, provider {} is managed by YNP",

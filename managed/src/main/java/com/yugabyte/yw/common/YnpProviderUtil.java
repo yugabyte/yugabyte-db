@@ -4,6 +4,8 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.FORBIDDEN;
 
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -43,15 +45,25 @@ public final class YnpProviderUtil {
   }
 
   /**
-   * Fails the request if it changes a provider that YNP owns and it does not come from YNP itself.
+   * Fails the request if it changes a provider that YNP owns and it does not come from YNP itself,
+   * unless {@link ProviderConfKeys#allowYnpManagedProviderEdit} is set for the provider.
    *
+   * @param confGetter used to read the runtime config override.
    * @param provider the provider being changed.
    * @param request the incoming request.
    * @param operation description of the attempted change, used in the error message.
    */
   public static void checkYnpManagedProvider(
-      Provider provider, Http.Request request, String operation) {
+      RuntimeConfGetter confGetter, Provider provider, Http.Request request, String operation) {
     if (!provider.isYnpManaged() || isYnpRequest(request)) {
+      return;
+    }
+    if (confGetter.getConfForScope(provider, ProviderConfKeys.allowYnpManagedProviderEdit)) {
+      log.info(
+          "{} on YNP managed provider {} is allowed by {}",
+          operation,
+          provider.getUuid(),
+          ProviderConfKeys.allowYnpManagedProviderEdit.getKey());
       return;
     }
     throw new PlatformServiceException(

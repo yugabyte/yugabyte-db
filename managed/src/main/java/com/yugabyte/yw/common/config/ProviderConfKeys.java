@@ -646,6 +646,16 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " purposes",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowYnpManagedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_ynp_managed_provider_edit",
+          ScopeType.PROVIDER,
+          "Allow Editing YNP Managed Provider",
+          "Allow users to change the configuration of an on-prem provider created by YNP. Use only"
+              + " as a workaround when YNP cannot apply a needed change, because changes made here"
+              + " are not applied to the nodes that are already provisioned.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentUseUniverseCertificatesOnInstall =
       new ConfKeyInfo<>(
           "yb.node_agent.use_universe_certificates_on_install",
