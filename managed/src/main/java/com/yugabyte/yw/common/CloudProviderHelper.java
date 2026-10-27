@@ -1212,8 +1212,9 @@ public class CloudProviderHelper {
   /**
    * Nodes of a universe with federated IAM configured were set up from the provider's federation
    * settings, so those settings cannot change while any universe is marked configured: not turned
-   * off, not pointed elsewhere, and not turned back on with different targets for a universe still
-   * marked from before. The universe-level disable clears the mark without needing the targets.
+   * off, not pointed elsewhere, and not turned back on at all for a universe still marked from
+   * before, whose old targets are no longer known. The universe-level disable clears the mark
+   * without needing the targets.
    */
   private void checkFederatedIamNotInUse(Provider provider, Provider editProviderReq) {
     if (federationSettingsNodesUse(provider).equals(federationSettingsNodesUse(editProviderReq))) {
