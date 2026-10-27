@@ -6190,14 +6190,13 @@ yb_member_subqueryscan_is_trivial(RelOptInfo *sqrel, PathTarget *target)
  * cost.  'root' is the scan's own PlannerInfo; what the costing takes from
  * the Agg is on the copy.
  *
- * The copy keeps the original's disabled state, and the zero cost
- * pg_hint_plan gives the partial paths a Parallel hint names so that they
- * win.  pg_hint_plan applies a scan-method hint through the enable_* GUCs
- * only while the relation's paths are generated, so the re-costing charges
- * disable_cost by the session's settings rather than by the hint's.  A copy
- * that lost the charge would win on its real cost and hide a failed hint
- * from pg_hint_plan's disabled-node check; a copy that gained the charge
- * would make the check report a followed hint as failed.
+ * The costs pg_hint_plan sets outlive the re-costing: it makes the partial
+ * paths a Parallel hint names win by zeroing their costs, and it disables
+ * the scan types a scan-method hint excludes through the enable_* GUCs only
+ * while the relation's paths are generated (and the complete paths under a
+ * forced parallel inheritance scan by adding disable_cost itself), so a
+ * copy costed later would lose the penalty, win on its real cost, and hide
+ * the failed hint from pg_hint_plan's disabled-node check.
  */
 static void
 yb_cost_agg_pushdown_scan(PlannerInfo *root, Path *copy)
@@ -6248,10 +6247,5 @@ yb_cost_agg_pushdown_scan(PlannerInfo *root, Path *copy)
 	{
 		copy->startup_cost += disable_cost;
 		copy->total_cost += disable_cost;
-	}
-	else if (!disabled && copy->startup_cost >= disable_cost)
-	{
-		copy->startup_cost -= disable_cost;
-		copy->total_cost -= disable_cost;
 	}
 }
