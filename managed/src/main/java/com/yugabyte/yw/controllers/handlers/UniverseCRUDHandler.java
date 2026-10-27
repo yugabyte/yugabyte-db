@@ -1840,6 +1840,9 @@ public class UniverseCRUDHandler {
               + universe.getUniverseUUID());
     }
 
+    // The new cluster follows the universe, whatever the request says.
+    taskParams.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
+
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
