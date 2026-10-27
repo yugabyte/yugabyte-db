@@ -142,7 +142,7 @@ Code in `src/yb/master/` must acquire locks in this order. A thread that holds a
 
 COW lock means the read/write/commit lock of a copy-on-write catalog object (`src/yb/util/rwc_lock.h`). Several objects of the same kind must be locked in id order; an unsorted loop over tablets or tables that takes write locks is a deadlock risk.
 
-Commit tablet write locks before table write locks. Heartbeat processing holds a table read lock while it takes and commits tablet write locks. A thread that holds tablet write locks and commits its table write lock first waits for the heartbeat to release the table read lock, while the heartbeat waits for the tablet write lock that the thread still holds: deadlock (#10304, #32090). Debug builds assert this rule through the held-tablet-write-lock count in `src/yb/master/catalog_entity_info.h`; `CreateTable` is exempt because its new tablets are not yet assigned to any tserver.
+Commit tablet write locks before table write locks. Heartbeat processing holds a table read lock while it takes and commits tablet write locks. A thread that holds tablet write locks and commits its table write lock first waits for the heartbeat to release the table read lock, while the heartbeat waits for the tablet write lock that the thread still holds: deadlock (#10304, #32090). Debug builds assert this rule through the held-tablet-write-lock count in `src/yb/master/catalog_entity_info.h`; Code paths exempt from this rule are marked with `TableCommitLockAssertSuppression` (`src/yb/util/cow_object.h`).
 
 Inversions to flag at HIGH:
 
