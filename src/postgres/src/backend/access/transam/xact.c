@@ -2956,7 +2956,10 @@ PrepareTransaction(void)
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
