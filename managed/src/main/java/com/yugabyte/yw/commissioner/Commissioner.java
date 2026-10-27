@@ -343,8 +343,9 @@ public class Commissioner {
    *     updatingTaskUUID plus placementModificationTaskUuid.
    * @param placementLockTasks per target, placementModificationTaskUuid only. Checkpoint-based
    *     rollbacks need this narrower set, see {@link #canRollbackTaskOnUniverse}.
-   * @param rollbackBlockedTargets the targets whose rollback is blocked for the operator, see
-   *     {@link #getRollbackBlockedUniverseUUIDs}. They get no rollback.
+   * @param rollbackBlockedTargets the universes whose rollback is blocked for the operator, see
+   *     {@link #getRollbackBlockedUniverseUUIDs}. Tasks on them get no rollback, see {@link
+   *     #ownershipOfTargetBlocksRollback}.
    */
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
@@ -452,7 +453,8 @@ public class Commissioner {
         canTaskRollback(
             taskInfo,
             tf -> {
-              if (rollbackBlockedTargets.contains(task.getTargetUUID())) {
+              if (ownershipOfTargetBlocksRollback(task)
+                  && rollbackBlockedTargets.contains(task.getTargetUUID())) {
                 return false;
               }
               // An edit's auto-rollback clears placementModificationTaskUuid but keeps
@@ -703,9 +705,7 @@ public class Commissioner {
                   .add(id);
             });
     Set<UUID> rollbackBlockedTargets =
-        isRollbackBlockedForOperatorOwnedUniverse(task.getTargetUUID())
-            ? Set.of(task.getTargetUUID())
-            : Set.of();
+        isRollbackBlockedByOperator(task) ? Set.of(task.getTargetUUID()) : Set.of();
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(
@@ -718,15 +718,34 @@ public class Commissioner {
   }
 
   /**
-   * Whether rolling back a task of the universe through the API is blocked: the operator owns the
-   * universe, whose edit it would re-apply, and the block for operator-owned resources is on. See
-   * {@link ResourceOperatorOwned#isUniverseBlocked}. Submit and the task list both use this rule.
+   * Whether the operator's ownership of the task's target decides its rollback. It does for a task
+   * on the universe itself, whose edit the operator would re-apply. A DR config task has its source
+   * universe as the target, but is not an edit of that universe, and the DR config APIs are not
+   * blocked for the operator, so neither is their rollback. Wrongly blocking a rollback leaves the
+   * user without a way back, so any other target type is not blocked.
    */
-  public boolean isRollbackBlockedForOperatorOwnedUniverse(UUID universeUuid) {
-    return resourceOperatorOwned.isUniverseBlocked(universeUuid);
+  private static boolean ownershipOfTargetBlocksRollback(CustomerTask task) {
+    switch (task.getTargetType()) {
+      case Universe:
+      case Cluster:
+      case Node:
+        return true;
+      default:
+        return false;
+    }
   }
 
-  /** The universes for which {@link #isRollbackBlockedForOperatorOwnedUniverse} holds. */
+  /**
+   * Whether rolling back the task through the API is blocked: it acts on a universe the operator
+   * owns, and the block for operator-owned resources is on. See {@link
+   * ResourceOperatorOwned#isUniverseBlocked}. Submit and the task list both use this rule.
+   */
+  public boolean isRollbackBlockedByOperator(CustomerTask task) {
+    return ownershipOfTargetBlocksRollback(task)
+        && resourceOperatorOwned.isUniverseBlocked(task.getTargetUUID());
+  }
+
+  /** The universes for which {@link ResourceOperatorOwned#isUniverseBlocked} holds. */
   public Set<UUID> getRollbackBlockedUniverseUUIDs(
       Long customerId, @Nullable UUID specificTargetUuid) {
     return resourceOperatorOwned.getBlockedUniverseUUIDs(customerId, specificTargetUuid);

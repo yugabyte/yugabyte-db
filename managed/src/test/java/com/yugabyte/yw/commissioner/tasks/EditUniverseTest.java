@@ -50,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.DeltaEvaluator;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -1637,8 +1638,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe));
   }
 
-  @Test
-  public void testTaskStatusNoRollbackForOperatorOwnedUniverse() {
+  /**
+   * Fails an expand before the rollback checkpoint, so it can be rolled back, and records its
+   * customer task with the given target type.
+   */
+  private TaskInfo failExpandRecordedAs(CustomerTask.TargetType targetType) {
     clearAbortOrPausePositions();
     doAnswer(
             invocation -> {
@@ -1660,30 +1664,29 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
-    CustomerTask editCustomerTask =
-        CustomerTask.create(
-            defaultCustomer,
-            universe.getUniverseUUID(),
-            taskInfo.getUuid(),
-            CustomerTask.TargetType.Universe,
-            CustomerTask.TaskType.Edit,
-            universe.getName());
-    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    // The predicate: the same failed edit is offered a rollback unless its universe is rollback
-    // blocked for the operator.
-    assertTrue(listingCanRollback(editCustomerTask, taskInfo, universe, false /* blocked */));
-    assertFalse(listingCanRollback(editCustomerTask, taskInfo, universe, true /* blocked */));
-
-    // The single-task status, with the real queries: the universe has to be marked as owned.
-    assertTrue(canRollbackInStatus(taskInfo));
-    Universe.saveDetails(
+    CustomerTask.create(
+        defaultCustomer,
         universe.getUniverseUUID(),
-        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-    assertFalse(canRollbackInStatus(taskInfo));
-    factory
-        .globalRuntimeConf()
-        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
-    assertTrue(canRollbackInStatus(taskInfo));
+        taskInfo.getUuid(),
+        targetType,
+        CustomerTask.TaskType.Edit,
+        universe.getName());
+    return taskInfo;
+  }
+
+  private void markOperatorOwned(UUID universeUuid) {
+    Universe.saveDetails(
+        universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+  }
+
+  private CustomerTask customerTaskFor(CustomerTask.TargetType targetType) {
+    return CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse),
+        targetType,
+        CustomerTask.TaskType.Edit,
+        defaultUniverse.getName());
   }
 
   private boolean canRollbackInStatus(TaskInfo taskInfo) {
@@ -1695,15 +1698,59 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testRollbackBlockedUniverseLookupsDelegateToTheOperatorRule() {
+  public void testTaskStatusNoRollbackForOperatorOwnedUniverse() {
+    TaskInfo taskInfo = failExpandRecordedAs(CustomerTask.TargetType.Universe);
+    CustomerTask task = CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // The predicate: the same failed edit is offered a rollback unless its universe is rollback
+    // blocked for the operator.
+    assertTrue(listingCanRollback(task, taskInfo, universe, false /* blocked */));
+    assertFalse(listingCanRollback(task, taskInfo, universe, true /* blocked */));
+
+    // The single-task status, with the real queries: the universe has to be marked as owned.
+    assertTrue(canRollbackInStatus(taskInfo));
+    markOperatorOwned(universe.getUniverseUUID());
+    assertFalse(canRollbackInStatus(taskInfo));
+    factory
+        .globalRuntimeConf()
+        .setValue("yb.kubernetes.operator.block_api_operator_owned_resources", "false");
+    assertTrue(canRollbackInStatus(taskInfo));
+  }
+
+  @Test
+  public void testTaskStatusKeepsRollbackForDrConfigTaskOnOperatorOwnedUniverse() {
+    // A DR config task has its source universe as the target. The failed edit stands in for one,
+    // recorded with that target type.
+    TaskInfo taskInfo = failExpandRecordedAs(CustomerTask.TargetType.DrConfig);
+    markOperatorOwned(defaultUniverse.getUniverseUUID());
+    CustomerTask task = CustomerTask.getOrBadRequest(defaultCustomer.getUuid(), taskInfo.getUuid());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+    // It is not an edit of the operator's universe, so the operator's ownership does not hide it.
+    assertTrue(listingCanRollback(task, taskInfo, universe, true /* blocked */));
+    assertTrue(canRollbackInStatus(taskInfo));
+  }
+
+  @Test
+  public void testRollbackBlockedByOperatorFollowsOwnershipOfTheTargetUniverse() {
     UUID universeUuid = defaultUniverse.getUniverseUUID();
     Long customerId = defaultCustomer.getId();
-    assertFalse(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
+    CustomerTask universeTask = customerTaskFor(CustomerTask.TargetType.Universe);
+    assertFalse(commissioner.isRollbackBlockedByOperator(universeTask));
     assertTrue(commissioner.getRollbackBlockedUniverseUUIDs(customerId, null).isEmpty());
 
-    Universe.saveDetails(
-        universeUuid, u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-    assertTrue(commissioner.isRollbackBlockedForOperatorOwnedUniverse(universeUuid));
+    markOperatorOwned(universeUuid);
+    assertTrue(commissioner.isRollbackBlockedByOperator(universeTask));
+    // A task on a part of the universe follows its ownership as well.
+    assertTrue(
+        commissioner.isRollbackBlockedByOperator(customerTaskFor(CustomerTask.TargetType.Cluster)));
+    assertTrue(
+        commissioner.isRollbackBlockedByOperator(customerTaskFor(CustomerTask.TargetType.Node)));
+    // A DR config task has its source universe as the target, but is not an edit of it.
+    assertFalse(
+        commissioner.isRollbackBlockedByOperator(
+            customerTaskFor(CustomerTask.TargetType.DrConfig)));
+
     assertEquals(
         Set.of(universeUuid), commissioner.getRollbackBlockedUniverseUUIDs(customerId, null));
     assertEquals(

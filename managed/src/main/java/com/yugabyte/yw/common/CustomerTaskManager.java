@@ -846,7 +846,7 @@ public class CustomerTaskManager {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     // The operator reconciles its universes to the CR spec, so a user rollback would just be
     // re-applied.
-    if (commissioner.isRollbackBlockedForOperatorOwnedUniverse(customerTask.getTargetUUID())) {
+    if (commissioner.isRollbackBlockedByOperator(customerTask)) {
       throw new PlatformServiceException(
           FORBIDDEN, ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE);
     }

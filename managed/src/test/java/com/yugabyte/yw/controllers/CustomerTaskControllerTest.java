@@ -931,8 +931,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackTaskBlockedForOperatorOwnedUniverse() {
-    when(mockCommissioner.isRollbackBlockedForOperatorOwnedUniverse(universe.getUniverseUUID()))
-        .thenReturn(true);
+    when(mockCommissioner.isRollbackBlockedByOperator(any(CustomerTask.class))).thenReturn(true);
     UUID taskUUID = createFailedEditTask();
 
     Result result =
