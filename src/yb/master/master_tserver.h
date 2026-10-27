@@ -173,7 +173,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Result<std::string> GetUniverseUuid() const override;
 
-  std::optional<docdb::ObjectLockSharedStateHolder> AllocateObjectLockSharedState() const override;
+  Result<std::optional<docdb::ObjectLockSharedStateHolder>> AllocateObjectLockSharedState()
+      const override;
 
   tserver::ConnectivityStateResponsePB ConnectivityState() override;
 

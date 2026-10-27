@@ -529,7 +529,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return object_lock_shared_state_manager_.get();
   }
 
-  std::optional<docdb::ObjectLockSharedStateHolder> AllocateObjectLockSharedState() const override;
+  Result<std::optional<docdb::ObjectLockSharedStateHolder>> AllocateObjectLockSharedState()
+      const override;
 
   ConnectivityStateResponsePB ConnectivityState() override;
 

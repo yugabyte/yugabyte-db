@@ -3177,12 +3177,15 @@ PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
 }
 
-std::optional<docdb::ObjectLockSharedStateHolder>
+Result<std::optional<docdb::ObjectLockSharedStateHolder>>
 TabletServer::AllocateObjectLockSharedState() const {
   if (ObjectLockFastpathEnabled()) {
     auto result = object_lock_shared_state_manager_->AllocateShared();
     if (result.ok()) {
-      return std::move(*result);
+      return std::make_optional(std::move(*result));
+    }
+    if (result.status().IsShutdownInProgress()) {
+      return result.status();
     }
     LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
   }

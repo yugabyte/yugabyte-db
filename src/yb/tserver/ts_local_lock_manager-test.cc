@@ -762,6 +762,14 @@ TEST_F(TSLocalLockManagerTest, TestSanity) {
   thread_holder.WaitAndStop(45s);
 }
 
+TEST_F(TSLocalLockManagerTest, AllocateSharedStateAfterLeaseManagerShutdown) {
+  auto& server = *mini_server_->server();
+  server.ShutdownYSQLLeaseManager();
+  auto result = server.AllocateObjectLockSharedState();
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
+}
+
 #ifndef NDEBUG
 TEST_F(TSLocalLockManagerTest, TestWaiterResetsStateDuringShutdown) {
   ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
