@@ -97,7 +97,11 @@ func refreshOciToken(cmd *cobra.Command) error {
 		if attempt == exchangeAttempts {
 			return err
 		}
-		time.Sleep(exchangeRetryDelay)
+		select {
+		case <-cmd.Context().Done():
+			return err
+		case <-time.After(exchangeRetryDelay):
+		}
 	}
 	if minLifetime > 0 {
 		if err := ocitoken.RequireLifetime(token, minLifetime, time.Now()); err != nil {

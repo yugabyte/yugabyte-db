@@ -120,7 +120,11 @@ public class ManageCloudFederation extends NodeTaskBase {
               taskParams().nodeName, nodeAgent.getVersion(), Util.getYbaVersion()));
     }
     CrossCloudFederationTarget target =
-        resolveTarget(sourceCloud, providerCloud != CloudType.onprem);
+        selectTarget(
+            taskParams().nodeName,
+            sourceCloud,
+            providerCloud != CloudType.onprem,
+            taskParams().targets);
     if (target == null) {
       // Nothing for this node to do: every cloud its provider configures is one it reaches
       // natively or cannot federate to (selectTarget warns about those), or the node is
@@ -163,26 +167,13 @@ public class ManageCloudFederation extends NodeTaskBase {
   }
 
   /**
-   * The one target this node needs, or null when it needs none.
+   * The one target a node on {@code sourceCloud} needs, or null when it needs none.
    *
    * <p>Fails when the node's cloud could not be determined - configuring a guess would write
-   * credentials that cannot work, and would hide a node that should have been federated - and when
-   * the provider names the node's cloud yet configures a target that cloud cannot federate to. A
-   * node whose cloud IS known but has no foreign target simply has nothing to do: it reaches every
-   * cloud its provider configures natively, or it is not a cloud VM at all. That is a legitimate
-   * configuration, not an error, and skipping it is what lets one provider carry a single target
-   * while its universe spans several clouds.
-   */
-  @Nullable
-  private CrossCloudFederationTarget resolveTarget(
-      @Nullable CloudType sourceCloud, boolean sourceFixedByProvider) {
-    return selectTarget(
-        taskParams().nodeName, sourceCloud, sourceFixedByProvider, taskParams().targets);
-  }
-
-  /**
-   * The decision behind {@link #resolveTarget}, free of task state so every outcome can be tested:
-   * the one target a node on {@code sourceCloud} needs, or null when it needs none.
+   * credentials that cannot work - and when the provider names the node's cloud yet configures a
+   * target that cloud cannot federate to. A node whose cloud IS known but has no foreign target has
+   * nothing to do, which is what lets one provider carry a single target while its universe spans
+   * several clouds.
    *
    * @param sourceFixedByProvider true when the provider names {@code sourceCloud} (AWS, GCP, OCI),
    *     false for on-prem, where the node's metadata service decides
@@ -275,7 +266,7 @@ public class ManageCloudFederation extends NodeTaskBase {
    * node's federation target.
    *
    * <p>The value is always written, so a node whose underlying machine was replaced cannot keep a
-   * stale one. A node that could not be probed is recorded as unknown, and {@link #resolveTarget}
+   * stale one. A node that could not be probed is recorded as unknown, and {@link #selectTarget}
    * then fails the subtask rather than configuring a guess.
    */
   @Nullable

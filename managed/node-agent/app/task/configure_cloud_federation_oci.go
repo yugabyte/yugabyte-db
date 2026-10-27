@@ -102,27 +102,26 @@ func (h *ConfigureCloudFederation) isOciSource() bool {
 	return h.param.GetSourceCloud() == pb.ConfigureCloudFederationInput_OCI
 }
 
-// ociRefresherPresent reports whether any of the refresher's units is installed, which is what
-// decides whether teardown has something to remove. A pure read, safe from inSync and
-// federationArtifactsPresent.
-func (h *ConfigureCloudFederation) ociRefresherPresent() bool {
+// ociRefresherUnits reports which of the refresher's timer and service units are installed. Any one
+// means teardown has something to remove; only both make a refresher that can run, so one alone is
+// drift. A pure read, safe from inSync and federationArtifactsPresent.
+func (h *ConfigureCloudFederation) ociRefresherUnits() (timer, service bool) {
 	unitDir, _, err := h.systemdUnitDir()
 	if err != nil {
-		return false
+		return false, false
 	}
-	return federationPathExists(filepath.Join(unitDir, ociTokenTimerName)) ||
+	return federationPathExists(filepath.Join(unitDir, ociTokenTimerName)),
 		federationPathExists(filepath.Join(unitDir, ociTokenServiceName))
 }
 
-// ociRefresherComplete reports whether both units are installed. A node holding only one has a
-// refresher that cannot run, so that is drift, not a configured node.
+func (h *ConfigureCloudFederation) ociRefresherPresent() bool {
+	timer, service := h.ociRefresherUnits()
+	return timer || service
+}
+
 func (h *ConfigureCloudFederation) ociRefresherComplete() bool {
-	unitDir, _, err := h.systemdUnitDir()
-	if err != nil {
-		return false
-	}
-	return federationPathExists(filepath.Join(unitDir, ociTokenTimerName)) &&
-		federationPathExists(filepath.Join(unitDir, ociTokenServiceName))
+	timer, service := h.ociRefresherUnits()
+	return timer && service
 }
 
 // setupOciSource brings up everything an OCI node needs to present an identity to GCP, and returns

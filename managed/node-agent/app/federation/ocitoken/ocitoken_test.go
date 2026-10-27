@@ -164,52 +164,55 @@ func TestExchangeSendsSignedTokenExchangeRequest(t *testing.T) {
 	}
 }
 
-func TestExchangeAcceptsTokenField(t *testing.T) {
+// serveBody answers every request with status and body.
+func serveBody(t *testing.T, status int, body string) *httptest.Server {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"token":"` + validJWT + `"}`))
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
 	}))
-	defer srv.Close()
-	token, err := exchange(t, srv, &fakeSigner{})
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestExchangeAcceptsTokenField(t *testing.T) {
+	token, err := exchange(t, serveBody(t, http.StatusOK, `{"token":"`+validJWT+`"}`), &fakeSigner{})
 	mustNoError(t, err)
 	if token != validJWT {
 		t.Errorf("token = %q, want %q", token, validJWT)
 	}
 }
 
-// A failure carries the status and the OAuth error fields, and nothing else from the body: the body
-// may hold anything, including a token on a path we did not anticipate.
-func TestExchangeErrorNeverEchoesTheBody(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(
+// A failure carries the status and the OAuth error fields, sanitised and bounded, and nothing else
+// from the body: the body may hold anything, including a token on a path we did not anticipate.
+func TestExchangeErrorRelaysOnlyStatusAndOAuthFields(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   []string
+	}{
+		{"oauth error", http.StatusUnauthorized,
 			`{"error":"invalid_client","error_description":"bad credentials",` +
-				`"access_token":"` + canary + `","secret":"` + canary + `"}`))
-	}))
-	defer srv.Close()
-
-	_, err := exchange(t, srv, &fakeSigner{})
-
-	msg := mustError(t, err)
-	checkContains(t, msg, "HTTP 401")
-	checkContains(t, msg, "invalid_client")
-	checkNotContains(t, msg, canary)
-}
-
-func TestExchangeErrorDetailIsSanitisedAndBounded(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(
-			`{"error":"x\nforged log line","error_description":"` +
-				strings.Repeat("A", 5000) + `"}`))
-	}))
-	defer srv.Close()
-
-	_, err := exchange(t, srv, &fakeSigner{})
-
-	msg := mustError(t, err)
-	checkNotContains(t, msg, "\n")
-	if len(msg) >= 400 {
-		t.Errorf("error detail is not bounded: %d bytes", len(msg))
+				`"access_token":"` + canary + `","secret":"` + canary + `"}`,
+			[]string{"HTTP 401", "invalid_client"}},
+		{"not json", http.StatusBadGateway, "<html>" + canary + "</html>", []string{"HTTP 502"}},
+		{"multi-line and oversized", http.StatusBadRequest,
+			`{"error":"x\nforged log line","error_description":"` + strings.Repeat("A", 5000) + `"}`,
+			[]string{"HTTP 400"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := exchange(t, serveBody(t, c.status, c.body), &fakeSigner{})
+			msg := mustError(t, err)
+			for _, w := range c.want {
+				checkContains(t, msg, w)
+			}
+			checkNotContains(t, msg, canary)
+			checkNotContains(t, msg, "\n")
+			if len(msg) >= 400 {
+				t.Errorf("error detail is not bounded: %d bytes", len(msg))
+			}
+		})
 	}
 }
 
@@ -229,20 +232,6 @@ func TestErrorDetailNeverSplitsAMultiByteCharacter(t *testing.T) {
 	}
 }
 
-func TestExchangeNonJSONErrorBodyIsNotRelayed(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("<html>" + canary + "</html>"))
-	}))
-	defer srv.Close()
-
-	_, err := exchange(t, srv, &fakeSigner{})
-
-	msg := mustError(t, err)
-	checkContains(t, msg, "HTTP 502")
-	checkNotContains(t, msg, canary)
-}
-
 func TestExchangeRejectsUnusableTokens(t *testing.T) {
 	bodies := map[string]string{
 		"empty":          `{}`,
@@ -253,13 +242,7 @@ func TestExchangeRejectsUnusableTokens(t *testing.T) {
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewTLSServer(
-				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					_, _ = w.Write([]byte(body))
-				}),
-			)
-			defer srv.Close()
-			_, err := exchange(t, srv, &fakeSigner{})
+			_, err := exchange(t, serveBody(t, http.StatusOK, body), &fakeSigner{})
 			checkContains(t, mustError(t, err), "no usable token")
 		})
 	}
@@ -349,6 +332,11 @@ func TestRequireLifetime(t *testing.T) {
 
 	// An already-expired token is the same failure, reported as negative time left.
 	mustError(t, RequireLifetime(expIn(-time.Minute), 30*time.Minute, now))
+
+	// RFC 7519 allows a fractional NumericDate, and some issuers send one.
+	fractional := jwtWithPayload(fmt.Sprintf(`{"exp":%d.5}`, now.Add(time.Hour).Unix()))
+	mustNoError(t, RequireLifetime(fractional, 30*time.Minute, now))
+	mustError(t, RequireLifetime(fractional, 2*time.Hour, now))
 }
 
 // The token is parsed without trusting it, so anything malformed must be an error and never a panic.
@@ -370,12 +358,4 @@ func TestRequireLifetimeRejectsMalformedTokens(t *testing.T) {
 			checkContains(t, mustError(t, RequireLifetime(token, time.Minute, now)), "lifetime")
 		})
 	}
-}
-
-// RFC 7519 allows a fractional NumericDate, and some issuers send one.
-func TestRequireLifetimeAcceptsFractionalExp(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	token := jwtWithPayload(fmt.Sprintf(`{"exp":%d.5}`, now.Add(time.Hour).Unix()))
-	mustNoError(t, RequireLifetime(token, 30*time.Minute, now))
-	mustError(t, RequireLifetime(token, 2*time.Hour, now))
 }
