@@ -435,6 +435,10 @@ func ociBundleRegions(
 		return nil, fmt.Errorf("at least one region is required for an OCI image bundle")
 	}
 
+	if machineImage != "" && len(overrides) > 0 {
+		return nil, fmt.Errorf("machine-image cannot be combined with image-bundle region overrides")
+	}
+
 	regions := make(map[string]ybaclient.BundleInfo, len(regionCodes))
 	if len(overrides) == 0 {
 		if len(regionCodes) != 1 {
@@ -469,35 +473,39 @@ func ociBundleRegions(
 	return regions, nil
 }
 
-func ociOverridesByRegion(overrides []string, matchKey, matchValue string) map[string]string {
+// ociOverridesByBundle groups region overrides by bundle name (add) or uuid
+// (edit) into region-name -> machine-image.
+func ociOverridesByBundle(overrides []string, matchKey string) map[string]map[string]string {
 	operation := "add"
 	if matchKey == "uuid" {
 		operation = "edit"
 	}
-	res := map[string]string{}
+	res := map[string]map[string]string{}
 	for _, raw := range overrides {
 		override := providerutil.BuildImageBundleRegionOverrideMapFromString(raw, operation)
-		if override[matchKey] != matchValue {
-			continue
+		if res[override[matchKey]] == nil {
+			res[override[matchKey]] = map[string]string{}
 		}
-		res[override["region-name"]] = override["machine-image"]
+		res[override[matchKey]][override["region-name"]] = override["machine-image"]
 	}
 	return res
 }
 
+func unmatchedOverridesError(unmatched map[string]map[string]string) error {
+	for bundle := range unmatched {
+		return fmt.Errorf("image-bundle region override references unknown image bundle %s", bundle)
+	}
+	return nil
+}
+
+// ociRegionCodes skips regions marked inactive by --remove-region in the same update.
 func ociRegionCodes(regions []ybaclient.Region) []string {
 	codes := make([]string, 0, len(regions))
 	for _, region := range regions {
+		if region.Active != nil && !*region.Active {
+			continue
+		}
 		codes = append(codes, region.GetCode())
 	}
 	return codes
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }

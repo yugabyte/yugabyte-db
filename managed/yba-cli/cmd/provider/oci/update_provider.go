@@ -6,6 +6,7 @@ package oci
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -673,6 +674,9 @@ func applyOCIRegionImageEdit(
 	if len(regionCodes) == 0 {
 		return fmt.Errorf("at least one region is required for an OCI image bundle")
 	}
+	if machineImage != "" && len(overrides) > 0 {
+		return fmt.Errorf("machine-image cannot be combined with image-bundle region overrides")
+	}
 
 	regions := details.GetRegions()
 	if regions == nil {
@@ -689,7 +693,7 @@ func applyOCIRegionImageEdit(
 		regions[regionCodes[0]] = info
 	} else {
 		for code, image := range overrides {
-			if !containsString(regionCodes, code) {
+			if !slices.Contains(regionCodes, code) {
 				return fmt.Errorf("region %s is not configured on the provider", code)
 			}
 			if image == "" {
@@ -710,6 +714,7 @@ func editOCIImageBundles(
 	regionCodes []string,
 	regionOverrides []string,
 ) ([]ybaclient.ImageBundle, error) {
+	overridesByBundle := ociOverridesByBundle(regionOverrides, "uuid")
 	for i, ib := range providerImageBundles {
 		bundleUUID := ib.GetUuid()
 		details := ib.GetDetails()
@@ -753,12 +758,16 @@ func editOCIImageBundles(
 			&details,
 			regionCodes,
 			machineImage,
-			ociOverridesByRegion(regionOverrides, "uuid", bundleUUID),
+			overridesByBundle[bundleUUID],
 		); err != nil {
 			return nil, err
 		}
+		delete(overridesByBundle, bundleUUID)
 		ib.SetDetails(details)
 		providerImageBundles[i] = ib
+	}
+	if err := unmatchedOverridesError(overridesByBundle); err != nil {
+		return nil, err
 	}
 	return providerImageBundles, nil
 }
@@ -769,13 +778,20 @@ func addOCIImageBundles(
 	regionCodes []string,
 	regionOverrides []string,
 ) ([]ybaclient.ImageBundle, error) {
-	if len(imageBundles) == 0 {
-		return providerImageBundles, nil
-	}
+	overridesByBundle := ociOverridesByBundle(regionOverrides, "name")
+	bundles := make([]map[string]string, 0, len(imageBundles))
+	// Auto-promoting a bundle on an arch that also has an explicit default
+	// fails server side with two defaults for that arch.
+	explicitDefaultArchs := map[string]bool{}
 	for _, i := range imageBundles {
-		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
-		bundle = providerutil.DefaultImageBundleValues(bundle)
-
+		bundle := providerutil.DefaultImageBundleValues(
+			providerutil.BuildImageBundleMapFromString(i, "add"))
+		if isDefault, _ := strconv.ParseBool(bundle["default"]); isDefault {
+			explicitDefaultArchs[strings.ToLower(bundle["arch"])] = true
+		}
+		bundles = append(bundles, bundle)
+	}
+	for _, bundle := range bundles {
 		if _, ok := bundle["ssh-user"]; !ok {
 			return nil, fmt.Errorf("SSH User not specified in image bundle")
 		}
@@ -783,11 +799,12 @@ func addOCIImageBundles(
 		regions, err := ociBundleRegions(
 			regionCodes,
 			bundle["machine-image"],
-			ociOverridesByRegion(regionOverrides, "name", bundle["name"]),
+			overridesByBundle[bundle["name"]],
 		)
 		if err != nil {
 			return nil, err
 		}
+		delete(overridesByBundle, bundle["name"])
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
@@ -811,7 +828,7 @@ func addOCIImageBundles(
 
 		if !defaultBundle {
 			arch := strings.ToLower(bundle["arch"])
-			hasDefaultForArch := false
+			hasDefaultForArch := explicitDefaultArchs[arch]
 			for _, existingBundle := range providerImageBundles {
 				existingArch := strings.ToLower(existingBundle.Details.GetArch())
 				if existingArch == arch && existingBundle.GetUseAsDefault() {
@@ -835,6 +852,9 @@ func addOCIImageBundles(
 			},
 		}
 		providerImageBundles = append(providerImageBundles, imageBundle)
+	}
+	if err := unmatchedOverridesError(overridesByBundle); err != nil {
+		return nil, err
 	}
 	return providerImageBundles, nil
 }
