@@ -2587,6 +2587,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param setupParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
+  /**
+   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
+   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
+   * destroy.
+   */
+  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
+  }
+
   public boolean createCreateNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
@@ -2623,12 +2632,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               // pre-existing hardware, and kubernetes and local never go through instance destroy.
               Set<NodeDetails> leftoverNodes =
                   filteredNodes.stream()
-                      .filter(
-                          n ->
-                              universe
-                                  .getCluster(n.placementUuid)
-                                  .getProviderCloudType(n)
-                                  .isPublicCloud())
+                      .filter(n -> isCloudInstanceNode(universe, n))
                       .collect(Collectors.toSet());
               if (!leftoverNodes.isEmpty()) {
                 // isForceDelete stays false: creating on top of a cleanup that silently failed is
