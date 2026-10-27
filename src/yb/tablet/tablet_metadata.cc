@@ -317,6 +317,15 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
+  // Column ids are never reused, so a deleted column that is back in the schema was restored by
+  // PITR to a time before its drop. Once the drop is older than the history cutoff, compaction
+  // would otherwise discard the restored column's values and vector reverse mapping entries.
+  // Also cleans superblocks written by a restore that kept the deleted column.
+  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
+    return doc_read_context->schema().find_column_by_id(deleted_col.id) !=
+           Schema::kColumnNotFound;
+  });
+
   if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }

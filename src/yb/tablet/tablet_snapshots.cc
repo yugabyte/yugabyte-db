@@ -770,7 +770,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   bool need_flush = false;
 
   if (restore_metadata.schema) {
-    // TODO(pitr) check deleted columns
+    // TableInfo drops deleted columns that the restored schema brings back.
     // OpId::Invalid() is used to indicate the callee to not
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
