@@ -991,6 +991,8 @@ auto MakeExcludeFromCompactionFunction(const F& f) {
   return std::make_shared<rocksdb::CompactionFileExcluder>(f);
 }
 
+namespace {
+
 // Largest op index whose rows are all flushed. The flushed frontier alone could overstate it: a
 // single apply op id may span both a flushed and an unflushed batch of a large transaction. So it
 // is clamped to one below the smallest op id that is still only in memory.
@@ -1005,6 +1007,8 @@ int64_t LargestFlushedOpIndex(const storage::FrontierInfo& frontiers) {
   }
   return result;
 }
+
+} // namespace
 
 struct Tablet::IntentsDbFlushFilterState {
   VectorIndexList vector_indexes;
