@@ -153,6 +153,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -186,6 +187,10 @@ import play.libs.Json;
  */
 @Slf4j
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
+
+  // Collector refreshes queued by queueOtelCollectorMetricsRefresh, by node name.
+  private final Map<String, NodeDetails> otelRefreshNodes = new LinkedHashMap<>();
+  private final Map<String, Boolean> otelRefreshIgnoreErrors = new HashMap<>();
 
   @Inject
   protected UniverseDefinitionTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -820,13 +825,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
-    // Refresh after the quorum change so it is not delayed. In failover, also the old node, which
-    // stays a tserver; best effort, since that node is often unhealthy.
-    Set<NodeDetails> otelRefreshNodes = new HashSet<>(nodeSet);
+    // In failover, also the old node, which stays a tserver; best effort, since that node is often
+    // unhealthy.
+    Set<NodeDetails> refreshNodes = new HashSet<>(nodeSet);
     if (stoppingNode != null && keepTserverRunning && isStoppable) {
-      otelRefreshNodes.add(stoppingNode);
+      refreshNodes.add(stoppingNode);
     }
-    createOtelCollectorMetricsRefreshTasks(otelRefreshNodes, keepTserverRunning /* ignoreErrors */);
+    queueOtelCollectorMetricsRefresh(refreshNodes, keepTserverRunning /* ignoreErrors */);
   }
 
   public void ensureRemoteProcessState(
@@ -3094,8 +3099,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  /** Rewrites the collector config for the nodes' current roles when metrics export is on. */
-  protected void createOtelCollectorMetricsRefreshTasks(
+  /**
+   * Queues a collector config rewrite on the nodes for their new master role. It runs last, before
+   * the task succeeds, so it cannot delay the role change. A node fails fast if any caller asks.
+   */
+  protected void queueOtelCollectorMetricsRefresh(
+      Collection<NodeDetails> nodes, boolean ignoreErrors) {
+    for (NodeDetails node : nodes) {
+      otelRefreshNodes.putIfAbsent(node.nodeName, node);
+      otelRefreshIgnoreErrors.merge(node.nodeName, ignoreErrors, Boolean::logicalAnd);
+    }
+  }
+
+  @Override
+  protected void createFinalSubTasks() {
+    super.createFinalSubTasks();
+    for (boolean ignoreErrors : new boolean[] {false, true}) {
+      createOtelCollectorMetricsRefreshTasks(
+          otelRefreshNodes.values().stream()
+              .filter(n -> otelRefreshIgnoreErrors.get(n.nodeName) == ignoreErrors)
+              .collect(Collectors.toList()),
+          ignoreErrors);
+    }
+    otelRefreshNodes.clear();
+    otelRefreshIgnoreErrors.clear();
+  }
+
+  private void createOtelCollectorMetricsRefreshTasks(
       Collection<NodeDetails> nodes, boolean ignoreErrors) {
     if (nodes.isEmpty()) {
       return;

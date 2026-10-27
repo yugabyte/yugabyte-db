@@ -1604,6 +1604,26 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
+  // Collector refreshes run last, just before the universe update is marked successful.
+  protected void assertOtelRefreshesRunLast(TaskInfo taskInfo) {
+    int firstRefresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int lastOther =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() != TaskType.ManageOtelCollector
+                        && t.getTaskType() != TaskType.UniverseUpdateSucceeded)
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(firstRefresh > lastOther);
+  }
+
   // Turns on metrics export to a DataDog provider, so tasks plan ManageOtelCollector subtasks.
   protected Universe enableMetricsExport(UUID universeUUID) {
     DataDogConfig ddConfig = new DataDogConfig();

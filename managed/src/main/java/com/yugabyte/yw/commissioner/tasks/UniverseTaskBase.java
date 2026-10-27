@@ -1682,6 +1682,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /** Creates subtasks that must run last, just before the universe update is marked successful. */
+  protected void createFinalSubTasks() {}
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
@@ -1694,6 +1697,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the subtask group.
    */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks(UUID universeUuid) {
+    if (Objects.equals(universeUuid, taskParams().getUniverseUUID())) {
+      createFinalSubTasks();
+    }
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);

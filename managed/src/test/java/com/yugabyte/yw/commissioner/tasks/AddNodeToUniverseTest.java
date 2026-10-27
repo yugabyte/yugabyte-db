@@ -709,6 +709,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
             .max()
             .getAsInt();
     assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
+    assertOtelRefreshesRunLast(taskInfo);
   }
 
   @Test

@@ -366,6 +366,9 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
             .collect(Collectors.toList());
+    if (!refreshes.isEmpty()) {
+      assertOtelRefreshesRunLast(taskInfo);
+    }
     return refreshes.stream()
         .collect(
             Collectors.toMap(

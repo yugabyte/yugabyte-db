@@ -222,6 +222,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(oldMasterRefresh > lastAddressUpdate);
+    assertOtelRefreshesRunLast(taskInfo);
   }
 
   // A failover that could not reach the old master leaves its collector config with the master
@@ -270,6 +271,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(refresh > lastAddressUpdate);
+    assertOtelRefreshesRunLast(taskInfo);
   }
 
   // A best-effort refresh must not swallow an abort, even when the interrupt arrives wrapped in a

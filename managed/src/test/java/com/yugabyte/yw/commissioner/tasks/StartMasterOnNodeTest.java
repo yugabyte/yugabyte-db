@@ -291,6 +291,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
             .max()
             .getAsInt();
     assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
+    assertOtelRefreshesRunLast(taskInfo);
   }
 
   @Test

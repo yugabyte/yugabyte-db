@@ -3061,6 +3061,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .max()
             .getAsInt();
     assertTrue(firstRefresh > lastMasterChange);
+    assertOtelRefreshesRunLast(taskInfo);
   }
 
   // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a
