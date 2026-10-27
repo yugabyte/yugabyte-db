@@ -278,9 +278,6 @@ func systemdUnitProperties(
 	if err != nil {
 		return nil, err
 	}
-	// show only reads the unit state, which needs no root, and the YNP rootsystemd sudoers rules
-	// do not allow it.
-	cmdPrefix = strings.TrimPrefix(cmdPrefix, "sudo ")
 	cmd := fmt.Sprintf(
 		"%s show -p %s %s", cmdPrefix, strings.Join(properties, " -p "), serverName)
 	cmdInfo, err := RunShellCmd(ctx, cmdUser, "ShowSystemdUnit", cmd, logOut)

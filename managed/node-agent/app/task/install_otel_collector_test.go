@@ -35,8 +35,12 @@ func newDisableCollectorHandler(t *testing.T, ybHome string) *InstallOtelCollect
 func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 	ybHome := t.TempDir()
 	handler := newDisableCollectorHandler(t, ybHome)
-	if hasUser, _, err := handler.otelCollectorUnits(context.Background()); err != nil || hasUser {
-		t.Skipf("this host has a user-level otel-collector unit (%v)", err)
+	hasUser, err := handler.hasUserOtelCollectorUnit(context.Background())
+	if err != nil {
+		t.Fatalf("hasUserOtelCollectorUnit: %v", err)
+	}
+	if hasUser {
+		t.Skip("this host has a user-level otel-collector unit")
 	}
 
 	if err := handler.disableOtelCollector(context.Background(), ybHome); err != nil {
@@ -53,15 +57,15 @@ func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 }
 
 // A root-systemd node has its unit in the system unit directory.
-func TestOtelCollectorUnitsFindsRootUnit(t *testing.T) {
+func TestHasRootOtelCollectorUnit(t *testing.T) {
 	handler := newDisableCollectorHandler(t, t.TempDir())
-	if _, hasRoot, err := handler.otelCollectorUnits(context.Background()); err != nil || hasRoot {
+	if hasRoot, err := handler.hasRootOtelCollectorUnit(); err != nil || hasRoot {
 		t.Fatalf("no root unit yet: hasRoot=%v, err=%v", hasRoot, err)
 	}
 	if err := os.WriteFile(handler.rootUnitPath, []byte("[Unit]\n"), 0644); err != nil {
 		t.Fatalf("write unit: %v", err)
 	}
-	if _, hasRoot, err := handler.otelCollectorUnits(context.Background()); err != nil || !hasRoot {
+	if hasRoot, err := handler.hasRootOtelCollectorUnit(); err != nil || !hasRoot {
 		t.Fatalf("root unit not found: hasRoot=%v, err=%v", hasRoot, err)
 	}
 }

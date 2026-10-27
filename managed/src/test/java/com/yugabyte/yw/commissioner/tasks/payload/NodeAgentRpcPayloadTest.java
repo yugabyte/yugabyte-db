@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -162,6 +164,20 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertFalse(input.getOtelColPackagePath().isEmpty());
     // The full install stops the collector and does not start it again without a config file.
     assertEquals("", input.getOtelColConfigFile());
+    verify(mockNodeAgentClient, times(1))
+        .uploadFile(eq(nodeAgent), any(), anyString(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void testDisableAllExportWithFastDisableOffUsesFullInstall() {
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.otelCollectorFastDisable.getKey(), "false");
+    InstallOtelCollectorInput input =
+        payload.setupInstallOtelCollectorBits(
+            universe, node, params(true, new TelemetryConfig()), nodeAgent);
+
+    assertFalse(input.getDisableCollector());
+    assertFalse(input.getOtelColPackagePath().isEmpty());
     verify(mockNodeAgentClient, times(1))
         .uploadFile(eq(nodeAgent), any(), anyString(), any(), anyInt(), any());
   }

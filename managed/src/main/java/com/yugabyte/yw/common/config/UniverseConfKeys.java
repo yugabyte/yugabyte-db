@@ -1656,6 +1656,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " uncapped.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> otelCollectorFastDisable =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_fast_disable",
+          ScopeType.UNIVERSE,
+          "Fast disable of OpenTelemetry Collector",
+          "If true, turning off all telemetry export stops the OpenTelemetry Collector on each node"
+              + " without reinstalling its package. If false, YBA runs the full collector install"
+              + " to stop it.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =
       new ConfKeyInfo<>(
           "yb.universe.telemetry.master_logs_additional_drop_patterns",

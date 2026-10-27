@@ -553,7 +553,9 @@ public class NodeAgentRpcPayload {
       // node-agent ignores disableCollector and runs the full install, which needs the package,
       // so it keeps the full install path. The upgrade before each call is skipped when the node
       // agent is not ready in time, so it can still be on an older version here.
-      if (!refreshScriptOnly && !OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
+      if (!refreshScriptOnly
+          && !OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)
+          && confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorFastDisable)) {
         disableCollector = nodeAgent.isOnYbaVersion();
         if (!disableCollector) {
           log.info(
