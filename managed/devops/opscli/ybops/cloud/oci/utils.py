@@ -756,7 +756,18 @@ class OciCloudAdmin:
             )
 
         logging.info("[app] Creating OCI instance {}".format(instance_name))
-        response = self.compute_client.launch_instance(launch_details)
+        try:
+            response = self.compute_client.launch_instance(launch_details)
+        except oci.exceptions.ServiceError as e:
+            if e.status != 404:
+                raise
+            # OCI rejects a launch from a Marketplace image version the compartment is not
+            # subscribed to with this generic error, which names neither the image nor the cause.
+            raise YBOpsRuntimeError(
+                "OCI could not launch instance {} from image {}: {}. If the image is from the OCI "
+                "Marketplace, subscribe the compartment to that image version first, for example "
+                "by accepting its terms in the OCI Console.".format(
+                    instance_name, image_id, e.message)) from e
 
         instance = response.data
         created_volume_ids = []

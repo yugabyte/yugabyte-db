@@ -496,7 +496,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().helmReleaseName,
                 appLabelValue,
                 universe.getUniverseDetails().useNewHelmNamingStyle,
-                taskParams().newPlacementAzMasterCount); // ReplicaCount to Assert.
+                taskParams().newPlacementAzMasterCount, // ReplicaCount to Assert.
+                confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory
@@ -1749,6 +1750,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       for (String server : List.of("master", "tserver")) {
         getOrCreateMap(gflags, server).put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
       }
+    }
+    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    if (confGetter.getConfForScope(universeFromDB, UniverseConfKeys.k8sNodeExporterEnabled)
+        && KubernetesUtil.isNodeExporterSidecarSupported(taskParams().ybSoftwareVersion)) {
+      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
+      nodeExporter.put("enabled", true);
+      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+    } else {
+      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
     }
 
     // For single AZ azUUID may be null, use non-null values

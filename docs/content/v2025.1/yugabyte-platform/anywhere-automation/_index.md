@@ -34,38 +34,21 @@ To obtain your API token:
 
 1. Under **API Key management**, copy your API token. If the **API Token** field is blank, click **Generate Key**, and then copy the resulting API token.
 
-To obtain your API token using the REST API, you can use the Auth token generated when you sign in. (By default, Auth tokens expire after 12 hours.)
+To obtain your API token using the REST API, sign in with `POST /api/v1/api_login`. This returns an API token. It also invalidates any API token already issued for that user.
 
-Do the following:
+```sh
+curl --request POST \
+  --url 'https://<yba-ip>/api/v1/api_login' \
+  --header 'Content-Type: application/json' \
+  --data-raw '{ "email":"myemail@example.com","password":"mypassword" }' \
+  -k
+```
 
-1. Sign in to YugabyteDB Anywhere:
+For example:
 
-    ```sh
-    curl --location --request POST 'https://<yba-ip>/api/v1/login' \
-      --header 'Content-Type: application/json' \
-      --data-raw '{ "email":"myemail@example.com","password":"mypassword" }' \
-      -k
-    ```
-
-    This returns an Auth token. For example:
-
-    ```yaml{.nocopy}
-    {"authToken":"3efcf456aa78d912bfc3bd4ef5dcc678","customerUUID":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","userUUID":"234ec5e6-b7bd-8e90-1234-5bfe678d90d1"}%
-    ```
-
-1. Use the Auth token to generate an API token:
-
-    ```sh
-    curl --request PUT \
-    --url https://<yba-ip>/api/v1/customers/1e2c345d-e678-9fb1-b234-fcb56a78c9e0/api_token \
-    --header 'Accept: application/json' \
-    --header 'X-AUTH-TOKEN: 3efcf456aa78d912bfc3bd4ef5dcc678' \
-    -k
-    ```
-
-    ```yaml{.nocopy}
-    {"apiToken":"27011623-05b6-47cc-81a8-bce47ba911a4","apiTokenVersion":6,"customerUUID":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","userUUID":"234ec5e6-b7bd-8e90-1234-5bfe678d90d1"}%
-    ```
+```yaml{.nocopy}
+{"apiToken":"4.234ec5e6-b7bd-8e90-1234-5bfe678d90d1.27011623-05b6-47cc-81a8-bce47ba911a4","apiTokenVersion":1,"customerUUID":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","userUUID":"234ec5e6-b7bd-8e90-1234-5bfe678d90d1"}
+```
 
 ## Account details
 
@@ -78,15 +61,17 @@ To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in 
 To get your customer UUID using the API, use the following command:
 
 ```sh
-curl \
-  -H "X-AUTH-YW-API-TOKEN: myYBAnywhereApiToken" \
-    [http|https]://<yba-ip>/api/v1/customers
+curl --request GET \
+  --url 'https://<yba-ip>/api/v1/customers' \
+  --header 'Accept: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: myYBAnywhereApiToken' \
+  -k
 ```
 
-This returns the UUID. For example:
+This returns a list of customers. The customer UUID is the `uuid` field. For example:
 
 ```yaml{.nocopy}
-["1e2c345d-e678-9fb1-b234-fcb56a78c9e0"]
+[{"uuid":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","customerId":1,"code":"admin","name":"example","creationDate":"2022-12-12T13:07:18Z"}]
 ```
 
 ### Universe ID

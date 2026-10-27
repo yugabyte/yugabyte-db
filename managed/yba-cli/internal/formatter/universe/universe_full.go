@@ -184,7 +184,7 @@ func (fu *FullUniverseContext) Write() error {
 	fu.Output.Write([]byte("\n"))
 
 	details := fu.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
+	primaryCluster, _ := util.FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
 	userIntent := primaryCluster.GetUserIntent()
 	if userIntent.GetProviderType() == util.K8sProviderType {
 		// Section 5: Overrides for kubernetes

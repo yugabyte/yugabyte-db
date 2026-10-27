@@ -68,8 +68,23 @@ void TserverXClusterContext::UpdateOidCacheInvalidationsCount(
   }
 }
 
+Result<std::optional<HybridTime>> TserverXClusterContext::GetPersistenceBlockedThrough(
+    uint32_t database_oid) const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The persistence block map is unavailable because this TServer does not hold a current "
+      "xCluster-guarded information lease; retry later");
+  const auto& blocked_through_ht = persistence_block_map_->blocked_through_ht();
+  const auto it = blocked_through_ht.find(database_oid);
+  if (it == blocked_through_ht.end()) {
+    return std::nullopt;
+  }
+  return HybridTime::FromPB(it->second);
+}
+
 Result<std::shared_ptr<const PersistenceBlockMapPB>>
-TserverXClusterContext::GetPersistenceBlockMap() const {
+TserverXClusterContext::TEST_GetPersistenceBlockMap() const {
   SharedLock lock(mutex_);
   SCHECK(
       HasXClusterGuardedInfoUnlocked(), IllegalState,
@@ -86,6 +101,11 @@ void TserverXClusterContext::UpdatePersistenceBlockMap(
     LOG(DETAIL) << "Received persistence block map " << new_map->ShortDebugString();
   }
   persistence_block_map_ = std::move(new_map);
+}
+
+bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasXClusterGuardedInfoUnlocked();
 }
 
 bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {

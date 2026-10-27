@@ -2141,6 +2141,29 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
       std::nullopt, kTimeout));
 }
 
+// When the only tserver loses its lease, the master releases the locks held by its expired lease
+// epoch with no live tservers to fan out to. The release must still complete and release the locks
+// at the master, otherwise a conflicting lock request blocks on the master after the tserver gets a
+// new lease.
+TEST_F(ExternalObjectLockTestOneTS, ReleaseWithNoLiveTServersCompletes) {
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto ts = tablet_server(0);
+  auto lease_epoch = ASSERT_RESULT(GetTServerLeaseInfo(cluster_client, ts->uuid())).lease_epoch();
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kRelationId, lease_epoch));
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), 20s * kTimeMultiplier));
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_OK(WaitForTServerLease(ts->uuid(), kTimeout));
+  auto new_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(cluster_client, ts->uuid())).lease_epoch();
+  ASSERT_GT(new_lease_epoch, lease_epoch);
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, ts->uuid(), kTxn2, kDatabaseID, kRelationId, new_lease_epoch));
+}
+
 YB_DEFINE_ENUM(DisableLeaseMode, (DisablePoller)(DisablePollerAndChecker));
 class ExternalObjectLockTestLeaseLost : public ExternalObjectLockTest,
                                         public ::testing::WithParamInterface<DisableLeaseMode> {
@@ -2493,6 +2516,103 @@ TEST_F(ExternalObjectLockTestLargeTTLDelta, MasterThinksTServerStillHasLease) {
   // lease has expired and give it a new lease.
   auto other_ts = tablet_server(1);
   ASSERT_OK(AcquireLockGlobally(&master_proxy, other_ts->uuid(), kTxn2, kDatabaseID, kRelationId));
+}
+
+const std::string kPauseBeforeRelaunchCheckFlagName =
+    "TEST_pause_obj_lock_acquire_before_relaunch_check";
+
+// A DDL blocked by a DML on another tserver is typically unblocked by that tserver losing its
+// lease, which kills its sessions and so releases their locks. The lease epoch floors sent with the
+// first fanout predate the expiry, so the master must relaunch the fanout for the other tservers
+// to reject requests carrying the expired lease epoch.
+TEST_F(ExternalObjectLockTest, LeaseLossDuringFanoutPropagatesNewLeaseEpochFloor) {
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto lease_losing_ts = tablet_server(0);
+  auto lease_epoch = ASSERT_RESULT(GetTServerLeaseInfo(cluster_client, lease_losing_ts->uuid()))
+                         .lease_epoch();
+  auto lease_losing_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(0);
+  ASSERT_OK(AcquireLockAt(
+      &lease_losing_ts_proxy, lease_losing_ts->uuid(), kTxn1, kDatabaseID, kRelationId,
+      lease_epoch));
+
+  auto requestor_ts = tablet_server(1);
+  auto ddl_future = AcquireLockGloballyAsync(
+      &master_proxy, requestor_ts->uuid(), kTxn2, kDatabaseID, kRelationId, kLeaseEpoch,
+      /* clock */ nullptr, /* deadline */ std::nullopt, 30s * kTimeMultiplier);
+  ASSERT_EQ(ddl_future.wait_for(1s), std::future_status::timeout)
+      << "The global lock should block on the DML lock";
+
+  ASSERT_OK(cluster_->SetFlag(lease_losing_ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(lease_losing_ts->uuid(), 20s * kTimeMultiplier));
+  // The tserver doesn't fail lock waiters on lease loss, so release the DML lock as the killed
+  // session would.
+  ASSERT_OK(ReleaseLockAt(&lease_losing_ts_proxy, lease_losing_ts->uuid(), kTxn1, lease_epoch));
+  ASSERT_OK(ResolveFutureStatus(ddl_future));
+
+  for (size_t idx : {1, 2}) {
+    auto ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(idx);
+    EXPECT_THAT(
+        AcquireLockAt(
+            &ts_proxy, lease_losing_ts->uuid(), kTxn3, kDatabaseID, kRelationId2, lease_epoch),
+        EqualsStatus(BuildLeaseEpochMismatchErrorStatus(lease_epoch, lease_epoch + 1)))
+        << "tserver " << tablet_server(idx)->uuid();
+  }
+}
+
+// A tserver that loses its lease and gets a new one after acking the global lock leaves the other
+// tservers with a floor for its old lease epoch. The master must relaunch for the lease epoch
+// change.
+TEST_F(ExternalObjectLockTest, LeaseEpochChangeDuringFanoutPropagatesNewLeaseEpochFloor) {
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto lease_changing_ts = tablet_server(0);
+  auto lease_epoch = ASSERT_RESULT(GetTServerLeaseInfo(cluster_client, lease_changing_ts->uuid()))
+                         .lease_epoch();
+
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseBeforeRelaunchCheckFlagName, "true"));
+  auto requestor_ts = tablet_server(1);
+  auto ddl_future = AcquireLockGloballyAsync(
+      &master_proxy, requestor_ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      /* clock */ nullptr, /* deadline */ std::nullopt, 30s * kTimeMultiplier);
+
+  ASSERT_OK(cluster_->SetFlag(lease_changing_ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(lease_changing_ts->uuid(), 20s * kTimeMultiplier));
+  ASSERT_OK(cluster_->SetFlag(lease_changing_ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_OK(WaitForTServerLease(lease_changing_ts->uuid(), kTimeout));
+  auto new_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(cluster_client, lease_changing_ts->uuid())).lease_epoch();
+  ASSERT_GT(new_lease_epoch, lease_epoch);
+
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseBeforeRelaunchCheckFlagName, "false"));
+  ASSERT_OK(ResolveFutureStatus(ddl_future));
+
+  for (size_t idx : {1, 2}) {
+    auto ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(idx);
+    EXPECT_THAT(
+        AcquireLockAt(
+            &ts_proxy, lease_changing_ts->uuid(), kTxn2, kDatabaseID, kRelationId2, lease_epoch),
+        EqualsStatus(BuildLeaseEpochMismatchErrorStatus(lease_epoch, new_lease_epoch)))
+        << "tserver " << tablet_server(idx)->uuid();
+  }
+}
+
+// The floors for a requestor that lost its lease make every tserver reject the request, so the
+// master fails the acquire instead of relaunching it.
+TEST_F(ExternalObjectLockTest, RequestorLeaseLossDuringFanoutFailsAcquire) {
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseBeforeRelaunchCheckFlagName, "true"));
+  auto requestor_ts = tablet_server(1);
+  auto ddl_future = AcquireLockGloballyAsync(
+      &master_proxy, requestor_ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      /* clock */ nullptr, /* deadline */ std::nullopt, 30s * kTimeMultiplier);
+
+  ASSERT_OK(cluster_->SetFlag(requestor_ts, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(requestor_ts->uuid(), 20s * kTimeMultiplier));
+  ASSERT_OK(cluster_->SetFlagOnMasters(kPauseBeforeRelaunchCheckFlagName, "false"));
+  ASSERT_NOK_STR_CONTAINS(ResolveFutureStatus(ddl_future), "no longer has a live lease");
 }
 
 class WithYSQLConnectionManagerTest : public ExternalObjectLockTestOneTS {

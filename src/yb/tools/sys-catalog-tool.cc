@@ -197,6 +197,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       Bind(&DoNothing::fn),
       metric_registry_.get(),
       nullptr, // tablet_splitter
+      nullptr, // persistence_gate
       client_future);
 
   tablet::TabletInitData tablet_init_data = {
@@ -225,7 +226,9 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .auto_flags_manager = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
+      .intent_cleanup_pool = thread_pool_.get(),
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr,
   };
 

@@ -262,14 +262,16 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                     ? UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize
                     : UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
           }
-          // Mark the final software version on the universe (last subtask), with the end state in
-          // the same save (PLAT-23182). Also idempotent can be run again here.
+          // Mark the final software version on the universe, with the end state in the same save
+          // (PLAT-23182). Also idempotent can be run again here.
           createUpdateSoftwareVersionTask(
                   taskParams().ybSoftwareVersion,
                   false /* isSoftwareUpdateViaVm */,
                   endState,
                   isSoftwareRollbackAllowed)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

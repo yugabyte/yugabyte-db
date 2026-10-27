@@ -720,7 +720,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param pi : the placement info in which the masters need to be placed.
    */
   public void selectNumMastersAZ(PlacementInfo pi) {
-    Cluster cluster = taskParams().getPrimaryCluster();
+    selectNumMastersAZ(pi, taskParams().getPrimaryCluster());
+  }
+
+  /**
+   * Same as {@link #selectNumMastersAZ(PlacementInfo)}, using the RF and master zones of the given
+   * primary cluster instead of the one in the task params.
+   */
+  public void selectNumMastersAZ(PlacementInfo pi, Cluster cluster) {
     UserIntent userIntent = cluster.userIntent;
     int numTotalMasters = userIntent.replicationFactor;
     PlacementInfoUtil.selectNumMastersAZ(

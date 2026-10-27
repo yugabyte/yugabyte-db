@@ -1047,6 +1047,32 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+/*
+ * Whether pg_partman uses transactional DDL and table level locks.  This
+ * requires all of:
+ * - ysql_yb_pg_partman_use_native_txn_ddl_and_locks.
+ * - YBIsDdlTransactionBlockEnabled(), which is true only when transactional
+ *   DDL is on and table level locks are enabled.
+ * - DDL savepoint support (ysql_yb_enable_ddl_savepoint_support and its infra
+ *   auto flag), because several pg_partman functions run DDL inside plpgsql
+ *   EXCEPTION blocks, which are savepoints.
+ * Advisory locks are not checked: ysql_yb_enable_advisory_locks is a tserver
+ * runtime flag whose current value postgres can't see, and with it off, the
+ * pg_partman functions that take advisory locks fail instead of falling back.
+ * A missing prerequisite returns false rather than raising, so pg_partman
+ * keeps working, without these features, where one of them is off.
+ */
+Datum
+yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
+{
+	const YbcPgGFlagsAccessor *gflags = YBCGetGFlags();
+
+	PG_RETURN_BOOL(*gflags->ysql_yb_pg_partman_use_native_txn_ddl_and_locks &&
+				   YBIsDdlTransactionBlockEnabled() &&
+				   *gflags->ysql_yb_enable_ddl_savepoint_support &&
+				   yb_enable_ddl_savepoint_infra);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -2250,6 +2276,9 @@ bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
+bool		yb_allow_prehashed_passwords = true;
+int			yb_password_reuse_history = 0;
+int			yb_password_reuse_interval = 0;
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 bool		yb_disable_parallel_query_in_ddl = true;
@@ -7455,6 +7484,18 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 	return true;
 }
 
+/*
+ * Whether the local catalog version can be reset right now.  Inside a
+ * transaction block it does not get refreshed (see check_yb_read_time).
+ */
+static bool
+YbCanResetCatalogVersion(void)
+{
+	return (yb_disable_catalog_version_check ||
+			am_walsender ||
+			!IsTransactionBlock());
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7491,9 +7532,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
 	 *    reads do not send a catalog version anyway.
 	 */
-	if (!yb_disable_catalog_version_check &&
-		!am_walsender &&
-		IsTransactionBlock())
+	if (!YbCanResetCatalogVersion())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
@@ -7645,6 +7684,34 @@ assign_yb_read_time(const char *newval, void *extra)
 						"Write-DML or DDL queries are not allowed when yb_read_time is "
 						"set.")));
 	}
+}
+
+bool
+check_yb_read_time_skip_catalog(bool *newval, void **extra, GucSource source)
+{
+	/*
+	 * Changing this while yb_read_time is set resets the local catalog
+	 * version, which check_yb_read_time does not allow inside a transaction
+	 * block either.
+	 */
+	if (yb_read_time != 0 &&
+		*newval != yb_read_time_skip_catalog &&
+		!YbCanResetCatalogVersion())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time_skip_catalog cannot be changed inside a "
+						 "transaction block while yb_read_time is set");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time_skip_catalog(bool newval, void *extra)
+{
+	/* Whatever catalog we have cached was read as of some other time. */
+	if (yb_read_time != 0 && newval != yb_read_time_skip_catalog)
+		YbResetCatalogCacheVersion();
 }
 
 void

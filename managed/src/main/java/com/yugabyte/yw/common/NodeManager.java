@@ -1770,6 +1770,9 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
         }
+        if (Common.CloudType.oci == provider.getCloudCode() && rrvParams.forceReplacement) {
+          commandArgs.add("--force_replacement");
+        }
         if (!bootScript.isEmpty()) {
           bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
         }

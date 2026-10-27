@@ -31,6 +31,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -522,6 +523,80 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testYsqlMajorUpgradeTreatsReadReplicaAsReadReplica() throws Exception {
+    // PLAT-23200: the YSQL major compatibility-flag helm step runs POD_INFO and a non-restart helm
+    // upgrade for every cluster. For the read replica it must pass isReadOnlyCluster=true;
+    // otherwise POD_INFO looks up the primary release with the read replica's placement and
+    // replaces the primary's nodes, and the helm upgrade resizes the primary release.
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseK8sSingleAZWithYSQL(true, true);
+    Cluster readReplica = addReadReplicaCluster();
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.waitAttemptsForMajorCatalogUpgrade.getKey(), "0");
+    when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    when(mockSoftwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(any(), anyString()))
+        .thenReturn(false);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    // Same DB-side stubs as testYsqlMajorUpgradeRetryRollsMastersBeforeCreateUser.
+    lenient()
+        .when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenReturn(true);
+    lenient()
+        .when(mockClient.getYsqlMajorCatalogUpgradeState())
+        .thenReturn(
+            new GetYsqlMajorCatalogUpgradeStateResponse(
+                0L,
+                null,
+                null,
+                YsqlMajorCatalogUpgradeState
+                    .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
+    lenient()
+        .when(mockClient.isYsqlMajorCatalogUpgradeDone())
+        .thenReturn(new IsYsqlMajorCatalogUpgradeDoneResponse(0L, null, null, true));
+    lenient()
+        .when(mockClient.startYsqlMajorCatalogUpgrade())
+        .thenReturn(new StartYsqlMajorCatalogUpgradeResponse(0L, null, null));
+    lenient()
+        .when(mockYsqlQueryExecutor.runUserDbCommands(anyString(), anyString(), any()))
+        .thenReturn(Json.newObject());
+    lenient()
+        .when(
+            mockYsqlQueryExecutor.executeQueryInNodeShell(
+                any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+    lenient().when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
+    lenient()
+        .when(
+            mockKubernetesManager.executeCommandInPodContainer(
+                any(), nullable(String.class), nullable(String.class), anyString(), anyList()))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(4);
+              return Arrays.asList("uname", "-m").equals(cmd) ? "x86_64" : "";
+            });
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    // Adding the read replica bumped the universe version past what submitTask expects.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.SoftwareKubernetesUpgradeYB, taskParams));
+
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertReadReplicaCommandsTargetReadReplica(taskInfo, readReplica);
   }
 
   @Test

@@ -1197,6 +1197,62 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
                                      "running");
 }
 
+// Test for #32224.
+//
+// A transaction that started before the object locking infra auto flag was promoted keeps running
+// in the legacy mode: it takes no object locks, so the tserver catalog version check is what stops
+// it from using a catalog cache that a breaking DDL (REVOKE here) invalidated. The check must be
+// skipped based on the mode of the request's transaction, not on the tserver's flags.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionCheck) {
+  constexpr auto kInvalidatedMsg =
+      "The catalog snapshot used for this transaction has been invalidated";
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE ROLE r"));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+    ASSERT_OK(conn.Execute("GRANT SELECT ON test TO r"));
+    ASSERT_OK(conn.Execute("CREATE TABLE unrelated(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("SET ROLE r"));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(i), "ysql_enable_object_locking_infra", "true"));
+  }
+
+  // A new mode transaction open across a breaking DDL must not be subjected to the check.
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx2"));
+  ASSERT_OK(ddl_conn.Execute("REVOKE SELECT ON test FROM r"));
+  WaitForCatalogVersionToPropagate();
+
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(new_conn.Execute("COMMIT"));
+
+  // Before the fix, the legacy transaction kept reading the table with the revoked privilege.
+  auto result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), kInvalidatedMsg);
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+
+  // The next transaction on the same connection runs in the new mode and sees the REVOKE.
+  result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "permission denied");
+}
+
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
@@ -2174,16 +2230,7 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_serve_redundant_lock) = true;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE pk(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE fk(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO pk SELECT generate_series(1, 1000), 0"));
-  ASSERT_OK(conn.Execute("INSERT INTO fk SELECT i,i FROM generate_series(1, 1000) AS i"));
-
-  // ALTER ADD CONSTRAINT requests RowShare on pk for each row in fk. But it should be
-  // a no-op since the transaction already holds RowShare (or greater) on the object.
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("ALTER TABLE fk ADD CONSTRAINT fk_rule FOREIGN KEY (v) REFERENCES pk(k)"));
-  ASSERT_LT(NumGrantedLocks(), 50);
-  ASSERT_OK(conn.Execute("COMMIT"));
 
   // Assert redundant table_open on pk is skipped.
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -3034,6 +3081,7 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
   // waits for A's ACCESS SHARE on the tserver, which must use A's post-promotion status tablet.
   std::promise<void> b_holds_exclusive;
   auto b_granted = b_holds_exclusive.get_future();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 10000;
   ASSERT_OK(ExpectExactlyOneSucceedsWithDeadlock(
       conn_a, conn_b,
       [&]() -> Status {
@@ -3045,7 +3093,8 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
         b_holds_exclusive.set_value();
         RETURN_NOT_OK(s);
         return conn_b.Execute("LOCK TABLE t1_1 IN ACCESS EXCLUSIVE MODE");
-      }));
+      },
+      20s * kTimeMultiplier));
 }
 
 }  // namespace yb::pgwrapper

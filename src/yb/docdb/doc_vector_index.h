@@ -201,6 +201,9 @@ class DocVectorIndex {
   // rather than vector count.
   virtual size_t EstimateNumVectorsForBytes(size_t bytes_limit) const = 0;
 
+  // Capacity of a new mutable chunk when the insert does not specify one.
+  virtual size_t DefaultChunkCapacity() const = 0;
+
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;
@@ -280,6 +283,9 @@ class DocVectorIndex {
   // Returns true if all inherited parent-tablet chunks have been compacted away.
   // Caches the true result; ComputeParentDataCompacted() is the uncached check.
   bool ParentDataCompacted();
+
+  // Whether the row with the specified key belongs to the indexed table.
+  bool IsIndexedTableKey(Slice key) const;
 
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.

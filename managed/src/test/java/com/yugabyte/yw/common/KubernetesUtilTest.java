@@ -756,4 +756,14 @@ public class KubernetesUtilTest extends FakeDBApplication {
     values.put("podSecurityContext", pod);
     assertThrows(IllegalStateException.class, () -> KubernetesUtil.getEffectiveDbRunAsUser(values));
   }
+
+  @Test
+  public void testIsNodeExporterSidecarSupported() {
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2026.2.0.0-b1"));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2026.2.1.0-b5"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported("2026.1.2.0-b100"));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarSupported("2.31.0.0-b615"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported("2.31.0.0-b614"));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarSupported(null));
+  }
 }

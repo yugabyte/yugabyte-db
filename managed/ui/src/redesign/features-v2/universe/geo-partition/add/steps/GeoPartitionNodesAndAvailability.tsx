@@ -22,6 +22,7 @@ import {
   navigateToUniverseSettingsFromWizard,
   useGeoPartitionNavigation
 } from '../AddGeoPartitionUtils';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 import { CloudType } from '@app/redesign/helpers/dtos';
 
@@ -35,8 +36,8 @@ export const GeoPartitionNodesAndAvailability = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
   const isK8s =
-    addGeoPartitionContext.universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]
-      ?.code === CloudType.kubernetes;
+    getPrimaryCluster(addGeoPartitionContext.universeData?.spec?.clusters ?? [])
+      ?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
   const { addGeoPartition, updateGeoPartition } = addGeoPartitionMethods;
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
   const { moveToNextPage, moveToPreviousPage } = useGeoPartitionNavigation();

@@ -87,6 +87,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
   public static String MIN_VERSION_NON_ROOT_DB_PREVIEW = "2.31.0.0-b0";
   public static String MIN_VERSION_NON_ROOT_DB_STABLE = "2026.1.2.0-b0";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW = "2.31.0.0-b615";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b1";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -95,6 +97,16 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
         >= 0;
+  }
+
+  public static boolean isNodeExporterSidecarSupported(@Nullable String universeSoftwareVersion) {
+    return universeSoftwareVersion != null
+        && Util.compareYBVersions(
+                universeSoftwareVersion,
+                MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
+                MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW,
+                true)
+            >= 0;
   }
 
   public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {

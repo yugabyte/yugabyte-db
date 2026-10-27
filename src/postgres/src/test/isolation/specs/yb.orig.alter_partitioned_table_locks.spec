@@ -13,6 +13,11 @@
 #         doesn't wait for a REPEATABLE READ reader of a partition, and the
 #         reader must keep working; it does wait for a writer to a partition,
 #         and then fails validation on the row that writer committed.
+#   sib_*: subcommands that don't change the partitions in DocDB must not lock
+#         them, as in PG: DETACH PARTITION, OWNER TO and ONLY ... SET DEFAULT
+#         don't wait for a reader of a sibling partition, and ATTACH PARTITION
+#         doesn't wait for an ANALYZE of one.  A DETACH that waited would
+#         deadlock with the reader once it reads the root.
 
 setup
 {
@@ -35,11 +40,18 @@ setup
   CREATE TABLE fk_p_7 PARTITION OF fk_p FOR VALUES FROM (700) TO (800) PARTITION BY LIST (b);
   CREATE TABLE fk_p_7_b1 PARTITION OF fk_p_7 FOR VALUES IN (1);
   INSERT INTO fk_p SELECT 700 + i, 1, 1 FROM generate_series(0, 49) i;
+
+  CREATE TABLE sib_p (a int NOT NULL, b int, c text) PARTITION BY RANGE (a);
+  CREATE TABLE sib_p_a PARTITION OF sib_p FOR VALUES FROM (0) TO (100);
+  CREATE TABLE sib_p_b PARTITION OF sib_p FOR VALUES FROM (100) TO (200);
+  CREATE TABLE sib_p_c PARTITION OF sib_p FOR VALUES FROM (200) TO (300);
+  CREATE TABLE sib_q (a int NOT NULL, b int, c text);
+  INSERT INTO sib_p VALUES (1, 1, 'a'), (101, 1, 'b'), (201, 1, 'c');
 }
 
 teardown
 {
-  DROP TABLE IF EXISTS ac_p, dc_p, ap_p, fk_p, fk_ref;
+  DROP TABLE IF EXISTS ac_p, dc_p, ap_p, fk_p, fk_ref, sib_p, sib_p_a, sib_q;
 }
 
 session s1
@@ -50,6 +62,9 @@ step s1_create_dc_part	{ CREATE TABLE dc_p_7_b0 PARTITION OF dc_p_7 FOR VALUES I
 step s1_count			{ SELECT count(*) FROM ap_p_7_b1; }
 step s1_count_fk		{ SELECT count(*) FROM fk_p_7_b1; }
 step s1_insert_fk_bad	{ INSERT INTO fk_p_7_b1 VALUES (750, 1, 99); }
+step s1_count_sib		{ SELECT count(*) FROM sib_p_b; }
+step s1_count_sib_root	{ SELECT count(*) FROM sib_p; }
+step s1_analyze_sib		{ ANALYZE sib_p_b; }
 step s1_commit			{ COMMIT; }
 
 session s2
@@ -57,6 +72,10 @@ step s2_add_column		{ ALTER TABLE ac_p ADD COLUMN x2 int DEFAULT 2; }
 step s2_drop_pk_column	{ ALTER TABLE dc_p DROP COLUMN c; }
 step s2_add_pk			{ ALTER TABLE ap_p ADD PRIMARY KEY (a, b); }
 step s2_add_fk			{ ALTER TABLE fk_p ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES fk_ref (id); }
+step s2_detach_sib		{ ALTER TABLE sib_p DETACH PARTITION sib_p_a; }
+step s2_owner_sib		{ ALTER TABLE sib_p OWNER TO CURRENT_USER; }
+step s2_only_default_sib	{ ALTER TABLE ONLY sib_p ALTER COLUMN b SET DEFAULT 5; }
+step s2_attach_sib		{ ALTER TABLE sib_p ATTACH PARTITION sib_q FOR VALUES FROM (300) TO (400); }
 
 session s3
 step s3_insert_ac		{ INSERT INTO ac_p VALUES (702, 0, 'r'), (703, 1, 'r'); }
@@ -72,3 +91,7 @@ permutation s1_begin s1_create_dc_part s2_drop_pk_column s1_commit s3_insert_dc 
 permutation s1_begin_rr s1_count s2_add_pk s1_count s1_commit s3_count
 permutation s1_begin_rr s1_count_fk s2_add_fk s1_count_fk s1_commit s3_insert_fk_bad
 permutation s1_begin s1_insert_fk_bad s2_add_fk s1_commit s3_count_fk
+permutation s1_begin s1_count_sib s2_detach_sib s1_count_sib_root s1_commit
+permutation s1_begin s1_count_sib s2_owner_sib s1_commit
+permutation s1_begin s1_count_sib s2_only_default_sib s1_commit
+permutation s1_begin s1_analyze_sib s2_attach_sib s1_commit

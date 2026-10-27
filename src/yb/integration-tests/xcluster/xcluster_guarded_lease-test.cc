@@ -17,6 +17,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager.h"
@@ -38,19 +39,30 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
-DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_bool(TEST_enable_ysql_operation_lease_expiry_check);
+DECLARE_bool(TEST_no_grant_xcluster_guarded_lease);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_persistence_gate);
+DECLARE_bool(enable_ysql_operation_lease);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 
 using namespace std::literals;
 
 namespace yb {
 
+using pgwrapper::LibPqTestBase;
 using pgwrapper::PGConn;
+using pgwrapper::PGConnBuilder;
 using pgwrapper::PgMiniTestBase;
 using pgwrapper::PGOid;
 using pgwrapper::PGUint64;
@@ -80,13 +92,13 @@ class XClusterGuardedLeaseTest : public PgMiniTestBase {
   }
 
   // Stops heartbeats and waits for every TServer's lease to run out.
-  Status LoseLease(const NamespaceId& namespace_id) {
+  Status LoseXClusterLease(const NamespaceId& namespace_id) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
     return WaitForRoleOnAllTServers(namespace_id, XClusterNamespaceInfoPB::UNAVAILABLE);
   }
 
   // Resumes heartbeats and waits for every TServer to hold a lease again.
-  Status RegainLease(const NamespaceId& namespace_id) {
+  Status RegainXClusterLease(const NamespaceId& namespace_id) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
     return WaitForRoleOnAllTServers(namespace_id, XClusterNamespaceInfoPB::NOT_AUTOMATIC_MODE);
   }
@@ -114,12 +126,12 @@ TEST_F(XClusterGuardedLeaseTest, SequenceBumpsBlockedWithoutLease) {
   ASSERT_OK(conn.Execute("CREATE SEQUENCE seq"));
   const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
 
-  ASSERT_OK(LoseLease(namespace_id));
+  ASSERT_OK(LoseXClusterLease(namespace_id));
   ASSERT_NOK_STR_CONTAINS(conn.FetchRow<PGUint64>("SELECT nextval('seq')"), kUnavailableErrorMsg);
   ASSERT_NOK_STR_CONTAINS(
       conn.FetchRow<PGUint64>("SELECT setval('seq', 1, true)"), kUnavailableErrorMsg);
 
-  ASSERT_OK(RegainLease(namespace_id));
+  ASSERT_OK(RegainXClusterLease(namespace_id));
   ASSERT_OK(conn.FetchRow<PGUint64>("SELECT nextval('seq')"));
 }
 
@@ -130,7 +142,7 @@ TEST_F(XClusterGuardedLeaseTest, DdlsBlockedWithoutLease) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
   const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
 
-  ASSERT_OK(LoseLease(namespace_id));
+  ASSERT_OK(LoseXClusterLease(namespace_id));
 
   // With the extension installed, its event trigger refuses to run without a role, so a DDL fails
   // there before reaching the PG client service.
@@ -152,7 +164,7 @@ TEST_F(XClusterGuardedLeaseTest, DdlsBlockedWithoutLease) {
   ASSERT_NOK_STR_CONTAINS(conn.Execute("CREATE SEQUENCE seq2"), kOidCountUnavailableErrorMsg);
   ASSERT_OK(conn.Execute("RESET yb_xcluster_ddl_replication.TEST_replication_role_override"));
 
-  ASSERT_OK(RegainLease(namespace_id));
+  ASSERT_OK(RegainXClusterLease(namespace_id));
   ASSERT_OK(conn.Execute("ALTER TABLE tbl ADD COLUMN b int"));
 }
 
@@ -181,10 +193,10 @@ TEST_F(XClusterGuardedLeaseTest, OidAllocationBlockedWithoutLease) {
   // Only heartbeats stop, so master stays reachable, and the call above left OIDs in the TServer's
   // cache, so this call needs nothing from master.  It can therefore fail only because the TServer
   // no longer holds a lease.
-  ASSERT_OK(LoseLease(namespace_id));
+  ASSERT_OK(LoseXClusterLease(namespace_id));
   ASSERT_NOK_STR_CONTAINS(get_new_object_id(), kOidCountUnavailableErrorMsg);
 
-  ASSERT_OK(RegainLease(namespace_id));
+  ASSERT_OK(RegainXClusterLease(namespace_id));
   ASSERT_OK(get_new_object_id());
 }
 
@@ -266,6 +278,243 @@ TEST_F(XClusterPropagateGuardedInfoTest, PropagateEvenWithDeadTServer) {
   // Once master knows the TServer cannot hold a lease, it is skipped from the start, so a deadline
   // that was too short above now suffices.
   ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(MonoTime::Now() + MonoDelta(3s)));
+}
+
+// Helpers for tests of when the TServer starts Postgres.
+class XClusterGuardedLeasePgTest : public XClusterGuardedLeaseTest {
+ protected:
+  void SetUp() override {
+    // Shortened so that tests can let the YSQL lease expire.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 5000;
+    XClusterGuardedLeaseTest::SetUp();
+    // The TServer notices that its YSQL lease has expired, and pauses Postgres, only while this
+    // check is on.  Keep it off except in LoseYsqlLease, so that the YSQL lease is lost only where
+    // a test asks for it.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
+  }
+
+  tserver::TabletServer& PgTServer() { return *cluster_->mini_tablet_server(kPgTsIndex)->server(); }
+
+  Status ExpectPgNotStarted() {
+    // Postgres has had ample time to start, so a refused connection means the TServer kept it
+    // paused.
+    SleepFor(10s * kTimeMultiplier);
+    SCHECK_EQ(
+        pg_supervisor_->GetState(), YbSubProcessState::kPaused, IllegalState,
+        "Postgres supervisor is not paused");
+    auto conn = ConnectToDB(/*dbname=*/"", /*timeout=*/2);
+    SCHECK(!conn.ok(), IllegalState, "Connected to Postgres that should be paused");
+    return Status::OK();
+  }
+
+  Status WaitForYsqlLease(bool is_live) {
+    return WaitFor(
+        [this, is_live]() -> Result<bool> {
+          return VERIFY_RESULT(PgTServer().GetYSQLLeaseInfo()).is_live == is_live;
+        },
+        30s * kTimeMultiplier, Format("Wait for YSQL lease to be $0", is_live ? "alive" : "lost"));
+  }
+
+  Status LoseYsqlLease() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = true;
+    auto status = WaitForYsqlLease(/*is_live=*/false);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
+    return status;
+  }
+
+  Status RegainYsqlLease() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+    return WaitForYsqlLease(/*is_live=*/true);
+  }
+
+  Status WaitForXClusterLeaseOnAllTServers(bool has_lease) {
+    return WaitFor(
+        [this, has_lease] {
+          for (const auto& tserver : cluster_->mini_tablet_servers()) {
+            if (tserver->server()->GetXClusterContext().HasXClusterGuardedInfoLease() !=
+                has_lease) {
+              return false;
+            }
+          }
+          return true;
+        },
+        30s * kTimeMultiplier,
+        Format("Wait for xCluster lease to be $0", has_lease ? "held" : "lost"));
+  }
+
+  // Makes master withhold the xCluster-guarded information lease from heartbeat responses, then
+  // waits for every TServer's lease to run out.  Unlike LoseXClusterLease, heartbeats keep flowing.
+  Status WithholdXClusterLease() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
+    return WaitForXClusterLeaseOnAllTServers(/*has_lease=*/false);
+  }
+
+  Status GrantXClusterLease() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = false;
+    return WaitForXClusterLeaseOnAllTServers(/*has_lease=*/true);
+  }
+
+  // Connects, waiting for Postgres to start, and runs DDL, which fails on a TServer without the
+  // xCluster lease because the TServer then reports every database's xCluster role as UNAVAILABLE.
+  Status ExpectPgAcceptsDdls() {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.Execute("CREATE TABLE tbl (a int)");
+  }
+};
+
+// Starts the cluster with master withholding the xCluster-guarded information lease.
+class XClusterGuardedLeasePgStartTest : public XClusterGuardedLeasePgTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
+    XClusterGuardedLeasePgTest::SetUp();
+  }
+};
+
+// Checks that a TServer holding a YSQL lease does not start Postgres until it also holds an
+// xCluster-guarded information lease.
+TEST_F(XClusterGuardedLeasePgStartTest, PgWaitsForXClusterLease) {
+  // Wait for the YSQL lease so that only the xCluster lease is missing.
+  ASSERT_OK(WaitForYsqlLease(/*is_live=*/true));
+
+  ASSERT_OK(ExpectPgNotStarted());
+  ASSERT_OK(GrantXClusterLease());
+  ASSERT_OK(ExpectPgAcceptsDdls());
+}
+
+class XClusterGuardedLeasePgStartYsqlLeaseDisabledTest : public XClusterGuardedLeasePgStartTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    XClusterGuardedLeasePgStartTest::SetUp();
+  }
+};
+
+// Checks that with the YSQL lease disabled a TServer still does not start Postgres until it holds
+// an xCluster-guarded information lease.
+TEST_F(XClusterGuardedLeasePgStartYsqlLeaseDisabledTest, PgWaitsForXClusterLease) {
+  ASSERT_OK(ExpectPgNotStarted());
+  ASSERT_OK(GrantXClusterLease());
+  ASSERT_OK(ExpectPgAcceptsDdls());
+}
+
+class XClusterGuardedLeasePgStartGateDisabledTest : public XClusterGuardedLeasePgStartTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_persistence_gate) = false;
+    XClusterGuardedLeasePgStartTest::SetUp();
+  }
+};
+
+// Checks that with the persistence gate disabled Postgres starts without an xCluster-guarded
+// information lease.
+TEST_F(XClusterGuardedLeasePgStartGateDisabledTest, PgStartsWithoutXClusterLease) {
+  // Not ExpectPgAcceptsDdls: DDL needs the xCluster lease to allocate OIDs, gate or no gate.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+}
+
+// Checks that a running TServer that regains its YSQL lease while it has no xCluster-guarded
+// information lease keeps Postgres paused until the xCluster lease returns.
+TEST_F(XClusterGuardedLeasePgTest, YsqlLeaseRegainedWithoutXClusterLease) {
+  ASSERT_OK(WithholdXClusterLease());
+  ASSERT_OK(LoseYsqlLease());
+  // Regaining the YSQL lease takes a new lease epoch, which restarts Postgres.
+  ASSERT_OK(RegainYsqlLease());
+
+  ASSERT_OK(ExpectPgNotStarted());
+  ASSERT_OK(GrantXClusterLease());
+  ASSERT_OK(ExpectPgAcceptsDdls());
+}
+
+// Checks that a TServer keeping Postgres paused for want of an xCluster-guarded information lease
+// does not start it when that lease arrives after the YSQL lease has been lost.
+TEST_F(XClusterGuardedLeasePgTest, XClusterLeaseRegainedAfterYsqlLeaseLost) {
+  // Get Postgres paused with the held flag set, as in YsqlLeaseRegainedWithoutXClusterLease.
+  ASSERT_OK(WithholdXClusterLease());
+  ASSERT_OK(LoseYsqlLease());
+  ASSERT_OK(RegainYsqlLease());
+
+  // Losing the YSQL lease must clear the held flag, so that the xCluster lease's arrival below does
+  // not start Postgres.
+  ASSERT_OK(LoseYsqlLease());
+  ASSERT_OK(GrantXClusterLease());
+  ASSERT_OK(ExpectPgNotStarted());
+
+  ASSERT_OK(RegainYsqlLease());
+  ASSERT_OK(ExpectPgAcceptsDdls());
+}
+
+// Checks that a TServer that loses and regains its xCluster-guarded information lease while
+// Postgres is running leaves Postgres running.
+TEST_F(XClusterGuardedLeasePgTest, XClusterLeaseRegainedWithPgRunning) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto start_time = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT pg_postmaster_start_time()::text"));
+
+  ASSERT_OK(WithholdXClusterLease());
+  ASSERT_OK(GrantXClusterLease());
+  // Give the heartbeats that follow the xCluster lease's return a chance to restart or pause
+  // Postgres.
+  SleepFor(FLAGS_heartbeat_interval_ms * 5ms * kTimeMultiplier);
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SELECT pg_postmaster_start_time()::text")),
+      start_time);
+}
+
+// Runs the real yb-tserver with the connection manager enabled and the YSQL lease disabled,
+// starting with master withholding the xCluster-guarded information lease.
+class XClusterGuardedLeaseConnMgrTest : public LibPqTestBase {
+ protected:
+  // Shortened from 15 s so that a TServer whose connection manager waits for Postgres at startup
+  // gives up quickly.
+  static constexpr auto kConnMgrPgWaitTimeout = 2s;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
+    options->enable_ysql_conn_mgr = true;
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->push_back("--enforce_xcluster_guarded_lease=true");
+      // The YSQL lease is enabled whenever object locking is (see IsYsqlLeaseEnabled).  So turn
+      // object locking off too, along with the flags that require it, as pg_backends-test does.
+      flags->insert(flags->end(), {
+          "--enable_ysql_operation_lease=false",
+          "--enable_object_locking_for_table_locks=false",
+          "--ysql_yb_ddl_transaction_block_enabled=false",
+          "--ysql_yb_enable_ddl_savepoint_support=false",
+          "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
+          "--ysql_enable_concurrent_ddl=false"
+      });
+    }
+    options->extra_master_flags.push_back("--TEST_no_grant_xcluster_guarded_lease=true");
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_conn_mgr_pg_conf_wait_timeout_ms=$0", ToMilliseconds(kConnMgrPgWaitTimeout)));
+  }
+
+  int GetNumTabletServers() const override { return 1; }
+};
+
+// Checks that a TServer running the connection manager with the YSQL lease disabled stays up and
+// refuses connections without an xCluster-guarded information lease, then accepts them once the
+// xCluster lease is granted.
+TEST_F(XClusterGuardedLeaseConnMgrTest, ConnMgrWaitsForXClusterLease) {
+  // A TServer whose connection manager waited for Postgres at startup would have given up, and
+  // exited, by now.
+  SleepFor(3 * kConnMgrPgWaitTimeout * kTimeMultiplier);
+  ASSERT_TRUE(pg_ts->IsProcessAlive());
+  auto refused_conn = PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->ysql_port(),
+      .connect_timeout = 2,
+  }).Connect();
+  ASSERT_NOK(refused_conn);
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_no_grant_xcluster_guarded_lease", "false"));
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE tbl (a int)"));
 }
 
 }  // namespace yb

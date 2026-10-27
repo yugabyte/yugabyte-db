@@ -52,9 +52,15 @@ import {
   getK8sResizeOptions,
   normalizeClusterStorage,
   normalizeDeviceInfo,
+  showInstanceStorageOverrideNote,
   toClusterStorageSpec,
   toResizeStorageSpec
 } from './EditHardwareStorageUtils';
+import {
+  getStorageOverrideZoneChips,
+  hasStorageOverrides
+} from './storageOverridesUtils';
+import { StorageOverrideNote } from './StorageOverridesModal';
 import {
   CloudType,
   DeviceInfo,
@@ -912,6 +918,19 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid || null
   } as InstanceSettingProps;
 
+  const storageOverrideChips =
+    isK8s && hasStorageOverrides(targetCluster) ? getStorageOverrideZoneChips(targetCluster) : [];
+  const showStorageOverrideNote =
+    storageOverrideChips.length > 0 &&
+    !!pendingInstanceSettings &&
+    showInstanceStorageOverrideNote(
+      effectiveMode,
+      normalizeDeviceInfo(defaultInstanceSettings.deviceInfo),
+      normalizeDeviceInfo(pendingInstanceSettings.deviceInfo),
+      normalizeDeviceInfo(defaultInstanceSettings.masterDeviceInfo),
+      normalizeDeviceInfo(effectiveMasterDeviceInfo(pendingInstanceSettings))
+    );
+
   // For the read-replica edit modal, when the user toggles "Keep RR same as primary T-Server",
   // we replace the form defaults with values derived from the primary cluster's T-Server
   // node_spec. This drives both what the form renders and what we submit on apply.
@@ -1085,6 +1104,20 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
               ref={instanceSettingsRef}
             />
           </CreateUniverseContext.Provider>
+          {showStorageOverrideNote && (
+            <StorageOverrideNote
+              dataTestId="EditHardwareConfirmModal-StorageOverrideNote"
+              chips={storageOverrideChips}
+              message={
+                <>
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    {tHw('storageOverrides.note')}
+                  </Box>{' '}
+                  {tHw('storageOverrides.storageChangeExcludedZones')}
+                </>
+              }
+            />
+          )}
         </Box>
       </YBModal>
       <ReviewHardwareChangesModal

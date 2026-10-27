@@ -94,6 +94,8 @@ extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 
 extern void YBCDropIndex(Relation index);
 
+extern bool YbATAltersPartitions(List **subcmds, int subcmds_size);
+
 extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
 								  Oid relationId,

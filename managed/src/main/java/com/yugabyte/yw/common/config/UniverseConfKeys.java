@@ -1797,6 +1797,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Amount of space (in KB) we want as buffer for NFS precheck",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> k8sMasterPvcGcReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.master_pvc_gc_ready_timeout",
+          ScopeType.UNIVERSE,
+          "Kubernetes master volume cleanup ready timeout",
+          "How long removing unused master volumes after a Kubernetes edit waits for the master"
+              + " StatefulSet to have all its pods ready before failing the task",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",
@@ -2044,5 +2053,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Wait Timeout",
           "Timeout for waiting for node agent server to be ready",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sNodeExporterEnabled =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.node_exporter.enabled",
+          ScopeType.UNIVERSE,
+          "Enable the node_exporter sidecar on Kubernetes universes",
+          "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics."
+              + " Pods change at their next Helm operation, for example a Kubernetes overrides"
+              + " edit",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }
