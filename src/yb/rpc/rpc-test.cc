@@ -61,6 +61,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -76,11 +77,14 @@ METRIC_DECLARE_event_stats(rpc_incoming_queue_time);
 METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
+METRIC_DECLARE_counter(rpc_inbound_tls_handshakes_rejected);
+METRIC_DECLARE_counter(rpc_inbound_insecure_connections_rejected);
 
 DEFINE_NON_RUNTIME_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
 DECLARE_bool(TEST_pause_calculator_echo_request);
+DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_bool(enable_rpc_keepalive);
 DECLARE_int32(num_connections_to_server);
@@ -91,6 +95,7 @@ DECLARE_string(vmodule);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(rpc_read_buffer_size);
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_bool(verify_server_endpoint);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -1401,6 +1406,162 @@ TEST_F(TestRpcSecure, ConcurrentOps) {
 
 TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
   RunSecureTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
+}
+
+// Uses the certificates from build-support/generate_test_certificates.sh. The server always
+// presents node.127.0.0.2 from the given directory; endpoint checks are off because the test
+// server listens on 127.0.0.1.
+class TestRpcClientCertificates : public RpcTestBase {
+ public:
+  void SetUp() override {
+    RpcTestBase::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_verify_server_endpoint) = false;
+  }
+
+ protected:
+  static constexpr auto kClientNode = "127.0.0.4";
+
+  // Trusts the CAs in ca_file, and presents node.<node> from cert_dir unless node is empty.
+  Result<std::unique_ptr<SecureContext>> CreateContextFromFiles(
+      RequireClientCertificate require_client_certificate, const std::string& ca_file,
+      const std::string& cert_dir, const std::string& node, const std::string& required_uid = {}) {
+    auto context = std::make_unique<SecureContext>(
+        require_client_certificate, UseClientCertificate(!node.empty()), required_uid);
+    if (node.empty()) {
+      RETURN_NOT_OK(context->AddCertificateAuthorityFile(ca_file));
+      return context;
+    }
+    faststring cert, key;
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(cert_dir, Format("node.$0.crt", node)), &cert));
+    RETURN_NOT_OK(ReadFileToString(
+        Env::Default(), JoinPathSegments(cert_dir, Format("node.$0.key", node)), &key));
+    RETURN_NOT_OK(context->UseCertificates(ca_file, cert, key));
+    return context;
+  }
+
+  Result<std::unique_ptr<SecureContext>> CreateContext(
+      RequireClientCertificate require_client_certificate, const std::string& sub_dir,
+      const std::string& node, const std::string& required_uid = {}) {
+    auto dir = sub_dir.empty() ? GetCertsDir() : JoinPathSegments(GetCertsDir(), sub_dir);
+    return CreateContextFromFiles(
+        require_client_certificate, JoinPathSegments(dir, "ca.crt"), dir, node, required_uid);
+  }
+
+  Status StartServer(const std::string& sub_dir = "", const std::string& required_uid = {}) {
+    server_context_ = VERIFY_RESULT(CreateContext(
+        RequireClientCertificate::kTrue, sub_dir, "127.0.0.2", required_uid));
+    StartTestServerWithGeneratedCode(
+        CreateSecureMessenger("TestServer", server_context_.get(), kDefaultServerMessengerOptions),
+        &server_hostport_);
+    return Status::OK();
+  }
+
+  std::unique_ptr<Messenger> CreateSecureMessenger(
+      const std::string& name, const SecureContext* context,
+      const MessengerOptions& options = kDefaultClientMessengerOptions) {
+    auto builder = CreateMessengerBuilder(name, options);
+    builder.SetListenProtocol(SecureStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
+    builder.AddStreamFactory(
+        SecureStreamProtocol(),
+        SecureStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker(), context));
+    return EXPECT_RESULT(builder.Build());
+  }
+
+  // Calls the server from a client using client_context, or plaintext if it is null.
+  Status CallServer(const SecureContext* client_context) {
+    auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
+        client_context ? CreateSecureMessenger("Client", client_context)
+                       : CreateMessenger("Client"));
+    ProxyCache proxy_cache(client_messenger.get());
+    CalculatorServiceProxy proxy(&proxy_cache, server_hostport_);
+
+    RpcController controller;
+    controller.set_timeout(5s * kTimeMultiplier);
+    rpc_test::AddRequestPB req;
+    req.set_x(10);
+    req.set_y(20);
+    rpc_test::AddResponsePB resp;
+    RETURN_NOT_OK(proxy.Add(req, &resp, &controller));
+    SCHECK_EQ(resp.result(), 30, IllegalState, "Wrong result");
+    return Status::OK();
+  }
+
+  int64_t RejectedHandshakes() {
+    return METRIC_rpc_inbound_tls_handshakes_rejected.Instantiate(metric_entity())->value();
+  }
+
+  int64_t RejectedInsecureConnections() {
+    return METRIC_rpc_inbound_insecure_connections_rejected.Instantiate(metric_entity())->value();
+  }
+
+  std::unique_ptr<SecureContext> server_context_;
+  HostPort server_hostport_;
+};
+
+TEST_F(TestRpcClientCertificates, TrustedClientCertificate) {
+  ASSERT_OK(StartServer());
+  auto client_context = ASSERT_RESULT(CreateContext(
+      RequireClientCertificate::kFalse, "", kClientNode));
+  ASSERT_OK(CallServer(client_context.get()));
+  ASSERT_EQ(RejectedHandshakes(), 0);
+}
+
+TEST_F(TestRpcClientCertificates, NoClientCertificate) {
+  ASSERT_OK(StartServer());
+  auto client_context = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", ""));
+  ASSERT_NOK(CallServer(client_context.get()));
+  ASSERT_GE(RejectedHandshakes(), 1);
+}
+
+TEST_F(TestRpcClientCertificates, ClientCertificateFromAnotherCA) {
+  ASSERT_OK(StartServer());
+  // The client trusts the server's CA, so only the server can fail the handshake.
+  auto ca2_dir = JoinPathSegments(GetCertsDir(), "CA2");
+  auto client_context = ASSERT_RESULT(CreateContextFromFiles(
+      RequireClientCertificate::kFalse, JoinPathSegments(ca2_dir, "combinedCA.crt"), ca2_dir,
+      kClientNode));
+  ASSERT_NOK(CallServer(client_context.get()));
+  ASSERT_GE(RejectedHandshakes(), 1);
+}
+
+TEST_F(TestRpcClientCertificates, MatchingUid) {
+  // The certificates in "named" carry UID uid.yb.
+  ASSERT_OK(StartServer("named", "uid.yb"));
+  auto client_context = ASSERT_RESULT(CreateContext(
+      RequireClientCertificate::kFalse, "named", kClientNode));
+  ASSERT_OK(CallServer(client_context.get()));
+  ASSERT_EQ(RejectedHandshakes(), 0);
+}
+
+TEST_F(TestRpcClientCertificates, WrongUid) {
+  ASSERT_OK(StartServer("named", "another_uid"));
+  auto client_context = ASSERT_RESULT(CreateContext(
+      RequireClientCertificate::kFalse, "named", kClientNode));
+  ASSERT_NOK(CallServer(client_context.get()));
+  ASSERT_GE(RejectedHandshakes(), 1);
+}
+
+TEST_F(TestRpcClientCertificates, PlaintextRejectedEvenIfInsecureAllowed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = true;
+  ASSERT_OK(StartServer());
+  ASSERT_NOK(CallServer(nullptr));
+  ASSERT_GE(RejectedInsecureConnections(), 1);
+}
+
+TEST_F(TestRpcClientCertificates, PlaintextWithoutClientCertificates) {
+  server_context_ = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", "127.0.0.2"));
+  StartTestServerWithGeneratedCode(
+      CreateSecureMessenger("TestServer", server_context_.get(), kDefaultServerMessengerOptions),
+      &server_hostport_);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = true;
+  ASSERT_OK(CallServer(nullptr));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+  ASSERT_NOK(CallServer(nullptr));
+  ASSERT_GE(RejectedInsecureConnections(), 1);
 }
 
 class TestRpcCompression : public RpcTestBase, public testing::WithParamInterface<int> {

@@ -28,6 +28,8 @@
 
 using std::string;
 
+DECLARE_bool(allow_insecure_connections);
+
 DEFINE_NON_RUNTIME_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
 
 DEFINE_NON_RUNTIME_bool(node_to_node_encryption_use_client_certificates, false,
@@ -35,7 +37,9 @@ DEFINE_NON_RUNTIME_bool(node_to_node_encryption_use_client_certificates, false,
     "communication.");
 
 DEFINE_NON_RUNTIME_string(node_to_node_encryption_required_uid, "",
-    "Allow only certificates with specified uid. Empty to allow any.");
+    "Allow only certificates with specified uid. Empty to allow any. The uid is matched against "
+    "the certificate's common name, UID attribute or otherName subject alternative name. It is "
+    "checked on server to server connections too, so every node certificate must carry it.");
 
 DEFINE_NON_RUNTIME_string(certs_dir, "",
     "Directory that contains certificate authority, private key and certificates for "
@@ -105,6 +109,15 @@ Result<std::unique_ptr<SecureContext>> SetupSecureContext(
 
 Result<std::unique_ptr<SecureContext>> SetupInternalSecureContext(
     const string& local_hosts, const std::string& root_dir, MessengerBuilder* messenger_builder) {
+  // allow_insecure_connections defaults to true, so only warn when it was set explicitly.
+  if (FLAGS_use_node_to_node_encryption && FLAGS_node_to_node_encryption_use_client_certificates &&
+      FLAGS_allow_insecure_connections &&
+      !google::GetCommandLineFlagInfoOrDie("allow_insecure_connections").is_default) {
+    LOG(WARNING) << "--allow_insecure_connections=true is ignored for node to node connections "
+                 << "because --node_to_node_encryption_use_client_certificates is set: plaintext "
+                 << "connections will be rejected";
+  }
+
   if (!FLAGS_cert_node_filename.empty()) {
     return VERIFY_RESULT(rpc::SetupSecureContext(
         root_dir, FLAGS_cert_node_filename, SecureContextType::kInternal,
