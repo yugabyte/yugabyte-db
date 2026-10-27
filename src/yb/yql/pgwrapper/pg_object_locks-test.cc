@@ -1200,9 +1200,9 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
 // Test for #32224.
 //
 // A transaction that started before the object locking infra auto flag was promoted keeps running
-// in the legacy mode: it takes no object locks, so the tserver catalog version check is what stops
-// it from using a catalog cache that a breaking DDL (REVOKE here) invalidated. The check must be
-// skipped based on the mode of the request's transaction, not on the tserver's flags.
+// in the legacy mode: it does not rely on object locks, so the tserver catalog version check is
+// what stops it from using a catalog cache that a breaking DDL (REVOKE here) invalidated. The check
+// must be skipped based on the mode of the request's transaction, not on the tserver's flags.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionCheck) {
   constexpr auto kInvalidatedMsg =
       "The catalog snapshot used for this transaction has been invalidated";
