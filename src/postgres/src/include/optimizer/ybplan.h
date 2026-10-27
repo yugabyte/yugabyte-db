@@ -66,3 +66,9 @@ struct PlannerInfo;
 
 extern bool YbIocPushdownPossible(struct PlannerInfo *root,
 								  ModifyTable *node);
+
+extern bool yb_predetermine_index_path_recheck(PlannerInfo *root,
+											   IndexPath *path,
+											   NodeTag scan_tag,
+											   bool xs_want_itup,
+											   int *num_runtime_keys_p);
