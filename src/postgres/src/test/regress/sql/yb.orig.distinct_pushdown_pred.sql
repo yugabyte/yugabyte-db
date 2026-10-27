@@ -125,8 +125,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 \set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > ANY (ARRAY[0, 1]) AND r2 < ANY (ARRAY[1, 2]);'
 \i :run_query
 -- A rechecked condition on a prefix column rejects all rows of a prefix value
--- or none of them, so the prefix stays (#35029).
+-- or none of them, because an index condition is never volatile, so the
+-- prefix stays (#35029).
 \set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r2 > ANY (ARRAY[0, 1]);'
+\i :run_query
+-- With the fold on, DocDB applies the IN list and the ranges exactly, but the
+-- planner predicts the recheck by binding without the fold, so r2 joins the
+-- prefix anyway (#35029).
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;'
 \i :run_query
 -- With the fold off, DocDB binds the IN list and leaves the ranges to the
 -- recheck (#35029).
@@ -134,6 +140,18 @@ SET yb_enable_advanced_index_cond_fold = off;
 \set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;'
 \i :run_query
 RESET yb_enable_advanced_index_cond_fold;
+-- DocDB applies this row comparison exactly, but the planner predicts a
+-- recheck for every row comparison, so r2 joins the prefix anyway (#35029).
+\set query ':P SELECT DISTINCT r1 FROM t WHERE (r1, r2) > (0, 1);'
+\i :run_query
+-- A column equal to a constant stays in the prefix when the scan leaves the
+-- equality to the recheck, as with a float8 constant, which DocDB does not
+-- bind to a real column (#35029).
+CREATE TABLE t_real (a int, r real, b int, PRIMARY KEY (a ASC, r ASC, b ASC));
+INSERT INTO t_real SELECT a, r, b FROM generate_series(1, 2) a, unnest(ARRAY[0.25, 0.5]::real[]) r, generate_series(1, 3) b;
+\set query ':P SELECT DISTINCT a FROM t_real WHERE r = 0.5::float8;'
+\i :run_query
+DROP TABLE t_real;
 -- Cannot eliminate r2 here since the query requires all distinct values of r2 and there isn't
 -- one distinct value of r2 unlike constants.
 \set query ':P SELECT DISTINCT r2 FROM t WHERE r2 < 5;'

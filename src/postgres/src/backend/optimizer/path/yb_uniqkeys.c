@@ -490,13 +490,14 @@ yb_index_clauses_might_recheck(PlannerInfo *root, IndexOptInfo *index,
  * 'index' with 'index_clauses', as yb_get_distinct_prefixlen does.
  *
  * The prefix leaves out the columns that only index conditions read, because
- * DocDB applies the index conditions before it skips to the next prefix
- * value.  A condition the scan leaves to the recheck is applied after the
- * skip, so it can reject the one row DocDB returns for a prefix value while a
- * skipped row would pass.  The executor's predetermination says whether the
- * scan might recheck, not which condition, so when it might and an index
- * condition reads a column past the prefix, every index condition counts as a
- * non-index predicate.
+ * DocDB applies the index conditions before it skips to the next prefix value.
+ * A condition the scan leaves to the recheck is applied after the skip, so it
+ * can reject the one row DocDB returns for a prefix value while a skipped row
+ * would pass.  A condition that reads only prefix columns accepts all rows of
+ * a prefix value or none, because an index condition is never volatile.  The
+ * executor's predetermination says whether the scan might recheck, not which
+ * condition, so when it might and an index condition reads a column past the
+ * prefix, every index condition counts as a non-index predicate.
  */
 int
 yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,

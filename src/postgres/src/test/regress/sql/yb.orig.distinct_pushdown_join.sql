@@ -280,5 +280,13 @@ ANALYZE distinct_recheck_outer;
 -- DocDB binds a plain range, so the prefix stays (#35029).
 \set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;'
 \i :run_query
+-- Two batched join conditions bind as a row IN list, which leaves the IN list
+-- on k to the recheck, but k is a join column, so the prefix already holds it
+-- (#35029).
+CREATE TABLE distinct_recheck_outer2 (x int, y int);
+INSERT INTO distinct_recheck_outer2 VALUES (0, 1), (100, 2), (200, 3), (300, 4);
+ANALYZE distinct_recheck_outer2;
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);'
+\i :run_query
 
-DROP TABLE distinct_recheck_inner, distinct_recheck_outer;
+DROP TABLE distinct_recheck_inner, distinct_recheck_outer, distinct_recheck_outer2;
