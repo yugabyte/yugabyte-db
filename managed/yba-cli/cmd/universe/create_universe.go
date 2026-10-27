@@ -164,7 +164,7 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		rootCACertUUID := ""
-		rootCA := v1.GetString("client-root-ca")
+		rootCA := v1.GetString("root-ca")
 
 		// find the root certficate UUID from the name
 		if len(rootCA) != 0 {
@@ -183,6 +183,24 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
+		// A root certificate is used only when its TLS path is on. If only one is given, or
+		// node-to-node TLS is off, the client root certificate is used for both.
+		if !v1.GetBool("enable-client-to-node-encrypt") {
+			clientRootCACertUUID = ""
+		}
+		if len(rootCACertUUID) == 0 ||
+			(!v1.GetBool("enable-node-to-node-encrypt") && len(clientRootCACertUUID) != 0) {
+			rootCACertUUID = clientRootCACertUUID
+		}
+		rootAndClientRootCASame := len(clientRootCACertUUID) == 0 ||
+			rootCACertUUID == clientRootCACertUUID
+		if !rootAndClientRootCASame &&
+			strings.EqualFold(v1.GetString("provider-code"), util.K8sProviderType) {
+			logrus.Fatalf(formatter.Colorize(
+				"Kubernetes universes need the same --root-ca and --client-root-ca\n",
+				formatter.RedColor))
+		}
+
 		opType := buildKMSConfigs(authAPI)
 
 		cpuArch := v1.GetString("cpu-architecture")
@@ -199,12 +217,13 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		requestBody := ybaclient.UniverseConfigureTaskParams{
-			RootCA:             util.GetStringPointer(rootCACertUUID),
-			ClientRootCA:       util.GetStringPointer(clientRootCACertUUID),
-			Clusters:           clusters,
-			CommunicationPorts: communicationPorts,
-			EnableYbc:          util.GetBoolPointer(enableYbc),
-			Arch:               util.GetStringPointer(strings.ToLower(cpuArch)),
+			RootCA:                  util.GetStringPointer(rootCACertUUID),
+			ClientRootCA:            util.GetStringPointer(clientRootCACertUUID),
+			Clusters:                clusters,
+			CommunicationPorts:      communicationPorts,
+			EnableYbc:               util.GetBoolPointer(enableYbc),
+			Arch:                    util.GetStringPointer(strings.ToLower(cpuArch)),
+			RootAndClientRootCASame: util.GetBoolPointer(rootAndClientRootCASame),
 		}
 
 		if !util.IsEmptyString(kmsConfigUUID) {
