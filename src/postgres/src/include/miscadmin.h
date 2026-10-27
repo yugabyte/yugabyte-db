@@ -428,7 +428,11 @@ typedef enum BackendType
 
 /*
  * YB: include YB_* values appended after B_LOGGER.  log_min_messages[] and
- * other per-BackendType arrays are indexed by MyBackendType.
+ * other per-BackendType arrays are indexed by MyBackendType and built from
+ * postmaster/proctypelist.h.
+ * postmaster.c's BackendTypeMask is a uint32 bitmask, and requires
+ * BACKEND_NUM_TYPES < 32. So there's room for one more type before the mask
+ * needs widening.
  */
 #define BACKEND_NUM_TYPES (YB_XCLUSTER_SETUP_BACKEND + 1)
 

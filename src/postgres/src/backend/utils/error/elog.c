@@ -3096,24 +3096,16 @@ check_log_min_messages(char **newval, void **extra, GucSource source)
 	bool		assigned[BACKEND_NUM_TYPES] = {0};
 	int			defaultlevel = -1;	/* -1 means not assigned */
 
-	/* YB: sized to BACKEND_NUM_TYPES so YB_* values after B_LOGGER have slots. */
-	const char *const process_types[BACKEND_NUM_TYPES] = {
+	const char *const process_types[] = {
 #define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach) \
 		[bktype] = bkcategory,
 #include "postmaster/proctypelist.h"
 #undef PG_PROCTYPE
-		/* YB: types after B_LOGGER are not listed in proctypelist.h. */
-		[YB_YSQL_CONN_MGR] = "backend",
-		[YB_YSQL_CONN_MGR_WAL_SENDER] = "backend",
-		[YB_YSQL_CONN_MGR_CTRL] = "backend",
-		[YB_AUTO_ANALYZE_BACKEND] = "backend",
-		[YB_INDEX_BACKFILL_DDL] = "backend",
-		[YB_MATVIEW_REFRESH_DDL] = "backend",
-		[YB_RELCACHE_INIT_BACKEND] = "backend",
-		[YB_GLOBAL_VIEW_BACKEND] = "backend",
-		[YB_XCLUSTER_DDL_QUEUE_BACKEND] = "backend",
-		[YB_XCLUSTER_SETUP_BACKEND] = "backend",
 	};
+
+	/* YB: catch a BackendType added without a proctypelist.h entry. */
+	StaticAssertDecl(lengthof(process_types) == BACKEND_NUM_TYPES,
+					 "process_types[] must cover every BackendType");
 
 	/* Need a modifiable copy of string. */
 	rawstring = guc_strdup(LOG, *newval);
