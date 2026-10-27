@@ -3055,6 +3055,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
   uint64_t publication_refresh_time = resp.publication_refresh_time();
   bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
+  uint64_t publication_refresh_record_time = resp.publication_refresh_record_time();
+  const auto& publication_refresh_txn_id = resp.publication_refresh_txn_id();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3203,7 +3205,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
       .publication_refresh_time = publication_refresh_time,
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
+      .publication_refresh_record_time = publication_refresh_record_time,
+      .publication_refresh_txn_id = {},
   };
+  if (!publication_refresh_txn_id.empty()) {
+    snprintf(
+        (*record_batch)->publication_refresh_txn_id,
+        sizeof((*record_batch)->publication_refresh_txn_id), "%s",
+        publication_refresh_txn_id.c_str());
+  }
 
   if (row_count > 0) {
     VLOG(1) << "Summary of the GetConsistentChangesResponsePB response\n"

@@ -68,6 +68,23 @@ static bool explicit_alter_publication_detected = false;
 /* The time at which the list of tables in the publication needs to be provided to the VWAL. */
 static uint64_t publication_refresh_time = 0;
 
+/*
+ * record_time of the catalog write that triggered the publication refresh.
+ */
+static uint64_t publication_refresh_record_time = 0;
+static char publication_refresh_txn_id[37] = "";
+
+/*
+ * Returned by YBCReadRecord right after it handles an explicit publication
+ * refresh. It takes the transaction and LSN of the last record returned, which
+ * belongs to the transaction of the catalog write that triggered the refresh:
+ * that transaction's BEGIN sorts before the write and is always sent first.
+ * Its xid and lsn are reset at the start of each session.
+ */
+static YbVirtualWalRecord publication_refresh_record = {
+	.action = YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH,
+};
+
 typedef struct YbUnackedTransactionInfo
 {
 	TransactionId xid;
@@ -114,7 +131,9 @@ static void YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables);
 
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
-static void YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht);
+static void YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht,
+										   uint64_t in_txn_limit_ht,
+										   const char *docdb_txn_id);
 static void YbResetVirtualWalCatalogSnapshot(void);
 
 static void PreProcessBeforeFetchingNextBatch();
@@ -234,6 +253,10 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	needs_publication_table_list_refresh = false;
 	explicit_alter_publication_detected = false;
+	publication_refresh_record_time = 0;
+	publication_refresh_txn_id[0] = '\0';
+	publication_refresh_record.lsn = InvalidXLogRecPtr;
+	publication_refresh_record.xid = InvalidTransactionId;
 	if (yb_enable_consistent_replication_from_hash_range &&
 		slot_hash_range != NULL)
 		pfree(slot_hash_range);
@@ -263,6 +286,10 @@ YBCDestroyVirtualWal()
 	last_filtered_commit_lsn = InvalidXLogRecPtr;
 	needs_publication_table_list_refresh = false;
 	explicit_alter_publication_detected = false;
+	publication_refresh_record_time = 0;
+	publication_refresh_txn_id[0] = '\0';
+	publication_refresh_record.lsn = InvalidXLogRecPtr;
+	publication_refresh_record.xid = InvalidTransactionId;
 
 	/* Reset catalog snapshot set by InitVirtualWal. */
 	YbResetVirtualWalCatalogSnapshot();
@@ -374,17 +401,29 @@ YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables)
 }
 
 static void
-YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht)
+YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
+							   const char *docdb_txn_id)
 {
 	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
 	{
+		uint64_t	read_time = read_time_ht;
+
+		if (in_txn_limit_ht != PG_UINT64_MAX)
+		{
+			read_time = read_time_ht - 1;
+
+			/* in_txn_limit_ht and docdb_txn_id must be set together. */
+			Assert(docdb_txn_id != NULL && docdb_txn_id[0] != '\0');
+		}
+
 		elog(DEBUG2,
 			 "Setting historical read context for catalog snapshot to "
-			 "read_time_ht: %" PRIu64,
-			 read_time_ht);
-		YBCSetHistoricalReadContextAndInvalidateCaches(read_time_ht,
-														 PG_UINT64_MAX,
-														 "" /* docdb_txn_id */ );
+			 "read_time_ht: %" PRIu64 ", in_txn_limit_ht: %" PRIu64
+			 ", docdb_txn_id: %s",
+			 read_time, in_txn_limit_ht, docdb_txn_id);
+		YBCSetHistoricalReadContextAndInvalidateCaches(read_time,
+													   in_txn_limit_ht,
+													   docdb_txn_id);
 		CatalogCacheFlushCatalog(PublicationRelationId);
 	}
 	else
@@ -420,7 +459,8 @@ InitVirtualWal(List *publication_names,
 		elog(DEBUG2,
 			 "Setting catalog snapshot to initial_record_commit_time for %" PRIu64,
 			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht,
+									   PG_UINT64_MAX, "");
 	}
 	else
 	{
@@ -428,7 +468,8 @@ InitVirtualWal(List *publication_names,
 			 "Setting catalog snapshot to last_pub_refresh_time for "
 			 "InitVirtualWal: %" PRIu64,
 			 MyReplicationSlot->data.yb_last_pub_refresh_time);
-		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_last_pub_refresh_time);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_last_pub_refresh_time,
+									   PG_UINT64_MAX, "");
 	}
 
 	/*
@@ -486,7 +527,8 @@ InitVirtualWal(List *publication_names,
 		elog(DEBUG2,
 			 "Setting catalog snapshot to initial_record_commit_time for %" PRIu64,
 			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
-		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht,
+									   PG_UINT64_MAX, "");
 	}
 
 	pfree(table_oids);
@@ -560,6 +602,25 @@ YBCReadRecord(List *publication_names)
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
 	{
+		/*
+		 * The last GetConsistentChanges response reported an explicit
+		 * publication change. Queue a record in the reorderbuffer to
+		 * invalidate the publication info when the transaction is replayed.
+		 *
+		 * Until a record is returned in this session, nothing is queued for
+		 * replay and the record has no transaction to go to, so the flag stays
+		 * set: a table list refresh below invalidates the caches directly,
+		 * otherwise the record follows the next records returned.
+		 */
+		if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+			explicit_alter_publication_detected &&
+			TransactionIdIsValid(publication_refresh_record.xid))
+		{
+			explicit_alter_publication_detected = false;
+			MemoryContextSwitchTo(caller_context);
+			return &publication_refresh_record;
+		}
+
 		PreProcessBeforeFetchingNextBatch();
 
 		if (needs_publication_table_list_refresh)
@@ -571,6 +632,15 @@ YBCReadRecord(List *publication_names)
 			 * transaction.
 			 */
 			bool		is_in_txn = IsTransactionOrTransactionBlock();
+			uint64_t	in_txn_limit = PG_UINT64_MAX;
+			const char *docdb_txn_id = "";
+
+			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+				publication_refresh_record_time != 0)
+			{
+				in_txn_limit = publication_refresh_record_time;
+				docdb_txn_id = publication_refresh_txn_id;
+			}
 
 			if (!is_in_txn)
 				StartTransactionCommand();
@@ -579,9 +649,11 @@ YBCReadRecord(List *publication_names)
 				Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
-				 "Setting catalog snapshot to new pub_refresh_time: %" PRIu64,
-				 publication_refresh_time);
-			YbSetVirtualWalCatalogSnapshot(publication_refresh_time);
+				 "Setting catalog snapshot to new pub_refresh_time: %" PRIu64
+				 ", record_time: %" PRIu64,
+				 publication_refresh_time, publication_refresh_record_time);
+			YbSetVirtualWalCatalogSnapshot(publication_refresh_time, in_txn_limit,
+										   docdb_txn_id);
 
 			if (explicit_alter_publication_detected)
 			{
@@ -633,13 +705,20 @@ YBCReadRecord(List *publication_names)
 	 * The GetConsistentChanges response has indicated that it is time to
 	 * refresh the publication's table list. Before calling the next
 	 * GetConsistentChanges get the table list as of time
-	 * publication_refresh_time and notify the updated list to Virtual Wal.
+	 * publication_refresh_time and notify the updated list to Virtual WAL.
+	 * With transactional DDL, the response can instead report only an explicit
+	 * publication change that leaves the table list as it is.
 	 */
-	if (cached_records && cached_records->needs_publication_table_list_refresh)
+	if (cached_records &&
+		(cached_records->needs_publication_table_list_refresh ||
+		 cached_records->explicit_alter_publication_detected))
 	{
 		needs_publication_table_list_refresh =
 			cached_records->needs_publication_table_list_refresh;
 		publication_refresh_time = cached_records->publication_refresh_time;
+		publication_refresh_record_time = cached_records->publication_refresh_record_time;
+		strlcpy(publication_refresh_txn_id, cached_records->publication_refresh_txn_id,
+				sizeof(publication_refresh_txn_id));
 		explicit_alter_publication_detected =
 			cached_records->explicit_alter_publication_detected;
 	}
@@ -658,6 +737,8 @@ YBCReadRecord(List *publication_names)
 	last_getconsistentchanges_response_empty = false;
 
 	record = &cached_records->rows[cached_records_last_sent_row_idx++];
+	publication_refresh_record.lsn = record->lsn;
+	publication_refresh_record.xid = record->xid;
 
 	MemoryContextSwitchTo(caller_context);
 
@@ -777,6 +858,8 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+			yb_switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
 			yb_switch_fallthrough();
