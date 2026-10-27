@@ -252,12 +252,13 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
+- Alter type is not supported for columns that are part of the partition key (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams, or xCluster replication when it requires data on disk to change. See [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
 
 ##### Table rewrites
 
-Altering a column's type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite), and any indexes that contain this column when the underlying storage format changes or if the data changes.
+Altering a column's type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite) when the underlying storage format changes or if the data changes. A table rewrite also rebuilds all indexes that contain the altered column.
 
 The following type changes commonly require a table rewrite:
 
@@ -273,7 +274,7 @@ The following type changes commonly require a table rewrite:
 | REAL         | NUMERIC        | Different precision and format.                                       |
 | NUMERIC(p,s) | NUMERIC(p2,s2) | Requires data changes if scale is changed or if precision is smaller. |
 
-The following type changes do not require a rewrite when there is no associated index table on the column. When there is an associated index table on the column, a rewrite is performed on the index table alone but not on the main table.
+The following type changes do not require a table rewrite:
 
 | From              |  To                   | Notes                  |
 | ------------ | ------------------ | ------------------------------------------------------ |
@@ -300,6 +301,21 @@ For example, the following ALTER TYPE statements would cause a table rewrite:
 The following ALTER TYPE statement does not cause a table rewrite:
 
 - ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51); -- from VARCHAR(50)
+
+##### Index rebuilds without a table rewrite
+
+When an alter type operation does not require a table rewrite, indexes that contain the altered column are handled as follows:
+
+- **Index reused**: the index is not rebuilt. For example, a plain index on a VARCHAR(n) column altered to VARCHAR(m) with m > n, or to TEXT.
+- **Index rebuilt**: the index is dropped and recreated, but the main table is not rewritten. For example, an expression or partial index that references the altered column, or a change in the column collation.
+- **Index not affected**: the index does not contain the altered column.
+
+For example, the following ALTER TYPE statement does not cause a table rewrite, but rebuilds the expression index `test_lower_a_idx`:
+
+- CREATE INDEX test_lower_a_idx ON test ((lower(a)));
+  ALTER TABLE test ALTER COLUMN a TYPE TEXT; -- from VARCHAR(51)
+
+In versions earlier than v2024.2.9.0, all indexes that contain the altered column are rebuilt, even when the index can be reused. See [#24007](https://github.com/yugabyte/yugabyte-db/issues/24007).
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 

@@ -309,9 +309,9 @@ The following ALTER TYPE statement does not cause a table rewrite:
 
 When an alter type operation does not require a table rewrite, indexes that contain the altered column are handled as follows:
 
-- **Compatible index** (for example, a plain index on a VARCHAR(n) column altered to VARCHAR(m) with m > n, or to TEXT): the index is not rebuilt. Only the index catalog metadata is updated. The index OID and relfilenode do not change.
-- **Incompatible index** (for example, an expression index or a partial index that references the altered column, or a change in the column collation): the index is dropped and rebuilt. The main table is not rewritten.
-- **Unrelated index** (an index that does not contain the altered column): the index is not changed.
+- **Index reused**: the index is not rebuilt. For example, a plain index on a VARCHAR(n) column altered to VARCHAR(m) with m > n, or to TEXT.
+- **Index rebuilt**: the index is dropped and recreated, but the main table is not rewritten. For example, an expression or partial index that references the altered column, or a change in the column collation.
+- **Index not affected**: the index does not contain the altered column.
 
 For example, the following ALTER TYPE statement does not cause a table rewrite, but rebuilds the expression index `test_lower_a_idx`:
 
