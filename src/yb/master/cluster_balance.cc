@@ -737,6 +737,7 @@ ClusterLoadBalancer::CollectUnderReplicatedTablets() {
 void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
     int& remaining_adds, bool& task_added, TabletId& out_tablet_id, TabletServerId& out_to_ts) {
   auto under_replicated_tablets = CollectUnderReplicatedTablets();
+  PerTableLoadState* previous_state = nullptr;
   for (const auto& under_replicated_tablet : under_replicated_tablets) {
     if (remaining_adds == 0) {
       break;
@@ -748,8 +749,12 @@ void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
           << "Skipping adding replicas. Only leader balancing table " << state_->table_id_;
       continue;
     }
-    // Perform a sort to handle any global changes from previous underreplicated adds.
-    state_->SortLoad();
+    // Consecutive adds to this table already maintained its ordering. Switching tables can
+    // change global tie-breakers, so refresh the ordering then.
+    if (state_ != previous_state) {
+      state_->SortLoad();
+      previous_state = state_;
+    }
 
     auto handle_add = HandleAddIfMissingPlacement(under_replicated_tablet.tablet_id, &out_to_ts);
     if (handle_add.ok() && *handle_add) {
@@ -1203,6 +1208,21 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
     return false;
   }
 
+  struct TServerLoad {
+    size_t table;
+    int global;
+  };
+  std::vector<std::optional<TServerLoad>> loads(state_->sorted_load_.size());
+  // Loads do not change until a move is found. Cache lazily so short searches stay cheap.
+  auto load_at = [&](size_t index) -> const TServerLoad& {
+    auto& load = loads[index];
+    if (!load) {
+      const auto& uuid = state_->sorted_load_[index];
+      load = TServerLoad{state_->GetLoad(uuid), global_state_->GetGlobalLoad(uuid)};
+    }
+    return *load;
+  };
+
   // Start with two indices pointing at left and right most ends of the sorted_load_ structure.
   //
   // We will try to find two TSs that have at least one tablet that can be moved amongst them, from
@@ -1236,7 +1256,9 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
-      ssize_t load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
+      const auto& low_load = load_at(left);
+      const auto& high_load = load_at(right);
+      ssize_t load_variance = high_load.table - low_load.table;
       bool is_global_balancing_move = false;
 
       // Check for state change or end conditions.
@@ -1248,8 +1270,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         }
         // If there is load variance, then there is a chance we can benefit from globally balancing.
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
-          int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
-                                     global_state_->GetGlobalLoad(low_load_uuid);
+          int global_load_variance = high_load.global - low_load.global;
           if (global_load_variance < state_->options_->kMinLoadVarianceToBalance) {
             if (right == last_pos) {
               return false;
@@ -1298,10 +1319,9 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
                 << *from_ts << " to ts " << *to_ts;
         auto reason = is_global_balancing_move ?
             Format("Source tserver has more tablets (globally) than destination ($0 > $1)",
-                   global_state_->GetGlobalLoad(high_load_uuid),
-                   global_state_->GetGlobalLoad(low_load_uuid)) :
+                   high_load.global, low_load.global) :
             Format("Source tserver has more tablets for this table than destination ($0 > $1)",
-                   state_->GetLoad(high_load_uuid), state_->GetLoad(low_load_uuid));
+                   high_load.table, low_load.table);
         RETURN_NOT_OK(AddOrMoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid, reason));
         // Update global state if necessary.
         if (!is_global_balancing_move) {
@@ -1619,7 +1639,6 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
 
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
-    auto comparator = PerTableLoadState::LoadComparator(state_, tablet_id);
     std::vector<TabletServerId> sorted_ts;
     // Don't include any tservers where this tablet is still starting.
     std::copy_if(
@@ -1631,9 +1650,9 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
       return STATUS_FORMAT(IllegalState, "No tservers to remove from over-replicated "
                            "tablet $0", tablet_id);
     }
-    // Sort in reverse to first try to remove a replica from the highest loaded TS.
-    sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
-    std::string remove_candidate = sorted_ts[0];
+    state_->SortLoad(&sorted_ts, tablet_id);
+    // First try to remove a replica from the highest loaded TS.
+    std::string remove_candidate = sorted_ts.back();
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.

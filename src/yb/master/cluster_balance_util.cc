@@ -14,6 +14,8 @@
 #include "yb/master/cluster_balance_util.h"
 
 #include <algorithm>
+#include <string_view>
+#include <tuple>
 
 #include "yb/gutil/map-util.h"
 
@@ -21,6 +23,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.pb.h"
 
+#include "yb/util/algorithm_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
@@ -42,6 +45,54 @@ namespace yb {
 namespace master {
 
 namespace {
+
+auto ReplicaLoadKey(
+    const PerTableLoadState& state, const TabletServerId& uuid,
+    optional_ref<const TabletId> tablet_id = std::nullopt) {
+  return std::tuple(
+      state.GetLoad(uuid), state.global_state_->GetGlobalLoad(uuid),
+      tablet_id ? state.GetTabletDriveLoad(uuid, *tablet_id) : 0, std::string_view(uuid));
+}
+
+auto LeaderLoadKey(const PerTableLoadState& state, const TabletServerId& uuid) {
+  return std::tuple(
+      state.global_state_->leader_blacklisted_servers_.contains(uuid), state.GetLeaderLoad(uuid),
+      state.global_state_->GetGlobalLeaderLoad(uuid), std::string_view(uuid));
+}
+
+// With updated_ts, all other keys must still be in sorted order.
+template <class KeyExtractor>
+void SortTabletServers(
+    std::vector<TabletServerId>* servers, const KeyExtractor& key,
+    optional_ref<const TabletServerId> updated_ts = std::nullopt) {
+  if (servers->size() < 2) {
+    return;
+  }
+  if (updated_ts) {
+    auto position = std::find(servers->begin(), servers->end(), updated_ts->get());
+    if (position == servers->end()) {
+      return;
+    }
+    const auto updated_key = key(*position);
+    auto less = [&key](const auto& uuid, const auto& rhs) { return key(uuid) < rhs; };
+    if (position != servers->begin() && updated_key < key(*(position - 1))) {
+      auto insertion = std::lower_bound(servers->begin(), position, updated_key, less);
+      std::rotate(insertion, position, position + 1);
+    } else if (position + 1 != servers->end() && key(*(position + 1)) < updated_key) {
+      auto insertion = std::lower_bound(position + 1, servers->end(), updated_key, less);
+      std::rotate(position, position + 1, insertion);
+    }
+    return;
+  }
+  auto order = StableSorted(*servers, key);
+  std::vector<TabletServerId> sorted;
+  sorted.reserve(servers->size());
+  for (const auto& entry : order) {
+    sorted.push_back(std::move((*servers)[entry.original_index]));
+  }
+  *servers = std::move(sorted);
+}
+
 Result<bool> IsReplicaConsensusReady(
     const std::string& ts_uuid, const TabletId& tablet_id, const TabletReplica& replica) {
   switch (replica.state) {
@@ -158,56 +209,6 @@ PerTableLoadState::PerTableLoadState(GlobalLoadState* global_state)
       global_state_(global_state) {}
 
 PerTableLoadState::~PerTableLoadState() {}
-
-bool PerTableLoadState::LeaderLoadComparator::operator()(
-    const TabletServerId& a, const TabletServerId& b) {
-  // Primary criteria: whether tserver is leader blacklisted.
-  auto a_leader_blacklisted =
-      global_state_->leader_blacklisted_servers_.find(a) !=
-          global_state_->leader_blacklisted_servers_.end();
-  auto b_leader_blacklisted =
-      global_state_->leader_blacklisted_servers_.find(b) !=
-          global_state_->leader_blacklisted_servers_.end();
-  if (a_leader_blacklisted != b_leader_blacklisted) {
-    return !a_leader_blacklisted;
-  }
-
-  // Use global leader load as tie-breaker.
-  auto a_load = state_->GetLeaderLoad(a);
-  auto b_load = state_->GetLeaderLoad(b);
-  if (a_load == b_load) {
-    a_load = state_->global_state_->GetGlobalLeaderLoad(a);
-    b_load = state_->global_state_->GetGlobalLeaderLoad(b);
-    if (a_load == b_load) {
-      return a < b;
-    }
-  }
-  // Secondary criteria: tserver leader load.
-  return a_load < b_load;
-}
-
-bool PerTableLoadState::CompareLoad(
-    const TabletServerId& a, const TabletServerId& b, optional_ref<const TabletId> tablet_id) {
-  auto load_a = GetLoad(a);
-  auto load_b = GetLoad(b);
-  if (load_a != load_b) {
-    return load_a < load_b;
-  }
-  // Use global load as a heuristic to help break ties.
-  load_a = global_state_->GetGlobalLoad(a);
-  load_b = global_state_->GetGlobalLoad(b);
-  if (load_a != load_b) {
-    return load_a < load_b;
-  }
-  if (tablet_id) {
-    load_a = GetTabletDriveLoad(a, *tablet_id);
-    load_b = GetTabletDriveLoad(b, *tablet_id);
-    if (load_a != load_b) {
-      return load_a < load_b;
-    }
-  }
-  return a < b;
-}
 
 size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
@@ -568,6 +569,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     }
   }
   sorted_load_.push_back(ts_uuid);
+  load_order_initialized_ = false;
   if (options_->type == ReplicaType::kReadOnly) {
     return;
   }
@@ -601,6 +603,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     }
 
     sorted_leader_load_[priority].push_back(ts_desc->permanent_uuid());
+    leader_load_order_initialized_ = false;
   }
 }
 
@@ -865,7 +868,7 @@ Status PerTableLoadState::AddReplica(const TabletId& tablet_id, const TabletServ
 
   RETURN_NOT_OK(AddStartingTablet(tablet_id, to_ts));
   tablets_added_.insert(tablet_id);
-  SortLoad();
+  SortLoad(to_ts);
   return Status::OK();
 }
 
@@ -891,21 +894,37 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
   tablets_over_replicated_.erase(tablet_id_key);
   per_tablet_meta_[tablet_id].is_over_replicated = false;
   tablets_wrong_placement_.erase(tablet_id_key);
-  SortLoad();
+  SortLoad(from_ts);
   return Status::OK();
 }
 
-void PerTableLoadState::SortLoad() {
-  sort(sorted_load_.begin(), sorted_load_.end(), LoadComparator(this, std::nullopt));
-
-  if (global_state_->drive_aware_) {
-    SortDriveLoad();
+void PerTableLoadState::SortLoad(optional_ref<const TabletServerId> updated_ts) {
+  if (!load_order_initialized_) {
+    updated_ts = std::nullopt;
   }
+  // Refresh drives before reordering: updated_ts may refer to an element of sorted_load_.
+  if (global_state_->drive_aware_) {
+    SortDriveLoad(updated_ts);
+  }
+  SortTabletServers(&sorted_load_, [this](const TabletServerId& uuid) {
+    return ReplicaLoadKey(*this, uuid);
+  }, updated_ts);
+  load_order_initialized_ = true;
 }
 
-void PerTableLoadState::SortDriveLoad() {
+void PerTableLoadState::SortLoad(
+    std::vector<TabletServerId>* servers, optional_ref<const TabletId> tablet_id) const {
+  SortTabletServers(servers, [this, tablet_id](const TabletServerId& uuid) {
+    return ReplicaLoadKey(*this, uuid, tablet_id);
+  });
+}
+
+void PerTableLoadState::SortDriveLoad(optional_ref<const TabletServerId> updated_ts) {
   // Sort drives on each ts by the tablets count.
   for (const auto& ts : sorted_load_) {
+    if (updated_ts && ts != updated_ts->get()) {
+      continue;
+    }
     auto& ts_meta = per_ts_meta_[ts];
     vector<std::pair<string, uint64>> drive_loads;
     bool empty_path_found = false;
@@ -952,29 +971,41 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
     return STATUS_FORMAT(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
                           tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
   }
-  per_tablet_meta_[tablet_id].leader_uuid = to_ts;
+  // Reordering the source can invalidate references to the destination or its drive.
+  const auto destination = to_ts;
+  const auto destination_path = to_ts_path;
+  per_tablet_meta_[tablet_id].leader_uuid = destination;
   RETURN_NOT_OK(RemoveLeaderTablet(tablet_id, from_ts));
-  if (!to_ts.empty()) {
-    RETURN_NOT_OK(AddLeaderTablet(tablet_id, to_ts, to_ts_path));
+  SortLeaderLoad(from_ts);
+  if (!destination.empty()) {
+    RETURN_NOT_OK(AddLeaderTablet(tablet_id, destination, destination_path));
+    SortLeaderLoad(destination);
   }
-  SortLeaderLoad();
   return Status::OK();
 }
 
-void PerTableLoadState::SortLeaderLoad() {
-  for (auto& leader_set : sorted_leader_load_) {
-    sort(leader_set.begin(), leader_set.end(), LeaderLoadComparator(this, global_state_));
+void PerTableLoadState::SortLeaderLoad(optional_ref<const TabletServerId> updated_ts) {
+  if (!leader_load_order_initialized_) {
+    updated_ts = std::nullopt;
   }
-
   if (global_state_->drive_aware_) {
-    SortDriveLeaderLoad();
+    SortDriveLeaderLoad(updated_ts);
   }
+  for (auto& leader_set : sorted_leader_load_) {
+    SortTabletServers(&leader_set, [this](const TabletServerId& uuid) {
+      return LeaderLoadKey(*this, uuid);
+    }, updated_ts);
+  }
+  leader_load_order_initialized_ = true;
 }
 
-void PerTableLoadState::SortDriveLeaderLoad() {
+void PerTableLoadState::SortDriveLeaderLoad(optional_ref<const TabletServerId> updated_ts) {
   // Sort drives on each ts by the tablet leaders count.
   for (const auto& leader_set : sorted_leader_load_) {
     for (const auto& ts : leader_set) {
+      if (updated_ts && ts != updated_ts->get()) {
+        continue;
+      }
       auto& ts_meta = per_ts_meta_[ts];
       vector<std::pair<string, uint64>> drive_leader_loads;
       bool empty_path_found = false;
