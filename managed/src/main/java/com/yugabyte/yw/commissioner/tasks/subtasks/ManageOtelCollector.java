@@ -130,9 +130,7 @@ public class ManageOtelCollector extends NodeTaskBase {
         throw e;
       }
       log.warn(
-          "Ignoring failure to manage the OpenTelemetry collector on {}: {}",
-          taskParams().nodeName,
-          e.getMessage());
+          "Ignoring failure to manage the OpenTelemetry collector on {}", taskParams().nodeName, e);
     }
   }
 

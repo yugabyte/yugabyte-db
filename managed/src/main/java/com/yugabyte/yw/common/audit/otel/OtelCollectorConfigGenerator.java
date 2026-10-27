@@ -1305,7 +1305,7 @@ public class OtelCollectorConfigGenerator {
             apiIntent,
             podPlacement == null || podPlacement.isHasMasters(),
             metricsExportConfig.getScrapeConfigTargets());
-    // A receiver needs at least one job, so fall back to the unfiltered targets.
+    // A receiver needs at least one job, and K8s builds only the yugabyte and otel jobs.
     if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
         && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
       scrapeTargets = metricsExportConfig.getScrapeConfigTargets();

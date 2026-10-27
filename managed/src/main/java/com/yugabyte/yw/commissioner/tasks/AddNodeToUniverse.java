@@ -309,10 +309,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
-      // isMaster covers a retry, where addMaster is already false.
-      if (addMaster || currentNode.isMaster) {
-        createOtelCollectorMetricsRefreshTasks(nodeSet, false /* ignoreErrors */);
-      }
 
       // Bring up Tservers, as needed.
       if (addTserver) {
@@ -370,6 +366,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (addMaster || (currentNode.isMaster && !isFirstTry())) {
         // Update master addresses including xcluster with new master information.
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
+      }
+      // After the address updates so it is not delayed; isMaster covers a retry.
+      if (addMaster || currentNode.isMaster) {
+        createOtelCollectorMetricsRefreshTasks(nodeSet, false /* ignoreErrors */);
       }
 
       // Add node to load balancer.

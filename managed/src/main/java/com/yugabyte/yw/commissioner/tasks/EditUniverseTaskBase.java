@@ -709,9 +709,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               demotedStayingNodes.add(node);
             }
           });
-      // Refresh existing nodes whose master role changed, after the moves so they are not delayed.
-      createOtelCollectorMetricsRefreshTasks(
-          Sets.union(existingNodesToStartMaster, demotedStayingNodes), false /* ignoreErrors */);
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
                 mastersToStop,
@@ -724,6 +721,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       }
       // Do this once after all the master addresses are frozen as this is expensive.
       createXClusterConfigUpdateMasterAddressesTask();
+      // Refresh existing nodes whose master role changed, last so the move is not delayed.
+      createOtelCollectorMetricsRefreshTasks(
+          Sets.union(existingNodesToStartMaster, demotedStayingNodes), false /* ignoreErrors */);
     }
   }
 
