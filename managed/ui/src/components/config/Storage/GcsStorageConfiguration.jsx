@@ -46,7 +46,7 @@ class GcsStorageConfiguration extends Component {
     // Federation runs on top of an instance identity - the payload sets USE_GCP_IAM either way -
     // so a pasted credentials JSON is unusable under both modes, not just GCP IAM.
     const usesInstanceIdentity = useGcpIam || gcsFederatedIamEnabled;
-    const hostOptions = getGcsIamOptions(ybaHost, useGcpIam, gcsFederatedIamEnabled);
+    const hostOptions = getGcsIamOptions(ybaHost, isEdited);
     return (
       <Row className="config-section-header">
         <Col lg={9}>

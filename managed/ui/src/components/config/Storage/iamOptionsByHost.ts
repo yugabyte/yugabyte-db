@@ -4,24 +4,16 @@ import { YBAHost } from '../../../redesign/helpers/constants';
 
 type YBAHostValue = typeof YBAHost[keyof typeof YBAHost];
 
-// Each IAM option works from one YBA host only: the native one on its own cloud, federation from
-// the other. An option that is already on stays visible, so a saved config shows what it uses.
-// Any other host, or unknown, keeps every option.
+// These options are YBA's own access to the bucket, which YBA validates when the config is saved,
+// so each one works from a single YBA host. S3 federated IAM is not here: it is the GCP DB nodes'
+// access, which YBA never uses itself. A saved config shows every option, so editing changes
+// nothing. Any other host, or unknown, keeps every option.
 
-export const getS3IamOptions = (
-  ybaHost: YBAHostValue,
-  iamRoleEnabled: boolean,
-  federatedIamEnabled: boolean
-) => ({
-  showIamRole: ybaHost !== YBAHost.GCP || iamRoleEnabled,
-  showFederatedIam: ybaHost !== YBAHost.AWS || federatedIamEnabled
+export const getS3IamOptions = (ybaHost: YBAHostValue, isEdited: boolean) => ({
+  showIamRole: isEdited || ybaHost !== YBAHost.GCP
 });
 
-export const getGcsIamOptions = (
-  ybaHost: YBAHostValue,
-  useGcpIam: boolean,
-  federatedIamEnabled: boolean
-) => ({
-  showGcpIam: ybaHost !== YBAHost.AWS || useGcpIam,
-  showFederatedIam: ybaHost !== YBAHost.GCP || federatedIamEnabled
+export const getGcsIamOptions = (ybaHost: YBAHostValue, isEdited: boolean) => ({
+  showGcpIam: isEdited || ybaHost !== YBAHost.AWS,
+  showFederatedIam: isEdited || ybaHost !== YBAHost.GCP
 });

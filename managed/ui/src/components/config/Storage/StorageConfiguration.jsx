@@ -25,11 +25,9 @@ import OciLogo from '../../../redesign/assets/approved/provider-logo-oci.svg?img
 import { Formik } from 'formik';
 import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE,
-  fetchHostInfo,
-  fetchHostInfoFailure,
-  fetchHostInfoSuccess,
   fetchRunTimeConfigs,
-  fetchRunTimeConfigsResponse
+  fetchRunTimeConfigsResponse,
+  loadHostInfo
 } from '../../../actions/customers';
 import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
 import { YBAHost } from '../../../redesign/helpers/constants';
@@ -674,13 +672,7 @@ const mapDispatchToProps = (dispatch) => {
       );
     },
     fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      });
+      loadHostInfo(dispatch);
     }
   };
 };

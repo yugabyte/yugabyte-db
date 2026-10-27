@@ -66,7 +66,7 @@ class AwsStorageConfiguration extends Component {
     } = this.props;
     // Either kind of role-based access means no access keys are entered or stored.
     const credentialsDisabled = iamRoleEnabled || federatedIamEnabled;
-    const hostOptions = getS3IamOptions(ybaHost, iamRoleEnabled, federatedIamEnabled);
+    const hostOptions = getS3IamOptions(ybaHost, isEdited);
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -105,7 +105,7 @@ class AwsStorageConfiguration extends Component {
             </Col>
           </Row>
           )}
-          {showFederatedIam && hostOptions.showFederatedIam && (
+          {showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Federated IAM</div>
