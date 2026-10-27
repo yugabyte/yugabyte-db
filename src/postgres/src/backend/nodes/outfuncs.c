@@ -962,7 +962,6 @@ _outAgg(StringInfo str, const Agg *node)
 	WRITE_BITMAPSET_FIELD(aggParams);
 	WRITE_NODE_FIELD(groupingSets);
 	WRITE_NODE_FIELD(chain);
-	WRITE_ENUM_FIELD(yb_pushdown_decision, YbAggPushdownDecision);
 }
 
 static void
@@ -2278,7 +2277,6 @@ _outAggPath(StringInfo str, const AggPath *node)
 	WRITE_UINT64_FIELD(transitionSpace);
 	WRITE_NODE_FIELD(groupClause);
 	WRITE_NODE_FIELD(qual);
-	WRITE_ENUM_FIELD(yb_pushdown_decision, YbAggPushdownDecision);
 }
 
 static void

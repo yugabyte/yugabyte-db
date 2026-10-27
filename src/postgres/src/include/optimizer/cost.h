@@ -314,7 +314,5 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 								  Path *outer_path, Path *inner_path,
 								  List *pathkeys, JoinType jointype,
 								  JoinPathExtraData *extra);
-extern Bitmapset *yb_get_non_pushable_attnums(IndexOptInfo *index);
-extern YbAggPushdownInfo *yb_make_agg_pushdown_info(PlannerInfo *root);
 
 #endif							/* COST_H */

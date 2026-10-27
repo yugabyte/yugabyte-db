@@ -381,11 +381,7 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
-/* YB declarations */
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
-static bool yb_agg_pushdown_subplan_ok(Plan *subplan);
-static Plan *yb_plan_below_removed_levels(Plan *plan);
-static int	yb_plan_docdb_result_width(Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
@@ -2800,36 +2796,6 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
-	/*
-	 * YB: the pushdown planned on the paths assumes that no plan node ends
-	 * up between the Agg and the scan; withdraw it where one does.
-	 */
-	plan->yb_pushdown_decision = best_path->yb_pushdown_decision;
-	if (plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON &&
-		!yb_agg_pushdown_subplan_ok(subplan))
-		plan->yb_pushdown_decision = YB_AGG_PUSHDOWN_PLANNED_OFF;
-
-	/*
-	 * YB: label the scan below a plain Agg with the width of the rows DocDB
-	 * returns to it where its target list does not give that width: under
-	 * a pushdown the scan returns the partial-aggregate row, and when the
-	 * Agg reads no column the target list is empty although DocDB still
-	 * returns something for each row (yb_get_docdb_result_width).  The YB
-	 * cost model charges the transfer from DocDB by this width, a cost PG
-	 * does not have.  A plain Agg never reads its input's plan_width; only
-	 * a hashing Agg sizes its hash table from it.
-	 */
-	if (plan->aggstrategy == AGG_PLAIN)
-	{
-		Plan	   *input = yb_plan_below_removed_levels(subplan);
-		int			width = yb_plan_docdb_result_width(input);
-
-		if (width > 0 &&
-			(plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON ||
-			 input->plan_width == 0))
-			input->plan_width = width;
-	}
-
 	return plan;
 }
 
@@ -4713,8 +4679,12 @@ create_indexscan_plan(PlannerInfo *root,
 		 * base-table attnums that DocDB cannot evaluate.
 		 */
 		if (indexonly && best_path->indexinfo->yb_num_decoded_pk_cols > 0)
-			decoded_pk_attnums =
-				yb_get_non_pushable_attnums(best_path->indexinfo);
+		{
+			IndexOptInfo *idxinfo = best_path->indexinfo;
+			int			phys_natts = idxinfo->ncolumns - idxinfo->yb_num_decoded_pk_cols;
+			for (int i = phys_natts; i < idxinfo->ncolumns; i++)
+				decoded_pk_attnums = bms_add_member(decoded_pk_attnums, idxinfo->indexkeys[i]);
+		}
 
 		/*
 		 * First, include other clauses from the bitmap branch (if any) as index
@@ -4800,7 +4770,24 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
-	YbMergeScanInfo *yb_merge_scan_info = yb_make_merge_scan_info(best_path);
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+	if (best_path->yb_index_path_info.merge_scan_stream_cols)
+	{
+		ListCell   *yb_lc;
+
+		yb_merge_scan_info = makeNode(YbMergeScanInfo);
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
+	}
 
 	/* Finally ready to build the plan node */
 	if (indexonly)
@@ -9946,158 +9933,4 @@ is_projection_capable_plan(Plan *plan)
 			break;
 	}
 	return true;
-}
-
-/*
- * yb_fix_indexqual_references
- *	  fix_indexqual_references for callers outside this file that need an
- *	  index path's quals in the form the executor's indexqual machinery
- *	  takes.
- */
-void
-yb_fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
-							List **stripped_indexquals_p,
-							List **fixed_indexquals_p)
-{
-	fix_indexqual_references(root, index_path, stripped_indexquals_p,
-							 fixed_indexquals_p);
-}
-
-/*
- * yb_make_merge_scan_info
- *	  Build the YbMergeScanInfo an IndexScan or IndexOnlyScan plan carries
- *	  for 'index_path', or NULL when the path streams no merge scan column.
- *
- * Only 'stream_cols' is filled; create_indexscan_plan adds 'sort_cols' once
- * the plan node exists.  The entries are copied because setrefs.c repoints
- * each entry's clause.  The planner's aggregate pushdown decision builds the
- * stand-in scan node of its recheck dry run with this function too, so that
- * the dry run binds the same stream columns the plan does.
- */
-YbMergeScanInfo *
-yb_make_merge_scan_info(IndexPath *index_path)
-{
-	YbMergeScanInfo *merge_scan_info;
-	ListCell   *lc;
-
-	if (index_path->yb_index_path_info.merge_scan_stream_cols == NIL)
-		return NULL;
-
-	merge_scan_info = makeNode(YbMergeScanInfo);
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
-	{
-		YbMergeScanStreamColInfo *info = makeNode(YbMergeScanStreamColInfo);
-
-		*info = *lfirst_node(YbMergeScanStreamColInfo, lc);
-		merge_scan_info->stream_cols = lappend(merge_scan_info->stream_cols,
-											   info);
-	}
-
-	return merge_scan_info;
-}
-
-/*
- * yb_plan_docdb_result_width
- *	  The estimated width of the rows DocDB returns to a YB scan node, as its
- *	  cost function recorded it; 0 for any other node.
- */
-static int
-yb_plan_docdb_result_width(Plan *plan)
-{
-	YbPlanInfo *info;
-
-	switch (nodeTag(plan))
-	{
-		case T_YbSeqScan:
-			info = &((YbSeqScan *) plan)->yb_plan_info;
-			break;
-		case T_IndexScan:
-			info = &((IndexScan *) plan)->yb_plan_info;
-			break;
-		case T_IndexOnlyScan:
-			info = &((IndexOnlyScan *) plan)->yb_plan_info;
-			break;
-		case T_YbBitmapTableScan:
-			info = &((YbBitmapTableScan *) plan)->yb_plan_info;
-			break;
-		default:
-			return 0;
-	}
-
-	return info->estimated_docdb_result_width;
-}
-
-/*
- * yb_agg_pushdown_subplan_ok
- *	  Whether the Agg's input, once setrefs.c has removed the plan levels it
- *	  removes, is a scan node that takes aggregates and evaluates no qual of
- *	  its own: one built from a path yb_agg_pushdown_eligible accepts, whose
- *	  state YbPlanStateTryGetAggrefs hands aggregates to.
- *
- * yb_agg_pushdown_subpath looked through those levels on the paths; whether
- * a SubqueryScan goes depends on the target lists the plan ends up with, and
- * any other node createplan.c puts in between makes the Agg evaluate the
- * aggregates itself.  The quals are read off the plan node, as
- * yb_agg_pushdown_supported reads them off the scan state: a pushed-down
- * aggregate row satisfies none, and a bitmap table scan evaluates its
- * fallback quals itself once the bitmap exceeds work_mem.  Its recheck quals
- * apply to a lossy bitmap only, and the path is accepted only when it
- * predicts no recheck while it has any.
- */
-static bool
-yb_agg_pushdown_subplan_ok(Plan *subplan)
-{
-	Plan	   *scan = yb_plan_below_removed_levels(subplan);
-
-	switch (nodeTag(scan))
-	{
-		case T_YbSeqScan:
-		case T_IndexScan:
-		case T_IndexOnlyScan:
-		case T_TidScan:
-			break;
-		case T_YbBitmapTableScan:
-			if (((YbBitmapTableScan *) scan)->fallback_local_quals != NIL)
-				return false;
-			break;
-		default:
-			return false;
-	}
-
-	return scan->qual == NIL;
-}
-
-/*
- * yb_plan_below_removed_levels
- *	  The node that takes the place of 'plan' once set_plan_references has
- *	  removed a SubqueryScan that trivial_subqueryscan accepts and an Append
- *	  with one child whose parallel awareness, after the child's own
- *	  removals, is the Append's.
- *
- * A MergeAppend needs no step: yb_agg_pushdown_subpath never looks through a
- * MergeAppendPath.
- */
-static Plan *
-yb_plan_below_removed_levels(Plan *plan)
-{
-	for (;;)
-	{
-		if (IsA(plan, SubqueryScan) &&
-			trivial_subqueryscan((SubqueryScan *) plan))
-			plan = ((SubqueryScan *) plan)->subplan;
-		else if (IsA(plan, Append) &&
-				 list_length(((Append *) plan)->appendplans) == 1)
-		{
-			Plan	   *child = linitial(((Append *) plan)->appendplans);
-
-			child = yb_plan_below_removed_levels(child);
-			if (child->parallel_aware != plan->parallel_aware)
-				break;
-			plan = child;
-		}
-		else
-			break;
-	}
-
-	return plan;
 }
