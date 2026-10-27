@@ -199,6 +199,13 @@ In v2026.1.3.0 and later, you can allow replication factor 9 by setting the **En
 
 When that option is true, **Expert** mode and the Classic UI include replication factor 9, and you can raise an existing primary cluster to replication factor 9. The replication factor limits on this page apply while the option is false. A universe that you create with replication factor 9, or raise to replication factor 9, stays at replication factor 9 if you later set the option to false.
 
+For replication factor 9, the number of availability zones must equal the replication factor: use 9 availability zones.
+
+**Known issues**:
+
+- With an uneven number of nodes spread across fewer than 9 zones, YugabyteDB Anywhere can place fewer YB-Master processes than the replication factor and still report that universe creation succeeded. You may see an **Under-replicated master** alert. Using 9 availability zones avoids this. (PLAT-23267)
+- For on-premises universes with [dedicated YB-Master nodes](../dedicated-master/), when a zone has more free master instances than TServer nodes, YugabyteDB Anywhere can create fewer master nodes than the replication factor, with no error. Check the number of master nodes on the **Nodes** page after you create the universe. (PLAT-23296)
+
 {{< /note >}}
 
 #### Preferred region
