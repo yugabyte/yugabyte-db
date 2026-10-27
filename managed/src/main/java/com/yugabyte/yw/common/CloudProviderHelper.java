@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
@@ -867,6 +868,7 @@ public class CloudProviderHelper {
       }
     }
     checkCloudInfoFieldsInUseProvider(providerCloudInfo, editProviderCloudInfo);
+    checkFederatedIamNotInUse(provider, editProviderReq);
 
     // Collect existing and current regions into maps
     Map<String, Region> existingRegions =
@@ -1204,6 +1206,40 @@ public class CloudProviderHelper {
       ((ObjectNode) kubernetesInfo).remove(KUBE_CONFIG_FIELDS);
     }
     return detailsJson;
+  }
+
+  /**
+   * Nodes of a universe with federated IAM configured were set up from the provider's federation
+   * settings, so those settings, including turning federation off, cannot change under them.
+   * Turning it on for a provider whose universes have none configured is still allowed.
+   */
+  private void checkFederatedIamNotInUse(Provider provider, Provider editProviderReq) {
+    if (new HashSet<>(CloudInfoInterface.getCrossCloudFederationTargets(provider))
+        .equals(
+            new HashSet<>(CloudInfoInterface.getCrossCloudFederationTargets(editProviderReq)))) {
+      return;
+    }
+    UUID providerUUID = provider.getUuid();
+    List<String> federatedUniverses =
+        Customer.get(provider.getCustomerUUID()).getUniversesForProvider(providerUUID).stream()
+            .filter(
+                u ->
+                    u.getUniverseDetails().clusters.stream()
+                        .anyMatch(
+                            c ->
+                                c.userIntent.isFederationConfigured()
+                                    && c.userIntent.getAllProviderUUIDs().contains(providerUUID)))
+            .map(Universe::getName)
+            .sorted()
+            .collect(Collectors.toList());
+    if (!federatedUniverses.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Federated IAM settings cannot be modified while universes use them: %s. Disable"
+                  + " cross cloud federated IAM on those universes first.",
+              String.join(", ", federatedUniverses)));
+    }
   }
 
   private void checkCloudInfoFieldsInUseProvider(
