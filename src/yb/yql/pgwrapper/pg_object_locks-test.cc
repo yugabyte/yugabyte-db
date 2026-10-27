@@ -1255,14 +1255,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 
 // Test for #35734.
 //
-// A new-mode DDL writes the catalog at the latest catalog snapshot and relies on object locks,
-// not catalog write conflicts, to keep other DDLs on the same object out. A transaction that
-// started before ysql_enable_object_locking_infra was promoted runs its DDLs in legacy mode, which
-// used to take no object locks, so such a DDL ran alongside a new-mode DDL on the same table.
+// Concurrent DDLs on the same object serialize through object locks, so a legacy DDL must not run
+// alongside a concurrent DDL. A transaction that started before ysql_enable_object_locking_infra
+// was promoted runs its DDLs in legacy mode. Such a transaction used to take no object locks, so
+// its DDL ran alongside a concurrent DDL on the same table.
 //
-// legacy_conn starts its transaction before the promotion. ddl_conn then adds column c1 inside a
-// transaction block, holding its lock on t until COMMIT. legacy_conn's ADD COLUMN c2 must wait for
-// that lock; the statement timeout ends the wait.
+// legacy_conn starts its transaction before the promotion. ddl_conn then adds column c1 in a
+// transaction block and holds its lock on t until COMMIT. legacy_conn's ADD COLUMN c2 must wait
+// for that lock until the statement timeout.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlWaitsForConcurrentDdl) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1272,7 +1272,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlWaitsForConcurrentDdl) 
   }
 
   auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  // Touches no table, so legacy_conn holds no lock on t that ddl_conn's ALTER would wait for.
+  // legacy_conn reads no table, so it holds no lock on t that blocks ddl_conn's ALTER.
   ASSERT_OK(legacy_conn.Execute("BEGIN"));
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int32_t>("SELECT 1")), 1);
 
@@ -1296,15 +1296,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlWaitsForConcurrentDdl) 
 
 // Test for #35734.
 //
-// ADD FOREIGN KEY checks the existing child rows without row locks because its lock on parent
-// blocks every writer of parent. A transaction that started before ysql_enable_object_locking_infra
-// was promoted used to take no object locks, so its DELETE of a parent row ran during that check
-// and left a child row without a parent. Transactions now take object locks before the promotion
-// too.
+// ADD FOREIGN KEY checks the existing child rows without row locks: its lock on parent blocks
+// every writer of parent. A transaction that started before ysql_enable_object_locking_infra was
+// promoted used to take no object locks. Its DELETE of a parent row ran during that check and left
+// a child row without a parent.
 //
-// legacy_conn starts its transaction before the promotion, and ddl_conn adds the foreign key
-// after it. legacy_conn's DELETE of parent row 2 must wait for ddl_conn's lock instead of running;
-// the statement timeout ends that wait. Once both finish, every child row has a parent.
+// legacy_conn starts its transaction before the promotion. ddl_conn adds the foreign key after the
+// promotion. legacy_conn's DELETE of parent row 2 must wait for ddl_conn's lock until the statement
+// timeout. After both transactions end, every child row has a parent.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, PrePromotionTxnTakesObjectLocks) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
