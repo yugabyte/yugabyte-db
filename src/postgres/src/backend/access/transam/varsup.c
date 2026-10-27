@@ -895,8 +895,13 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
  * relation's array type and constraints into the catalogs of every database
  * (see YBCatalogTupleInsert).  A counter kept across transactions would not
  * know about those OIDs and would assign them again, to rows of other
- * catalogs.  The upgrade runs migrations one at a time, so no other backend
- * writes to this database's catalogs during our transaction.
+ * catalogs.
+ *
+ * Resetting between transactions is enough.  The upgrade runner waits for
+ * each migration to finish before it starts the next one, so the template1
+ * backend never inserts rows into this database's catalogs while one of our
+ * transactions is running: its inserts are committed before our next
+ * transaction starts.
  */
 void
 YbAtEOXact_UpgradeNextOid(void)
