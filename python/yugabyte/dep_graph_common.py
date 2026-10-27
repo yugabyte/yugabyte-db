@@ -62,7 +62,7 @@ TEST_FILE_SUFFIXES = ['_test', '-test', '_itest', '-itest']
 
 EXECUTABLE_FILE_NAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
-PROTO_GEN_OUTPUT_EXTENSIONS = ['pb', 'fwd', 'proxy', 'service', 'messages']
+PROTO_GEN_OUTPUT_EXTENSIONS = ['pb', 'fwd', 'proxy', 'service', 'messages', 'trace']
 PROTO_OUTPUT_FILE_NAME_RE = re.compile(
     r'^([a-zA-Z_0-9-]+)[.](?:%s)[.](h|cc)$' % '|'.join(PROTO_GEN_OUTPUT_EXTENSIONS))
 
