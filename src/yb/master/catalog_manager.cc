@@ -9448,6 +9448,19 @@ Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNa
   return table_infos;
 }
 
+Status CatalogManager::CheckNoYsqlDdlVerificationInProgress(
+    const NamespaceId& namespace_id) const {
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto l = table->LockForRead();
+    if (l->namespace_id() == namespace_id && l->has_ysql_ddl_txn_verifier_state()) {
+      return STATUS_FORMAT(
+          IllegalState, "Table $0 is undergoing DDL verification, retry later", table->id());
+    }
+  }
+  return Status::OK();
+}
+
 std::vector<TableInfoPtr> CatalogManager::GetTables(
     GetTablesMode mode, PrimaryTablesOnly primary_tables_only) {
   std::vector<TableInfoPtr> result;

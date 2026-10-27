@@ -992,6 +992,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::vector<scoped_refptr<TableInfo>>> GetTableInfosForNamespace(
       const NamespaceId& namespace_id) const;
 
+  Status CheckNoYsqlDdlVerificationInProgress(const NamespaceId& namespace_id) const override;
+
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
       GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;

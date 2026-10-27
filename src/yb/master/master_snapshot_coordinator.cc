@@ -886,6 +886,7 @@ class MasterSnapshotCoordinator::Impl {
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
+    RETURN_NOT_OK(CheckNoYsqlDdlVerificationInProgressForSnapshot(snapshot_id));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
@@ -893,6 +894,16 @@ class MasterSnapshotCoordinator::Impl {
     resp->set_restoration_id(restoration_id.data(), restoration_id.size());
 
     return Status::OK();
+  }
+
+  Status CheckNoYsqlDdlVerificationInProgressForSnapshot(const TxnSnapshotId& snapshot_id) {
+    NamespaceId namespace_id;
+    {
+      std::lock_guard lock(mutex_);
+      const auto& snapshot = VERIFY_RESULT_REF(FindSnapshot(snapshot_id));
+      namespace_id = VERIFY_RESULT(snapshot.GetNamespaceId());
+    }
+    return context_.CheckNoYsqlDdlVerificationInProgress(namespace_id);
   }
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
