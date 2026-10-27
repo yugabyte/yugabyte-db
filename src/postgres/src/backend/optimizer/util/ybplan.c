@@ -1142,16 +1142,20 @@ yb_get_federated_tserver_uuid_attno(Oid relid)
 }
 
 /*
- * Replace each Var of another relation and each PlaceHolderVar in index quals
- * fixed by yb_fix_indexqual_references, whose index columns are INDEX_VAR
- * Vars, with a PARAM_EXEC Param of the same type.
+ * Replace each Var of a relation other than the scanned relation '*relid',
+ * and each PlaceHolderVar, in index quals fixed by
+ * yb_fix_indexqual_references with a PARAM_EXEC Param of the same type.  The
+ * fixed quals read the index columns through INDEX_VAR Vars, except a
+ * yb_hash_code() index key, which keeps the scanned relation's Vars.
  */
 static Node *
-yb_outer_refs_to_params_mutator(Node *node, void *context)
+yb_outer_refs_to_params_mutator(Node *node, Index *relid)
 {
 	if (node == NULL)
 		return NULL;
-	if ((IsA(node, Var) && ((Var *) node)->varno != INDEX_VAR) ||
+	if ((IsA(node, Var) &&
+		 ((Var *) node)->varno != INDEX_VAR &&
+		 ((Var *) node)->varno != *relid) ||
 		IsA(node, PlaceHolderVar))
 	{
 		Param	   *param = makeNode(Param);
@@ -1165,7 +1169,7 @@ yb_outer_refs_to_params_mutator(Node *node, void *context)
 		return (Node *) param;
 	}
 	return expression_tree_mutator(node, yb_outer_refs_to_params_mutator,
-								   context);
+								   (void *) relid);
 }
 
 /*
@@ -1240,7 +1244,8 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 	yb_fix_indexqual_references(root, path, &stripped_indexquals,
 								&fixed_indexquals);
 	fixed_indexquals = (List *)
-		yb_outer_refs_to_params_mutator((Node *) fixed_indexquals, NULL);
+		yb_outer_refs_to_params_mutator((Node *) fixed_indexquals,
+										&path->path.parent->relid);
 
 	/*
 	 * A planner-built clause (a commuted or boolean-equality index qual)

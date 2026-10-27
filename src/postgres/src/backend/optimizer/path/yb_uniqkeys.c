@@ -459,15 +459,28 @@ yb_index_clauses_might_recheck(PlannerInfo *root, IndexOptInfo *index,
 							   List *index_clauses)
 {
 	IndexPath  *path = makeNode(IndexPath);
+	Relids		batched_relids = root->yb_cur_batched_relids;
+	bool		result;
 
 	path->path.pathtype = T_IndexScan;
 	path->path.parent = index->rel;
 	path->indexinfo = index;
 	path->indexclauses = index_clauses;
 
-	return yb_predetermine_index_path_recheck(root, path, T_IndexScan,
-											  false /* xs_want_itup */ ,
-											  NULL /* num_runtime_keys_p */ );
+	/*
+	 * Bind the clauses of a batched nested loop as the join clauses they come
+	 * from, because their batched form can be built only under the batched
+	 * nested loops that create_plan tracks.  Either form can leave a
+	 * condition on a batched column to the recheck, but a batched column is a
+	 * join column, which the relation's target list puts in the prefix.
+	 */
+	root->yb_cur_batched_relids = NULL;
+	result = yb_predetermine_index_path_recheck(root, path, T_IndexScan,
+												false /* xs_want_itup */ ,
+												NULL /* num_runtime_keys_p */ );
+	root->yb_cur_batched_relids = batched_relids;
+
+	return result;
 }
 
 /*

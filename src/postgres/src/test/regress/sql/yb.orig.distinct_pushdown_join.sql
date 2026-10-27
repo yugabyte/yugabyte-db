@@ -265,8 +265,8 @@ DROP TABLE th;
 -- whatever the prefix, so the block runs under the CBO (#35029).
 SET yb_enable_cbo = on;
 SET yb_prefer_bnl = off;
-CREATE TABLE distinct_recheck_inner (g int, k int, PRIMARY KEY (g ASC, k ASC));
-INSERT INTO distinct_recheck_inner SELECT (i / 10) * 100, i % 10 FROM generate_series(0, 9999) i;
+CREATE TABLE distinct_recheck_inner (g int, k int, j int, PRIMARY KEY (g ASC, k ASC, j ASC));
+INSERT INTO distinct_recheck_inner SELECT (i / 100) * 100, (i / 10) % 10, i % 10 FROM generate_series(0, 9999) i;
 ANALYZE distinct_recheck_inner;
 CREATE TABLE distinct_recheck_outer (x int PRIMARY KEY);
 INSERT INTO distinct_recheck_outer VALUES (0), (100), (200);

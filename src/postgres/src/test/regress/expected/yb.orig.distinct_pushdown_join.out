@@ -1221,8 +1221,8 @@ DROP TABLE th;
 -- whatever the prefix, so the block runs under the CBO (#35029).
 SET yb_enable_cbo = on;
 SET yb_prefer_bnl = off;
-CREATE TABLE distinct_recheck_inner (g int, k int, PRIMARY KEY (g ASC, k ASC));
-INSERT INTO distinct_recheck_inner SELECT (i / 10) * 100, i % 10 FROM generate_series(0, 9999) i;
+CREATE TABLE distinct_recheck_inner (g int, k int, j int, PRIMARY KEY (g ASC, k ASC, j ASC));
+INSERT INTO distinct_recheck_inner SELECT (i / 100) * 100, (i / 10) % 10, i % 10 FROM generate_series(0, 9999) i;
 ANALYZE distinct_recheck_inner;
 CREATE TABLE distinct_recheck_outer (x int PRIMARY KEY);
 INSERT INTO distinct_recheck_outer VALUES (0), (100), (200);
@@ -1235,16 +1235,17 @@ ANALYZE distinct_recheck_outer;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
-                                                  QUERY PLAN                                                  
---------------------------------------------------------------------------------------------------------------
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
  HashAggregate (actual rows=3 loops=1)
    Group Key: i.g
    ->  Nested Loop (actual rows=15 loops=1)
          ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
-         ->  Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=5 loops=3)
+         ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=5 loops=3)
                Index Cond: ((g = o.x) AND (k > ANY ('{2,5}'::integer[])) AND (k < ANY ('{7,8}'::integer[])))
                Rows Removed by Index Recheck: 5
-(7 rows)
+               Distinct Keys: i.g, i.k
+(8 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
                                                                   QUERY PLAN                                                                  
@@ -1254,17 +1255,18 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leadi
    ->  YB Batched Nested Loop Join (actual rows=15 loops=1)
          Join Filter: (o.x = i.g)
          ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
-         ->  Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=15 loops=1)
+         ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=15 loops=1)
                Index Cond: ((g = ANY (ARRAY[o.x, $1, $2, ..., $1023])) AND (k > ANY ('{2,5}'::integer[])) AND (k < ANY ('{7,8}'::integer[])))
                Rows Removed by Index Recheck: 15
-(8 rows)
+               Distinct Keys: i.g, i.k
+(9 rows)
 
 /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
   g  
 -----
    0
- 100
  200
+ 100
 (3 rows)
 
 /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
@@ -1304,9 +1306,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leadi
 /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
   g  
 -----
- 100
    0
  200
+ 100
 (3 rows)
 
 /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
