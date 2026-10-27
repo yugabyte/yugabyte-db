@@ -1877,13 +1877,15 @@ TEST_P(PgVectorIndexTest, SnapshotRestoreIndexCreatedAfterSnapshot) {
   db_name.set_namespace_name(DbName());
   auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(db_name));
 
-  ASSERT_OK(CreateIndex(conn, "vi_after"));
-  ASSERT_OK(CreateIndex(conn, "vi_dropped"));
-  ASSERT_OK(conn.Execute("DROP INDEX vi_dropped"));
-
+  // Delete the rows first, so the indexes below are built empty and correct results after the
+  // restore can only come from the post-restore backfill.
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
   ASSERT_OK(conn.Execute("DELETE FROM test"));
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+
+  ASSERT_OK(CreateIndex(conn, "vi_after"));
+  ASSERT_OK(CreateIndex(conn, "vi_dropped"));
+  ASSERT_OK(conn.Execute("DROP INDEX vi_dropped"));
 
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
 
