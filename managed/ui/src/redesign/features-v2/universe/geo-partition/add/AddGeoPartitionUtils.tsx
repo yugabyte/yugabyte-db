@@ -15,6 +15,7 @@ import {
   UniverseInfo,
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { CloudType, Region } from '@app/redesign/helpers/dtos';
@@ -88,8 +89,8 @@ export function useGetSteps(context: AddGeoPartitionContextProps): Step[] {
   const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition, universeData } = context;
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
   const isK8s =
-    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code ===
-    CloudType.kubernetes;
+    getPrimaryCluster(universeData?.spec?.clusters ?? [])?.placement_spec?.cloud_list?.[0]
+      ?.code === CloudType.kubernetes;
   const azStepTitle = t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone');
 
   return useMemo(() => {
