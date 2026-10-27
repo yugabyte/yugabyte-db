@@ -34,7 +34,7 @@ Contact {{% support-general %}} to discuss alternative tools and migration appro
 ### Enhancements
 
 - Improved schema drift diagnosis: [schema detect-drift](../reference/schema-migration/detect-drift/) now sets each change's severity, impact, and recommended action based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover is initiated but not completed. Changes that can go either way, such as NOT NULL set or dropped and a partition attached or detached, are now reported as separate types.
-- Live migration now identifies columns with types not supported by YugabyteDB or Debezium, and prompts you to choose whether those columns should be filtered out, or the migration should fail on those columns. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- Live migration now skips columns whose type is built on an unsupported datatype, and lists them in the unsupported-columns output of export data. This covers domains, arrays, composites, and user-defined multiranges. Arrays of geometric types, pg_lsn[], txid_snapshot[], timetz[], and arrays of range types are now also skipped in live migration. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
 
 ### Bug fixes
 

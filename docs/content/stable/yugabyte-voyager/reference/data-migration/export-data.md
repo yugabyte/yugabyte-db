@@ -30,7 +30,7 @@ For [live migration](../../../migrate/live-migrate/#export-data-from-source) (wi
 
 If a PostgreSQL live export fails because Debezium stopped while streaming changes, `export data` checks for schema drift and prints the result after the failure message.
 
-During live migration, `export data` identifies columns with types not supported by YugabyteDB or Debezium, and prompts you to choose whether to filter out those columns or fail the migration on those columns. If you filter out a column, its data is not migrated. For the list of types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+During live migration, `export data` skips columns whose type is built on an unsupported data type, and lists them in its unsupported-columns output. This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type, as well as arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types. For the list of unsupported types, see [Datatypes not supported by Voyager during live migration](../../../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
 
 ### Syntax
 

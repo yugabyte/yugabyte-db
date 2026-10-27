@@ -1402,7 +1402,9 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, Voyager identifies columns that have the following data types, which are not supported by YugabyteDB or Debezium: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`. When it finds such a column, [export data](../../reference/data-migration/export-data/) prompts you to choose whether to filter out the column or fail the migration on that column. If you filter out a column, its data is not migrated, and the rest of the migration continues; otherwise, the migration fails on that column. In earlier releases, data for these columns was skipped without prompting.
+**Description**: For live migration, the migration skips columns that have the following data types: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
+
+Columns whose type is built on an unsupported data type are also skipped, and are listed in the unsupported-columns output of [export data](../../reference/data-migration/export-data/). This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type. Arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types are also skipped in live migration.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
@@ -1411,7 +1413,7 @@ For live migration with fall-forward/fall-back, the migration skips data from so
 
 Refer to [cutover to target](../../reference/cutover-archive/cutover/#yugabytedb-grpc-vs-yugabytedb-connector) for how or when to configure these connectors.
 
-**Workaround**: When prompted, filter out the columns with unsupported types to continue the migration without their data; otherwise, the migration fails on those columns.
+**Workaround**: None.
 
 **Example**
 
