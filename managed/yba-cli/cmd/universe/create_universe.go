@@ -88,8 +88,8 @@ var createUniverseCmd = &cobra.Command{
 			)
 		}
 
-		if strings.EqualFold(providerCode, util.GCPProviderType) ||
-			strings.EqualFold(providerCode, util.K8sProviderType) {
+		getProviderType()
+		if providerType == util.GCPProviderType || providerType == util.K8sProviderType {
 
 			specialCharsRegex := regexp.MustCompile(`^[a-z0-9-]*$`)
 
@@ -135,8 +135,6 @@ var createUniverseCmd = &cobra.Command{
 		if err != nil {
 			util.FatalHTTPError(response, err, "Universe", "Create - List Certificates")
 		}
-
-		getProviderType()
 
 		clientRootCACertUUID := ""
 		clientRootCA := v1.GetString("client-root-ca")
