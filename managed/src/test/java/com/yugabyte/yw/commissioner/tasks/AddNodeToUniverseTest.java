@@ -20,7 +20,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -53,7 +52,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.nodeagent.ConfigureNodeExporterInput;
 import java.util.ArrayList;
@@ -697,15 +695,10 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, -1);
     assertEquals(Success, taskInfo.getTaskState());
 
-    ArgumentCaptor<Map<AvailabilityZone, Set<NodeID>>> lbNodes = ArgumentCaptor.forClass(Map.class);
-    verify(cloudAPI, atLeastOnce())
-        .manageNodeGroup(any(), any(), eq("lb1"), lbNodes.capture(), any(), any());
-    Set<String> lbNodeNames =
-        lbNodes.getValue().values().stream()
-            .flatMap(Set::stream)
-            .map(NodeID::getName)
-            .collect(Collectors.toSet());
-    assertEquals(ImmutableSet.of("host-n2", "host-n3"), lbNodeNames);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
   }
 
   @Test
