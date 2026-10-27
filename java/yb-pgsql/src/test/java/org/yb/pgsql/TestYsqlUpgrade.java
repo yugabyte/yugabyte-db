@@ -845,6 +845,52 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Creating a shared relation inserts its array type and constraints, with OIDs that template1
+   * assigns, into every database. A database whose system OIDs are ahead of template1's, because a
+   * migration that acts only in some databases assigned OIDs there, must not end up with two
+   * objects with the same OID.
+   */
+  @Test
+  public void sharedRelOidIsFreeInEveryDb() throws Exception {
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
+    createDbConnections();
+    String dbName = SHARED_ENTITY_PREFIX + "ahead_db";
+    try (Connection conn = template1Cb.connect(); Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE DATABASE " + dbName);
+    }
+    // Move the database's system OIDs ahead of template1's, as ALTER EXTENSION pg_hint_plan UPDATE
+    // in V82 does in the databases that have pg_hint_plan.
+    try (Connection conn = getConnectionBuilder().withDatabase(dbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+      stmt.execute("CREATE VIEW pg_catalog.test_oid_ahead_view"
+          + " WITH (use_initdb_acl = true) AS SELECT 1 AS x");
+    }
+
+    // The migrations include V109, which creates a shared relation with an array type and a
+    // primary key constraint.
+    runMigrations(false /* useSingleConnection */);
+
+    for (String db : Arrays.asList("template1", dbName)) {
+      try (Connection conn = getConnectionBuilder().withDatabase(db).connect();
+           Statement stmt = conn.createStatement()) {
+        // List each duplicate OID with the objects that share it, as catalog:name. Every view's
+        // rule is named _RETURN, so name a rule's relation too.
+        List<Row> duplicates = getRowList(stmt, "WITH o AS ("
+            + " SELECT 'pg_class' cat, oid, relname::text nm FROM pg_class UNION ALL"
+            + " SELECT 'pg_type', oid, typname::text FROM pg_type UNION ALL"
+            + " SELECT 'pg_proc', oid, proname::text FROM pg_proc UNION ALL"
+            + " SELECT 'pg_constraint', oid, conname::text FROM pg_constraint UNION ALL"
+            + " SELECT 'pg_rewrite', oid, rulename || ' on ' || ev_class::regclass"
+            + " FROM pg_rewrite)"
+            + " SELECT oid, string_agg(cat || ':' || nm, ', ' ORDER BY cat) FROM o"
+            + " GROUP BY oid HAVING count(*) > 1 ORDER BY oid");
+        assertRows("Duplicate OIDs in " + db, Collections.emptyList(), duplicates);
+      }
+    }
+  }
+
   @Test
   public void insertOnConflictWithOidsWorks() throws Exception {
     try (Connection conn = customDbCb.connect();

@@ -6577,6 +6577,19 @@ static struct yb_config_oid ConfigureNamesOid[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_ysql_upgrade_min_next_oid", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Lowest OID to assign in YSQL upgrade mode. "
+						 "Set by the YSQL upgrade runner before a migration that "
+						 "creates a shared relation."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ysql_upgrade_min_next_oid,
+		InvalidOid, 0, FirstNormalObjectId,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
