@@ -845,6 +845,47 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Creating a shared relation inserts its array type, with an auto-assigned OID, into every
+   * database. A backend of another database that has already assigned OIDs in upgrade mode must
+   * not assign that OID again.
+   */
+  @Test
+  public void sharedRelOidIsNotReusedByOtherDb() throws Exception {
+    String otherDbName = SHARED_ENTITY_PREFIX + "sys_tables_db2";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + otherDbName);
+    }
+    try (Connection conOther = getConnectionBuilder().withDatabase(otherDbName).connect();
+         Connection conUsr = customDbCb.connect();
+         Statement stmtOther = conOther.createStatement();
+         Statement stmtUsr = conUsr.createStatement()) {
+      setSystemRelsModificationGuc(stmtOther, true);
+      setSystemRelsModificationGuc(stmtUsr, true);
+
+      String createViewSqlPat = "CREATE VIEW pg_catalog.%s"
+          + " WITH (use_initdb_acl = true) AS SELECT 1 AS x";
+
+      // Assign the same OIDs in both databases, as a migration does.
+      stmtOther.execute(String.format(createViewSqlPat, "test_oid_view_1"));
+      stmtUsr.execute(String.format(createViewSqlPat, "test_oid_view_1"));
+
+      // The array type gets the next OID, in every database.
+      stmtOther.execute("CREATE TABLE pg_catalog." + sharedRelName + " (v int) WITH ("
+          + "  table_oid = " + newSysOid()
+          + ", row_type_oid = " + newSysOid()
+          + ") TABLESPACE pg_global");
+
+      stmtUsr.execute(String.format(createViewSqlPat, "test_oid_view_2"));
+
+      assertNoRows(stmtUsr, "WITH o AS ("
+          + " SELECT oid FROM pg_class UNION ALL"
+          + " SELECT oid FROM pg_type UNION ALL"
+          + " SELECT oid FROM pg_rewrite)"
+          + " SELECT oid FROM o GROUP BY oid HAVING count(*) > 1");
+    }
+  }
+
   @Test
   public void insertOnConflictWithOidsWorks() throws Exception {
     try (Connection conn = customDbCb.connect();

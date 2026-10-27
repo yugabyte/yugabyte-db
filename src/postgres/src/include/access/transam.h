@@ -400,4 +400,7 @@ FullTransactionIdNewer(FullTransactionId a, FullTransactionId b)
 
 #endif							/* FRONTEND */
 
+/* YB declarations */
+extern void YbAtEOXact_UpgradeNextOid(void);
+
 #endif							/* TRANSAM_H */

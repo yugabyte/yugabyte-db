@@ -2651,7 +2651,10 @@ CommitTransaction(void)
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3185,11 +3188,14 @@ AbortTransaction(void)
 
 	/*
 	 * YB: This is done outside the block above, which is skipped when the
-	 * transaction fails before creating a resource owner.  A stale stamp has
-	 * to be cleared on every exit.
+	 * transaction fails before creating a resource owner.  A stale stamp or
+	 * upgrade OID counter has to be cleared on every exit.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();

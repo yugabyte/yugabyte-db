@@ -689,6 +689,8 @@ GetNewObjectId(void)
 	/*
 	 * In YSQL upgrade mode, we continue OID sequence where initdb left off.
 	 * We don't expect concurrent upgrade, so we don't need to reserve OIDs.
+	 * The counter is reset at the end of every transaction, see
+	 * YbAtEOXact_UpgradeNextOid.
 	 */
 	if (IsYsqlUpgrade)
 	{
@@ -881,3 +883,23 @@ AssertTransactionIdInAllowableRange(TransactionId xid)
 		   TransactionIdPrecedesOrEquals(xid, next_xid));
 }
 #endif
+
+/*
+ * Forget the next OID to assign during YSQL upgrade, so that the next
+ * transaction rescans the catalogs of the database for the maximum allocated
+ * system OID.
+ *
+ * Another backend may insert rows with auto-assigned OIDs into this
+ * database's catalogs between our transactions: when a YSQL upgrade
+ * migration creates a shared relation, the template1 backend inserts the
+ * relation's array type and constraints into the catalogs of every database
+ * (see YBCatalogTupleInsert).  A counter kept across transactions would not
+ * know about those OIDs and would assign them again, to rows of other
+ * catalogs.  The upgrade runs migrations one at a time, so no other backend
+ * writes to this database's catalogs during our transaction.
+ */
+void
+YbAtEOXact_UpgradeNextOid(void)
+{
+	ysql_upgrade_next_oid = InvalidOid;
+}
