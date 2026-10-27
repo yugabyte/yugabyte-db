@@ -60,13 +60,14 @@ A replica enters the mode after nothing was appended to its log for `quiescent_t
 
 **Preconditions**, all checked on the replica in `TabletPeer::EnterQuiescentMode`:
 
-1. Committed op id and last received op id are both L, and no operations are pending. An operation stays in the operation tracker until it is applied, so this also means L was applied.
-2. No Raft config change is pending.
-3. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap.
-4. The transaction participant has no transactions, including applied ones still waiting for intent cleanup.
-5. No CDC or xCluster streams on the tablet, and no table-level WAL retention (`wal_retention_secs`, which xCluster setup sets).
-6. No log anchors: remote bootstrap sessions and split parents anchor the segments.
-7. The AutoFlag is promoted (see [Upgrade and rollback](#upgrade-and-rollback)).
+1. The tablet is neither the sys catalog nor a transaction status tablet (see [Scope](#scope-and-open-questions)).
+2. Committed op id and last received op id are both L, and no operations are pending. An operation stays in the operation tracker until it is applied, so this also means L was applied.
+3. No Raft config change is pending.
+4. Every peer has L. The leader tracks this as `all_replicated_op_id` in `PeerMessageQueue` and, while the AutoFlag is on, sends it in `ConsensusRequestPB.all_replicated_op_id`. A peer behind L could otherwise only catch up through remote bootstrap. So a peer that stays down keeps the tablet out of the mode until it is removed from the config, after `follower_unavailable_considered_failed_sec`.
+5. The transaction participant has no transactions, including applied ones still waiting for intent cleanup.
+6. No CDC or xCluster streams on the tablet, and no table-level WAL retention (`wal_retention_secs`, which xCluster setup sets).
+7. No log anchors: remote bootstrap sessions and split parents anchor the segments.
+8. The AutoFlag is promoted (see [Upgrade and rollback](#upgrade-and-rollback)).
 
 **Steps**, each durable before the next:
 
@@ -144,8 +145,7 @@ The first version excludes the sys catalog and transaction status tablets, since
 
 Open questions:
 
-- [ ] Default for `quiescent_tablet_idle_sec`. Each entry flushes memtables and so creates small SST files. Should a tablet that leaves the mode soon after entering it back off its idle threshold?
-- [ ] A peer that stays down keeps its tablets out of the mode until it is removed from the config, after `follower_unavailable_considered_failed_sec`. Is that acceptable?
+- [ ] Default for `quiescent_tablet_idle_sec`. Each entry flushes memtables and so creates small SST files. A tablet written about once per idle period enters and leaves the mode every period; at once per 10 minutes that costs too little to back off the idle threshold.
 - [ ] With `durable_wal_write=false`, a peer can ack L before fsync. After an OS crash it may lose L and need remote bootstrap. Is that acceptable as the fallback?
 - [ ] Allow CDC and xCluster streams whose checkpoints are all at or past L. Reads from checkpoint L also need the lookup of L.
 - [ ] Add a flag that keeps segments for debugging with `log-dump`. The marker already allows segments up to L to remain.

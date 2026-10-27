@@ -2387,13 +2387,10 @@ Status Log::TrimSegmentsCoveredByQuiescentMarkerUnlocked(SegmentSequence* segmen
   if (!quiescent_marker_) {
     return Status::OK();
   }
-  const auto marker_index = quiescent_marker_->op_id().index();
   RETURN_NOT_OK(reader_->GetSegmentsSnapshot(segments));
   auto it = segments->begin();
-  for (; it != segments->end(); ++it) {
-    if (!(*it)->HasFooter() || (*it)->footer().max_replicate_index() > marker_index) {
-      break;
-    }
+  while (it != segments->end() && SegmentCoveredByQuiescentMarker(**it, *quiescent_marker_)) {
+    ++it;
   }
   segments->truncate(it);
   if (segments->empty()) {
@@ -2401,6 +2398,12 @@ Status Log::TrimSegmentsCoveredByQuiescentMarkerUnlocked(SegmentSequence* segmen
   }
   const ReadableLogSegmentPtr& last_segment = VERIFY_RESULT(segments->back());
   return reader_->TrimSegmentsUpToAndIncluding(last_segment->header().sequence_number());
+}
+
+bool Log::SegmentCoveredByQuiescentMarker(
+    const ReadableLogSegment& segment, const QuiescentMarkerPB& marker) {
+  return segment.HasFooter() &&
+         segment.footer().max_replicate_index() <= marker.op_id().index();
 }
 
 Status Log::DeleteSegmentFiles(const SegmentSequence& segments, bool update_metrics) {

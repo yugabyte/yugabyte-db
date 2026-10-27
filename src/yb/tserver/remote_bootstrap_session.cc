@@ -427,8 +427,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   if (quiescent_marker_) {
     size_t num_covered = 0;
     for (const auto& segment : log_segments_) {
-      if (!segment->HasFooter() ||
-          segment->footer().max_replicate_index() > quiescent_marker_->op_id().index()) {
+      if (!log::Log::SegmentCoveredByQuiescentMarker(*segment, *quiescent_marker_)) {
         break;
       }
       ++num_covered;

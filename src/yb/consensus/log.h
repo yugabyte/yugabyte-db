@@ -434,6 +434,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // segments.
   Result<size_t> DeleteSegmentsCoveredByQuiescentMarker() EXCLUDES(state_lock_);
 
+  /// Returns true if the segment is closed and the marker covers all its ops. Covered segments
+  /// form a prefix of the log.
+  static bool SegmentCoveredByQuiescentMarker(
+      const ReadableLogSegment& segment, const QuiescentMarkerPB& marker);
+
   // Returns when a REPLICATE message was last appended, or when the log was opened.
   CoarseTimePoint last_append_time() const {
     return last_append_time_.load(std::memory_order_acquire);
