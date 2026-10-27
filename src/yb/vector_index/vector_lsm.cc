@@ -2071,7 +2071,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
     // Modify copies, so the in-memory chunks keep matching the manifest if the write fails.
     modified.reserve(immutable_chunks_.size());
     for (const auto& chunk : immutable_chunks_) {
-      auto frontiers = chunk->user_frontiers ? chunk->user_frontiers->Clone()
+      auto frontiers = chunk->applied_frontiers ? chunk->applied_frontiers->Clone()
                                              : storage::UserFrontiersPtr{};
       if (frontiers) {
         modify(*frontiers);
@@ -2093,7 +2093,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   {
     std::lock_guard lock(mutex_);
     for (auto& [chunk, frontiers] : modified) {
-      chunk->user_frontiers = std::move(frontiers);
+      chunk->applied_frontiers = std::move(frontiers);
     }
   }
   LOG_WITH_PREFIX(INFO) << "Modified frontiers of " << modified.size() << " chunks";
