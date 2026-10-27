@@ -1514,9 +1514,10 @@ public class GFlagsUtil {
   }
 
   /**
-   * Process user gflags: 1) merge some CSV gflags. 2) remove gflags that are forbidden to override
-   * (if not allowOverrideAll) 3) check host and port for proxy bind addresses gflags if user
-   * specified both.
+   * Process user gflags: 1) merge some CSV gflags. 2) reset gflags that are forbidden to override
+   * (if not allowOverrideAll) to the platform value; not removed, since the node agent path passes
+   * platform and user gflags merged in one map. 3) check host and port for proxy bind addresses
+   * gflags if user specified both.
    *
    * @param node - node details
    * @param userGFlags - glfags specified by user
@@ -1538,11 +1539,11 @@ public class GFlagsUtil {
                 && platformGFlags.containsKey(gflag)
                 && !userGFlags.get(gflag).equals(platformGFlags.get(gflag))) {
               LOG.warn(
-                  "Removing {} from user gflags, values mismatch: user {} platform {}",
+                  "Overriding {} in user gflags, values mismatch: user {} platform {}",
                   gflag,
                   userGFlags.get(gflag),
                   platformGFlags.get(gflag));
-              userGFlags.remove(gflag);
+              userGFlags.put(gflag, platformGFlags.get(gflag));
             }
           });
     }
@@ -1552,11 +1553,11 @@ public class GFlagsUtil {
         && userGFlags.containsKey(OPENSSL_REQUIRE_FIPS)
         && !"true".equals(userGFlags.get(OPENSSL_REQUIRE_FIPS))) {
       LOG.warn(
-          "Removing {}={} from user gflags of FIPS universe node {}",
+          "Overriding {}={} with true in user gflags of FIPS universe node {}",
           OPENSSL_REQUIRE_FIPS,
           userGFlags.get(OPENSSL_REQUIRE_FIPS),
           node.nodeName);
-      userGFlags.remove(OPENSSL_REQUIRE_FIPS);
+      userGFlags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {

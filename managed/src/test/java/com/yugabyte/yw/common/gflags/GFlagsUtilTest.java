@@ -1125,8 +1125,44 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
       GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, allowOverrideAll, null, null);
 
-      assertEquals(Map.of("max_log_size", "100"), userGFlags);
+      assertEquals(
+          Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "100"), userGFlags);
     }
+  }
+
+  @Test
+  public void testProcessUserGFlagsKeepsFipsOnWhenPlatformAndUserGFlagsAreMerged() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> platformGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "256"));
+    for (String value : List.of("false", "True", "1")) {
+      // The node agent path merges both and passes the result as the user gflags.
+      Map<String, String> gflags = new HashMap<>(platformGFlags);
+      gflags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, value);
+
+      GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, false, null, null);
+
+      assertEquals("true", gflags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS));
+    }
+  }
+
+  @Test
+  public void testProcessUserGFlagsResetsForbiddenGFlagToPlatformValue() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> platformGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.PLACEMENT_CLOUD, "aws", "max_log_size", "256"));
+    // The node agent path merges both and passes the result as the user gflags.
+    Map<String, String> gflags = new HashMap<>(platformGFlags);
+    gflags.put(GFlagsUtil.PLACEMENT_CLOUD, "gcp");
+
+    GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, false, null, null);
+    assertEquals("aws", gflags.get(GFlagsUtil.PLACEMENT_CLOUD));
+
+    gflags.put(GFlagsUtil.PLACEMENT_CLOUD, "gcp");
+    GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, true, null, null);
+    assertEquals("gcp", gflags.get(GFlagsUtil.PLACEMENT_CLOUD));
   }
 
   @Test
