@@ -305,7 +305,7 @@ The following ALTER TYPE statement does not cause a table rewrite:
 
 ##### Index rebuilds without a table rewrite
 
-When an alter type operation does not require a table rewrite, indexes that contain the altered column may still be rebuilt as follows:
+When an alter type operation does not require a table rewrite, indexes that contain the altered column [may still be rebuilt](https://github.com/yugabyte/yugabyte-db/issues/24007) as follows:
 
 - **Index reused**: the index is not rebuilt. For example, a plain index on a VARCHAR(n) column altered to VARCHAR(m) with m > n, or to TEXT.
 - **Index rebuilt**: the index is dropped and recreated, but the main table is not rewritten. For example, an expression or partial index that references the altered column, or a change in the column collation.
@@ -315,8 +315,6 @@ For example, the following ALTER TYPE statement does not cause a table rewrite, 
 
 - CREATE INDEX test_lower_a_idx ON test ((lower(a)));
   ALTER TABLE test ALTER COLUMN a TYPE TEXT; -- from VARCHAR(51)
-
-In versions earlier than v2025.2.3.0, all indexes that contain the altered column are rebuilt, even when the index can be reused. See {{<issue 24007>}}.
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
