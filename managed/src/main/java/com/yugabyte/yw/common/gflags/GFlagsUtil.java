@@ -1960,9 +1960,11 @@ public class GFlagsUtil {
    * Applies the audit/query log ysql_pg_conf_csv entries over a user or platform value. A base
    * entry whose key telemetry also sets is replaced in place and new keys are appended, so a base
    * without conflicts keeps its entries and their order (GFlagsUpgrade compares the printed string
-   * with the server's value). As in mergeCSVs, keys match exactly and the first base entry for a
-   * key wins. A base key that differs only in case stays, but the telemetry entry comes after it,
-   * and PostgreSQL applies the last one.
+   * with the server's value). With no telemetry entries, the base comes back unchanged. Otherwise,
+   * as in mergeCSVs, keys match exactly and the first base entry for a key wins. A base key that
+   * differs only in case stays where it is, and PostgreSQL applies the last entry for a key: an
+   * appended telemetry entry wins over it, but it wins over a telemetry entry that replaced an
+   * earlier exact-case entry in place.
    */
   public static String overrideWithTelemetryYsqlPgConfCsv(String baseCsv, String telemetryCsv) {
     if (StringUtils.isEmpty(telemetryCsv)) {
