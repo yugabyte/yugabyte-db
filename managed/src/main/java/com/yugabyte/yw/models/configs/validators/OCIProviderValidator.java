@@ -51,6 +51,10 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
 
   @Override
   public void validate(Provider provider) {
+    // Pure format checks with no cloud call, so they hold even when the live validation below is
+    // switched off - as they do for the AWS and GCP providers.
+    validateCrossCloudFederationTargets(provider);
+
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciProviderValidation)) {
       log.warn("OCI provider validation is not enabled");
       return;

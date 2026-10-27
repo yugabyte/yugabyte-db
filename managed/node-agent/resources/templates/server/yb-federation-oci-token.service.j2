@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the OCI identity token used for cross-cloud federation
+
+[Service]
+{% if use_system_level_systemd %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Type=oneshot
+ExecStart="{{ node_agent_bin }}" federation oci-token --identity-domain-url "{{ identity_domain_url }}" --output "{{ token_file }}"

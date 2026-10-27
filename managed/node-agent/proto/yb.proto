@@ -213,6 +213,7 @@ message ConfigureCloudFederationInput {
         CLOUD_PROVIDER_UNSPECIFIED = 0;
         AWS = 1;
         GCP = 2;
+        OCI = 3;
     }
     // Cloud this node runs on. For an on-prem provider YBA detects it from the node's
     // metadata service; it is not the provider type.
@@ -232,14 +233,27 @@ message ConfigureCloudFederationInput {
         GcsConfig gcs = 5;
         S3Config s3 = 6;
     }
+    // Settings for sourceCloud, for a source that cannot present an identity the target accepts on
+    // its own. Set only when sourceCloud is OCI.
+    OciSourceConfig ociSource = 9;
 }
 
 // GCP Workload Identity Federation audience for a node writing to GCS. The node
 // renders the full external_account JSON from this audience; the rest of the
-// credential (type, token_url, credential_source) is fixed in the
-// gcp-fed-creds.json.j2 template. The audience comes from the provider config.
+// credential (type, token_url, credential_source) is fixed by the template for the
+// node's source cloud (gcp-fed-creds.json.j2 for AWS, gcp-fed-creds-oci.json.j2 for
+// OCI). The audience comes from the provider config.
 message GcsConfig {
     string audience = 1;
+}
+
+// How a node running on OCI proves its identity to the target cloud. OCI does not hand a node a
+// token another cloud can verify, so the node's instance principal is exchanged at an OCI
+// identity domain for a JWT, which node-agent keeps fresh on disk.
+message OciSourceConfig {
+    // Base URL of the identity domain the node's tenancy uses, for example
+    // https://idcs-<id>.identity.oraclecloud.com. https only, no path.
+    string identityDomainUrl = 1;
 }
 
 // Params for a GCP node writing to S3 via AWS AssumeRoleWithWebIdentity. The node
