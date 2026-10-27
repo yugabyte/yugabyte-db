@@ -49,7 +49,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_uint64(manual_compaction_max_wait_files);
+DECLARE_bool(nonexclusive_manual_compaction_blocks_auto_compactions);
 DECLARE_int32(memstore_arena_size_kb);
 
 using std::atomic;
@@ -2633,18 +2633,16 @@ TEST_F(ColumnFamilyTest, GetColumnFamiliesOptions) {
 class ManualCompactionWaitTest : public ColumnFamilyTest {
  protected:
   static constexpr int kCompactionTrigger = 4;
-  // Files compacted by the blocked automatic compaction plus the files flushed while the manual
-  // compaction waits.
-  static constexpr uint64_t kFilesWhileWaiting = 2 * kCompactionTrigger;
 
   // Blocks an automatic compaction, starts a manual compaction that waits behind it, and flushes
   // enough files to trigger another automatic compaction. Checks whether that automatic
   // compaction runs while the manual compaction waits, then lets everything finish.
   void TestAutomaticCompactionWhileManualWaits(
-      uint64_t max_wait_files, bool exclusive, bool expect_automatic_compaction,
+      bool nonexclusive_blocks, bool exclusive, bool expect_automatic_compaction,
       yb::PriorityThreadPool* thread_pool = nullptr) {
     google::FlagSaver flag_saver;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_manual_compaction_max_wait_files) = max_wait_files;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_nonexclusive_manual_compaction_blocks_auto_compactions) =
+        nonexclusive_blocks;
     const auto kTimeout = yb::MonoDelta::FromSeconds(30 * yb::kTimeMultiplier);
 
     Open();
@@ -2725,33 +2723,31 @@ class ManualCompactionWaitTest : public ColumnFamilyTest {
   }
 };
 
-TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(FlagOffBlocksAutomaticCompactions)) {
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(FlagOnBlocksAutomaticCompactions)) {
   TestAutomaticCompactionWhileManualWaits(
-      /* max_wait_files= */ 0, /* exclusive= */ false, /* expect_automatic_compaction= */ false);
+      /* nonexclusive_blocks= */ true, /* exclusive= */ false,
+      /* expect_automatic_compaction= */ false);
 }
 
-TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(BelowThresholdBlocksAutomaticCompactions)) {
+TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(FlagOffRunsAutomaticCompactions)) {
   TestAutomaticCompactionWhileManualWaits(
-      kFilesWhileWaiting + 1, /* exclusive= */ false, /* expect_automatic_compaction= */ false);
-}
-
-TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(AtThresholdRunsAutomaticCompactions)) {
-  TestAutomaticCompactionWhileManualWaits(
-      kFilesWhileWaiting, /* exclusive= */ false, /* expect_automatic_compaction= */ true);
+      /* nonexclusive_blocks= */ false, /* exclusive= */ false,
+      /* expect_automatic_compaction= */ true);
 }
 
 TEST_F(ManualCompactionWaitTest,
-       YB_DEBUG_ONLY_TEST(AtThresholdRunsAutomaticCompactionsWithPriorityThreadPool)) {
+       YB_DEBUG_ONLY_TEST(FlagOffRunsAutomaticCompactionsWithPriorityThreadPool)) {
   // Static so that it outlives the DB, which the fixture closes after the test body.
   static yb::PriorityThreadPool thread_pool(/* max_running_tasks= */ 3);
   TestAutomaticCompactionWhileManualWaits(
-      kFilesWhileWaiting, /* exclusive= */ false, /* expect_automatic_compaction= */ true,
-      &thread_pool);
+      /* nonexclusive_blocks= */ false, /* exclusive= */ false,
+      /* expect_automatic_compaction= */ true, &thread_pool);
 }
 
 TEST_F(ManualCompactionWaitTest, YB_DEBUG_ONLY_TEST(ExclusiveBlocksAutomaticCompactions)) {
   TestAutomaticCompactionWhileManualWaits(
-      kFilesWhileWaiting, /* exclusive= */ true, /* expect_automatic_compaction= */ false);
+      /* nonexclusive_blocks= */ false, /* exclusive= */ true,
+      /* expect_automatic_compaction= */ false);
 }
 
 }  // namespace rocksdb
