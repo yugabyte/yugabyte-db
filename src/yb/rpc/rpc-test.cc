@@ -1448,11 +1448,14 @@ class TestRpcClientCertificates : public RpcTestBase {
         require_client_certificate, JoinPathSegments(dir, "ca.crt"), dir, node, required_uid);
   }
 
+  // Replaces any running server. Contexts are kept until the fixture is destroyed, after the
+  // servers using them.
   Status StartServer(const std::string& sub_dir = "", const std::string& required_uid = {}) {
-    server_context_ = VERIFY_RESULT(CreateContext(
-        RequireClientCertificate::kTrue, sub_dir, "127.0.0.2", required_uid));
+    server_contexts_.push_back(VERIFY_RESULT(CreateContext(
+        RequireClientCertificate::kTrue, sub_dir, "127.0.0.2", required_uid)));
     StartTestServerWithGeneratedCode(
-        CreateSecureMessenger("TestServer", server_context_.get(), kDefaultServerMessengerOptions),
+        CreateSecureMessenger(
+            "TestServer", server_contexts_.back().get(), kDefaultServerMessengerOptions),
         &server_hostport_);
     return Status::OK();
   }
@@ -1496,72 +1499,43 @@ class TestRpcClientCertificates : public RpcTestBase {
     return METRIC_rpc_inbound_insecure_connections_rejected.Instantiate(metric_entity())->value();
   }
 
-  std::unique_ptr<SecureContext> server_context_;
+  std::vector<std::unique_ptr<SecureContext>> server_contexts_;
   HostPort server_hostport_;
 };
 
-TEST_F(TestRpcClientCertificates, TrustedClientCertificate) {
+TEST_F(TestRpcClientCertificates, Rejections) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
   ASSERT_OK(StartServer());
-  auto client_context = ASSERT_RESULT(CreateContext(
-      RequireClientCertificate::kFalse, "", kClientNode));
-  ASSERT_OK(CallServer(client_context.get()));
+
+  auto trusted = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", kClientNode));
+  ASSERT_OK(CallServer(trusted.get()));
   ASSERT_EQ(RejectedHandshakes(), 0);
-}
 
-TEST_F(TestRpcClientCertificates, NoClientCertificate) {
-  ASSERT_OK(StartServer());
-  auto client_context = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", ""));
-  ASSERT_NOK(CallServer(client_context.get()));
-  ASSERT_GE(RejectedHandshakes(), 1);
-}
+  auto expect_rejected_handshake = [this](const SecureContext* client_context) {
+    auto rejected_before = RejectedHandshakes();
+    ASSERT_NOK(CallServer(client_context));
+    ASSERT_GT(RejectedHandshakes(), rejected_before);
+  };
 
-TEST_F(TestRpcClientCertificates, ClientCertificateFromAnotherCA) {
-  ASSERT_OK(StartServer());
+  auto no_cert = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", ""));
+  ASSERT_NO_FATALS(expect_rejected_handshake(no_cert.get()));
+
   // The client trusts the server's CA, so only the server can fail the handshake.
   auto ca2_dir = JoinPathSegments(GetCertsDir(), "CA2");
-  auto client_context = ASSERT_RESULT(CreateContextFromFiles(
+  auto other_ca = ASSERT_RESULT(CreateContextFromFiles(
       RequireClientCertificate::kFalse, JoinPathSegments(ca2_dir, "combinedCA.crt"), ca2_dir,
       kClientNode));
-  ASSERT_NOK(CallServer(client_context.get()));
-  ASSERT_GE(RejectedHandshakes(), 1);
-}
+  ASSERT_NO_FATALS(expect_rejected_handshake(other_ca.get()));
 
-TEST_F(TestRpcClientCertificates, MatchingUid) {
+  ASSERT_NOK(CallServer(nullptr));
+  ASSERT_GE(RejectedInsecureConnections(), 1);
+
   // The certificates in "named" carry UID uid.yb.
+  auto named = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "named", kClientNode));
   ASSERT_OK(StartServer("named", "uid.yb"));
-  auto client_context = ASSERT_RESULT(CreateContext(
-      RequireClientCertificate::kFalse, "named", kClientNode));
-  ASSERT_OK(CallServer(client_context.get()));
-  ASSERT_EQ(RejectedHandshakes(), 0);
-}
-
-TEST_F(TestRpcClientCertificates, WrongUid) {
+  ASSERT_OK(CallServer(named.get()));
   ASSERT_OK(StartServer("named", "another_uid"));
-  auto client_context = ASSERT_RESULT(CreateContext(
-      RequireClientCertificate::kFalse, "named", kClientNode));
-  ASSERT_NOK(CallServer(client_context.get()));
-  ASSERT_GE(RejectedHandshakes(), 1);
-}
-
-TEST_F(TestRpcClientCertificates, PlaintextRejected) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
-  ASSERT_OK(StartServer());
-  ASSERT_NOK(CallServer(nullptr));
-  ASSERT_GE(RejectedInsecureConnections(), 1);
-}
-
-TEST_F(TestRpcClientCertificates, PlaintextWithoutClientCertificates) {
-  server_context_ = ASSERT_RESULT(CreateContext(RequireClientCertificate::kFalse, "", "127.0.0.2"));
-  StartTestServerWithGeneratedCode(
-      CreateSecureMessenger("TestServer", server_context_.get(), kDefaultServerMessengerOptions),
-      &server_hostport_);
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = true;
-  ASSERT_OK(CallServer(nullptr));
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
-  ASSERT_NOK(CallServer(nullptr));
-  ASSERT_GE(RejectedInsecureConnections(), 1);
+  ASSERT_NO_FATALS(expect_rejected_handshake(named.get()));
 }
 
 class TestRpcCompression : public RpcTestBase, public testing::WithParamInterface<int> {
