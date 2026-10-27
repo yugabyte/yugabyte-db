@@ -15,7 +15,6 @@
 #include "yb/hnsw/vector_index_test_base.h"
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/util/size_literals.h"
 
@@ -45,11 +44,6 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
       .dimensions = dimensions_,
     };
     indexes_.emplace_back(
-        "usearch",
-        ASSERT_RESULT((CreateUsearchIndexTraits<Vector, DistanceResult>(
-            block_cache_, options, mem_tracker_)))
-            ->Create(vector_index::FactoryMode::kCreate));
-    indexes_.emplace_back(
         "hnswlib",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
             block_cache_, options, mem_tracker_)))
@@ -65,12 +59,8 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     }
 
     indexes_.emplace_back(
-        "yb_hnsw",
-        ASSERT_RESULT(indexes_.front().second->SaveToFile(GetTestPath("0.yb_hnsw"))));
-
-    indexes_.emplace_back(
         "yb_hnsw_hnswlib",
-        ASSERT_RESULT(indexes_[1].second->SaveToFile(GetTestPath("1.yb_hnsw"))));
+        ASSERT_RESULT(indexes_.front().second->SaveToFile(GetTestPath("0.yb_hnsw"))));
   }
 
   void InsertRandomVector(Vector& holder) {
@@ -82,7 +72,8 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
   }
 
   std::vector<std::pair<std::string, VectorIndexPtr>> indexes_;
-  MemTrackerPtr mem_tracker_ = MemTracker::GetRootTracker()->FindOrCreateTracker(1_GB, "usearch");
+  MemTrackerPtr mem_tracker_ =
+      MemTracker::GetRootTracker()->FindOrCreateTracker(1_GB, "vector_index_perf");
 };
 
 void VectorIndexPerfTest::TestPerf() {
