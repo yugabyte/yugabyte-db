@@ -14,10 +14,15 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+
+#include "yb/master/master_client.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
@@ -193,13 +198,39 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
 }
 
 // A context cannot present a client certificate when it was given no node name to load one by.
-// The cross-universe xCluster clients pass an empty name deliberately, so this combination is
-// reachable from --node_to_node_encryption_use_client_certificates, not just from miswiring.
 TEST(SecureContextTest, ClientCertificatesRequireNodeName) {
   auto context =
       rpc::CreateSecureContext(GetCertsDir(), rpc::UseClientCerts::kTrue, /*node_name=*/"");
   ASSERT_NOK(context);
   ASSERT_STR_CONTAINS(context.status().ToString(), "without a node name");
+}
+
+class SecureConnectionRemoteUniverseClientTest : public SecureConnectionTest {
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
+    SecureConnectionTest::SetUp();
+  }
+};
+
+// The clients xCluster builds for another universe, here pointed at this one, must present the
+// local node certificate when client certificates are required.
+TEST_F_EX(
+    SecureConnectionTest, RemoteUniverseClient, SecureConnectionRemoteUniverseClientTest) {
+  TestSimpleOps();
+
+  const xcluster::ReplicationGroupId kReplicationGroupId("remote_universe_client");
+  auto master_addrs = cluster_->GetMasterAddresses();
+  auto master_hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
+
+  auto remote_client =
+      ASSERT_RESULT(client::XClusterRemoteClientHolder::Create(kReplicationGroupId, master_hps));
+  ASSERT_OK(remote_client->GetYbClient().ListTables());
+  ASSERT_OK(remote_client->ReloadCertificates());
+  ASSERT_OK(remote_client->GetYbClient().ListTables());
+
+  auto rpc_tasks = ASSERT_RESULT(
+      master::XClusterRpcTasks::CreateWithMasterAddrs(kReplicationGroupId, master_addrs));
+  ASSERT_OK(rpc_tasks->GetTableLocations(table_->id()));
 }
 
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {

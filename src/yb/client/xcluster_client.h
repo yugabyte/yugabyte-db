@@ -79,6 +79,7 @@ class XClusterRemoteClientHolder {
 
   explicit XClusterRemoteClientHolder(const xcluster::ReplicationGroupId& replication_group_id);
   Status Init(const std::vector<HostPort>& remote_masters);
+  std::string CertsDir() const;
 
   const xcluster::ReplicationGroupId replication_group_id_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
