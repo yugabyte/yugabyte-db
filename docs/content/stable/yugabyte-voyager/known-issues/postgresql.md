@@ -1402,7 +1402,9 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
+**Description**: For live migration, the migration skips columns that have the following data types: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, `XML`, `TIMETZ`, `CID`, or `REFCURSOR`.
+
+Columns whose type is built on an unsupported data type are also skipped, and are listed in the unsupported-columns output of [export data](../../reference/data-migration/export-data/). This covers domains, arrays, composites, and user-defined multiranges built on an unsupported type. Arrays of geometric types, `pg_lsn[]`, `txid_snapshot[]`, `timetz[]`, and arrays of range types are also skipped in live migration.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
