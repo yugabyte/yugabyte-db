@@ -718,12 +718,11 @@ public class Commissioner {
   }
 
   /**
-   * Whether the operator's ownership of the task's target decides its rollback. It does for an
-   * edit of the universe or of one of its clusters, which the operator would re-apply. A node
-   * action or a DR config task has the universe as the target, but is not an edit the operator
-   * re-applies, and its API is not blocked for the operator, so neither is its rollback. Wrongly
-   * blocking a rollback leaves the user without a way back, so any other target type is not
-   * blocked.
+   * Whether the operator's ownership of the task's target decides its rollback. It does for an edit
+   * of the universe or of one of its clusters, which the operator would re-apply. A node action or
+   * a DR config task has the universe as the target, but is not an edit the operator re-applies,
+   * and its API is not blocked for the operator, so neither is its rollback. Wrongly blocking a
+   * rollback leaves the user without a way back, so any other target type is not blocked.
    */
   private static boolean ownershipOfTargetBlocksRollback(CustomerTask task) {
     switch (task.getTargetType()) {
