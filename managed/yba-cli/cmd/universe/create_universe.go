@@ -183,15 +183,16 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		// Ignore the client root CA when client-to-node TLS is off. If only one certificate is
-		// given, it is used for both; with only a root CA, YBA sets the client root CA to it.
-		// When node-to-node TLS is off, the client root CA replaces the unused root CA.
-		if !v1.GetBool("enable-client-to-node-encrypt") {
-			clientRootCACertUUID = ""
-		}
+		// If only one certificate is given, it is used for both; with only a root CA, YBA sets
+		// the client root CA to it. When node-to-node TLS is off, the client root CA replaces
+		// the unused root CA. The client root CA is cleared only after this fallback, so a lone
+		// --client-root-ca is still used as the root CA when client-to-node TLS is off.
 		if len(rootCACertUUID) == 0 ||
 			(!v1.GetBool("enable-node-to-node-encrypt") && len(clientRootCACertUUID) != 0) {
 			rootCACertUUID = clientRootCACertUUID
+		}
+		if !v1.GetBool("enable-client-to-node-encrypt") {
+			clientRootCACertUUID = ""
 		}
 		rootAndClientRootCASame := len(clientRootCACertUUID) == 0 ||
 			rootCACertUUID == clientRootCACertUUID
@@ -502,13 +503,13 @@ func init() {
 			"communication between a client (ex: Database application, ysqlsh, ycqlsh) "+
 			"and the Universe YSQL -or- YCQL endpoint.")
 	createUniverseCmd.Flags().String("root-ca", "",
-		"[Optional] Root Certificate name for Encryption in Transit, defaults to creating new"+
-			" certificate for the universe if encryption in transit in enabled. Run \"yba eit list\" "+
-			"to check the list of available certificates.")
+		"[Optional] Root Certificate name for Encryption in Transit. If not set, the client root"+
+			" certificate is used, or YBA creates a new certificate when encryption in transit is"+
+			" enabled. Run \"yba eit list\" to check the list of available certificates.")
 	createUniverseCmd.Flags().String("client-root-ca", "",
-		"[Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new"+
-			" certificate for the universe if encryption in transit in enabled. Run \"yba eit list\" "+
-			"to check the list of available certificates.")
+		"[Optional] Client Root Certificate name for Encryption in Transit. If not set, the root"+
+			" certificate is used, or YBA creates a new certificate when encryption in transit is"+
+			" enabled. Run \"yba eit list\" to check the list of available certificates.")
 
 	createUniverseCmd.Flags().Bool("enable-ipv6", false,
 		"[Optional] Enable IPV6 networking for connections between the DB Servers, supported "+
