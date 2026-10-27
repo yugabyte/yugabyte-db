@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
@@ -15,7 +16,9 @@ import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.pa.PerfAdvisorServiceTest;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.UUID;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -82,6 +85,83 @@ public class PAProxyControllerTest extends FakeDBApplication {
       assertThat(forwarded.getHeader("Cookie"), nullValue());
       assertThat(forwarded.getHeader("Accept"), equalTo("application/json"));
     }
+  }
+
+  @Test
+  public void testV2UniverseCallIsForwarded() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      paServer.enqueue(new MockResponse().setBody("{}"));
+      Result result =
+          route(
+              proxyRequest(
+                  collector, "v2/universes/" + universe.getUniverseUUID() + "/nodes?limit=5"));
+      assertThat(result.status(), equalTo(200));
+      assertThat(
+          paServer.takeRequest().getPath(),
+          equalTo("/api/v2/universes/" + universe.getUniverseUUID() + "/nodes?limit=5"));
+
+      paServer.enqueue(new MockResponse().setBody("{}"));
+      result = route(proxyRequest(collector, "v2/universes/" + universe.getUniverseUUID()));
+      assertThat(result.status(), equalTo(200));
+      assertThat(
+          paServer.takeRequest().getPath(),
+          equalTo("/api/v2/universes/" + universe.getUniverseUUID()));
+    }
+  }
+
+  @Test
+  public void testV2UniverseCallNamingAnotherUniverseIsRejected() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      assertPlatformException(
+          () ->
+              route(
+                  proxyRequest(
+                      collector,
+                      "v2/universes/"
+                          + universe.getUniverseUUID()
+                          + "/nodes?x=/universes/"
+                          + UUID.randomUUID())));
+      assertThat(paServer.getRequestCount(), equalTo(1));
+    }
+  }
+
+  @Test
+  public void testV2UniverseCallOutsideItsRouteIsRejected() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      for (String path :
+          new String[] {
+            "v2//universes/" + universe.getUniverseUUID() + "/nodes",
+            "v2/./universes/" + universe.getUniverseUUID(),
+            "v2/%75niverses/" + universe.getUniverseUUID()
+          }) {
+        assertPlatformException(() -> route(proxyRequest(collector, path)));
+      }
+      assertThat(paServer.getRequestCount(), equalTo(1));
+    }
+  }
+
+  private Http.RequestBuilder proxyRequest(PACollector collector, String path) {
+    return Helpers.fakeRequest(
+            "GET",
+            "/api/v1/customers/"
+                + customer.getUuid()
+                + "/pa_proxy/"
+                + collector.getUuid()
+                + "/api/"
+                + path)
+        .header("X-AUTH-TOKEN", authToken);
   }
 
   private PACollector registerCollector(MockWebServer server) throws Exception {
