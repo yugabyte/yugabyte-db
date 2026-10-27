@@ -1,8 +1,9 @@
 ---
 name: create-diff
 description: >-
-  Create a YugabyteDB Phorge diff for the current branch's changes.
-  Use when the user wants to publish their changes for review.
+  Create a legacy YugabyteDB Phorge/arc diff for the current branch's changes.
+  Use ONLY when the user explicitly requests a Phorge or Differential diff.
+  For standard code review, use `create-pr` instead.
 ---
 
 # Create Diff

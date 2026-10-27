@@ -1,10 +1,9 @@
 ---
 name: review-backport
 description: >-
-  Review YugabyteDB backport diffs by comparing them against their original
-  commits/diffs. Use when the user provides a Phorge backport diff ID
-  (e.g. D51405) and wants to verify the backport is correct, or when
-  reviewing backport revisions.
+  Review YugabyteDB backport PRs (GitHub) or legacy diffs (Phorge) by comparing them
+  against their original commits/diffs. Use when the user provides a GitHub backport
+  PR URL/number or a Phorge backport diff ID (e.g. D51405) and wants to verify the backport is correct.
 ---
 
 # Review Backport
@@ -39,6 +38,28 @@ This skill requires the Phorge MCP server. If the `user-phorge` MCP server is no
 3. **Restart AI agent** to pick up the new MCP server configuration.
 
 ## Workflow
+
+### Reviewing a GitHub Backport PR (Default)
+
+When reviewing a GitHub backport PR (number `#NNNN` or URL `https://github.com/yugabyte/yugabyte-db/pull/NNNN`):
+
+1. **Fetch PR details and diff**:
+   ```bash
+   gh pr view <pr_number> --repo yugabyte/yugabyte-db --json title,body,baseRefName,headRefName
+   gh pr diff <pr_number> --repo yugabyte/yugabyte-db
+   ```
+2. **Identify original commit**:
+   Look for `Original commit: <sha>` or `Backport of #NNNN` in the PR body.
+3. **Fetch original commit diff**:
+   ```bash
+   git show <sha>
+   ```
+4. **Compare hunks**:
+   Compare the backport diff against the original commit diff, noting any merge conflict resolutions or branch-specific adaptations.
+
+---
+
+### Reviewing a Legacy Phorge Revision (Opt-in)
 
 ### Step 1: Fetch the backport revision
 

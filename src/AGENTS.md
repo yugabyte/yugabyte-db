@@ -1,7 +1,7 @@
 ## Making changes and pushing to upstream
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
-arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
+GitHub Pull Requests (via `create-pr` skill and `gh`) are the primary review and merge workflow. Phorge and arc diffs are legacy and opt-in until retirement.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
