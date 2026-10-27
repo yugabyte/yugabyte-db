@@ -295,7 +295,7 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
     }
 
     auto waiter = std::make_shared<Synchronizer>();
-    waiters->emplace(min_allowed, waiter);
+    waiters->Push({ .min_allowed = min_allowed, .synchronizer = waiter });
     ReverseLock<std::unique_lock<std::mutex>> unlock(*lock);
     // A timed-out waiter stays in waiters, and the deadline check on the next iteration returns
     // TimedOut.
@@ -306,11 +306,9 @@ Result<SafeTimeWithSource> MvccManager::WaitForSafeTime(
 std::vector<std::shared_ptr<Synchronizer>> MvccManager::ExtractReachedWaiters() {
   std::vector<std::shared_ptr<Synchronizer>> result;
   auto extract = [&result](SafeTimeWaiters& waiters, HybridTime safe_time) {
-    const auto end = waiters.upper_bound(safe_time);
-    for (auto it = waiters.begin(); it != end; ++it) {
-      result.push_back(std::move(it->second));
+    while (!waiters.empty() && waiters.top().min_allowed <= safe_time) {
+      result.push_back(waiters.Pop().synchronizer);
     }
-    waiters.erase(waiters.begin(), end);
   };
 
   if (closing_) {

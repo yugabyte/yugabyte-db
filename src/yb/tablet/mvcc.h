@@ -32,7 +32,6 @@
 #pragma once
 
 #include <deque>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -45,6 +44,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/priority_queue.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -168,10 +168,23 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
-  // Threads that wait for safe time, keyed by the min_allowed that they wait for. Shared ownership
-  // lets a waker signal a waiter after releasing mutex_, and lets a timed-out waiter leave its
-  // entry for the next waker or StartShutdown to take out.
-  using SafeTimeWaiters = std::multimap<HybridTime, std::shared_ptr<Synchronizer>>;
+  // A thread that waits for safe time to reach min_allowed. Shared ownership lets a waker signal a
+  // waiter after releasing mutex_, and lets a timed-out waiter leave its entry for the next waker
+  // or StartShutdown to take out.
+  struct SafeTimeWaiter {
+    HybridTime min_allowed;
+    std::shared_ptr<Synchronizer> synchronizer;
+  };
+
+  // Puts the waiter with the lowest min_allowed on top.
+  struct SafeTimeWaiterCompare {
+    bool operator()(const SafeTimeWaiter& lhs, const SafeTimeWaiter& rhs) const {
+      return lhs.min_allowed > rhs.min_allowed;
+    }
+  };
+
+  using SafeTimeWaiters =
+      PriorityQueue<SafeTimeWaiter, std::vector<SafeTimeWaiter>, SafeTimeWaiterCompare>;
 
   // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.
   template <class SafeTimeFunc>
