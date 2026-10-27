@@ -1142,6 +1142,33 @@ yb_get_federated_tserver_uuid_attno(Oid relid)
 }
 
 /*
+ * Replace each Var of another relation and each PlaceHolderVar in index quals
+ * fixed by yb_fix_indexqual_references, whose index columns are INDEX_VAR
+ * Vars, with a PARAM_EXEC Param of the same type.
+ */
+static Node *
+yb_outer_refs_to_params_mutator(Node *node, void *context)
+{
+	if (node == NULL)
+		return NULL;
+	if ((IsA(node, Var) && ((Var *) node)->varno != INDEX_VAR) ||
+		IsA(node, PlaceHolderVar))
+	{
+		Param	   *param = makeNode(Param);
+
+		param->paramkind = PARAM_EXEC;
+		param->paramid = 0;
+		param->paramtype = exprType(node);
+		param->paramtypmod = exprTypmod(node);
+		param->paramcollid = exprCollation(node);
+		param->location = -1;
+		return (Node *) param;
+	}
+	return expression_tree_mutator(node, yb_outer_refs_to_params_mutator,
+								   context);
+}
+
+/*
  * Run yb_index_might_recheck, which predetermines the recheck as the executor
  * does at scan init, on the inputs the executor derives from the plan built
  * for 'path'.  'scan_tag' is the plan node the executor passes as the Scan
@@ -1156,12 +1183,13 @@ yb_get_federated_tserver_uuid_attno(Oid relid)
  *   quals create_indexscan_plan hands the plan, with their opfuncids filled
  *   in as setrefs does before the executor sees them.  Its PlanState
  *   argument is only the parent of the ExprStates compiled for runtime
- *   keys.  An unparameterized path's right operands are Consts, Params or
- *   expressions over them, which compile without a parent; of the nodes an
- *   index condition can hold, only a SubPlan needs one, so a path carrying
- *   one is taken to recheck.  A runtime key holds (Datum) 0 at the
- *   executor's call too, so the few value-dependent tests see the same
- *   inputs.
+ *   keys.  The references to other relations in a parameterized path's
+ *   quals become Params, as replace_nestloop_params makes them in the plan,
+ *   so the right operands are Consts, Params or expressions over them,
+ *   which compile without a parent; of the nodes an index condition can
+ *   hold, only a SubPlan needs one, so a path carrying one is taken to
+ *   recheck.  A runtime key holds (Datum) 0 at the executor's call too, so
+ *   the few value-dependent tests see the same inputs.
  * - A stub Scan node, zero-filled apart from its tag and, for the two index
  *   scan tags, yb_merge_scan_info, stands in for the plan node.  Nothing
  *   else is read from it, and NULL would not do: a NULL Scan marks an
@@ -1196,8 +1224,6 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 	MemoryContext oldcxt;
 	bool		result;
 
-	Assert(path->path.param_info == NULL);
-
 	/* No Relation to run against; assume the worst, as yb_cost_index does. */
 	if (index->hypothetical)
 	{
@@ -1207,12 +1233,14 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 	}
 
 	tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
-								   "yb agg pushdown recheck",
+								   "yb index path recheck",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(tmpcxt);
 
 	yb_fix_indexqual_references(root, path, &stripped_indexquals,
 								&fixed_indexquals);
+	fixed_indexquals = (List *)
+		yb_outer_refs_to_params_mutator((Node *) fixed_indexquals, NULL);
 
 	/*
 	 * A planner-built clause (a commuted or boolean-equality index qual)

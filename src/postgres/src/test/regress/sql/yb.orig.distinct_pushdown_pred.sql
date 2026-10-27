@@ -117,6 +117,23 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 -- and index clauses currently execute before DISTINCT.
 \set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > 1;'
 \i :run_query
+
+-- An index clause that DocDB leaves to the recheck puts r2 in the prefix: the
+-- recheck runs after the skip, so it would reject the one row returned for an
+-- r1 value while skipped rows pass.  DocDB binds an array only as an IN list,
+-- so both conditions here are left to the recheck (#35029).
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > ANY (ARRAY[0, 1]) AND r2 < ANY (ARRAY[1, 2]);'
+\i :run_query
+-- A rechecked condition on a prefix column rejects all rows of a prefix value
+-- or none of them, so the prefix stays (#35029).
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r2 > ANY (ARRAY[0, 1]);'
+\i :run_query
+-- With the fold off, DocDB binds the IN list and leaves the ranges to the
+-- recheck (#35029).
+SET yb_enable_advanced_index_cond_fold = off;
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;'
+\i :run_query
+RESET yb_enable_advanced_index_cond_fold;
 -- Cannot eliminate r2 here since the query requires all distinct values of r2 and there isn't
 -- one distinct value of r2 unlike constants.
 \set query ':P SELECT DISTINCT r2 FROM t WHERE r2 < 5;'

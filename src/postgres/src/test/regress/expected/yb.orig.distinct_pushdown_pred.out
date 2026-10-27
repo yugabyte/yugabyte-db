@@ -384,6 +384,81 @@ SELECT DISTINCT r1 FROM t WHERE r2 > 1;
   2
 (2 rows)
 
+-- An index clause that DocDB leaves to the recheck puts r2 in the prefix: the
+-- recheck runs after the skip, so it would reject the one row returned for an
+-- r1 value while skipped rows pass.  DocDB binds an array only as an IN list,
+-- so both conditions here are left to the recheck (#35029).
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > ANY (ARRAY[0, 1]) AND r2 < ANY (ARRAY[1, 2]);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 > ANY (ARRAY[0, 1]) AND r2 < ANY (ARRAY[1, 2]);
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+         Index Cond: ((r2 > ANY ('{0,1}'::integer[])) AND (r2 < ANY ('{1,2}'::integer[])))
+         Rows Removed by Index Recheck: 4
+         Distinct Keys: r1, r2
+(5 rows)
+
+SELECT DISTINCT r1 FROM t WHERE r2 > ANY (ARRAY[0, 1]) AND r2 < ANY (ARRAY[1, 2]);
+ r1 
+----
+  1
+  2
+(2 rows)
+
+-- A rechecked condition on a prefix column rejects all rows of a prefix value
+-- or none of them, so the prefix stays (#35029).
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r2 > ANY (ARRAY[0, 1]);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t WHERE r2 > ANY (ARRAY[0, 1]);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Unique (actual rows=4 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=5 loops=1)
+         Index Cond: (r2 > ANY ('{0,1}'::integer[]))
+         Rows Removed by Index Recheck: 2
+         Distinct Keys: r1, r2
+(5 rows)
+
+SELECT DISTINCT r1, r2 FROM t WHERE r2 > ANY (ARRAY[0, 1]);
+ r1 | r2 
+----+----
+  1 |  1
+  1 |  2
+  2 |  1
+  2 |  2
+(4 rows)
+
+-- With the fold off, DocDB binds the IN list and leaves the ranges to the
+-- recheck (#35029).
+SET yb_enable_advanced_index_cond_fold = off;
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+         Index Cond: ((r2 = ANY ('{0,1,2}'::integer[])) AND (r2 > 0) AND (r2 < 2))
+         Rows Removed by Index Recheck: 4
+         Distinct Keys: r1, r2
+(5 rows)
+
+SELECT DISTINCT r1 FROM t WHERE r2 IN (0, 1, 2) AND r2 > 0 AND r2 < 2;
+ r1 
+----
+  1
+  2
+(2 rows)
+
+RESET yb_enable_advanced_index_cond_fold;
 -- Cannot eliminate r2 here since the query requires all distinct values of r2 and there isn't
 -- one distinct value of r2 unlike constants.
 \set query ':P SELECT DISTINCT r2 FROM t WHERE r2 < 5;'
