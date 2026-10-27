@@ -140,6 +140,9 @@ class DocVectorIndexContext {
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
       const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
+
+  // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
+  virtual const KeyBounds& key_bounds() const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;

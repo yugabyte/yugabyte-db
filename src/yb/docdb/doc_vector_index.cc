@@ -284,11 +284,21 @@ EncodedDistance EncodeDistance(float distance) {
   }
 }
 
+// Whether the row the payload points to is within the tablet key bounds.
+Result<bool> PayloadWithinKeyBounds(const KeyBounds& key_bounds, Slice payload) {
+  if (!key_bounds.IsInitialized()) {
+    return true;
+  }
+  return key_bounds.IsWithinBounds(VERIFY_RESULT(dockv::DocVectorIndexPayloadYbctid(payload)));
+}
+
 class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
   VectorMergeFilter(
-      const std::string& log_prefix, DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
-      : log_prefix_(log_prefix), reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
+      const std::string& log_prefix, const KeyBounds& key_bounds,
+      DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
+      : log_prefix_(log_prefix), key_bounds_(key_bounds),
+        reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
   }
 
   const std::string& LogPrefix() const {
@@ -306,10 +316,14 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
     if (!payload.empty()) {
       // The index stores payloads, so it has no reverse mapping entries at all and compaction
       // cannot tell whether the row the payload points to still exists.
-      // TODO(vector_index): remove deleted vectors from such an index, see #33912. The vectors
-      // of the sibling tablet are not removed after a split either, the check below does it for
-      // the indexes which do not store payloads, because the reverse mapping entries outside the
-      // tablet key bounds are dropped by regular compaction.
+      // Vectors of the sibling tablet left by a split are dropped by the key bounds.
+      auto within_bounds = PayloadWithinKeyBounds(key_bounds_, payload);
+      if (!within_bounds.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Failed to decode payload of " << vector_id << ": " << within_bounds.status();
+      } else if (!*within_bounds) {
+        decision = rocksdb::FilterDecision::kDiscard;
+      }
       VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
       return decision;
     }
@@ -333,6 +347,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
  private:
   const std::string& log_prefix_;
+  const KeyBounds& key_bounds_;
   DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
 };
 
@@ -416,7 +431,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
       auto reader =
           VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
-      return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(reader));
+      return std::make_unique<VectorMergeFilter>(
+          lsm_.LogPrefix(), context_->key_bounds(), std::move(reader));
     };
 
     name_ = RemoveLogPrefixColon(log_prefix);
@@ -483,8 +499,20 @@ class DocVectorIndexImpl : public DocVectorIndex {
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
+    auto search_options = options;
+    const auto& key_bounds = context_->key_bounds();
+    if (StoresPayload() && key_bounds.IsInitialized()) {
+      // Chunks inherited from the split parent keep the sibling tablet vectors until compaction.
+      // Skip them, so they do not displace the vectors of this tablet from the result.
+      search_options.filter = [&key_bounds, &filter = options.filter](
+          const vector_index::VectorId& vector_id, Slice payload) {
+        // A payload which fails to decode is reported when its ybctid is resolved below.
+        auto within_bounds = PayloadWithinKeyBounds(key_bounds, payload);
+        return (!within_bounds.ok() || *within_bounds) && filter(vector_id, payload);
+      };
+    }
     auto entries = VERIFY_RESULT(lsm_.Search(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), search_options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
