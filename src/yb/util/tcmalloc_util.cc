@@ -12,7 +12,10 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#include <pthread.h>
+
 #include <cstdint>
+#include <thread>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -37,7 +40,13 @@ DEPRECATE_FLAG(int64, tserver_tcmalloc_max_total_thread_cache_bytes, "11_2022");
 
 DEFINE_NON_RUNTIME_int32(tcmalloc_max_per_cpu_cache_bytes, -1,
     "Sets the maximum cache size per CPU cache if Google TCMalloc is being used. If this is zero "
-    "or less, it has no effect.");
+    "or less, it has no effect. Google TCMalloc grows a per-CPU cache towards this limit only in "
+    "its background actions, see tcmalloc_enable_background_actions.");
+
+DEFINE_NON_RUNTIME_bool(tcmalloc_enable_background_actions, false,
+    "If Google TCMalloc is being used, start a thread that runs "
+    "tcmalloc::MallocExtension::ProcessBackgroundActions. This thread resizes the per-CPU caches "
+    "according to their misses, moves capacity between CPUs, and drains the caches of idle CPUs.");
 
 DEPRECATE_FLAG(bool, enable_process_lifetime_heap_sampling, "12_2023");
 
@@ -238,6 +247,16 @@ void ConfigureTCMalloc(int64_t mem_limit) {
   if (FLAGS_tcmalloc_max_per_cpu_cache_bytes > 0) {
     SET_AND_VERIFY_GOOGLE_TCMALLOC_PROPERTY(
         MaxPerCpuCacheSize, FLAGS_tcmalloc_max_per_cpu_cache_bytes);
+  }
+  if (FLAGS_tcmalloc_enable_background_actions &&
+      tcmalloc::MallocExtension::NeedsProcessBackgroundActions()) {
+    LOG(INFO) << "Starting tcmalloc background actions thread, background release rate: "
+              << static_cast<size_t>(tcmalloc::MallocExtension::GetBackgroundReleaseRate())
+              << " bytes/s";
+    std::thread([] {
+      pthread_setname_np(pthread_self(), "tcmalloc_bg");
+      tcmalloc::MallocExtension::ProcessBackgroundActions();
+    }).detach();
   }
 #endif  // YB_GOOGLE_TCMALLOC
 
