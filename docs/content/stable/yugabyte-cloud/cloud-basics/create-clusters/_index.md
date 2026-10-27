@@ -1,8 +1,9 @@
 ---
-title: Create your cluster
+title: Create distributed clusters
+headerTitle: Create your cluster
 linkTitle: Create your cluster
-description: Create clusters in YugabyteDB Aeon.
-headcontent: Create a cluster in YugabyteDB Aeon
+description: Create distributed clusters in YugabyteDB Aeon.
+headcontent: Create a distributed cluster in YugabyteDB Aeon
 menu:
   stable_yugabyte-cloud:
     identifier: create-clusters
@@ -38,7 +39,6 @@ type: indexpage
     icon="fa-thin fa-planet-moon">}}
 
 {{</index/block>}}
-
 
 ## Sandbox clusters
 

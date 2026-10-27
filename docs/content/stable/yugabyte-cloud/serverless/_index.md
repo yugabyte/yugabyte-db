@@ -33,15 +33,16 @@ A Serverless Postgres cluster includes the following features:
 
 Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabyteDB Aeon prepares the environment and the shared pool for you.
 
-Serverless Postgres is free to start, and includes:
-
-- 2 vCPU, 16 GB RAM, 100 GB storage
+Serverless Postgres is free to start, and includes 2 vCPU, 16 GB RAM, and 100 GB storage.
 
 This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the serverless account. Only Admin users can create a billing profile.
 
 ## Create a serverless cluster
 
-To create a Serverless Postgres cluster, on the **Clusters** page, click **Add Cluster**, and choose **Serverless** to start the **Create Cluster** wizard.
+If you have previously created a serverless cluster, do the following:
+
+1. Switch to your Serverless account.
+1. On the **Clusters** page, click **Add Serverless Cluster** to open the **Create Cluster** wizard.
 
 The **Create Cluster** wizard has the following pages:
 
@@ -68,10 +69,10 @@ The engine determines which [extensions](#extensions) can be included.
 
 Choose a size:
 
-- **Small/Free**: 2 vCPU and 16Gi.
-- **Medium**: 4 vCPU and 32Gi.
-- **Large**: 8 vCPU and 64Gi.
-- **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GiB; you can also enter values in MiB. You must have at least 8Gi per vCPU.
+- **Small/Free**: 2 vCPU and 16 GB.
+- **Medium**: 4 vCPU and 32 GB.
+- **Large**: 8 vCPU and 64 GB.
+- **Custom**: Select **vCPU** and **Memory**. vCPU can be from 0.5 to 64; add `m` to enter values in millicores (for example, `1500m`). Memory can be from 1 to 512 GB; you can also enter values in MiB. You must have at least 8 GB per vCPU.
 
     Your organization is allowed one Free cluster. If you choose an option other than Free and you have not added a [billing profile](../cloud-admin/cloud-billing-profile/) to the account, you will be prompted to create a billing profile before the cluster is created.
 
@@ -113,19 +114,11 @@ Save the credentials file. You need it to connect, and the console does not show
 
 Download the credentials, and click **Create Cluster**.
 
-If you selected a Billed size and the account doesn't have a billing profile, you are prompted to create one. See [Billing and invoices](../cloud-admin/cloud-billing-profile/#add-or-edit-your-billing-profile).
-
-When the cluster is ready, the cluster **Overview** tab is displayed.
-
-You now have a fully configured YugabyteDB serverless cluster provisioned in YugabyteDB Aeon with the database admin credentials you specified.
-
 ## Connect
 
 1. On **Clusters**, open the cluster.
 
 1. On the endpoint, click **Connect**.
-
-    **Connect** stays unavailable until the endpoint has an address.
 
 1. If the dialog includes a CA certificate, click **Download CA Cert**.
 
@@ -140,8 +133,6 @@ You now have a fully configured YugabyteDB serverless cluster provisioned in Yug
 To manage a cluster, click **Clusters** in the left navigation and open the cluster. The **Cluster Branches** section lists the cluster's branches, and the compute endpoints on each branch.
 
 Use the search box and status filter to find a branch or endpoint. The branch and endpoint counts show how many are healthy or need attention.
-
-While a change is being applied, some operations are unavailable.
 
 ### Add a branch
 
@@ -181,7 +172,7 @@ A branch that has no compute shows **No compute endpoint**.
 
 1. On the endpoint, open the actions menu and click **Edit Compute**.
 
-1. Select a size: **Free**, **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 8Gi per vCPU.
+1. Select a size: **Small**, **Medium**, **Large**, or **Custom**. The sizes follow the same rules as when you create a cluster. Memory must be at least 8GB per vCPU.
 
     Free compute is shared by everything the account runs, so a size is free only within what remains. The size you are replacing doesn't count against the free compute. Sizes beyond it are marked **Billed**.
 

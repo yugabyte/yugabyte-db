@@ -107,7 +107,7 @@ Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-po
 
 You can enable built-in connection pooling on YugabyteDB Aeon clusters in the following ways:
 
-- When [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/), turn on the **Connection Pooling** option. (Connection Pooling is enabled by default for [Sandbox clusters](/stable/yugabyte-cloud/serverless/#sandbox-clusters).)
+- When [creating a cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/), turn on the **Connection Pooling** option.
 - For clusters that are already created, navigate to the cluster **Settings>Connection Pooling** tab.
 
 Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection by default.

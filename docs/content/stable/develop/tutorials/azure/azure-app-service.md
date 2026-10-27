@@ -63,7 +63,7 @@ Now that we've set the foundation on Azure, let's deploy a database cluster for 
 
 For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](/stable/yugabyte-cloud/managed-freetrial/).
 
-This example shows a [three-node cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node [Sandbox cluster](/stable/yugabyte-cloud/serverless/#sandbox-clusters).
+This example shows a [three-node cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones.
 
 ![Create a YugabyteDB single-region cluster.](/images/tutorials/azure/azure-app-service/yb-create-cluster.png)
 

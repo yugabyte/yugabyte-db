@@ -17,39 +17,21 @@ rightNav:
   hideH4: true
 ---
 
-The quickest way to get started with YugabyteDB Aeon is to create a free Serverless Postgres cluster. Serverless Postgres is free up to 2 vCPU and 16Gi of memory, and no credit card is required.
+## Free Serverless Postgres
+
+The quickest way to get started with YugabyteDB Aeon is to create a free Serverless Postgres cluster. Serverless Postgres is free up to 2 vCPU and 16 GB of memory, and no credit card is required.
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. Click **Create Cluster**, select **Serverless Postgres**, and click **Choose**.
-
-## Create a Serverless Postgres cluster
-
-To create a cluster:
-
-1. On the **Clusters** page, click **Add Cluster**.
-
-1. On **Choose a cluster type**, select **Serverless Postgres** and click **Choose**.
-
-1. On **General**, enter a **Cluster name** and click **Next**.
-
-1. On **Cluster Settings**, leave **PostgreSQL** as the engine and **Free** as the compute size, and click **Next**.
-
-    Any other size is billed, and you are asked to create a billing profile before the cluster is created.
-
-1. On **Network Access**, keep **Public Endpoint**, enter your computer's IP address under **Trusted IP Addresses**, and click **Next**. This allows you to connect to the cluster after it is created.
-
-1. If the wizard shows **DB Credentials**, select **Use default credentials** and click **Download credentials**. You'll use the `cloud_admin` user and the password in this file to connect. The credentials are shown only once.
-
+1. Click **Start free**.
+1. Click **Download Credentials**. You will use these to connect to your database.
 1. Click **Create Cluster**.
 
-For details on all of the options, refer to [Serverless Postgres](../serverless/).
-
-## Connect to the cluster
+### Connect to the cluster
 
 1. On the **Clusters** page, open the cluster.
 
-1. On the endpoint, click **Connect**. The button is available after the endpoint has an address.
+1. On the endpoint, click **Connect**.
 
 1. If the dialog includes a CA certificate, click **Download CA Cert**.
 
@@ -61,23 +43,19 @@ You can now run SQL against your Serverless Postgres database, and connect appli
 
 - [Manage branches and compute](../serverless/#manage-a-cluster) - add branches, add compute endpoints, and resize compute.
 
-- [Run a product lab](../managed-labs/) - explore core features of YugabyteDB running a demo application on globally distributed test clusters in real time.
-
 ## Go distributed with Distributed Postgres
 
 For multi-node, highly available YugabyteDB clusters, create a Distributed Postgres cluster. These are deployed across multiple nodes, zones, and regions, and are billed per vCPU.
 
 - [Create a cluster](../cloud-basics/create-clusters/) - deploy single-region and multi-region clusters.
 
-- [Request a free trial](../managed-freetrial/) - to try more advanced deployments, run a POC, or benchmark, request a free trial.
+- [Request a free trial](../managed-freetrial/).
 
 The following sections show how to connect to and explore a Distributed Postgres cluster.
 
 ### Connect using Cloud Shell
 
 Use Cloud Shell to connect to your Distributed Postgres cluster from your browser, and interact with it using distributed SQL.
-
->The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
 To connect to your cluster, do the following:
 
@@ -109,9 +87,13 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
->
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
+{{< tip title="Using Cloud Shell" >}}
+Cloud Shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
+{{< /tip >}}
+
+The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
+
+For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
 
 ### Explore distributed SQL
 
