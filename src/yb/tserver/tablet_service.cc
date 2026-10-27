@@ -260,6 +260,9 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
     "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
+DEFINE_test_flag(bool, pause_ysql_upgrade, false,
+    "Pause any UpgradeYsql requests, after they start the upgrade, until flag is reset.");
+
 DEFINE_test_flag(bool, pause_wait_for_lockers, false,
     "Pause any WaitForLockers requests until flags is reset.");
 
@@ -2655,7 +2658,23 @@ void TabletServiceAdminImpl::UpgradeYsql(
     return;
   }
 
+  // A caller that times out does not stop the upgrade it started, so its retry can arrive while
+  // that upgrade is still running. Two upgrades running at once apply the same migrations to the
+  // same databases and fail each other with serialization errors. Wait for the running upgrade
+  // instead. If it succeeded, this upgrade finds nothing left to do. Reserve 1s to respond before
+  // the caller's deadline.
+  std::unique_lock lock(ysql_upgrade_mutex_, std::defer_lock);
+  if (!lock.try_lock_until(context.GetClientDeadline() - 1s)) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for a YSQL upgrade already in progress"),
+        &context);
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ysql_upgrade);
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
