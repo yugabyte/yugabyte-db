@@ -662,7 +662,7 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet, see #33912.");
+    "index yet.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
