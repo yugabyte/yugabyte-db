@@ -303,7 +303,7 @@ typedef enum {
 /* GUC for the enum above. */
 extern int yb_read_after_commit_visibility;
 
-extern bool yb_relaxed_read_after_commit_visibility_read_only_check;
+extern bool yb_disable_relaxed_visibility_mode_read_only_guardrail;
 
 /*
  * Controls which transactions publish a per-database history retention pin, protecting their

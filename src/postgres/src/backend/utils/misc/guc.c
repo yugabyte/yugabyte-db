@@ -310,7 +310,7 @@ static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource so
 static bool check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
-static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
+static bool yb_check_before_first_snapshot(int *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
@@ -2625,20 +2625,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_relaxed_read_after_commit_visibility_read_only_check",
+		{"yb_disable_relaxed_visibility_mode_read_only_guardrail",
 			PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("Reject writes, row locks and DDL under "
-						 "yb_read_after_commit_visibility = relaxed, as a "
-						 "READ ONLY transaction does."),
+			gettext_noop("Allow writes, row locks and DDL under "
+						 "yb_read_after_commit_visibility = relaxed, which "
+						 "otherwise fail as in a READ ONLY transaction."),
 			gettext_noop("Relaxed mode removes the uncertainty window, so a "
 						 "write or row lock can miss a row that another node "
 						 "committed just before and leave the data "
-						 "inconsistent. Turn off only when that is "
-						 "acceptable."),
+						 "inconsistent. Turn on only with great caution and "
+						 "understanding of that risk."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_relaxed_read_after_commit_visibility_read_only_check,
-		true,
+		&yb_disable_relaxed_visibility_mode_read_only_guardrail,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -8406,7 +8406,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			gettext_noop("This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
 						 " read restart errors. Users can now largely avoid these errors when"
 						 " read-after-commit-visibility guarantee is not a strong requirement."
-						 " This option cannot be set from within a transaction block."
+						 " This option cannot be set after the first query of a transaction."
 						 " Configure one of the following options:"
 						 " (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
 						 " maintained by the database. However, users may see read restart errors that"
@@ -8416,12 +8416,9 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " relaxed. Reads do not see read restart errors, but may"
 						 " miss rows that another node committed up to one clock"
 						 " skew before the read. Writes, row locks and DDL fail as"
-						 " in a READ ONLY transaction, unless"
-						 " yb_relaxed_read_after_commit_visibility_read_only_check"
-						 " is off. Serializable read-write transactions are"
-						 " allowed: relaxed mode does not apply to them. When the"
-						 " check is off, relaxed mode also applies to writes,"
-						 " except fast path writes."
+						 " in a READ ONLY transaction. Serializable read-write"
+						 " transactions are allowed: this option does not change"
+						 " their reads."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -8430,7 +8427,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&yb_read_after_commit_visibility,
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
 		yb_read_after_commit_visibility_options,
-		yb_check_no_txn, NULL, NULL
+		yb_check_before_first_snapshot, NULL, NULL
 	},
 
 	{
@@ -17875,26 +17872,20 @@ yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 }
 
 /*
- * YB: yb_check_no_txn
+ * YB: yb_check_before_first_snapshot
  *
  * Do not allow users to set yb_read_after_commit_visibility
- * from within a txn block.
+ * after the txn takes its first snapshot.
  */
 static bool
-yb_check_no_txn(int *newVal, void **extra, GucSource source)
+yb_check_before_first_snapshot(int *newVal, void **extra, GucSource source)
 {
-	if (IsTransactionBlock())
-	{
-		GUC_check_errdetail("Cannot be set within a txn block.");
-		return false;
-	}
-
 	/*
-	 * The statement already picked its read time under the old value, e.g. a
-	 * function SET clause in an autocommit SELECT. PGC_S_TEST only validates
-	 * a stored value, as in CREATE FUNCTION ... SET or ALTER ROLE ... SET.
+	 * Login applies role, database and client settings in a txn that already
+	 * has a snapshot, and CREATE FUNCTION ... SET only validates the value.
+	 * Neither changes the read time of a running query.
 	 */
-	if (source != PGC_S_TEST && FirstSnapshotSet)
+	if (source == PGC_S_SESSION && FirstSnapshotSet)
 	{
 		GUC_check_errdetail("Cannot be set after the first query of a txn.");
 		return false;
@@ -17902,8 +17893,8 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 
 	/*
 	 * If YSQL Connection Manager is enabled, make the connection sticky
-	 * for any variables that can only be set outside the context of an
-	 * explicit transaction block.
+	 * for any variables that can only be set before the first query of a
+	 * transaction.
 	 */
 	if (YbIsClientYsqlConnMgr())
 	{

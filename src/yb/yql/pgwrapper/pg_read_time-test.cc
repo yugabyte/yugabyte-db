@@ -870,7 +870,7 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
       "visibility");
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
 
   // 1. no pipeline, single operation in first batch, no distributed txn
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
@@ -969,8 +969,8 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 // #35522: relaxed mode removes the uncertainty window, so a write or row lock
 // can miss a row that another node committed just before and leave the data
 // inconsistent. Relaxed mode therefore enforces the READ ONLY transaction
-// checks unless yb_relaxed_read_after_commit_visibility_read_only_check is
-// off.
+// checks unless yb_disable_relaxed_visibility_mode_read_only_guardrail is
+// on.
 //
 // Scenario: under relaxed mode, each statement that a READ ONLY transaction
 // rejects fails with the relaxed-mode error: INSERT, UPDATE, DELETE, SELECT
@@ -1017,7 +1017,7 @@ TEST_F(PgReadTimeTest, RelaxedModeRejectsWrites) {
   ASSERT_OK(conn.Execute("RESET default_transaction_isolation"));
 
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
   for (const auto& statement : rejected) {
     SCOPED_TRACE(statement);
     ASSERT_OK(statement.starts_with("SELECT")
@@ -1058,6 +1058,31 @@ TEST_F(PgReadTimeTest, ReadAfterCommitVisibilityFixedForTransaction) {
     ASSERT_NOK_STR_CONTAINS(conn.Fetch(call), "after the first query");
   }
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
+
+  // A stored value takes effect only in a later session, so ALTER ROLE ... SET
+  // may run inside a transaction block. Login applies it in a txn that
+  // already has a snapshot.
+  ASSERT_OK(conn.Execute("RESET yb_read_after_commit_visibility"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "ALTER ROLE CURRENT_USER SET yb_read_after_commit_visibility = relaxed"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  {
+    auto login_conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(
+        ASSERT_RESULT(login_conn.FetchRow<std::string>("SHOW yb_read_after_commit_visibility")),
+        "relaxed");
+  }
+  ASSERT_OK(conn.Execute("ALTER ROLE CURRENT_USER RESET yb_read_after_commit_visibility"));
+
+  // Before its first query, a transaction block has not picked a read time.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET LOCAL yb_read_after_commit_visibility = relaxed"));
+  ASSERT_OK(conn.Fetch("SELECT count(*) FROM t"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET LOCAL yb_read_after_commit_visibility = strict"),
+      "after the first query");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
@@ -1649,7 +1674,7 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
       pg_host_port(), "yugabyte", /*user=*/"postgres", auth_key,
       /* deadline= */ std::nullopt).Connect());
   ASSERT_OK(internal.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
@@ -1759,7 +1784,7 @@ TEST_P(PgFastPathWriteTest, PrecedesClampDefer) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   ASSERT_OK(conn.Execute(
-      "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+      "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
 
   const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
   GenerateCSVFileForCopy(csv_filename, 1 /* num_rows */);

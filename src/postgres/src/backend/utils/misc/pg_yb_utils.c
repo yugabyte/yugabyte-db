@@ -9214,22 +9214,25 @@ YbIsReadCommittedTxn()
  * window, so a write or row lock can miss a row that another node committed
  * just before and leave the data inconsistent: a parent DELETE whose foreign
  * key check misses a child row leaves an orphan. So relaxed mode enforces
- * the READ ONLY transaction checks, unless the GUC turns them off.
+ * the READ ONLY transaction checks, unless the GUC disables them.
  *
- * SERIALIZABLE is exempt: pggate runs a SERIALIZABLE read-write
- * transaction as a SERIALIZABLE DocDB transaction, and
- * PgTxnManager::SetupReadTimeOptions returns before the clamp for those. A
- * SERIALIZABLE READ ONLY transaction runs as SNAPSHOT and is clamped, but
- * XactReadOnly already rejects its writes. That holds for DDL only with the DDL transaction block
- * on; legacy DDL mode is not covered. Fast-path writes never lose the
- * window either, but they are rejected, for simplicity: the executor
- * decides on the fast path only after the check.
+ * So this check must follow the XactReadOnly checks closely. Each backend
+ * XactReadOnly check that rejects a write, row lock or DDL has a
+ * YbIsRelaxedReadOnly check next to it. A new XactReadOnly check without one
+ * lets the statement run in relaxed mode.
+ *
+ * SERIALIZABLE read-write transactions are exempt: they do not pick a read
+ * time in the query layer and never hit read restart errors. A SERIALIZABLE
+ * READ ONLY transaction runs as SNAPSHOT, but XactReadOnly already rejects
+ * its writes and DDL. Fast-path writes never hit read restart errors either, but the check still
+ * rejects them, for simplicity: the executor picks the fast path only after
+ * the check.
  */
 bool
 YbIsRelaxedReadOnly()
 {
 	return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY &&
-		yb_relaxed_read_after_commit_visibility_read_only_check &&
+		!yb_disable_relaxed_visibility_mode_read_only_guardrail &&
 		!IsolationIsSerializable();
 }
 

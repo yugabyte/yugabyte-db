@@ -348,7 +348,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
       "SET yb_read_after_commit_visibility = $0", visibility));
     if (config.is_dml && config.visibility == Visibility::RELAXED) {
       ASSERT_OK(readConn.Execute(
-          "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+          "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
     }
 
     if (!config.is_dml) {

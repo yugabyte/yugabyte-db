@@ -437,7 +437,7 @@ COMMIT;
 
     ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility = 'relaxed'"));
     ASSERT_OK(conn.Execute(
-        "SET yb_relaxed_read_after_commit_visibility_read_only_check = off"));
+        "SET yb_disable_relaxed_visibility_mode_read_only_guardrail = on"));
     LOG(INFO) << "Starting REFRESH MATERIALIZED VIEW " << mode;
     ASSERT_OK(conn.Execute(cmd));
     LOG(INFO) << "Completed REFRESH MATERIALIZED VIEW " << mode;
