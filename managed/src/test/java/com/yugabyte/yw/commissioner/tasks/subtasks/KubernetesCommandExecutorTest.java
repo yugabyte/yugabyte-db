@@ -9,12 +9,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
@@ -1289,6 +1292,43 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(overrides.get("bar"), "foo");
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallRejectsCertManagerKeyFipsDoesNotAllow() throws IOException {
+    // Chart defaults with a cert-manager setup the other checks accept.
+    when(kubernetesManager.helmShowValues(any(), any()))
+        .thenReturn(
+            "tls:\n  enabled: false\n  certManager:\n    enabled: false\n"
+                + "    bootstrapSelfsigned: false\n    useClusterIssuer: true\n"
+                + "    clusterIssuer: cluster-ca\n"
+                + "    certificates:\n      algorithm: RSA\n      keySize: 2048\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides =
+        HelmUtils.convertYamlToMap(
+            "tls:\n  enabled: true\n  certManager:\n    enabled: true\n"
+                + "    certificates:\n      algorithm: Ed25519\n");
+    kubernetesCommandExecutor.initialize(params);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, kubernetesCommandExecutor::run);
+    assertTrue(e.getMessage(), e.getMessage().contains("algorithm Ed25519"));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
