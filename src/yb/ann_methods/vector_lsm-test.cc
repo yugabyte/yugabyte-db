@@ -265,6 +265,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
 
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
+  // Obsolete chunk files can be deleted in background after a compaction has returned.
+  Status WaitForFiles(FloatVectorLSM& lsm, const std::string& expected);
+
   void TestBootstrap(bool flush);
 
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
@@ -656,6 +659,21 @@ Result<std::vector<std::string>> VectorLSMTestBase::GetFiles(FloatVectorLSM& lsm
   return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
 }
 
+Status VectorLSMTestBase::WaitForFiles(FloatVectorLSM& lsm, const std::string& expected) {
+  std::string files;
+  auto status = LoggedWaitFor(
+      [this, &lsm, &expected, &files]() -> Result<bool> {
+        files = AsString(VERIFY_RESULT(GetFiles(lsm)));
+        return files == expected;
+      },
+      10s * kTimeMultiplier, "Expected files on disk", MonoDelta::FromMilliseconds(100),
+      /* delay_multiplier = */ 1.0);
+  if (!status.ok()) {
+    return status.CloneAndAppend(Format("files: $0, expected: $1", files, expected));
+  }
+  return status;
+}
+
 MergeFilterPtr VectorLSMTestBase::GetMergeFilter() {
   if (!merge_filter_) {
     SetMergeFilter(storage::FilterDecision::kKeep);
@@ -730,12 +748,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, 2.meta, vectorindex_3]"));
 }
 
 // AdvanceFlushedFrontier keeps a single chunk without a file however often it is called, also
@@ -859,13 +872,8 @@ void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
   auto compacted_idx = kExpectedNumChunks + 1;
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, vectorindex_$0]", compacted_idx));
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, 1.meta, vectorindex_$0]", compacted_idx)));
 
   // Compact again.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -873,13 +881,8 @@ void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
   ++compacted_idx;
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx)));
 }
 
 TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
@@ -920,12 +923,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta]");
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta]"));
 
   // Verify results.
   inserted_entries_.clear();
@@ -939,8 +937,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_OK(lsm.Flush(/* wait = */ true));
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, vectorindex_2]");
+  ASSERT_STR_EQ(AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_2]");
 
   // Make sure further compaction works fine.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -948,12 +945,90 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, 2.meta, vectorindex_3]"));
+}
+
+// A compacted chunk can outlive the compaction's cleanup of obsolete files, e.g. while the flush
+// task that saved it, or a search, still holds it. Its file must still be deleted once the last
+// reference is dropped (#35064).
+TEST_P(VectorLSMTest, ChunkReleasedAfterCompactionCleanupIsDeleted) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  // Hold the flush task, and so its reference to the flushed chunk, until the compaction below
+  // has completed, including its cleanup.
+  CountDownLatch release_flush_task{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoFlush:AfterSaveChunk",
+      [&release_flush_task](void*) { release_flush_task.Wait(); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_flush_task] {
+    release_flush_task.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_STR_EQ(
+      AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_1, vectorindex_2]");
+
+  release_flush_task.CountDown();
+  ASSERT_OK(WaitForFiles(lsm, "[0.meta, 1.meta, vectorindex_2]"));
+  VerifyVectorLSM(lsm, kDimensions);
+}
+
+// The flush task still holds its chunk after the chunk has left the updates queue, so it can drop
+// a compacted chunk after the VectorLSM has been shut down and destroyed. That must not touch the
+// destroyed VectorLSM.
+TEST_P(VectorLSMTest, ChunkReleasedAfterVectorLSMDestroyed) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  CountDownLatch release_flush_task{1};
+  CountDownLatch file_released{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoFlush:AfterSaveChunk",
+      [&release_flush_task](void*) { release_flush_task.Wait(); });
+  sync_point->SetCallBack(
+      "VectorLSM::ObsoleteFileReleased", [&file_released](void*) { file_released.CountDown(); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_flush_task] {
+    release_flush_task.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  std::string storage_dir;
+  {
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+    storage_dir = lsm.StorageDir();
+    ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+    ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_OK(lsm.Compact(/* wait = */ true));
+    ASSERT_STR_EQ(
+        AsString(ASSERT_RESULT(GetFiles(lsm))), "[0.meta, 1.meta, vectorindex_1, vectorindex_2]");
   }
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+
+  release_flush_task.CountDown();
+  ASSERT_TRUE(file_released.WaitFor(30s * kTimeMultiplier))
+      << "The flush task did not release the compacted chunk";
+  // Left on disk, the VectorLSM that would delete it is gone.
+  ASSERT_TRUE(Env::Default()->FileExists(JoinPathSegments(storage_dir, "vectorindex_1")));
 }
 
 TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
@@ -991,13 +1066,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
   auto last_chunk_id = kNumChunks + 1;
-  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
-
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, vectorindex_$0]", last_chunk_id)));
 
   // Trigger background compaction on the same size. At this point there's one big chunk which
   // is approximately equal to the size of six random chunks. So, inserting six more chunks
@@ -1019,13 +1088,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
   last_chunk_id += kNumChunks + 1;
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
-
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForFiles(lsm, Format("[0.meta, vectorindex_$0]", last_chunk_id)));
 }
 
 // Guards against a VectorLSM shutdown deadlock: when shutdown began while a background compaction
@@ -1308,13 +1371,7 @@ void VectorLSMTestBase::TestBackgroundCompactionSizeRatio(bool test_metrics) {
     for (size_t n = kNumChunks - kNumMinChunks + 1; n <= kNumChunks + 1; ++n) {
       expected_files << ", vectorindex_" << n;
     }
-    files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-    ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
-
-    // Wait for cleanup is completed and check files on disk.
-    while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-      SleepFor(MonoDelta::FromSeconds(1));
-    }
+    ASSERT_OK(WaitForFiles(lsm, Format("[$0]", expected_files.str())));
   }
 }
 

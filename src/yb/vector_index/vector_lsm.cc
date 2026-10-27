@@ -36,6 +36,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/strand.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
@@ -303,6 +304,79 @@ class VectorLSMFileMetaData final {
   const uint64_t serial_no_;
   const uint64_t size_on_disk_;
   std::atomic<bool> obsolete_ = { false };
+};
+
+// Removes the files of obsolete chunks in background. Shared with the file metadata deleters,
+// which hold it through a weak_ptr: the last reference to a compacted chunk can be dropped after
+// the VectorLSM is gone, e.g. by a flush task that still runs after shutdown, and the deleter
+// must not touch the VectorLSM then.
+class VectorLSMFileRemover {
+ public:
+  // Copies what it needs instead of keeping a reference to the options: it can outlive the
+  // VectorLSM that owns them, see above, and ~VectorLSM() resets options.thread_pool.
+  template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+  VectorLSMFileRemover(Env& env, const VectorLSMOptions<Vector, DistanceResult>& options)
+      : log_prefix_(options.log_prefix), env_(env), storage_dir_(options.storage_dir),
+        file_extension_(options.file_extension), strand_(options.thread_pool) {}
+
+  ~VectorLSMFileRemover() {
+    // Required by ~Strand. A no-op if already shut down by VectorLSM::CompleteShutdown().
+    strand_.Shutdown();
+  }
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  // Queues the file for removal. The last reference to a compacted chunk can be dropped at any
+  // time, e.g. by a search or by the flush task that saved the chunk (#35064).
+  void Add(std::unique_ptr<VectorLSMFileMetaData>&& file) {
+    // Sanity check, only obsolete files should be passed.
+    DCHECK(file->IsObsolete());
+    // After Shutdown() the task is aborted and the file is left on disk. Shutdown() also waits for
+    // the running task, so a task does not outlive this object.
+    const auto serial_no = file->serial_no();
+    strand_.Enqueue(new StrandTaskWithErrorFunc(
+        [this, file = std::move(file)] { RemoveFile(*file); },
+        [this, serial_no](const Status& status) {
+          LOG_WITH_PREFIX(INFO) << "Obsolete chunk " << serial_no << " left on disk: " << status;
+        }));
+  }
+
+  // Waits for the running removal task, the files still queued are left on disk.
+  void Shutdown() {
+    strand_.Shutdown();
+  }
+
+ private:
+  void RemoveFile(const VectorLSMFileMetaData& file) {
+    auto path = GetChunkPath(storage_dir_, file_extension_, file.serial_no());
+    if (!file.IsObsolete()) {
+      LOG_WITH_PREFIX(DFATAL) << "Attempt to remove a non-obsolete file " << path;
+      return;
+    }
+
+    DoRemoveFile(path);
+  }
+
+  void DoRemoveFile(const std::string& path) {
+    if (!env_.FileExists(path)) {
+      LOG_WITH_PREFIX(WARNING) << "File does not exist " << path;
+      return;
+    }
+    auto status = env_.DeleteFile(path);
+    if (status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Deleted file " << path;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "Failed to delete file " << path << ", status: " << status;
+    }
+  }
+
+  const std::string log_prefix_;
+  Env& env_;
+  const std::string storage_dir_;
+  const std::string file_extension_;
+  Strand strand_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1236,14 +1310,9 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
   }
 
   // Wait for obsolete files deletions if any.
-  while (obsolete_files_cleanup_in_progress_) {
-    std::this_thread::sleep_for(10ms);
-  }
-
-  // TODO(vector_index): schedule obsolete files deletion on startup.
-  {
-    std::lock_guard lock(cleanup_mutex_);
-    obsolete_files_.clear();
+  // TODO(vector_index): schedule obsolete files deletion on startup, see #27088.
+  if (obsolete_files_remover_) {
+    obsolete_files_remover_->Shutdown();
   }
 
   LOG_WITH_PREFIX(INFO) << "VectorLSM shutdown completed";
@@ -1270,16 +1339,18 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
-  // Explicitly set the state of the controller for the cases when vector index can be reopened
-  // after being shutdown.
-  RETURN_NOT_OK(shutdown_controller_.Start());
-
   std::lock_guard lock(mutex_);
+
+  // A VectorLSM object is opened only once, see CreateDocVectorIndex().
+  RSTATUS_DCHECK(!insert_registry_, IllegalState, "Vector LSM is already opened");
 
   options_ = std::move(options);
   if (options_.metric_entity) {
     metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
   }
+
+  obsolete_files_remover_ = std::make_shared<VectorLSMFileRemover>(*env_, options_);
+
   insert_registry_ = std::make_shared<InsertRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
   merge_registry_ = std::make_shared<MergeRegistry>(
@@ -1393,11 +1464,9 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   auto manifest_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
   RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
 
-  // TODO(vector_index): merge the cleanup logic with the same from DoCompactChunks().
-  // Some chunks could become obsolete, let's explicitly unreference them and trigger obsolete
-  // chunks cleanup.
+  // Some chunks could become obsolete, let's explicitly unreference them. Their files are removed
+  // by obsolete_files_remover_.
   chunks.clear();
-  TriggerObsoleteChunksCleanup(/* async = */ true);
 
   return Status::OK();
 }
@@ -1665,13 +1734,18 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSMFileMetaDataPtr VectorLSM<Vector, DistanceResult>::CreateVectorLSMFileMetaData(
     VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk) {
   auto* raw_ptr = new VectorLSMFileMetaData(serial_no, size_on_disk);
-  auto ptr = VectorLSMFileMetaDataPtr(raw_ptr, [this](VectorLSMFileMetaData* raw_ptr) {
+  auto ptr = VectorLSMFileMetaDataPtr(
+      raw_ptr, [remover = std::weak_ptr(obsolete_files_remover_)](VectorLSMFileMetaData* raw_ptr) {
     std::unique_ptr<VectorLSMFileMetaData> ptr { raw_ptr };
     if (!ptr->IsObsolete()) {
       return; // Non-obsolete files should be kept on disk, just release the memory.
     }
 
-    ObsoleteFile(std::move(ptr));
+    // With the VectorLSM gone the file is left on disk.
+    if (auto remover_ptr = remover.lock()) {
+      remover_ptr->Add(std::move(ptr));
+    }
+    TEST_SYNC_POINT("VectorLSM::ObsoleteFileReleased");
   });
 
   index.Attach(ptr);
@@ -1808,7 +1882,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 
   WritableFile* manifest_file = nullptr;
   ImmutableChunkPtr writing_chunk;
-  const bool stopping = !shutdown_controller_.IsRunning();
+  const bool stopping = IsShuttingDown();
   {
     std::lock_guard lock(mutex_);
     chunk->file = std::move(saved.first);
@@ -1953,6 +2027,9 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
       }
     }
     SaveChunk(chunk);
+    // The chunk is already in the manifest and Flush(wait = true) may have returned, but this
+    // task still holds the chunk.
+    TEST_SYNC_POINT("VectorLSM::DoFlush:AfterSaveChunk");
   };
 
   auto tasks = mutable_chunk_->num_tasks -= kRunningMark;
@@ -2230,11 +2307,6 @@ bool VectorLSM<Vector, DistanceResult>::TEST_HasCompactions() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-bool VectorLSM<Vector, DistanceResult>::TEST_ObsoleteFilesCleanupInProgress() const {
-  return obsolete_files_cleanup_in_progress_;
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
   SharedLock lock(mutex_);
   return next_manifest_file_no_;
@@ -2280,117 +2352,6 @@ Status VectorLSM<Vector, DistanceResult>::WaitForFlush() {
   // Also covers the original DoFlush chunk, and a waited insert that RollChunk -> DoFlush.
   WaitForUpdatesQueueEmpty();
   return Status::OK();
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::TriggerObsoleteChunksCleanup(bool async) {
-  LOG_WITH_PREFIX_AND_FUNC(INFO) << "async = " << async;
-
-  if (IsShuttingDown()) {
-    return;
-  }
-
-  // The variable obsolete_files_cleanup_in_progress_ is unset in DeleteObsoleteChunks().
-  bool in_progress = false;
-  if (!obsolete_files_cleanup_in_progress_.compare_exchange_strong(in_progress, true)) {
-    LOG_WITH_PREFIX_AND_FUNC(INFO) << "Obsolete chunks cleanup already in progress";
-    return;
-  }
-
-  // Check if cleanup should be triggered in the same thread.
-  if (!async) {
-    return DeleteObsoleteChunks();
-  }
-
-  // TODO(vector_index): do we need to check for obsolete_files_ emptiness to prevent
-  // adding a task when no cleaning up will probably happen?
-  auto added = options_.thread_pool->EnqueueFunctor([this] { DeleteObsoleteChunks(); });
-  if (!added) {
-    obsolete_files_cleanup_in_progress_ = false;
-    LOG_WITH_PREFIX_AND_FUNC(INFO)
-        << "Failed to schedule obsolete chunks cleanup, probably shutting down";
-  }
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
-  CHECK(obsolete_files_cleanup_in_progress_);
-
-  // TODO(vector_index): move this paradigm into a separate utility class (already have the same
-  // approach somewhere, it is good to combine them).
-  for (;;) {
-    DoDeleteObsoleteChunks();
-
-    // Check if new obsolete files got added, keeping the in-progress state. CompleteShutdown()
-    // waits for obsolete_files_cleanup_in_progress_ to be unset and this VectorLSM could be
-    // destroyed right after that, so unsetting the flag must be the last access to the object.
-    bool has_more_files = false;
-    if (!IsShuttingDown()) {
-      std::lock_guard lock(cleanup_mutex_);
-      has_more_files = !obsolete_files_.empty();
-    }
-    if (!has_more_files) {
-      obsolete_files_cleanup_in_progress_ = false;
-      return;
-    }
-  }
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::DoDeleteObsoleteChunks() {
-  // First stage: collect current obsolete files.
-  decltype(obsolete_files_) files_to_delete;
-  {
-    std::lock_guard lock(cleanup_mutex_);
-    std::swap(obsolete_files_, files_to_delete);
-  }
-
-  VLOG_WITH_PREFIX_AND_FUNC(1) << "obsolete files: " << AsString(files_to_delete);
-  if (files_to_delete.empty()) {
-    LOG_WITH_PREFIX_AND_FUNC(INFO) << "Nothing to cleanup";
-    return;
-  }
-
-  // Second state: delete files.
-  for (const auto& file : files_to_delete) {
-    DeleteFile(*file);
-  }
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::DeleteFile(const VectorLSMFileMetaData& file) {
-  // Sanity check, only obsolete files can be deleted.
-  DCHECK(file.IsObsolete());
-
-  auto path = GetChunkPath(options_, file.serial_no());
-  if (!env_->FileExists(path)) {
-    LOG_WITH_PREFIX(WARNING) << "File does not exist " << path;
-    return;
-  }
-
-  auto status = env_->DeleteFile(path);
-  if (status.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Deleted file " << path;
-  } else {
-    LOG_WITH_PREFIX(DFATAL) << "Failed to delete file " << path << ", status: " << status;
-  }
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::ObsoleteFile(
-    std::unique_ptr<VectorLSMFileMetaData>&& file) {
-  // Let's not queue a file for deletion if vector index is being shutdown.
-  if (IsShuttingDown()) {
-    return;
-  }
-
-  // Sanity check, only obsolete files should be passed.
-  DCHECK(file->IsObsolete());
-
-  std::lock_guard lock(cleanup_mutex_);
-  obsolete_files_.push_back(std::move(file));
-
-  // TODO(vector_index): maybe trigger ScheduleObsoleteFilesDeletion by some condition.
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3122,10 +3083,8 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   TEST_SYNC_POINT_CALLBACK(
       "VectorLSM::DoCompact:ChunksUpdated", const_cast<CompactionType*>(&context.type));
 
-  // TODO(vector_index): merge the cleanup logic with the same from CreateCheckpoint().
-  // Mark input chunks as obsolete and maybe delete corresponding files.
+  // Mark input chunks as obsolete. Their files are removed by obsolete_files_remover_.
   scope.Compacted();
-  TriggerObsoleteChunksCleanup(/* async = */ false);
 
   if (metrics_) {
     metrics_->compact_read_bytes->IncrementBy(compact_read_bytes);
