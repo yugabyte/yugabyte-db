@@ -19,12 +19,17 @@ import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.BuildTypeUtil;
+import org.yb.util.ConfForTesting;
 import org.yb.YBTestRunner;
 
 @RunWith(value = YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BasePgRegressTest {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer.class);
 
   private static final File regress_schedule = new File(
       TestUtils.getBuildRootDir(),
@@ -79,18 +84,39 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     return new File(root, "tests");
   }
 
+  private void runSchedule(String schedule) throws Exception {
+    File inputDir = privateInputDir();
+    try {
+      runPgRegressTest(inputDir, schedule);
+    } finally {
+      // Outside CI, PgRegressRunner copies results back into the input dir. Move them on to the
+      // build dir, where developers look for them, since the tmp dir may be deleted on exit.
+      if (!ConfForTesting.isCI()) {
+        File results = new File(inputDir, "results");
+        File diffs = new File(inputDir, "regression.diffs");
+        LOG.info("Copying pg_regress results from {} to {}", inputDir, regress_schedule);
+        if (results.isDirectory()) {
+          FileUtils.copyDirectory(results, new File(regress_schedule, "results"));
+        }
+        if (diffs.isFile()) {
+          FileUtils.copyFileToDirectory(diffs, regress_schedule);
+        }
+      }
+    }
+  }
+
   @Test
   public void schedule1() throws Exception {
-    runPgRegressTest(privateInputDir(), "yb_1_schedule");
+    runSchedule("yb_1_schedule");
   }
 
   @Test
   public void schedule2() throws Exception {
-    runPgRegressTest(privateInputDir(), "yb_2_schedule");
+    runSchedule("yb_2_schedule");
   }
 
   @Test
   public void schedule3() throws Exception {
-    runPgRegressTest(privateInputDir(), "yb_3_schedule");
+    runSchedule("yb_3_schedule");
   }
 }
