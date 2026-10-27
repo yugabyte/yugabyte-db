@@ -35,12 +35,23 @@ DEFINE_NON_RUNTIME_bool(use_node_to_node_encryption, false, "Use node to node en
 
 DEFINE_NON_RUNTIME_bool(node_to_node_encryption_use_client_certificates, false,
     "Should client certificates be sent and verified for encrypted node to node "
-    "communication. Requires allow_insecure_connections=false.");
+    "communication. Requires allow_insecure_connections=false when "
+    "use_node_to_node_encryption is set.");
+
+// Client certificates only take effect with node to node encryption, so the rule is not enforced
+// without it.
+DEFINE_validator(use_node_to_node_encryption,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates) ||
+            !FINAL_FLAG_VALUE(allow_insecure_connections),
+        "node_to_node_encryption_use_client_certificates requires "
+        "allow_insecure_connections=false"));
 
 DEFINE_validator(node_to_node_encryption_use_client_certificates,
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FINAL_FLAG_VALUE(allow_insecure_connections),
-        "Requires allow_insecure_connections=false"));
+        !_value || !FINAL_FLAG_VALUE(use_node_to_node_encryption) ||
+            !FINAL_FLAG_VALUE(allow_insecure_connections),
+        "Requires allow_insecure_connections=false when use_node_to_node_encryption is set"));
 
 DEFINE_NON_RUNTIME_string(node_to_node_encryption_required_uid, "",
     "Allow only certificates with specified uid. Empty to allow any. The uid is matched against "

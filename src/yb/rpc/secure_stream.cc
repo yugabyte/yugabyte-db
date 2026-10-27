@@ -49,7 +49,7 @@ using namespace std::literals;
 
 DEFINE_NON_RUNTIME_bool(allow_insecure_connections, true,
     "Whether we should allow insecure connections. Must be false when "
-    "node_to_node_encryption_use_client_certificates is set.");
+    "use_node_to_node_encryption and node_to_node_encryption_use_client_certificates are set.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
 DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
@@ -66,13 +66,16 @@ DEFINE_UNKNOWN_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
 
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(use_node_to_node_encryption);
 
 // A plaintext connection carries no client certificate, so accepting one would make the client
 // certificate requirement meaningless.
 DEFINE_validator(allow_insecure_connections,
     FLAG_DELAYED_COND_VALIDATOR(
-        !_value || !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates),
-        "Must be false when node_to_node_encryption_use_client_certificates is set"));
+        !_value || !FINAL_FLAG_VALUE(use_node_to_node_encryption) ||
+            !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates),
+        "Must be false when use_node_to_node_encryption and "
+        "node_to_node_encryption_use_client_certificates are set"));
 
 METRIC_DEFINE_counter(server, rpc_inbound_tls_handshakes_rejected,
                       "Inbound TLS Handshakes Rejected",
