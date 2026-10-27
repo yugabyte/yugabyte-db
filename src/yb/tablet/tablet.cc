@@ -34,6 +34,7 @@
 
 #include <utility>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/container/static_vector.hpp>
 
 #include "yb/client/client.h"
@@ -77,6 +78,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -122,6 +124,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -152,6 +155,50 @@ DEFINE_RUNTIME_int32(vector_index_num_raft_ops_to_force_flush, 10000,
     "When the oldest unflushed Raft operation of a vector index is more than this many operations "
     "behind the log tail, the index is flushed. Bounds both the WAL a vector index retains and the "
     "entries tablet bootstrap replays into it. Entries inserted by backfill do not count.");
+
+DEFINE_RUNTIME_bool(intents_flush_fully_erased_memtable_without_regular_flush, false,
+    "Flush an intents memtable whose entries were all erased without waiting for the regular db "
+    "to be flushed first.");
+
+DEFINE_NON_RUNTIME_int32(intents_memstore_size_mb, 0,
+    "Write buffer size of the intents db in MB. 0 to use memstore_size_mb. A small intents "
+    "memtable is switched often; applied intents are erased from it and it is dropped without "
+    "flushing the regular db.");
+
+DEFINE_RUNTIME_int32(intents_flush_max_delay_without_memory_pressure_ms, 0,
+    "Max time to wait for regular db to flush during flush of intents, while the global memstore "
+    "limit is not exceeded. 0 to always use intents_flush_max_delay_ms.");
+
+METRIC_DEFINE_counter(tablet, regular_flush_memtable_size_limit,
+    "Regular DB flushes: memtable size limit", yb::MetricUnit::kRequests,
+    "Number of regular db flushes with reason kMemtableSizeLimit.");
+METRIC_DEFINE_counter(tablet, regular_flush_intents_apply,
+    "Regular DB flushes: forced by intents flush", yb::MetricUnit::kRequests,
+    "Number of regular db flushes with reason kIntentsApply.");
+METRIC_DEFINE_counter(tablet, regular_flush_intent_files_cleanup,
+    "Regular DB flushes: intent files cleanup", yb::MetricUnit::kRequests,
+    "Number of regular db flushes with reason kIntentFilesCleanup.");
+METRIC_DEFINE_counter(tablet, regular_flush_global_memstore_limit,
+    "Regular DB flushes: global memstore limit", yb::MetricUnit::kRequests,
+    "Number of regular db flushes with reason kGlobalMemstoreLimit.");
+METRIC_DEFINE_counter(tablet, regular_flush_other,
+    "Regular DB flushes: other reasons", yb::MetricUnit::kRequests,
+    "Number of regular db flushes with other reasons.");
+METRIC_DEFINE_counter(tablet, intents_flush_memtable_size_limit,
+    "Intents DB flushes: memtable size limit", yb::MetricUnit::kRequests,
+    "Number of intents db flushes with reason kMemtableSizeLimit.");
+METRIC_DEFINE_counter(tablet, intents_flush_idle_intents,
+    "Intents DB flushes: idle intents", yb::MetricUnit::kRequests,
+    "Number of intents db flushes with reason kIdleIntents.");
+METRIC_DEFINE_counter(tablet, intents_flush_global_memstore_limit,
+    "Intents DB flushes: global memstore limit", yb::MetricUnit::kRequests,
+    "Number of intents db flushes with reason kGlobalMemstoreLimit.");
+METRIC_DEFINE_counter(tablet, intents_flush_other,
+    "Intents DB flushes: other reasons", yb::MetricUnit::kRequests,
+    "Number of intents db flushes with other reasons.");
+METRIC_DEFINE_counter(tablet, intents_flush_empty,
+    "Intents DB flushes without data", yb::MetricUnit::kRequests,
+    "Number of intents db flushes that wrote no entries (all intents were erased).");
 
 DEFINE_UNKNOWN_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
     "When writes to intents RocksDB are stopped and the number of Raft operations after "
@@ -590,6 +637,76 @@ class ActiveCompactionToken {
 
 } // namespace
 
+namespace {
+
+// Counts flushes of one RocksDB by flush reason.
+class FlushReasonCounters : public rocksdb::EventListener {
+ public:
+  FlushReasonCounters(const scoped_refptr<MetricEntity>& entity, docdb::StorageDbType db_type)
+      : intents_(db_type == docdb::StorageDbType::kIntents) {
+    if (!entity) {
+      return;
+    }
+    if (intents_) {
+      size_limit_ = METRIC_intents_flush_memtable_size_limit.Instantiate(entity);
+      idle_intents_ = METRIC_intents_flush_idle_intents.Instantiate(entity);
+      global_memstore_limit_ = METRIC_intents_flush_global_memstore_limit.Instantiate(entity);
+      other_ = METRIC_intents_flush_other.Instantiate(entity);
+      empty_ = METRIC_intents_flush_empty.Instantiate(entity);
+    } else {
+      size_limit_ = METRIC_regular_flush_memtable_size_limit.Instantiate(entity);
+      intents_apply_ = METRIC_regular_flush_intents_apply.Instantiate(entity);
+      intent_files_cleanup_ = METRIC_regular_flush_intent_files_cleanup.Instantiate(entity);
+      global_memstore_limit_ = METRIC_regular_flush_global_memstore_limit.Instantiate(entity);
+      other_ = METRIC_regular_flush_other.Instantiate(entity);
+    }
+  }
+
+  void OnFlushCompleted(rocksdb::DB*, const rocksdb::FlushJobInfo& info) override {
+    // A flush job postponed by the memtable flush filter picks no memtable and reports file
+    // number 0. Count only flush jobs that flushed memtables.
+    if (!other_ || boost::ends_with(info.file_path, "/000000.sst")) {
+      return;
+    }
+    if (empty_ && info.table_properties.num_entries == 0) {
+      empty_->Increment();
+    }
+    Counter* counter = other_.get();
+    switch (info.flush_reason) {
+      case rocksdb::FlushReason::kMemtableSizeLimit:
+        counter = size_limit_.get();
+        break;
+      case rocksdb::FlushReason::kGlobalMemstoreLimit:
+        counter = global_memstore_limit_.get();
+        break;
+      case rocksdb::FlushReason::kIntentsApply:
+        counter = intents_apply_ ? intents_apply_.get() : counter;
+        break;
+      case rocksdb::FlushReason::kIntentFilesCleanup:
+        counter = intent_files_cleanup_ ? intent_files_cleanup_.get() : counter;
+        break;
+      case rocksdb::FlushReason::kIdleIntents:
+        counter = idle_intents_ ? idle_intents_.get() : counter;
+        break;
+      default:
+        break;
+    }
+    counter->Increment();
+  }
+
+ private:
+  const bool intents_;
+  scoped_refptr<Counter> size_limit_;
+  scoped_refptr<Counter> intents_apply_;
+  scoped_refptr<Counter> intent_files_cleanup_;
+  scoped_refptr<Counter> idle_intents_;
+  scoped_refptr<Counter> global_memstore_limit_;
+  scoped_refptr<Counter> other_;
+  scoped_refptr<Counter> empty_;
+};
+
+} // namespace
+
 class Tablet::RocksDbListener : public rocksdb::EventListener {
  public:
   RocksDbListener(Tablet& tablet, const std::string& log_prefix)
@@ -1005,6 +1122,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
   VLOG_WITH_PREFIX(4) << __func__;
 
+  // All intents in this memtable were erased by apply or cleanup, so its flush writes no data and
+  // does not depend on regular db records.
+  // TODO: the intents db flushed op id must not move past the regular db flushed op id, otherwise
+  // bootstrap does not replay intents of transactions whose applied records were not flushed.
+  if (FLAGS_intents_flush_fully_erased_memtable_without_regular_flush &&
+      memtable.FullyErased()) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "Fully erased memtable";
+    return true;
+  }
+
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
     state->vector_indexes = vector_indexes_->List();
   }
@@ -1068,8 +1195,13 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     return true;
   }
 
-  // Force flush of regular DB if we were not able to flush for too long.
+  // Force flush of regular DB if we were not able to flush for too long. Without memory pressure
+  // wait longer, so the intents of running transactions can be erased from this memtable.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
+  if (FLAGS_intents_flush_max_delay_without_memory_pressure_ms > 0 &&
+      !(tablet_options_.memory_monitor && tablet_options_.memory_monitor->Exceeded())) {
+    timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_without_memory_pressure_ms);
+  }
   if (initial &&
       (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
@@ -1270,6 +1402,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
 
   regular_rocksdb_options.listeners.push_back(
       std::make_shared<RegularRocksDbListener>(*this, regular_rocksdb_options.log_prefix));
+  regular_rocksdb_options.listeners.push_back(std::make_shared<FlushReasonCounters>(
+      tablet_metrics_entity_, docdb::StorageDbType::kRegular));
   regular_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
   regulardb_mem_tracker_ = MemTracker::FindOrCreateTracker(
       Format("$0-$1", kRegularDB, tablet_id()), /* metric_name */ kRegularDB,
@@ -1322,6 +1456,10 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
         &intents_rocksdb_options, tablet_options_, std::move(table_options));
   }
 
+  if (FLAGS_intents_memstore_size_mb > 0) {
+    intents_rocksdb_options.write_buffer_size = FLAGS_intents_memstore_size_mb * 1_MB;
+  }
+
   intents_rocksdb_options.compaction_context_factory = {};
   intents_rocksdb_options.tablet_id = tablet_id();
 
@@ -1348,6 +1486,8 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   intents_rocksdb_options.listeners.push_back(
       std::make_shared<RocksDbListener>(*this, intents_rocksdb_options.log_prefix));
+  intents_rocksdb_options.listeners.push_back(std::make_shared<FlushReasonCounters>(
+      tablet_metrics_entity_, docdb::StorageDbType::kIntents));
 
   rocksdb::DB* intents_db = nullptr;
   RETURN_NOT_OK(rocksdb::DB::Open(intents_rocksdb_options, intents_dir, &intents_db));
