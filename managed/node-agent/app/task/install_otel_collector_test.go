@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"os"
 	"os/user"
@@ -35,9 +36,9 @@ func newDisableCollectorHandler(t *testing.T, ybHome string) *InstallOtelCollect
 func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 	ybHome := t.TempDir()
 	handler := newDisableCollectorHandler(t, ybHome)
-	hasUser, err := handler.hasUserOtelCollectorUnit(context.Background())
+	hasUser, _, err := module.IsUserSystemd(handler.username, OtelCollectorService)
 	if err != nil {
-		t.Fatalf("hasUserOtelCollectorUnit: %v", err)
+		t.Fatalf("IsUserSystemd: %v", err)
 	}
 	if hasUser {
 		t.Skip("this host has a user-level otel-collector unit")

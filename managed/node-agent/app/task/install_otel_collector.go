@@ -406,16 +406,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	return nil
 }
 
-// hasUserOtelCollectorUnit reports whether the user unit exists and the user systemd manager
-// runs. Without the manager, systemctl --user fails and no user collector can run.
-func (h *InstallOtelCollector) hasUserOtelCollectorUnit(ctx context.Context) (bool, error) {
-	exists, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
-	if err != nil || !exists {
-		return false, err
-	}
-	return module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
-}
-
 func (h *InstallOtelCollector) hasRootOtelCollectorUnit() (bool, error) {
 	if _, err := os.Stat(h.rootUnitPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -521,7 +511,9 @@ func ensureOtelCollectorDirStep(ybHome string) struct {
 // disableOtelCollector stops the collector and removes its config without the package setup, so
 // that a broken package cannot block turning export off.
 func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
-	hasUserUnit, err := h.hasUserOtelCollectorUnit(ctx)
+	// The root stop goes first, so that a failed user stop cannot leave a root collector running.
+	h.stopRootOtelCollector(ctx)
+	hasUserUnit, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
 	if err != nil {
 		return err
 	}
@@ -536,7 +528,6 @@ func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome 
 			return err
 		}
 	}
-	h.stopRootOtelCollector(ctx)
 	// configureOtelCollector writes into this directory, and this path skips the package setup.
 	steps := []struct {
 		Desc string
