@@ -183,8 +183,9 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		// A root certificate is used only when its TLS path is on. If only one is given, or
-		// node-to-node TLS is off, the client root certificate is used for both.
+		// Ignore the client root CA when client-to-node TLS is off. If only one certificate is
+		// given, it is used for both; with only a root CA, YBA sets the client root CA to it.
+		// When node-to-node TLS is off, the client root CA replaces the unused root CA.
 		if !v1.GetBool("enable-client-to-node-encrypt") {
 			clientRootCACertUUID = ""
 		}
@@ -195,7 +196,7 @@ var createUniverseCmd = &cobra.Command{
 		rootAndClientRootCASame := len(clientRootCACertUUID) == 0 ||
 			rootCACertUUID == clientRootCACertUUID
 		if !rootAndClientRootCASame &&
-			strings.EqualFold(v1.GetString("provider-code"), util.K8sProviderType) {
+			providerType == util.K8sProviderType {
 			logrus.Fatalf(formatter.Colorize(
 				"Kubernetes universes need the same --root-ca and --client-root-ca\n",
 				formatter.RedColor))
