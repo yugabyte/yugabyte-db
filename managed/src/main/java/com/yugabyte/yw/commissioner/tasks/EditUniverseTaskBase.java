@@ -659,9 +659,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     if (!newMasters.isEmpty()) {
       // Start masters. If it is already started, it has no effect.
       createStartMasterProcessTasks(newMasters);
-      // New nodes got isMaster at freeze, so configure already wrote their master target. Only
-      // existing nodes that gain a master need the collector refresh.
-      createOtelCollectorMetricsRefreshTasks(existingNodesToStartMaster, false /* ignoreErrors */);
     }
     // Filter out nodes which are not in the universe.
     Set<NodeDetails> removeUniverseMasters =
@@ -679,8 +676,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       Set<NodeDetails> currentLiveMasters =
           liveNodes.stream().filter(n -> n.isMaster).collect(Collectors.toSet());
-      // Read from task params: on a retry the DB copy of a removed node can already be past
-      // ToBeRemoved.
+      // Task params, since a retry can see removed nodes past ToBeRemoved in the DB.
       Set<String> leavingNodes =
           PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet).stream()
               .map(n -> n.nodeName)
@@ -713,9 +709,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               demotedStayingNodes.add(node);
             }
           });
-      // These nodes stay without a master, so drop the master target from their collector
-      // configs. Once, after all master moves, so a slow node cannot delay them.
-      createOtelCollectorMetricsRefreshTasks(demotedStayingNodes, false /* ignoreErrors */);
+      // Refresh existing nodes whose master role changed, after the moves so they are not delayed.
+      createOtelCollectorMetricsRefreshTasks(
+          Sets.union(existingNodesToStartMaster, demotedStayingNodes), false /* ignoreErrors */);
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
                 mastersToStop,

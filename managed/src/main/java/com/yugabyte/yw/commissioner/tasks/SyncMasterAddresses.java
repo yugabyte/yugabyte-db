@@ -89,8 +89,7 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       createMasterAddressUpdateTask(
           universe, pendingMasters, pendingTservers, false /* ignore error */);
-      // These nodes stay up without a master, for example the old master after a failover that
-      // could not reach it. Drop the master target from their collector config. Best effort.
+      // Drop the master target from stopped stray masters. Best effort.
       createOtelCollectorMetricsRefreshTasks(nonMasterActiveNodes, true /* ignoreErrors */);
       createUpdateUniverseFieldsTask(u -> u.getNodes().forEach(n -> n.autoSyncMasterAddrs = false));
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());

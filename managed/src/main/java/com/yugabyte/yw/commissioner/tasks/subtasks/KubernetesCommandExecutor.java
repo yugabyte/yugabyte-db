@@ -318,9 +318,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
-  // A full move also runs the new StatefulSet's masters in the same release, which shares the
-  // collector config with the old one. A read replica release never runs masters, although a full
-  // move sets its masterReplicas from the placement's replication factor.
+  // A full move counts the new StatefulSet's masters. Read replicas never run masters.
   static boolean releaseHasMasters(
       boolean isReadOnlyCluster, int masterReplicas, FullMoveParams fullMoveParams) {
     if (isReadOnlyCluster) {

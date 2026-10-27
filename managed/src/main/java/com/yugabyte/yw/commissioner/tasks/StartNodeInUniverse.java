@@ -196,9 +196,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // between the Stop/Start actions as Inactive.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
-      // The node may have lost its master while stopped, and its collector config still scrapes
-      // the master port. Rewrite it for the node's current roles. A master start already did, and
-      // read replica and dedicated tserver nodes never run a master.
+      // The node may have lost its master while stopped; a master start refreshes on its own.
       if (!startMaster
           && cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
           && currentNode.dedicatedTo != ServerType.TSERVER) {

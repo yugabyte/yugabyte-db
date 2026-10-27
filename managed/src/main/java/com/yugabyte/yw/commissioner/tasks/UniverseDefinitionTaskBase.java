@@ -820,11 +820,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
-    // Rewrite the collector config for the new roles, after the quorum and address changes so a
-    // slow node cannot delay them. The new master gains the master target. In master failover the
-    // old node stays up as a tserver and loses it; skipped when its instance is gone. Outside the
-    // isMaster block: a retry re-reads isMaster=false. Failover is best effort: the old node is
-    // often unhealthy, and a collector failure must not fail a failover that repaired the quorum.
+    // Refresh after the quorum change so it is not delayed. In failover, also the old node, which
+    // stays a tserver; best effort, since that node is often unhealthy.
     Set<NodeDetails> otelRefreshNodes = new HashSet<>(nodeSet);
     if (stoppingNode != null && keepTserverRunning && isStoppable) {
       otelRefreshNodes.add(stoppingNode);
@@ -3097,11 +3094,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  /**
-   * Rewrites the collector config when metrics export is on, so scrape targets match the node's
-   * current master and API servers. Master role changes do not rewrite it on their own. With {@code
-   * ignoreErrors}, a failed refresh is logged and does not fail the task.
-   */
+  /** Rewrites the collector config for the nodes' current roles when metrics export is on. */
   protected void createOtelCollectorMetricsRefreshTasks(
       Collection<NodeDetails> nodes, boolean ignoreErrors) {
     if (nodes.isEmpty()) {

@@ -3042,6 +3042,25 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
     assertEquals(newMasters, refreshed);
+    // The refreshes run after the master quorum changes and address updates, so a slow node
+    // cannot delay them.
+    int firstRefresh =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    int lastMasterChange =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.ChangeMasterConfig
+                        || (t.getTaskType() == TaskType.AnsibleConfigureServers
+                            && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()))
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(firstRefresh > lastMasterChange);
   }
 
   // PLAT-23125: an expand that moves a master leaves the old master node in the universe as a

@@ -658,6 +658,13 @@ public class OtelCollectorConfigGenerator {
         .collect(Collectors.toList());
   }
 
+  // Scrape targets served by a job other than the yugabyte job.
+  private static final Set<ScrapeConfigTargetType> NON_YUGABYTE_SCRAPE_TARGETS =
+      EnumSet.of(
+          ScrapeConfigTargetType.NODE_EXPORT,
+          ScrapeConfigTargetType.NODE_AGENT_EXPORT,
+          ScrapeConfigTargetType.OTEL_EXPORT);
+
   private void addMetricsExporterPipelines(
       OtelCollectorConfigFormat collectorConfigFormat,
       NodeTaskParams nodeParams,
@@ -909,10 +916,7 @@ public class OtelCollectorConfigGenerator {
         universe.getUniverseDetails().getPrimaryCluster().userIntent);
   }
 
-  /**
-   * Same as above, with the API flags read from {@code apiIntent}: the target intent, since the
-   * persisted universe has the old flags during a helm upgrade.
-   */
+  /** Same as above, with API flags from {@code apiIntent}, the target intent of a helm upgrade. */
   public K8sOtelConfig getOtelColConfigK8s(
       Provider provider,
       Universe universe,
@@ -1301,6 +1305,11 @@ public class OtelCollectorConfigGenerator {
             apiIntent,
             podPlacement == null || podPlacement.isHasMasters(),
             metricsExportConfig.getScrapeConfigTargets());
+    // A receiver needs at least one job, so fall back to the unfiltered targets.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
+        && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
+      scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    }
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2072,8 +2081,14 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
 
     // Add yugabyte scrape config. Includes master, tserver, ysql, cql exports.
+    Set<ScrapeConfigTargetType> requestedTargets = metricsExportConfig.getScrapeConfigTargets();
     Set<ScrapeConfigTargetType> yugabyteTargets =
-        getYugabyteScrapeTargetsForNode(nodeDetails, metricsExportConfig.getScrapeConfigTargets());
+        getYugabyteScrapeTargetsForNode(nodeDetails, requestedTargets);
+    // A receiver needs at least one job, so fall back to the unfiltered targets.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)
+        && Collections.disjoint(requestedTargets, NON_YUGABYTE_SCRAPE_TARGETS)) {
+      yugabyteTargets = requestedTargets;
+    }
     if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)) {
       scrapeConfigs.add(
           createYugabyteScrapeConfig(
@@ -2271,11 +2286,7 @@ public class OtelCollectorConfigGenerator {
         nodeDetails.yqlServerHttpPort);
   }
 
-  /**
-   * Drops the YSQL/CQL targets when the universe does not run that API (PLAT-21847), and the master
-   * target when the helm release runs no master pods. Master and tserver pods in a release share
-   * one collector config, so per-pod gating as on VMs is not possible here.
-   */
+  /** Drops YSQL/CQL targets for APIs that are off, and the master target without master pods. */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
       UniverseDefinitionTaskParams.UserIntent apiIntent,
       boolean releaseHasMasters,
@@ -2295,11 +2306,8 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
-   * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval. isTserver is not set yet when configure writes the config, so
-   * tserver targets gate on dedicatedTo, and YSQL/CQL on the node's isYsqlServer/isYqlServer.
-   * MASTER_EXPORT gates on isMaster, and master role changes rewrite the config
-   * (createOtelCollectorMetricsRefreshTasks).
+   * Drops requested targets with no server on this node. Tserver targets use dedicatedTo, since
+   * isTserver is not set yet at configure.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {

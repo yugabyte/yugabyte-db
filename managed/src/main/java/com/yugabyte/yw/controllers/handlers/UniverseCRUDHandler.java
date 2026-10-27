@@ -1490,8 +1490,7 @@ public class UniverseCRUDHandler {
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
-    // Nodes added by this edit install the OTEL collector only when this is set. Clients such as
-    // the CLI do not send it, so take it from the universe.
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
     taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
 
     // Set existing LBs into taskParams
@@ -1843,8 +1842,7 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
-    // Nodes added by this cluster install the OTEL collector only when this is set. Clients such
-    // as the CLI do not send it, so take it from the universe.
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
     taskParams.otelCollectorEnabled = universe.getUniverseDetails().otelCollectorEnabled;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();

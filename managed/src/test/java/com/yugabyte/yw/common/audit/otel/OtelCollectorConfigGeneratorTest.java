@@ -741,6 +741,32 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(result, not(containsString("127.0.0.1:7000")));
   }
 
+  // A receiver with no scrape jobs is invalid, so when the node runs none of the requested
+  // servers the unfiltered yugabyte job stays.
+  @Test
+  public void generateOtelColConfigMetricsKeepsYugabyteJobWhenNoTargetApplies() {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().nodeDetailsSet.forEach(n -> n.isMaster = false),
+            false);
+
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    metricsExportConfig.setScrapeConfigTargets(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT));
+
+    String result = generateConfig(null, null, metricsExportConfig);
+
+    assertThat(result, containsString("export_type: master_export"));
+  }
+
   private String generateConfig(
       AuditLogConfig auditLogConfig,
       QueryLogConfig queryLogConfig,
@@ -1486,6 +1512,41 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                 intent)
             .getConfig();
     assertThat(withMastersConfig, containsString("export_type: master_export"));
+  }
+
+  // A receiver with no scrape jobs is invalid, so when the release runs none of the requested
+  // servers the unfiltered yugabyte job stays.
+  @Test
+  public void getOtelColConfigK8sMetricsKeepsYugabyteJobWhenNoTargetApplies() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    metricsExportConfig.setScrapeConfigTargets(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT));
+    TelemetryConfig telemetryConfig =
+        TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build();
+
+    String result =
+        generator
+            .getOtelColConfigK8s(
+                provider,
+                universe,
+                telemetryConfig,
+                new OtelCollectorConfigGenerator.K8sPodPlacement(
+                    "kubernetes",
+                    "us-west1",
+                    "us-west1-b",
+                    UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                    false /* hasMasters */),
+                "%m [%p] ",
+                new UniverseDefinitionTaskParams.UserIntent())
+            .getConfig();
+    assertThat(result, containsString("export_type: master_export"));
   }
 
   @Test
