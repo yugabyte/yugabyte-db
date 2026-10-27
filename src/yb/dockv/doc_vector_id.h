@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <optional>
-
 #include "yb/common/column_id.h"
 #include "yb/common/value.messages.h"
 
@@ -141,10 +139,6 @@ KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId colum
 //   0x02: size of the ybctid prefix that identifies the tenant of the vector (varint).
 // The ybctid goes first, so it is extractable whatever fields follow. Older releases read only
 // payloads with the ybctid flag alone, which tenant_prefix_size 0 produces.
-// TODO(vector_index): decide whether the payload keeps the tenant prefix size, or the tenant
-// extractor recomputes it from the ybctid with
-// PgVectorIdxOptionsPB::tenant_hash_group_and_range_components.
-// A tenant made of arbitrary columns would need the tenant bytes in the payload instead.
 ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size);
 
 struct DocVectorIndexPayloadContent {
@@ -160,10 +154,5 @@ Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload);
 // Ignores the fields after the ybctid, including ones this release does not know.
 Result<Slice> DocVectorIndexPayloadYbctid(Slice payload);
 
-// Returns the size of the first num_components components of key, which is a ybctid or its prefix
-// without the closing range group end. Components are as in
-// Schema::HashGroupAndRangeComponentIndex, and the size never covers the closing range group end.
-// Returns nullopt when key has fewer components.
-Result<std::optional<size_t>> DocVectorTenantPrefixSize(Slice key, size_t num_components);
 
 } // namespace yb::dockv

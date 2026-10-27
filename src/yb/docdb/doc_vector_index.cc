@@ -21,6 +21,7 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -227,19 +228,16 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   }
   ValueBuffer payload;
   if (store_payload) {
-    auto tenant_prefix_size = VERIFY_RESULT(dockv::DocVectorTenantPrefixSize(
-        entry.ybctid.AsSlice(), tenant_components));
-    // Master caps the tenant components by the hash group and range components of the table.
-    SCHECK(
-        tenant_prefix_size, Corruption,
-        Format("Ybctid $0 has fewer than $1 hash group and range components",
-               entry.ybctid.AsSlice().ToDebugHexString(), tenant_components));
+    // Master keeps the tenant components below the components of the table.
+    auto tenant_prefix_size = VERIFY_RESULT(
+        dockv::DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
+            entry.ybctid.AsSlice(), tenant_components));
     if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
       // Sorts after every key of the row.
       dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
-      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), *tenant_prefix_size);
+      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), tenant_prefix_size);
     } else {
-      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), *tenant_prefix_size);
+      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), tenant_prefix_size);
     }
   }
   return vector_index::VectorLSMInsertEntry<Vector> {

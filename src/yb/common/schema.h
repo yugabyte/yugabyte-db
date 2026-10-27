@@ -672,10 +672,10 @@ class Schema : public MissingValueProvider {
     return num_key_columns_ - num_hash_key_columns_;
   }
 
-  // Returns the component of the key column with index column_idx, where all hash columns form one
-  // component, the hash group, followed by one component per range column. Unlike
-  // get_dockey_component_idx, the hash columns share a component. For column_idx equal to the
-  // number of key columns, returns the number of such components.
+  // Returns the component index for the given key column. All hash columns form component 0,
+  // followed by one component per range column. Unlike get_dockey_component_idx, hash columns
+  // share a single component. If column_idx is the number of key columns, returns the total
+  // number of components.
   static size_t HashGroupAndRangeComponentIndex(size_t column_idx, size_t num_hash_key_columns) {
     return column_idx < num_hash_key_columns
         ? 0 : column_idx - num_hash_key_columns + (num_hash_key_columns ? 1 : 0);

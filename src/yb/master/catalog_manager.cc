@@ -662,15 +662,15 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
 
 DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "Temporary, until the tenant of a vector index can be specified when the index is created, "
-    "see #35312. Number of leading components of the primary key that identify the tenant of a "
-    "vector in newly created vector indexes that store the payload, see "
-    "vector_index_store_payload: all hash columns form one component, the hash group, followed by "
-    "one component per range column. 0 means vectors have no tenant. Applies only to the "
-    "yb_hnsw_hnswlib backend, and a tenant never covers the whole primary key: a larger value "
-    "means all components but the last one, so a table whose primary key is a single component "
-    "gets no tenants. The value is fixed for an index when it is created. Older releases cannot "
-    "read the payloads of an index created with a nonzero value, and write its vectors without "
-    "their tenant, so keep it 0 until the upgrade to this release is finalized.");
+    "see #35312. Number of leading primary-key components that identify the vector tenant and are "
+    "stored in the payload of newly created vector indexes, see vector_index_store_payload. All "
+    "hash columns form a single hash-group component, followed by one component per range column. "
+    "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
+    "covers the full primary key: values greater than or equal to the number of components use all "
+    "components but the last one, so a single-component primary key has no tenant. The value is "
+    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
+    "release is finalized.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "

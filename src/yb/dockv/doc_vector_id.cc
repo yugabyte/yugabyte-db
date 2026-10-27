@@ -412,8 +412,7 @@ ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size) {
   ValueBuffer result;
   result.Assign(Slice(header, header_size), ybctid);
   if (tenant_prefix_size) {
-    char tenant[kMaxVarIntBufferSize];
-    result.Append(Slice(tenant, FastEncodeUnsignedVarInt(tenant_prefix_size, tenant)));
+    FastAppendUnsignedVarInt(tenant_prefix_size, &result);
   }
   return result;
 }
@@ -441,25 +440,6 @@ Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload) 
 Result<Slice> DocVectorIndexPayloadYbctid(Slice payload) {
   uint8_t flags = 0;
   return ConsumeDocVectorIndexPayloadYbctid(&payload, &flags);
-}
-
-Result<std::optional<size_t>> DocVectorTenantPrefixSize(Slice key, size_t num_components) {
-  const auto* begin = key.data();
-  size_t num_decoded = 0;
-  if (num_components) {
-    // Also skips the cotable or colocation id, which is not a hash group.
-    auto [hash_part_size, hash_present] = VERIFY_RESULT(
-        DocKey::EncodedSizeAndHashPresent(key, DocKeyPart::kUpToHash));
-    key.remove_prefix(hash_part_size);
-    num_decoded = hash_present ? 1 : 0;
-  }
-  for (; num_decoded < num_components; ++num_decoded) {
-    if (key.empty() || key[0] == KeyEntryTypeAsChar::kGroupEnd) {
-      return std::nullopt;
-    }
-    RETURN_NOT_OK(KeyEntryValue::DecodeKey(&key, /* out= */ nullptr));
-  }
-  return key.data() - begin;
 }
 
 } // namespace yb::dockv

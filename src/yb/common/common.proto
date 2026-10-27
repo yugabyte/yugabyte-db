@@ -176,12 +176,11 @@ message PgVectorIdxOptionsPB {
   // with TablePropertiesPB::skip_vector_reverse_mapping set.
   optional bool store_payload = 10;
 
-  // Number of leading components of the primary key that identify the tenant of a vector, kept in
-  // its payload: all hash columns form one component, the hash group, followed by one component per
-  // range column. 0 means vectors have no tenant. Set by master at index creation, only for an
-  // hnswlib index that stores the payload, and always below the number of such components of the
-  // table, see Schema::NumHashGroupAndRangeComponents, so a tenant never covers the whole primary
-  // key.
+  // Number of leading primary-key components that identify the vector tenant and are stored in
+  // the payload. All hash columns form a single hash-group component, followed by one component
+  // per range column. 0 means the vectors have no tenant.
+  // Set by master at index creation only for hnswlib indexes that store payload. Always less than
+  // Schema::NumHashGroupAndRangeComponents, so the tenant never covers the full primary key.
   optional uint32 tenant_hash_group_and_range_components = 11;
 }
 
