@@ -530,6 +530,10 @@ typedef struct PROC_HDR
 	int			spins_per_delay;
 	/* Buffer id of the buffer that Startup process waits for pin on, or -1 */
 	int			startupBufferPinWaitBufId;
+
+	/* YB fields */
+	/* Number of connections rejected for exceeding the connection limit */
+	int			yb_too_many_conn;
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
@@ -620,7 +624,6 @@ extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
 extern int	yb_max_query_layer_retries;
-extern int *yb_too_many_conn;
 extern void YbRemoveLockGroupLeader(PGPROC *proc);
 extern void YbReleaseProcToFreeList(PGPROC *proc);
 extern bool YbIsAuxiliaryProc(PGPROC *proc);

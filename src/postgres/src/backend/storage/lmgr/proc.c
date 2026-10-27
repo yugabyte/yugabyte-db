@@ -85,7 +85,6 @@ static void *FastPathLockArrayShmemPtr;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
 PGPROC	   *KilledProcToClean = NULL;
-int		   *yb_too_many_conn = NULL;
 
 static void ProcGlobalShmemRequest(void *arg);
 static void ProcGlobalShmemInit(void *arg);
@@ -137,17 +136,6 @@ CalculateFastPathLockShmemSize(void)
 	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
 	size = add_size(size, mul_size(TotalProcs, (fpLockBitsSize + fpRelIdSize)));
-
-	/*
-	 * YB_TODO_PG19MERGE: yb_too_many_conn used to piggyback on the
-	 * old catch-all PGProcShmemSize() budget that PG commit
-	 * c6d55714ba4c282dcf5fb5fe5ef2a5cad0b06e81 split up.
-	 * Give yb_too_many_conn its own ShmemRequestStruct in
-	 * ProcGlobalShmemRequest (or move it to an existing struct)
-	 * and drop the ShmemAlloc. Original YB line that lived here:
-	 *
-	 * size = add_size(size, sizeof(int));
-	 */
 
 	Assert(TotalProcs > 0);
 	Assert(size > 0);
@@ -417,8 +405,7 @@ ProcGlobalShmemInit(void *arg)
 	AuxiliaryProcs = &procs[MaxBackends];
 	PreparedXactProcs = &procs[FIRST_PREPARED_XACT_PROC_NUMBER];
 
-	yb_too_many_conn = (int *) ShmemAlloc(sizeof(int));
-	(*yb_too_many_conn) = 0;
+	ProcGlobal->yb_too_many_conn = 0;
 }
 
 /*
@@ -487,7 +474,7 @@ InitProcess(void)
 		SpinLockRelease(&ProcGlobal->freeProcsLock);
 
 		/* YB: increment rejection counter */
-		(*yb_too_many_conn)++;
+		ProcGlobal->yb_too_many_conn++;
 
 		if (AmWalSenderProcess())
 			ereport(FATAL,

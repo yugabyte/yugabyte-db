@@ -355,7 +355,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 						 errmsg("the database system is in recovery mode")));
 				break;
 			case CAC_TOOMANY:
-				(*yb_too_many_conn)++;
+				ProcGlobal->yb_too_many_conn++;
 				ereport(FATAL,
 						(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 						 errmsg("sorry, too many clients already")));
