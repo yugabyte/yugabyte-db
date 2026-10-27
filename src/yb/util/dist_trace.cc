@@ -67,6 +67,10 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
     "values are debug, info, warning, error, and none.");
 
+DEFINE_RUNTIME_int32(otel_dropped_span_log_interval_secs, 10,
+    "Minimum interval in seconds between two OpenTelemetry dropped-span warnings. The next logged "
+    "warning reports how many were suppressed. 0 logs every dropped span.");
+
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
@@ -174,7 +178,8 @@ class YbOtelLogHandler : public internal_log::LogHandler {
     const char* safe_msg = msg ? msg : "";
 
     if (level == internal_log::LogLevel::Warning && strstr(safe_msg, kOtelDroppedSpanMessage)) {
-      YB_LOG_EVERY_N_SECS(WARNING, 10) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+      YB_LOG_EVERY_N_SECS(WARNING, FLAGS_otel_dropped_span_log_interval_secs)
+          << "[" << safe_file << ":" << line << "]: " << safe_msg;
       return;
     }
 
