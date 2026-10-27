@@ -936,6 +936,14 @@ pgoutput_ensure_entry_cxt(PGOutputData *data, RelationSyncEntry *entry)
 
 	MemoryContextCopyAndSetIdentifier(entry->entry_cxt,
 									  RelationGetRelationName(relation));
+
+	/*
+	 * YB: Release the reference.  YB's transactional DDL decoding invalidates
+	 * the relcache in the middle of the decoding transaction, which requires
+	 * that no entry is still referenced.
+	 */
+	if (IsYugaByteEnabled())
+		RelationClose(relation);
 }
 
 /*
@@ -1113,6 +1121,9 @@ check_and_init_gencol(PGOutputData *data, List *publications,
 	if (!gencolpresent)
 	{
 		entry->include_gencols_type = PUBLISH_GENCOLS_NONE;
+		/* YB: See pgoutput_ensure_entry_cxt. */
+		if (IsYugaByteEnabled())
+			RelationClose(relation);
 		return;
 	}
 
@@ -1142,6 +1153,10 @@ check_and_init_gencol(PGOutputData *data, List *publications,
 						   get_namespace_name(RelationGetNamespace(relation)),
 						   RelationGetRelationName(relation)));
 	}
+
+	/* YB: See pgoutput_ensure_entry_cxt. */
+	if (IsYugaByteEnabled())
+		RelationClose(relation);
 }
 
 /*
