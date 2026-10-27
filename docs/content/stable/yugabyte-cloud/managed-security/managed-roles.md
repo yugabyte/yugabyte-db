@@ -22,7 +22,7 @@ YugabyteDB Aeon uses role-based access control (RBAC) to manage access to your Y
 
 ## Organization roles
 
-Your organization has two roles: **Super Admin**, and **Member**. 
+Your organization has two roles: **Super Admin** and **Member**.
 
 Organization Super Admins can switch between all accounts and access organization settings. Super Admins are also added to all accounts as an Admin, and this role can't be changed.
 
@@ -34,7 +34,7 @@ For information on managing organization roles, see [Manage organization users a
 
 Each account in your organization has its own access and role management. A single user can be a member of multiple accounts simultaneously, with a different role in each account. Each account remains fully isolated.
 
-Accounts include [built-in roles](#built-in-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
+Accounts include [built-in roles](#built-in-account-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
 
 Roles are also assigned to [API keys](../../managed-automation/managed-apikeys/) to delineate what functionality is available to users accessing an account using either the YugabyteDB Aeon API or CLI. You assign roles to API keys when creating the key; refer to [Create an API key](../../managed-automation/managed-apikeys/#create-an-api-key).
 
@@ -56,7 +56,7 @@ YugabyteDB Aeon includes built-in roles for managing accounts:
 
 - **Admin** - The Admin role provides full access to all features. There must always be at least one Admin user. The primary account user (the user who created the YugabyteDB Aeon account) is automatically assigned an Admin role.
 
-    Organization Super Admin users are automatiocally granted Admin on every account in your organization.
+    Organization Super Admin users are automatically granted Admin on every account in your organization.
 
 - **Developer** - The Developer role provides access to all account features, with the exception of the following administrative tasks:
 

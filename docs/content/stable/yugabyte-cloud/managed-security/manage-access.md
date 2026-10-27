@@ -43,7 +43,7 @@ For users that have not responded to their invitation (their status is Invited),
 
 To delete a user from an account:
 
-1. Switch to the account and navigate to **Security > Access Control > Users**
+1. Switch to the account and navigate to **Security > Access Control > Users**.
 1. In the row of the user you want to delete, click the trash icon, then click **Confirm**.
 
 This deletes the user from the current account only, not other accounts or the organization. Delete users from your organization in Organization settings; see [Manage organization users and authentication](../manage-accounts/#manage-organization-users-and-authentication).

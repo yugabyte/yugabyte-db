@@ -14,13 +14,7 @@ type: docs
 
 Using multi-account management, you can add multiple accounts for your organization, each with its own access control and billing.
 
-Previously, when you signed up for YugabyteDB Aeon, you had a single account:
-
-- All users you invited, all clusters you created, billing, VPCs, API keys, and access controls lived inside that one account.
-- Users could only belong to that one account, and the same user could not sign in to access a second, separate Aeon account.
-- If you needed environment separation (for example, staging vs. production) or team isolation, you needed to create entirely separate Aeon sign-ups with different email addresses.
-
-With Multi-account management, a single user can be a member of multiple accounts simultaneously under a single organization, with a different role in each account. Each account remains fully isolated:
+A single user can be a member of multiple accounts simultaneously under a single organization, with a different role in each account. Each account remains fully isolated:
 
 - **Clusters** - each account has its own clusters; no cross-account visibility.
 - **Billing** - each account has its own billing profile and usage tracking.
@@ -54,8 +48,8 @@ To rename an account, click the **Edit Account Name** icon next to the name in t
 Keep in mind the following when using multiple accounts:
 
 - Account users and roles are managed from the account. To [manage users](../manage-access/) for an account, first [switch to the account](#switch-accounts).
-- To add a user to multiple accounts, switch to each account and add them from the **Users** tab. Users who already belong to your organization are added immediately. New users receive an invitation and must accept it before they can be added to other accounts.  
-- When you sign in to YugabyteDB Aeon, you are signed in to the account you used most recently. Use the [Account Switcher](#switch-accounts) to change accounts.  
+- To add a user to multiple accounts, switch to each account and add them from the **Users** tab. Users who already belong to your organization are added immediately. New users receive an invitation and must accept it before they can be added to other accounts.
+- When you sign in to YugabyteDB Aeon, you are signed in to the account you used most recently. Use the [Account Switcher](#switch-accounts) to change accounts.
 
 To change your organization name, select the **Settings** page and enter a new name.
 
@@ -102,7 +96,7 @@ If you are demoting a Super Admin to Member, you must also assign an account rol
 
 - You cannot modify your own role.
 - Your organization can have a maximum of 5 Super Admins.
-- Users who are promoted to Super Admin are added to _all_ your accounts as an [Admin](../managed-roles/#built-in-roles).
+- Users who are promoted to Super Admin are added to _all_ your accounts as an [Admin](../managed-roles/#built-in-account-roles).
 - There must always be at least one Super Admin.
 - You can't change the role of a user with a pending invitation.
 
@@ -153,4 +147,4 @@ To access the billing for an individual account, in the list, click **...** and 
 
 ## Limitation
 
-Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts.
+Account management is UI-only; there is no API, Terraform provider, or CLI support for managing accounts.

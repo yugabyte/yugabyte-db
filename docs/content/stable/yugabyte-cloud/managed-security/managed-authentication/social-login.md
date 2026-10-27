@@ -28,4 +28,4 @@ To manage the social logins available to your account users, do the following:
 
 If you revoke a social login that is already in use, users using that social login can either [reset their password](../../manage-access/#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.
 
-At least one method must be enabled.
+If you are not using federated authentication, then at least one method must be enabled.
