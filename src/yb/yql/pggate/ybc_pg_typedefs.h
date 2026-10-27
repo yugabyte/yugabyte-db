@@ -707,6 +707,7 @@ typedef struct {
   bool expired;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  const char *bound_publication_name;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {

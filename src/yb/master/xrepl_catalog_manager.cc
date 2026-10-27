@@ -188,6 +188,10 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, 
 DEFINE_RUNTIME_uint32(xcluster_max_old_schema_versions, 50,
     "Maximum number of old schema versions to keep in xCluster replication stream metadata");
 
+DEFINE_RUNTIME_PREVIEW_bool(cdcsdk_enable_publication_scoped_replication_slots, false,
+    "When enabled, it scopes the resource retention of CDC logical replication to the tables that "
+    "are members of publications instead of all the tables of the database.");
+
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
 DEFINE_test_flag(bool, cdc_add_dynamic_index_to_state_table, false,
@@ -357,6 +361,19 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
           metadata.namespace_id(), metadata.allow_tables_without_primary_key(),
           metadata.has_detect_publication_changes_implicitly() &&
               metadata.detect_publication_changes_implicitly());
+      // A publication bound stream's tables are the publication's members, which the master does
+      // not track: the stream gets them from PG at creation. So unless its publication is FOR ALL
+      // TABLES (where every eligible table is a member) the only eligible tables for it are its
+      // own tables and their rewrites.
+      if (metadata.cdcsdk_ysql_publications_bound_stream() &&
+          !metadata.cdcsdk_ysql_include_new_tables()) {
+        auto stream_pg_table_oids =
+            catalog_manager_->GetPgTableOidsOfCDCSDKStreamTables(metadata.table_id());
+        std::erase_if(eligible_tables_info, [&](const TableInfoPtr& table_info) {
+          auto pg_table_oid = table_info->GetPgTableOid();
+          return !pg_table_oid.ok() || !stream_pg_table_oids.contains(*pg_table_oid);
+        });
+      }
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
           stream_id, metadata.table_id(), eligible_tables_info, metadata.unqualified_table_id());
 
@@ -705,6 +722,18 @@ bool IsLogicalReplicationStreamCreationRequest(
   return req.has_cdcsdk_ysql_replication_slot_plugin_name() &&
          !req.cdcsdk_ysql_replication_slot_plugin_name().empty() &&
          req.cdcsdk_ysql_replication_slot_plugin_name() != kYbGrpcStreamIndicator;
+}
+
+// Whether a CDCSDK stream creation request is for a stream whose table set is governed by a
+// publication. Suhc req are provided with a bound publication name while the flag
+// cdcsdk_enable_publication_scoped_replication_slots is set. The internal LISTEN/NOTIFY
+// notifications slots are never such streams.
+bool IsPublicationsBoundStreamCreationRequest(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  return FLAGS_cdcsdk_enable_publication_scoped_replication_slots &&
+         req.has_cdcsdk_stream_create_options() &&
+         req.cdcsdk_stream_create_options().has_bound_publication_name() &&
+         !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
 }  // namespace
@@ -1107,6 +1136,8 @@ Status CatalogManager::CreateCDCStream(
 Status CatalogManager::CreateNewCDCStreamForNamespace(
     const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
+  TEST_SYNC_POINT("CreateNewCDCStreamForNamespace::Start");
+
   std::string namespace_id;
   // The namespace_id field was added to the request as part of the replication slots feature in
   // YSQL. When the replication slot feature is disabled, read from the table_id field for backwards
@@ -1124,6 +1155,10 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   const bool has_bound_table_ids =
       req.has_cdcsdk_stream_create_options() &&
       req.cdcsdk_stream_create_options().has_bound_table_ids();
+
+  // A slot created without a publication is a regular stream.
+  bool is_publications_bound_stream_req;
+  bool has_bound_publication;
 
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
@@ -1148,46 +1183,80 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
     is_logical_replication_stream_req = IsLogicalReplicationStreamCreationRequest(req, ns->name());
 
+    has_bound_publication = req.has_cdcsdk_stream_create_options() &&
+                            req.cdcsdk_stream_create_options().has_bound_publication_name();
+    is_publications_bound_stream_req = IsPublicationsBoundStreamCreationRequest(req, ns->name());
+
+    if (has_bound_publication) {
+      SCHECK(
+          is_publications_bound_stream_req, NotSupported,
+          "Creation of replication slots bound to a publication requires the flag "
+          "cdcsdk_enable_publication_scoped_replication_slots to be enabled");
+      SCHECK(
+          !has_bound_table_ids, InvalidArgument,
+          "bound_table_ids and bound_publication_name cannot be specified together");
+    }
+
     // We support streaming of tables without primary key only for logical replication streams
     // (controlled via flag ysql_yb_cdcsdk_stream_tables_without_primary_key).
     allow_tables_without_primary_key =
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key && is_logical_replication_stream_req;
 
-    if (has_bound_table_ids) {
-      const auto& bound_ids = req.cdcsdk_stream_create_options().bound_table_ids().table_ids();
-      for (const auto& tid : bound_ids) {
+    if (has_bound_table_ids ||
+        (has_bound_publication &&
+         !req.cdcsdk_stream_create_options().bound_publication_all_tables())) {
+      // A stream bound to tables starts with exactly those tables, and one bound to a publication
+      // with a table list starts with the publication's member tables as PG resolved them. A table
+      // dropped or rewritten since then fails the creation. A bound table that is not eligible for
+      // CDC fails it too, while a publication member table that is not eligible is left out.
+      const auto& create_options = req.cdcsdk_stream_create_options();
+      const auto& requested_table_ids =
+          has_bound_table_ids ? create_options.bound_table_ids().table_ids()
+                              : create_options.bound_publication_table_ids().table_ids();
+      std::vector<TableId> ineligible_table_ids;
+      for (const auto& tid : requested_table_ids) {
         auto table_info = tables_->FindTableOrNull(tid);
         if (!table_info) {
           return STATUS_FORMAT(
-              NotFound, "Bound table id $0 not found in namespace $1", tid, namespace_id);
+              NotFound, "Table id $0 not found in namespace $1", tid, namespace_id);
         }
 
         auto ltm = table_info->LockForRead();
         if (!ltm->visible_to_client()) {
-          return STATUS_FORMAT(NotFound, "Bound table id $0 is not visible to the client", tid);
+          return STATUS_FORMAT(NotFound, "Table id $0 is not visible to the client", tid);
         }
 
         if (ltm->namespace_id() != namespace_id) {
           return STATUS_FORMAT(
-              InvalidArgument,
-              "Bound table id $0 does not belong to namespace $1", tid, namespace_id);
+              InvalidArgument, "Table id $0 does not belong to namespace $1", tid, namespace_id);
         }
 
         if (!IsTableEligibleForCDCSDKStream(
                 table_info.get(), ltm, true /* check_schema */, allow_tables_without_primary_key,
                 false /* allow_cdc_used_syscatalog_tables */)) {
-          return STATUS_FORMAT(InvalidArgument, "Bound table id $0 is not eligible for CDC", tid);
+          if (has_bound_table_ids) {
+            return STATUS_FORMAT(InvalidArgument, "Table id $0 is not eligible for CDC", tid);
+          }
+          ineligible_table_ids.push_back(tid);
+          continue;
         }
         tables.push_back(std::move(table_info));
       }
 
       // Cannot create table bound streams with no eligible tables.
-      if (tables.empty()) {
+      if (has_bound_table_ids && tables.empty()) {
         return STATUS(
             InvalidArgument,
             "No eligible tables found in the list provided to create a CDC stream");
       }
+
+      LOG_IF(WARNING, !ineligible_table_ids.empty())
+          << "Replication slot " << req.cdcsdk_ysql_replication_slot_name()
+          << " leaves out these tables of publication " << create_options.bound_publication_name()
+          << " because they are not eligible for CDC: " << AsString(ineligible_table_ids);
     } else {
+      // A stream bound to a FOR ALL TABLES publication takes every eligible table, as a regular
+      // stream does.
       tables = FindAllTablesForCDCSDK(
           namespace_id, allow_tables_without_primary_key,
           false /* allow_cdc_used_syscatalog_tables */);
@@ -1274,6 +1343,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   });
 
   bool is_logical_replication_stream_req;
+  bool is_publications_bound_stream_req;
   ReplicationSlotName slot_name;
   {
     LockGuard lock(mutex_);
@@ -1283,6 +1353,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
     namespace_name = VERIFY_RESULT(FindNamespaceByIdUnlocked(*namespace_id))->name();
     is_logical_replication_stream_req =
         IsLogicalReplicationStreamCreationRequest(req, namespace_name);
+    is_publications_bound_stream_req =
+        IsPublicationsBoundStreamCreationRequest(req, namespace_name);
 
     if (req.has_cdcsdk_ysql_replication_slot_name()) {
       slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
@@ -1454,6 +1526,15 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (req.has_cdcsdk_stream_create_options() &&
       req.cdcsdk_stream_create_options().has_bound_table_ids()) {
     disable_dynamic_tables = true;
+  }
+
+  // Mark streams whose table set is governed by their bound publication. Other streams, including
+  // slots created without a publication, stay unmarked and keep polling all tables.
+  if (is_publications_bound_stream_req) {
+    const auto& create_options = req.cdcsdk_stream_create_options();
+    metadata->set_cdcsdk_ysql_publications_bound_stream(true);
+    metadata->set_cdcsdk_ysql_bound_publication_name(create_options.bound_publication_name());
+    metadata->set_cdcsdk_ysql_include_new_tables(create_options.bound_publication_all_tables());
   }
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
 
@@ -2321,6 +2402,12 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
       continue;
     }
 
+    // A newly created table is a member of a publication only if the publication is FOR ALL
+    // TABLES. Other publication bound streams take a new table only if it is a rewrite of one of
+    // their tables.
+    const bool takes_only_rewritten_tables = stream_info->IsCdcsdkYsqlPublicationsBoundStream() &&
+                                             !stream_info->CdcsdkYsqlIncludesNewTables();
+
     auto const unprocessed_tables =
         FindOrNull(namespace_to_unprocessed_table_map, stream_info->namespace_id());
     if (!unprocessed_tables) {
@@ -2330,6 +2417,7 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     auto ltm = stream_info->LockForRead();
     if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
         ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
+      std::optional<std::unordered_set<uint32_t>> stream_pg_table_oids;
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
         if (!table) {
@@ -2343,6 +2431,16 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
                 stream_info->IsTablesWithoutPrimaryKeyAllowed(),
                 stream_info->DetectPublicationChangesImplicitly())) {
           continue;
+        }
+
+        if (takes_only_rewritten_tables) {
+          if (!stream_pg_table_oids) {
+            stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
+          }
+          auto pg_table_oid = table->GetPgTableOid();
+          if (!pg_table_oid.ok() || !stream_pg_table_oids->contains(*pg_table_oid)) {
+            continue;
+          }
         }
 
         bool present_in_qualified_table_list =
@@ -2408,6 +2506,23 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
           table_info->id());
     }
   }
+}
+
+std::unordered_set<uint32_t> CatalogManager::GetPgTableOidsOfCDCSDKStreamTables(
+    const google::protobuf::RepeatedPtrField<std::string>& table_ids) const {
+  std::unordered_set<uint32_t> pg_table_oids;
+  for (const auto& table_id : table_ids) {
+    auto table = tables_->FindTableOrNull(table_id);
+    if (!table) {
+      VLOG_WITH_FUNC(1) << "Table " << table_id << " of the stream not found";
+      continue;
+    }
+    auto pg_table_oid = table->GetPgTableOid();
+    if (pg_table_oid.ok()) {
+      pg_table_oids.insert(*pg_table_oid);
+    }
+  }
+  return pg_table_oids;
 }
 
 Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
@@ -4006,6 +4121,15 @@ Status CatalogManager::GetCDCStream(
         stream_lock->pb.cdcsdk_ysql_replication_slot_plugin_name());
   }
 
+  if (stream_lock->pb.cdcsdk_ysql_publications_bound_stream()) {
+    stream_info->set_cdcsdk_ysql_publications_bound_stream(true);
+  }
+
+  if (stream_lock->pb.has_cdcsdk_ysql_bound_publication_name()) {
+    stream_info->set_cdcsdk_ysql_bound_publication_name(
+        stream_lock->pb.cdcsdk_ysql_bound_publication_name());
+  }
+
   if (stream_lock->pb.has_cdcsdk_stream_metadata()) {
     auto cdcsdk_stream_metadata = stream_lock->pb.cdcsdk_stream_metadata();
     if (cdcsdk_stream_metadata.has_snapshot_time()) {
@@ -4212,6 +4336,14 @@ Status CatalogManager::ListCDCStreams(
     if (ltm->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
       stream->set_cdcsdk_ysql_replication_slot_plugin_name(
           ltm->pb.cdcsdk_ysql_replication_slot_plugin_name());
+    }
+
+    if (ltm->pb.cdcsdk_ysql_publications_bound_stream()) {
+      stream->set_cdcsdk_ysql_publications_bound_stream(true);
+    }
+
+    if (ltm->pb.has_cdcsdk_ysql_bound_publication_name()) {
+      stream->set_cdcsdk_ysql_bound_publication_name(ltm->pb.cdcsdk_ysql_bound_publication_name());
     }
 
     if (FLAGS_ysql_yb_allow_replication_slot_lsn_types) {

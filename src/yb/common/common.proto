@@ -840,6 +840,16 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
   optional CDCSDKBoundTableIds bound_table_ids = 14;
+  // Publication this stream is statically bound to (publication-scoped replication slots).
+  // Bound by name rather than oid since publication oids are not preserved across a YSQL
+  // major upgrade.
+  optional string bound_publication_name = 15;
+  // Member tables of bound_publication_name, as PG resolved them when creating the slot. Empty for
+  // a FOR ALL TABLES publication, whose stream takes every eligible table.
+  optional CDCSDKBoundTableIds bound_publication_table_ids = 16;
+  // Whether bound_publication_name is a FOR ALL TABLES publication, i.e. whether tables created
+  // later join it.
+  optional bool bound_publication_all_tables = 17 [default = false];
 }
 
 message CDCSDKBoundTableIds {

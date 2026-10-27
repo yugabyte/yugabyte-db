@@ -1747,6 +1747,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_ids)
       REQUIRES(mutex_);
 
+  // Returns the PG table oids of the given tables of a CDCSDK stream.
+  std::unordered_set<uint32_t> GetPgTableOidsOfCDCSDKStreamTables(
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids) const
+      REQUIRES_SHARED(mutex_);
+
   // This method compares all tables in the namespace eligible for a CDCSDK stream to all the tables
   // added to a CDCSDK stream, to find indexes / mat views that are part of the CDCSDK streams.
   void FindAllNonEligibleTablesInCDCSDKStream(

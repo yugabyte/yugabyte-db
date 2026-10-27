@@ -128,6 +128,33 @@ static Oid *YBCGetTableOids(List *tables);
 static void YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables);
 static void ValidateReplicaIdentities(Oid *table_oids, int num_tables);
 
+/*
+ * Validate that a slot statically bound to a publication is being used with
+ * exactly that publication.
+ */
+void
+YBCValidateBoundPublication(List *yb_publication_names)
+{
+	const char *bound_publication_name =
+		NameStr(MyReplicationSlot->data.yb_bound_publication_name);
+
+	if (bound_publication_name[0] == '\0')
+		return;
+
+	/* Elements of yb_publication_names are raw strings, not String nodes. */
+	if (list_length(yb_publication_names) != 1 ||
+		strcmp((const char *) linitial(yb_publication_names),
+			   bound_publication_name) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("replication slot \"%s\" is bound to "
+						"publication \"%s\"",
+						NameStr(MyReplicationSlot->data.name),
+						bound_publication_name),
+				 errdetail("The slot can only be used with exactly the "
+						   "publication it is bound to.")));
+}
+
 void
 YBCInitVirtualWal(List *yb_publication_names)
 {

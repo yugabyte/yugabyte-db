@@ -438,7 +438,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time,
 					  YbCRSLsnType lsn_type,
-					  YbCRSOrderingMode yb_ordering_mode)
+					  YbCRSOrderingMode yb_ordering_mode,
+					  const char *yb_publication_name)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -457,7 +458,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 											yb_snapshot_action,
 											yb_consistent_snapshot_time,
 											lsn_type, yb_ordering_mode,
-											MyDatabaseId);
+											MyDatabaseId,
+											yb_publication_name);
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -572,7 +574,8 @@ YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 							 uint64_t *yb_consistent_snapshot_time,
 							 YbCRSLsnType lsn_type,
 							 YbCRSOrderingMode yb_ordering_mode,
-							 Oid database_oid)
+							 Oid database_oid,
+							 const char *yb_publication_name)
 {
 	int32_t		max_clock_skew;
 
@@ -584,7 +587,8 @@ YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 
 	YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 							 yb_consistent_snapshot_time, lsn_type,
-							 yb_ordering_mode, database_oid);
+							 yb_ordering_mode, database_oid,
+							 yb_publication_name);
 
 	/*
 	 * While creating replication slot, the master chooses a snapshot hybrid
@@ -789,6 +793,9 @@ retry:
 		s->yb_lsn_type =
 			strcmp(yb_replication_slot->yb_lsn_type, LSN_TYPE_HYBRID_TIME) == 0 ?
 			CRS_HYBRID_TIME : CRS_SEQUENCE;
+
+		namestrcpy(&s->data.yb_bound_publication_name,
+				   yb_replication_slot->bound_publication_name);
 
 		MyReplicationSlot = s;
 

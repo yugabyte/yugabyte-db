@@ -2683,6 +2683,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
                                         YbcOrderingMode ordering_mode,
+                                        const char *yb_publication_name,
+                                        const YbcPgOid *yb_publication_relfilenodes,
+                                        size_t yb_num_publication_tables,
+                                        bool yb_publication_all_tables,
                                         YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
@@ -2690,6 +2694,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                                      snapshot_action,
                                                      lsn_type,
                                                      ordering_mode,
+                                                     yb_publication_name,
+                                                     yb_publication_relfilenodes,
+                                                     yb_num_publication_tables,
+                                                     yb_publication_all_tables,
                                                      handle));
 }
 
@@ -2810,6 +2818,7 @@ YbcStatus YBCPgListReplicationSlots(
           .expired = info.expired(),
           .allow_tables_without_primary_key = info.allow_tables_without_primary_key(),
           .detect_publication_changes_implicitly = info.detect_publication_changes_implicitly(),
+          .bound_publication_name = YBCPAllocStdString(info.bound_publication_name()),
       };
       ++dest;
     }
@@ -2868,6 +2877,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .expired = slot_info.expired(),
       .allow_tables_without_primary_key = slot_info.allow_tables_without_primary_key(),
       .detect_publication_changes_implicitly = slot_info.detect_publication_changes_implicitly(),
+      .bound_publication_name = YBCPAllocStdString(slot_info.bound_publication_name()),
   };
 
   return YBCStatusOK();
