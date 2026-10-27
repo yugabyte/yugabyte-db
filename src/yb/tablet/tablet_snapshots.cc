@@ -173,12 +173,20 @@ void CleanupLastSnapshotHybridTime(
 // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
 // tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
 // by index oid, so a later index of a clone that reuses such an oid would load its chunks.
-Status DeleteUnlistedVectorIndexStorages(
+// Best effort: a failure here would fail the restore apply, which is fatal for the tserver, after
+// the frontier patch that keeps the restore from being replayed.
+void DeleteUnlistedVectorIndexStorages(
     Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
+  auto children = env.GetChildren(snapshot_dir, ExcludeDots::kTrue);
+  if (!children.ok()) {
+    LOG(WARNING) << metadata.LogPrefix() << "Failed to list " << snapshot_dir
+                 << " for vector index storages to delete: " << children.status();
+    return;
+  }
   const auto listed_dirs_list = metadata.vector_index_dirs();
   const std::unordered_set<std::string> listed_dirs(
       listed_dirs_list.begin(), listed_dirs_list.end());
-  for (const auto& child : VERIFY_RESULT(env.GetChildren(snapshot_dir, ExcludeDots::kTrue))) {
+  for (const auto& child : *children) {
     if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
       continue;
     }
@@ -188,9 +196,11 @@ Status DeleteUnlistedVectorIndexStorages(
     }
     LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
               << dir;
-    RETURN_NOT_OK(env.DeleteRecursively(dir));
+    auto status = env.DeleteRecursively(dir);
+    LOG_IF(WARNING, !status.ok())
+        << metadata.LogPrefix() << "Failed to delete vector index storage " << dir << ": "
+        << status;
   }
-  return Status::OK();
 }
 
 }  // namespace
@@ -840,7 +850,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
   if (!snapshot_dir.empty()) {
-    RETURN_NOT_OK(DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata()));
+    DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata());
   }
 
   // Reopen database from copied checkpoint.
