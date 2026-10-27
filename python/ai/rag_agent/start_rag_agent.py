@@ -348,7 +348,8 @@ def polling_worker():
                         f"type={task.task_type}, "
                         f"lease_token={task.lease_token}"
                     )
-                    status = route_task(task)
+                    with poller.keep_lease(task, lease_duration):
+                        status = route_task(task)
                 else:
                     # No task available, sleep briefly before polling again
                     sleep_duration = POLL_IDLE_SLEEP
@@ -369,6 +370,27 @@ def polling_worker():
                 )
     finally:
         logger.info("Polling worker thread shutting down")
+
+
+# The pg_dist_rag version this agent is written against. The agent still runs
+# on an older version, but without that version's queue indexes every poll
+# and sweep scans the queue, and without its per-index guard a re-queued
+# source adds duplicate tasks (claim_document keeps them from embedding twice).
+REQUIRED_EXTENSION_VERSION = "0.0.3"
+
+
+def _version_tuple(version: str):
+    return tuple(int(part) for part in version.split(".") if part.isdigit())
+
+
+def _warn_if_extension_outdated(installed: str) -> None:
+    if _version_tuple(installed) < _version_tuple(REQUIRED_EXTENSION_VERSION):
+        logger.error(
+            f"pg_dist_rag {installed} is installed; this agent expects "
+            f"{REQUIRED_EXTENSION_VERSION}. Upgrade with ALTER EXTENSION pg_dist_rag UPDATE "
+            f"TO '{REQUIRED_EXTENSION_VERSION}'; on a running cluster, first follow "
+            f"\"Upgrading a running cluster\" in the pg_dist_rag README."
+        )
 
 
 def wait_for_extension_creation():
@@ -397,10 +419,11 @@ def wait_for_extension_creation():
             connection = psycopg.connect(db_connection_string)
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT * FROM pg_extension WHERE extname = 'pg_dist_rag'"
+                "SELECT extversion FROM pg_extension WHERE extname = 'pg_dist_rag'"
             )
             extension = cursor.fetchone()
             if extension:
+                _warn_if_extension_outdated(extension[0])
                 logger.info("Extension created, starting polling workers...")
                 polling_active = True
                 embedding_generation_poller_active = True

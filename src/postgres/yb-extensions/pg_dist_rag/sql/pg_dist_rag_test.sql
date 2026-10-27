@@ -308,12 +308,18 @@ BEGIN
     WHERE task_details->>'document_id' = v_doc_inflight::TEXT
   ), 'Processing document must NOT be enqueued';
 
-  -- Second build: still no enqueue for COMPLETED/PROCESSING. The QUEUED
-  -- and FAILED rows above are now duplicated -- that's a separate
-  -- concern (NOT EXISTS guard against work_queue could be added later);
-  -- the contract we're locking in here is that PROCESSING/COMPLETED
-  -- documents are never re-enqueued.
+  -- Second build: PROCESSING/COMPLETED documents are still not enqueued,
+  -- and the QUEUED and FAILED documents already have a live task for this
+  -- index, so nothing new is enqueued at all.
   PERFORM dist_rag.build_index(v_index_id);
+  SELECT COUNT(*) INTO v_second_count
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'index_id' = v_index_id::TEXT;
+  ASSERT v_second_count = 2,
+    format('Re-running build_index must not enqueue duplicates, found %s tasks',
+           v_second_count);
+
   SELECT COUNT(*) INTO v_second_count
   FROM dist_rag.work_queue
   WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
@@ -323,6 +329,50 @@ BEGIN
     format('Re-running build_index must not enqueue PROCESSING/COMPLETED docs, found %s', v_second_count);
 
   RAISE NOTICE 'PASS: build_index skips PROCESSING/COMPLETED docs and re-runs idempotently for them';
+END $$;
+
+-- ============================================
+-- Test 7a2: A source shared by two indexes gets a task for each
+-- ============================================
+-- The duplicate-task guard in _queue_source_documents is per index, so
+-- building the second index still queues its documents.
+DO $$
+DECLARE
+  v_source_id UUID;
+  v_index_a UUID;
+  v_index_b UUID;
+  v_doc UUID;
+  v_tasks INT;
+BEGIN
+  RAISE NOTICE '=== Test 7a2: one source, two indexes ===';
+  v_source_id := dist_rag.create_source(r_source_uri := 'https://twoindexes.example.com/docs/');
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'shared.pdf', 'https://twoindexes.example.com/shared.pdf',
+          'QUEUED'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc;
+  v_index_a := dist_rag.init_vector_index(
+    r_index_name := 'two_indexes_a',
+    r_sources := ARRAY[v_source_id]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+  );
+  v_index_b := dist_rag.init_vector_index(
+    r_index_name := 'two_indexes_b',
+    r_sources := ARRAY[v_source_id]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+  );
+
+  PERFORM dist_rag.build_index(v_index_a);
+  PERFORM dist_rag.build_index(v_index_b);
+  PERFORM dist_rag.build_index(v_index_b);
+
+  SELECT COUNT(*) INTO v_tasks
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'document_id' = v_doc::TEXT;
+  ASSERT v_tasks = 2,
+    format('Expected one task per index for the shared document, got %s', v_tasks);
+
+  RAISE NOTICE 'PASS: each index sharing a source gets its own task';
 END $$;
 
 -- ============================================

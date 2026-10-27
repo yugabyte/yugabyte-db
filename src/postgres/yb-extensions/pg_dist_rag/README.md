@@ -15,6 +15,38 @@ CREATE EXTENSION IF NOT EXISTS pg_dist_rag;
 
 This creates the `dist_rag` schema with all tables, types, functions, and views.
 
+## Upgrading a running cluster
+
+`ALTER EXTENSION pg_dist_rag UPDATE` runs its upgrade script in one transaction, so any `CREATE INDEX` in it is not an online build. While RAG workers are writing to `dist_rag.work_queue`, such a build fails with `40001 Restart read required`. Choose one procedure.
+
+### Production: build the indexes online first
+
+Run each statement on its own, outside a transaction block, so YugabyteDB builds the index online while workers keep running. Then run the upgrade; its `CREATE INDEX IF NOT EXISTS` statements skip the indexes that already exist.
+
+To 0.0.3:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_work_queue_status_type_doctype_created_at
+    ON dist_rag.work_queue (task_status HASH, task_type ASC,
+                            (task_details->>'document_type') ASC, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_documents_unfinished
+    ON dist_rag.documents (status, source_id)
+    WHERE status IN ('QUEUED', 'PROCESSING');
+
+CREATE INDEX IF NOT EXISTS idx_work_queue_preprocess_document
+    ON dist_rag.work_queue ((task_details->>'document_id'))
+    WHERE task_type = 'PREPROCESS';
+
+ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.3';
+```
+
+Each DDL statement makes concurrent writes fail once with `40001 schema version mismatch`. Workers retry a failed claim on their next poll, but an api-server write, including `create_source`, fails, so an upload during the build returns an error. If that's unacceptable, scale the api-server to zero for the builds, or make sure clients retry a failed upload.
+
+### Development and small deployments: stop the workers first
+
+Scale the RAG workers to zero, run `ALTER EXTENSION pg_dist_rag UPDATE TO '<version>';`, then scale them back up.
+
 ## Core Concepts
 
 | Concept | Description |

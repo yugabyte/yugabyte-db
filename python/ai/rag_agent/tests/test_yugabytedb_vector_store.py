@@ -10,7 +10,7 @@ import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock, call
 
-from db.yugabytedb_vector_store import YugabyteDBVectorStore
+from db.yugabytedb_vector_store import YugabyteDBVectorStore, chunk_id
 
 PIPELINE_ID = 1
 
@@ -271,7 +271,7 @@ class TestYugabyteDBVectorStore:
         data = call_args[0][1]
         # metadata is serialized as JSON '{}' when None
         assert data == [(
-            "chunk 1", [0.1, 0.2, 0.3], 1,
+            chunk_id(1, 1, "chunk 1"), "chunk 1", [0.1, 0.2, 0.3], 1,
             None, '{}',
         )]
 
@@ -356,11 +356,12 @@ class TestYugabyteDBVectorStore:
 
         call_args = mock_cur.executemany.call_args
         data = call_args[0][1]
-        assert data[0][0] == "chunk 1"
-        assert data[0][1] == [0.1, 0.2, 0.3]
-        assert data[0][2] == 1
-        assert data[0][3] is None
-        assert json.loads(data[0][4]) == complex_metadata
+        assert data[0][0] == chunk_id(1, 1, "chunk 1")
+        assert data[0][1] == "chunk 1"
+        assert data[0][2] == [0.1, 0.2, 0.3]
+        assert data[0][3] == 1
+        assert data[0][4] is None
+        assert json.loads(data[0][5]) == complex_metadata
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')

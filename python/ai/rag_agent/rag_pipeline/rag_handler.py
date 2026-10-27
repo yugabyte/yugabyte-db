@@ -41,7 +41,8 @@ class RagPipelineHandler:
         chunk_kwargs=None,
         embedding_model_params=None,
         ai_provider=None,
-        tenant_id=None
+        tenant_id=None,
+        lease_check=None
     ):
         """
         Runs the pipeline: splits document, creates embeddings, and stores in YugabyteDB.
@@ -105,7 +106,8 @@ class RagPipelineHandler:
             embedding_iterator=embedding_iterator,
             metadata=metadata or {},
             pipeline_id=pipeline_id,
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
+            lease_check=lease_check
         )
         return True
 
@@ -125,11 +127,16 @@ class RagPipelineHandler:
         chunk_kwargs=None,
         embedding_model_params=None,
         ai_provider=None,
-        tenant_id=None
+        tenant_id=None,
+        lease_check=None
     ):
         """
         Starts the processing of the document.
+
+        lease_check: optional callable that returns False once the task's
+        lease is lost; the vector store then stops before its next commit.
         """
+        pipeline_id = None
         try:
             self.logger.info(f"Starting processing of document: {document_uri}")
             pipeline_id = self.pipeline_tracking.insert_pipeline_details(
@@ -148,7 +155,8 @@ class RagPipelineHandler:
                 chunk_kwargs=chunk_kwargs,
                 embedding_model_params=embedding_model_params,
                 ai_provider=ai_provider,
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
+                lease_check=lease_check
             )
             self.logger.info(f"Processing of document: {document_uri} completed")
             self.vector_store.create_index(table_name=table_name, table_schema=schema_name)
@@ -162,9 +170,10 @@ class RagPipelineHandler:
             return True
         except Exception as e:
             self.logger.error(f"Error during RAG pipeline processing: {str(e)}")
-            self.pipeline_tracking.update_pipeline_status(
-                pipeline_id=pipeline_id,
-                pipeline_status=PipelineStatus.FAILED.value)
-            self.pipeline_tracking.record_pipeline_error(
-                pipeline_id=pipeline_id, error_message=str(e))
+            if pipeline_id is not None:
+                self.pipeline_tracking.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    pipeline_status=PipelineStatus.FAILED.value)
+                self.pipeline_tracking.record_pipeline_error(
+                    pipeline_id=pipeline_id, error_message=str(e))
             raise

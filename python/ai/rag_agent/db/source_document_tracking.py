@@ -24,7 +24,8 @@ class SourceDocumentTracking:
                     - document_checksum (str, required)
                     - status (str, optional; defaults to 'QUEUED')
             Returns:
-                document_id (UUID): The ID of the inserted document.
+                document_id (UUID): The ID of the inserted document, or None
+                when a row for the same source and URI already exists.
 
             Raises:
                 ValueError: If metadata is invalid
@@ -35,6 +36,11 @@ class SourceDocumentTracking:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
 
+            # No conflict target: the statement must work both before and
+            # after pg_dist_rag 0.0.4 adds UNIQUE (source_id, document_uri).
+            # With that index, a re-listed file (a retried or redelivered
+            # CREATE_SOURCE) or a file the api-server already inserted is
+            # skipped instead of failing the crawl.
             query = """
                 INSERT INTO dist_rag.documents (
                     source_id,
@@ -44,6 +50,7 @@ class SourceDocumentTracking:
                     document_type,
                     status
                 ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
                 RETURNING document_id;
             """
 
@@ -59,8 +66,14 @@ class SourceDocumentTracking:
                 (source_id, document_name, document_uri,
                  document_checksum, document_type, status)
             )
-            document_id = cursor.fetchone()[0]
+            row = cursor.fetchone()
             connection.commit()
+            if row is None:
+                self.logger.info(
+                    f"Document {document_uri} of source {source_id} already exists"
+                )
+                return None
+            document_id = row[0]
             self.logger.info(
                 f"Inserted document metadata with document_id: {document_id}"
             )
@@ -163,6 +176,71 @@ class SourceDocumentTracking:
         finally:
             if cursor:
                 cursor.close()
+            if connection:
+                self.connection_pool.return_connection(connection)
+
+    def claim_document(self, document_id, task_id, lease_token=None,
+                       trace_id: Optional[str] = None) -> bool:
+        """Mark a document PROCESSING for this task's lease, unless a live lease holds it.
+
+        Two tasks for one document (from re-queuing a source) would otherwise
+        both embed it. The claim records the task id and lease token. A
+        document left PROCESSING can be reclaimed only when the lease that
+        claimed it is no longer live: the reaper re-queued its task, or the
+        lease expired. A worker whose lease lapsed therefore can't share the
+        document with the one that took over. A claim made by an older agent,
+        which recorded no task, is also reclaimable; a claim made without a
+        lease token never is.
+
+        Returns False when a live lease holds the document or it is done.
+        """
+        connection = None
+        try:
+            connection = self.connection_pool.get_connection()
+            cursor = connection.cursor()
+            lease = None if lease_token is None else str(lease_token)
+            cursor.execute(
+                "UPDATE dist_rag.documents "
+                "SET status = 'PROCESSING', "
+                "    document_details = jsonb_set("
+                "        COALESCE(document_details, '{}'::jsonb),"
+                "        '{meko}',"
+                "        COALESCE(COALESCE(document_details, '{}'::jsonb)->'meko',"
+                "                 '{}'::jsonb)"
+                "            || jsonb_build_object('claimed_by', %s::text,"
+                "                                  'claim_lease', %s::text)"
+                "            || CASE WHEN %s::text IS NULL THEN '{}'::jsonb"
+                "                    ELSE jsonb_build_object('trace_id', %s::text) END,"
+                "        true"
+                "    ) "
+                "WHERE document_id = %s "
+                "  AND (status NOT IN ('PROCESSING', 'COMPLETED') "
+                "       OR (status = 'PROCESSING' "
+                "           AND (document_details->'meko'->>'claimed_by' IS NULL "
+                "                OR (document_details->'meko'->>'claim_lease' IS NOT NULL "
+                "                    AND NOT EXISTS ("
+                "                        SELECT 1 FROM dist_rag.work_queue w "
+                "                        WHERE w.id = "
+                "                              (document_details->'meko'->>'claimed_by')::uuid "
+                "                          AND w.lease_token = "
+                "                              (document_details->'meko'->>'claim_lease')::uuid "
+                "                          AND w.task_status = 'IN_PROGRESS' "
+                "                          AND w.lease_expires_at > CURRENT_TIMESTAMP))))) "
+                "RETURNING document_id",
+                (str(task_id), lease, trace_id, trace_id, str(document_id)),
+            )
+            claimed = cursor.fetchone() is not None
+            connection.commit()
+            return claimed
+        except Exception as e:
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            logging.error(f"Error claiming document {document_id}: {str(e)}")
+            raise
+        finally:
             if connection:
                 self.connection_pool.return_connection(connection)
 
