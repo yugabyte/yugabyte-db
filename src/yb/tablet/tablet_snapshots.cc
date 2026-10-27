@@ -175,10 +175,9 @@ void CleanupLastSnapshotHybridTime(
 // by index oid, so a later index of a clone that reuses such an oid would load its chunks.
 Status DeleteUnlistedVectorIndexStorages(
     Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
-  std::unordered_set<std::string> listed_dirs;
-  for (const auto& info : metadata.GetAllColocatedVectorIndexes()) {
-    listed_dirs.insert(metadata.vector_index_dir(info->index_info->vector_idx_options()));
-  }
+  const auto listed_dirs_list = metadata.vector_index_dirs();
+  const std::unordered_set<std::string> listed_dirs(
+      listed_dirs_list.begin(), listed_dirs_list.end());
   for (const auto& child : VERIFY_RESULT(env.GetChildren(snapshot_dir, ExcludeDots::kTrue))) {
     if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
       continue;

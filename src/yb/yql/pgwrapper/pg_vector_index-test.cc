@@ -3513,15 +3513,15 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneDropsStorageOfIndexNotInClone) {
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kCloneDb, kSourceDb, clone_time));
 
   const auto clone_table_id = ASSERT_RESULT(FindTableId(kCloneDb, "test"));
-  auto peers = ListTableActiveTabletPeers(cluster_.get(), clone_table_id);
+  // The clone waits only for the leaders to apply the restore.
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), clone_table_id);
   ASSERT_FALSE(peers.empty());
   for (const auto& peer : peers) {
     const auto& meta = *peer->tablet_metadata();
-    std::vector<std::string> listed_dirs;
     for (const auto& info : meta.GetAllColocatedVectorIndexes()) {
       ASSERT_NE(info->table_name, kLaterIndexName);
-      listed_dirs.push_back(meta.vector_index_dir(info->index_info->vector_idx_options()));
     }
+    const auto listed_dirs = meta.vector_index_dirs();
     ASSERT_EQ(listed_dirs.size(), 1) << peer->tablet_id();
 
     const auto prefix =
