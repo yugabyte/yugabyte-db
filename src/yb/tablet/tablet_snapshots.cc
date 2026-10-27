@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
+#include <unordered_set>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/ash/wait_state.h"
@@ -165,6 +167,31 @@ void CleanupLastSnapshotHybridTime(
   if (env.FileExists(path)) {
     WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
   }
+}
+
+// The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+// dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
+// tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
+// by index oid, so a later index of a clone that reuses such an oid would load its chunks.
+Status DeleteUnlistedVectorIndexStorages(
+    Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
+  std::unordered_set<std::string> listed_dirs;
+  for (const auto& info : metadata.GetAllColocatedVectorIndexes()) {
+    listed_dirs.insert(metadata.vector_index_dir(info->index_info->vector_idx_options()));
+  }
+  for (const auto& child : VERIFY_RESULT(env.GetChildren(snapshot_dir, ExcludeDots::kTrue))) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
+      continue;
+    }
+    auto dir = docdb::GetStorageDir(metadata.rocksdb_dir(), child);
+    if (listed_dirs.contains(dir) || !env.DirExists(dir)) {
+      continue;
+    }
+    LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
+              << dir;
+    RETURN_NOT_OK(env.DeleteRecursively(dir));
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -810,6 +837,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
+  }
+
+  // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  if (!snapshot_dir.empty()) {
+    RETURN_NOT_OK(DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata()));
   }
 
   // Reopen database from copied checkpoint.
