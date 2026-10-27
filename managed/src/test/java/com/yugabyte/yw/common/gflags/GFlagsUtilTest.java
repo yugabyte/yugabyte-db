@@ -34,8 +34,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -1078,7 +1080,31 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " master gflags set it to false.",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyNamesTheAzThatDisablesTheFipsGFlag() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of());
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value = Map.of(ServerType.TSERVER, Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "1"));
+    userIntent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " tserver gflags of AZ az-1 set it to 1.",
         exception.getLocalizedMessage());
   }
 
@@ -1099,7 +1125,10 @@ public class GFlagsUtilTest extends FakeDBApplication {
               PlatformServiceException.class,
               () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
       assertEquals(
-          "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+          String.format(
+              "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but"
+                  + " the %s gflags set it to false.",
+              serverType.name().toLowerCase()),
           exception.getLocalizedMessage());
     }
   }
@@ -1190,8 +1219,8 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set master openssl_require_fips to false",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.master) set it to false.",
         exception.getLocalizedMessage());
   }
 
@@ -1206,8 +1235,8 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateHelmOverridesGFlags("", azOverrides, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set tserver openssl_require_fips to false",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes overrides of AZ az-1 (gflags.tserver) set it to false.",
         exception.getLocalizedMessage());
   }
 

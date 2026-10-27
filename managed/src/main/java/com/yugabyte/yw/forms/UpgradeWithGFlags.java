@@ -187,8 +187,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
     GFlagsUtil.checkNoLineBreaks(masterGFlags);
     GFlagsUtil.checkNoLineBreaks(tserverGFlags);
     if (universe.getUniverseDetails().fipsEnabled) {
-      GFlagsUtil.checkFipsGFlagNotDisabled(masterGFlags);
-      GFlagsUtil.checkFipsGFlagNotDisabled(tserverGFlags);
+      GFlagsUtil.checkFipsGFlagNotDisabled("master gflags", masterGFlags);
+      GFlagsUtil.checkFipsGFlagNotDisabled("tserver gflags", tserverGFlags);
     }
     return true;
   }

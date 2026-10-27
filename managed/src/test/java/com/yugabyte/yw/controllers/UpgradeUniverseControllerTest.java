@@ -509,8 +509,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     "kubernetes_overrides"));
     assertBadRequest(
         result,
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " read tserver openssl_require_fips from the environment");
+        "A FIPS enabled universe cannot read openssl_require_fips from the environment, but"
+            + " tryfromenv in the Kubernetes universe overrides (gflags.tserver) lists it.");
     verify(mockCommissioner, never()).submit(any(), any());
   }
 
@@ -539,8 +539,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     "kubernetes_overrides"));
     assertBadRequest(
         result,
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set tserver openssl_require_fips to false");
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.tserver) set it to false.");
     verify(mockCommissioner, never()).submit(any(), any());
   }
 
@@ -1516,7 +1516,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
       Result result =
           assertPlatformException(
               () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-      assertBadRequest(result, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+      assertBadRequest(result, "FIPS enabled universe");
     }
     verify(mockCommissioner, never()).submit(any(), any());
   }

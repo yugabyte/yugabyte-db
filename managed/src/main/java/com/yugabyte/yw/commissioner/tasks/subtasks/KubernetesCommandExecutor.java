@@ -1774,7 +1774,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     validateOverrides(overrides);
     // Overrides stored before the API checks existed must not reach the pods either.
     GFlagsUtil.validateHelmValuesGFlags(
-        HelmUtils.flattenMap(overrides), universeFromDBParams.fipsEnabled);
+        HelmUtils.flattenMap(overrides), universeFromDBParams.fipsEnabled, "Kubernetes overrides");
 
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(taskParams().universeConfig.get(Universe.HELM2_LEGACY))
