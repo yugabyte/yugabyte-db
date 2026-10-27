@@ -738,7 +738,6 @@ _outA_Const(StringInfo str, const A_Const *node)
 
 
 /* YB: custom write for ScalarArrayOpExpr to conditionally skip hashfuncid/negfuncid */
-/* YB_TODO_PG19MERGE: yb_serialize_expression_version == 11 checks might be cleaned up */
 static void
 _outScalarArrayOpExpr(StringInfo str, const ScalarArrayOpExpr *node)
 {
