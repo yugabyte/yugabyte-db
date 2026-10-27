@@ -124,43 +124,63 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		}
 	}
 
-	// 3) Place the otel-collector.service at desired location.
-	otelColMaxMemory := h.param.GetOtelColMaxMemory()
-	if otelColMaxMemory == 0 {
-		otelColMaxMemory = 2048 // Default to 2048MB if not specified
-	}
-	otelCollectorServiceContext := map[string]any{
-		"user_name":           h.username,
-		"yb_home_dir":         h.param.GetYbHomeDir(),
-		"otel_col_max_memory": otelColMaxMemory,
-		// Must mirror the conditions the setup steps use to write these credentials.
-		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
-			h.param.GetOtelColAwsSecretKey() != "",
-		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
-	}
-
-	// Copy otel-collector.service
-	_, err = module.CopyFile(
-		ctx,
-		otelCollectorServiceContext,
-		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
-		filepath.Join(ybUserHome, module.UserSystemdUnitPath, OtelCollectorService),
-		fs.FileMode(0755),
-		h.username,
-	)
-
+	hasUserUnit, hasRootUnit, err := h.otelCollectorUnits(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// A root-systemd node has only the root unit, and ~/.config/systemd/user may not exist there.
+	// The node agent user cannot write the system unit directory, so the root unit is used as is.
+	unit := otelCollectorUnit{user: h.username, name: OtelCollectorService}
+	if hasRootUnit && !hasUserUnit {
+		unit = rootOtelCollectorUnit
+	} else {
+		// 3) Place the otel-collector.service at desired location.
+		otelColMaxMemory := h.param.GetOtelColMaxMemory()
+		if otelColMaxMemory == 0 {
+			otelColMaxMemory = 2048 // Default to 2048MB if not specified
+		}
+		otelCollectorServiceContext := map[string]any{
+			"user_name":           h.username,
+			"yb_home_dir":         h.param.GetYbHomeDir(),
+			"otel_col_max_memory": otelColMaxMemory,
+			// Must mirror the conditions the setup steps use to write these credentials.
+			"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
+				h.param.GetOtelColAwsSecretKey() != "",
+			"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
+		}
+
+		// Copy otel-collector.service
+		_, err = module.CopyFile(
+			ctx,
+			otelCollectorServiceContext,
+			filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
+			filepath.Join(ybUserHome, module.UserSystemdUnitPath, OtelCollectorService),
+			fs.FileMode(0755),
+			h.username,
+		)
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 4) Stop and disable the systemd service
 	if err := module.DisableSystemdService(
 		ctx,
-		h.username,
-		OtelCollectorService,
+		unit.user,
+		unit.name,
 		"", // Don't remove the unit file - we need it for re-enabling later
 		h.logOut); err != nil {
 		return nil, err
+	}
+	// Earlier installs wrote the user unit also on root-systemd nodes. Stop the root unit there,
+	// so that only one collector runs. A node without the sudoers rules ran both collectors
+	// before, so a failure here does not block the install.
+	if hasRootUnit && unit != rootOtelCollectorUnit {
+		if err := h.stopRootOtelCollectorIfInUse(ctx); err != nil {
+			util.FileLogger().Warnf(ctx, "Failed to stop the root-level otel-collector - %s", err)
+			h.logOut.WriteLine("Failed to stop the root-level otel-collector - %s", err)
+		}
 	}
 
 	// 5) Configure the otel-collector service.
@@ -182,15 +202,15 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 
 	// 6) Start and enable the service only if config file exists
 	if h.param.GetOtelColConfigFile() != "" {
-		if err = module.StartSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
+		if err = module.StartSystemdService(ctx, unit.user, unit.name, h.logOut); err != nil {
 			return nil, err
 		}
-		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
+		if err = module.EnableSystemdService(ctx, unit.user, unit.name, h.logOut); err != nil {
 			return nil, err
 		}
 		// start/enable both return 0 over a collector that died parsing its config.
 		if err = module.VerifySystemdServiceStarted(
-			ctx, h.username, OtelCollectorService, h.logOut,
+			ctx, unit.user, unit.name, h.logOut,
 		); err != nil {
 			return nil, err
 		}
@@ -405,23 +425,97 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	return nil
 }
 
-// installedOtelCollectorUnit returns the name to stop the collector's unit by, or "" when the node
-// has no unit, because systemctl stop fails on an unknown unit.
-func (h *InstallOtelCollector) installedOtelCollectorUnit() (string, error) {
-	isUser, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
+// otelCollectorUnit names a collector unit and the user to control it as. An empty user makes the
+// systemd helpers use sudo systemctl.
+type otelCollectorUnit struct {
+	user string
+	name string
+}
+
+// The YNP rootsystemd sudoers rules name the unit without the .service suffix.
+var rootOtelCollectorUnit = otelCollectorUnit{user: "", name: otelCollectorRootUnitName}
+
+// otelCollectorUnits reports which collector units the node can control. A node can have both,
+// because earlier installs always wrote the user unit, also on root-systemd nodes. The user unit
+// counts only when the user systemd manager runs, because systemctl --user fails otherwise.
+func (h *InstallOtelCollector) otelCollectorUnits(
+	ctx context.Context,
+) (hasUser, hasRoot bool, err error) {
+	hasUser, _, err = module.IsUserSystemd(h.username, OtelCollectorService)
+	if err != nil {
+		return false, false, err
+	}
+	if hasUser {
+		hasUser, err = module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
+		if err != nil {
+			return false, false, err
+		}
+	}
+	if _, err = os.Stat(h.rootUnitPath); err == nil {
+		hasRoot = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, false, err
+	}
+	return hasUser, hasRoot, nil
+}
+
+// stopRootOtelCollectorIfInUse stops and disables the root unit when it is active or enabled. The
+// state check needs no sudo, so a stopped root unit does not need the sudoers rules.
+func (h *InstallOtelCollector) stopRootOtelCollectorIfInUse(ctx context.Context) error {
+	active, err := h.rootOtelCollectorState(ctx, "is-active")
+	if err != nil {
+		return err
+	}
+	enabled, err := h.rootOtelCollectorState(ctx, "is-enabled")
+	if err != nil {
+		return err
+	}
+	if !rootOtelCollectorInUse(active, enabled) {
+		return nil
+	}
+	util.FileLogger().Infof(ctx, "Stopping the root-level otel-collector")
+	return module.DisableSystemdService(
+		ctx,
+		rootOtelCollectorUnit.user,
+		rootOtelCollectorUnit.name,
+		"", // Keep the unit file, which the node agent did not write.
+		h.logOut)
+}
+
+// rootOtelCollectorState returns the output of systemctl is-active or is-enabled for the root
+// unit. Both exit non-zero for a stopped or disabled unit, so only empty output is an error.
+func (h *InstallOtelCollector) rootOtelCollectorState(
+	ctx context.Context,
+	check string,
+) (string, error) {
+	cmd := fmt.Sprintf("systemctl %s %s || true", check, otelCollectorRootUnitName)
+	cmdInfo, err := module.RunShellCmd(ctx, h.username, "CheckRootOtelCollector", cmd, h.logOut)
 	if err != nil {
 		return "", err
 	}
-	if isUser {
-		return OtelCollectorService, nil
+	state := strings.TrimSpace(cmdInfo.StdOut.String())
+	if state == "" {
+		return "", fmt.Errorf(
+			"systemctl %s %s returned no state: %s",
+			check,
+			otelCollectorRootUnitName,
+			strings.TrimSpace(cmdInfo.StdErr.String()),
+		)
 	}
-	if _, err := os.Stat(h.rootUnitPath); err == nil {
-		// The YNP rootsystemd sudoers rules name the unit without the .service suffix.
-		return otelCollectorRootUnitName, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
+	return state, nil
+}
+
+// rootOtelCollectorInUse reports whether the root unit runs now or starts at boot.
+func rootOtelCollectorInUse(active, enabled string) bool {
+	switch enabled {
+	case "enabled", "enabled-runtime", "linked", "linked-runtime", "alias", "indirect":
+		return true
 	}
-	return "", nil
+	switch active {
+	case "inactive", "failed", "unknown":
+		return false
+	}
+	return true
 }
 
 // ensureOtelCollectorDirStep creates <yb_home>/otel-collector. The package setup, the disable
@@ -441,25 +535,29 @@ func ensureOtelCollectorDirStep(ybHome string) struct {
 }
 
 // disableOtelCollector stops the collector and removes its config without the package setup, so
-// that a broken package cannot block turning export off. Unlike the full install, which always
-// stops the user unit, it stops the root unit when the node has no user unit.
+// that a broken package cannot block turning export off.
 func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
-	unit, err := h.installedOtelCollectorUnit()
+	hasUserUnit, hasRootUnit, err := h.otelCollectorUnits(ctx)
 	if err != nil {
 		return err
 	}
-	if unit != "" {
+	if hasUserUnit {
 		util.FileLogger().Infof(ctx, "Disable mode: stopping otel-collector")
 		if err := module.DisableSystemdService(
 			ctx,
 			h.username,
-			unit,
+			OtelCollectorService,
 			"", // Keep the unit file so that a later enable can start the service again.
 			h.logOut); err != nil {
 			return err
 		}
 	}
-	// configureOtelCollector writes into this directory, and only the package setup creates it.
+	if hasRootUnit {
+		if err := h.stopRootOtelCollectorIfInUse(ctx); err != nil {
+			return err
+		}
+	}
+	// configureOtelCollector writes into this directory, and this path skips the package setup.
 	steps := []struct {
 		Desc string
 		Cmd  string

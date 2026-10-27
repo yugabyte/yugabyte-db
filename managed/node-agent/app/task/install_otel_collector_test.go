@@ -35,8 +35,8 @@ func newDisableCollectorHandler(t *testing.T, ybHome string) *InstallOtelCollect
 func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 	ybHome := t.TempDir()
 	handler := newDisableCollectorHandler(t, ybHome)
-	if unit, err := handler.installedOtelCollectorUnit(); err != nil || unit != "" {
-		t.Skipf("this host has a user-level otel-collector unit (%q, %v)", unit, err)
+	if hasUser, _, err := handler.otelCollectorUnits(context.Background()); err != nil || hasUser {
+		t.Skipf("this host has a user-level otel-collector unit (%v)", err)
 	}
 
 	if err := handler.disableOtelCollector(context.Background(), ybHome); err != nil {
@@ -52,28 +52,38 @@ func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 	}
 }
 
-// A root-systemd node has its unit in the system unit directory, and its sudoers rules match the
-// unit name without the .service suffix.
-func TestInstalledOtelCollectorUnitFindsRootUnit(t *testing.T) {
+// A root-systemd node has its unit in the system unit directory.
+func TestOtelCollectorUnitsFindsRootUnit(t *testing.T) {
 	handler := newDisableCollectorHandler(t, t.TempDir())
-	unit, err := handler.installedOtelCollectorUnit()
-	if err != nil {
-		t.Fatalf("installedOtelCollectorUnit: %v", err)
-	}
-	if unit == OtelCollectorService {
-		t.Skip("this host has a user-level otel-collector unit, which takes precedence")
-	}
-	if unit != "" {
-		t.Fatalf("no root unit yet: got %q", unit)
+	if _, hasRoot, err := handler.otelCollectorUnits(context.Background()); err != nil || hasRoot {
+		t.Fatalf("no root unit yet: hasRoot=%v, err=%v", hasRoot, err)
 	}
 	if err := os.WriteFile(handler.rootUnitPath, []byte("[Unit]\n"), 0644); err != nil {
 		t.Fatalf("write unit: %v", err)
 	}
-	unit, err = handler.installedOtelCollectorUnit()
-	if err != nil {
-		t.Fatalf("installedOtelCollectorUnit: %v", err)
+	if _, hasRoot, err := handler.otelCollectorUnits(context.Background()); err != nil || !hasRoot {
+		t.Fatalf("root unit not found: hasRoot=%v, err=%v", hasRoot, err)
 	}
-	if unit != otelCollectorRootUnitName {
-		t.Fatalf("got unit %q, want %q", unit, otelCollectorRootUnitName)
+}
+
+func TestRootOtelCollectorInUse(t *testing.T) {
+	tests := []struct {
+		active, enabled string
+		want            bool
+	}{
+		{"active", "enabled", true},
+		{"inactive", "enabled", true},
+		{"inactive", "linked", true},
+		{"inactive", "alias", true},
+		{"activating", "disabled", true},
+		{"inactive", "disabled", false},
+		{"failed", "disabled", false},
+		{"unknown", "static", false},
+	}
+	for _, tt := range tests {
+		if got := rootOtelCollectorInUse(tt.active, tt.enabled); got != tt.want {
+			t.Errorf("rootOtelCollectorInUse(%q, %q) = %v, want %v",
+				tt.active, tt.enabled, got, tt.want)
+		}
 	}
 }
