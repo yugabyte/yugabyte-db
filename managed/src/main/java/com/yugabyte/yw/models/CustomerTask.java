@@ -744,6 +744,8 @@ public class CustomerTask extends Model {
           return "Restart";
         case ReprovisionNode:
           return "Re-provision";
+        case ManageCrossCloudFederation:
+          return "Cross Cloud Federated IAM";
         default:
           return toFriendlyTypeName();
       }
