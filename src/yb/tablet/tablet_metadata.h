@@ -209,6 +209,8 @@ struct TableInfo {
     return TEST_CreateWithLogPrefix("TEST: ", std::forward<Args>(args)...);
   }
 
+  void EraseDeletedColumnsInSchema();
+
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 

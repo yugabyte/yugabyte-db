@@ -317,15 +317,6 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  // Column ids are never reused, so a deleted column that is back in the schema was restored by
-  // PITR to a time before its drop. Once the drop is older than the history cutoff, compaction
-  // would otherwise discard the restored column's values and vector reverse mapping entries.
-  // Also cleans superblocks written by a restore that kept the deleted column.
-  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
-    return doc_read_context->schema().find_column_by_id(deleted_col.id) !=
-           Schema::kColumnNotFound;
-  });
-
   if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
@@ -345,7 +336,20 @@ Result<TableInfoPtr> TableInfo::LoadFromPB(
       SkipTableTombstoneCheck::kFalse, PrivateTag());
   RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
   result->CompleteInit();
+  // Repairs superblocks written by a restore that kept the restored columns as deleted.
+  result->EraseDeletedColumnsInSchema();
   return result;
+}
+
+// A PITR to before a DROP COLUMN brings the column back into the schema. Compaction discards a
+// deleted column's values, and its vector reverse mapping entries, once the drop is older than the
+// history cutoff, whatever their write time. So a column in the current schema must not stay
+// deleted. Only valid for the table's current schema: InsertPackedSchemaForXClusterTarget builds
+// a TableInfo from the source's older schema, which can still contain locally dropped columns.
+void TableInfo::EraseDeletedColumnsInSchema() {
+  std::erase_if(deleted_cols, [this](const DeletedColumn& deleted_col) {
+    return schema().find_column_by_id(deleted_col.id) != Schema::kColumnNotFound;
+  });
 }
 
 Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
@@ -1714,6 +1718,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
                                                             index_map,
                                                             deleted_cols,
                                                             version);
+  new_table_info->EraseDeletedColumnsInSchema();
   if (target_table_id != primary_table_id_) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id should be copied from original schema, do we need this section?
