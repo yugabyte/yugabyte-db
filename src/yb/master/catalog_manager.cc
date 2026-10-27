@@ -8155,7 +8155,9 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     // Leave a DDL-dropped index to CheckTableDeleted, which waits for the indexed table alter to
     // finish before marking the index DELETED; else the next statement may hit a schema version
-    // mismatch. Bounded by the same 20s cap CheckTableDeleted uses.
+    // mismatch. CheckTableDeleted only runs when the table's last task unregisters, so it can be
+    // missed (e.g. after master failover or a failed submit); this pass stays the catch-all once
+    // the alter finishes or the same 20s cap CheckTableDeleted uses expires.
     if (table->is_index()) {
       auto indexed_table = GetTableInfo(table->indexed_table_id());
       if (indexed_table && table->LockForRead()->has_ysql_ddl_txn_verifier_state() &&
