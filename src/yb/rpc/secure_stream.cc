@@ -31,6 +31,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -46,9 +47,9 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
-    "Whether we should allow insecure connections. Ignored for node to node connections when "
-    "node_to_node_encryption_use_client_certificates is set: those always reject plaintext.");
+DEFINE_NON_RUNTIME_bool(allow_insecure_connections, true,
+    "Whether we should allow insecure connections. Must be false when "
+    "node_to_node_encryption_use_client_certificates is set.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
 DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
 DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
@@ -63,6 +64,15 @@ DEFINE_UNKNOWN_string(cipher_list, "",
 
 DEFINE_UNKNOWN_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
+
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
+
+// A plaintext connection carries no client certificate, so accepting one would make the client
+// certificate requirement meaningless.
+DEFINE_validator(allow_insecure_connections,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(node_to_node_encryption_use_client_certificates),
+        "Must be false when node_to_node_encryption_use_client_certificates is set"));
 
 METRIC_DEFINE_counter(server, rpc_inbound_tls_handshakes_rejected,
                       "Inbound TLS Handshakes Rejected",
@@ -866,16 +876,13 @@ Status SecureRefiner::ProcessHeader() {
     return stream_->StartHandshake();
   }
 
-  // A plaintext connection carries no client certificate, so accepting one would make the client
-  // certificate requirement meaningless.
-  if (!FLAGS_allow_insecure_connections || secure_context_.require_client_certificate()) {
+  if (!FLAGS_allow_insecure_connections) {
     if (metric_entity_) {
       METRIC_rpc_inbound_insecure_connections_rejected.Instantiate(metric_entity_)->Increment();
     }
     auto status = STATUS_FORMAT(
-        NetworkError, "Insecure connection header: $0, address: $1$2",
-        Slice(bytes, 2).ToDebugHexString(), stream_->Remote().address(),
-        secure_context_.require_client_certificate() ? ", client certificate required" : "");
+        NetworkError, "Insecure connection header: $0, address: $1",
+        Slice(bytes, 2).ToDebugHexString(), stream_->Remote().address());
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10) << "Rejected connection: " << status;
     return status;
   }

@@ -87,6 +87,7 @@ DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_bool(enable_rpc_keepalive);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_int32(num_connections_to_server);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(stream_compression_algo);
@@ -1543,11 +1544,20 @@ TEST_F(TestRpcClientCertificates, WrongUid) {
   ASSERT_GE(RejectedHandshakes(), 1);
 }
 
-TEST_F(TestRpcClientCertificates, PlaintextRejectedEvenIfInsecureAllowed) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = true;
+TEST_F(TestRpcClientCertificates, PlaintextRejected) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
   ASSERT_OK(StartServer());
   ASSERT_NOK(CallServer(nullptr));
   ASSERT_GE(RejectedInsecureConnections(), 1);
+}
+
+TEST_F(TestRpcClientCertificates, InsecureConnectionsFlagConflict) {
+  ASSERT_OK(SET_FLAG(allow_insecure_connections, true));
+  ASSERT_NOK(SET_FLAG(node_to_node_encryption_use_client_certificates, true));
+
+  ASSERT_OK(SET_FLAG(allow_insecure_connections, false));
+  ASSERT_OK(SET_FLAG(node_to_node_encryption_use_client_certificates, true));
+  ASSERT_NOK(SET_FLAG(allow_insecure_connections, true));
 }
 
 TEST_F(TestRpcClientCertificates, PlaintextWithoutClientCertificates) {
