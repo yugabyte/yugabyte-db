@@ -728,6 +728,10 @@ rocksdb::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(rocksdb::UpdateUser
       rocksdb::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
+bool DocVectorIndex::IsIndexedTableKey(Slice key) const {
+  return key.starts_with(indexed_table_key_prefix());
+}
+
 Result<bool> DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
     return true;

@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
@@ -26,6 +28,12 @@
 #include "yb/util/math_util.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+
+class Uuid;
+
+} // namespace yb
 
 namespace yb::docdb {
 
@@ -104,6 +112,8 @@ using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
 using ConsensusFrontierPtr = clone_ptr<ConsensusFrontier>;
+// Schema version by cotable id, nil for the primary table.
+using CotableSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 using DocVectorIndexPtr = std::shared_ptr<DocVectorIndex>;
 using DocVectorIndexes = std::vector<DocVectorIndexPtr>;

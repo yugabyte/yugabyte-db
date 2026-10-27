@@ -838,7 +838,11 @@ Result<bool> ApplyIntentsContext::Entry(
       handler.Put(key_parts, value_parts);
     }
 
-    if (vector_indexes_updater_) {
+    // See NonTransactionalBatchWriter::Apply.
+    const auto decode_row =
+        ApplyToRegularDB() ||
+        (vector_indexes_updater_ && vector_indexes_updater_->AppliesToRow(intent.doc_path));
+    if (vector_indexes_updater_ && decode_row) {
       RETURN_NOT_OK(vector_indexes_updater_->Feed(handler, intent.doc_path, decoded_value.body));
     }
 
@@ -849,7 +853,9 @@ Result<bool> ApplyIntentsContext::Entry(
         ApplyIntent, tablet_id_, transaction_id(), intent.doc_path.size(), intent.doc_path,
         commit_ht_, write_id_, decoded_value.body);
 
-    RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));
+    if (decode_row) {
+      RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));
+    }
   }
 
   return false;
@@ -864,10 +870,11 @@ Status ApplyIntentsContext::Complete(
       PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
     }
   }
+  // Before Complete: the vector index inserts copy the frontiers, schema versions included.
+  FlushSchemaVersion();
   if (vector_indexes_updater_) {
     RETURN_NOT_OK(vector_indexes_updater_->Complete());
   }
-  FlushSchemaVersion();
   if (complete_listener_) {
     complete_listener_(frontiers_);
   }
@@ -1164,14 +1171,21 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
       }};
       regular_write_handler.Put(key_parts, value_parts);
     }
-    if (vector_indexes_updater) {
+    // See NonTransactionalBatchWriter::Apply.
+    const auto decode_row =
+        apply_to_storages_.TestRegularDB() ||
+        (vector_indexes_updater && vector_indexes_updater->AppliesToRow(output_key));
+    if (vector_indexes_updater && decode_row) {
       RETURN_NOT_OK(vector_indexes_updater->Feed(regular_write_handler, output_key, output_value));
     }
     ++apply_data.write_id;
 
-    // Update min/max schema version.
-    RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
+    if (decode_row) {
+      RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
+    }
   }
+  // See ApplyIntentsContext::Complete.
+  FlushSchemaVersion();
   if (vector_indexes_updater) {
     RETURN_NOT_OK(vector_indexes_updater->Complete());
   }
@@ -1305,7 +1319,12 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, apply_external_transactions, handler, write_id))) {
-      if (vector_indexes_updater) {
+      // A replay into vector indexes only does not decode the rows no index takes, e.g. of other
+      // tables: their schema packings could be GCed already (GH#35466).
+      const auto decode_row =
+          apply_to_storages_.TestRegularDB() ||
+          (vector_indexes_updater && vector_indexes_updater->AppliesToRow(write_pair.key()));
+      if (vector_indexes_updater && decode_row) {
         RETURN_NOT_OK(vector_indexes_updater->Feed(
             handler, write_pair.key(), write_pair.value()));
       }
@@ -1317,10 +1336,14 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
         ++write_id;
       }
 
-      RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
+      if (decode_row) {
+        RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
+      }
     }
   }
 
+  // See ApplyIntentsContext::Complete.
+  FlushSchemaVersion();
   if (vector_indexes_updater) {
     RETURN_NOT_OK(vector_indexes_updater->Complete());
   }
@@ -1420,16 +1443,18 @@ Status VectorIndexesUpdater::Feed(
         // We expect small amount of vector indexes, usually 1. So it's faster to iterate over them.
         for (size_t i = 0; i != indexes_->size(); ++i) {
           const auto& vector_index = *(*indexes_)[i];
-          auto table_key_prefix = vector_index.indexed_table_key_prefix();
-          if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id &&
+          if (vector_index.IsIndexedTableKey(key) && vector_index.column_id() == column_id &&
               IntentApplyShouldUpdateVectorIndex(vector_index)) {
             if (ApplyToVectorIndex(i)) {
-              batches_[i].push_back(DocVectorIndexInsertEntry {
+              auto& batch = batches_[i];
+              batch.should_apply = true;
+              batch.entries.push_back(DocVectorIndexInsertEntry {
                 .value = ValueBuffer(value.WithoutPrefix(1)),
               });
             }
             if (need_reverse_entry) {
-              auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size());
+              auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(
+                  vector_index.indexed_table_key_prefix().size());
               DocVectorIndex::ApplyReverseEntry(
                   handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
               need_reverse_entry = false; // Apply only once, not for every vector index.
@@ -1521,11 +1546,9 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
   for (size_t i = 0; i != schema_packing_->vector_columns_count(); ++i) {
     auto column_id = schema_packing_->vector_column_packing_data(i).id;
     auto column_value = decoder.FetchValue(column_id);
-    if (column_value.IsNull()) {
-      continue;
-    }
+    const auto is_null = column_value.IsNull();
 
-    if (apply_to_storages_.TestRegularDB()) {
+    if (!is_null && apply_to_storages_.TestRegularDB()) {
       DocVectorIndex::ApplyReverseEntry(
           handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
           column_id, table_key_prefix);
@@ -1541,9 +1564,13 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
           table_key_prefix == vector_index.indexed_table_key_prefix() &&
           IntentApplyShouldUpdateVectorIndex(vector_index) &&
           ApplyToVectorIndex(index_idx)) {
-        batches_[index_idx].push_back(DocVectorIndexInsertEntry {
-          .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
-        });
+        auto& batch = batches_[index_idx];
+        batch.should_apply = true;
+        if (!is_null) {
+          batch.entries.push_back(DocVectorIndexInsertEntry {
+            .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
+          });
+        }
       }
     }
   }
@@ -1574,13 +1601,16 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
       prev_index_column_id = vector_index.column_id();
       column_value = decoder.FetchValue(prev_index_column_id);
     }
+    if (ApplyToVectorIndex(i)) {
+      batches_[i].should_apply = true;
+    }
     if (column_value.IsNull()) {
       VLOG_WITH_FUNC(3) << "Ignoring null vector value, key: '" << key.ToDebugHexString() << "'";
       continue;
     }
 
     if (ApplyToVectorIndex(i)) {
-      batches_[i].push_back(DocVectorIndexInsertEntry {
+      batches_[i].entries.push_back(DocVectorIndexInsertEntry {
         .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
       });
     }
@@ -1599,17 +1629,35 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   return Status::OK();
 }
 
+bool VectorIndexesUpdater::AppliesToRow(Slice key) const {
+  if (!indexes_) {
+    return false;
+  }
+  for (size_t i = 0; i != indexes_->size(); ++i) {
+    const auto& vector_index = *(*indexes_)[i];
+    if (ApplyToVectorIndex(i) && vector_index.IsIndexedTableKey(key) &&
+        IntentApplyShouldUpdateVectorIndex(vector_index)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status VectorIndexesUpdater::Complete() {
   if (!indexes_) {
     return Status::OK();
   }
   for (size_t i = 0; i != batches_.size(); ++i) {
-    if (!batches_[i].empty()) {
+    // Bootstrap replays an op into the index until the index flushes it, and decodes its rows with
+    // their schema packings. So insert even when all vectors are NULL: the frontiers keep the
+    // schema versions, and so the packings.
+    const auto& batch = batches_[i];
+    if (batch.should_apply) {
       InsertOptions options = {
         .frontiers = &frontiers_,
         .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
       };
-      RETURN_NOT_OK((*indexes_)[i]->Insert(batches_[i], options));
+      RETURN_NOT_OK((*indexes_)[i]->Insert(batch.entries, options));
     }
   }
   return Status::OK();

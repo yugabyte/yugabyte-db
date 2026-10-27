@@ -758,31 +758,39 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // is set and it is safe to trigger save_callback only when num_tasks < kRunningMark.
   std::function<void()> save_callback;
 
-  rocksdb::UserFrontiersPtr user_frontiers;
+  rocksdb::UserFrontiersPtr applied_frontiers;
+
+  // Frontiers of every registered insert, including the ones with running or failed tasks.
+  // Reported as in-memory frontiers only, the saved chunk gets applied_frontiers.
+  rocksdb::UserFrontiersPtr registered_frontiers;
 
   // Returns true if registration was successful. Otherwise, new mutable chunk should be allocated.
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
       const rocksdb::UserFrontiers* frontiers) {
-    if (num_entries && num_entries + entries.size() > index->Capacity()) {
+    // An empty chunk is not always sized for the batch: empty inserts could have created it.
+    if (!entries.empty() && num_entries + entries.size() > index->Capacity()) {
       return false;
     }
     num_entries += entries.size();
     num_tasks += new_tasks;
-    // Empty inserts only update frontiers (no tasks). Non-empty batches commit on task
+    if (!frontiers) {
+      return true;
+    }
+    // Published at registration, as a memtable publishes them on write, so the in-memory frontiers
+    // cover the inserts with running tasks, e.g. for packing GC and IntentsDbFlushFilter.
+    rocksdb::UpdateFrontiers(registered_frontiers, *frontiers);
+    // Empty inserts only update frontiers (no tasks). Non-empty batches apply them on task
     // success so a failed insert does not publish frontiers for unwritten entries.
-    // TODO(vector_index): when large transactions are supported, in-memory frontiers must
-    // cover registered-but-unfinished inserts so IntentsDbFlushFilter can clamp a flushed
-    // op that still has an unflushed batch in this chunk.
-    if (frontiers && new_tasks == 0) {
-      rocksdb::UpdateFrontiers(user_frontiers, *frontiers);
+    if (new_tasks == 0) {
+      rocksdb::UpdateFrontiers(applied_frontiers, *frontiers);
     }
     return true;
   }
 
-  void CommitFrontiers(const rocksdb::UserFrontiers& frontiers) {
-    rocksdb::UpdateFrontiers(user_frontiers, frontiers);
+  void ApplyFrontiers(const rocksdb::UserFrontiers& frontiers) {
+    rocksdb::UpdateFrontiers(applied_frontiers, frontiers);
   }
 
   void InsertTaskDone() {
@@ -798,16 +806,17 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   ImmutableChunkPtr Immutate(size_t order_no, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
     // entities, for example by VectorLSMInsertTask.
-    // Clone so later successful Insert()s can still CommitFrontiers on this MutableChunk;
+    // Clone so later successful Insert()s can still ApplyFrontiers on this MutableChunk;
     // DoFlush merges those into the immutable copy before save.
+    // No insert registers on this chunk any more, so registered_frontiers are moved.
     return std::make_shared<ImmutableChunk>(
         order_no, num_entries ? index : VectorIndexPtr{},
-        user_frontiers ? user_frontiers->Clone() : rocksdb::UserFrontiersPtr{},
-        flush_promise);
+        applied_frontiers ? applied_frontiers->Clone() : rocksdb::UserFrontiersPtr{},
+        std::move(registered_frontiers), flush_promise);
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(num_entries, num_tasks, user_frontiers);
+    return YB_STRUCT_TO_STRING(num_entries, num_tasks, applied_frontiers, registered_frontiers);
   }
 };
 
@@ -826,7 +835,10 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   VectorIndexPtr index;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
-  rocksdb::UserFrontiersPtr user_frontiers;
+  rocksdb::UserFrontiersPtr applied_frontiers;
+
+  // See MutableChunk::registered_frontiers. Must be accessed under LSM::mutex_ lock.
+  rocksdb::UserFrontiersPtr registered_frontiers;
 
  private:
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
@@ -839,24 +851,26 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
       size_t order_no_,
       VectorLSMFileMetaDataPtr&& file_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      rocksdb::UserFrontiersPtr&& applied_frontiers_,
       ImmutableChunkState state_)
       : file(std::move(file_)),
         order_no(order_no_),
         state(state_),
         index(std::move(index_)),
-        user_frontiers(std::move(user_frontiers_))
+        applied_frontiers(std::move(applied_frontiers_))
   {}
 
   ImmutableChunk(
       size_t order_no_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      rocksdb::UserFrontiersPtr&& applied_frontiers_,
+      rocksdb::UserFrontiersPtr&& registered_frontiers_,
       std::promise<Status>* flush_promise_)
       : order_no(order_no_),
         state(ImmutableChunkState::kInMemory),
         index(std::move(index_)),
-        user_frontiers(std::move(user_frontiers_)),
+        applied_frontiers(std::move(applied_frontiers_)),
+        registered_frontiers(std::move(registered_frontiers_)),
         flush_promise(flush_promise_)
   {}
 
@@ -890,9 +904,9 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     auto& added_chunk = *update.mutable_add_chunks()->Add();
     added_chunk.set_serial_no(serial_no());
     added_chunk.set_order_no(order_no);
-    if (user_frontiers) {
-      user_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
-      user_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    if (applied_frontiers) {
+      applied_frontiers->Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+      applied_frontiers->Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
     }
   }
 
@@ -932,9 +946,10 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   std::string ToString() const {
-    // TODO(vector_index): access to state and user_frontiers should probably be under LSM::mutex_.
+    // TODO(vector_index): access to state and applied_frontiers should probably be under
+    // LSM::mutex_.
     return YB_STRUCT_TO_STRING(
-        order_no, state, file, user_frontiers,
+        order_no, state, file, applied_frontiers,
         (index, AsString(static_cast<void*>(index.get()))),
         compaction_state);
   }
@@ -1355,7 +1370,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     RETURN_NOT_OK(user_frontiers->Largest().FromPB(chunk_pb.largest().user_frontier()));
     // Collapse consecutive chunks without a file, as AdvanceFlushedFrontier does when adding them.
     if (!file && !immutable_chunks_.empty() && !immutable_chunks_.back()->file) {
-      rocksdb::UpdateFrontiers(user_frontiers, *immutable_chunks_.back()->user_frontiers);
+      rocksdb::UpdateFrontiers(user_frontiers, *immutable_chunks_.back()->applied_frontiers);
       immutable_chunks_.pop_back();
     }
     immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(
@@ -1498,19 +1513,19 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     return Status::OK();
   }
 
-  std::shared_ptr<rocksdb::UserFrontiers> frontiers_to_commit;
+  std::shared_ptr<rocksdb::UserFrontiers> frontiers_to_apply;
   if (context.frontiers) {
-    frontiers_to_commit = context.frontiers->Clone();
+    frontiers_to_apply = context.frontiers->Clone();
   }
   insert_registry_->BindTasks(
-      tasks, chunk->index, [this, chunk, frontiers_to_commit](const Status& status) {
+      tasks, chunk->index, [this, chunk, frontiers_to_apply](const Status& status) {
         if (!status.ok()) {
           auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
           LOG(ERROR) << LogPrefix() << failure;
           CheckFailure(failure);
-        } else if (frontiers_to_commit) {
+        } else if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
-          chunk->CommitFrontiers(*frontiers_to_commit);
+          chunk->ApplyFrontiers(*frontiers_to_apply);
         }
         // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk
         // would block the updates queue and CompleteShutdown.
@@ -2000,8 +2015,8 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   mutable_chunk_->save_callback = [this, chunk, mut = mutable_chunk_]() {
     {
       std::lock_guard lock(mutex_);
-      if (mut->user_frontiers) {
-        rocksdb::UpdateFrontiers(chunk->user_frontiers, *mut->user_frontiers);
+      if (mut->applied_frontiers) {
+        rocksdb::UpdateFrontiers(chunk->applied_frontiers, *mut->applied_frontiers);
       }
     }
     SaveChunk(chunk);
@@ -2132,15 +2147,16 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
     if (!immutable_chunks_.empty()) {
       const auto& last = immutable_chunks_.back();
       if (!last->file && !last->index && last->ReadyForCompaction()) {
-        if (last->user_frontiers) {
-          rocksdb::UpdateFrontiers(user_frontiers, *last->user_frontiers);
+        if (last->applied_frontiers) {
+          rocksdb::UpdateFrontiers(user_frontiers, *last->applied_frontiers);
         }
         immutable_chunks_.pop_back();
       }
     }
 
     chunk = std::make_shared<ImmutableChunk>(
-        order_no, VectorIndexPtr{}, std::move(user_frontiers), /* flush_promise= */ nullptr);
+        order_no, VectorIndexPtr{}, std::move(user_frontiers),
+        /* registered_frontiers= */ rocksdb::UserFrontiersPtr{}, /* flush_promise= */ nullptr);
     immutable_chunks_.push_back(chunk);
     updates_queue_.emplace(order_no, chunk);
   }
@@ -2183,14 +2199,19 @@ rocksdb::FrontierInfo VectorLSM<Vector, DistanceResult>::GetFrontiers(
   for (const auto& chunk : immutable_chunks_) {
     if (chunk->IsInManifest()) {
       if (need_flushed) {
-        update(chunk->user_frontiers, rocksdb::UpdateUserValueType::kLargest, &result.flushed);
+        update(chunk->applied_frontiers, rocksdb::UpdateUserValueType::kLargest, &result.flushed);
       }
     } else if (need_in_memory) {
-      update_in_memory(chunk->user_frontiers);
+      update_in_memory(chunk->applied_frontiers);
+      update_in_memory(chunk->registered_frontiers);
     }
   }
-  if (need_in_memory && mutable_chunk_ && mutable_chunk_->num_entries) {
-    update_in_memory(mutable_chunk_->user_frontiers);
+  // A mutable chunk without entries could still hold the frontiers of empty inserts.
+  // TODO(vector_index): Such a chunk reports kNoNewData, so nothing flushes it, and its frontiers
+  // keep the schema packings they reference until a vector is inserted or the index is flushed.
+  if (need_in_memory && mutable_chunk_) {
+    update_in_memory(mutable_chunk_->applied_frontiers);
+    update_in_memory(mutable_chunk_->registered_frontiers);
   }
   return result;
 }
@@ -2706,12 +2727,12 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   void UpdateFrontiers() {
     DCHECK(Valid());
 
-    // Sanity check for the invariant that user_frontiers are non-null: only manifested chunks
+    // Sanity check for the invariant that applied_frontiers are non-null: only manifested chunks
     // are compaction inputs, and flush and manifest load always attach user frontiers to the
     // immutable chunks (refer to `ImmutableChunk::AddToUpdate`).
-    DCHECK((*outer_it_)->user_frontiers);
+    DCHECK((*outer_it_)->applied_frontiers);
 
-    rocksdb::UpdateFrontiers(frontiers_, *(*outer_it_)->user_frontiers);
+    rocksdb::UpdateFrontiers(frontiers_, *(*outer_it_)->applied_frontiers);
     frontiers_updated_ = true;
   }
 
