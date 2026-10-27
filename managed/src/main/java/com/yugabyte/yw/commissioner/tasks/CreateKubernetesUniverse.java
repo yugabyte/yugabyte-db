@@ -248,6 +248,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                 .collect(Collectors.toSet());
       }
 
+      createSyncCertManagerClientCertTask(getUniverse());
+
       // Wait for new tablet servers to be responsive.
       Set<NodeDetails> allTserversAdded = new HashSet<>();
       allTserversAdded.addAll(tserversAdded);

@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -230,7 +231,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockMaintenanceService,
             app.injector().instanceOf(YBClientService.class),
             mockConfigHelper,
-            mockNodeAgentClient) {
+            mockNodeAgentClient,
+            mock(CertManagerClientCertSync.class)) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig, (t, e) -> {});
@@ -1141,7 +1143,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockMaintenanceService,
             app.injector().instanceOf(YBClientService.class),
             mockConfigHelper,
-            mockNodeAgentClient) {
+            mockNodeAgentClient,
+            mock(CertManagerClientCertSync.class)) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig, (t, e) -> {});

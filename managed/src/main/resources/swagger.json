@@ -3048,7 +3048,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -6119,7 +6120,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -9400,7 +9402,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -10281,7 +10284,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -11855,7 +11859,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -12638,7 +12643,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -17602,7 +17608,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -18327,7 +18334,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -19450,7 +19458,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -20331,7 +20340,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -21928,7 +21938,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -22636,7 +22647,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -23082,7 +23094,8 @@
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
               "RunUpgradeNodeAgent",
-              "CreateYbStorageDatabase"
+              "CreateYbStorageDatabase",
+              "SyncCertManagerClientCert"
             ],
             "type" : "string"
           },
@@ -23682,7 +23695,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -24499,7 +24513,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -25705,7 +25720,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -27100,7 +27116,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -27824,7 +27841,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -28694,7 +28712,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -29383,7 +29402,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -30072,7 +30092,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -31282,7 +31303,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },
@@ -32547,7 +32569,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "SyncCertManagerClientCert"
           ],
           "type" : "string"
         },

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.services;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -54,15 +55,20 @@ public class LocalYBClientService implements YBClientService {
     if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
       return null;
     }
-    return new YBClient.YBClientBuilder(config.getMasterHostPorts())
-        .sslCertFile(config.getCertFile())
-        .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
-        .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
-        .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
-        .dnsDebugThresholdNs(confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
-        .dnsWarningThresholdNs(
-            confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs))
-        .build();
+    YBClient.YBClientBuilder builder =
+        new YBClient.YBClientBuilder(config.getMasterHostPorts())
+            .sslCertFile(config.getCertFile())
+            .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
+            .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
+            .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
+            .dnsDebugThresholdNs(
+                confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
+            .dnsWarningThresholdNs(
+                confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs));
+    // Present a client cert only where one was synced, i.e. for universes that require one.
+    CertManagerClientCertSync.getClientCertFiles(config.getCertFile())
+        .ifPresent(pair -> builder.sslClientCertFiles(pair.getLeft(), pair.getRight()));
+    return builder.build();
   }
 
   @Override

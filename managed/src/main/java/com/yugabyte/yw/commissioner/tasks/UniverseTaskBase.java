@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -1382,6 +1383,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
+      // Prechecks may already open RPC connections.
+      getInstanceOf(CertManagerClientCertSync.class).refreshIfNeeded(universe);
       Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
@@ -3529,6 +3532,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  public void createSyncCertManagerClientCertTask(Universe universe) {
+    if (!CertManagerClientCertSync.isClientCertRequired(universe)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            SyncCertManagerClientCert.class.getSimpleName(), SubTaskGroupType.ConfigureUniverse);
+    SyncCertManagerClientCert task = createTask(SyncCertManagerClientCert.class);
+    SyncCertManagerClientCert.Params params = new SyncCertManagerClientCert.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   public SubTaskGroup createUpdateConsistencyCheckTask() {

@@ -1412,7 +1412,10 @@ public enum TaskType {
   RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
 
   CreateYbStorageDatabase(
-      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class),
+
+  SyncCertManagerClientCert(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SyncCertManagerClientCert.class);
 
   private final Class<? extends ITask> taskClass;
 
