@@ -82,6 +82,9 @@
 #include "utils/timeout.h"
 #include "utils/wait_event.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Struct for sharing information to control slot synchronization.
  *
@@ -829,14 +832,18 @@ synchronize_one_slot(RemoteSlot *remote_slot, Oid remote_dbid,
 		 * cycle if the restart_lsn or catalog_xmin of the remote slot has not
 		 * caught up.
 		 */
-		/* YB_TODO_PG19MERGE: Check YB args */
+		/*
+		 * YB: Not reached: slot sync runs only on a hot standby, which a YB
+		 * node never is.  The YB arguments are placeholders.
+		 */
+		Assert(!IsYugaByteEnabled());
 		ReplicationSlotCreate(remote_slot->name, true, RS_TEMPORARY,
 							  remote_slot->two_phase,
 							  false,
 							  remote_slot->failover,
 							  true,
-							  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
-							  NULL /* yb_consistent_snapshot_time */,
+							  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
+							  NULL /* yb_consistent_snapshot_time */ ,
 							  CRS_SEQUENCE, YB_CRS_TRANSACTION);
 
 		/* For shorter lines. */
