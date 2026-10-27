@@ -4147,10 +4147,39 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
   }
 
+  /**
+   * Records {@code targetVersion} as the software version when the user intent still holds an older
+   * one. Finalize clears prevYBSoftwareConfig, the only other record of the target.
+   */
+  protected void createUpdateSoftwareVersionTaskIfStale(
+      Universe universe, String targetVersion, SubTaskGroupType subTaskGroupType) {
+    if (!targetVersion.equals(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      createUpdateSoftwareVersionTask(targetVersion, false /* isSoftwareUpdateViaVm */)
+          .setSubTaskGroupType(subTaskGroupType);
+    }
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
+    createFinalizeUpgradeTasks(
+        upgradeSystemCatalog,
+        finalizeCatalogUpgrade,
+        requireAdditionalSuperUserForCatalogUpgrade,
+        true /* saveReadyState */);
+  }
+
+  /**
+   * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
+   * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   */
+  protected void createFinalizeUpgradeTasks(
+      boolean upgradeSystemCatalog,
+      boolean finalizeCatalogUpgrade,
+      boolean requireAdditionalSuperUserForCatalogUpgrade,
+      boolean saveReadyState) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4187,9 +4216,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
     createEnablePitrConfigTask();
 
-    createUpdateUniverseSoftwareUpgradeStateTask(
-        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
-        false /* isSoftwareRollbackAllowed */);
+    if (saveReadyState) {
+      createUpdateUniverseSoftwareUpgradeStateTask(
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+          false /* isSoftwareRollbackAllowed */);
+    }
   }
 
   protected void createEnablePitrConfigTask() {
