@@ -277,7 +277,6 @@
 #include "utils/tuplesort.h"
 
 /* YB includes */
-#include "access/yb_scan_core.h"
 #include "catalog/yb_type.h"
 #include "optimizer/yb_agg_pushdown.h"
 #include "pg_yb_utils.h"
@@ -459,6 +458,7 @@ static void build_pertrans_for_aggref(AggStatePerTrans pertrans,
 
 /* YB declarations */
 static void yb_agg_pushdown_supported(AggState *aggstate);
+static bool yb_agg_scan_might_recheck(ScanState *ss);
 static void yb_agg_pushdown(AggState *aggstate);
 
 
@@ -2144,9 +2144,10 @@ lookup_hash_entries(AggState *aggstate)
  * Legacy cost model only: this runs for an Agg planned without the YB cost
  * model (YB_AGG_PUSHDOWN_BY_EXECUTOR).  Under the YB cost model the planner
  * decides on the paths (yb_agg_pushdown_eligible) and ExecInitAgg takes its
- * answer; the per-Aggref rules are the planner's (yb_aggref_function_pushable,
- * yb_aggref_arg_type_pushable).  Remove with the legacy cost model modes,
- * together with EXEC_FLAG_YB_AGG_PARENT and the code marked the same way.
+ * answer unless the scan might recheck; the per-Aggref rules are the
+ * planner's (yb_aggref_function_pushable, yb_aggref_arg_type_pushable).
+ * Remove with the legacy cost model modes, together with the code marked the
+ * same way.
  */
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
@@ -2183,44 +2184,20 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* No WHERE quals. */
 	if (ss->ps.qual)
 		return;
+	/* Also check the GUC here. */
+	if (IsA(ss, IndexScanState) && !yb_enable_index_aggregate_pushdown)
+		return;
 	/* No indexquals that might be rechecked. */
-	if (IsA(ss, IndexScanState))
-	{
-		/* Also check the GUC here. */
-		if (!yb_enable_index_aggregate_pushdown)
-			return;
-
-		IndexScanState *iss = castNode(IndexScanState, ss);
-
-		if (iss->yb_iss_might_recheck)
-			return;
-	}
-	else if (IsA(ss, IndexOnlyScanState))
-	{
-		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
-
-		if (ioss->yb_ioss_might_recheck)
-			return;
-	}
-	else if (IsA(ss, YbBitmapTableScanState))
-	{
-		YbBitmapTableScanState *btss = castNode(YbBitmapTableScanState, ss);
-
-		/*
-		 * We can pushdown recheck conditions, so the only time we can't
-		 * pushdown the aggregate is if we have local recheck conditions
-		 */
-		if (btss->btss_might_recheck && btss->recheck_local_quals)
-			return;
-
-		/*
-		 * We can't pushdown the aggregate if we'd have local conditions to
-		 * check if we exceed work_mem. We don't yet know whether or not
-		 * work_mem will be exceeded, but we must assume the worst.
-		 */
-		if (btss->fallback_local_quals)
-			return;
-	}
+	if (yb_agg_scan_might_recheck(ss))
+		return;
+	/*
+	 * We can't pushdown the aggregate if we'd have local conditions to check
+	 * if we exceed work_mem. We don't yet know whether or not work_mem will be
+	 * exceeded, but we must assume the worst.
+	 */
+	if (IsA(ss, YbBitmapTableScanState) &&
+		castNode(YbBitmapTableScanState, ss)->fallback_local_quals)
+		return;
 
 	check_outer_plan = false;
 
@@ -2330,6 +2307,31 @@ yb_agg_pushdown_supported(AggState *aggstate)
 
 	/* If this is reached, YB pushdown is supported. */
 	aggstate->yb_pushdown_supported = true;
+}
+
+/*
+ * Whether the scan below the Agg might recheck its index conditions in a way
+ * that a pushed-down aggregate row cannot satisfy, as the scan's index AM
+ * answered at init; an index scan asks only when the Agg sets
+ * EXEC_FLAG_YB_AGG_PARENT.  A bitmap table scan pushes the recheck of its
+ * pushable index quals down with the request, so only a local recheck qual
+ * matters there.  The answer withdraws the executor's own decision
+ * (yb_agg_pushdown_supported) and the planner's alike.
+ */
+static bool
+yb_agg_scan_might_recheck(ScanState *ss)
+{
+	if (IsA(ss, IndexScanState))
+		return castNode(IndexScanState, ss)->yb_iss_might_recheck;
+	if (IsA(ss, IndexOnlyScanState))
+		return castNode(IndexOnlyScanState, ss)->yb_ioss_might_recheck;
+	if (IsA(ss, YbBitmapTableScanState))
+	{
+		YbBitmapTableScanState *btss = castNode(YbBitmapTableScanState, ss);
+
+		return btss->btss_might_recheck && btss->recheck_local_quals;
+	}
+	return false;
 }
 
 /*
@@ -3672,19 +3674,18 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	outerPlan = outerPlan(node);
 
 	/*
-	 * Legacy cost model only: for YB IndexScan/IndexOnlyScan/BitmapScan outer
-	 * plan, we need to collect recheck information, so set that eflag.
-	 * Ideally, the flag is only set for YB relations since, later on, agg
-	 * pushdown is disabled anyway for non-YB relations, but we don't have that
-	 * information at this point: the relation is opened in the child node.  So
-	 * set the flag in all cases, and move the YB-relation check down there.
-	 * An Agg planned under the YB cost model carries the planner's decision,
-	 * which needs no recheck information from the scan.
+	 * For YB IndexScan/IndexOnlyScan/BitmapScan outer plan, we need to collect
+	 * recheck information, so set that eflag.  Ideally, the flag is only set
+	 * for YB relations since, later on, agg pushdown is disabled anyway for
+	 * non-YB relations, but we don't have that information at this point: the
+	 * relation is opened in the child node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.  An Agg the
+	 * planner decided not to push down needs no recheck information.
 	 */
 	int			yb_eflags = 0;
 
 	if (IsYugaByteEnabled() &&
-		node->yb_pushdown_decision == YB_AGG_PUSHDOWN_BY_EXECUTOR &&
+		node->yb_pushdown_decision != YB_AGG_PUSHDOWN_PLANNED_OFF &&
 		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan) ||
 		 IsA(outerPlan, YbBitmapTableScan)))
 		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
@@ -4036,15 +4037,15 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	}
 
 	/*
-	 * Internally set whether plan supports YB agg pushdown, unless the
-	 * planner decided it under the YB cost model.
+	 * YB: Internally set whether plan supports agg pushdown, unless the
+	 * planner already decided it.  Legacy cost model only: the
+	 * YB_AGG_PUSHDOWN_BY_EXECUTOR branch.
 	 */
 	if (node->yb_pushdown_decision == YB_AGG_PUSHDOWN_BY_EXECUTOR)
 		yb_agg_pushdown_supported(aggstate);
 	else if (node->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON)
 	{
 		PlanState  *yb_scan = outerPlanState(aggstate);
-		bool		yb_recheck_is_local;
 
 		/* The planner marks an Agg only above a scan that takes aggregates. */
 		if (YbPlanStateTryGetAggrefs(yb_scan) == NULL)
@@ -4052,21 +4053,13 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 				 (int) nodeTag(yb_scan));
 
 		/*
-		 * A pushed-down aggregate row cannot take a recheck of the scan's
-		 * index conditions in PostgreSQL, and the planner predicted none.
-		 * Two settings make ybBindScanKeys recheck whatever was predicted,
-		 * and a cached plan outlives a change to either: sys-table
-		 * prefetching, for any scan, and yb_test_skip_binding_scan_keys, for
-		 * an index scan or a bitmap table scan with local recheck quals.
-		 * Evaluate the aggregates here then.
+		 * The planner predicted no recheck, but the index AM's answer can
+		 * depend on session state that changes after planning while a cached
+		 * plan is reused, so the answer the scan got from the AM at init
+		 * decides.
 		 */
-		yb_recheck_is_local =
-			IsA(yb_scan, IndexScanState) || IsA(yb_scan, IndexOnlyScanState) ||
-			(IsA(yb_scan, YbBitmapTableScanState) &&
-			 castNode(YbBitmapTableScanState, yb_scan)->recheck_local_quals);
 		aggstate->yb_pushdown_supported =
-			!YBCIsSysTablePrefetchingStarted() &&
-			!(yb_test_skip_binding_scan_keys && yb_recheck_is_local);
+			!yb_agg_scan_might_recheck((ScanState *) yb_scan);
 	}
 
 	/*

@@ -30,6 +30,7 @@
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
 #include "executor/nodeIndexscan.h"
+#include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -70,9 +71,7 @@ static bool yb_index_path_might_recheck(PlannerInfo *root, IndexPath *path,
 static bool yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual);
 static bool yb_predetermine_index_path_recheck(PlannerInfo *root,
 											   IndexPath *path,
-											   NodeTag scan_tag,
-											   bool xs_want_itup,
-											   int *num_runtime_keys_p);
+											   NodeTag scan_tag);
 
 /*
  * yb_agg_pushdown_eligible
@@ -757,20 +756,17 @@ yb_index_path_might_recheck(PlannerInfo *root, IndexPath *path,
 {
 	return yb_predetermine_index_path_recheck(root, path,
 											  index_only ? T_IndexOnlyScan :
-											  T_IndexScan,
-											  index_only /* xs_want_itup */ ,
-											  NULL /* num_runtime_keys_p */ );
+											  T_IndexScan);
 }
 
 /*
  * Whether the bitmap built from the 'bitmapqual' tree might require the
  * bitmap table scan to recheck its index conditions.  The combination
  * follows the executor (YbGetBitmapScanMightRecheck): a BitmapOr rechecks
- * when any child does, a BitmapAnd only when all of them do, and a leaf
- * counts any runtime key as a recheck because the predetermination cannot
- * see the key's value (nodeYbBitmapIndexscan.c).  The bitmap table scan
- * pushes a recheck of its pushable index quals down with the request and
- * evaluates the others locally, which a pushed-down aggregate row cannot
+ * when any child does and a BitmapAnd only when all of them do, and a leaf
+ * takes the answer the bitmap index scan gets at init.  The bitmap table
+ * scan pushes a recheck of its pushable index quals down with the request
+ * and evaluates the others locally, which a pushed-down aggregate row cannot
  * satisfy; it asserts that a required recheck has no local recheck quals
  * once aggrefs are set.
  */
@@ -798,29 +794,21 @@ yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual)
 		return true;
 	}
 	else if (IsA(bitmapqual, IndexPath))
-	{
-		int			num_runtime_keys;
-		bool		recheck;
-
-		recheck = yb_predetermine_index_path_recheck(root,
-													 (IndexPath *) bitmapqual,
-													 T_YbBitmapIndexScan,
-													 true /* xs_want_itup */ ,
-													 &num_runtime_keys);
-		return num_runtime_keys > 0 || recheck;
-	}
+		return yb_predetermine_index_path_recheck(root,
+												  (IndexPath *) bitmapqual,
+												  T_YbBitmapIndexScan);
 
 	elog(ERROR, "unrecognized node type: %d", (int) nodeTag(bitmapqual));
 	return true;					/* keep compiler quiet */
 }
 
 /*
- * Run yb_index_might_recheck, which predetermines the recheck as the executor
- * does at scan init, on the inputs the executor derives from the plan built
- * for 'path'.  'scan_tag' is the plan node the executor passes as the Scan
- * (T_IndexScan, T_IndexOnlyScan or T_YbBitmapIndexScan) and 'xs_want_itup'
- * what that node passes.  *num_runtime_keys_p, when given, receives the
- * number of scan keys whose value is not a constant.
+ * Run yb_index_might_recheck, or yb_bitmap_index_might_recheck for a bitmap
+ * leaf, which predetermine the recheck as the executor does at scan init, on
+ * the inputs the executor derives from the plan built for 'path'.
+ * 'scan_tag' is the plan node the executor passes as the Scan (T_IndexScan,
+ * T_IndexOnlyScan or T_YbBitmapIndexScan), and xs_want_itup is what that
+ * node passes.
  *
  * YbPredetermineNeedsRecheck reads the index, the heap, the scan keys and two
  * fields of the Scan node, and the planner reproduces each of them:
@@ -848,12 +836,12 @@ yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual)
  */
 static bool
 yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
-								   NodeTag scan_tag, bool xs_want_itup,
-								   int *num_runtime_keys_p)
+								   NodeTag scan_tag)
 {
 	IndexOptInfo *index = path->indexinfo;
 	RangeTblEntry *rte = planner_rt_fetch(path->path.parent->relid, root);
 	bool		is_bitmap_leaf = (scan_tag == T_YbBitmapIndexScan);
+	bool		xs_want_itup = (scan_tag != T_IndexScan);
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
 	Relation	heap;
@@ -873,11 +861,7 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 
 	/* No Relation to run against; assume the worst, as yb_cost_index does. */
 	if (index->hypothetical)
-	{
-		if (num_runtime_keys_p)
-			*num_runtime_keys_p = 0;
 		return true;
-	}
 
 	tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "yb agg pushdown recheck",
@@ -941,8 +925,14 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 				stub = NULL;		/* keep compiler quiet */
 		}
 
-		result = yb_index_might_recheck(stub, heap, indexrel, xs_want_itup,
-										scan_keys, num_scan_keys);
+		if (is_bitmap_leaf)
+			result = yb_bitmap_index_might_recheck(stub, heap, indexrel,
+												   scan_keys, num_scan_keys,
+												   num_runtime_keys);
+		else
+			result = yb_index_might_recheck(stub, heap, indexrel,
+											xs_want_itup, scan_keys,
+											num_scan_keys);
 
 		index_close(indexrel, NoLock);
 		table_close(heap, NoLock);
@@ -951,7 +941,5 @@ yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(tmpcxt);
 
-	if (num_runtime_keys_p)
-		*num_runtime_keys_p = num_runtime_keys;
 	return result;
 }

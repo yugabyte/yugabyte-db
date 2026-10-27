@@ -59,9 +59,7 @@
  * YB_AGG_PARENT tells the plan node that the parent node is an Agg node.  This
  * context is used to signal the plan node to make an extra effort to determine
  * whether aggregates can be pushed down.  It should only be set for plan nodes
- * that have no children, such as IndexOnlyScan.  Legacy cost model only: an
- * Agg planned under the YB cost model carries the planner's decision and
- * does not set it (see yb_agg_pushdown_supported).
+ * that have no children, such as IndexOnlyScan.
  */
 #define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
 #define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */

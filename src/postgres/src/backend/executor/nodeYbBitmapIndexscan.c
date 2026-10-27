@@ -344,19 +344,11 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 						   &indexstate->biss_ArrayKeys,
 						   &indexstate->biss_NumArrayKeys);
 
-	/*
-	 * TODO #26493
-	 * yb_index_might_recheck need to analyze runtime keys as well to see if
-	 * there are attributes with types narrower than the parameters types they
-	 * are compared to.
-	 * Without proper fix we have to assume possibility of recheck if we have
-	 * any runtime (parametrized) keys at all.
-	 */
-	indexstate->biss_might_recheck = indexstate->biss_NumRuntimeKeys > 0 ||
-		yb_index_might_recheck((Scan *) node, relation, index,
-							   true /* xs_want_itup */ ,
-							   indexstate->biss_ScanKeys,
-							   indexstate->biss_NumScanKeys);
+	indexstate->biss_might_recheck =
+		yb_bitmap_index_might_recheck((Scan *) node, relation, index,
+									  indexstate->biss_ScanKeys,
+									  indexstate->biss_NumScanKeys,
+									  indexstate->biss_NumRuntimeKeys);
 
 	/* Got the info for aggregate pushdown. EXPLAIN can return now. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -386,4 +378,27 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	 * all done.
 	 */
 	return indexstate;
+}
+
+/*
+ * Whether a bitmap index scan with these scan keys might require the bitmap
+ * table scan to recheck its index conditions.  ExecInitYbBitmapIndexScan
+ * stores the answer in biss_might_recheck, and the planner asks the same
+ * for the scan it predicts from a bitmap path, so both apply one rule.
+ *
+ * TODO #26493
+ * yb_index_might_recheck need to analyze runtime keys as well to see if
+ * there are attributes with types narrower than the parameters types they
+ * are compared to.
+ * Without proper fix we have to assume possibility of recheck if we have
+ * any runtime (parametrized) keys at all.
+ */
+bool
+yb_bitmap_index_might_recheck(Scan *scan, Relation heapRelation,
+							  Relation indexRelation, ScanKey keys, int nkeys,
+							  int nruntimekeys)
+{
+	return nruntimekeys > 0 ||
+		yb_index_might_recheck(scan, heapRelation, indexRelation,
+							   true /* xs_want_itup */ , keys, nkeys);
 }
