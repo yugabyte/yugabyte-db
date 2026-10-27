@@ -1461,15 +1461,6 @@ pgaudit_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
     AuditEventStackItem *stackItem = NULL;
     MemoryContext contextOld;
 
-    /*
-     * YB_TODO_PG19MERGE: audit_executor_enabled() replaces the
-     * !isAuditLoggingDisabled() guard YB 04daa18c2d06 added here.
-     *   pg15:  auditRole set || auditLogBitmap != 0
-     *   pg19:  auditRole set || (auditLogBitmap & LOG_EXECUTOR) != 0
-     * The two differ when auditRole is unset and auditLogBitmap holds only
-     * non-executor classes, as under pgaudit.log = 'ddl'.  pg15 pushed a stack
-     * item there, pg19 pushes none, so the hook is stricter than before.
-     */
     if (audit_executor_enabled() && !internalStatement && !IsParallelWorker())
     {
         /* Push the audit event onto the stack */
