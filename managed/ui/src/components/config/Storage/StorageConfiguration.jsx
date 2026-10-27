@@ -25,9 +25,14 @@ import OciLogo from '../../../redesign/assets/approved/provider-logo-oci.svg?img
 import { Formik } from 'formik';
 import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE,
+  fetchHostInfo,
+  fetchHostInfoFailure,
+  fetchHostInfoSuccess,
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse
 } from '../../../actions/customers';
+import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
+import { YBAHost } from '../../../redesign/helpers/constants';
 import {
   isPathStyleAccess,
   isChunkedEncodingEnabled,
@@ -117,6 +122,7 @@ class StorageConfiguration extends Component {
   componentDidMount() {
     this.props.fetchCustomerConfigs();
     this.props.fetchRuntimeConfigs();
+    this.props.fetchHostInfo();
   }
 
   getConfigByType = (name, customerConfigs) => {
@@ -530,7 +536,8 @@ class StorageConfiguration extends Component {
       iamRoleEnabled,
       federatedIamEnabled,
       useGcpIam,
-      gcsFederatedIamEnabled
+      gcsFederatedIamEnabled,
+      ybaHost
     } = this.props;
     const { useAzureIam, useOciIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
@@ -561,6 +568,7 @@ class StorageConfiguration extends Component {
               iamRoleEnabled={iamRoleEnabled}
               showFederatedIam={enableFederatedIam}
               federatedIamEnabled={federatedIamEnabled}
+              ybaHost={ybaHost}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
               enableChunkedEncoding={enableChunkedEncoding}
@@ -575,6 +583,7 @@ class StorageConfiguration extends Component {
               useGcpIam={useGcpIam}
               gcsFederatedIamEnabled={gcsFederatedIamEnabled}
               showFederatedIam={enableFederatedIam}
+              ybaHost={ybaHost}
               isEdited={editView[activeTab]}
             />
           )}
@@ -663,13 +672,22 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
       );
+    },
+    fetchHostInfo: () => {
+      dispatch(fetchHostInfo()).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(fetchHostInfoFailure(response.payload));
+        } else {
+          dispatch(fetchHostInfoSuccess(response.payload));
+        }
+      });
     }
   };
 };
 
 function mapStateToProps(state) {
   const {
-    customer: { runtimeConfigs }
+    customer: { runtimeConfigs, hostInfo }
   } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
   const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
@@ -688,6 +706,8 @@ function mapStateToProps(state) {
     enableSigningRegion,
     enableS3BackupProxy,
     enableFederatedIam,
+    // Until host info loads, or when it fails, every IAM option stays available.
+    ybaHost: hostInfo ? getYBAHost(hostInfo) : YBAHost.SELF_HOSTED,
     iamRoleEnabled: storageToggleTrue(selector(state, 'IAM_INSTANCE_PROFILE')),
     federatedIamEnabled: storageToggleTrue(selector(state, 'FEDERATED_IAM')),
     useGcpIam: storageToggleTrue(selector(state, 'USE_GCP_IAM')),
