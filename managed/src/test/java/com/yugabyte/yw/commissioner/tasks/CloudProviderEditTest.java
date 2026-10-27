@@ -1244,6 +1244,24 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     waitForTask(doEditProvider(p, false));
   }
 
+  @Test
+  public void testInUseProviderFederatedIamIgnoresTargetForOwnCloud() throws InterruptedException {
+    setAwsFederation(provider, true, AUDIENCE);
+    provider.save();
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    // Nodes of an AWS provider run on AWS and never federate to it, so its aws target is unread.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    p.getDetails().getCloudInfo().aws.crossCloudFederationTargets =
+        Arrays.asList(
+            CrossCloudFederationTarget.of(Common.CloudType.gcp, AUDIENCE, null),
+            CrossCloudFederationTarget.of(
+                Common.CloudType.aws, "sts.amazonaws.com", "arn:aws:iam::123456789012:role/r"));
+    waitForTask(doEditProvider(p, false));
+  }
+
   private static final String AUDIENCE =
       "//iam.googleapis.com/projects/1/locations/global/workloadIdentityPools/p/providers/aws";
   private static final String FEDERATED_IAM_IN_USE_ERROR =

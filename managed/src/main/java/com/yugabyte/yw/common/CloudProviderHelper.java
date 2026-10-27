@@ -1243,9 +1243,15 @@ public class CloudProviderHelper {
     }
   }
 
-  /** The federation settings a node is configured from: the audience, and the role ARN for S3. */
+  /**
+   * The federation settings a node is configured from: the audience, and the role ARN for S3. A
+   * node never federates to the cloud it runs on, so on an AWS or GCP provider the target for its
+   * own cloud is not read by any node.
+   */
   private static Set<List<Object>> federationSettingsNodesUse(Provider provider) {
+    CloudType providerCloud = provider.getCloudCode();
     return CloudInfoInterface.getCrossCloudFederationTargets(provider).stream()
+        .filter(t -> providerCloud == CloudType.onprem || t.targetCloud != providerCloud)
         .map(
             t ->
                 Arrays.<Object>asList(
