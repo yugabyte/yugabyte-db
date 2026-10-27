@@ -511,7 +511,8 @@ Status ReleaseLockGloballyAt(
   controller.set_timeout(rpc_timeout);
   auto req = ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
       session_host_uuid, owner, lease_epoch, clock, apply_after);
-  return proxy->ReleaseObjectLocksGlobal(req, &resp, &controller);
+  RETURN_NOT_OK(proxy->ReleaseObjectLocksGlobal(req, &resp, &controller));
+  return ResponseStatus(resp);
 }
 
 Status ReleaseLockGlobally(
@@ -1913,6 +1914,13 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
   DumpMasterAndTServerLocks(cluster_.get(), "Before step down");
   LOG(INFO) << "Stepping down from " << leader_master1->ToString();
   ASSERT_OK(cluster_->StepDownMasterLeader());
+  // The step-down is delayed while the protege catches up, so the old master can still be the
+  // leader when StepDownMasterLeader returns.
+  ASSERT_OK(WaitFor(
+      [this, leader_master1]() -> Result<bool> {
+        return VERIFY_RESULT(cluster_->GetLeaderMiniMaster()) != leader_master1;
+      },
+      kTimeout, "wait for a new master leader"));
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts));
   auto* leader_master2 = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   auto master_local_lock_manager2 = leader_master2->master()
