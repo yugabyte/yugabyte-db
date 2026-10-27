@@ -9,6 +9,11 @@
  *	  yb_table_scan.h, these are permanent AM-bypass surfaces: their
  *	  callers have no tableam callback to route through.
  *
+ *	  Each section below is the API of one implementation file.  A
+ *	  contract that belongs to the callers' subsystem, such as the
+ *	  format of the rows ANALYZE samples, goes in a header of that
+ *	  subsystem, not here.
+ *
  * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,8 +43,11 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
- * Catalog scans (yb_catalog_scan.c): systable scan implementations
- * used by genam.c and the catalog readers.
+ * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() is the YB
+ * backend of systable_beginscan() in genam.c, and
+ * ybc_systable_begin_default_scan() serves YB-only catalog readers such as
+ * yb_inheritscache.c.  The SysScanDesc they return follows genam's systable
+ * scan contract.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,
@@ -56,7 +64,9 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 												   ScanKey key);
 
 /*
- * ANALYZE row sampling (yb_sample_scan.c).
+ * ANALYZE row sampling (yb_sample_scan.c): the YB backend of
+ * yb_acquire_sample_rows() in analyze.c, which takes the place of
+ * acquire_sample_rows() for YB relations.
  */
 typedef struct YbSampleData
 {
@@ -77,7 +87,9 @@ extern bool ybSampleNextBlock(YbSample ybSample);
 extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 
 /*
- * Single-row fetch by ybctid (yb_ybctid_scan.c).
+ * Single-row fetch by ybctid (yb_ybctid_scan.c): the YB counterpart of
+ * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID.  It takes
+ * no snapshot and reads at pggate's current read point.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);
