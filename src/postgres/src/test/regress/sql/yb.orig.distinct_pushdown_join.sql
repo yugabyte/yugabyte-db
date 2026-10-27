@@ -258,3 +258,35 @@ CREATE TABLE th (h1 INT, r1 INT, PRIMARY KEY(h1 HASH, r1 ASC));
 SELECT DISTINCT a1.h1 FROM th a1, th a2, th a3 where a1.h1 < a2.h1 and a2.h1 = a3.h1 and a2.h1 = 5 AND a3.h1 = 5 GROUP BY a1.h1;
 
 DROP TABLE th;
+
+-- An index clause that DocDB leaves to the recheck puts its column in the
+-- distinct prefix of a parameterized inner scan too, under a nested loop and
+-- a batched nested loop.  The legacy cost model picks a plain inner scan
+-- whatever the prefix, so the block runs under the CBO (#35029).
+SET yb_enable_cbo = on;
+SET yb_prefer_bnl = off;
+CREATE TABLE distinct_recheck_inner (g int, k int, j int, PRIMARY KEY (g ASC, k ASC, j ASC));
+INSERT INTO distinct_recheck_inner SELECT (i / 100) * 100, (i / 10) % 10, i % 10 FROM generate_series(0, 9999) i;
+ANALYZE distinct_recheck_inner;
+CREATE TABLE distinct_recheck_outer (x int PRIMARY KEY);
+INSERT INTO distinct_recheck_outer VALUES (0), (100), (200);
+ANALYZE distinct_recheck_outer;
+
+\set Q1 '/*+ NestLoop(o i) Leading((o i)) IndexScan(i) */'
+\set Q2 '/*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */'
+\unset Q3
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);'
+\i :run_query
+-- DocDB binds a plain range, so the prefix stays (#35029).
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;'
+\i :run_query
+-- Two batched join conditions bind as a row IN list, which leaves the IN list
+-- on k to the recheck, but k is a join column, so the prefix already holds it
+-- (#35029).
+CREATE TABLE distinct_recheck_outer2 (x int, y int);
+INSERT INTO distinct_recheck_outer2 VALUES (0, 1), (100, 2), (200, 3), (300, 4);
+ANALYZE distinct_recheck_outer2;
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);'
+\i :run_query
+
+DROP TABLE distinct_recheck_inner, distinct_recheck_outer, distinct_recheck_outer2;

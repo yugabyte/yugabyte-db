@@ -29,6 +29,7 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"
+#include "optimizer/ybplan.h"
 #include "utils/lsyscache.h"
 
 /*
@@ -142,9 +143,12 @@ yb_pull_varattnos_for_distinct_pushdown(Node *node, Index varno,
  * Determines the list of column references.
  * Column references determine the set of DISTINCT keys required from
  * the distinct index scan.
+ * Unless 'index_conds_exact', the index conditions count as non-index
+ * predicates.
  */
 static bool
 yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
+									 bool index_conds_exact,
 									 Bitmapset **colrefs)
 {
 	ListCell   *lc;
@@ -173,6 +177,12 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 
 		if (!is_redundant_with_indexclauses(rinfo, index_clauses))
 			exprs = lappend(exprs, rinfo->clause);
+	}
+
+	if (!index_conds_exact)
+	{
+		foreach(lc, index_clauses)
+			exprs = lappend(exprs, lfirst_node(IndexClause, lc)->rinfo->clause);
 	}
 
 	/*
@@ -344,26 +354,30 @@ yb_find_colref_in_index(IndexOptInfo *index, int target_colref)
  * YB: yb_get_distinct_prefixlen
  *
  * Returns the length of the minimal prefix encompassing all column references
- * that need to be distinct.
+ * that need to be distinct.  Unless 'index_conds_exact', the index conditions
+ * count as non-index predicates.
  *
  * Returns the shortest prefix that satisfies all the 'colrefs'.
  * Returns 0 when at most one row is DISTINCT.
  * Returns -1 when 'colrefs' cannot be satisfied by the 'index'.
  */
-int
-yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
-								List *index_clauses)
+static int
+yb_get_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
+						  List *index_clauses, bool index_conds_exact)
 {
 	Bitmapset  *colrefs;
 	Bitmapset  *const_colrefs;
 	int			prefixlen;
 	int			target_colref;
 
-	if (!yb_get_colrefs_for_distinct_pushdown(index, index_clauses, &colrefs))
+	if (!yb_get_colrefs_for_distinct_pushdown(index, index_clauses,
+											  index_conds_exact, &colrefs))
 		return -1;
 
-	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(root, index,
-															   index_clauses);
+	const_colrefs = (index_conds_exact ?
+					 yb_get_const_colrefs_for_distinct_pushdown(root, index,
+																index_clauses) :
+					 NULL);
 
 	prefixlen = 0;
 	target_colref = -1;
@@ -401,6 +415,102 @@ yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
 	 */
 	if (prefixlen == index->nkeycolumns && index->unique)
 		return -1;
+
+	return prefixlen;
+}
+
+/*
+ * YB: yb_index_clauses_past_prefix
+ *
+ * Returns true when some of the 'index_clauses' reads an index column past the
+ * first 'prefixlen' columns.
+ */
+static bool
+yb_index_clauses_past_prefix(List *index_clauses, int prefixlen)
+{
+	ListCell   *lc;
+
+	foreach(lc, index_clauses)
+	{
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell   *lc2;
+
+		if (iclause->indexcol >= prefixlen)
+			return true;
+
+		foreach(lc2, iclause->indexcols)
+		{
+			if (lfirst_int(lc2) >= prefixlen)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * YB: yb_index_clauses_might_recheck
+ *
+ * Returns true when an index scan on 'index' with 'index_clauses' might
+ * recheck its index conditions, as the executor predetermines it.
+ */
+static bool
+yb_index_clauses_might_recheck(PlannerInfo *root, IndexOptInfo *index,
+							   List *index_clauses)
+{
+	IndexPath  *path = makeNode(IndexPath);
+	Relids		batched_relids = root->yb_cur_batched_relids;
+	bool		result;
+
+	path->path.pathtype = T_IndexScan;
+	path->path.parent = index->rel;
+	path->indexinfo = index;
+	path->indexclauses = index_clauses;
+
+	/*
+	 * Bind the clauses of a batched nested loop as the join clauses they come
+	 * from, because their batched form can be built only under the batched
+	 * nested loops that create_plan tracks.  Either form can leave a
+	 * condition on a batched column to the recheck, but a batched column is a
+	 * join column, which the relation's target list puts in the prefix.
+	 */
+	root->yb_cur_batched_relids = NULL;
+	result = yb_predetermine_index_path_recheck(root, path, T_IndexScan,
+												false /* xs_want_itup */ ,
+												NULL /* num_runtime_keys_p */ );
+	root->yb_cur_batched_relids = batched_relids;
+
+	return result;
+}
+
+/*
+ * YB: yb_calculate_distinct_prefixlen
+ *
+ * Returns the length of the distinct prefix of a distinct index scan on
+ * 'index' with 'index_clauses', as yb_get_distinct_prefixlen does.
+ *
+ * The prefix leaves out the columns that only index conditions read, because
+ * DocDB applies the index conditions before it skips to the next prefix value.
+ * A condition the scan leaves to the recheck is applied after the skip, so it
+ * can reject the one row DocDB returns for a prefix value while a skipped row
+ * would pass.  A condition that reads only prefix columns accepts all rows of
+ * a prefix value or none, because an index condition is never volatile.  The
+ * executor's predetermination says whether the scan might recheck, not which
+ * condition, so when it might and an index condition reads a column past the
+ * prefix, every index condition counts as a non-index predicate.
+ */
+int
+yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
+								List *index_clauses)
+{
+	int			prefixlen;
+
+	prefixlen = yb_get_distinct_prefixlen(root, index, index_clauses, true);
+	if (prefixlen >= 0 &&
+		yb_index_clauses_past_prefix(index_clauses, prefixlen) &&
+		yb_index_clauses_might_recheck(root, index, index_clauses))
+		prefixlen = yb_get_distinct_prefixlen(root, index, index_clauses,
+											  false);
 
 	return prefixlen;
 }

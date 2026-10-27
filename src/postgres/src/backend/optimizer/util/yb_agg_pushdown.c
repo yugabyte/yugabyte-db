@@ -24,17 +24,13 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
-#include "access/table.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
-#include "executor/nodeIndexscan.h"
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/appendinfo.h"
-#include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
@@ -68,11 +64,6 @@ static bool yb_scan_path_might_recheck(PlannerInfo *root, Path *scan);
 static bool yb_index_path_might_recheck(PlannerInfo *root, IndexPath *path,
 										bool index_only);
 static bool yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual);
-static bool yb_predetermine_index_path_recheck(PlannerInfo *root,
-											   IndexPath *path,
-											   NodeTag scan_tag,
-											   bool xs_want_itup,
-											   int *num_runtime_keys_p);
 
 /*
  * yb_agg_pushdown_eligible
@@ -812,146 +803,4 @@ yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual)
 
 	elog(ERROR, "unrecognized node type: %d", (int) nodeTag(bitmapqual));
 	return true;					/* keep compiler quiet */
-}
-
-/*
- * Run yb_index_might_recheck, which predetermines the recheck as the executor
- * does at scan init, on the inputs the executor derives from the plan built
- * for 'path'.  'scan_tag' is the plan node the executor passes as the Scan
- * (T_IndexScan, T_IndexOnlyScan or T_YbBitmapIndexScan) and 'xs_want_itup'
- * what that node passes.  *num_runtime_keys_p, when given, receives the
- * number of scan keys whose value is not a constant.
- *
- * YbPredetermineNeedsRecheck reads the index, the heap, the scan keys and two
- * fields of the Scan node, and the planner reproduces each of them:
- *
- * - The scan keys come from ExecIndexBuildScanKeys over the fixed index
- *   quals create_indexscan_plan hands the plan, with their opfuncids filled
- *   in as setrefs does before the executor sees them.  Its PlanState
- *   argument is only the parent of the ExprStates compiled for runtime
- *   keys.  An unparameterized path's right operands are Consts, Params or
- *   expressions over them, which compile without a parent; of the nodes an
- *   index condition can hold, only a SubPlan needs one, so a path carrying
- *   one is taken to recheck.  A runtime key holds (Datum) 0 at the
- *   executor's call too, so the few value-dependent tests see the same
- *   inputs.
- * - A stub Scan node, zero-filled apart from its tag and, for the two index
- *   scan tags, yb_merge_scan_info, stands in for the plan node.  Nothing
- *   else is read from it, and NULL would not do: a NULL Scan marks an
- *   internal scan, which is exempt from yb_test_skip_binding_scan_keys and
- *   skips the merge-scan pre-bind, and both of those make the executor's
- *   bind report a recheck.
- *
- * The relations are locked for planning already (plancat.c opens every index
- * of the rel at rellockmode), so NoLock is enough.  Everything allocated
- * here is thrown away with the temporary context.
- */
-static bool
-yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
-								   NodeTag scan_tag, bool xs_want_itup,
-								   int *num_runtime_keys_p)
-{
-	IndexOptInfo *index = path->indexinfo;
-	RangeTblEntry *rte = planner_rt_fetch(path->path.parent->relid, root);
-	bool		is_bitmap_leaf = (scan_tag == T_YbBitmapIndexScan);
-	List	   *stripped_indexquals;
-	List	   *fixed_indexquals;
-	Relation	heap;
-	Relation	indexrel;
-	ScanKey		scan_keys = NULL;
-	int			num_scan_keys = 0;
-	IndexRuntimeKeyInfo *runtime_keys = NULL;
-	int			num_runtime_keys = 0;
-	IndexArrayKeyInfo *array_keys = NULL;
-	int			num_array_keys = 0;
-	Scan	   *stub;
-	MemoryContext tmpcxt;
-	MemoryContext oldcxt;
-	bool		result;
-
-	Assert(path->path.param_info == NULL);
-
-	/* No Relation to run against; assume the worst, as yb_cost_index does. */
-	if (index->hypothetical)
-	{
-		if (num_runtime_keys_p)
-			*num_runtime_keys_p = 0;
-		return true;
-	}
-
-	tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
-								   "yb agg pushdown recheck",
-								   ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(tmpcxt);
-
-	yb_fix_indexqual_references(root, path, &stripped_indexquals,
-								&fixed_indexquals);
-
-	/*
-	 * A planner-built clause (a commuted or boolean-equality index qual)
-	 * still holds opfuncid = InvalidOid, which ScanKeyEntryInitialize
-	 * rejects; the fixed quals are fresh copies, so the fix-up is private.
-	 */
-	fix_opfuncids((Node *) fixed_indexquals);
-
-	if (contain_subplans((Node *) fixed_indexquals))
-		result = true;
-	else
-	{
-		heap = table_open(rte->relid, NoLock);
-		indexrel = index_open(index->indexoid, NoLock);
-
-		/*
-		 * Index Scan and Index Only Scan get no array-key slots: the planner
-		 * gives them a ScalarArrayOpExpr condition only on an index that
-		 * handles arrays natively.  A bitmap leaf may carry one on any index
-		 * and gets the slots, as nodeYbBitmapIndexscan.c passes them.
-		 */
-		ExecIndexBuildScanKeys(NULL /* planstate */ , indexrel,
-							   fixed_indexquals, false /* isorderby */ ,
-							   &scan_keys, &num_scan_keys,
-							   &runtime_keys, &num_runtime_keys,
-							   is_bitmap_leaf ? &array_keys : NULL,
-							   is_bitmap_leaf ? &num_array_keys : NULL);
-
-		switch (scan_tag)
-		{
-			case T_IndexScan:
-				{
-					IndexScan  *iscan = makeNode(IndexScan);
-
-					iscan->yb_merge_scan_info = yb_make_merge_scan_info(path);
-					stub = (Scan *) iscan;
-				}
-				break;
-			case T_IndexOnlyScan:
-				{
-					IndexOnlyScan *ioscan = makeNode(IndexOnlyScan);
-
-					ioscan->yb_merge_scan_info =
-						yb_make_merge_scan_info(path);
-					stub = (Scan *) ioscan;
-				}
-				break;
-			case T_YbBitmapIndexScan:
-				stub = (Scan *) makeNode(YbBitmapIndexScan);
-				break;
-			default:
-				elog(ERROR, "unrecognized node type: %d", (int) scan_tag);
-				stub = NULL;		/* keep compiler quiet */
-		}
-
-		result = yb_index_might_recheck(stub, heap, indexrel, xs_want_itup,
-										scan_keys, num_scan_keys);
-
-		index_close(indexrel, NoLock);
-		table_close(heap, NoLock);
-	}
-
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextDelete(tmpcxt);
-
-	if (num_runtime_keys_p)
-		*num_runtime_keys_p = num_runtime_keys;
-	return result;
 }

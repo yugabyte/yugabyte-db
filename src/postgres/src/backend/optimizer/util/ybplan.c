@@ -21,26 +21,33 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
+#include "access/table.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_catalog_version.h"
+#include "executor/nodeIndexscan.h"
 #include "executor/ybExpr.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
 #include "nodes/print.h"
+#include "optimizer/clauses.h"
+#include "optimizer/planmain.h"
 #include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/array.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -1132,4 +1139,179 @@ yb_get_federated_tserver_uuid_attno(Oid relid)
 						get_rel_name(relid))));
 
 	return attno;
+}
+
+/*
+ * Replace each Var of a relation other than the scanned relation '*relid',
+ * and each PlaceHolderVar, in index quals fixed by
+ * yb_fix_indexqual_references with a PARAM_EXEC Param of the same type.  The
+ * fixed quals read the index columns through INDEX_VAR Vars, except a
+ * yb_hash_code() index key, which keeps the scanned relation's Vars.
+ */
+static Node *
+yb_outer_refs_to_params_mutator(Node *node, Index *relid)
+{
+	if (node == NULL)
+		return NULL;
+	if ((IsA(node, Var) &&
+		 ((Var *) node)->varno != INDEX_VAR &&
+		 ((Var *) node)->varno != *relid) ||
+		IsA(node, PlaceHolderVar))
+	{
+		Param	   *param = makeNode(Param);
+
+		param->paramkind = PARAM_EXEC;
+		param->paramid = 0;
+		param->paramtype = exprType(node);
+		param->paramtypmod = exprTypmod(node);
+		param->paramcollid = exprCollation(node);
+		param->location = -1;
+		return (Node *) param;
+	}
+	return expression_tree_mutator(node, yb_outer_refs_to_params_mutator,
+								   (void *) relid);
+}
+
+/*
+ * Run yb_index_might_recheck, which predetermines the recheck as the executor
+ * does at scan init, on the inputs the executor derives from the plan built
+ * for 'path'.  'scan_tag' is the plan node the executor passes as the Scan
+ * (T_IndexScan, T_IndexOnlyScan or T_YbBitmapIndexScan) and 'xs_want_itup'
+ * what that node passes.  *num_runtime_keys_p, when given, receives the
+ * number of scan keys whose value is not a constant.
+ *
+ * YbPredetermineNeedsRecheck reads the index, the heap, the scan keys and two
+ * fields of the Scan node, and the planner reproduces each of them:
+ *
+ * - The scan keys come from ExecIndexBuildScanKeys over the fixed index
+ *   quals create_indexscan_plan hands the plan, with their opfuncids filled
+ *   in as setrefs does before the executor sees them.  Its PlanState
+ *   argument is only the parent of the ExprStates compiled for runtime
+ *   keys.  The references to other relations in a parameterized path's
+ *   quals become Params, as replace_nestloop_params makes them in the plan,
+ *   so the right operands are Consts, Params or expressions over them,
+ *   which compile without a parent; of the nodes an index condition can
+ *   hold, only a SubPlan needs one, so a path carrying one is taken to
+ *   recheck.  A runtime key holds (Datum) 0 at the executor's call too, so
+ *   the few value-dependent tests see the same inputs.
+ * - A stub Scan node, zero-filled apart from its tag and, for the two index
+ *   scan tags, yb_merge_scan_info, stands in for the plan node.  Nothing
+ *   else is read from it, and NULL would not do: a NULL Scan marks an
+ *   internal scan, which is exempt from yb_test_skip_binding_scan_keys and
+ *   skips the merge-scan pre-bind, and both of those make the executor's
+ *   bind report a recheck.
+ *
+ * The relations are locked for planning already (plancat.c opens every index
+ * of the rel at rellockmode), so NoLock is enough.  Everything allocated
+ * here is thrown away with the temporary context.
+ */
+bool
+yb_predetermine_index_path_recheck(PlannerInfo *root, IndexPath *path,
+								   NodeTag scan_tag, bool xs_want_itup,
+								   int *num_runtime_keys_p)
+{
+	IndexOptInfo *index = path->indexinfo;
+	RangeTblEntry *rte = planner_rt_fetch(path->path.parent->relid, root);
+	bool		is_bitmap_leaf = (scan_tag == T_YbBitmapIndexScan);
+	List	   *stripped_indexquals;
+	List	   *fixed_indexquals;
+	Relation	heap;
+	Relation	indexrel;
+	ScanKey		scan_keys = NULL;
+	int			num_scan_keys = 0;
+	IndexRuntimeKeyInfo *runtime_keys = NULL;
+	int			num_runtime_keys = 0;
+	IndexArrayKeyInfo *array_keys = NULL;
+	int			num_array_keys = 0;
+	Scan	   *stub;
+	MemoryContext tmpcxt;
+	MemoryContext oldcxt;
+	bool		result;
+
+	/* No Relation to run against; assume the worst, as yb_cost_index does. */
+	if (index->hypothetical)
+	{
+		if (num_runtime_keys_p)
+			*num_runtime_keys_p = 0;
+		return true;
+	}
+
+	tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
+								   "yb index path recheck",
+								   ALLOCSET_SMALL_SIZES);
+	oldcxt = MemoryContextSwitchTo(tmpcxt);
+
+	yb_fix_indexqual_references(root, path, &stripped_indexquals,
+								&fixed_indexquals);
+	fixed_indexquals = (List *)
+		yb_outer_refs_to_params_mutator((Node *) fixed_indexquals,
+										&path->path.parent->relid);
+
+	/*
+	 * A planner-built clause (a commuted or boolean-equality index qual)
+	 * still holds opfuncid = InvalidOid, which ScanKeyEntryInitialize
+	 * rejects; the fixed quals are fresh copies, so the fix-up is private.
+	 */
+	fix_opfuncids((Node *) fixed_indexquals);
+
+	if (contain_subplans((Node *) fixed_indexquals))
+		result = true;
+	else
+	{
+		heap = table_open(rte->relid, NoLock);
+		indexrel = index_open(index->indexoid, NoLock);
+
+		/*
+		 * Index Scan and Index Only Scan get no array-key slots: the planner
+		 * gives them a ScalarArrayOpExpr condition only on an index that
+		 * handles arrays natively.  A bitmap leaf may carry one on any index
+		 * and gets the slots, as nodeYbBitmapIndexscan.c passes them.
+		 */
+		ExecIndexBuildScanKeys(NULL /* planstate */ , indexrel,
+							   fixed_indexquals, false /* isorderby */ ,
+							   &scan_keys, &num_scan_keys,
+							   &runtime_keys, &num_runtime_keys,
+							   is_bitmap_leaf ? &array_keys : NULL,
+							   is_bitmap_leaf ? &num_array_keys : NULL);
+
+		switch (scan_tag)
+		{
+			case T_IndexScan:
+				{
+					IndexScan  *iscan = makeNode(IndexScan);
+
+					iscan->yb_merge_scan_info = yb_make_merge_scan_info(path);
+					stub = (Scan *) iscan;
+				}
+				break;
+			case T_IndexOnlyScan:
+				{
+					IndexOnlyScan *ioscan = makeNode(IndexOnlyScan);
+
+					ioscan->yb_merge_scan_info =
+						yb_make_merge_scan_info(path);
+					stub = (Scan *) ioscan;
+				}
+				break;
+			case T_YbBitmapIndexScan:
+				stub = (Scan *) makeNode(YbBitmapIndexScan);
+				break;
+			default:
+				elog(ERROR, "unrecognized node type: %d", (int) scan_tag);
+				stub = NULL;		/* keep compiler quiet */
+		}
+
+		result = yb_index_might_recheck(stub, heap, indexrel, xs_want_itup,
+										scan_keys, num_scan_keys);
+
+		index_close(indexrel, NoLock);
+		table_close(heap, NoLock);
+	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(tmpcxt);
+
+	if (num_runtime_keys_p)
+		*num_runtime_keys_p = num_runtime_keys;
+	return result;
 }

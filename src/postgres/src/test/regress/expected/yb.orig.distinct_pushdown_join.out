@@ -1215,3 +1215,150 @@ SELECT DISTINCT a1.h1 FROM th a1, th a2, th a3 where a1.h1 < a2.h1 and a2.h1 = a
 (0 rows)
 
 DROP TABLE th;
+-- An index clause that DocDB leaves to the recheck puts its column in the
+-- distinct prefix of a parameterized inner scan too, under a nested loop and
+-- a batched nested loop.  The legacy cost model picks a plain inner scan
+-- whatever the prefix, so the block runs under the CBO (#35029).
+SET yb_enable_cbo = on;
+SET yb_prefer_bnl = off;
+CREATE TABLE distinct_recheck_inner (g int, k int, j int, PRIMARY KEY (g ASC, k ASC, j ASC));
+INSERT INTO distinct_recheck_inner SELECT (i / 100) * 100, (i / 10) % 10, i % 10 FROM generate_series(0, 9999) i;
+ANALYZE distinct_recheck_inner;
+CREATE TABLE distinct_recheck_outer (x int PRIMARY KEY);
+INSERT INTO distinct_recheck_outer VALUES (0), (100), (200);
+ANALYZE distinct_recheck_outer;
+\set Q1 '/*+ NestLoop(o i) Leading((o i)) IndexScan(i) */'
+\set Q2 '/*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */'
+\unset Q3
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  Nested Loop (actual rows=15 loops=1)
+         ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
+         ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=5 loops=3)
+               Index Cond: ((g = o.x) AND (k > ANY ('{2,5}'::integer[])) AND (k < ANY ('{7,8}'::integer[])))
+               Rows Removed by Index Recheck: 5
+               Distinct Keys: i.g, i.k
+(8 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  YB Batched Nested Loop Join (actual rows=15 loops=1)
+         Join Filter: (o.x = i.g)
+         ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
+         ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=15 loops=1)
+               Index Cond: ((g = ANY (ARRAY[o.x, $1, $2, ..., $1023])) AND (k > ANY ('{2,5}'::integer[])) AND (k < ANY ('{7,8}'::integer[])))
+               Rows Removed by Index Recheck: 15
+               Distinct Keys: i.g, i.k
+(9 rows)
+
+/*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
+  g  
+-----
+   0
+ 200
+ 100
+(3 rows)
+
+/*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > ANY (ARRAY[2, 5]) AND i.k < ANY (ARRAY[7, 8]);
+(output identical to previous)
+-- DocDB binds a plain range, so the prefix stays (#35029).
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  Nested Loop (actual rows=3 loops=1)
+         ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
+         ->  Unique (actual rows=1 loops=3)
+               ->  Distinct Index Scan Backward using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=1 loops=3)
+                     Index Cond: ((g = o.x) AND (k > 2) AND (k < 7))
+                     Distinct Keys: i.g
+(8 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: (o.x = i.g)
+         ->  Seq Scan on distinct_recheck_outer o (actual rows=3 loops=1)
+         ->  Unique (actual rows=3 loops=1)
+               ->  Distinct Index Scan Backward using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=3 loops=1)
+                     Index Cond: ((g = ANY (ARRAY[o.x, $1, $2, ..., $1023])) AND (k > 2) AND (k < 7))
+                     Distinct Keys: i.g
+(9 rows)
+
+/*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
+  g  
+-----
+   0
+ 200
+ 100
+(3 rows)
+
+/*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer o JOIN distinct_recheck_inner i ON i.g = o.x WHERE i.k > 2 AND i.k < 7;
+(output identical to previous)
+-- Two batched join conditions bind as a row IN list, which leaves the IN list
+-- on k to the recheck, but k is a join column, so the prefix already holds it
+-- (#35029).
+CREATE TABLE distinct_recheck_outer2 (x int, y int);
+INSERT INTO distinct_recheck_outer2 VALUES (0, 1), (100, 2), (200, 3), (300, 4);
+ANALYZE distinct_recheck_outer2;
+\set query ':P :Q SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  Nested Loop (actual rows=3 loops=1)
+         ->  Seq Scan on distinct_recheck_outer2 o (actual rows=4 loops=1)
+         ->  Unique (actual rows=1 loops=4)
+               ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=1 loops=4)
+                     Index Cond: ((g = o.x) AND (k = o.y) AND (k = ANY ('{1,2,3}'::integer[])))
+                     Distinct Keys: i.g, i.k
+(8 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual rows=3 loops=1)
+   Group Key: i.g
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: ((o.x = i.g) AND (o.y = i.k))
+         ->  Seq Scan on distinct_recheck_outer2 o (actual rows=4 loops=1)
+         ->  Unique (actual rows=3 loops=1)
+               ->  Distinct Index Scan using distinct_recheck_inner_pkey on distinct_recheck_inner i (actual rows=3 loops=1)
+                     Index Cond: ((ROW(g, k) = ANY (ARRAY[ROW(o.x, o.y), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)])) AND (k = ANY ('{1,2,3}'::integer[])))
+                     Rows Removed by Index Recheck: 1
+                     Distinct Keys: i.g, i.k
+(10 rows)
+
+/*+ NestLoop(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);
+  g  
+-----
+ 100
+   0
+ 200
+(3 rows)
+
+/*+ YbBatchedNL(o i) Leading((o i)) IndexScan(i) */ SELECT DISTINCT i.g FROM distinct_recheck_outer2 o JOIN distinct_recheck_inner i ON i.g = o.x AND i.k = o.y WHERE i.k IN (1, 2, 3);
+(output identical to previous)
+DROP TABLE distinct_recheck_inner, distinct_recheck_outer, distinct_recheck_outer2;
