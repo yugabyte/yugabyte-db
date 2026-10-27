@@ -361,11 +361,11 @@ Default: `2000`
 
 ##### --max_stale_read_bound_time_ms
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 
 ##### --raft_heartbeat_interval_ms
 
@@ -790,11 +790,11 @@ Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'rea
 
 Default: `'read committed'`
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
+[Read Committed Isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
-Enables Read Committed isolation. By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/). By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter Snapshot isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
@@ -1940,7 +1940,7 @@ Default: 0 (disabled)
 
 ##### yb_read_from_followers
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 Default: false
 
@@ -1952,7 +1952,7 @@ Default: 30000 (30 seconds)
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 Default: false
 
