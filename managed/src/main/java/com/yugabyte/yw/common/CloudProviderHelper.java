@@ -28,7 +28,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -51,6 +50,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
@@ -1211,17 +1211,12 @@ public class CloudProviderHelper {
 
   /**
    * Nodes of a universe with federated IAM configured were set up from the provider's federation
-   * settings, so those settings, including turning federation off, cannot change under them.
-   * Turning it on is always allowed: no node can be using settings the provider does not have.
+   * settings, so those settings cannot change while any universe is marked configured: not turned
+   * off, not pointed elsewhere, and not turned back on with different targets for a universe still
+   * marked from before. The universe-level disable clears the mark without needing the targets.
    */
   private void checkFederatedIamNotInUse(Provider provider, Provider editProviderReq) {
-    List<CrossCloudFederationTarget> currentTargets =
-        CloudInfoInterface.getCrossCloudFederationTargets(provider);
-    if (currentTargets.isEmpty()
-        || new HashSet<>(currentTargets)
-            .equals(
-                new HashSet<>(
-                    CloudInfoInterface.getCrossCloudFederationTargets(editProviderReq)))) {
+    if (federationSettingsNodesUse(provider).equals(federationSettingsNodesUse(editProviderReq))) {
       return;
     }
     UUID providerUUID = provider.getUuid();
@@ -1245,6 +1240,16 @@ public class CloudProviderHelper {
                   + " cross cloud federated IAM on those universes first.",
               String.join(", ", federatedUniverses)));
     }
+  }
+
+  /** The federation settings a node is configured from: the audience, and the role ARN for S3. */
+  private static Set<List<Object>> federationSettingsNodesUse(Provider provider) {
+    return CloudInfoInterface.getCrossCloudFederationTargets(provider).stream()
+        .map(
+            t ->
+                Arrays.<Object>asList(
+                    t.targetCloud, t.audience, t.targetCloud == CloudType.aws ? t.roleArn : null))
+        .collect(Collectors.toSet());
   }
 
   private void checkCloudInfoFieldsInUseProvider(

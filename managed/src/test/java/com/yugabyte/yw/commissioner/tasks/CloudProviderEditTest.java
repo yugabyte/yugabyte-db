@@ -1208,11 +1208,37 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testInUseProviderCanEnableFederatedIam() throws InterruptedException {
-    // Even a universe still marked from before federation was turned off does not block it.
     Universe universe = ModelFactory.createUniverse("univ", defaultCustomer.getId());
-    setFederationConfigured(universe, true);
+    setFederationConfigured(universe, false);
 
     // The universes opt in afterwards, through the universe-level enable.
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    waitForTask(doEditProvider(p, false));
+  }
+
+  @Test
+  public void testInUseProviderEnableBlockedByUniverseStillMarkedFederated() {
+    // Marked from before federation was turned off: its nodes hold credentials for old targets.
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    Provider p = Provider.getOrBadRequest(provider.getUuid());
+    setAwsFederation(p, true, AUDIENCE);
+    verifyEditError(p, false, FEDERATED_IAM_IN_USE_ERROR);
+  }
+
+  @Test
+  public void testInUseProviderFederatedIamIgnoresFieldsNodesDoNotUse()
+      throws InterruptedException {
+    setAwsFederation(provider, true, AUDIENCE);
+    provider.getDetails().getCloudInfo().aws.crossCloudFederationTargets.get(0).roleArn =
+        "arn:aws:iam::123456789012:role/unused";
+    provider.save();
+    Universe universe = ModelFactory.createUniverse("federated-univ", defaultCustomer.getId());
+    setFederationConfigured(universe, true);
+
+    // The edit form sends the gcp target without a role ARN, which no node reads.
     Provider p = Provider.getOrBadRequest(provider.getUuid());
     setAwsFederation(p, true, AUDIENCE);
     waitForTask(doEditProvider(p, false));
