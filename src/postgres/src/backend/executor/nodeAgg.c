@@ -2144,10 +2144,12 @@ lookup_hash_entries(AggState *aggstate)
  * Legacy cost model only: this decides for an Agg marked
  * YB_AGG_PUSHDOWN_BY_EXECUTOR (see YbAggPushdownDecision).  Under the YB
  * cost model the planner decides on the paths (yb_agg_pushdown_eligible)
- * and ExecInitAgg takes its answer unless the scan might recheck; the
+ * and ExecInitAgg takes its answer unless the scan might recheck.  The
  * per-Aggref rules are the planner's (yb_aggref_function_pushable,
- * yb_aggref_arg_type_pushable).  Remove with the legacy cost model modes,
- * together with the code marked the same way.
+ * yb_aggref_arg_type_pushable); yb_agg_pushdown_eligible repeats the others
+ * on the paths.  The two copies stay apart so that a change to the
+ * planner's rules leaves the legacy modes' decisions alone.  Remove with
+ * the legacy cost model modes, together with the code marked the same way.
  */
 static void
 yb_agg_pushdown_supported(AggState *aggstate)

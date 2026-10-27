@@ -86,15 +86,23 @@ static bool yb_predetermine_index_path_recheck(PlannerInfo *root,
  * distinct Aggref (yb_agg_pushdown_aggrefs), with their arguments over the
  * scan's relation (yb_aggrefs_below_appendrel, yb_aggrefs_below_subqueryscan).
  *
- * A true answer is a commitment: create_agg_path marks the AggPath, the Agg
- * plan node carries the mark, and the executor hands the Aggrefs to the scan
- * without re-checking anything.  So every rule here must hold for the plan
- * that createplan.c builds from this path.  The scan must end up with no
- * qual (nothing can be evaluated on a pushed-down aggregate row, and a
- * pseudoconstant clause would put a gating Result between the Agg and the
- * scan), and an index scan must never recheck its conditions (the recheck
- * would run against that row).  Each local-qual derivation below mirrors
- * the plan builder that fills the scan node's qual; keep them in step.
+ * A true answer marks the AggPath, and the Agg plan node carries the mark.
+ * The scan must end up with no qual (nothing can be evaluated on a
+ * pushed-down aggregate row, and a pseudoconstant clause would put a gating
+ * Result between the Agg and the scan), and an index scan must never
+ * recheck its conditions (the recheck would run against that row).  The
+ * planner predicts both from the paths, before any plan exists: each
+ * local-qual derivation below mirrors the plan builder that fills the scan
+ * node's qual, and the recheck predetermination runs the index AM's check on
+ * the inputs the executor will build.  A prediction that misses costs only
+ * estimate accuracy, because the mark is withdrawn: by create_agg_plan when
+ * a plan node ends up between the Agg and the scan or the built scan has a
+ * qual (yb_agg_pushdown_subplan_ok), and by ExecInitAgg when the index AM
+ * reports a possible recheck at init.
+ *
+ * yb_agg_pushdown_supported (nodeAgg.c) applies the same rules, apart from
+ * the shared per-Aggref ones, to the initialized scan state of an Agg the
+ * executor decides; it says why the two copies stay apart.
  *
  * The aggregate rules are a walk over 'aggrefs' and run first; the
  * local-qual derivation of an index path copies its index quals, and the
@@ -811,7 +819,8 @@ yb_bitmap_path_might_recheck(PlannerInfo *root, Path *bitmapqual)
  * node passes.
  *
  * YbPredetermineNeedsRecheck reads the index, the heap, the scan keys and two
- * fields of the Scan node, and the planner reproduces each of them:
+ * fields of the Scan node, which the executor builds at scan init rather
+ * than anything the planner holds, so the planner reproduces each of them:
  *
  * - The scan keys come from ExecIndexBuildScanKeys over the fixed index
  *   quals create_indexscan_plan hands the plan, with their opfuncids filled
