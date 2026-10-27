@@ -181,8 +181,7 @@ class XClusterClientCertificatesITest : public XClusterExternalMiniClusterITest 
   // EMC daemons use 127.0.0.2, which every test CA has a node certificate for. The test process
   // and the admin tools use 127.0.0.100.
   Result<std::unique_ptr<ExternalMiniCluster>> SetupSecureCluster(
-      const std::string& id, const UniverseCerts& certs,
-      const std::string& certs_for_cdc_dir = "") {
+      const std::string& id, const UniverseCerts& certs, const std::string& certs_for_cdc_dir) {
     ExternalMiniClusterOptions opts;
     opts.cluster_id = id;
     opts.num_masters = 1;
@@ -242,7 +241,7 @@ class XClusterClientCertificatesITest : public XClusterExternalMiniClusterITest 
   // certificate from client_cert_dir if it is not empty, and checks rows replicate.
   void TestReplication(
       const UniverseCerts& producer_certs, const UniverseCerts& consumer_certs,
-      const std::string& client_cert_dir = "") {
+      const std::string& client_cert_dir) {
     auto* env = Env::Default();
     const auto certs_for_cdc_dir = JoinPathSegments(GetTestDataDirectory(), "certs_for_cdc");
     const auto group_certs_dir = JoinPathSegments(certs_for_cdc_dir, kReplicationGroupId);
@@ -258,7 +257,8 @@ class XClusterClientCertificatesITest : public XClusterExternalMiniClusterITest 
       }
     }
 
-    producer_cluster_ = ASSERT_RESULT(SetupSecureCluster("producer", producer_certs));
+    producer_cluster_ = ASSERT_RESULT(
+        SetupSecureCluster("producer", producer_certs, /* certs_for_cdc_dir= */ ""));
     consumer_cluster_ =
         ASSERT_RESULT(SetupSecureCluster("consumer", consumer_certs, certs_for_cdc_dir));
 
@@ -277,11 +277,14 @@ class XClusterClientCertificatesITest : public XClusterExternalMiniClusterITest 
     ASSERT_OK(InsertRow(1));
     ASSERT_OK(WaitForRows(1));
 
-    // The tserver reloads the certificates of its clients of the source universe too.
-    auto ts_addr = consumer_cluster_->tablet_server(0)->bound_rpc_addr();
-    ASSERT_OK(Subprocess::Call(ToStringVector(
-        GetToolPath("yb-ts-cli"), "--server_address", ts_addr, "--certs_dir_name",
-        consumer_certs.certs_dir, "--client_node_name", kToolNodeName, "reload_certificates")));
+    // Servers reload the certificates of their clients of the source universe too.
+    for (const auto& addr :
+         {consumer_cluster_->master()->bound_rpc_addr(),
+          consumer_cluster_->tablet_server(0)->bound_rpc_addr()}) {
+      ASSERT_OK(Subprocess::Call(ToStringVector(
+          GetToolPath("yb-ts-cli"), "--server_address", addr, "--certs_dir_name",
+          consumer_certs.certs_dir, "--client_node_name", kToolNodeName, "reload_certificates")));
+    }
 
     ASSERT_OK(InsertRow(2));
     ASSERT_OK(WaitForRows(2));
@@ -302,13 +305,15 @@ class XClusterClientCertificatesITest : public XClusterExternalMiniClusterITest 
 TEST_F(XClusterClientCertificatesITest, BothSides) {
   TestReplication(
       {.certs_dir = CA1Dir(), .use_client_certs = true},
-      {.certs_dir = CA1Dir(), .use_client_certs = true});
+      {.certs_dir = CA1Dir(), .use_client_certs = true},
+      /* client_cert_dir= */ "");
 }
 
 TEST_F(XClusterClientCertificatesITest, TargetOnly) {
   TestReplication(
       {.certs_dir = CA1Dir(), .use_client_certs = false},
-      {.certs_dir = CA1Dir(), .use_client_certs = true});
+      {.certs_dir = CA1Dir(), .use_client_certs = true},
+      /* client_cert_dir= */ "");
 }
 
 // The target does not send client certificates on its own, so it needs one placed for the source.

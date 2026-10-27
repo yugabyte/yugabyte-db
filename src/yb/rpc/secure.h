@@ -48,8 +48,8 @@ Result<std::unique_ptr<SecureContext>> SetupInternalSecureContext(
 Result<std::unique_ptr<SecureContext>> SetupRemoteUniverseSecureContext(
     const std::string& remote_certs_dir, MessengerBuilder* builder);
 
-// Reloads the CA and certificate SetupRemoteUniverseSecureContext would pick now. Whether a
-// certificate is presented at all stays as it was when the context was created.
+// Reloads the CA and certificate SetupRemoteUniverseSecureContext would pick now, including
+// whether to present one at all, for connections opened afterwards.
 Status ReloadRemoteUniverseSecureContext(
     SecureContext* context, const std::string& remote_certs_dir);
 

@@ -25,12 +25,17 @@
 #include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -231,6 +236,49 @@ TEST_F_EX(
   auto rpc_tasks = ASSERT_RESULT(
       master::XClusterRpcTasks::CreateWithMasterAddrs(kReplicationGroupId, master_addrs));
   ASSERT_OK(rpc_tasks->GetTableLocations(table_->id()));
+}
+
+// With client certificates off locally, a certificate placed for the remote universe after the
+// context was created is presented once the context is reloaded.
+TEST_F_EX(
+    SecureConnectionTest, RemoteUniverseClientCertificatePlacedLater,
+    SecureConnectionRemoteUniverseClientTest) {
+  // The cluster keeps requiring client certificates; contexts created from now on act as a
+  // universe that does not send them on its own.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = false;
+
+  auto* env = Env::Default();
+  const auto remote_certs_dir = JoinPathSegments(GetTestDataDirectory(), "remote_certs");
+  ASSERT_OK(env->CreateDirs(remote_certs_dir));
+  ASSERT_OK(env_util::CopyFile(
+      env, JoinPathSegments(FLAGS_certs_dir, "ca.crt"),
+      JoinPathSegments(remote_certs_dir, "ca.crt")));
+
+  auto messenger_builder = CreateMiniClusterMessengerBuilder();
+  auto secure_context = ASSERT_RESULT(
+      rpc::SetupRemoteUniverseSecureContext(remote_certs_dir, &messenger_builder));
+  auto messenger = ASSERT_RESULT(messenger_builder.Build());
+  auto se = ScopeExit([&messenger] { messenger->Shutdown(); });
+  rpc::ProxyCache proxy_cache(messenger.get());
+  server::GenericServiceProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+  auto ping = [&proxy] {
+    server::PingRequestPB req;
+    server::PingResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(2s);
+    return proxy.Ping(req, &resp, &controller);
+  };
+  ASSERT_NOK(ping());
+
+  // Each server's certificate, so the one named after the local node is among them.
+  for (const auto& file : ASSERT_RESULT(env->GetChildren(FLAGS_certs_dir, ExcludeDots::kTrue))) {
+    if (file.starts_with("node.")) {
+      ASSERT_OK(env_util::CopyFile(
+          env, JoinPathSegments(FLAGS_certs_dir, file), JoinPathSegments(remote_certs_dir, file)));
+    }
+  }
+  ASSERT_OK(rpc::ReloadRemoteUniverseSecureContext(secure_context.get(), remote_certs_dir));
+  ASSERT_OK(ping());
 }
 
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {

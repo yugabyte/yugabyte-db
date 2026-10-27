@@ -137,7 +137,8 @@ struct RemoteUniverseCertificates {
 // the operator knows whether the remote universe trusts the local CA. Without one, the local node
 // certificate is presented only when client certificates are on: presenting a certificate the
 // remote does not trust fails the handshake even when the remote does not require one.
-RemoteUniverseCertificates GetRemoteUniverseCertificates(const std::string& remote_certs_dir) {
+Result<RemoteUniverseCertificates> GetRemoteUniverseCertificates(
+    const std::string& remote_certs_dir) {
   auto local = LocalNodeCertificate();
   RemoteUniverseCertificates result;
   if (!remote_certs_dir.empty()) {
@@ -147,16 +148,17 @@ RemoteUniverseCertificates GetRemoteUniverseCertificates(const std::string& remo
   } else {
     result.ca_dir = CertsDir(/* root_dir= */ "", SecureContextType::kInternal);
   }
-  if (!local) {
-    return result;
-  }
 
-  if (!remote_certs_dir.empty() &&
+  if (local && !remote_certs_dir.empty() &&
       Env::Default()->FileExists(
           JoinPathSegments(remote_certs_dir, Format(FLAGS_cert_file_pattern, local->node_name)))) {
     result.cert_dir = remote_certs_dir;
     result.node_name = local->node_name;
   } else if (FLAGS_node_to_node_encryption_use_client_certificates) {
+    SCHECK_FORMAT(
+        local, IllegalState,
+        "Client certificates requested for the universe with CA in $0, but this process has not "
+        "loaded a node certificate", result.ca_dir);
     result.cert_dir = local->certs_dir;
     result.node_name = local->node_name;
   }
@@ -195,9 +197,10 @@ Result<std::unique_ptr<SecureContext>> SetupInternalSecureContext(
   auto context = VERIFY_RESULT(rpc::SetupSecureContext(
       root_dir, node_name, SecureContextType::kInternal, messenger_builder));
   if (context) {
-    std::lock_guard lock(local_node_certificate_mutex);
-    local_node_certificate = NodeCertificateLocation{
+    NodeCertificateLocation location{
         .certs_dir = CertsDir(root_dir, SecureContextType::kInternal), .node_name = node_name};
+    std::lock_guard lock(local_node_certificate_mutex);
+    local_node_certificate = std::move(location);
   }
   return context;
 }
@@ -302,13 +305,8 @@ Result<std::unique_ptr<SecureContext>> SetupRemoteUniverseSecureContext(
     return nullptr;
   }
 
-  auto certs = GetRemoteUniverseCertificates(remote_certs_dir);
+  auto certs = VERIFY_RESULT(GetRemoteUniverseCertificates(remote_certs_dir));
   auto use_client_certs = !certs.node_name.empty();
-  SCHECK_FORMAT(
-      use_client_certs || !FLAGS_node_to_node_encryption_use_client_certificates, IllegalState,
-      "Client certificates requested for the universe with CA in $0, but this process has not "
-      "loaded a node certificate", certs.ca_dir);
-
   auto context = std::make_unique<SecureContext>(
       RequireClientCertificate(use_client_certs), UseClientCertificate(use_client_certs),
       FLAGS_node_to_node_encryption_required_uid);
@@ -320,8 +318,13 @@ Result<std::unique_ptr<SecureContext>> SetupRemoteUniverseSecureContext(
 
 Status ReloadRemoteUniverseSecureContext(
     SecureContext* context, const std::string& remote_certs_dir) {
-  auto certs = GetRemoteUniverseCertificates(remote_certs_dir);
-  return LoadKeysAndCertificates(context, certs.ca_dir, certs.cert_dir, certs.node_name);
+  auto certs = VERIFY_RESULT(GetRemoteUniverseCertificates(remote_certs_dir));
+  RETURN_NOT_OK(
+      LoadKeysAndCertificates(context, certs.ca_dir, certs.cert_dir, certs.node_name));
+  // Placing or removing a certificate beside the remote CA turns presenting one on or off. Load
+  // first, so a context that starts presenting already holds the new pair.
+  context->SetUseClientCertificate(UseClientCertificate(!certs.node_name.empty()));
+  return Status::OK();
 }
 
 }  // namespace rpc
