@@ -82,6 +82,9 @@ typedef struct FixedParallelExecutorState
 	dsa_pointer param_exec;
 	int			eflags;
 	int			jit_flags;
+
+	/* YB fields */
+	uint64_t	yb_in_txn_limit_ht;	/* leader's in_txn_limit for reads */
 } FixedParallelExecutorState;
 
 /*
@@ -754,6 +757,14 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 	fpes->jit_flags = estate->es_jit_flags;
 	shm_toc_insert(pcxt->toc, PARALLEL_KEY_EXECUTOR_FIXED, fpes);
 
+	/*
+	 * YB: A statement reads its transaction's own writes at one in_txn_limit.
+	 * Each worker builds its own EState, so without this it would pick a
+	 * limit of its own on its first read. Zero means the leader has not
+	 * picked one yet.
+	 */
+	fpes->yb_in_txn_limit_ht = estate->yb_es_in_txn_limit_ht_for_reads;
+
 	/* Store query string */
 	query_string = shm_toc_allocate(pcxt->toc, query_len + 1);
 	memcpy(query_string, estate->es_sourceText, query_len + 1);
@@ -932,6 +943,9 @@ ExecParallelReinitialize(PlanState *planstate,
 	pei->finished = false;
 
 	fpes = shm_toc_lookup(pei->pcxt->toc, PARALLEL_KEY_EXECUTOR_FIXED, false);
+
+	/* YB: The leader may have picked its in_txn_limit in the last round. */
+	fpes->yb_in_txn_limit_ht = estate->yb_es_in_txn_limit_ht_for_reads;
 
 	/* Free any serialized parameters from the last round. */
 	if (DsaPointerIsValid(fpes->param_exec))
@@ -1458,6 +1472,9 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 	/* Start up the executor */
 	queryDesc->plannedstmt->jitFlags = fpes->jit_flags;
 	ExecutorStart(queryDesc, fpes->eflags);
+
+	/* YB: Read own writes at the leader's in_txn_limit. */
+	queryDesc->estate->yb_es_in_txn_limit_ht_for_reads = fpes->yb_in_txn_limit_ht;
 
 	/* Special executor initialization steps for parallel workers */
 	queryDesc->planstate->state->es_query_dsa = area;
