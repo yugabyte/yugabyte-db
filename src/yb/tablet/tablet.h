@@ -198,9 +198,6 @@ struct TierReconcileResult {
   size_t scheduled = 0;
   // status.state differs from what it was before the pass.
   bool state_changed = false;
-  // The target changed between the scan and the verdict on it, so the scan was discarded: nothing
-  // scheduled, nothing declared, candidates reported as 0. The next pass works on the new target.
-  bool target_changed = false;
   // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
   bool awaiting_post_split_compaction = false;
 };
@@ -801,7 +798,8 @@ class Tablet : public AbstractTablet,
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
   // the superblock write but still re-points the DB and resets the migration status.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
-  // (TSTabletManager::SelectPathIdForTier).
+  // (TSTabletManager::SelectPathIdForTier). Does not check for a pass in flight; AlterTabletTier,
+  // the production caller, does.
   Status SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id);
 
   // Tiered storage. Starts one migration pass toward the persisted target: schedules a DB path
@@ -822,8 +820,11 @@ class Tablet : public AbstractTablet,
   // Tiered storage. Snapshot of the migration status; no DB scan.
   TierMigrationStatus tier_migration_status() const;
 
-  // SetTierMigrationTarget followed by StartTierMigrationPass, except that a pass already in
-  // flight is not an error: the result then describes that pass. Backs the AlterTabletTier RPC.
+  // SetTierMigrationTarget followed by StartTierMigrationPass. Backs the AlterTabletTier RPC.
+  // While a pass is in flight, the same target is not an error (a re-delivered request): the
+  // result describes that pass. A different target is refused with ServiceUnavailable and nothing
+  // is persisted: the moves cannot be cancelled, so accepting it would leave the pass copying to a
+  // disk that is no longer the target and booking its outcome against the new one.
   Result<TierMigrationStatus> AlterTabletTier(
       const std::string& target_tier, uint32_t target_path_id);
 
@@ -1389,6 +1390,10 @@ class Tablet : public AbstractTablet,
   // i.e. file numbers of live regular-DB SSTs not under target_dir.
   std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
 
+  // Tiered storage: SetTierMigrationTarget with tier_target_mutex_ already held.
+  Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
+      REQUIRES(tier_target_mutex_);
+
   // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
   Result<TierReconcileResult> RunTierMigrationPass(
       const TierReconcileOptions& options, ReconcilerPass reconciler_pass);
@@ -1773,10 +1778,13 @@ class Tablet : public AbstractTablet,
   TierMigrationStatus tier_migration_status_ GUARDED_BY(tier_migration_mutex_);
   std::shared_ptr<TierMigrationHooks> tier_migration_hooks_;
 
-  // Tiered storage: serializes SetTierMigrationTarget's check + superblock write + SetOptions so
-  // the persisted target and the regular DB's target_path_id cannot diverge. Deliberately not
-  // tier_migration_mutex_: that one is taken by every move callback and by GetTierInfo, and must
-  // not be held across a superblock flush or a SetOptions call.
+  // Tiered storage: serializes the target write (SetTierMigrationTarget's check + superblock
+  // write + SetOptions, so the persisted target and the regular DB's target_path_id cannot
+  // diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
+  // pass_in_flight = true), so a pass always runs toward the current persisted target. Taken
+  // before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_: that
+  // one is taken by every move callback and by GetTierInfo, and must not be held across a
+  // superblock flush or a SetOptions call.
   std::mutex tier_target_mutex_;
 
   // Pointer to shared admin triggered thread pool in TsTabletManager.
