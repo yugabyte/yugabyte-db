@@ -1741,10 +1741,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     markOperatorOwned(universeUuid);
     assertTrue(commissioner.isRollbackBlockedByOperator(universeTask));
-    // A task on a part of the universe follows its ownership as well.
+    // An edit of one of its clusters follows its ownership as well.
     assertTrue(
         commissioner.isRollbackBlockedByOperator(customerTaskFor(CustomerTask.TargetType.Cluster)));
-    assertTrue(
+    // A node action has the universe as the target, but is not an edit the operator re-applies.
+    assertFalse(
         commissioner.isRollbackBlockedByOperator(customerTaskFor(CustomerTask.TargetType.Node)));
     // A DR config task has its source universe as the target, but is not an edit of it.
     assertFalse(
