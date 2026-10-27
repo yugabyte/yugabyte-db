@@ -65,7 +65,7 @@ public class LocalYBClientService implements YBClientService {
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsDebugThresholdNs))
             .dnsWarningThresholdNs(
                 confGetter.getGlobalConf(GlobalConfKeys.ybClientDnsWarningThresholdNs));
-    // Present a client cert only where one was synced, i.e. for universes that require one.
+    // Present a client cert for CAs with a valid synced copy.
     CertManagerClientCertSync.getClientCertFiles(config.getCertFile())
         .ifPresent(pair -> builder.sslClientCertFiles(pair.getLeft(), pair.getRight()));
     return builder.build();

@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -52,6 +53,8 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -808,7 +811,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         TaskType.SyncCertManagerClientCert,
         taskTypes.get(taskTypes.indexOf(TaskType.WaitForServer) - 1));
-    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isPresent());
+    assertEquals(
+        "pem",
+        Files.readString(
+            Paths.get(caCertFile)
+                .resolveSibling(CertManagerClientCertSync.CLIENT_CERT_SUBDIR)
+                .resolve(CertificateHelper.CLIENT_CERT)));
   }
 
   @Test

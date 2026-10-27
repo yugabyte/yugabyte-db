@@ -13,10 +13,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -119,6 +122,10 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   }
 
   private static Pair<String, String> newCertPem(Duration validFor) throws Exception {
+    return newCertPem(Instant.now().plus(validFor));
+  }
+
+  private static Pair<String, String> newCertPem(Instant notAfter) throws Exception {
     KeyPair keyPair = CertificateHelper.getKeyPairObject();
     X500Name subject = new X500Name("CN=yugabyte");
     Instant now = Instant.now();
@@ -128,8 +135,8 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
                 new JcaX509v3CertificateBuilder(
                         subject,
                         BigInteger.valueOf(now.toEpochMilli()),
-                        Date.from(now.minus(Duration.ofDays(1))),
-                        Date.from(now.plus(validFor)),
+                        Date.from(now.minus(Duration.ofDays(100))),
+                        Date.from(notAfter),
                         subject,
                         keyPair.getPublic())
                     .build(
@@ -152,6 +159,22 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     Files.createDirectories(clientDir);
     Files.writeString(clientDir.resolve(CertificateHelper.CLIENT_CERT), pem.getLeft());
     Files.writeString(clientDir.resolve(CertificateHelper.CLIENT_KEY), pem.getRight());
+  }
+
+  private static RuntimeException secretNotFound() {
+    return new RuntimeException(
+        "Unable to get secret. Code: 1. Output: Error from server (NotFound): secrets"
+            + " \"x-client-tls\" not found");
+  }
+
+  private void dropFlag() {
+    universe =
+        setDetails(
+            d ->
+                d.getPrimaryCluster()
+                    .userIntent
+                    .tserverGFlags
+                    .remove(CertManagerClientCertSync.USE_CLIENT_CERTS_GFLAG));
   }
 
   private String localCert() throws Exception {
@@ -177,6 +200,12 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     // A cert without its key is not usable.
     Files.createDirectories(clientDir);
     Files.writeString(clientDir.resolve(CertificateHelper.CLIENT_CERT), "cert");
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+  }
+
+  @Test
+  public void testExpiredClientCertNotPresented() throws Exception {
+    writeLocal(newCertPem(Instant.now().minus(Duration.ofDays(1))));
     assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
   }
 
@@ -216,6 +245,24 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   }
 
   @Test
+  public void testClientCertRequiredByAzGFlags() {
+    dropFlag();
+    universe =
+        setDetails(
+            d -> {
+              UserIntent intent = d.getPrimaryCluster().userIntent;
+              intent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of());
+              PerProcessFlags azFlags = new PerProcessFlags();
+              azFlags.value =
+                  Map.of(
+                      ServerType.TSERVER,
+                      Map.of(CertManagerClientCertSync.USE_CLIENT_CERTS_GFLAG, "true"));
+              intent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
+            });
+    assertTrue(CertManagerClientCertSync.isClientCertRequired(universe));
+  }
+
+  @Test
   public void testSecretName() {
     universe = setDetails(d -> d.useNewHelmNamingStyle = false);
     assertEquals(
@@ -242,10 +289,46 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
 
   @Test
   public void testSyncTimesOutWithoutSecret() throws Exception {
-    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
-        .thenThrow(new RuntimeException("NotFound"));
-    assertThrows(RuntimeException.class, () -> certSync.sync(universe, Duration.ZERO));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenThrow(secretNotFound());
+    RuntimeException e =
+        assertThrows(RuntimeException.class, () -> certSync.sync(universe, Duration.ZERO));
+    assertTrue(e.getMessage(), e.getMessage().startsWith("Timed out"));
+    assertTrue(e.getCause() == null);
     assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isEmpty());
+  }
+
+  @Test
+  public void testSyncTimeoutReportsReadError() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenThrow(new RuntimeException("Forbidden"));
+    RuntimeException e =
+        assertThrows(RuntimeException.class, () -> certSync.sync(universe, Duration.ZERO));
+    assertTrue(e.getMessage(), e.getMessage().endsWith(": Forbidden"));
+    assertEquals("Forbidden", e.getCause().getMessage());
+  }
+
+  @Test
+  public void testSyncRewritesMismatchedKey() throws Exception {
+    Pair<String, String> pem = newCertPem(Duration.ofDays(90));
+    writeLocal(Pair.of(pem.getLeft(), "stale-key"));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
+
+    certSync.sync(universe, Duration.ZERO);
+
+    assertEquals(pem.getRight(), Files.readString(clientDir.resolve(CertificateHelper.CLIENT_KEY)));
+  }
+
+  @Test
+  public void testRefreshRestoresMissingKey() throws Exception {
+    Pair<String, String> pem = newCertPem(Duration.ofDays(90));
+    writeLocal(pem);
+    Files.delete(clientDir.resolve(CertificateHelper.CLIENT_KEY));
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
+
+    certSync.refreshIfNeeded(universe);
+
+    assertEquals(pem.getRight(), Files.readString(clientDir.resolve(CertificateHelper.CLIENT_KEY)));
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isPresent());
   }
 
   @Test
@@ -273,17 +356,41 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
 
   @Test
   public void testRefreshSkippedWhenNotRequired() throws Exception {
-    universe =
-        setDetails(
-            d ->
-                d.getPrimaryCluster()
-                    .userIntent
-                    .tserverGFlags
-                    .remove(CertManagerClientCertSync.USE_CLIENT_CERTS_GFLAG));
+    dropFlag();
 
     certSync.refreshIfNeeded(universe);
 
     verify(mockKubernetesManager, never()).getSecret(any(), anyString(), any());
+  }
+
+  @Test
+  public void testRefreshRemovesUnusedCopy() throws Exception {
+    writeLocal(newCertPem(Duration.ofDays(90)));
+    dropFlag();
+
+    certSync.refreshIfNeeded(universe);
+
+    assertFalse(Files.exists(clientDir));
+  }
+
+  @Test
+  public void testRefreshKeepsCopyUsedByAnotherUniverse() throws Exception {
+    writeLocal(newCertPem(Duration.ofDays(90)));
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    Universe other = ModelFactory.createUniverse("other-universe", customer.getId());
+    Universe.saveDetails(
+        other.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.clusters = details.clusters;
+          d.rootCA = details.rootCA;
+          u.setUniverseDetails(d);
+        });
+    dropFlag();
+
+    certSync.refreshIfNeeded(universe);
+
+    assertTrue(CertManagerClientCertSync.getClientCertFiles(caCertFile).isPresent());
   }
 
   @Test

@@ -12,10 +12,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -24,18 +24,21 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -69,9 +72,17 @@ public class CertManagerClientCertSync {
 
   /**
    * Returns the client cert and key to present for connections that trust caCertFile, if a copy has
-   * been synced for that CA.
+   * been synced for that CA and is currently valid.
+   *
+   * <p>The copy is per CA, so every universe on that CA presents it, including ones that don't
+   * require a client cert. That is harmless while the cert is valid, but those servers still verify
+   * a presented cert and would reject an expired one, so an expired copy is never presented.
    */
   public static Optional<Pair<String, String>> getClientCertFiles(@Nullable String caCertFile) {
+    return getLocalPair(caCertFile).filter(pair -> isValidAt(pair.getLeft(), Instant.now()));
+  }
+
+  private static Optional<Pair<String, String>> getLocalPair(@Nullable String caCertFile) {
     if (StringUtils.isBlank(caCertFile)) {
       return Optional.empty();
     }
@@ -95,10 +106,16 @@ public class CertManagerClientCertSync {
     if (!primary.userIntent.enableNodeToNodeEncrypt || details.rootCA == null) {
       return false;
     }
+    // A null AZ reads the cluster-level gflags; per-AZ overrides can also set the flag.
+    Set<UUID> azUuids = new HashSet<>(primary.placementInfo.getAllAZUUIDs());
+    azUuids.add(null);
     boolean flagSet = false;
-    for (ServerType serverType : new ServerType[] {ServerType.MASTER, ServerType.TSERVER}) {
-      Map<String, String> gflags = GFlagsUtil.getBaseGFlags(serverType, primary, details.clusters);
-      flagSet |= Boolean.parseBoolean(gflags.getOrDefault(USE_CLIENT_CERTS_GFLAG, "false"));
+    for (UUID azUuid : azUuids) {
+      for (ServerType serverType : new ServerType[] {ServerType.MASTER, ServerType.TSERVER}) {
+        Map<String, String> gflags =
+            GFlagsUtil.getGFlagsForAZ(azUuid, serverType, primary, details.clusters);
+        flagSet |= Boolean.parseBoolean(gflags.getOrDefault(USE_CLIENT_CERTS_GFLAG, "false"));
+      }
     }
     return flagSet
         && CertificateInfo.maybeGet(details.rootCA)
@@ -108,12 +125,24 @@ public class CertManagerClientCertSync {
 
   /**
    * Copies the client cert from the universe's Secret, waiting up to timeout for cert-manager to
-   * fill it in. Throws if the Secret is not ready by then.
+   * fill it in. Errors other than a missing Secret are retried too, in case they are transient, and
+   * the last one is the cause of the timeout.
    */
   public void sync(Universe universe, Duration timeout) {
     Instant deadline = Instant.now().plus(timeout);
+    Exception lastError = null;
     while (true) {
-      Optional<Pair<String, String>> pem = readSecret(universe);
+      Optional<Pair<String, String>> pem = Optional.empty();
+      try {
+        pem = readSecret(universe);
+      } catch (Exception e) {
+        log.warn(
+            "Failed to read client cert Secret {} of universe {}: {}",
+            getSecretName(universe),
+            universe.getName(),
+            e.getMessage());
+        lastError = e;
+      }
       if (pem.isPresent()) {
         try {
           write(universe.getCertificateNodetoNode(), pem.get());
@@ -127,7 +156,9 @@ public class CertManagerClientCertSync {
             "Timed out waiting for client cert Secret "
                 + getSecretName(universe)
                 + " of universe "
-                + universe.getName());
+                + universe.getName()
+                + (lastError == null ? "" : ": " + lastError.getMessage()),
+            lastError);
       }
       try {
         Thread.sleep(POLL_INTERVAL.toMillis());
@@ -139,17 +170,20 @@ public class CertManagerClientCertSync {
   }
 
   /**
-   * Re-copies the client cert if the local copy is missing or close to expiry. Never throws, so
-   * callers on a background or task path are not failed by an unreachable cluster.
+   * Re-copies the client cert if the local copy is missing or close to expiry, and removes a copy
+   * that no universe on its CA requires any more. Never throws, so callers on a background or task
+   * path are not failed by an unreachable cluster.
    */
   public void refreshIfNeeded(Universe universe) {
     try {
       if (!isClientCertRequired(universe)) {
+        removeIfUnused(universe);
         return;
       }
       String caCertFile = universe.getCertificateNodetoNode();
-      Optional<Pair<String, String>> local = getClientCertFiles(caCertFile);
-      if (local.isPresent() && !expiresSoon(local.get().getLeft())) {
+      Optional<Pair<String, String>> local = getLocalPair(caCertFile);
+      if (local.isPresent()
+          && isValidAt(local.get().getLeft(), Instant.now().plus(REFRESH_BEFORE_EXPIRY))) {
         return;
       }
       Optional<Pair<String, String>> pem = readSecret(universe);
@@ -167,16 +201,39 @@ public class CertManagerClientCertSync {
     }
   }
 
-  private static boolean expiresSoon(String certFile) {
-    try (ByteArrayInputStream in =
-        new ByteArrayInputStream(Files.readAllBytes(Paths.get(certFile)))) {
-      X509Certificate cert =
-          (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
-      return cert.getNotAfter().toInstant().isBefore(Instant.now().plus(REFRESH_BEFORE_EXPIRY));
+  private static boolean isValidAt(String certFile, Instant instant) {
+    try {
+      X509Certificate cert = CertificateHelper.getCertificateFromFile(certFile);
+      return !Date.from(instant).after(cert.getNotAfter())
+          && !Date.from(Instant.now()).before(cert.getNotBefore());
     } catch (Exception e) {
-      log.warn("Unreadable client cert {}, refreshing it", certFile, e);
-      return true;
+      log.warn("Unreadable client cert {}", certFile, e);
+      return false;
     }
+  }
+
+  // Once the universe that needed the copy is destroyed or drops the flag, nothing refreshes it, so
+  // it would otherwise sit there until it expires.
+  private void removeIfUnused(Universe universe) throws IOException {
+    UUID rootCA = universe.getUniverseDetails().rootCA;
+    String caCertFile = universe.getCertificateNodetoNode();
+    if (rootCA == null
+        || StringUtils.isBlank(caCertFile)
+        || !Files.isDirectory(getClientCertDir(caCertFile))) {
+      return;
+    }
+    boolean inUse =
+        Customer.get(universe.getCustomerId()).getUniverses().stream()
+            .anyMatch(u -> rootCA.equals(u.getUniverseDetails().rootCA) && isClientCertRequired(u));
+    if (!inUse) {
+      remove(caCertFile);
+    }
+  }
+
+  private synchronized void remove(String caCertFile) throws IOException {
+    Path dir = getClientCertDir(caCertFile);
+    FileUtils.deleteDirectory(dir.toFile());
+    log.info("Removed unused cert-manager client cert from {}", dir);
   }
 
   private Optional<Pair<String, String>> readSecret(Universe universe) {
@@ -191,10 +248,12 @@ public class CertManagerClientCertSync {
     try {
       secret =
           kubernetesManagerFactory.getManager().getSecret(az.getValue(), secretName, namespace);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       // The shell manager throws on a missing Secret, the native one returns null.
-      log.debug("Could not read Secret {}/{}: {}", namespace, secretName, e.getMessage());
-      return Optional.empty();
+      if (StringUtils.contains(e.getMessage(), "Error from server (NotFound): secrets")) {
+        return Optional.empty();
+      }
+      throw e;
     }
     if (secret == null || secret.getData() == null) {
       return Optional.empty();
@@ -212,15 +271,19 @@ public class CertManagerClientCertSync {
   private synchronized void write(String caCertFile, Pair<String, String> pem) throws IOException {
     Path dir = getClientCertDir(caCertFile);
     Files.createDirectories(dir);
-    Path certPath = dir.resolve(CertificateHelper.CLIENT_CERT);
-    if (Files.exists(certPath) && Files.readString(certPath).equals(pem.getLeft())) {
+    if (matches(dir.resolve(CertificateHelper.CLIENT_CERT), pem.getLeft())
+        && matches(dir.resolve(CertificateHelper.CLIENT_KEY), pem.getRight())) {
       return;
     }
-    // Not atomic as a pair: a client built between the two renames fails one handshake, which
-    // happens at most once per cert-manager renewal.
+    // Not atomic as a pair: a client built between the two renames fails one handshake. If the
+    // second rename fails, the next refresh sees the mismatch and rewrites both.
     replace(dir, CertificateHelper.CLIENT_KEY, pem.getRight());
     replace(dir, CertificateHelper.CLIENT_CERT, pem.getLeft());
     log.info("Synced cert-manager client cert into {}", dir);
+  }
+
+  private static boolean matches(Path file, String content) throws IOException {
+    return Files.isRegularFile(file) && Files.readString(file).equals(content);
   }
 
   private static void replace(Path dir, String name, String content) throws IOException {
@@ -262,9 +325,7 @@ public class CertManagerClientCertSync {
             AvailabilityZone.getOrBadRequest(azUuid).getCode(),
             false /* isReadOnlyCluster */,
             true /* newNamingStyle */);
-    // The chart's yugabyte.fullname: trunc 43 | trimSuffix "-".
-    String fullName = StringUtils.removeEnd(StringUtils.substring(releaseName, 0, 43), "-");
-    return fullName + "-client-tls";
+    return KubernetesUtil.getHelmFullName(releaseName) + "-client-tls";
   }
 
   private static String getNamespace(Universe universe, UUID azUuid, Map<String, String> azConfig) {
