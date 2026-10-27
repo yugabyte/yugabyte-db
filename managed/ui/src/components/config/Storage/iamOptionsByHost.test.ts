@@ -4,46 +4,32 @@ import { describe, expect, it } from 'vitest';
 import { YBAHost } from '../../../redesign/helpers/constants';
 import { getGcsIamOptions, getS3IamOptions } from './iamOptionsByHost';
 
+const OTHER_HOSTS = [YBAHost.AWS, YBAHost.AZU, YBAHost.SELF_HOSTED];
+
 describe('getS3IamOptions', () => {
-  it('hides the IAM role only when YBA runs on GCP', () => {
-    expect(getS3IamOptions(YBAHost.GCP, false).showIamRole).toBe(false);
-    for (const host of [YBAHost.AWS, YBAHost.AZU, YBAHost.SELF_HOSTED]) {
-      expect(getS3IamOptions(host, false).showIamRole).toBe(true);
+  it('hides the IAM role on a new config only when YBA runs on GCP', () => {
+    expect(getS3IamOptions(YBAHost.GCP, false, false).showIamRole).toBe(false);
+    for (const host of OTHER_HOSTS) {
+      expect(getS3IamOptions(host, false, false).showIamRole).toBe(true);
     }
   });
 
-  it('shows the IAM role when editing a saved config', () => {
-    expect(getS3IamOptions(YBAHost.GCP, true).showIamRole).toBe(true);
+  it('shows the IAM role when editing, or while it is on', () => {
+    expect(getS3IamOptions(YBAHost.GCP, true, false).showIamRole).toBe(true);
+    expect(getS3IamOptions(YBAHost.GCP, false, true).showIamRole).toBe(true);
   });
 });
 
 describe('getGcsIamOptions', () => {
-  it('offers only GCP IAM on GCP and only federation on AWS', () => {
-    expect(getGcsIamOptions(YBAHost.GCP, false)).toEqual({
-      showGcpIam: true,
-      showFederatedIam: false
-    });
-    expect(getGcsIamOptions(YBAHost.AWS, false)).toEqual({
-      showGcpIam: false,
-      showFederatedIam: true
-    });
-  });
-
-  it('offers both on any other or unknown host', () => {
-    for (const host of [YBAHost.AZU, YBAHost.SELF_HOSTED]) {
-      expect(getGcsIamOptions(host, false)).toEqual({
-        showGcpIam: true,
-        showFederatedIam: true
-      });
+  it('hides federated IAM on a new config only when YBA runs on GCP', () => {
+    expect(getGcsIamOptions(YBAHost.GCP, false, false).showFederatedIam).toBe(false);
+    for (const host of OTHER_HOSTS) {
+      expect(getGcsIamOptions(host, false, false).showFederatedIam).toBe(true);
     }
   });
 
-  it('offers both when editing a saved config', () => {
-    for (const host of [YBAHost.AWS, YBAHost.GCP]) {
-      expect(getGcsIamOptions(host, true)).toEqual({
-        showGcpIam: true,
-        showFederatedIam: true
-      });
-    }
+  it('shows federated IAM when editing, or while it is on', () => {
+    expect(getGcsIamOptions(YBAHost.GCP, true, false).showFederatedIam).toBe(true);
+    expect(getGcsIamOptions(YBAHost.GCP, false, true).showFederatedIam).toBe(true);
   });
 });
