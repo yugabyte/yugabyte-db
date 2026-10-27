@@ -17,13 +17,11 @@ This creates the `dist_rag` schema with all tables, types, functions, and views.
 
 ## Upgrading a running cluster
 
-`ALTER EXTENSION pg_dist_rag UPDATE` runs its upgrade script in one transaction, so any `CREATE INDEX` in it is not an online build. While RAG workers are writing to `dist_rag.work_queue`, such a build fails with `40001 Restart read required`. Choose one procedure.
+`ALTER EXTENSION pg_dist_rag UPDATE` runs its upgrade script in one transaction, so any `CREATE INDEX` in it is not an online build. While RAG workers are writing to `dist_rag.work_queue`, such a build fails with `40001 Restart read required`. Upgrade one version at a time.
 
-### Production: build the indexes online first
+### To 0.0.3
 
-Run each statement on its own, outside a transaction block, so YugabyteDB builds the index online while workers keep running. Then run the upgrade; its `CREATE INDEX IF NOT EXISTS` statements skip the indexes that already exist.
-
-To 0.0.3:
+**Production: build the indexes online first.** Run each statement on its own, outside a transaction block, so YugabyteDB builds the index online while workers keep running. Then run the upgrade; its `CREATE INDEX IF NOT EXISTS` statements skip the indexes that already exist.
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_work_queue_status_type_doctype_created_at
@@ -43,9 +41,71 @@ ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.3';
 
 Each DDL statement makes concurrent writes fail once with `40001 schema version mismatch`. Workers retry a failed claim on their next poll, but an api-server write, including `create_source`, fails, so an upload during the build returns an error. If that's unacceptable, scale the api-server to zero for the builds, or make sure clients retry a failed upload.
 
-### Development and small deployments: stop the workers first
+**Development and small deployments: stop the workers first.** Scale the RAG workers to zero, run `ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.3';`, then scale them back up.
 
-Scale the RAG workers to zero, run `ALTER EXTENSION pg_dist_rag UPDATE TO '<version>';`, then scale them back up.
+### To 0.0.4
+
+0.0.4 adds two unique indexes: one document row per file in a source (`uq_documents_source_uri`), and at most one live PREPROCESS task per document and index (`uq_live_preprocess`). Existing duplicates must be removed first, and the upgrade fails with their counts if any remain. It deletes nothing itself.
+
+Before you start:
+
+- Every RAG agent must run a version that inserts documents with `ON CONFLICT DO NOTHING` (the agent built for 0.0.3 or later). An older agent's plain insert fails once `uq_documents_source_uri` exists.
+- Then roll out the agent built for 0.0.4 while the extension is still on 0.0.3. It checks for the 0.0.4 objects and picks them up within `CAPABILITY_RECHECK_SECONDS` (default 60) after the upgrade, without a restart.
+
+The cleanup helpers live in `upgrade/dedupe_before_0.0.4.sql`, outside the extension. Install them:
+
+```bash
+ysqlsh -d <database> -f upgrade/dedupe_before_0.0.4.sql
+```
+
+`dist_rag_upgrade.dedupe_documents(batch_size, quiet)` cleans duplicate `(source_id, document_uri)` groups within one source, so never across datapacks. In each group it keeps a COMPLETED row first, then the api-server's row (the one with `document_details->'meko'->>'user_id'`), then the lowest `document_id`. It copies the api-server's uploader keys into the kept row, deletes the other rows with their tasks, pipeline rows and chunks, and queues the kept row again if no copy was COMPLETED. `dist_rag_upgrade.dedupe_live_tasks(batch_size, quiet)` removes duplicate live tasks, keeping a running one. Each call is one transaction and returns what it did, including `groups_remaining`.
+
+**Production: clean up online, then finish in a short maintenance window.**
+
+1. With everything running, clean up duplicate documents until `groups_remaining` stops falling. Groups with a running task are skipped and reported in `groups_skipped`.
+
+   ```sql
+   SELECT dist_rag_upgrade.find_duplicate_documents();
+   SELECT * FROM dist_rag_upgrade.dedupe_documents(100);   -- repeat
+   ```
+
+   Each call is one transaction, so a call that fails under write load (seen once: `XX000 cannot commit while a portal is pinned`) has changed nothing and can be run again.
+
+   `groups_remaining` counts only the groups `find_duplicate_documents()` recorded. Every new first upload adds a duplicate, so online cleanup can't reach zero while uploads continue; the fresh `find_duplicate_documents()` in step 4 catches those. The point of this step is to shrink step 4.
+
+   Leave duplicate tasks to step 4. Under claim load, an online `dedupe_live_tasks` call can fail with `40001 Restart read required` after exhausting its retries, and duplicate tasks only cost repeated work, not data.
+
+   `tables_without_document_index` lists chunk tables with no index led by `document_id` or `(tenant_id, document_id)`. Each batch scans those tables once, so time one batch before choosing `batch_size`.
+
+2. Scale the api-server and the RAG workers to zero. Row locks can't stop a new duplicate from being inserted before the unique indexes exist, so nothing may write documents or tasks during the rest of the procedure.
+3. Wait until every lease has expired, at most `TASK_LEASE_DURATION` (600 seconds) after the last worker stopped. The quiet helpers refuse to run while any lease is live.
+4. Finish the cleanup with `quiet => true`, which also removes tasks left `IN_PROGRESS` by the stopped workers, until both report `groups_remaining = 0`:
+
+   ```sql
+   SELECT dist_rag_upgrade.find_duplicate_documents();
+   SELECT * FROM dist_rag_upgrade.dedupe_documents(100, quiet => true);   -- repeat
+   SELECT * FROM dist_rag_upgrade.dedupe_live_tasks(1000, quiet => true); -- repeat
+   ```
+
+5. Build the unique indexes, each on its own outside a transaction block, then upgrade and drop the helpers:
+
+   ```sql
+   CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_source_uri
+       ON dist_rag.documents (source_id, document_uri);
+
+   CREATE UNIQUE INDEX IF NOT EXISTS uq_live_preprocess
+       ON dist_rag.work_queue ((task_details->>'document_id'), (task_details->>'index_id'))
+       WHERE task_type = 'PREPROCESS' AND task_status IN ('QUEUED', 'IN_PROGRESS');
+
+   ALTER EXTENSION pg_dist_rag UPDATE TO '0.0.4';
+   DROP SCHEMA dist_rag_upgrade CASCADE;
+   ```
+
+   A build that meets a duplicate fails and leaves the index behind, invalid; `IF NOT EXISTS` would then skip it. Drop it (`DROP INDEX dist_rag.uq_documents_source_uri;` or `DROP INDEX dist_rag.uq_live_preprocess;`), rerun step 4, and build again. The upgrade refuses to run while either index is invalid.
+
+6. Scale the api-server back up first, then the RAG workers.
+
+**Development and small deployments: stop everything first.** Scale the api-server and the RAG workers to zero, wait for leases to expire, install the helpers, run steps 4 and 5, then scale the api-server and the workers back up.
 
 ## Core Concepts
 
@@ -385,6 +445,7 @@ WHERE index_name = 'engineering_kb';
 | `dist_rag.documents` | Individual documents belonging to sources |
 | `dist_rag.pipeline_details` | Per-document pipeline execution records |
 | `dist_rag.work_queue` | Internal task queue with lease-based locking |
+| `dist_rag.maintenance_runs` | Last run time of each agent job that runs once per interval for the whole cluster, such as the orphan sweep |
 | `dist_rag.column_embedding_registrations` | One row per declared/activated column-embedding mapping |
 | `dist_rag.column_embedding_progress` | In-flight/failed lease-retry state for column embedding, keyed by `(registration_id, dest_row_pk_in_text)` -- `dest_row_pk_in_text` is the destination row's own PK value, as text. This tracking lives in its own table; it never adds columns to the user's destination table |
 

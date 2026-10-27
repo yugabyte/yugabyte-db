@@ -170,6 +170,28 @@ class TestYugabyteDBVectorStore:
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_embeddings_persisted_gets_each_batch_once(self, mock_pool_cls, mock_pt_cls):
+        """The tracker adds each count, so passing the running total over-counted."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
+        )
+        mock_cur.fetchone.return_value = (True,)
+        mock_cur.rowcount = 5
+
+        store.insert_embeddings(
+            document_id=1,
+            table_name="test_table",
+            embedding_iterator=[(f"chunk {i}", [0.1]) for i in range(15)],
+            pipeline_id=PIPELINE_ID,
+            batch_size=5
+        )
+
+        counts = [c.kwargs["embeddings_count"]
+                  for c in store.pipeline_tracking.update_embeddings_persisted.call_args_list]
+        assert counts == [5, 5, 5]
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
     def test_insert_embeddings_remaining_batch(self, mock_pool_cls, mock_pt_cls):
         """Test insertion of remaining items after batching."""
         store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(

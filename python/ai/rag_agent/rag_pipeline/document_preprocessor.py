@@ -73,9 +73,8 @@ class DocumentPreprocessor(TaskProcessor):
         self.rag_handler = RagPipelineHandler()
         self.source_document_tracking = SourceDocumentTracking()
         # Used to finalize the work_queue row after process(). Without this
-        # the row stays in IN_PROGRESS forever and the SQL-side reaper
-        # re-queues it once the lease expires, causing already-completed
-        # documents to be reprocessed on every poll cycle.
+        # the row stays in IN_PROGRESS and a poll reclaims it once the lease
+        # expires, causing already-completed documents to be reprocessed.
         self.poller = Poller()
 
     def _short_circuit_if_already_finalized(
@@ -121,7 +120,7 @@ class DocumentPreprocessor(TaskProcessor):
         }
 
     def _finalize_task(self, task: WorkQueueTask, succeeded: bool) -> None:
-        """Mark the work_queue row terminal so it isn't re-queued by the reaper.
+        """Mark the work_queue row terminal so no poll reclaims it.
 
         Wraps :meth:`Poller.mark_completed` / :meth:`Poller.mark_failed` so
         finalization failures can't mask the original processing outcome --
@@ -531,7 +530,8 @@ class DocumentPreprocessor(TaskProcessor):
                         )
                         self.logger.info(f"Task {task.id} processed successfully")
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="COMPLETED"
+                            document_id=document_id, status="COMPLETED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                         self._finalize_task(task, succeeded=True)
                         span_output = {
@@ -552,7 +552,8 @@ class DocumentPreprocessor(TaskProcessor):
                     self.logger.error(f"Validation error while processing task {task.id}: {str(e)}")
                     if document_id:
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="FAILED"
+                            document_id=document_id, status="FAILED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                     self._finalize_task(task, succeeded=False)
                     span_output = {
@@ -568,7 +569,7 @@ class DocumentPreprocessor(TaskProcessor):
                         "error_message": str(e)
                     }
                 except LeaseLostError as e:
-                    # The reaper redelivered the task; the worker that holds
+                    # Another worker reclaimed the task; the worker that holds
                     # it now owns the document. Leave both alone.
                     self.logger.warning(f"Stopping task {task.id}: {str(e)}")
                     transform_span = None
@@ -603,7 +604,8 @@ class DocumentPreprocessor(TaskProcessor):
                     )
                     if document_id:
                         self.source_document_tracking.update_document_status(
-                            document_id=document_id, status="FAILED"
+                            document_id=document_id, status="FAILED",
+                            task_id=task.id, lease_token=task.lease_token
                         )
                     self._finalize_task(task, succeeded=False)
                     span_output = {

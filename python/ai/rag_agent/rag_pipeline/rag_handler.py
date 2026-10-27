@@ -158,11 +158,13 @@ class RagPipelineHandler:
                 tenant_id=tenant_id,
                 lease_check=lease_check
             )
+            # No CREATE INDEX here: whoever creates the chunk table owns its
+            # vector index (init_vector_index builds idx_<name>_embeddings with
+            # the table; Meko's migrations build knowledge_bases_embeddings_idx).
+            # Run per document, the DDL raced between workers and failed
+            # documents whose chunks were already inserted, and on Meko's table
+            # it added a second HNSW index under a different name.
             self.logger.info(f"Processing of document: {document_uri} completed")
-            self.vector_store.create_index(table_name=table_name, table_schema=schema_name)
-            self.logger.info(
-                f"Vector Index created successfully on {schema_name or 'public'}.{table_name}"
-            )
 
             self.pipeline_tracking.update_pipeline_status(
                 pipeline_id=pipeline_id,

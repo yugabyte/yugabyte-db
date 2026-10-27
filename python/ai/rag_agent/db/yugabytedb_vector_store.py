@@ -208,9 +208,10 @@ class YugabyteDBVectorStore:
                     )
                     total_inserted += rows_inserted
                     self._check_lease(lease_check, document_id)
+                    # update_embeddings_persisted adds to the stored count.
                     self.pipeline_tracking.update_embeddings_persisted(
                         pipeline_id=pipeline_id,
-                        embeddings_count=total_inserted
+                        embeddings_count=rows_inserted
                     )
                     self.logger.info(
                         f"Inserted batch of {rows_inserted} rows into "
@@ -232,7 +233,7 @@ class YugabyteDBVectorStore:
                 self._check_lease(lease_check, document_id)
                 self.pipeline_tracking.update_embeddings_persisted(
                     pipeline_id=pipeline_id,
-                    embeddings_count=total_inserted
+                    embeddings_count=rows_inserted
                 )
                 self.logger.info(
                     f"Inserted final batch of {rows_inserted} rows into "
