@@ -23,16 +23,22 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -2263,13 +2269,17 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadlineNoTableLocks, ::testing::
 //   - BackfillIndex request
 TEST_P(PgIndexBackfillClientDeadlineNoTableLocks, DropBeforeBackfillRequest) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  // The drop removes the index from the indexed table's list when its transaction commits.  The
-  // index table stays DELETING, where the master still finds it, until every tablet replica
-  // reports its deletion.  Only a request in that window reaches the permission check.  The
-  // window is short on a healthy cluster and lasts as long as a tserver holding a replica is
-  // down, since the master retries the delete until it succeeds.  The flag stands in for the down
-  // tserver by not sending the deletes at all.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_tablet_deletion", "true"));
+  // The drop removes the index from the indexed table's list when its transaction commits and
+  // leaves the index table DELETING, where the master still finds it, until every tablet replica
+  // reports its deletion.  A request that no longer finds the table fails with NotFound instead of
+  // reaching the permission check.  Have every tserver refuse its DeleteTablet RPCs, so the
+  // master's delete tasks keep retrying and the table stays DELETING, as it does while a tserver
+  // holding a replica is down.  The table then never reaches DELETED, so the post-commit DDL
+  // verification wait in DROP INDEX would run to its deadline.  Turn the wait off so the drop
+  // returns at commit.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_rpc_delete_tablet_fail", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
   // Runs before the holder joins the create thread, so an assertion that fires while the thread
   // is blocked fails the test instead of hanging it.
@@ -2521,17 +2531,53 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
     }
 
     switch (phase.failover) {
-      case Failover::kKill:
+      case Failover::kKill: {
         LOG(INFO) << "Killing the master leader while blocked at " << phase.name;
         ASSERT_NE(request_leader, nullptr);
         request_leader->Shutdown();
+        // Left to themselves, the followers take seconds to notice the dead leader and elect a new
+        // one, long enough for a tserver's ysql operation lease to expire, which kills every
+        // postgres session, the one running CREATE INDEX included.  Force the election on a
+        // follower as soon as the leader is dead instead, and keep forcing it until a surviving
+        // master leads, since a forced election can still fail, for example when its RPC is lost.
+        // A follower whose log is behind the other's is denied the vote however often it asks, and
+        // no master appends an entry while none leads, so force the election on the follower whose
+        // log is ahead.
+        ExternalMaster* follower = nullptr;
+        OpId follower_opid;
+        for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+          ExternalMaster* candidate = cluster_->master(i);
+          if (candidate == request_leader) {
+            continue;
+          }
+          auto proxy = std::make_shared<consensus::ConsensusServiceProxy>(
+              &cluster_->proxy_cache(), candidate->bound_rpc_addr());
+          OpIdPB opid_pb;
+          ASSERT_OK(itest::GetLastOpIdForMasterReplica(
+              proxy, master::kSysCatalogTabletId, candidate->uuid(), consensus::RECEIVED_OPID,
+              10s * kTimeMultiplier, &opid_pb));
+          auto opid = OpId::FromPB(opid_pb);
+          LOG(INFO) << "Master " << i << " last received " << opid;
+          if (follower == nullptr || opid > follower_opid) {
+            follower = candidate;
+            follower_opid = opid;
+          }
+        }
+        ASSERT_NE(follower, nullptr);
         ASSERT_OK(WaitFor(
-            [this]() -> Result<bool> { return cluster_->GetLeaderMasterIndex().ok(); },
-            60s * kTimeMultiplier, "Wait for a new master leader"));
+            [this, follower]() -> Result<bool> {
+              // Force an election before looking for a leader, since GetLeaderMasterIndex blocks
+              // until a master leader is ready or its 5 s deadline passes.
+              WARN_NOT_OK(cluster_->StartElection(follower), "Start election");
+              return cluster_->GetLeaderMasterIndex().ok();
+            },
+            60s * kTimeMultiplier, "Wait for a new master leader", 1s /* initial_delay */,
+            1.0 /* delay_multiplier */));
         // Back as a follower with its startup flags.  The unblock below sets every flag on every
         // master again.
         ASSERT_OK(request_leader->Restart());
         break;
+      }
       case Failover::kStepDown: {
         LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
         tserver::TabletServerErrorPB::Code error_code;
@@ -2574,6 +2620,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
 //                                                - new leader reports schema version
 //                                                master leader stepdown
 TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
+  // The leader balancer can move the tablet leader back right after the stepdown below.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // 1. Create a single-tablet table and start CREATE INDEX on a separate thread.

@@ -179,8 +179,8 @@ extern YbOpaque YbBeginScan(Relation table,
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);
 
 /*
- * Used in Agg node init phase to determine whether YB recheck or PG recheck
- * may be needed.
+ * Used in Agg node init phase, and by the planner under the YB cost model, to
+ * determine whether YB recheck or PG recheck may be needed.
  */
 extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   Relation relation,

@@ -106,10 +106,10 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --yql-server-rpc-port int                          [Optional] YQL Server RPC Port. (default 9042)
       --ysql-server-http-port int                        [Optional] YSQL Server HTTP Port. (default 13000)
       --ysql-server-rpc-port int                         [Optional] YSQL Server RPC Port. (default 5433)
-      --connection-pooling string                        This is a preview flag (may change in future). [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
-      --internal-ysql-server-rpc-port int                This is a preview flag (may change in future). [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
-      --cloud-volume-encryption-kms-config string        This is a preview flag (may change in future). [Optional] Key management service config name to enable cloud volume encryption, supported only for AWS. Run "yba ear list" to check the list of available kms configurations.
-      --encryption-at-rest-kms-config string             This is a preview flag (may change in future). [Optional] Key management service config name to enable YugabyteDB Anywhere's own encryption at rest. Run "yba ear list" to check the list of available kms configurations.
+      --connection-pooling string                        [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
+      --internal-ysql-server-rpc-port int                [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
+      --cloud-volume-encryption-kms-config string        [Optional] Key management service config name to enable cloud volume encryption, supported only for AWS. Run "yba ear list" to check the list of available kms configurations.
+      --encryption-at-rest-kms-config string             [Optional] Key management service config name to enable YugabyteDB Anywhere's own encryption at rest. Run "yba ear list" to check the list of available kms configurations.
   -h, --help                                             help for create
 ```
 

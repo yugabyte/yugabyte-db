@@ -4,7 +4,9 @@ import type { InstanceSettingProps } from '../../create-universe/steps/hardware-
 import {
   effectiveMasterDeviceInfo,
   getK8sResizeOptions,
+  k8sVolumeStorageChanged,
   onlyVolumeSizeIncreased,
+  showInstanceStorageOverrideNote,
   toClusterStorageSpec,
   toResizeStorageSpec,
   type NormalizedStorage
@@ -57,6 +59,33 @@ describe('onlyVolumeSizeIncreased', () => {
     expect(
       onlyVolumeSizeIncreased(baseStorage(), baseStorage({ volumeSize: 200, numVolumes: 2 }))
     ).toBe(false);
+  });
+});
+
+describe('showInstanceStorageOverrideNote', () => {
+  const same = baseStorage();
+
+  it('is true only when volume count, size, or class changes', () => {
+    expect(k8sVolumeStorageChanged(same, same)).toBe(false);
+    expect(k8sVolumeStorageChanged(same, baseStorage({ storageClass: '  ' }))).toBe(true);
+    expect(k8sVolumeStorageChanged(baseStorage({ storageClass: '' }), baseStorage({ storageClass: null }))).toBe(
+      false
+    );
+    expect(k8sVolumeStorageChanged(same, baseStorage({ numVolumes: 2 }))).toBe(true);
+    expect(k8sVolumeStorageChanged(same, baseStorage({ volumeSize: 200 }))).toBe(true);
+    expect(k8sVolumeStorageChanged(same, baseStorage({ storageClass: 'fast' }))).toBe(true);
+    expect(k8sVolumeStorageChanged(same, baseStorage({ diskIops: 3000 }))).toBe(false);
+  });
+
+  it('follows the instance modal that is open', () => {
+    const biggerTserver = baseStorage({ numVolumes: 2 });
+    const biggerMaster = baseStorage({ volumeSize: 200 });
+    expect(showInstanceStorageOverrideNote('tserver', same, biggerTserver, same, same)).toBe(true);
+    expect(showInstanceStorageOverrideNote('readReplica', same, biggerTserver, same, same)).toBe(true);
+    expect(showInstanceStorageOverrideNote('master', same, biggerTserver, same, same)).toBe(false);
+    expect(showInstanceStorageOverrideNote('master', same, same, same, biggerMaster)).toBe(true);
+    expect(showInstanceStorageOverrideNote('cluster', same, same, same, biggerMaster)).toBe(true);
+    expect(showInstanceStorageOverrideNote('cluster', same, same, same, same)).toBe(false);
   });
 });
 

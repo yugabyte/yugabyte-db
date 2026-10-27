@@ -3150,6 +3150,30 @@ Status GetChangesForCDCSDK(
               checkpoint_updated = true;
               break;
             }
+            // A vector index lives in its indexed table's tablets, so schema changes of the index
+            // (e.g. ALTER INDEX RENAME) show up here. The index has no rows of its own on this
+            // stream, and the code below would cache its schema under the indexed table's id.
+            // Vector indexes are the only tables with a colocation id in a non-colocated tablet.
+            const auto& colocated_table_id =
+                msg->change_metadata_request().schema().colocated_table_id();
+            if (!tablet_ptr->metadata()->colocated() && colocated_table_id.has_colocation_id() &&
+                colocated_table_id.colocation_id() != kColocationIdNotSet) {
+              auto table_info =
+                  tablet_ptr->metadata()->GetTableInfo(colocated_table_id.colocation_id());
+              RSTATUS_DCHECK(
+                  !table_info.ok() || (*table_info)->IsVectorIndex(), IllegalState,
+                  "Table with colocation id $0 in non-colocated tablet $1 is not a vector index",
+                  colocated_table_id.colocation_id(), tablet_id);
+              VLOG(1) << "Skipping CHANGE_METADATA_OP for vector index "
+                      << msg->change_metadata_request().alter_table_id().ToBuffer()
+                      << " on tablet " << tablet_id;
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              checkpoint_updated = true;
+              break;
+            }
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
@@ -3164,6 +3188,16 @@ Status GetChangesForCDCSDK(
                 // stream for it.
                 LOG(INFO) << "Skipping CHANGE_METADATA_OP for a table that is no longer in the "
                           << "tablet metadata. " << msg->ShortDebugString();
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                checkpoint_updated = true;
+                break;
+              }
+              if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, stream_metadata)) {
+                VLOG(1) << "Skipping CHANGE_METADATA_OP for table " << table_info->table_id
+                        << " that is not part of the stream on tablet " << tablet_id;
                 AcknowledgeStreamedMsg(
                     msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
                     &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,

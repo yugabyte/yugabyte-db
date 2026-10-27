@@ -383,6 +383,15 @@ insert into queries values
     (29470, $$select distinct a, b from ptC where a = 5 and b >= 46 order by a, b$$),
     (29471, $$select distinct a, b from ptC where b >= 46 and c >= 3 order by a, b$$);
 
+-- Pushed-down aggregates (#20955): one request scans the whole range, so
+-- the estimate carries no per-page seeks.  dv1 = 1 (all 12345 rows, 13
+-- pages at the default fetch limit) is the only generated predicate wider
+-- than one page; pk <= 12345 reads the same pages through a PK Index Scan.
+insert into queries values
+    (90001, $$select count(*) from r where dv1 = 1$$),
+    (90002, $$select count(*) from r where pk <= 12345$$),
+    (91001, $$select count(*) from rC where dv1 = 1$$),
+    (91002, $$select count(*) from rC where pk <= 12345$$);
 
 set enable_seqscan = off;
 set enable_sort = off;
@@ -396,6 +405,7 @@ select q.*, x.qid, x.nid, "Node Type", "Index Name", "Index Cond"
 from queries q full join check_seeknext_estimates x on x.qid = q.qid
 where x.qid is null or q.qid is null;
 
+-- one index scan node per query.
 select count(*) from queries q full join check_seeknext_estimates x on x.qid = q.qid
 where x.qid is not null and q.qid is not null;
 

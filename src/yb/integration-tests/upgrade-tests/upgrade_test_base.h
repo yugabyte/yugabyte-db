@@ -99,6 +99,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status WaitForClusterToStabilize();
 
   BuildInfo old_version_info() const { return old_version_info_; }
+  // Can only be used after the cluster has been started in the old version.
+  const std::string& old_version_bin_path() const { return old_version_bin_path_; }
+  const std::string& current_version_bin_path() const { return current_version_bin_path_; }
   // Can only be used after SetUp has been called.
   VersionInfoPB current_version_info() const { return current_version_info_; }
   TestThreadHolder test_thread_holder_;

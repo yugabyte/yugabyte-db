@@ -78,9 +78,12 @@ Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable
   }
 
   if (!table_to_tablespace_map_) {
-    const auto tablespace_id = table->TablespaceIdForTableCreation();
-    if (!tablespace_id.empty()) {
-      return tablespace_id;
+    auto l = table->LockForRead();
+    if (l->pb.has_tablespace_id()) {
+      return l->pb.tablespace_id();
+    }
+    if (l->pb.has_no_custom_tablespace()) {
+      return std::nullopt;
     }
     return STATUS(
         InternalError,
@@ -91,11 +94,15 @@ Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable
   // Lookup the tablespace for this table.
   const auto& iter = table_to_tablespace_map_->find(table->id());
   if (iter == table_to_tablespace_map_->end()) {
-    const auto tablespace_id = table->TablespaceIdForTableCreation();
-    if (!tablespace_id.empty()) {
-      return tablespace_id;
+    // A miss means the refresh hasn't reached this table yet, or its pg_class row is gone (HIDDEN
+    // by DROP, TRUNCATE or a rewrite). The persisted value answers; it can lag by a refresh, or
+    // longer during the post-upgrade backfill. Hidden before its value was first recorded, a table
+    // has neither field set: we report no custom tablespace, which may be wrong.
+    auto l = table->LockForRead();
+    if (!l->pb.has_tablespace_id()) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    return l->pb.tablespace_id();
   }
 
   return iter->second;
@@ -143,24 +150,33 @@ bool YsqlTablespaceManager::NeedsRefreshToFindTablePlacement(
   }
 
   // First find the tablespace id for the table.
+  std::optional<TablespaceId> tablespace_id;
   const auto& iter = table_to_tablespace_map_->find(table->id());
-  if (iter == table_to_tablespace_map_->end()) {
-    // No entry found for this table. The background task has not picked up the info
-    // for this table yet, maybe this is a recently created table. Need to wait for
-    // the next run of the background task to get the placement info for this table.
-    return true;
+  if (iter != table_to_tablespace_map_->end()) {
+    tablespace_id = iter->second;
+  } else {
+    // No entry found for this table. Fall back to the persisted value, if we ever observed
+    // one. Waiting is only correct for a table the refresh task has not reached yet; for a
+    // HIDDEN table the pg_class row is gone and no future run will ever produce an entry, so
+    // waiting here would park the load balancer on that table forever.
+    auto l = table->LockForRead();
+    if (l->pb.has_tablespace_id()) {
+      tablespace_id = l->pb.tablespace_id();
+    } else if (!l->pb.has_no_custom_tablespace()) {
+      // Never observed: created by an older master. Wait for the next run to record it.
+      return true;
+    }
   }
 
-  if (!iter->second) {
-    // This is a std::nullopt value, which indicates that this table does not have a custom
-    // tablespace specified for it. It defaults to the cluster placement policy. Nothing
-    // more to do for this table.
+  if (!tablespace_id) {
+    // This table does not have a custom tablespace specified for it. It defaults to the
+    // cluster placement policy. Nothing more to do for this table.
     return false;
   }
 
   // The table was associated with a custom tablespace. Now find the placement policy
   // corresponding to this tablespace.
-  const auto tablespace_iter = tablespace_id_to_replication_info_map_->find(iter->second.value());
+  const auto tablespace_iter = tablespace_id_to_replication_info_map_->find(*tablespace_id);
   if (tablespace_iter == tablespace_id_to_replication_info_map_->end()) {
     // No entry found for this tablespace. This was not picked up by the background task,
     // probably a recently created tablespace. Need to wait for the next run of the

@@ -22,6 +22,11 @@ import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressIsolationObjectLockingPorted extends BasePgRegressTestPorted {
+  // The per-method timeout is capped at 1800s for all build types, so specs are split across
+  // schedules to fit in TSAN (alter-table-1 alone takes ~1000s there).
+  private static final String SCHEDULE_1 = "yb_pg_isolation_object_locking_schedule";
+  private static final String SCHEDULE_2 = "yb_pg_isolation_object_locking_schedule_2";
+
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -43,23 +48,33 @@ public class TestPgRegressIsolationObjectLockingPorted extends BasePgRegressTest
     return 1800;
   }
 
-  private void runSchedule(boolean useAllHosts) throws Exception {
+  private void runSchedule(String schedule, boolean useAllHosts) throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
-      "yb_pg_isolation_object_locking_schedule",
+      schedule,
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
       useAllHosts);
   }
 
   @Test
   public void testPgRegress() throws Exception {
-    runSchedule(false /* useAllHosts */);
+    runSchedule(SCHEDULE_1, false /* useAllHosts */);
   }
 
   // Sessions are spread round-robin across tservers, so conflicting sessions acquire object locks
   // and receive invalidation messages on different nodes.
   @Test
   public void testPgRegressAcrossTServers() throws Exception {
-    runSchedule(true /* useAllHosts */);
+    runSchedule(SCHEDULE_1, true /* useAllHosts */);
+  }
+
+  @Test
+  public void testPgRegress2() throws Exception {
+    runSchedule(SCHEDULE_2, false /* useAllHosts */);
+  }
+
+  @Test
+  public void testPgRegress2AcrossTServers() throws Exception {
+    runSchedule(SCHEDULE_2, true /* useAllHosts */);
   }
 }

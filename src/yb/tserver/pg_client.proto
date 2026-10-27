@@ -841,6 +841,27 @@ message PgPerformOptionsPB {
     uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
+
+    // The catalog version this response is being cached at. The version is already part of
+    // key_value, but only as opaque bytes that pggate serialized; naming it separately lets the
+    // tserver record which version it now holds a prefetch for, for backends that want to start
+    // from an older one.
+    uint64 catalog_version = 4;
+
+    // Serve this request only if the response is already cached. A miss returns an Incomplete
+    // status instead of being filled, so a backend asking for an older version cannot cause the
+    // catalog to be read afresh and then stored under that older version's key.
+    bool lookup_only = 5;
+
+    // This request is the last of a connection start's prefetch, so once it is cached this node
+    // holds every entry such a connection needs at catalog_version. The tserver records the
+    // version only for these, because the load worth sparing the master leader is the large
+    // catalog read a connection start makes, and a connection skips it only when the whole set
+    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
+    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
+    // relcache preload -- cost the leader little, so a version recorded from one of them would
+    // advertise a saving that does not exist.
+    bool completes_connection_prefetch = 6;
   }
 
   message ReadTimeOptionsPB {
@@ -913,8 +934,12 @@ message PgPerformOptionsPB {
   // Origination time of the current PG transaction (see OriginationInfoPB); 0 when unknown.
   fixed64 origination_ht = 38;
 
+  // Source commit time of the transaction being applied, as a HybridTime, travelling with
+  // xrepl_origin_id.
+  fixed64 xrepl_source_write_ht = 39;
+
   // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
-  bool uses_catalog_snapshot = 39;
+  bool uses_catalog_snapshot = 40;
 }
 
 message PgRequestSequenceNumPB {
@@ -1013,6 +1038,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1032,6 +1059,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1056,6 +1085,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1072,6 +1103,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  bool is_using_table_locks = 8;
 }
 
 message PgReadSequenceTupleResponsePB {

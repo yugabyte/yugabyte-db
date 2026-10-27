@@ -237,6 +237,25 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
   }
 
+  /** Asserts that a TLS handshake offering only the given protocol is refused. */
+  private void assertProtocolRefused(String protocol) throws Exception {
+    try (Connection ignored = connectOffering(protocol)) {
+      fail("Expected " + connectionEndpoint + " to refuse a " + protocol + " client");
+    } catch (SQLException e) {
+      LOG.info("Handshake rejected as expected: {}", e.getMessage());
+      assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
+    }
+  }
+
+  /** Asserts that a TLS connection offering only the given protocol works and negotiates it. */
+  private void assertProtocolNegotiated(String protocol) throws Exception {
+    try (Connection conn = connectOffering(protocol);
+        Statement stmt = conn.createStatement()) {
+      assertTrue(stmt.executeQuery("SELECT 1").next());
+      assertEquals("Negotiated protocol", protocol, TlsProbeFactory.negotiatedProtocol());
+    }
+  }
+
   /** Connects to the endpoint under test over TLS, offering only the given protocols. */
   private Connection connectOffering(String... protocols) throws Exception {
     return connectOffering(protocols, null);
@@ -345,35 +364,31 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
   @Test
   public void testSslMinMaxProtocolVersion() throws Exception {
     restartWithSslGucs("ssl_min_protocol_version='TLSv1.3'");
-
-    try (Connection ignored = connectOffering(TLS_1_2)) {
-      fail("Expected " + connectionEndpoint + " to refuse a " + TLS_1_2 + " client");
-    } catch (SQLException e) {
-      LOG.info("Handshake rejected as expected: {}", e.getMessage());
-      assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
-    }
-
-    try (Connection conn = connectOffering(TLS_1_3);
-        Statement stmt = conn.createStatement()) {
-      assertTrue(stmt.executeQuery("SELECT 1").next());
-      assertEquals("Negotiated protocol", TLS_1_3, TlsProbeFactory.negotiatedProtocol());
-    }
+    assertProtocolRefused(TLS_1_2);
+    assertProtocolNegotiated(TLS_1_3);
 
     restartWithSslGucs("ssl_min_protocol_version='TLSv1.2',ssl_max_protocol_version='TLSv1.2'");
+    assertProtocolRefused(TLS_1_3);
+    assertProtocolNegotiated(TLS_1_2);
+  }
 
-    try (Connection ignored = connectOffering(TLS_1_3)) {
-      fail("Expected " + connectionEndpoint + " to refuse a " + TLS_1_3 + " client");
-    } catch (SQLException e) {
-      LOG.info("Handshake rejected as expected: {}", e.getMessage());
-      assertThat(e.getMessage(), CoreMatchers.containsString("SSL error"));
-    }
+  /*
+   * PostgreSQL accepts an upper-case GUC name, so conn mgr must too; otherwise the TLS floor is
+   * enforced on the direct port but not on the pooled one.
+   */
+  @Test
+  public void testUpperCaseSslGucName() throws Exception {
+    restartWithSslGucs("SSL_MIN_PROTOCOL_VERSION='TLSv1.3'");
+    assertProtocolRefused(TLS_1_2);
+    assertProtocolNegotiated(TLS_1_3);
+  }
 
-    try (Connection conn = connectOffering(TLS_1_2);
-        Statement stmt = conn.createStatement()) {
-      assertTrue(stmt.executeQuery("SELECT 1").next());
-      assertEquals("Negotiated protocol", TLS_1_2, TlsProbeFactory.negotiatedProtocol());
-    }
-
+  /* PostgreSQL treats the '=' between name and value as optional, so conn mgr must too. */
+  @Test
+  public void testSslGucWithoutEquals() throws Exception {
+    restartWithSslGucs("ssl_min_protocol_version 'TLSv1.3'");
+    assertProtocolRefused(TLS_1_2);
+    assertProtocolNegotiated(TLS_1_3);
   }
 
   /*
@@ -382,12 +397,21 @@ public class TestConnMgrSslSettings extends BaseYsqlConnMgr {
    * ssl_protocol_versions_info + 1 and so has no {"", PG_TLS_ANY} entry. Conn mgr has to refuse it
    * for the same reason: an empty value reaches machinarium as a non-NULL empty string, which
    * yb_mm_tls_protocol_to_pg_enum() maps to PG_TLS_ANY, and be_tls_init() reads that as "impose no
-   * minimum" without reporting anything. ValidatePgSslMinProtocolVersion() in ysql_conn_mgr_conf.cc
+   * minimum" without reporting anything. YbgResolveGucValue() rejects it as PostgreSQL does, which
    * is what keeps conn mgr from coming up in that state.
    */
   @Test
   public void testEmptySslMinProtocolVersionBlocksStartup() throws Exception {
     assertRestartBlocksStartup("ssl_min_protocol_version=''");
+  }
+
+  /*
+   * An unrecognized parameter name makes the postmaster refuse the whole file at startup, and
+   * YbGetConfigFileValues() fails conn mgr's read of it the same way.
+   */
+  @Test
+  public void testUnknownParameterBlocksStartup() throws Exception {
+    assertRestartBlocksStartup("yb_no_such_guc=1");
   }
 
   /*

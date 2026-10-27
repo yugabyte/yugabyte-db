@@ -6,3 +6,4 @@ test: yb.orig.insert_on_conflict_multiplan
 test: yb.orig.insert_on_conflict_with
 test: yb.orig.insert_on_conflict_with_spi
 test: yb.orig.insert_on_conflict_with_explain
+test: yb.orig.insert_on_conflict_pushdown

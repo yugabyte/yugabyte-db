@@ -503,6 +503,11 @@ class SysCatalogTable {
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 
+  // Created by the first SetupTabletPeer and shared by every tablet peer it sets up.  The peer
+  // points at it, so it must outlive the peer's use of it: CompleteShutdown shuts the peer down
+  // before the master's SysCatalogTable is destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
   Master* master_;

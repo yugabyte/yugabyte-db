@@ -26,6 +26,8 @@ tags:
     description: Authentication operations on YBA
   - name: Backup and Restore
     description: Operations related to universe backup and restore
+  - name: Certificate
+    description: Certificate management
   - name: Continuous Backup
     description: CRUD operations for Continuous YBA Backups
   - name: Customer
@@ -50,6 +52,8 @@ tags:
     description: Point-in-time recovery configuration management
   - name: Perf Advisor Endpoint
     description: CRUD operations for external Perf Advisor destinations
+  - name: Session
+    description: Session management
   - name: Support Bundle
     description: Support bundle management for universes
   - name: Task
@@ -68,3 +72,8 @@ components:
       type: apiKey
       name: X-AUTH-YW-API-TOKEN
       in: header
+    authTokenAuth:
+      type: apiKey
+      name: X-AUTH-TOKEN
+      in: header
+      description: Session token returned by login

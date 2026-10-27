@@ -4,13 +4,21 @@
     -- The FK tests in this test will fail on PG11+. No way to run specific tests for specific versions easily. Just ignore for now.
     -- Test publication inheritance
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(224); -- YB: decreased number of tests
+\else \\ -- YB
 SELECT plan(207); -- YB: decreased number of tests
+\endif \\ -- YB
 
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
@@ -23,7 +31,6 @@ CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
 INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 
 CREATE TABLE partman_test.time_taptest_table (col1 int, col2 text default 'stuff', col3 timestamptz NOT NULL DEFAULT now()) PARTITION BY RANGE (col3);
-ALTER TABLE partman_test.time_taptest_table ADD PRIMARY KEY (col1, col3); -- YB: Currently replication of table by it to a publication is only supported for table with primary key
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.time_taptest_table INCLUDING ALL);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
@@ -40,7 +47,7 @@ SELECT table_owner_is ('partman', 'template_partman_test_time_taptest_table', 'p
     'Check that template table ownership is set properly');
 
 -- Add inheritable stuff to template table
--- ALTER TABLE partman.template_partman_test_time_taptest_table ADD PRIMARY KEY (col1); YB: Already added primary key [col1, col3]
+ALTER TABLE partman.template_partman_test_time_taptest_table ADD PRIMARY KEY (col1);
 ALTER TABLE partman.template_partman_test_time_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
@@ -168,7 +175,11 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check tha
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+\if :yb_use_txn_ddl_and_locks
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[10], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\else \\ -- YB
 SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[9], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\endif \\ -- YB
 
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON partman_test.time_taptest_table FROM partman_revoke;
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), CURRENT_TIMESTAMP + '1 day'::interval);
@@ -223,18 +234,17 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
--- YB: primary key changed from [col1] to [col1, col3]
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'8 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'8 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'8 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'10 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'10 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'10 days'::interval, 'YYYY_MM_DD'));
 
 /* YB: Mentioned that test will fail in PG11+
@@ -256,7 +266,11 @@ SELECT col_is_fk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
     ARRAY[22], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+\if :yb_use_txn_ddl_and_locks
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[16], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\else \\ -- YB
 SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[15], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\endif \\ -- YB
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
@@ -303,7 +317,11 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check tha
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[148], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
     ARRAY[28], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+\if :yb_use_txn_ddl_and_locks
+SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[18], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\else \\ -- YB
 SELECT results_eq('SELECT count(*)::int FROM pg_catalog.pg_publication_tables WHERE pubname = ''partman_test_publication''', ARRAY[17], 'Check that all child tables were added to publication. This test will fail in PG10 since default tables are not supported.');
+\endif \\ -- YB
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD')||' exists');
@@ -312,10 +330,9 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'13 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'13 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
--- YB: primary key changed from [col1] to [col1, col3]
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'11 days'::interval, 'YYYY_MM_DD'));
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 days'::interval, 'YYYY_MM_DD'), ARRAY['col1', 'col3'], 
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 days'::interval, 'YYYY_MM_DD'));
 
 /* YB: Mentioned that test will fail in PG11+
@@ -629,7 +646,9 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' got moved to new schema');
 
-/* YB: undo_partition not supported
+\if :yb_use_txn_ddl_and_locks
+-- YB: Remove the tables from publication before dropping them (#30808).
+DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT schemaname, tablename FROM pg_publication_tables WHERE pubname = 'partman_test_publication' LOOP EXECUTE format('ALTER PUBLICATION partman_test_publication DROP TABLE %I.%I', r.schemaname, r.tablename); END LOOP; END $$;
 SELECT undo_partition('partman_test.time_taptest_table', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM  partman_test.undo_taptest', ARRAY[118], 'Check count from target table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
@@ -664,10 +683,12 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
 SELECT hasnt_table('partman', 'template_partman_test_time_taptest_table', 'Check that template table was dropped');
-*/ -- YB
+\endif \\ -- YB
 
 DROP PUBLICATION partman_test_publication;
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB
 

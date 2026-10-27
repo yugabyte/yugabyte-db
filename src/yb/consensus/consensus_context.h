@@ -103,7 +103,10 @@ class ConsensusContext {
   //
   // Runs for every op the leader appends while holding the Raft lock, so it must be cheap and must
   // not block.
-  virtual Status CheckReplicateAllowed(const LWReplicateMsg& replicate_msg) = 0;
+  //
+  // May modify an op it allows, e.g., to drop fields only the check needs: the op has not yet
+  // reached the log cache, the WAL, or any follower, all of which see the modified op.
+  virtual Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) = 0;
 
   virtual ~ConsensusContext() = default;
 };

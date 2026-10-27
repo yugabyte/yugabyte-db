@@ -110,8 +110,7 @@ const (
 	NodeAgentRegistryHomeKey = "node_agent_home"
 
 	// JWT claims.
-	JwtClaimsExpiryKey  = "exp"
-	JwtClaimsSessionKey = "ses"
+	JwtClaimsExpiryKey = "exp"
 
 	// GlobalRuntimeScopeUuid is the UUID for global scope for runtime configs.
 	GlobalRuntimeConfigScopeUuid = "00000000-0000-0000-0000-000000000000"

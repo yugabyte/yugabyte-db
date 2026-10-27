@@ -14,18 +14,22 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -42,17 +46,68 @@ public class CloudQueryHelper extends DevopsBase {
   private static final String DEFAULT_IMAGE_KEY = "default_image";
   public static final String ARCHITECTURE_KEY = "architecture";
 
-  private Map<Common.CloudType, JsonNode> cachedHostInfos = new ConcurrentHashMap<>();
+  // A failed lookup is retried after this long, e.g. once the metadata service is reachable again.
+  // Failures are cached too: each attempt can take tens of seconds (ybops' IMDSv2 token timeout).
+  @VisibleForTesting Duration hostInfoFailureTtl = Duration.ofMinutes(5);
+
+  private static class CachedHostInfo {
+    private final JsonNode hostInfo;
+    // System.nanoTime() after which the entry is stale; null for a successful lookup.
+    private final Long expiresAtNanos;
+
+    private CachedHostInfo(JsonNode hostInfo, Long expiresAtNanos) {
+      this.hostInfo = hostInfo;
+      this.expiresAtNanos = expiresAtNanos;
+    }
+
+    private boolean isFresh() {
+      return expiresAtNanos == null || System.nanoTime() - expiresAtNanos < 0;
+    }
+  }
+
+  private final Map<Common.CloudType, CachedHostInfo> cachedHostInfos = new ConcurrentHashMap<>();
+  private final Map<Common.CloudType, Object> hostInfoLocks = new ConcurrentHashMap<>();
+
+  @Inject HostCloudDetector hostCloudDetector;
 
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
   }
 
+  /**
+   * Returns the host's metadata from the cloud's metadata service. On failure, returns what ybops
+   * does: a JSON string if YBA doesn't run on that cloud or its metadata service is unreachable,
+   * or an {@code {"error": ...}} object if ybops itself failed.
+   */
   public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
-    return cachedHostInfos.computeIfAbsent(
-        cloudType,
-        ct -> currentHostInfo(ct, ct == Common.CloudType.aws ? AWS_METADATA_TYPES : null));
+    if (!hostCloudDetector.getHostCloud().equals(Optional.of(cloudType))) {
+      // Running ybops would only wait out the metadata service timeouts to fail the same way.
+      return Json.toJson(
+          String.format(
+              "Unable to auto-discover %s provider information",
+              cloudType.name().toUpperCase()));
+    }
+    CachedHostInfo cached = cachedHostInfos.get(cloudType);
+    if (cached != null && cached.isFresh()) {
+      return cached.hostInfo;
+    }
+    // Concurrent callers wait for one ybops run instead of each starting one.
+    synchronized (hostInfoLocks.computeIfAbsent(cloudType, ct -> new Object())) {
+      cached = cachedHostInfos.get(cloudType);
+      if (cached != null && cached.isFresh()) {
+        return cached.hostInfo;
+      }
+      JsonNode hostInfo =
+          currentHostInfo(
+              cloudType, cloudType == Common.CloudType.aws ? AWS_METADATA_TYPES : null);
+      boolean success = hostInfo.isObject() && !hostInfo.has("error");
+      cachedHostInfos.put(
+          cloudType,
+          new CachedHostInfo(
+              hostInfo, success ? null : System.nanoTime() + hostInfoFailureTtl.toNanos()));
+      return hostInfo;
+    }
   }
 
   private JsonNode currentHostInfo(

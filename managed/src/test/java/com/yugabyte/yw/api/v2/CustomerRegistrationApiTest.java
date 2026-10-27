@@ -10,6 +10,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -17,8 +19,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.SessionController;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.controllers.handlers.CustomerRegistrationHandler;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.DB;
@@ -190,5 +195,52 @@ public class CustomerRegistrationApiTest extends FakeDBApplication {
       }
     }
     assertEquals(3, Customer.find.query().findCount());
+  }
+
+  @Test
+  public void rotatedSuperAdminTokenCannotRegister() {
+    JsonNode first = registerOk(app, registrationSpec("admin@example.com"), null);
+    String oldToken = first.get("api_token").asText();
+    Result rotated =
+        Helpers.route(
+            app,
+            Helpers.fakeRequest(
+                    "PUT",
+                    "/api/v2/customers/" + first.get("customer_uuid").asText() + "/api-token")
+                .header(TokenAuthenticator.API_TOKEN_HEADER, oldToken));
+    assertEquals(contentAsString(rotated), OK, rotated.status());
+    String newToken = Json.parse(contentAsString(rotated)).get("api_token").asText();
+
+    Result result =
+        assertPlatformException(
+            () -> register(app, registrationSpec("tenant@example.com"), oldToken));
+
+    assertUnauthorized(result, "Unable to authenticate user");
+    registerOk(app, registrationSpec("tenant@example.com"), newToken);
+  }
+
+  @Test
+  public void v1RegistrationBySuperAdminIsAttributedToItAndLeavesTheThreadAlone() {
+    JsonNode first = registerOk(app, registrationSpec("admin@example.com"), null);
+    SessionController controller = app.injector().instanceOf(SessionController.class);
+
+    Result result =
+        controller.register(
+            false,
+            Helpers.fakeRequest("POST", "/api/v1/register")
+                .bodyJson(registrationSpec("tenant@example.com"))
+                .header(TokenAuthenticator.API_TOKEN_HEADER, first.get("api_token").asText())
+                .build());
+
+    assertEquals(contentAsString(result), OK, result.status());
+    // checkAllowed set the SuperAdmin as the request's user; nothing else would clear it.
+    assertNull(RequestContext.getIfPresent(TokenAuthenticator.USER));
+    UUID superAdminCustomer = UUID.fromString(first.get("customer_uuid").asText());
+    assertTrue(
+        Audit.getAll(superAdminCustomer).stream()
+            .anyMatch(
+                a ->
+                    a.getAction() == Audit.ActionType.Register
+                        && a.getUserUUID().toString().equals(first.get("user_uuid").asText())));
   }
 }

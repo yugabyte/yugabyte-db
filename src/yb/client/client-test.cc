@@ -2385,7 +2385,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
   // rejected due to staleness. To avoid this situation, we'll wait until all followers
   // have at least 1 op from the leader.
   ASSERT_NO_FATALS(InsertTestRows(table, 1));
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kFalse));
 
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 

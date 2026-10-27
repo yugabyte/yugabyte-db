@@ -1607,11 +1607,14 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
                                schema_name, table_name, num_rows));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 2 * num_rows));
+  // The service records analyze history only after ANALYZE has updated reltuples.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    last_analyze_info = VERIFY_RESULT((conn.FetchRow<std::optional<std::string>>(
+        Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
+               "WHERE relid = '$0'", table_oid))));
+    return last_analyze_info.has_value();
+  }, 30s * kTimeMultiplier, "Wait for last_analyze_info"));
   // Parse Json and Verify
-  last_analyze_info =
-    ASSERT_RESULT((conn.FetchRow<std::optional<std::string>>(
-      Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
-             "WHERE relid = '$0'", table_oid))));
   common::Jsonb jsonb;
   ASSERT_OK(jsonb.FromString(*last_analyze_info));
   rapidjson::Document doc;
@@ -2120,9 +2123,20 @@ TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyzeMultiTable) {
     }
   });
 
+  // A concurrent ANALYZE catalog version bump can legitimately cause a read restart on the DDL's
+  // catalog version read; retry only that error since query layer retries are disabled.
+  auto execute_ddl = [&conn2](const std::string& ddl) -> Status {
+    for (int attempt = 1;; ++attempt) {
+      auto s = conn2.Execute(ddl);
+      if (s.ok() || attempt >= 10 ||
+          s.message().ToBuffer().find("Restart read required") == std::string::npos) {
+        return s;
+      }
+    }
+  };
   for (int i = 1; i <= 20; i++) {
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 ADD COLUMN v1 INT"));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test3 DROP COLUMN v1"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 ADD COLUMN v1 INT"));
+    ASSERT_OK(execute_ddl("ALTER TABLE test3 DROP COLUMN v1"));
   }
 
   thread_holder.Stop();

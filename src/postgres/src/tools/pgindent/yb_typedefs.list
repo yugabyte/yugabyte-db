@@ -29,6 +29,8 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAggPushdownDecision
+YbAggPushdownInfo
 YbAnalyzeRelEnd_hook_type
 YbAsh
 YbAshQueryPlanPairStack
@@ -83,6 +85,7 @@ YbDdlMode
 YbDdlModeOptional
 YbDdlOriginalStmtState
 YbDdlTransactionState
+YbDefaultOpClassScanState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
@@ -339,6 +342,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction

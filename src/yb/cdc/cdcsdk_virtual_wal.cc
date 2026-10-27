@@ -772,7 +772,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
           !(record->row_message().op() == RowMessage_Op_BEGIN ||
             record->row_message().op() == RowMessage_Op_COMMIT ||
             (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
-             VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record))))) {
+             VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record))))) {
         continue;
       }
     }
@@ -1958,7 +1958,7 @@ bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
     // With packed-row, an UPDATE is reported as an INSERT.
     if (row_message.op() == RowMessage_Op_INSERT) {
       auto oid = GetPgCatalogUint32Column(row_message, "oid", /* use_new_tuple */ true);
-      return oid && publication_table_list_.contains(GetPgsqlTableId(pg_database_oid_, *oid));
+      return oid && GetPublishedTableIdForOid(*oid).has_value();
     }
     return false;
   }
@@ -2055,18 +2055,18 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
 Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(
     const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
     GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size) {
-  auto table_oid = VERIFY_RESULT(GetPublishedTableOidFromPgCatalogRecord(record));
+  auto affected_table_id = VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record));
 
   // Caller must ensure that the code never reaches here if this is not a catalog DML record.
   // The check is performed earlier in GetConsistentChangesInternal.
-  RSTATUS_DCHECK(table_oid, InternalError, "Table oid is not found for catalog DML record");
+  RSTATUS_DCHECK(
+      affected_table_id, InternalError, "Table id is not found for catalog DML record");
 
   const auto& row_message = record->row_message();
-  const auto affected_table_id = GetPgsqlTableId(pg_database_oid_, *table_oid);
   auto* ddl_record = resp->add_cdc_sdk_proto_records();
   auto* ddl_row_message = ddl_record->mutable_row_message();
   ddl_row_message->set_op(RowMessage_Op_DDL);
-  ddl_row_message->set_table_id(affected_table_id);
+  ddl_row_message->set_table_id(*affected_table_id);
   ddl_row_message->set_commit_time(row_message.commit_time());
   if (row_message.has_record_time()) {
     ddl_row_message->set_record_time(row_message.record_time());
@@ -2085,7 +2085,17 @@ Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(
   return Status::OK();
 }
 
-Result<std::optional<uint32_t>> CDCSDKVirtualWAL::GetPublishedTableOidFromPgCatalogRecord(
+std::optional<TableId> CDCSDKVirtualWAL::GetPublishedTableIdForOid(uint32_t oid) const {
+  auto it = oid_to_relfilenode_.find(oid);
+  const auto relfilenode = it != oid_to_relfilenode_.end() ? it->second : oid;
+  auto table_id = GetPgsqlTableId(pg_database_oid_, relfilenode);
+  if (!publication_table_list_.contains(table_id)) {
+    return std::nullopt;
+  }
+  return table_id;
+}
+
+Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalogRecord(
     const std::shared_ptr<CDCSDKProtoRecordPB>& record) const {
   const auto& row_message = record->row_message();
   const auto& table_id = row_message.table_id();
@@ -2100,12 +2110,11 @@ Result<std::optional<uint32_t>> CDCSDKVirtualWAL::GetPublishedTableOidFromPgCata
     auto attrelid = GetPgCatalogUint32Column(row_message, "attrelid", use_new_tuple);
     RSTATUS_DCHECK(attrelid, IllegalState, "attrelid not found in pg_attribute record");
 
-    const auto affected_table_id = GetPgsqlTableId(pg_database_oid_, *attrelid);
-    if (!publication_table_list_.contains(affected_table_id)) {
+    auto affected_table_id = GetPublishedTableIdForOid(*attrelid);
+    if (!affected_table_id) {
       VLOG_WITH_PREFIX(2) << "Ignoring pg_attribute change for unpublished table oid " << *attrelid;
-      return std::nullopt;
     }
-    return attrelid;
+    return affected_table_id;
   }
 
   if (table_id == pg_class_table_id_) {
@@ -2119,12 +2128,11 @@ Result<std::optional<uint32_t>> CDCSDKVirtualWAL::GetPublishedTableOidFromPgCata
       return std::nullopt;
     }
 
-    const auto affected_table_id = GetPgsqlTableId(pg_database_oid_, *oid);
-    if (!publication_table_list_.contains(affected_table_id)) {
+    auto affected_table_id = GetPublishedTableIdForOid(*oid);
+    if (!affected_table_id) {
       VLOG_WITH_PREFIX(2) << "Ignoring pg_class change for unpublished table oid " << *oid;
-      return std::nullopt;
     }
-    return oid;
+    return affected_table_id;
   }
 
   return std::nullopt;

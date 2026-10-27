@@ -30,3 +30,84 @@
       noAuthz: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/api-token':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  put:
+    operationId: generateApiToken
+    summary: Generate an API token
+    description: 'Generates a new API token for the calling user and returns it. The previous token stops working. The caller authenticates with an API token or a session token (from login), and must belong to the customer.'
+    tags:
+      - Customer
+    requestBody:
+      $ref: "../components/requestBodies/ApiTokenReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UserApiTokenResp.yaml"
+      '401':
+        description: The request has no valid API or session token
+      '403':
+        description: The caller does not belong to this customer
+      '404':
+        description: Customer not found
+      '409':
+        description: 'api_token_version is not the caller''s current API token version, e.g. because the token was rotated concurrently'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Customer
+      auditTargetId: cUUID.toString()
+      auditActionType: GenerateApiToken
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/host-cloud-info':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getHostCloudInfo
+    summary: Get the YBA host's cloud info
+    description: 'Returns the public cloud and region that YBA runs on, and the instance metadata used to create a provider in the host''s VPC. Replaces the v1 host_info.'
+    tags:
+      - Customer
+    responses:
+      '200':
+        $ref: "../components/responses/HostCloudInfoResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview

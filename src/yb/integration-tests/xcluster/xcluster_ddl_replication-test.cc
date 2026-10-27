@@ -45,6 +45,7 @@
 #include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
@@ -72,6 +73,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(enable_load_balancing);
@@ -94,6 +96,7 @@ DECLARE_bool(xcluster_kill_ddl_queue_pg_connection_on_pause);
 DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
 DECLARE_bool(xcluster_enable_target_applied_filter);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
@@ -173,6 +176,41 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
     LOG(INFO) << "CreateReplicationFromCheckpoint done";
     return Status::OK();
+  }
+
+  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
+  // the master waits for the pause to finish using the RPC's client deadline.
+  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
+    master::SetUniverseReplicationEnabledRequestPB req;
+    master::SetUniverseReplicationEnabledResponsePB resp;
+    req.set_replication_group_id(kReplicationGroupId.ToString());
+    req.set_is_enabled(is_enabled);
+    master::MasterReplicationProxy proxy(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout);
+    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  // Leaves the target tserver with no pollers and no remote clients while the source is dead.
+  void KillSourceAndRestartTargetTServer() {
+    // Fail each remote client creation attempt quickly instead of the default 30s.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 2000 * kTimeMultiplier;
+
+    producer_cluster()->StopSync();
+
+    StringWaiterLogSink client_create_failed_log("Could not create source client");
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart());
+      ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->WaitStarted());
+    }
+    ASSERT_OK(client_create_failed_log.WaitFor(kTimeout));
   }
 
   // Precondition: a bootstrap is not actually needed.
@@ -1361,12 +1399,18 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms));
   }
 
+  StringWaiterLogSink fail_at_end_log("Failing due to xcluster_ddl_queue_handler_fail_at_end");
+
   // Resume replication.
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
 
+  // Wait for the first failure. It can take longer than the check below, and if the flag is
+  // cleared before it, the batch succeeds on the first try and the retry is never tested.
+  ASSERT_OK(fail_at_end_log.WaitFor(kTimeout));
+
   // Safe time should not advance.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Allow processing to continue.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
@@ -1505,7 +1549,7 @@ TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
 
   // Replication should not resume until we recreate the ddl_queue poller.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Resume replication by pausing and unpausing, this will recreate the pollers.
   ASSERT_OK(ToggleUniverseReplication(
@@ -2157,6 +2201,8 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   // will still replicate the following DROP COLUMN on the target.
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = true;
+  StringWaiterLogSink fail_before_bump_log(
+      "Failing due to xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump");
 
   // Drop a column and insert more data.
   ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableName));
@@ -2164,7 +2210,9 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
       producer_conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1001, 2000) as i", kTableName));
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  // Wait for the DROP COLUMN to run on the target and hit the failure.
+  ASSERT_OK(fail_before_bump_log.WaitFor(kTimeout));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
 
   // Selects at this point should still work, and should still see the old column.
@@ -2318,23 +2366,20 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
 
   // Regular replication should make progress, but ddl_queue should be stuck.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);
 
   // Step down the ddl_queue tablet.
   ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
 
   // Replication should still be stuck, even with a new queue handler.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);  // The new poller should not have tried to process queue.
 
   // Resume the ddl_queue handler.
   TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");
 
   // Replication should resume.
-  propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
@@ -3481,10 +3526,7 @@ TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
       "INSERT INTO tbl1 SELECT i,i,i,i FROM generate_series(301, 400) as i"));
 
   // Safe time should be stuck due to the lagging tablet.
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  propagation_timeout_ = original_propagation_timeout;
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Force the source to use the earlier checkpoint instead of using its in-memory checkpoints.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
@@ -4572,6 +4614,114 @@ TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyze
       stats_query, "Waiting for auto analyze on the target after enabling it"));
 }
 
+// Tests that ANALYZEs captured while xCluster setup is still in progress don't break the setup
+// and that none of their results go missing on the target.  In automatic mode the source starts
+// capturing ANALYZE in ddl_queue at checkpoint time, but the target database only gets created
+// later, by the restore, so the target has to read ddl_queue as of commit times from before its
+// own copy of ddl_queue existed.
+class XClusterDDLReplicationAnalyzeDuringSetupTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    // The tests run ANALYZE by hand and check the results, so keep auto analyze off.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ToggleDDLMode(/*use_legacy=*/!transactional_ddl_);
+    TEST_SETUP_SUPER(XClusterDDLReplicationAnalyzeTestBase);
+  }
+
+ protected:
+  static constexpr auto kCreateTableStmt = "CREATE TABLE tbl1(id int PRIMARY KEY, col1 int)";
+  static constexpr int kNumAnalyzes = 2;
+
+  // Legacy DDL mode by default. The Txn subfixture sets this to true for transactional DDL.
+  bool transactional_ddl_ = false;
+
+  // Runs ANALYZEs on the source after the checkpoint, both before and after the backup, and checks
+  // that setup still completes.  The stats from before the backup must come over with the restore,
+  // and the target must process the ANALYZEs from after the backup.
+  void TestAnalyzeBeforeRestore() {
+    if (!UseYbController()) {
+      GTEST_SKIP() << "This test does not work with yb_backup.py";
+    }
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.start_yb_controller_servers = true;
+    ASSERT_OK(SetUpClusters(params));
+
+    ASSERT_OK(producer_conn_->Execute(kCreateTableStmt));
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(1, 10) g"));
+    ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    // Make the stats stale so that the target would get different ones if it analyzed on its own.
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(11, 30) g"));
+    constexpr auto kStatsQuery =
+        "SELECT reltuples, attname, n_distinct, histogram_bounds::text FROM pg_class "
+        "JOIN pg_stats ON tablename = relname WHERE relname = 'tbl1' ORDER BY attname";
+    const auto source_stats = ASSERT_RESULT(producer_conn_->FetchAllAsString(kStatsQuery));
+    ASSERT_OK(BackupFromProducer());
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    ASSERT_OK(RestoreToConsumer());
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(kStatsQuery)), source_stats);
+
+    // This waits for the xCluster safe time, and the safe time can't move past a captured ANALYZE
+    // until the handler runs it.  So once this returns, all the ANALYZEs got handled.
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+    // Only the ANALYZEs after the backup get processed.  The restore brings the source's
+    // replicated_ddls rows for the ones before it, so those are skipped.
+    ASSERT_EQ(ASSERT_RESULT(CountAnalyzesProcessedByTarget(*consumer_conn_)), kNumAnalyzes);
+    ASSERT_OK(CheckReplicationStillWorks());
+  }
+
+  // Runs num_analyzes ANALYZEs on the source that all get captured in ddl_queue.
+  static Status AnalyzeOnSource(pgwrapper::PGConn& conn, int num_analyzes) {
+    constexpr auto kCountQuery =
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue "
+        "WHERE yb_data->>'command_tag' = 'ANALYZE'";
+    // Only count what this call captures, since ddl_queue can already have ANALYZEs from an
+    // earlier call.
+    const auto captured_before = VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery));
+    // Each WaitFor attempt runs an ANALYZE and then checks if one got captured.  The first tries
+    // can fail or get skipped until the tserver learns the source role from heartbeats.
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          WARN_NOT_OK(conn.Execute("ANALYZE tbl1"), "ANALYZE on the source failed");
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery)) > captured_before;
+        },
+        kTimeout, "Waiting for the source to capture ANALYZE"));
+    for (int i = 1; i < num_analyzes; ++i) {
+      RETURN_NOT_OK(conn.Execute("ANALYZE tbl1"));
+    }
+    return Status::OK();
+  }
+
+  // The handler writes the qualified table name, so the source's own rows that the restore brings
+  // over don't count.
+  static Result<int64_t> CountAnalyzesProcessedByTarget(pgwrapper::PGConn& conn) {
+    // The target writes replicated_ddls locally, at times that can be past the xCluster safe time,
+    // so read it at tablet level instead of at the safe time.
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
+    return conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls "
+        "WHERE yb_data->>'query' = 'ANALYZE public.tbl1'");
+  }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
+}
+
+// Runs TestAnalyzeBeforeRestore with transactional DDL, where pggate reads the catalog through a
+// different path.
+class XClusterDDLReplicationAnalyzeDuringSetupTxnTest
+    : public XClusterDDLReplicationAnalyzeDuringSetupTest {
+ public:
+  XClusterDDLReplicationAnalyzeDuringSetupTxnTest() { transactional_ddl_ = true; }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTxnTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
+}
+
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
 TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -5281,7 +5431,11 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PartmanExtension) {
       p_interval => 'monthly',
       p_premake => 1);)#"));
 
-  int64_t expected_table_count = 4;
+  // On pg_partman's native path, the default in release builds, create_parent also creates a
+  // default partition.
+  const auto native = ASSERT_RESULT(producer_conn_->FetchRow<bool>(
+      "SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()"));
+  int64_t expected_table_count = native ? 5 : 4;
 
   auto validate_table_count = [this, &expected_table_count]() {
     const auto select_table_names =
@@ -6487,6 +6641,35 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
   ASSERT_NO_FATALS(VerifyVectorSearch());
 }
 
+// The rows applied after the backfill are not flushed to the index before an ungraceful restart.
+// Bootstrap must replay them into the index, although their hybrid time is below its own.
+TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedAfterBackfillBootstrap) {
+  ASSERT_OK(SetUpTableWithVectorIndex());
+  ASSERT_OK(RewriteAndFailFirstReplay());
+  ASSERT_OK(WaitForRetriedRewrite());
+  ReleaseRetryPoller();
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(consumer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  const auto table_name = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, /*schema_name=*/"", "t"));
+  for (const auto& peer : ListTableActiveTabletPeers(consumer_cluster(), table_name.table_id())) {
+    auto state = ASSERT_RESULT(ASSERT_RESULT(peer->shared_tablet())->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.vector_indexes[0].op_id.index, state.regular.index) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  for (size_t i = 0; i != consumer_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(consumer_cluster()->mini_tablet_server(i)->Restart());
+  }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+  ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_NO_FATALS(VerifyVectorSearch());
+}
+
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(EnablePITROnClusters());
@@ -7610,25 +7793,6 @@ class XClusterDDLReplicationStuckCreateTablePauseTest : public XClusterDDLReplic
         60 * kTimeMultiplier;
   }
 
-  // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
-  // the master waits for the pause to finish using the RPC's client deadline.
-  Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
-    master::SetUniverseReplicationEnabledRequestPB req;
-    master::SetUniverseReplicationEnabledResponsePB resp;
-    req.set_replication_group_id(kReplicationGroupId.ToString());
-    req.set_is_enabled(is_enabled);
-    master::MasterReplicationProxy proxy(
-        &consumer_client()->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-    rpc::RpcController rpc;
-    rpc.set_timeout(timeout);
-    RETURN_NOT_OK(proxy.SetUniverseReplicationEnabled(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    return Status::OK();
-  }
-
   // Leaves a replicated CREATE TABLE parked in AddTableToXClusterTargetTask's safe time wait, with
   // the ddl_queue poller pinned inside the DDL.
   void WedgeReplicatedCreateTable() {
@@ -7723,6 +7887,56 @@ TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, PauseTerminatesOrphanedP
       /*is_enabled=*/false, MonoDelta::FromSeconds(15 * kTimeMultiplier)));
   ASSERT_OK(terminated_log.WaitFor(kTimeout));
   ASSERT_OK(shutdown_completed_log.WaitFor(kTimeout));
+}
+
+// The ddl_queue poller must not be treated as stuck (a DFATAL in debug builds) when running long
+// running DDLs.
+TEST_F(XClusterDDLReplicationStuckCreateTablePauseTest, LongRunningDdlIsNotStuck) {
+  const auto kStuckSecs = 2 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_poller_task_delay_considered_stuck_secs) = kStuckSecs;
+  // Keep the failure backoff of the data pollers below the stuck threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 8;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  StringWaiterLogSink stuck_log("XCluster Poller has not executed any tasks");
+  ASSERT_NO_FATALS(WedgeReplicatedCreateTable());
+
+  SleepFor(2s * kStuckSecs);
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
+
+  // Let the create finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure that the DDL was able to replicate without ddl_queue handler getting killed.
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(
+      Format("SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kStuckTableName))));
+  ASSERT_FALSE(stuck_log.IsEventOccurred());
+}
+
+// Restarting the target tserver while the source is down leaves it with no source client. Pausing
+// must still succeed (failover depends on it), so disabled streams get pollers without one.
+TEST_F(XClusterDDLReplicationTest, PauseSucceedsWithPauseOnlyPollers) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_NO_FATALS(KillSourceAndRestartTargetTServer());
+
+  ASSERT_OK(SetReplicationEnabled(
+      /*is_enabled=*/false, MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  // Bring the source back, resume, and check replication picks back up.
+  {
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    ASSERT_OK(producer_cluster()->StartSync());
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 30000;
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
 }
 
 // A replicated DROP TABLE blocks on the target while the target master removes the table from

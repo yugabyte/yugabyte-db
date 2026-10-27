@@ -45,6 +45,7 @@
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
+| "Skip tmp_dir gflag consistency check" | "yb.filepaths.skip_tmp_dir_gflag_consistency_check" | "PROVIDER" | "When true, skips the on-prem create-universe precheck that requires provider remoteTmpDirectory to match master/tserver tmp_dir gflags." | "Boolean" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
 | "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
 | "Make YBC listen on 0.0.0.0" | "yb.ybc_flags.listen_on_all_interfaces_k8s" | "PROVIDER" | "Makes YBC bind on all network interfaces" | "Boolean" |
@@ -401,6 +402,7 @@
 | "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |
 | "Enable NFS Backup precheck" | "yb.backup.enable_nfs_precheck" | "UNIVERSE" | "Enable/disable check which verifies free space on NFS mount before backup." | "Boolean" |
 | "NFS precheck buffer space" | "yb.backup.nfs_precheck_buffer_kb" | "UNIVERSE" | "Amount of space (in KB) we want as buffer for NFS precheck" | "Long" |
+| "Kubernetes master volume cleanup ready timeout" | "yb.kubernetes.master_pvc_gc_ready_timeout" | "UNIVERSE" | "How long removing unused master volumes after a Kubernetes edit waits for the master StatefulSet to have all its pods ready before failing the task" | "Duration" |
 | "Wait after each pod restart in rolling operations" | "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms" | "UNIVERSE" | "Time to wait after each pod restart before restarting the next pod in rolling operations" | "Integer" |
 | "Backup and restore to use pre roles behaviour" | "ybc.revert_to_pre_roles_behaviour" | "UNIVERSE" | "Have YBC use the pre roles backup and restore behaviour" | "Boolean" |
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
@@ -425,3 +427,4 @@
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
 | "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |
+| "Enable the node_exporter sidecar on Kubernetes universes" | "yb.kubernetes.node_exporter.enabled" | "UNIVERSE" | "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics. Pods change at their next Helm operation, for example a Kubernetes overrides edit" | "Boolean" |

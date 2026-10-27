@@ -98,6 +98,7 @@ class RaftConfigPB;
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class TierMigrationReconciler;
 
 using rocksdb::MemoryMonitor;
 
@@ -437,7 +438,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // If any check fails, re-resolves via SelectPathIdForTier and persists the repair so this
   // does not need to happen again on the next load. If the tier has no disks on this node at
   // all, returns 0 (home) without touching the persisted value, so the intent survives until a
-  // disk for that tier reappears.
+  // disk for that tier reappears. With tiered storage disabled, returns 0 and clears a persisted
+  // path_id, again leaving target_storage_tier alone.
   Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
       EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
@@ -463,6 +465,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
+
+  TierMigrationReconciler* tier_migration_reconciler() { return tier_migration_reconciler_.get(); }
 
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
 
@@ -792,6 +796,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletServer* server_;
 
+  // Created in Init, before any tablet peer.  Every tablet peer points at it, so it must outlive
+  // their use of it: all peers are shut down (see CompleteShutdown) before this manager is
+  // destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
+
   consensus::RaftPeerPB local_peer_pb_;
 
   using TabletMap = std::unordered_map<
@@ -973,6 +982,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::unique_ptr<TierMigrationReconciler> tier_migration_reconciler_;
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;

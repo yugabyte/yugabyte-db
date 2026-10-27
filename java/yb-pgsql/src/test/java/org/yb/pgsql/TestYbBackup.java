@@ -3227,6 +3227,55 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testRestoreRoleValidUntil() throws Exception {
+    // ysql_dumpall connects as yugabyte. Day-first DateStyle on that role is what
+    // formats rolvaliduntil; reset it before restore so the script is replayed
+    // under the default ISO, MDY.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table(id INT PRIMARY KEY)");
+      stmt.execute("CREATE ROLE app_user_swap VALID UNTIL '2030-03-04 00:00:00+00'");
+      stmt.execute("CREATE ROLE app_user_day VALID UNTIL '2030-12-25 00:00:00+00'");
+      stmt.execute("ALTER ROLE yugabyte SET DateStyle = 'German'");
+    }
+
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", "ysql.yugabyte", "--backup_roles");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER ROLE yugabyte RESET DateStyle");
+      // ignore_existing_roles skips ALTER for a role that is still there, so the
+      // restored VALID UNTIL would never be applied.
+      stmt.execute("DROP ROLE app_user_swap");
+      stmt.execute("DROP ROLE app_user_day");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb_validuntil",
+        "--restore_roles", "--ignore_existing_roles");
+
+    try (Statement stmt = connection.createStatement()) {
+      assertQuery(stmt,
+          "SELECT rolname, to_char(rolvaliduntil AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') " +
+          "FROM pg_roles WHERE rolname IN ('app_user_day', 'app_user_swap') ORDER BY 1",
+          new Row("app_user_day", "2030-12-25 00:00:00"),
+          new Row("app_user_swap", "2030-03-04 00:00:00"));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP ROLE app_user_swap");
+      stmt.execute("DROP ROLE app_user_day");
+      stmt.execute("DROP TABLE test_table");
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb_validuntil");
+    }
+  }
+
+  @Test
   public void testBackupRoles() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_roles",

@@ -1083,7 +1083,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
 	 * references to nonexistent indexes.
 	 *
-	 * YB note: For aggregate pushdown, we need recheck knowledge to determine
+	 * YB note: Legacy cost model only: for aggregate pushdown decided at init
+	 * (yb_agg_pushdown_supported), we need recheck knowledge to determine
 	 * whether aggregates can be pushed down or not.  At the time of writing,
 	 * - aggregate pushdown only supports YB relations
 	 * - there cannot be a mix of non-YB tables and YB indexes, and vice versa
@@ -1124,10 +1125,11 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 						   NULL);
 
 	/*
-	 * YB: For aggregate pushdown purposes, using the scan keys, determine
-	 * ahead of beginning the scan whether indexqual recheck might happen, and
-	 * pass that information up to the aggregate node.  Only attempt this for
-	 * YB relations since pushdown is not supported otherwise.
+	 * YB: Legacy cost model only: for aggregate pushdown purposes, using the
+	 * scan keys, determine ahead of beginning the scan whether indexqual
+	 * recheck might happen, and pass that information up to the aggregate
+	 * node.  Only attempt this for YB relations since pushdown is not
+	 * supported otherwise.
 	 */
 	if (IsYBRelation(indexstate->iss_RelationDesc) &&
 		(eflags & EXEC_FLAG_YB_AGG_PARENT))

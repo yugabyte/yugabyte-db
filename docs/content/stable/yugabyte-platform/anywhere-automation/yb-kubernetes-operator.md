@@ -475,7 +475,7 @@ NAME                     STATE   SOFTWARE VERSION
 operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
 ```
 
-To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+To modify the universe, edit the CRD and use `kubectl apply/edit` operations. Set `replicationFactor` when you create the universe; the Operator does not support changing it later. See [Limitations](#limitations).
 
 To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
@@ -1474,3 +1474,4 @@ Importing a universe to the operator creates or adopts the following in the targ
   - Software upgrade rollback
   - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
+- `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).

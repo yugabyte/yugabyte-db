@@ -138,5 +138,10 @@ extern RestrictInfo *yb_make_derived_restrictinfo(PlannerInfo *root,
 												  OpExpr *clause,
 												  Relids nullable_relids);
 extern Node *yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted);
+extern void yb_fix_indexqual_references(PlannerInfo *root,
+										IndexPath *index_path,
+										List **stripped_indexquals_p,
+										List **fixed_indexquals_p);
+extern YbMergeScanInfo *yb_make_merge_scan_info(IndexPath *index_path);
 
 #endif							/* PLANMAIN_H */
