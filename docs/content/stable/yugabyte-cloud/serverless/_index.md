@@ -18,7 +18,7 @@ menu:
 type: docs
 ---
 
-Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon, using YugabyteDB AMP (Agentic Multitenant PostgreSQL). Each agent or tenant gets its own isolated PostgreSQL database, and YugabyteDB Aeon manages the service. Use it for AI agents and for workloads that are bursty or often idle.
+Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. Each agent or tenant gets its own isolated PostgreSQL database. Use it for AI agents and for workloads that are bursty or often idle.
 
 ## Features
 
@@ -49,7 +49,7 @@ The **Create Cluster** wizard has the following pages:
 1. [General](#general)
 1. [Cluster Settings](#cluster-settings)
 1. [Network Access](#network-access)
-1. [DB Credentials](#database-credentials)
+1. [DB Credentials](#db-credentials)
 
 ### General
 
@@ -80,7 +80,6 @@ Choose a size:
 
 Select PostgreSQL extensions that you want to use with your cluster.
 
-PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. Serverless clusters support a variety of PostgreSQL extensions.
 
 Extensions that the engine includes are marked **Included with engine**.
 
@@ -132,7 +131,6 @@ Download the credentials, and click **Create Cluster**.
 
 To manage a cluster, click **Clusters** in the left navigation and open the cluster. The **Cluster Branches** section lists the cluster's branches, and the compute endpoints on each branch.
 
-Use the search box and status filter to find a branch or endpoint. The branch and endpoint counts show how many are healthy or need attention.
 
 ### Add a branch
 
@@ -158,7 +156,7 @@ A branch that has no compute shows **No compute endpoint**.
 
 1. On **Endpoint Settings**, set the following and click **Next**:
 
-    - **Role**. **Read-Write** is available. **Read-Only** is not available yet. A branch can have one read-write endpoint.
+    - **Role**. Choose **Read-Write**. A branch can have one read-write endpoint.
     - **Endpoint name**. The name becomes part of the URL and must be unique within the branch.
     - **Read-write compute**. Choose a size, as when you create a cluster.
 
@@ -184,11 +182,7 @@ To remove the compute, click **Delete Endpoint**. Anything connected to the endp
 
 ## Tasks
 
-Creating, resizing, or deleting a resource records a task. To see the tasks, click **Tasks** in the left navigation.
-
-- Filter by **Cluster** and **Status**: **Pending**, **Running**, **Succeeded**, or **Failed**.
-- Each task shows its **Task** type (for example, **Create cluster**, **Provision compute**, **Resize compute**, or **Delete branch**), **State**, **Cluster**, **Resource**, **Start time**, and **End time**.
-- Click a task to open **Task details**, which includes the task ID, its progress, and the error if it failed.
+Creating, resizing, or deleting a resource records a task. To see a task's progress, or the error if it failed, click **Tasks** in the left navigation and open the task.
 
 ## Next steps
 

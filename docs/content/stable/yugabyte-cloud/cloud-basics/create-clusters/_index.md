@@ -16,7 +16,7 @@ type: indexpage
 
   {{<index/item
     title="Serverless Postgres"
-    body="Create an AMP Managed cluster for agents and tenants."
+    body="Create a fully managed PostgreSQL cluster for agents and tenants."
     href="/stable/yugabyte-cloud/serverless/"
     icon="fa-thin fa-bolt">}}
 
