@@ -65,7 +65,7 @@ A **backport** is a PR whose title starts with `[BACKPORT <release-branch>]`, e.
 Original commit: <SHA> / #<PR>
 ```
 
-placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number) that already passed full review when its original PR merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
+placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number, or ` / D<id>` if the original landed via Phorge) that already passed full review when it merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
 
 When you review a backport PR, **switch to backport mode**:
 

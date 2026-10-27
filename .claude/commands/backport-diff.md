@@ -1,5 +1,5 @@
 ---
-description: Backport a Phorge-landed commit (or revision) to one or more YugabyteDB release branches as Phorge/arc revisions
+description: Backport a commit to YugabyteDB release branches as Phorge/arc revisions. Only when the user explicitly asks for Phorge; /backport-commit (GitHub PRs) is the default
 argument-hint: <commit-sha|Dxxxxx> [<branch> ...]
 allowed-tools: Bash(backport.sh *)
 model: sonnet
@@ -7,7 +7,7 @@ model: sonnet
 
 Backport a change that landed through Phorge to one or more YugabyteDB release branches using `backport.sh`. It cherry-picks (or `arc patch`es, for a `Dxxxxx` argument) onto each release branch, rewrites the message to `[BACKPORT <branch>] …` with an `Original commit: <sha> / <Dxxxxx>` line in the Summary, and publishes each branch with `arc diff -- origin/<branch>`. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.
 
-**This command produces Phorge/arc revisions.** A backport should go through the same review system the original went through, so if the original landed as a GitHub PR — subject ends `(#NNNNN)`, committer is `GitHub <noreply@github.com>`, and the body has no `Differential Revision:` line — stop and use `/backport-commit` instead. If neither pattern matches cleanly, ask the user rather than guessing.
+**This command produces Phorge/arc revisions, and is opt-in.** GitHub PRs via `/backport-commit` are the default for every backport, including Phorge-landed originals. Phorge stops accepting new diffs on 2026-11-23; from then on this command cannot work, so use `/backport-commit`. Use this command only when the user explicitly asks for a Phorge backport, and only for an original that landed via Phorge (its body has a `Differential Revision:` line).
 
 This command is self-contained by design: it shares no content with `/backport-commit`, so once YugabyteDB finishes moving to GitHub PRs, deleting this file is the whole cleanup.
 

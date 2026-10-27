@@ -74,7 +74,7 @@ repo needs:
   invariant, a cross-component contract, a locking or ordering constraint, a workaround and
   the upstream bug behind it. Not a label for the block below it, not narration of the
   change you just made.
-- **PR / Phorge diff descriptions** — the motivation (a reviewer who doesn't know why is
+- **PR descriptions** — the motivation (a reviewer who doesn't know why is
   the expensive case), what changed, and whatever the reader must *act* on: new gflags,
   upgrade/rollback consequences, migration steps. Not a narration of the diff. The test
   plan is a separate section — keep it to what was run.
@@ -96,5 +96,4 @@ touch.
 This does **not** apply to the user-facing docs website (`docs/`), which follows its own
 editorial style guide and is written for readers who do *not* know this repo.
 
-Trim before you publish, not in review: the `create-pr` and `create-diff` skills re-check
-this as a step.
+Trim before you publish, not in review: the `create-pr` skill re-checks this as a step.
