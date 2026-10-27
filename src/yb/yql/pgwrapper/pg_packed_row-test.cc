@@ -15,6 +15,8 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/consensus/log.h"
 
 #include "yb/docdb/doc_read_context.h"
@@ -30,6 +32,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -765,6 +769,48 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
   auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, int32_t>(
       "SELECT * FROM t ORDER BY key")));
   ASSERT_EQ(rows, expected_rows);
+}
+
+// sequences_data.last_value is NOT NULL in the DocDB schema. Compacting below an earlier
+// compaction's cutoff could find a sequence row's liveness entry at or below the cutoff with no
+// last_value version at or below it, and packing the row failed with "Wrong encoded size: 0"
+// (#35445).
+TEST_P(PgPackedRowTest, PackSequenceAfterHistoryCutoffMovesBack) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  const auto kStep = 3s * kTimeMultiplier;
+  auto compact_sequences_data = [this]() -> Status {
+    for (const auto& peer : ListTableTabletPeers(cluster_.get(), kPgSequencesDataTableId)) {
+      RETURN_NOT_OK(VERIFY_RESULT(peer->shared_tablet())->ForceManualRocksDBCompact());
+    }
+    return Status::OK();
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE s"));
+  auto create_time = CoarseMonoClock::now();
+  std::this_thread::sleep_for(2 * kStep);
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT setval('s', 100)"));
+
+  // Drops the last_value written by CREATE SEQUENCE and keeps the liveness entry.
+  ASSERT_OK(compact_sequences_data());
+
+  // As in an upgrade, the second compaction runs after a restart, so the only record of the first
+  // compaction's cutoff is the flushed frontier.
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+
+  // Move the clock based cutoff between CREATE SEQUENCE and setval. Rounding up keeps the cutoff
+  // at or before create_time + kStep, leaving kStep for the compaction to start.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      narrow_cast<int32_t>(std::chrono::ceil<std::chrono::seconds>(
+          CoarseMonoClock::now() - create_time - kStep).count());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(compact_sequences_data());
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('s')")), 101);
 }
 
 // Check that we correctly interpret packed row size limit.
