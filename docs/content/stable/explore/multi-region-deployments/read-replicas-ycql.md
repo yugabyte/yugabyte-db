@@ -22,7 +22,7 @@ YugabyteDB supports the following types of reads:
 
 A data center (also known as a [universe](../../../architecture/key-concepts/#universe)) can have one primary cluster and several read replica clusters.
 
-Stale reads have an upper bound, and they are timeline-consistent. Set the consistency level to [`ONE`](../../../additional-features/follower-reads/#ycql) to read from a follower in the primary cluster or from a read replica. The default `QUORUM` still reads from the tablet leader. Also set the application's local data center to the read replica cluster's region so the read is routed there.
+Stale reads have an upper bound, and they are timeline-consistent. Set the consistency level to [ONE](../../../additional-features/follower-reads/#ycql) to read from a follower in the primary cluster or from a read replica. The default `QUORUM` still reads from the tablet leader. Also set the application's local data center to the read replica cluster's region so the read is routed there.
 
 ## Prerequisites
 

@@ -15,19 +15,17 @@ menu:
 type: docs
 ---
 
-YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client. The same applies to a [read replica](../../../deploy/multi-dc/read-replica-clusters/): an asynchronous copy of the data placed near the client in another region that can serve reads when follower reads are on.
+YugabyteDB requires reading from the [leader](../../../architecture/key-concepts/#tablet-leader) to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client. The same applies to a [read replica](../../../deploy/multi-dc/read-replica-clusters/): an asynchronous copy of the data placed near the client in another region that can serve reads when follower reads are on.
 
-{{<lead link="../../../additional-features/follower-reads/">}}
-For how a read chooses a replica, how stale the result is, and how to turn follower reads on, see [Follower reads](../../../additional-features/follower-reads/).
-{{</lead>}}
+Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. Consider the following use cases:
 
-## Use cases
+1. Rarely changing data. Suppose a storefront in one region serves a product catalog whose leader is in another. Descriptions and prices change occasionally, and a page a few seconds behind is fine for the shopper. The closest replica can serve those reads, so each page view avoids a round trip to the remote leader.
 
-1. Time-critical. Suppose the end-user starts a donation page to raise money for a personal cause and the target amount must be met by the end of the day. In a time-critical scenario, the end-user benefits from accessing the most recent donation made on the page and can keep track of the progress. Such real-time applications require the latest information as soon as it is available. But in the case of an application where fetching slightly stale data is acceptable, follower reads can be helpful.
+1. Latency-tolerant (staleness). Suppose a social media post gets a million likes and more continuously. For a post with massive likes, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to someone reading the post. Such applications don't need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
 
-1. Latency-tolerant (staleness). Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
+You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
-Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
+For information on how a read chooses a replica, how stale the result is, and how to turn follower reads on, see [Follower reads](../../../additional-features/follower-reads/).
 
 ## Leaders and leader leases
 
@@ -292,11 +290,11 @@ You can see this by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
 
-{{% explore-cleanup-local %}}
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+{{% explore-cleanup-local %}}
 
 ## Read more
 
