@@ -63,6 +63,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -2007,8 +2008,8 @@ public class GFlagsUtil {
       for (CSVRecord record : parser) {
         entries.addAll(record.toList());
       }
-    } catch (IOException ignored) {
-      // can't really happen
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to parse CSV", e);
     }
     return entries;
   }
@@ -2018,8 +2019,8 @@ public class GFlagsUtil {
     try (CSVPrinter csvPrinter = new CSVPrinter(writer, CSV_FORMAT)) {
       csvPrinter.printRecord(entries);
       csvPrinter.flush();
-    } catch (IOException ignored) {
-      // can't really happen
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to print CSV", e);
     }
     return writer.toString();
   }

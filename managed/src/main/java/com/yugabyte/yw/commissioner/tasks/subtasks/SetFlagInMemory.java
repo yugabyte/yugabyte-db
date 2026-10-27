@@ -137,11 +137,14 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         }
         if (StringUtils.isNotBlank(baseYsqlPgConfCsv)
             || StringUtils.isNotBlank(telemetryYsqlPgConfCsv)) {
-          // K8s helm overrides pass the user value through unchanged when there is no telemetry.
+          // K8s helm overrides pass the user value through unchanged unless the export row has an
+          // audit or query section (KubernetesCommandExecutor checks requiresYsqlPgConfCsv).
+          boolean keepRaw =
+              Util.isKubernetesBasedUniverse(universe)
+                  && (telemetryConfig == null || !telemetryConfig.requiresYsqlPgConfCsv());
           gflags.put(
               GFlagsUtil.YSQL_PG_CONF_CSV,
-              Util.isKubernetesBasedUniverse(universe)
-                      && StringUtils.isBlank(telemetryYsqlPgConfCsv)
+              keepRaw
                   ? baseYsqlPgConfCsv
                   : GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
                       baseYsqlPgConfCsv, telemetryYsqlPgConfCsv));
