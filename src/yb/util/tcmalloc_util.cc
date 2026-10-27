@@ -12,10 +12,7 @@
 
 #include "yb/util/tcmalloc_util.h"
 
-#include <pthread.h>
-
 #include <cstdint>
-#include <thread>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -24,6 +21,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/thread.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
@@ -251,10 +249,12 @@ void ConfigureTCMalloc(int64_t mem_limit) {
     LOG(INFO) << "Starting tcmalloc background actions thread, background release rate: "
               << static_cast<size_t>(tcmalloc::MallocExtension::GetBackgroundReleaseRate())
               << " bytes/s";
-    std::thread([] {
-      pthread_setname_np(pthread_self(), "tcmalloc_bg");
+    auto thread = Thread::Make("tcmalloc", "tcmalloc_bg", [] {
       tcmalloc::MallocExtension::ProcessBackgroundActions();
-    }).detach();
+    });
+    if (!thread.ok()) {
+      LOG(WARNING) << "Failed to start tcmalloc background actions thread: " << thread.status();
+    }
   }
 #endif  // YB_GOOGLE_TCMALLOC
 

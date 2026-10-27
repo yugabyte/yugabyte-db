@@ -235,8 +235,8 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
             << FLAGS_ysql_enable_auto_analyze;
 }
 
-// Enables the Google TCMalloc background actions on tserver by default. A flag set explicitly by the
-// user is respected as-is.
+// Enables the Google TCMalloc background actions on tserver by default. A flag set explicitly by
+// the user is respected as-is.
 void AdjustTCMallocFlagsIfNeeded() {
   if (google::GetCommandLineFlagInfoOrDie("tcmalloc_enable_background_actions").is_default) {
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(tcmalloc_enable_background_actions, true));
