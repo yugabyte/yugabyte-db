@@ -820,14 +820,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update all server conf files because there was a master change.
     createMasterInfoUpdateTask(
         universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
+    // Rewrite the collector config for the new roles, after the quorum and address changes so a
+    // slow node cannot delay them. The new master gains the master target. In master failover the
+    // old node stays up as a tserver and loses it; skipped when its instance is gone. Outside the
+    // isMaster block: a retry re-reads isMaster=false. Failover is best effort: the old node is
+    // often unhealthy, and a collector failure must not fail a failover that repaired the quorum.
+    Set<NodeDetails> otelRefreshNodes = new HashSet<>(nodeSet);
     if (stoppingNode != null && keepTserverRunning && isStoppable) {
-      // The node stays up as a tserver (master failover), so drop the master target from its
-      // collector config. Outside the isMaster block: a retry re-reads isMaster=false. Skipped
-      // when the instance is gone, and after the address update so a hung node cannot delay it.
-      // Best effort: failover often runs against an unhealthy node.
-      createOtelCollectorMetricsRefreshTasks(
-          Collections.singleton(stoppingNode), true /* ignoreErrors */);
+      otelRefreshNodes.add(stoppingNode);
     }
+    createOtelCollectorMetricsRefreshTasks(otelRefreshNodes, keepTserverRunning /* ignoreErrors */);
   }
 
   public void ensureRemoteProcessState(
@@ -3072,14 +3074,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    boolean otelCollectorEnabled =
+        installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
     for (NodeDetails node : nodes) {
       ManageOtelCollector.Params params = new ManageOtelCollector.Params();
       params.nodeName = node.nodeName;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.azUuid = node.azUuid;
       params.installOtelCollector = installOtelCollector;
-      params.otelCollectorEnabled =
-          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+      params.otelCollectorEnabled = otelCollectorEnabled;
       params.telemetryConfig = telemetryConfig;
       params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
@@ -3096,7 +3099,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /**
    * Rewrites the collector config when metrics export is on, so scrape targets match the node's
-   * current roles and API flags. Master role changes do not rewrite it on their own. With {@code
+   * current master and API servers. Master role changes do not rewrite it on their own. With {@code
    * ignoreErrors}, a failed refresh is logged and does not fail the task.
    */
   protected void createOtelCollectorMetricsRefreshTasks(
@@ -3141,15 +3144,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodesToBeStarted nodes on which master processes are to be started.
    */
   public void createStartMasterProcessTasks(Collection<NodeDetails> nodesToBeStarted) {
-    createStartMasterProcessTasks(nodesToBeStarted, true /* refreshOtelCollector */);
-  }
-
-  /**
-   * Same as above. Pass {@code refreshOtelCollector=false} when no master role changes (create,
-   * resume) or when the caller refreshes the collector itself (edit universe).
-   */
-  public void createStartMasterProcessTasks(
-      Collection<NodeDetails> nodesToBeStarted, boolean refreshOtelCollector) {
     // No check done for state as the operations are idempotent.
     // Creates the YB cluster by starting the masters in the create mode.
     createStartMasterTasks(nodesToBeStarted)
@@ -3161,12 +3155,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Mark the node process flags as true.
       createUpdateNodeProcessTasks(updatableNodes, ServerType.MASTER, true /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-    }
-    if (refreshOtelCollector) {
-      // All nodes, not only updatableNodes: a retry re-reads isMaster=true, so the node is not in
-      // updatableNodes but still needs the target. Best effort: a missing master target must not
-      // fail the master start.
-      createOtelCollectorMetricsRefreshTasks(nodesToBeStarted, true /* ignoreErrors */);
     }
 
     // Wait for new masters to be responsive.
@@ -4187,7 +4175,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createWaitForClockSyncTasks(universe, masterNodeList)
         .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
-    createStartMasterProcessTasks(masterNodeList, false /* refreshOtelCollector */);
+    createStartMasterProcessTasks(masterNodeList);
     for (NodeDetails nodeDetails : masterNodeList) {
       createWaitForServerReady(nodeDetails, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

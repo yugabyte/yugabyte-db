@@ -7,8 +7,10 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -39,7 +41,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -271,14 +272,25 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
         Success,
         taskInfo.getTaskState());
 
-    List<TaskType> taskTypes =
+    List<TaskInfo> refreshes =
         taskInfo.getSubTasks().stream()
-            .sorted(Comparator.comparing(TaskInfo::getPosition))
-            .map(TaskInfo::getTaskType)
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
             .collect(Collectors.toList());
-    int updateNodeProcess = taskTypes.indexOf(TaskType.UpdateNodeProcess);
-    assertEquals(TaskType.ManageOtelCollector, taskTypes.get(updateNodeProcess + 1));
-    assertEquals(1, Collections.frequency(taskTypes, TaskType.ManageOtelCollector));
+    assertEquals(1, refreshes.size());
+    // Not best effort outside failover, so a failure that leaves the collector stopped shows.
+    assertFalse(refreshes.get(0).getTaskParams().get("ignoreErrors").asBoolean());
+    // After the quorum change and the master address update, so a slow node cannot delay them.
+    int lastAddressUpdate =
+        taskInfo.getSubTasks().stream()
+            .filter(
+                t ->
+                    t.getTaskType() == TaskType.ChangeMasterConfig
+                        || (t.getTaskType() == TaskType.AnsibleConfigureServers
+                            && t.getTaskParams().path("updateMasterAddrsOnly").asBoolean()))
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .getAsInt();
+    assertTrue(refreshes.get(0).getPosition() > lastAddressUpdate);
   }
 
   @Test

@@ -312,7 +312,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // On a retry after UpdateNodeProcess, addMaster is false because the node already counts as
       // a master, so also check the stored isMaster.
       if (addMaster || currentNode.isMaster) {
-        createOtelCollectorMetricsRefreshTasks(nodeSet, true /* ignoreErrors */);
+        createOtelCollectorMetricsRefreshTasks(nodeSet, false /* ignoreErrors */);
       }
 
       // Bring up Tservers, as needed.

@@ -311,14 +311,14 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   // config for its current roles.
   @Test
   public void testStartNodeRefreshesOtelCollectorWhenMetricsExportEnabled() {
-    assertEquals(Map.of("host-n1", true), startNodeWithMetricsExport(false /* startMaster */));
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(false /* startMaster */));
   }
 
   // The master start refreshes the node, so the later refresh for a lost master must not run
   // again (PLAT-23125).
   @Test
   public void testStartNodeWithMasterStartRefreshesOtelCollectorOnce() {
-    assertEquals(Map.of("host-n1", true), startNodeWithMetricsExport(true /* startMaster */));
+    assertEquals(Map.of("host-n1", false), startNodeWithMetricsExport(true /* startMaster */));
   }
 
   // A dedicated tserver node never runs a master, so its start must not rewrite the collector.

@@ -281,7 +281,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet);
 
       // Start masters.
-      createStartMasterProcessTasks(newMasters, false /* refreshOtelCollector */);
+      createStartMasterProcessTasks(newMasters);
 
       // Start tservers on tserver nodes.
       createStartTserverProcessTasks(newTservers, isYSQLEnabled, true /* skipYSQLServerCheck */);

@@ -3086,6 +3086,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     // The new master is a new node: configure already wrote its master target, so only the
     // demoted node is refreshed.
     assertEquals(demoted, refreshed);
+    // A failed refresh can leave the collector stopped, so edit universe must fail, not ignore it.
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .noneMatch(t -> t.getTaskParams().get("ignoreErrors").asBoolean()));
     // The refresh runs after the master address update that follows the demotion, so a slow
     // node cannot delay it.
     String demotedNode = demoted.iterator().next();

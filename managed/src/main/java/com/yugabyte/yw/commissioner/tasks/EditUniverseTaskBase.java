@@ -658,10 +658,10 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Set<NodeDetails> removeMasters) {
     if (!newMasters.isEmpty()) {
       // Start masters. If it is already started, it has no effect.
-      createStartMasterProcessTasks(newMasters, false /* refreshOtelCollector */);
+      createStartMasterProcessTasks(newMasters);
       // New nodes got isMaster at freeze, so configure already wrote their master target. Only
       // existing nodes that gain a master need the collector refresh.
-      createOtelCollectorMetricsRefreshTasks(existingNodesToStartMaster, true /* ignoreErrors */);
+      createOtelCollectorMetricsRefreshTasks(existingNodesToStartMaster, false /* ignoreErrors */);
     }
     // Filter out nodes which are not in the universe.
     Set<NodeDetails> removeUniverseMasters =
@@ -682,8 +682,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       // Read from task params: on a retry the DB copy of a removed node can already be past
       // ToBeRemoved.
       Set<String> leavingNodes =
-          taskParams().nodeDetailsSet.stream()
-              .filter(n -> n.state == NodeState.ToBeRemoved)
+          PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet).stream()
               .map(n -> n.nodeName)
               .collect(Collectors.toSet());
       Set<NodeDetails> demotedStayingNodes = new HashSet<>();
@@ -716,7 +715,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           });
       // These nodes stay without a master, so drop the master target from their collector
       // configs. Once, after all master moves, so a slow node cannot delay them.
-      createOtelCollectorMetricsRefreshTasks(demotedStayingNodes, true /* ignoreErrors */);
+      createOtelCollectorMetricsRefreshTasks(demotedStayingNodes, false /* ignoreErrors */);
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
                 mastersToStop,

@@ -202,7 +202,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       if (!startMaster
           && cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
           && currentNode.dedicatedTo != ServerType.TSERVER) {
-        createOtelCollectorMetricsRefreshTasks(nodeCollection, true /* ignoreErrors */);
+        createOtelCollectorMetricsRefreshTasks(nodeCollection, false /* ignoreErrors */);
       }
 
       // Mark universe update success to true

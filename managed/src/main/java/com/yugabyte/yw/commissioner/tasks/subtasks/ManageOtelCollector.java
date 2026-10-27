@@ -63,8 +63,9 @@ public class ManageOtelCollector extends NodeTaskBase {
     public TelemetryConfig telemetryConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
-    // Log and continue instead of failing the parent task. For a best-effort refresh on a node
-    // that may be unhealthy, such as the old master in a master failover.
+    // Log and continue instead of failing the parent task. A failure after the install stops the
+    // service leaves the collector stopped until the next rewrite, so use this only where failing
+    // the task is worse: master failover and SyncMasterAddresses.
     public boolean ignoreErrors = false;
 
     @JsonIgnore

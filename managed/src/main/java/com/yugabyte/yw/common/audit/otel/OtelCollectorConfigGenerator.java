@@ -2297,8 +2297,9 @@ public class OtelCollectorConfigGenerator {
   /**
    * Drops the requested targets that have no server on this node, so the collector does not scrape
    * a closed port every interval. isTserver is not set yet when configure writes the config, so
-   * tserver targets gate on dedicatedTo and the API flags. MASTER_EXPORT gates on isMaster, and
-   * master role changes rewrite the config (createOtelCollectorMetricsRefreshTasks).
+   * tserver targets gate on dedicatedTo, and YSQL/CQL on the node's isYsqlServer/isYqlServer.
+   * MASTER_EXPORT gates on isMaster, and master role changes rewrite the config
+   * (createOtelCollectorMetricsRefreshTasks).
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
