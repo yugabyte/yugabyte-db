@@ -1321,14 +1321,16 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     {
       std::lock_guard lock(mutex_);
       chunks_left = updates_queue_.size();
-      if (chunks_left == 0) {
-        break;
-      }
+    }
+    auto saves_left = num_pending_saves_.load();
+    if (chunks_left == 0 && saves_left == 0) {
+      break;
     }
     auto now = CoarseMonoClock::now();
     if (now > last_warning_time + report_interval) {
       LOG_WITH_PREFIX(WARNING) << "Long wait to save chunks: " << MonoDelta(now - start_time)
-                               << ", chunks left: " << chunks_left;
+                               << ", chunks left: " << chunks_left
+                               << ", saves left: " << saves_left;
       last_warning_time = now;
       report_interval = std::min<MonoDelta>(report_interval * 2, 30s);
     }
@@ -2041,6 +2043,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
   }
 
   if (schedule_compaction) {
+    TEST_SYNC_POINT("VectorLSM::UpdateManifest:BeforeScheduleCompaction");
     // Scheduled once after the loop so the compaction could pick all flushed chunks.
     ScheduleBackgroundCompaction(/* finished_task= */ nullptr);
   }
@@ -2055,13 +2058,14 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
   }
 
   auto status = DoSaveChunk(chunk);
-  if (status.ok()) {
-    return;
+  if (!status.ok()) {
+    chunk->Flushed(status);
+    LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
+    CheckFailure(status);
   }
 
-  chunk->Flushed(status);
-  LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
-  CheckFailure(status);
+  // Must be the last access to this VectorLSM, CompleteShutdown could destroy it right after.
+  --num_pending_saves_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2071,6 +2075,7 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   auto chunk = immutable_chunks_.back();
   updates_queue_.emplace(chunk->order_no, chunk);
 
+  ++num_pending_saves_;
   mutable_chunk_->save_callback = [this, chunk, mut = mutable_chunk_]() {
     {
       std::lock_guard lock(mutex_);
@@ -2319,6 +2324,7 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
     updates_queue_.emplace(order_no, chunk);
   }
 
+  ++num_pending_saves_;
   options_.insert_thread_pool->EnqueueFunctor([this, chunk] { SaveChunk(chunk); });
   return true;
 }

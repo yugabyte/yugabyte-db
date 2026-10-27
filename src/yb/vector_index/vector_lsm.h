@@ -276,7 +276,7 @@ class VectorLSM {
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);
 
-  // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
+  // The caller increments num_pending_saves_ when it schedules the save.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
 
@@ -406,6 +406,10 @@ class VectorLSM {
   // invariant must be kept. The value of order_no is used as key in this map.
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_cv_;
+
+  // Number of chunks whose save has not finished. A save still accesses this VectorLSM after its
+  // chunk left updates_queue_, so CompleteShutdown waits for it too.
+  std::atomic<size_t> num_pending_saves_ = 0;
 
   mutable rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;

@@ -1205,6 +1205,48 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// The save of a flushed chunk schedules a compaction after the chunk left the updates queue, so
+// CompleteShutdown must wait for it (#35556).
+TEST_F(VectorLSMHnswlibTest, ShutdownWaitsForChunkSave) {
+  constexpr size_t kDimensions = 4;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  CountDownLatch save_blocked(1);
+  CountDownLatch release_save(1);
+  CountDownLatch shutdown_done(1);
+  // Declared before the scope exit, so the save is released before the threads are joined.
+  ThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::UpdateManifest:BeforeScheduleCompaction",
+      [&save_blocked, &release_save](void*) {
+        save_blocked.CountDown();
+        release_save.Wait();
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &release_save] {
+    release_save.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
+  ASSERT_TRUE(save_blocked.WaitFor(30s * kTimeMultiplier)) << "Save did not reach the sync point";
+
+  threads.AddThreadFunctor([&lsm, &shutdown_done] {
+    lsm.StartShutdown();
+    lsm.CompleteShutdown();
+    shutdown_done.CountDown();
+  });
+  ASSERT_FALSE(shutdown_done.WaitFor(100ms)) << "CompleteShutdown did not wait for the save";
+
+  release_save.CountDown();
+  ASSERT_TRUE(shutdown_done.WaitFor(30s * kTimeMultiplier))
+      << "CompleteShutdown did not return after the save was released";
+}
+
 // CreateSplitChildTablet flushes vector indexes with Flush(wait=false) then WaitForFlush().
 // An Insert that starts after DoFlush clears mutable_chunk_ must still be visible to that wait,
 // otherwise the split "sync" flush is not an insert barrier and a later CompleteShutdown can
