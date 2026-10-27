@@ -13,12 +13,6 @@
 
 #pragma once
 
-#include <algorithm>
-#include <functional>
-#include <vector>
-
-#include "yb/util/logging.h"
-
 namespace yb {
 
 // Priority queue that supports pop with returning result.
