@@ -146,7 +146,6 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
           universe.getUniverseUUID(),
           nodesToDestroy.size());
       if (!nodesToDestroy.isEmpty()) {
-        createStopProcessesForRollbackTasks(universe, nodesToDestroy);
         createSetNodeStateTasks(nodesToDestroy, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
         createDestroyServerTasks(

@@ -4772,29 +4772,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Best-effort stop of the processes on nodes a rollback is removing: YBC is stopped, the tserver
-   * and master are stopped and deconfigured. Errors are ignored because a node may never have
-   * started them.
-   */
-  protected void createStopProcessesForRollbackTasks(
-      Universe universe, Collection<NodeDetails> nodes) {
-    if (universe.isYbcEnabled()) {
-      createStopYbControllerTasks(nodes, true /* isIgnoreError */)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-    }
-    for (ServerType serverType : ImmutableList.of(ServerType.TSERVER, ServerType.MASTER)) {
-      createStopServerTasks(
-              nodes,
-              serverType,
-              params -> {
-                params.isIgnoreError = true;
-                params.deconfigure = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-    }
-  }
-
-  /**
    * Which nodes may be force-destroyed: only onprem ones, where a failed cleanup leaves the node
    * instance decommissioned. On a cloud, a failed terminate fails the task so the node stays
    * tracked and blacklisted. A retry is safe because destroy succeeds when the instance is already

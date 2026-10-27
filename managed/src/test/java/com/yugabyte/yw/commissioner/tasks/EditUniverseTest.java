@@ -2635,10 +2635,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Json.fromJson(failedEdit.getTaskParams(), UniverseDefinitionTaskParams.class);
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
     rollbackParams.expectedUniverseVersion = -1;
-    // Rollback subtask positions (no tag revert): ConsistencyCheck=0, Freeze=1, stop tserver=2,
-    // stop master=3, SetNodeState=4, Destroy=5, MarkUniverseForHealthScriptReUpload=6. The
-    // blacklist clear, membership check and restore come after it.
-    setAbortPosition(6);
+    // Rollback subtask positions (no tag revert): ConsistencyCheck=0, Freeze=1, SetNodeState=2,
+    // Destroy=3, MarkUniverseForHealthScriptReUpload=4. The blacklist clear, membership check and
+    // restore come after it.
+    setAbortPosition(4);
     UUID rollbackUuid;
     try {
       rollbackUuid = commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams);
@@ -2712,7 +2712,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     rollbackParams.setUniverseUUID(universe.getUniverseUUID());
     rollbackParams.expectedUniverseVersion = -1;
     // Abort after the ADD nodes are destroyed and before ModifyBlackList clears their IPs.
-    setAbortPosition(7);
+    setAbortPosition(5);
     UUID rollbackUuid;
     try {
       rollbackUuid = commissioner.submit(TaskType.RollbackEditUniverse, rollbackParams);
@@ -2817,10 +2817,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo destroy = getSubTask(rollbackInfo, TaskType.AnsibleDestroyServer);
     assertFalse(destroy.getTaskParams().path("isForceDelete").asBoolean());
-    assertTrue(
-        "processes are stopped before the destroy",
-        getSubTask(rollbackInfo, TaskType.AnsibleClusterServerCtl).getPosition()
-            < destroy.getPosition());
     assertTrue(
         rollbackInfo.getSubTasks().stream()
             .noneMatch(
