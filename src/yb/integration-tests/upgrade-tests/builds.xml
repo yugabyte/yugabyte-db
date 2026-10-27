@@ -72,4 +72,22 @@ darwin_release_arm64
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-b73-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
+  <build version="2026.1.4.0">
+    <build_number>bNNN</build_number>
+    <linux_debug_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-bNNN/yugabyte-2026.1.4.0-SHA-debug-clang21-centos-x86_64.tar.gz
+    </linux_debug_x86>
+    <linux_release_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-bNNN/yugabyte-2026.1.4.0-bNNN-linux-x86_64.tar.gz
+    </linux_release_x86>
+    <linux_release_aarch64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-bNNN/yugabyte-2026.1.4.0-bNNN-linux-aarch64.tar.gz
+    </linux_release_aarch64>
+    <darwin_debug_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-bNNN/yugabyte-2026.1.4.0-SHA-debug-clang-darwin-arm64.tar.gz
+    </darwin_debug_arm64>
+    <darwin_release_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-bNNN/yugabyte-2026.1.4.0-bNNN-darwin-arm64.tar.gz
+    </darwin_release_arm64>
+  </build>
 </builds>
