@@ -252,7 +252,6 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
-- Alter type is not supported for partitioned tables if a table rewrite is required. See {{<issue 16980>}}.
 - Alter type is not supported for columns that are part of the partition key (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
