@@ -30,19 +30,9 @@ func PopulateDescribeUniverseCLIOutput(
 
 	details := u.GetUniverseDetails()
 	resources := u.GetResources()
-	primaryCluster := FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
-	rrCluster := FindClusterByType(details.GetClusters(), util.ReadReplicaClusterType)
-	if IsClusterEmpty(primaryCluster) {
-		logrus.Fatalf(
-			formatter.Colorize(
-				fmt.Sprintf(
-					"No primary cluster found in universe %s (%s)\n",
-					u.GetName(),
-					u.GetUniverseUUID(),
-				),
-				formatter.RedColor,
-			))
-	}
+	primaryCluster, _ := MustFindPrimaryCluster(
+		details.GetClusters(), u.GetName(), u.GetUniverseUUID())
+	rrCluster, rrIndex := util.FindClusterByType(details.GetClusters(), util.ReadReplicaClusterType)
 
 	primaryUserIntent := primaryCluster.GetUserIntent()
 	primaryDeviceInfo := primaryUserIntent.GetDeviceInfo()
@@ -132,7 +122,7 @@ func PopulateDescribeUniverseCLIOutput(
 	var rrDeviceInfo ybaclient.DeviceInfo
 	var rrK8sTserverResourceSpec ybaclient.K8SNodeResourceSpec
 	rrClusterExists := false
-	if !IsClusterEmpty(rrCluster) {
+	if rrIndex >= 0 {
 		rrClusterExists = true
 		rrUserIntent = rrCluster.GetUserIntent()
 		rrDeviceInfo = rrUserIntent.GetDeviceInfo()
