@@ -3677,15 +3677,14 @@ class PgClientSession::Impl {
     if (options.uses_catalog_snapshot()) {
       const auto serializable =
           data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
-      // Only the reads: a catalog read can share its Perform with buffered user-table writes.
       for (const auto& op_data : data->ops) {
+        RSTATUS_DCHECK(
+            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
+            IllegalState, "Non-catalog op on $0 uses the catalog snapshot",
+            op_data.op->table()->name());
         if (!op_data.op->read_only()) {
           continue;
         }
-        RSTATUS_DCHECK(
-            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
-            IllegalState, "Non-catalog read $0 uses the catalog snapshot",
-            op_data.op->table()->name());
         auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
         if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
           read_op.set_force_snapshot_read();

@@ -539,10 +539,8 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
       // catalog snapshot, and those reads are performed in the forced snapshot mode. All other
       // operations in serializable isolation must stay without a read time.
       if (serializable && !data.force_snapshot_read) {
-        constexpr bool kIsRead = std::is_same_v<Req, tserver::LWReadRequestPB>;
         LOG_IF(DFATAL,
-               read_time && kIsRead &&
-               !table()->InternalSchema().table_properties().is_ysql_catalog_table())
+               read_time && !table()->InternalSchema().table_properties().is_ysql_catalog_table())
             << "Read time should NOT be specified for serializable isolation: "
             << read_time.ToString();
       } else if (read_time) {
