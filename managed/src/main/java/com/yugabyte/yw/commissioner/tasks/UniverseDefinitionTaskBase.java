@@ -3116,12 +3116,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
       Cluster cluster = universe.getCluster(entry.getKey());
       // The collector on Kubernetes is a sidecar that helm upgrades configure.
-      if (cluster.userIntent.providerType == CloudType.kubernetes) {
+      List<NodeDetails> clusterNodes =
+          entry.getValue().stream()
+              .filter(n -> cluster.getProviderCloudType(n) != CloudType.kubernetes)
+              .collect(Collectors.toList());
+      if (clusterNodes.isEmpty()) {
         continue;
       }
       createManageOtelCollectorTasks(
           cluster.userIntent,
-          entry.getValue(),
+          clusterNodes,
           false /* installOtelCollector */,
           telemetryConfig,
           node ->
