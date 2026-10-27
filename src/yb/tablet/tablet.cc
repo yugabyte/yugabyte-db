@@ -659,10 +659,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
-
   void OldSchemaGC() {
-    MinSchemaVersionMap table_id_to_min_schema_version;
+    docdb::CotableSchemaVersionMap table_id_to_min_schema_version;
     {
       auto scoped_read_operation = tablet_.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
       if (!scoped_read_operation.ok()) {
@@ -673,6 +671,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
       FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
+      tablet_.vector_indexes().FillMinSchemaVersion(&table_id_to_min_schema_version);
     }
 
     FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
@@ -691,7 +690,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
   // Checks XCluster config to determine the min schema version at which to expect rows.
-  void FillMinXClusterSchemaVersion(MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinXClusterSchemaVersion(
+      docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (nullptr == tablet_.get_min_xcluster_schema_version_) {
       return;
     }
@@ -726,7 +726,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
   }
 
-  void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinSchemaVersion(
+      rocksdb::DB* db, docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (!db) {
       return;
     }
@@ -1193,7 +1194,8 @@ Status Tablet::OpenKeyValueTablet() {
   const docdb::ConsensusFrontier* consensus_frontier = nullptr;
   if (regular_flushed_frontier) {
     consensus_frontier = down_cast<const docdb::ConsensusFrontier*>(regular_flushed_frontier.get());
-    retention_policy_->UpdateCommittedHistoryCutoff(consensus_frontier->history_cutoff());
+    retention_policy_->SeedHistoryCutoffFromFlushedFrontier(
+        consensus_frontier->history_cutoff());
   }
 
   RETURN_NOT_OK(vector_indexes_->Open(consensus_frontier));
@@ -3074,14 +3076,19 @@ Status Tablet::CreatePreparedChangeMetadata(
     // On follower, the previous op for adding table may not finish applying.
     // GetKeySchema might fail in this case.
     if (is_leader_side) {
+      // The table could have been removed, e.g. by hidden table cleanup after PITR. Failing
+      // prepare here is fatal once the consensus round exists, so let Apply skip the op instead.
       auto key_schema = GetKeySchema(
           operation->has_table_id() ? operation->table_id().ToBuffer() : "");
-      if (!key_schema.KeyEquals(*schema)) {
+      if (!key_schema.ok() && !key_schema.status().IsNotFound()) {
+        return key_schema.status();
+      }
+      if (key_schema.ok() && !key_schema->KeyEquals(*schema)) {
         return STATUS_FORMAT(
             InvalidArgument,
             "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
             schema->CreateKeyProjection(),
-            key_schema);
+            *key_schema);
       }
     }
 
@@ -5743,11 +5750,11 @@ Result<docdb::DocReadContextPtr> Tablet::GetDocReadContext(const std::string& ta
   return VERIFY_RESULT(metadata_->GetTableInfo(table_id))->doc_read_context;
 }
 
-Schema Tablet::GetKeySchema(const std::string& table_id) const {
+Result<Schema> Tablet::GetKeySchema(const std::string& table_id) const {
   if (table_id.empty()) {
     return *key_schema_;
   }
-  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   return table_info->schema().CreateKeyProjection();
 }
 

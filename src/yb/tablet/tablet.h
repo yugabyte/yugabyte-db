@@ -630,7 +630,7 @@ class Tablet : public AbstractTablet,
   docdb::DocReadContextPtr GetDocReadContext() const override;
   Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
-  Schema GetKeySchema(const std::string& table_id = "") const;
+  Result<Schema> GetKeySchema(const std::string& table_id = "") const;
 
 
   // Provide a way for write operations to wait when tablet schema is

@@ -786,6 +786,29 @@ TEST_F(VectorLSMHnswlibTest, AdvanceFlushedFrontierKeepsOneFrontierOnlyChunk) {
   ASSERT_EQ(flushed_vertex_id(lsm), expected);
 }
 
+// An empty insert, e.g. of rows with NULL vectors, creates a mutable chunk of vectors_per_chunk
+// capacity. A larger batch goes to a new chunk, and the frontiers of the empty insert are kept.
+TEST_F(VectorLSMUsearchTest, BatchAboveCapacityOfEmptyChunk) {
+  constexpr size_t kDimensions = 8;
+  static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kDefaultChunkSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers;
+  frontiers.Largest().SetVertexId(VectorId::Max());
+  ASSERT_OK(lsm.Insert({}, { .frontiers = &frontiers }));
+
+  ASSERT_OK(InsertCube(lsm, kDimensions, GetNumEntriesByDimensions(kDimensions)));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  VerifyVectorLSM(lsm, kDimensions);
+  auto flushed = lsm.GetFlushedFrontier();
+  ASSERT_TRUE(flushed);
+  ASSERT_EQ(down_cast<const TestFrontier&>(*flushed).vertex_id(), VectorId::Max());
+}
+
 void VectorLSMTestBase::TestMultipleChunksSimpleCompaction(
     vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;

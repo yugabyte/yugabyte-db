@@ -284,6 +284,9 @@ class VectorIndexesUpdater {
   Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
   Status Complete();
 
+  // Whether an index this update applies to takes the row with the specified key.
+  bool AppliesToRow(Slice key) const;
+
  private:
   template <class Decoder>
   Status FeedPackedRow(
@@ -313,8 +316,15 @@ class VectorIndexesUpdater {
   const HybridTime commit_ht_;
   const IntraTxnWriteId& write_id_;
   const bool xcluster_target_;
-  // TODO(#30819 vector_index) Optimize memory management
-  std::vector<DocVectorIndexInsertEntries> batches_;
+
+  struct IndexBatch {
+    // TODO(#30819 vector_index) Optimize memory management
+    DocVectorIndexInsertEntries entries;
+    // Got a row to apply to the index, possibly with a NULL vector, see Complete.
+    bool should_apply = false;
+  };
+
+  std::vector<IndexBatch> batches_;
   std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
   KeyBuffer schema_packing_table_prefix_;

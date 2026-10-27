@@ -164,6 +164,7 @@ namespace yb::pgwrapper {
 YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
+YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
 using FloatVector = std::vector<float>;
@@ -880,6 +881,8 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
   void TestMetric(const std::string& expected);
   void TestRandom();
   void TestNullVectorsInIntents(bool commit);
+  void TestBootstrapAfterSchemaChange(
+      NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
@@ -1701,6 +1704,153 @@ TEST_P(PgVectorIndexTest, SnapshotRestoreNonTransactionalWrites) {
   ASSERT_FALSE(indexes.empty());
   for (const auto& index : indexes) {
     ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows) << index->ToString();
+  }
+}
+
+// Bootstrap replays the writes that a vector index has not flushed into it, so packing GC must
+// keep their schema packings after the regular DB repacks the rows (GH#35466).
+void PgVectorIndexTest::TestBootstrapAfterSchemaChange(
+    NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes) {
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kQueryLimit = 5;
+
+  if (GetPackingMode() == PackingMode::kNone) {
+    GTEST_SKIP() << "Schema packings are used by packed rows only";
+  }
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Backfill done"));
+  if (null_vector) {
+    // A row with a NULL vector adds no entry to the index, while the vectors written after the
+    // schema change keep only the later schema version in the index.
+    ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, NULL)", kNumRows * 2));
+    ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
+  } else {
+    ASSERT_OK(InsertRows(conn, 1, kNumRows, /* keep_vectors = */ false, non_transactional_writes));
+  }
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN extra INT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN extra"));
+  if (null_vector) {
+    ASSERT_OK(InsertRows(conn, 1, kNumRows, /* keep_vectors = */ false, non_transactional_writes));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // A follower that applies the rows after the flush below misses the compaction that repacks them.
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  // Compaction repacks only rows below the history cutoff. An intents DB flush would wait for the
+  // vector index, and force its flush.
+  const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      history_retention_sec;
+
+  // Packing GC runs before the compaction completes.
+  auto check_old_packings = [this, &table_id](bool expected) -> Status {
+    for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(
+             cluster_.get(), "test", ListPeersFilter::kAll))) {
+      auto table_info = VERIFY_RESULT(peer->tablet_metadata()->GetTableInfo(table_id));
+      const auto& packings = table_info->doc_read_context->schema_packing_storage;
+      SCHECK_EQ(
+          packings.HasVersionBelow(table_info->schema_version), expected, IllegalState,
+          Format("$0 packings: $1", peer->tablet_id(), packings.VersionsToString()));
+    }
+    return Status::OK();
+  };
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(
+           cluster_.get(), "test", ListPeersFilter::kAll))) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId());
+    ASSERT_EQ(op_ids.vector_indexes.size(), 1);
+    ASSERT_LT(op_ids.vector_indexes[0].index, op_ids.regular.index) << AsString(op_ids);
+  }
+  ASSERT_OK(check_old_packings(true));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+
+  // The old packings go once the vector index flushes the writes. The replay also left their schema
+  // version in the frontier of the regular DB memtable, which is not flushed without entries.
+  // So every replica, followers included, must apply the row before the flush.
+  ASSERT_OK(InsertRows(
+      conn, kNumRows + 1, kNumRows + 1, /* keep_vectors = */ false, non_transactional_writes));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  // The check reads a follower at its safe time. After the restart, it stays at the last replayed
+  // write, below the history cutoff of the compaction above, until the follower applies a new write
+  // or gets a safe time from the leader.
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CompactTablets());
+  ASSERT_OK(check_old_packings(false));
+}
+
+TEST_P(PgVectorIndexTest, BootstrapLaggingVectorIndexAfterSchemaChange) {
+  TestBootstrapAfterSchemaChange(
+      NullVectorBeforeSchemaChange::kFalse, NonTransactionalWrites::kTrue);
+}
+
+TEST_P(PgVectorIndexTest, BootstrapTransactionalWritesAfterSchemaChange) {
+  TestBootstrapAfterSchemaChange(
+      NullVectorBeforeSchemaChange::kFalse, NonTransactionalWrites::kFalse);
+}
+
+TEST_P(PgVectorIndexTest, BootstrapNullVectorAfterSchemaChange) {
+  TestBootstrapAfterSchemaChange(
+      NullVectorBeforeSchemaChange::kTrue, NonTransactionalWrites::kTrue);
+}
+
+// Bootstrap replays an op into a lagging vector index whatever tables it writes. In a colocated
+// tablet a plain write or a transaction could write only another table, whose old schema packings
+// the index does not keep (GH#35466).
+TEST_P(PgVectorIndexTest, BootstrapAfterOtherTableSchemaChange) {
+  constexpr size_t kNumRows = 16;
+  constexpr size_t kQueryLimit = 5;
+
+  if (GetPackingMode() == PackingMode::kNone || !IsColocated()) {
+    GTEST_SKIP() << "Needs packed rows of another table in the same tablet";
+  }
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(conn.Execute("CREATE TABLE other (id BIGINT PRIMARY KEY, v INT)"));
+  const auto num_peers = ASSERT_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), "test", ListPeersFilter::kAll)).size();
+  ASSERT_OK(WaitForVectorIndexBackfills(num_peers, "Backfill done"));
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = on"));
+  ASSERT_OK(conn.Execute("INSERT INTO other VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO other VALUES (2, 2)"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Execute("ALTER TABLE other ADD COLUMN extra INT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE other DROP COLUMN extra"));
+  // Keep the index lagging the regular DB.
+  ASSERT_OK(InsertRows(
+      conn, 1, kNumRows, /* keep_vectors = */ false, NonTransactionalWrites::kTrue));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Compaction repacks only rows below the history cutoff. An intents DB flush would wait for the
+  // vector index, and force its flush.
+  const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      history_retention_sec;
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  for (int32_t id : {1, 2}) {
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchRow<int32_t>(Format("SELECT v FROM other WHERE id = $0", id))), id);
   }
 }
 
@@ -3673,6 +3823,45 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   // partition information in cache at this point.
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+// After a network cut, other requests leave the tablet leaders marked as failed in the meta cache.
+// The readiness poll should refresh tablet locations instead of polling until the timeout.
+TEST_P(PgDistributedVectorIndexTest, CreateIndexWithFailedLeadersInMetaCache) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // So the test fails instead of hanging if CREATE INDEX never returns.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(60s * kTimeMultiplier)));
+
+  std::atomic<bool> poll_started{false};
+  std::atomic<size_t> num_marked_failed{0};
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "PgClientService::PollVectorIndexReady:TabletsLookedUp",
+      [&poll_started, &num_marked_failed](void* arg) {
+        if (poll_started.exchange(true)) {
+          return;
+        }
+        auto& tablets = *static_cast<std::vector<client::internal::RemoteTabletPtr>*>(arg);
+        for (const auto& tablet : tablets) {
+          auto* leader = tablet->LeaderTServer();
+          if (leader &&
+              tablet->MarkReplicaFailed(leader, STATUS(NetworkError, "Simulated network cut"))) {
+            ++num_marked_failed;
+          }
+        }
+      });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_GT(num_marked_failed.load(), 0);
 }
 
 // The test verifies that a split is blocked if parent tablet has uncompacted vector indexes data.
