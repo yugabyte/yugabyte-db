@@ -962,26 +962,36 @@ class Schema : public MissingValueProvider {
 
   // Return true if this schema is a subset of the source. The set of columns and respective types
   // should match exactly
-  bool IsSubsetOf(const Schema& source) const {
+  template <typename ColumnComparator>
+  bool IsSubsetOf(const Schema& source, ColumnComparator comp) const {
     if (this == &source) return true;
     if (this->num_key_columns_ != source.num_key_columns_) return false;
     if (!this->table_properties_.Equivalent(source.table_properties_)) return false;
     if (this->cols_.size() < source.cols_.size()) return false;
 
     for (size_t i = 0; i < source.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(source.cols_[i])) return false;
+      if (!this->cols_[i].Equals(source.cols_[i], comp)) return false;
       if (this->column_id(i) != source.column_id(i)) return false;
     }
 
     return true;
   }
 
+  bool IsSubsetOf(const Schema& source) const {
+    return IsSubsetOf(source, ColumnSchema::CompareByDefault);
+  }
+
   // Return true if this schema has exactly the same set of columns and respective types, and
   // equivalent properties as the source.  The source must be an equivalent of this object.
   // With Packed columns, number of columns of the source and this object also need to match
   // for equivalency
+  template <typename ColumnComparator>
+  bool EquivalentForDataCopy(const Schema& source, ColumnComparator comp) const {
+    return (this->cols_.size() == source.cols_.size()) && IsSubsetOf(source, comp);
+  }
+
   bool EquivalentForDataCopy(const Schema& source) const {
-    return (this->cols_.size() == source.cols_.size()) && IsSubsetOf(source);
+    return EquivalentForDataCopy(source, ColumnSchema::CompareByDefault);
   }
 
   // Return true if the key projection schemas have exactly the same set of

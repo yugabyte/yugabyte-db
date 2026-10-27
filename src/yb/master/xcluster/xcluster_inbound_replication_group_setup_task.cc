@@ -82,33 +82,6 @@ using namespace std::placeholders;
 
 namespace yb::master {
 
-namespace {
-
-// Schema::EquivalentForDataCopy without the column name check. Keep in sync with
-// Schema::IsSubsetOf.
-//
-// YSQL index column names are fixed at CREATE INDEX, and ALTER TABLE ... RENAME COLUMN on the
-// indexed table does not change them, in PG or in DocDB. A restore recreates the index from its
-// definition, which uses the table's current column names. So a source index created before a
-// rename and its restored target copy hold the same data under different column names. Snapshot
-// import ignores index column names for the same reason.
-bool IndexSchemasEquivalentForDataCopy(const Schema& target, const Schema& source) {
-  if (target.num_columns() != source.num_columns() ||
-      target.num_key_columns() != source.num_key_columns() ||
-      !target.table_properties().Equivalent(source.table_properties())) {
-    return false;
-  }
-  for (size_t i = 0; i < source.num_columns(); ++i) {
-    if (!target.column(i).Equals(source.column(i), ColumnSchema::CompareType) ||
-        target.column_id(i) != source.column_id(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-}  // namespace
-
 Result<std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf>>
 CreateSetupUniverseReplicationTask(
     Master& master, CatalogManager& catalog_manager, XClusterSetupUniverseReplicationData&& data,
@@ -990,11 +963,18 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
     // We now have a table match. Validate the schema.
+    //
+    // YSQL index column names are fixed at CREATE INDEX, and ALTER TABLE ... RENAME COLUMN on the
+    // indexed table does not change them, in PG or in DocDB. A restore recreates the index from
+    // its definition, which uses the table's current column names. So a source index created
+    // before a rename and its restored target copy hold the same data under different column
+    // names, and index column names are not compared. Snapshot import does the same.
     const bool is_ysql_index_pair = is_ysql_table && source_table_info.index_info.has_value() &&
                                     table_schema_resp.has_index_info();
     const bool schemas_match =
-        is_ysql_index_pair ? IndexSchemasEquivalentForDataCopy(target_schema, source_schema)
-                           : target_schema.EquivalentForDataCopy(source_schema);
+        is_ysql_index_pair
+            ? target_schema.EquivalentForDataCopy(source_schema, ColumnSchema::CompareType)
+            : target_schema.EquivalentForDataCopy(source_schema);
     if (!schemas_match) {
       const auto mismatch = Format(
           "Source and target schemas don't match$0: "
