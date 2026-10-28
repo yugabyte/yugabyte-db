@@ -802,7 +802,8 @@ Status TabletServer::RegisterServices() {
 
   if (FLAGS_enable_pg_cron) {
     auto pg_cron_leader_service = std::make_unique<stateful_service::PgCronLeaderService>(
-        std::bind(&TabletServer::SetCronLeaderLease, this, _1), metric_entity(), client_future());
+        std::bind(&TabletServer::SetCronLeaseEnd, this, _1),
+        std::bind(&TabletServer::SetCronCanStartJobs, this, _1), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::PgCronLeaderService created at "
               << pg_cron_leader_service.get();
     RETURN_NOT_OK(pg_cron_leader_service->Init(tablet_manager_.get()));
@@ -2714,8 +2715,12 @@ Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
   return result;
 }
 
-void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-  SharedObject()->SetCronLeaderLease(cron_leader_lease_end);
+void TabletServer::SetCronLeaseEnd(MonoTime lease_end) {
+  SharedObject()->SetCronLeaseEnd(lease_end);
+}
+
+void TabletServer::SetCronCanStartJobs(bool can_start) {
+  SharedObject()->SetCronCanStartJobs(can_start);
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
