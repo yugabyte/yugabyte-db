@@ -194,19 +194,29 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       NodeDetails node,
       ServerType processType,
       Universe universe) {
-    params.enableYSQL = taskParams().enableYSQL;
-    params.enableYSQLAuth = taskParams().enableYSQLAuth;
-    params.enableConnectionPooling = taskParams().enableConnectionPooling;
-    params.enableYCQL = taskParams().enableYCQL;
-    params.enableYCQLAuth = taskParams().enableYCQLAuth;
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    UserIntent targetIntent = targetUserIntent(cluster);
+    params.enableYSQL = targetIntent.enableYSQL;
+    params.enableYSQLAuth = targetIntent.enableYSQLAuth;
+    params.enableConnectionPooling = targetIntent.enableConnectionPooling;
+    params.enableYCQL = targetIntent.enableYCQL;
+    params.enableYCQLAuth = targetIntent.enableYCQLAuth;
     params.communicationPorts = taskParams().communicationPorts;
     params.overrideNodePorts = true;
     params.gflags =
         GFlagsUtil.getGFlagsForNode(
-            node,
-            processType,
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid),
-            universe.getUniverseDetails().clusters);
+            node, processType, cluster, universe.getUniverseDetails().clusters);
+  }
+
+  // Both restart steps take the requested API state from here, so they can't disagree about it.
+  private UserIntent targetUserIntent(Cluster cluster) {
+    UserIntent userIntent = cluster.userIntent.clone();
+    userIntent.enableYSQL = taskParams().enableYSQL;
+    userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+    userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
+    userIntent.enableYCQL = taskParams().enableYCQL;
+    userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+    return userIntent;
   }
 
   private void createTaskToConfigureApiThroughRollingGFlagsUpgrade(Universe universe) {
@@ -216,12 +226,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
     for (UniverseDefinitionTaskParams.Cluster currentCluster :
         universe.getUniverseDetails().clusters) {
       // Update each cluster's user intent in the target universe state.
-      UserIntent userIntent = currentCluster.userIntent.clone();
-      userIntent.enableYSQL = taskParams().enableYSQL;
-      userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
-      userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
-      userIntent.enableYCQL = taskParams().enableYCQL;
-      userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+      UserIntent userIntent = targetUserIntent(currentCluster);
       currentCluster.userIntent.specificGFlags =
           SpecificGFlags.combine(
               userIntent.specificGFlags,
