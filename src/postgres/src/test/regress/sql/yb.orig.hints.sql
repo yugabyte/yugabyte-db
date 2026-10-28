@@ -253,12 +253,12 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
--- YB_TODO_PG19MERGE: Join method choice is not working
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
--- Leading on partitioned tables with partitionwise joins enabled. The hint cannot name
--- the partition joins, so they stay denied and the hinted order is planned at the parent level.
+-- Leading on partitioned tables with partitionwise joins enabled. The partition joins follow
+-- the hinted order too, but the Leading hint registers only the join at the parent level,
+-- which ranks ahead of any partitionwise plan, so the hinted order is planned there.
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
