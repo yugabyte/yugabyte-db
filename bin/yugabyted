@@ -5021,17 +5021,19 @@ class ControlScript(object):
             elif status == DaemonStatusPipe.EXITED:
                 # The daemon has exited, so a live pid in the pidfile belongs to another start on
                 # this base_dir, whose servers stop() would kill.
-                Output.print_and_log(
-                    "{} daemon exited before reporting its status.".format(SCRIPT_NAME),
-                    logging.ERROR)
-                sys.exit(1)
+                Output.log_error_and_exit(
+                    "{} daemon exited before reporting its status.".format(SCRIPT_NAME))
             sys.exit()
         os.setsid()
         os.umask(0)
         if os.fork():
             remove_handlers()
             sys.exit()
-        os.execve(sys.executable, [sys.executable, SCRIPT_PATH] + sys.argv[1:],
+        # The daemon gets the launcher's interpreter options through the helper that
+        # multiprocessing uses for a spawned process.
+        os.execve(sys.executable,
+                  [sys.executable] + subprocess._args_from_interpreter_flags() +
+                  [SCRIPT_PATH] + sys.argv[1:],
                   self.script.daemon_status.daemon_environment())
 
     # Sets env variables needed for yugabyted start.
@@ -9641,12 +9643,8 @@ class ControlScript(object):
                         "valid IPV4, IPV6 or DNS.")
 
                 if not cluster_member:
-                    # Node is starting for the first time.  The daemon validates the command
-                    # line again after the launcher, and the launcher has shown this line.
-                    if self.script.daemon_status.in_daemon:
-                        Output.log("Fetching configs from join IP...")
-                    else:
-                        Output.print_and_log("Fetching configs from join IP...")
+                    # Node is starting for the first time.
+                    Output.print_and_log("Fetching configs from join IP...")
 
                     # Check if tserver webserver at join_IP is reachable or not
                     # Also get the leader master(used to get the info of all tservers)
@@ -10439,6 +10437,10 @@ class ControlScript(object):
             return
 
         args = parser.parse_args()
+        if DAEMON_STATUS_FD_ENV in os.environ:
+            # This process is the daemon that daemonize() exec()ed.  The launcher has shown the
+            # output of validating this command line, so the daemon validates it silently.
+            Output.console_access = False
         self.validate_and_set_parent_configs(args)
         self.diagnostics = Diagnostics(self.configs)
         # Yugabyted command currently being processed is required for
@@ -10485,6 +10487,9 @@ class ControlScript(object):
 
         YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+
+        if self.script.daemon_status.in_daemon:
+            Output.console_access = True
 
         try:
             args.func()
