@@ -332,10 +332,6 @@ yb_index_check(PG_FUNCTION_ARGS)
 						"errors when executed from within a transaction "
 						"block.")));
 
-	/*
-	 * In multi-snapshot mode, each batch takes a new snapshot, so relaxed mode
-	 * applies to each batch.
-	 */
 	if (!is_txn_block)
 		yb_read_after_commit_visibility = YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY;
 
