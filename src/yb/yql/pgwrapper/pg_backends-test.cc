@@ -160,6 +160,8 @@ class PgBackendsTest : public LibPqTestBase {
   std::unique_ptr<PGConn> conn_;
   PgOid catalog_version_db_oid_ = kPgInvalidOid;
   static constexpr int kYsqlLeaseSec = 10;
+  // Long enough not to elapse during a test, even on slow builds.
+  static constexpr int kLongYsqlLeaseSec = 120;
   static constexpr int kCatalogManagerBgTaskWaitMs = 1000;
   static constexpr int kMasterTserverRpcTimeoutSec = 30;
 };
@@ -210,39 +212,6 @@ TEST_F(PgBackendsTest, FutureVersion) {
   ASSERT_TRUE(s.IsInvalidArgument()) << s;
   auto msg = s.message().ToBuffer();
   ASSERT_TRUE(msg.find("Requested catalog version is too high") != std::string::npos) << s;
-}
-
-class PgBackendsTestLongLease : public PgBackendsTest {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgBackendsTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        Format("--master_ysql_operation_lease_ttl_ms=$0", kLongYsqlLeaseSec * 1000));
-  }
-
- protected:
-  static constexpr int kLongYsqlLeaseSec = 120;
-};
-
-// The master leader that created the universe need not wait out the lease period.
-TEST_F_EX(PgBackendsTest, FirstLeaderSkipsLeaseWait, PgBackendsTestLongLease) {
-  ASSERT_OK(BumpCatalogVersion(1));
-  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
-  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver, MonoDelta::FromSeconds(kLongYsqlLeaseSec / 4))));
-}
-
-// With no tserver holding a live lease, there are no backends to wait on.
-TEST_F(PgBackendsTest, NoLeasedTservers) {
-  ASSERT_OK(BumpCatalogVersion(1));
-  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
-  conn_.reset();
-  cluster_->tserver_daemons()[0]->Shutdown();
-
-  // Wait for the master's lease cleanup poller to mark the lease expired.
-  SleepFor(MonoDelta::FromSeconds(kYsqlLeaseSec + 10));
-  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver, MonoDelta::FromSeconds(5))));
 }
 
 // If usable cached version is not found but usable cached job is, a new job should not be created.
@@ -569,6 +538,23 @@ TEST_F_EX(PgBackendsTest,
   ASSERT_LT(time_spent, kTimeout + kRpcTimeout + kMargin);
 }
 
+class PgBackendsTestLongLease : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", kLongYsqlLeaseSec * 1000));
+  }
+};
+
+// The master leader that created the universe need not wait out the lease period.
+TEST_F_EX(PgBackendsTest, FirstLeaderSkipsLeaseWait, PgBackendsTestLongLease) {
+  ASSERT_OK(BumpCatalogVersion(1));
+  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(kLongYsqlLeaseSec / 4))));
+}
+
 class PgBackendsTestRf3 : public PgBackendsTest {
  public:
   int GetNumMasters() const override {
@@ -647,18 +633,28 @@ TEST_F_EX(PgBackendsTest, CacheLost, PgBackendsTestRf3) {
   CheckJobCount(1, original_master_leader);
 }
 
+class PgBackendsTestRf3LongLease : public PgBackendsTestRf3 {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTestRf3::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        Format("--master_ysql_operation_lease_ttl_ms=$0", kLongYsqlLeaseSec * 1000));
+  }
+};
+
 // Only the leader term that created the universe skips the lease wait, so the creating master
-// waits once it is elected again.
-TEST_F_EX(PgBackendsTest, LaterLeaderWaitsOutLease, PgBackendsTestRf3) {
+// waits if it loses leadership and is elected again.
+TEST_F_EX(PgBackendsTest, LaterLeaderWaitsOutLease, PgBackendsTestRf3LongLease) {
   auto* creator = cluster_->GetLeaderMaster();
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
-  const auto start = MonoTime::Now();
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader(creator->uuid()));
 
   ASSERT_OK(BumpCatalogVersion(1));
   const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
-  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
-  ASSERT_GE(MonoTime::Now() - start, MonoDelta::FromSeconds(kYsqlLeaseSec));
+  auto res = client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(kLongYsqlLeaseSec / 4));
+  ASSERT_NOK(res);
+  ASSERT_TRUE(res.status().IsTimedOut()) << res.status();
 }
 
 // Waiting should be on all tservers' backends.

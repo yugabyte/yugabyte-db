@@ -1557,6 +1557,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     RETURN_NOT_OK(RunLoaders(state));
 
     if (!cluster_config_) {
+      DCHECK_LT(universe_created_term_, term);
       universe_created_term_ = term;
     }
 
@@ -13500,8 +13501,9 @@ MonoDelta CatalogManager::TimeSinceElectedLeader() const {
   return MonoTime::Now() - time_elected_leader_.load();
 }
 
-bool CatalogManager::CreatedUniverseInTerm(int64_t term) const {
-  return universe_created_term_.load() == term;
+bool CatalogManager::IsUniverseCreatedInTerm(int64_t term) const {
+  AssertLeaderLockAcquiredForReading();
+  return universe_created_term_ == term;
 }
 
 Status CatalogManager::GoIntoShellMode() {
