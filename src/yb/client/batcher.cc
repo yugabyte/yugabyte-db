@@ -958,7 +958,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
                                     const CollectedErrors& errors) {
   SetDeadline(failed_batcher->deadline());
   SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
-  SetBuffersHolder(failed_batcher->buffers_holder_);
+  SetBuffersHolder(std::move(failed_batcher->buffers_holder_));
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();
