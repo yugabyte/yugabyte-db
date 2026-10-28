@@ -2372,3 +2372,45 @@ ResetSequenceCaches(void)
 
 	last_used_seq = NULL;
 }
+
+/*
+ * YB: Build a sequence's page from its DocDB tuple, as
+ * fill_seq_fork_with_data() does, minus the storage steps (relation extension,
+ * MarkBufferDirty(), WAL, and the critical section around them), since a YB
+ * sequence has no file.
+ */
+void
+YbFillSequencePage(Page page, HeapTuple tuple)
+{
+	sequence_magic *sm;
+	OffsetNumber offnum;
+
+	PageInit(page, BLCKSZ, sizeof(sequence_magic));
+
+	/*
+	 * YB_TODO_PG19MERGE: this page has no real LSN, so anything that asks for
+	 * a sequence's LSN (pg_get_sequence_data) just gets zero. Replicating
+	 * sequences needs a real value.
+	 */
+	sm = (sequence_magic *) PageGetSpecialPointer(page);
+	sm->magic = SEQ_MAGIC;
+
+	/* Convert heap_form_tuple()'s t_datum header to the t_heap form. */
+	HeapTupleHeaderSetXmin(tuple->t_data, FrozenTransactionId);
+	HeapTupleHeaderSetXminFrozen(tuple->t_data);
+	HeapTupleHeaderSetCmin(tuple->t_data, FirstCommandId);
+	HeapTupleHeaderSetXmax(tuple->t_data, InvalidTransactionId);
+	tuple->t_data->t_infomask |= HEAP_XMAX_INVALID;
+	ItemPointerSet(&tuple->t_data->t_ctid, 0, FirstOffsetNumber);
+
+	offnum = PageAddItem(page, tuple->t_data, tuple->t_len, InvalidOffsetNumber, false, false);
+	if (offnum != FirstOffsetNumber)
+		elog(ERROR, "failed to add sequence tuple to page");
+
+	/*
+	 * The tuple has a frozen xmin and no xmax, so it is visible to every
+	 * snapshot. Marking the page all-visible lets heap scans skip per-tuple
+	 * visibility checks.
+	 */
+	PageSetAllVisible(page);
+}

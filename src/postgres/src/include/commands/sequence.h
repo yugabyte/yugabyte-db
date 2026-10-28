@@ -18,6 +18,11 @@
 #include "nodes/parsenodes.h"
 #include "parser/parse_node.h"
 
+/* YB includes */
+#include "access/htup.h"
+#include "storage/bufpage.h"
+#include "utils/relcache.h"
+
 typedef struct FormData_pg_sequence_data
 {
 	int64		last_value;
@@ -49,5 +54,9 @@ extern void DeleteSequenceTuple(Oid relid);
 extern void ResetSequence(Oid seq_relid);
 extern void SetSequence(Oid relid, int64 next, bool iscalled);
 extern void ResetSequenceCaches(void);
+
+/* YB */
+extern HeapTuple YBReadSequenceTuple(Relation seqrel);
+extern void YbFillSequencePage(Page page, HeapTuple tuple);
 
 #endif							/* SEQUENCE_H */
