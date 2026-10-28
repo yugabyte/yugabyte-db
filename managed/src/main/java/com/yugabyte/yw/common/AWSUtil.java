@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.Util.HTTPS_SCHEME;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
@@ -296,13 +297,21 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  /** A clear client error for an S3 refusal, instead of letting it surface as a server error. */
+  /**
+   * A clear client error for an S3 refusal of a bucket listing check, instead of a server error. S3
+   * names the action and the resource in its message, except for a HEAD request (HeadBucket, the
+   * first call of the check), whose refusal has no body: that one is described here.
+   */
   private static PlatformServiceException awsServiceError(String msg, AwsServiceException e) {
     log.error(msg, e);
-    String reason =
-        e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())
-            ? e.awsErrorDetails().errorMessage()
-            : e.getMessage();
+    String reason;
+    if (e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())) {
+      reason = e.awsErrorDetails().errorMessage();
+    } else if (e.statusCode() == FORBIDDEN) {
+      reason = "access denied (HTTP 403); listing the bucket needs the s3:ListBucket permission";
+    } else {
+      reason = "S3 returned HTTP " + e.statusCode();
+    }
     return new PlatformServiceException(PRECONDITION_FAILED, msg + ": " + reason);
   }
 

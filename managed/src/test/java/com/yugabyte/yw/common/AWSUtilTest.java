@@ -754,15 +754,9 @@ public class AWSUtilTest extends FakeDBApplication {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";
     doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    // A HeadBucket refusal, as S3 sends it: a 403 with no body, so no error message.
     when(mockS3Client.headBucket(any(Consumer.class)))
-        .thenThrow(
-            S3Exception.builder()
-                .statusCode(403)
-                .awsErrorDetails(
-                    AwsErrorDetails.builder()
-                        .errorMessage("not authorized to perform: s3:ListBucket")
-                        .build())
-                .build());
+        .thenThrow(S3Exception.builder().statusCode(403).build());
     // An S3 refusal is the user's to fix, so it is a clear client error rather than a server error.
     PlatformServiceException e =
         assertThrows(
@@ -772,8 +766,8 @@ public class AWSUtilTest extends FakeDBApplication {
                     s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
     assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
     assertEquals(
-        "Cannot list objects in backup location s3://test-bucket/backup: not authorized to"
-            + " perform: s3:ListBucket",
+        "Cannot list objects in backup location s3://test-bucket/backup: access denied (HTTP"
+            + " 403); listing the bucket needs the s3:ListBucket permission",
         e.getMessage());
   }
 
