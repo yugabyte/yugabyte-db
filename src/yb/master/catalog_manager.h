@@ -2527,10 +2527,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This function should only be called from the bg_tasks thread, in a single threaded fashion!
   void CleanUpDeletedTables(const LeaderEpoch& epoch);
 
-  // When CleanUpDeletedTables began deferring each dropped index to CheckTableDeleted.
-  // Accessed only from the bg_tasks thread.
-  std::unordered_map<TableId, CoarseTimePoint> index_cleanup_deferred_since_;
-
   // Removes DELETED tablets from TableInfo::tablets_ and tablet_map_, recording split parents'
   // children in deleted_split_parents_. Tablets of a table that has started hiding or deleting are
   // left to CleanUpDeletedTables above. Takes the candidate list

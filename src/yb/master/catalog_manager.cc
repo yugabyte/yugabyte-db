@@ -8143,7 +8143,6 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<TableInfo*> newly_hidden_tables;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
-      index_cleanup_deferred_since_.erase(table->id());
       tables_to_remove_from_map.push_back(table.get());
       if (!table->is_system() && !table->IsSecondaryTable()) {
         tablets_to_remove_from_map.push_back(table->TakeTablets());
@@ -8153,23 +8152,22 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     if (!ShouldDeleteTable(table)) {
       continue;
     }
-    // Leave a DDL-dropped index to CheckTableDeleted, which waits for the indexed table alter to
-    // finish before marking the index DELETED; else the next statement may hit a schema version
-    // mismatch. CheckTableDeleted only runs when the table's last task unregisters, so it can be
-    // missed (e.g. after master failover or a failed submit); this pass stays the catch-all once
-    // the alter finishes or the same 20s cap CheckTableDeleted uses expires.
-    if (table->is_index()) {
+    // Like CheckTableDeleted, do not mark a DDL-dropped index DELETED while the alter removing it
+    // from the indexed table is in flight; else the next statement may hit a schema version
+    // mismatch. The alter completes via tablet schema version reports, which keep re-sending it
+    // while the indexed table is running, so this deferral ends on its own.
+    if (table->is_index() && table->LockForRead()->has_ysql_ddl_txn_verifier_state()) {
       auto indexed_table = GetTableInfo(table->indexed_table_id());
-      if (indexed_table && table->LockForRead()->has_ysql_ddl_txn_verifier_state() &&
-          indexed_table->LockForRead()->pb.has_fully_applied_schema()) {
-        auto since = index_cleanup_deferred_since_.try_emplace(
-            table->id(), CoarseMonoClock::Now()).first->second;
-        if (CoarseMonoClock::Now() - since < 20s) {
+      if (indexed_table) {
+        auto indexed_lock = indexed_table->LockForRead();
+        if (indexed_lock->is_running() && indexed_lock->pb.has_fully_applied_schema()) {
+          VLOG_WITH_PREFIX_AND_FUNC(2)
+              << "Deferring " << table->ToString() << " until alter of "
+              << indexed_table->ToString() << " completes";
           continue;
         }
       }
     }
-    index_cleanup_deferred_since_.erase(table->id());
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
