@@ -798,8 +798,8 @@ class Tablet : public AbstractTablet,
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
   // the superblock write but still re-points the DB and resets the migration status.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
-  // (TSTabletManager::SelectPathIdForTier). Does not check for a pass in flight; AlterTabletTier,
-  // the production caller, does.
+  // (TSTabletManager::SelectPathIdForTier). Refused with ServiceUnavailable while a migration
+  // pass is in flight, whatever its target: nothing rewrites the target under a running pass.
   Status SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id);
 
   // Tiered storage. Starts one migration pass toward the persisted target: schedules a DB path
@@ -824,7 +824,8 @@ class Tablet : public AbstractTablet,
   // While a pass is in flight, the same target is not an error (a re-delivered request): the
   // result describes that pass. A different target is refused with ServiceUnavailable and nothing
   // is persisted: the moves cannot be cancelled, so accepting it would leave the pass copying to a
-  // disk that is no longer the target and booking its outcome against the new one.
+  // disk that is no longer the target and booking its outcome against the new one. Also refused
+  // when a concurrent request replaced the target before this one's pass could start.
   Result<TierMigrationStatus> AlterTabletTier(
       const std::string& target_tier, uint32_t target_path_id);
 
@@ -1390,7 +1391,12 @@ class Tablet : public AbstractTablet,
   // i.e. file numbers of live regular-DB SSTs not under target_dir.
   std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
 
-  // Tiered storage: SetTierMigrationTarget with tier_target_mutex_ already held.
+  // Tiered storage: checks the regular DB is open and target_path_id has a directory. The returned
+  // operation keeps the DB open for as long as the caller holds it.
+  Result<ScopedRWOperation> CheckTierTargetUsable(uint32_t target_path_id);
+
+  // Tiered storage: the one place the persisted target is written. Refuses while a pass is in
+  // flight, so a pass always runs toward the current persisted target.
   Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
       REQUIRES(tier_target_mutex_);
 
@@ -1778,9 +1784,9 @@ class Tablet : public AbstractTablet,
   TierMigrationStatus tier_migration_status_ GUARDED_BY(tier_migration_mutex_);
   std::shared_ptr<TierMigrationHooks> tier_migration_hooks_;
 
-  // Tiered storage: serializes the target write (SetTierMigrationTarget's check + superblock
-  // write + SetOptions, so the persisted target and the regular DB's target_path_id cannot
-  // diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
+  // Tiered storage: serializes the target write (SetTierMigrationTargetUnlocked's in-flight check
+  // + superblock write + SetOptions, so the persisted target and the regular DB's target_path_id
+  // cannot diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
   // pass_in_flight = true), so a pass always runs toward the current persisted target. Taken
   // before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_: that
   // one is taken by every move callback and by GetTierInfo, and must not be held across a

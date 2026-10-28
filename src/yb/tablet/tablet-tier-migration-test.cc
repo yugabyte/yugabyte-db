@@ -307,6 +307,9 @@ TEST_F(TierMigrationTest, SecondCallWhilePassInFlightReportsProgress) {
   auto pass = tablet()->StartTierMigrationPass();
   ASSERT_NOK(pass);
   ASSERT_TRUE(pass.status().IsServiceUnavailable()) << pass.status();
+  // So does the bare target write, even for the same target: nothing rewrites it under a pass.
+  auto write = tablet()->SetTierMigrationTarget("hdd", kTargetPathId);
+  ASSERT_TRUE(write.IsServiceUnavailable()) << write;
 
   TEST_SYNC_POINT("TierMigrationTest::SecondCallWhilePassInFlightReportsProgress:Release");
   auto info = ASSERT_RESULT(WaitForPassToFinish());
@@ -396,6 +399,9 @@ TEST_F(TierMigrationTest, TargetChangeDuringPassIsRefused) {
   auto second = tablet()->AlterTabletTier("nvme", kDecoyPathId);
   ASSERT_NOK(second);
   ASSERT_TRUE(second.status().IsServiceUnavailable()) << second.status();
+  // The bare target write is refused the same way.
+  auto write = tablet()->SetTierMigrationTarget("nvme", kDecoyPathId);
+  ASSERT_TRUE(write.IsServiceUnavailable()) << write;
   ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
   ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kTargetPathId);
   ASSERT_TRUE(tablet()->tier_migration_status().pass_in_flight);
@@ -416,6 +422,48 @@ TEST_F(TierMigrationTest, TargetChangeDuringPassIsRefused) {
   info = ASSERT_RESULT(WaitForPassToFinish());
   ASSERT_EQ(info.migration.files_moved, 2u);
   ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 2u);
+  ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 0u);
+}
+
+// Two requests with different targets, neither finding a pass in flight: the second's write lands
+// after the first's, before the first starts its pass, and the second's pass claims the tablet.
+// The first must not report that pass as its own success; its target is no longer the persisted
+// one.
+TEST_F(TierMigrationTest, TargetReplacedBeforePassStartIsRefused) {
+  WriteFileWithKey(1);
+
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{"TierMigrationTest::TargetReplacedBeforePassStartIsRefused:Release",
+        "DBImpl::ExecuteDBPathMoveCompaction:BeforeCopy"}});
+  // Slips AlterTabletTier(nvme) in once, after the hdd request has persisted its target. The nvme
+  // request itself passes the same sync point, so the flag keeps it from recursing.
+  bool slip_in = true;
+  Status second_status;
+  bool second_pass_in_flight = false;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "Tablet::AlterTabletTier:BeforeStartPass",
+      [this, &slip_in, &second_status, &second_pass_in_flight](void*) {
+        if (slip_in) {
+          slip_in = false;
+          auto result = tablet()->AlterTabletTier("nvme", kDecoyPathId);
+          second_status = result.ok() ? Status::OK() : result.status();
+          second_pass_in_flight = result.ok() && result->pass_in_flight;
+        }
+      });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto first = tablet()->AlterTabletTier("hdd", kTargetPathId);
+  ASSERT_NOK(first);
+  ASSERT_TRUE(first.status().IsServiceUnavailable()) << first.status();
+  ASSERT_OK(second_status);
+  ASSERT_TRUE(second_pass_in_flight);
+  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "nvme");
+  ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kDecoyPathId);
+
+  TEST_SYNC_POINT("TierMigrationTest::TargetReplacedBeforePassStartIsRefused:Release");
+  auto info = ASSERT_RESULT(WaitForPassToFinish());
+  ASSERT_EQ(info.migration.files_moved, 1u);
+  ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 1u);
   ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 0u);
 }
 

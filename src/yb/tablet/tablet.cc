@@ -5132,20 +5132,35 @@ std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& 
   return candidates;
 }
 
-Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
   RETURN_NOT_OK(LookupTierDir(target_path_id));
+  return scoped_operation;
+}
 
+Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
   std::lock_guard lock(tier_target_mutex_);
   return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
 }
 
 Status Tablet::SetTierMigrationTargetUnlocked(
     const std::string& target_tier, uint32_t target_path_id) {
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    if (tier_migration_status_.pass_in_flight) {
+      // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
+      // FinishTierMigrationPass would book its outcome against the new target.
+      return STATUS_FORMAT(
+          ServiceUnavailable,
+          "Tier migration pass toward tier '$0' (path_id $1) is in flight; retry when it ends",
+          metadata()->target_storage_tier(), metadata()->target_tier_path_id());
+    }
+  }
   if (metadata()->target_storage_tier() != target_tier ||
       metadata()->target_tier_path_id() != target_path_id) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
@@ -5301,40 +5316,41 @@ TierMigrationStatus Tablet::tier_migration_status() const {
 
 Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
-  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-  RETURN_NOT_OK(scoped_operation);
-  if (!regular_db_) {
-    return STATUS(IllegalState, "Tablet has no regular RocksDB open");
-  }
-  RETURN_NOT_OK(LookupTierDir(target_path_id));
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_path_id));
 
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    const auto persisted_tier = metadata()->target_storage_tier();
-    const auto persisted_path_id = metadata()->target_tier_path_id();
-    {
+    if (metadata()->target_storage_tier() == target_tier &&
+        metadata()->target_tier_path_id() == target_path_id) {
       std::lock_guard lock(tier_migration_mutex_);
       if (tier_migration_status_.pass_in_flight) {
-        if (persisted_tier == target_tier && persisted_path_id == target_path_id) {
-          // The request the pass is already serving, delivered again.
-          return tier_migration_status_;
-        }
-        // A request to migrate to a different target is rejected while current pass is in flight.
-        return STATUS_FORMAT(
-            ServiceUnavailable,
-            "Tier migration pass toward tier '$0' (path_id $1) is in flight; retry when it ends",
-            persisted_tier, persisted_path_id);
+        // The request the pass is already serving, delivered again. Nothing is rewritten under a
+        // running pass, not even the same target; the response says the pass is in flight.
+        return tier_migration_status_;
       }
     }
     RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
   }
 
+  // Lets a test slip another target in after the write, before the pass starts.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::AlterTabletTier:BeforeStartPass");
+
   auto status = StartTierMigrationPass();
   if (status.ok() || !status.status().IsServiceUnavailable()) {
     return status;
   }
-  // A pass started between the target write above and here. It read the target after that write,
-  // so it is toward the persisted intent; report its progress rather than failing.
+  // A pass started between the target write above and here. While the target is still this one,
+  // the pass read it after the write and serves this request, so report its progress. If a
+  // concurrent request replaced the target, the pass is toward that target and this request lost.
+  std::lock_guard target_lock(tier_target_mutex_);
+  if (metadata()->target_storage_tier() != target_tier ||
+      metadata()->target_tier_path_id() != target_path_id) {
+    return STATUS_FORMAT(
+        ServiceUnavailable,
+        "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
+        "pass could start",
+        metadata()->target_storage_tier(), metadata()->target_tier_path_id());
+  }
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
