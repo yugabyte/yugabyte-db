@@ -51,8 +51,8 @@ DECLARE_int32(vector_index_compaction_size_ratio_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
-DECLARE_uint64(vector_index_compaction_chunk_max_mem_store_size_mb);
-DECLARE_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage);
+DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
+DECLARE_uint32(vector_index_compaction_chunk_max_memstore_size_percentage);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
@@ -226,9 +226,9 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     // Mutable chunks are sized by the vector count each test opens its LSM with.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_memstore_size_mb) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
     ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+        FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
     hnsw::VectorIndexTestBase::SetUp();
   }
@@ -516,24 +516,24 @@ VectorLSMTestBase::ChunkedCompactionHelper::ChunkedCompactionHelper(VectorLSMTes
 auto VectorLSMTestBase::ChunkedCompactionHelper::ScopedCompactionFlags(
     bool enable_compactions, size_t mem_store_limit_mb, uint32_t block_cache_percentage) {
   const bool old_enable_compactions = FLAGS_vector_index_enable_compactions;
-  const uint64_t old_chunk_max_mem_store_size_mb =
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  const uint32_t old_chunk_max_mem_store_size_percentage =
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  const uint64_t old_chunk_max_memstore_size_mb =
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  const uint32_t old_chunk_max_memstore_size_percentage =
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = enable_compactions;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = mem_store_limit_mb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = mem_store_limit_mb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = block_cache_percentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = block_cache_percentage;
 
-  return ScopeExit([old_enable_compactions, old_chunk_max_mem_store_size_mb,
-                    old_chunk_max_mem_store_size_percentage] {
+  return ScopeExit([old_enable_compactions, old_chunk_max_memstore_size_mb,
+                    old_chunk_max_memstore_size_percentage] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = old_enable_compactions;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) =
-        old_chunk_max_mem_store_size_mb;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) =
-        old_chunk_max_mem_store_size_percentage;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) =
+        old_chunk_max_memstore_size_mb;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) =
+        old_chunk_max_memstore_size_percentage;
   });
 }
 
@@ -1582,9 +1582,9 @@ TEST_P(VectorLSMTest, FailedCompactionDeletesSavedOutputFiles) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -1659,9 +1659,9 @@ TEST_P(VectorLSMTest, ConcurrentCompactionsDisableBlockCachePercentage) {
   constexpr uint32_t kBlockCachePercentage = 13;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = kBlockCachePercentage;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 2;
 
   FloatVectorLSM lsm;
@@ -1696,9 +1696,9 @@ TEST_P(VectorLSMTest, MemStoreSizeMbOverridesBlockCachePercentage) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = kBlockCachePercentage;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = kBlockCachePercentage;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -1774,9 +1774,9 @@ TEST_P(VectorLSMTest, CompactionChunkCapacityRespectsMemStoreLimit) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = kMemStoreLimitMb;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = kMemStoreLimitMb;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
@@ -1813,9 +1813,9 @@ TEST_P(VectorLSMTest, CompactionChunkCapacityWithoutMemStoreLimit) {
   constexpr size_t kNumInputChunks = 4;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kVectorsPerChunk));
@@ -1913,29 +1913,29 @@ TEST_P(VectorLSMTest, MutableChunkCapacity) {
 
 TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
   constexpr size_t kCacheCapacity = 8_MB;
-  const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
-  const uint32_t old_percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  const uint64_t old_mb = FLAGS_vector_index_compaction_chunk_max_memstore_size_mb;
+  const uint32_t old_percentage = FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage;
   const uint32_t old_num_compactions = FLAGS_vector_index_num_compactions_limit;
   auto restore = ScopeExit([old_mb, old_percentage, old_num_compactions] {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = old_mb;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = old_mb;
     ANNOTATE_UNPROTECTED_WRITE(
-        FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = old_percentage;
+        FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = old_percentage;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = old_num_compactions;
   });
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 1;
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 25;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 25;
   ASSERT_EQ(2_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(/* block_cache_capacity = */ 0));
 
   // Values above 100% are clamped to the full block cache capacity.
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 125;
+      FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 125;
   ASSERT_EQ(kCacheCapacity, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   // The percentage limit is disabled when concurrent compactions are enabled.
@@ -1945,10 +1945,10 @@ TEST(VectorLSMCompactionLimitTest, MaxMemStoreBytesFlagPriority) {
   ASSERT_EQ(0, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
   // Absolute MB size takes priority and remains enabled with concurrent compactions.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 1;
   ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
   ASSERT_EQ(1_MB, TEST_GetCompactionChunkMaxMemStoreBytes(kCacheCapacity));
 }
 
@@ -1985,8 +1985,8 @@ TEST_P(VectorLSMTest, DefaultCompactionMergesMultipleChunks) {
   static_assert(kVectorsPerInputChunk <= kDefaultChunkSize);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_mb) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_chunk_max_memstore_size_percentage) = 0;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
