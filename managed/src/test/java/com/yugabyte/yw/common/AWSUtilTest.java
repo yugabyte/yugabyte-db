@@ -54,6 +54,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
@@ -714,8 +715,22 @@ public class AWSUtilTest extends FakeDBApplication {
     CustomerConfigStorageS3Data s3Data = federationS3Data();
     s3Data.crossCloudFederationAudience = "//iam.googleapis.com/projects/1/x";
     s3Data.crossCloudFederationRoleArn = "arn:aws:iam::123456789012:role/r";
-    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    mockAWSUtil.warmUpBucketRegion(
+        mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING, true /* crossRegionAccess */);
     verify(mockS3Client, never()).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testBucketRegionWarmUpRunsForFederationConfigWithoutCrossRegionAccess() {
+    // A regional or custom host base has no cross-region access, so the region is still cached.
+    CustomerConfigStorageS3Data s3Data = federationS3Data();
+    s3Data.crossCloudFederationAudience = "//iam.googleapis.com/projects/1/x";
+    s3Data.crossCloudFederationRoleArn = "arn:aws:iam::123456789012:role/r";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenReturn(GetBucketLocationResponse.builder().locationConstraint("us-west-2").build());
+    mockAWSUtil.warmUpBucketRegion(
+        mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING, false /* crossRegionAccess */);
+    verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
   }
 
   @Test
@@ -729,7 +744,8 @@ public class AWSUtilTest extends FakeDBApplication {
                 ? SdkClientException.create("unreachable")
                 : S3Exception.builder().statusCode(Integer.parseInt(error)).message(error).build());
     // The call that needs the bucket reports the problem; the warm-up never does.
-    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    mockAWSUtil.warmUpBucketRegion(
+        mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING, true /* crossRegionAccess */);
     verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
   }
 
@@ -765,7 +781,6 @@ public class AWSUtilTest extends FakeDBApplication {
   public void testCheckFileExistsReportsAccessDenied() {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";
-    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
     when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class)))
         .thenThrow(
             S3Exception.builder()

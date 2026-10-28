@@ -234,8 +234,7 @@ public class AWSUtil implements CloudUtil {
           log.error(msg, e);
           return false;
         } catch (AwsServiceException e) {
-          // S3 (or STS, for a federated credential) refused, typically access denied: its message
-          // names the action and the resource.
+          // S3 refused, typically access denied: its message names the action and the resource.
           throw awsServiceError(msg, e);
         }
       }
@@ -1011,7 +1010,9 @@ public class AWSUtil implements CloudUtil {
       String endpoint = hostBase.awsHostBase;
       boolean globalFlag = hostBase.globalBucketAccess;
       String clientRegion = getClientRegion(hostBase.signingRegion);
-      if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
+      boolean crossRegionAccess =
+          globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint));
+      if (crossRegionAccess) {
         // Use global bucket access only for standard S3.
         builder.crossRegionAccessEnabled(true);
       } else if (StringUtils.isNotBlank(endpoint)) {
@@ -1069,7 +1070,7 @@ public class AWSUtil implements CloudUtil {
       if (client == null) {
         throw new RuntimeException("S3 client is null. This is unexpected!");
       }
-      warmUpBucketRegion(client, s3Data, region);
+      warmUpBucketRegion(client, s3Data, region, crossRegionAccess);
       return client;
     } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
@@ -1081,12 +1082,17 @@ public class AWSUtil implements CloudUtil {
    * Fetches the bucket region once and ignores the result, so the SDK caches the bucket's region:
    * without it the first real call on a bucket outside the client's region can fail with a 301. Any
    * failure is skipped, including an access error: the call that needs the bucket reports it.
-   * Skipped for a cross-cloud federation config, whose role need not allow s3:GetBucketLocation;
-   * its client relies on cross-region access instead.
+   * Skipped for a cross-cloud federation config whose client has cross-region access, which finds
+   * the bucket's region itself, so its role need not allow s3:GetBucketLocation. Otherwise it is
+   * made, and a role that may not call it only costs the ignored error.
    */
   @VisibleForTesting
-  void warmUpBucketRegion(S3Client client, CustomerConfigStorageS3Data s3Data, String region) {
-    if (isCrossCloudFederationConfig(s3Data)) {
+  void warmUpBucketRegion(
+      S3Client client,
+      CustomerConfigStorageS3Data s3Data,
+      String region,
+      boolean crossRegionAccess) {
+    if (isCrossCloudFederationConfig(s3Data) && crossRegionAccess) {
       return;
     }
     try {
