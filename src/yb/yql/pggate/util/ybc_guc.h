@@ -305,9 +305,12 @@ extern int yb_read_after_commit_visibility;
 
 /*
  * The yb_read_after_commit_visibility mode in effect when the transaction
- * picked its read time, or -1 before that. The read time keeps this mode: a
- * function's SET clause, or a SET or RESET in its body, can change the GUC
+ * picked its read time, or -1 before that. The read time keeps this mode: in
+ * autocommit, a function's SET clause or a SET in its body can change the GUC
  * later.
+ *
+ * TODO(#36028): RESET skips the GUC's check hook, so it can change the GUC
+ * where SET cannot.
  */
 extern int yb_txn_read_after_commit_visibility;
 

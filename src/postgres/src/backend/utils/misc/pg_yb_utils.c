@@ -9229,9 +9229,9 @@ YbIsReadCommittedTxn()
  * path only after the check.
  *
  * The check also applies after the transaction reads at a relaxed read time,
- * until the transaction ends. A function's SET clause, or a SET or RESET in
- * its body, can switch the GUC back to strict after that read. A later write
- * still runs at the relaxed read time.
+ * until the transaction ends. In autocommit, a function's SET clause or a SET
+ * in its body can switch the GUC back to strict after that read, but the
+ * transaction keeps the relaxed read time.
  */
 bool
 YbIsRelaxedReadOnly()
