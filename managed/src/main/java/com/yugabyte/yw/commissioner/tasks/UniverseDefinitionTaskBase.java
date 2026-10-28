@@ -2577,6 +2577,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
+   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
+   * destroy.
+   */
+  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
+    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -2587,15 +2596,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param setupParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
-  /**
-   * Whether the node's instance is a cloud VM that YBA creates and destroys. Only on public clouds:
-   * onprem nodes are pre-existing hardware, and kubernetes and local never go through instance
-   * destroy.
-   */
-  protected static boolean isCloudInstanceNode(Universe universe, NodeDetails node) {
-    return universe.getCluster(node.placementUuid).getProviderCloudType(node).isPublicCloud();
-  }
-
   public boolean createCreateNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
