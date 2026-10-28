@@ -1014,7 +1014,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -1216,7 +1218,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -1514,7 +1518,9 @@
             "YBA_K8S_CPU_USAGE",
             "YBA_K8S_MEMORY_USAGE",
             "YBA_K8S_DISK_USAGE",
-            "OTEL_COLLECTOR_RESTART"
+            "OTEL_COLLECTOR_RESTART",
+            "NODE_EXPORTER_TLS_ROOT_NODES",
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
           ],
           "type" : "string"
         },
@@ -2976,6 +2982,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -6046,6 +6053,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -9326,6 +9334,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -10206,6 +10215,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -11779,6 +11789,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -12561,6 +12572,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -16544,12 +16556,22 @@
           ],
           "type" : "string"
         },
+        "maxFileSize" : {
+          "description" : "WARNING: This is a preview API that could change. Maximum size of the active application log file before it is rolled over, for example \"1024MB\" or \"1GB\". Minimum 256MB.",
+          "example" : "1024MB",
+          "type" : "string"
+        },
         "maxHistory" : {
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
         },
         "rolloverPattern" : {
+          "type" : "string"
+        },
+        "totalSizeCap" : {
+          "description" : "WARNING: This is a preview API that could change. Total size of retained application log archives, for example \"20GB\". Archives are deleted oldest first once this is exceeded, so on a high volume node this binds before maxHistory and retains fewer days than maxHistory allows. Minimum 5GB.",
+          "example" : "20GB",
           "type" : "string"
         }
       },
@@ -17514,6 +17536,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -18238,6 +18261,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -19360,6 +19384,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -20240,6 +20265,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -21836,6 +21862,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -22543,6 +22570,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -22988,6 +23016,7 @@
               "CreateTableSpaces",
               "ManageOtelCollector",
               "ManageCloudFederation",
+              "ConfigureNodeExporterTls",
               "UpdateAndPersistAuditLoggingConfig",
               "UpdateAndPersistQueryLoggingConfig",
               "UpdateAndPersistMetricsExportConfig",
@@ -23587,6 +23616,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -24403,6 +24433,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -25608,6 +25639,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -27002,6 +27034,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -27725,6 +27758,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -28594,6 +28628,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -29282,6 +29317,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -29970,6 +30006,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -31179,6 +31216,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -32443,6 +32481,7 @@
             "CreateTableSpaces",
             "ManageOtelCollector",
             "ManageCloudFederation",
+            "ConfigureNodeExporterTls",
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
@@ -45478,7 +45517,7 @@
         ]
       },
       "get" : {
-        "description" : "Available since YBA version 2.2.0.0.",
+        "description" : "Available since YBA version 2.2.0.0. Early access: when the runtime flag yb.api.conditional_get.enabled is set, this endpoint supports conditional requests. Send a previously returned ETag in If-None-Match to get 304 Not Modified if the universe is unchanged. Fields derived from related resources (for example DR configs or pricing) may be stale in that case.",
         "operationId" : "getUniverse",
         "parameters" : [
           {

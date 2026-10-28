@@ -1628,7 +1628,8 @@ yb_step_4:
 																			index,
 																			ipath,
 																			yb_distinct_prefixlen,
-																			yb_distinct_nkeys);
+																			yb_distinct_nkeys,
+																			loop_count);
 
 			result = lappend(result, distinct_index_path);
 		}
@@ -1748,7 +1749,8 @@ yb_step_5:
 				Path	   *distinct_index_path =
 					yb_create_distinct_index_path(root, index, ipath,
 												  yb_distinct_prefixlen,
-												  yb_distinct_nkeys);
+												  yb_distinct_nkeys,
+												  loop_count);
 
 				result = lappend(result, distinct_index_path);
 			}
@@ -2875,6 +2877,14 @@ static Cost
 yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 {
 	YbBitmapTablePath bpath;
+
+	/*
+	 * The setup below fills in only the fields PostgreSQL's dummy fills in,
+	 * and the sequential scan fallback in yb_cost_bitmap_table_scan reads
+	 * yb_path_info, so start from the defaults a create_*_path constructor
+	 * would give.
+	 */
+	MemSet(&bpath, 0, sizeof(bpath));
 
 	/* Set up a dummy YbBitmapTablePath */
 	bpath.path.type = T_YbBitmapTablePath;

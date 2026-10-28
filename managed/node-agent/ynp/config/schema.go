@@ -244,6 +244,11 @@ func buildDefaultFromSchema(schema *jsonschema.Schema, name string) (*yaml.Node,
 		// Generate a value like __OPEN__ section_key __CLOSE__.
 		// Braces are special characters in YAML.
 		value := fmt.Sprintf("__OPEN__ %s __CLOSE__", name)
+		if sType == "[string]" {
+			// Render strings as quoted JSON (valid YAML) so that an empty value stays "" instead
+			// of becoming null, and values like "yes" or "1.0" are not re-typed on parsing.
+			value = fmt.Sprintf("__OPEN__ %s | tojson __CLOSE__", name)
+		}
 		var node yaml.Node
 		err := node.Encode(value)
 		if err != nil {

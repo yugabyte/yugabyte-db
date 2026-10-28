@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
@@ -174,8 +175,10 @@ public class UniverseResp {
   public static void fillClusterRegions(List<Cluster> clusters) {
     Set<UUID> regionUuids =
         clusters.stream()
-            .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
-            .flatMap(cluster -> cluster.userIntent.regionList.stream())
+            .map(Cluster::getOverallPlacement)
+            .filter(Objects::nonNull)
+            .flatMap(PlacementInfo::azInfoStream)
+            .map(azInfo -> azInfo.region.uuid)
             .collect(Collectors.toSet());
     if (CollectionUtils.isEmpty(regionUuids)) {
       return;

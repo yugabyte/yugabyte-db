@@ -155,7 +155,8 @@ struct TierMigrationPass;
 struct TierMigrationStatus {
   enum class State {
     kNone,        // Nothing has looked at this tablet since the process started.
-    kInProgress,  // A target is set; set by SetTierMigrationTarget and by every pass.
+    kInProgress,  // A target is set; set by SetTierMigrationTarget and by every pass that
+                  // schedules a move.
     // The two terminal states belong to the background reconciler: only its
     // scans decide that a tablet has converged or that retrying is pointless.
     kDone,        // A reconciler scan found every live SST under the target directory.
@@ -179,6 +180,47 @@ struct TierMigrationStatus {
   uint32_t consecutive_failed_passes = 0;
   Status last_error;
 };
+
+// Policy for one reconciler pass (Tablet::RunTierReconcilePass). The values are tserver flags;
+// the tablet only applies them.
+struct TierReconcileOptions {
+  // consecutive_failed_passes at which the reconciler stops retrying (kFailed); 0 never stops.
+  uint32_t failed_pass_threshold = 0;
+};
+
+// Outcome of one Tablet::RunTierReconcilePass.
+struct TierReconcileResult {
+  // Status right after the pass was scheduled, or after the state changed.
+  TierMigrationStatus status;
+  // Live SSTs the scan found outside the target directory.
+  size_t candidates = 0;
+  // Moves this pass scheduled.
+  size_t scheduled = 0;
+  // status.state differs from what it was before the pass.
+  bool state_changed = false;
+  // The target changed between the scan and the verdict on it, so the scan was discarded: nothing
+  // scheduled, nothing declared, candidates reported as 0. The next pass works on the new target.
+  bool target_changed = false;
+  // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
+  bool awaiting_post_split_compaction = false;
+};
+
+// What a migration pass reports back to the tserver's TierMigrationReconciler, which owns this
+// and hands it to each Tablet through TabletInitData; null where tablets are built without a
+// tserver (tests, the sys catalog).
+struct TierMigrationHooks {
+  // Counters every pass feeds from FinishTierMigrationPass, whoever scheduled it.
+  scoped_refptr<Counter> files_moved;
+  scoped_refptr<Counter> files_failed;
+  // Runs a reconciler pass as soon as its thread is free. A pass that AlterTabletTier started
+  // calls it when it ends with nothing left to retry, so the verdict does not wait for the
+  // reconciler's interval. Must be safe to call from any thread, and after shutdown.
+  std::function<void()> wake_reconciler;
+};
+
+// Whether a migration pass runs on behalf of the background reconciler, the only caller allowed
+// to move a tablet into TierMigrationStatus::State::kDone or kFailed.
+YB_STRONGLY_TYPED_BOOL(ReconcilerPass);
 
 // Per-path_id entry of Tablet::GetTierInfo: how many live regular-DB SSTs (and how many bytes)
 // currently sit under this disk.
@@ -460,7 +502,8 @@ class Tablet : public AbstractTablet,
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
       const docdb::StorageSet& apply_to_storages,
-      bool skip_opid_update = false);
+      bool skip_opid_update = false,
+      docdb::XClusterTargetApplied xcluster_target_applied = docdb::XClusterTargetApplied::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -469,7 +512,8 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time,
-      const docdb::StorageSet& apply_to_storages);
+      const docdb::StorageSet& apply_to_storages,
+      docdb::XClusterTargetApplied xcluster_target_applied);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
@@ -542,12 +586,15 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
+  // Without include_intents it reads the regular DB only, for a read time no running transaction
+  // could have written at.
   Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
+      AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kTrue) const;
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
@@ -669,11 +716,11 @@ class Tablet : public AbstractTablet,
   // Returns true if a RocksDB-backed tablet has any SSTables.
   Result<bool> HasSSTables() const;
 
-  // Returns the maximum persistent op id from all SSTables in RocksDB.
-  // First for regular records and second for intents.
+  // Returns the maximum persistent op ids of the regular DB, the intents DB and each vector index,
+  // plus the hybrid time of each vector index.
   // When invalid_if_no_new_data is true then function would return invalid op id when no new
   // data is present in corresponding db.
-  Result<DocDbOpIds> MaxPersistentOpId(bool invalid_if_no_new_data = false) const;
+  Result<DocDbPersistentState> GetPersistentState(bool invalid_if_no_new_data = false) const;
 
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
@@ -702,7 +749,7 @@ class Tablet : public AbstractTablet,
   docdb::DocReadContextPtr GetDocReadContext() const override;
   Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
-  Schema GetKeySchema(const std::string& table_id = "") const;
+  Result<Schema> GetKeySchema(const std::string& table_id = "") const;
 
 
   // Provide a way for write operations to wait when tablet schema is
@@ -764,6 +811,16 @@ class Tablet : public AbstractTablet,
   // with a compaction, hard errors, files a concurrent flush/compaction landed on the old disk)
   // is for the next pass. Returns ServiceUnavailable while a pass is already in flight.
   Result<TierMigrationStatus> StartTierMigrationPass();
+
+  // Tiered storage. The background reconciler's pass: StartTierMigrationPass plus the terminal
+  // states. A scan that finds nothing outside the target directory marks the tablet kDone. A
+  // tablet whose consecutive_failed_passes reached options.failed_pass_threshold is marked
+  // kFailed and left alone until the next AlterTabletTier. Otherwise moves are scheduled as in
+  // StartTierMigrationPass.
+  Result<TierReconcileResult> RunTierReconcilePass(const TierReconcileOptions& options);
+
+  // Tiered storage. Snapshot of the migration status; no DB scan.
+  TierMigrationStatus tier_migration_status() const;
 
   // SetTierMigrationTarget followed by StartTierMigrationPass, except that a pass already in
   // flight is not an error: the result then describes that pass. Backs the AlterTabletTier RPC.
@@ -948,9 +1005,7 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(
-      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
-      ThreadPool* intent_cleanup_pool);
+  void SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
@@ -1226,6 +1281,11 @@ class Tablet : public AbstractTablet,
     TEST_disable_flush_on_shutdown_ = value;
   }
 
+  // Tiered storage: stands in for the hooks TabletInitData carries on a tserver.
+  void TEST_SetTierMigrationHooks(std::shared_ptr<TierMigrationHooks> hooks) {
+    tier_migration_hooks_ = std::move(hooks);
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1329,9 +1389,9 @@ class Tablet : public AbstractTablet,
   // i.e. file numbers of live regular-DB SSTs not under target_dir.
   std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
 
-  // Tiered storage: takes the single in-flight pass slot (pass_in_flight) and zeroes the pass
-  // counters, or returns ServiceUnavailable if a pass already holds it.
-  Status ClaimTierMigrationPass();
+  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
+  Result<TierReconcileResult> RunTierMigrationPass(
+      const TierReconcileOptions& options, ReconcilerPass reconciler_pass);
 
   // Tiered storage: schedules one ScheduleDBPathMove call per candidate file. Each callback may
   // run inline, on this thread, if the pool rejects the task. Does not block.
@@ -1345,6 +1405,9 @@ class Tablet : public AbstractTablet,
 
   // Tiered storage: runs once every move of a pass has reported, and publishes the tallies.
   void FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& pass);
+
+  // Tiered storage: TierMigrationHooks::wake_reconciler, when there is one.
+  void WakeTierMigrationReconciler();
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir, docdb::StorageDbType db_type);
@@ -1396,6 +1459,13 @@ class Tablet : public AbstractTablet,
   // counts. Works for both partitioning schemes and any split_factor. Gated by
   // FLAGS_use_cross_split_key_detection_algorithm.
   Result<SplitKeysData> DoGetSplitKeysCross(const int split_factor) const;
+
+  // Returns the first legal split boundary after encoded_key (an output of
+  // ValidateAndEncodeSplitKey) as {encoded key, partition key}: hash code + 1, or the next
+  // existing DocKey. nullopt if none is inside the tablet or it fails validation; errors only
+  // on read or encoding failure.
+  Result<std::optional<std::pair<std::string, std::string>>> NextSplitBoundary(
+      Slice encoded_key, Slice partition_key) const;
 
   // Refer to Tablet::GetSplitKeys(...) for the description.
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
@@ -1604,6 +1674,11 @@ class Tablet : public AbstractTablet,
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
 
+  // Flushes the regular DB on behalf of IntentsDbFlushFilter, which must not do it itself. Posts
+  // the flush on cleanup_intent_files_token_.
+  Status RequestRegularDbFlushForIntentsFlush();
+  void FlushRegularDbForIntentsFlush();
+
   void RegularDbFilesChanged();
 
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
@@ -1636,7 +1711,14 @@ class Tablet : public AbstractTablet,
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
 
+  // Serial token on TabletInitData::intent_cleanup_pool for intent SST file cleanup and for the
+  // regular DB flushes requested by the intents DB flush filter. Null without a transaction
+  // participant.
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
+
+  // Set while a regular DB flush posted by RequestRegularDbFlushForIntentsFlush has not run yet,
+  // so the intents flush filter's retries do not post another.
+  std::atomic<bool> regular_db_flush_for_intents_posted_{false};
 
   std::unique_ptr<TabletSnapshots> snapshots_;
 
@@ -1686,9 +1768,10 @@ class Tablet : public AbstractTablet,
   ThreadPool* full_compaction_pool_ = nullptr;
 
   // Tiered storage: guards tier_migration_status_, written from SetTierMigrationTarget,
-  // StartTierMigrationPass and the ScheduleDBPathMove callbacks, read from GetTierInfo.
+  // RunTierMigrationPass and the ScheduleDBPathMove callbacks, read from GetTierInfo.
   mutable std::mutex tier_migration_mutex_;
   TierMigrationStatus tier_migration_status_ GUARDED_BY(tier_migration_mutex_);
+  std::shared_ptr<TierMigrationHooks> tier_migration_hooks_;
 
   // Tiered storage: serializes SetTierMigrationTarget's check + superblock write + SetOptions so
   // the persisted target and the regular DB's target_path_id cannot diverge. Deliberately not

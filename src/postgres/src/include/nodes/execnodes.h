@@ -689,6 +689,13 @@ typedef struct ResultRelInfo
 	 * currently supported only for the DO NOTHING clause.
 	 */
 	bool		ri_ybUseIndexOnlyScanForIocRead;
+
+	/*
+	 * YB: should INSERT ON CONFLICT resolution be pushed to DocDB for this
+	 * execution? This combines plan-time eligibility with the current
+	 * pushdown GUC setting for the ON CONFLICT action.
+	 */
+	bool		ri_ybUseIocPushdown;
 } ResultRelInfo;
 
 /* ----------------

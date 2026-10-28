@@ -1,7 +1,37 @@
 service_name="node_exporter.service"
+user_unit="{{ yb_user_home }}/.config/systemd/user/$service_name"
+legacy_unit="/etc/systemd/system/$service_name"
 
-# Get the status of node_exporter Service
-status=$(systemctl show -p ActiveState --value "$service_name" | tr -d '[:space:]')
+# Nodes laid out before 2026.2 may still run the root-level unit. They can join a universe, but
+# exporter TLS stays off for that universe until every node runs the user-level unit.
+layout=""
+if [ -f "$user_unit" ]; then
+    layout="USER"
+    add_result "Node Exporter Layout Check" "PASS" \
+        "node_exporter runs in the user-level systemd of {{ yb_user }}"
+elif [ -f "$legacy_unit" ]; then
+    layout="ROOT"
+    msg="node_exporter runs from the root-level unit $legacy_unit; exporter TLS needs the"
+    msg+=" user-level unit, so re-run node-agent-provision.sh with root on this node"
+    add_result "Node Exporter Layout Check" "WARN" "$msg"
+fi
+
+# Get the status of the node_exporter service from the scope its unit is in. YBA runs this precheck
+# through node-agent as {{ yb_user }} on manually provisioned nodes, where su would ask for a
+# password, so only switch users when running as root.
+if [ "$layout" = "ROOT" ]; then
+    status=$(systemctl show -p ActiveState --value "$service_name" | tr -d '[:space:]')
+else
+    yb_user_id=$(id -u {{ yb_user }})
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        show_cmd="systemctl --user show -p ActiveState --value $service_name"
+        status=$(su - {{ yb_user }} -c "XDG_RUNTIME_DIR=/run/user/${yb_user_id} $show_cmd" \
+            | tr -d '[:space:]')
+    else
+        status=$(XDG_RUNTIME_DIR="/run/user/${yb_user_id}" \
+            systemctl --user show -p ActiveState --value "$service_name" | tr -d '[:space:]')
+    fi
+fi
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
     add_result "Service Status Check" "PASS" "$service_name is active"
@@ -18,12 +48,4 @@ if [ "$free_space_gb" -gt "$threshold" ]; then
     add_result "Yugabyte Node Exporter Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
 else
     add_result "Yugabyte Node Exporter Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
-fi
-
-# Check /opt/prometheus for binary installation space
-free_space_prometheus=$(df -B1G --output=avail "/opt/prometheus" | tail -n 1 )
-if [ "$free_space_prometheus" -gt "$threshold" ]; then
-    add_result "Prometheus Installation Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_prometheus}G"
-else
-    add_result "Prometheus Installation Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_prometheus}G available, ${threshold}G required."
 fi

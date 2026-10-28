@@ -98,6 +98,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.ConfigureNodeExporterTls,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
@@ -126,6 +127,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.PersistUseClockbound,
           TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
+          TaskType.ConfigureNodeExporterTls,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
@@ -262,6 +264,13 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
+    // YNP lays out only the user-level unit, so every new node is recorded as USER.
+    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getNodes()
+        .forEach(
+            n ->
+                assertEquals(
+                    NodeDetails.NodeExporterSystemdLevel.USER, n.nodeExporterSystemdLevel));
   }
 
   private UniverseDefinitionTaskParams getManagedLbTaskParams() {
@@ -347,6 +356,28 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         expected,
         taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition)));
     verify(mockYsqlQueryExecutor, times(1)).executeQueryInNodeShell(any(), any(), any());
+  }
+
+  @Test
+  public void testCreateFipsUniverseRebootsEachNodeOnce() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    taskParams.fipsEnabled = true;
+    int numNodes = taskParams.nodeDetailsSet.size();
+    assertTrue(numNodes > 1);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    List<TaskInfo> reboots =
+        subTasks.stream()
+            .filter(t -> t.getTaskType() == TaskType.RebootServer)
+            .collect(Collectors.toList());
+    assertEquals(numNodes, reboots.size());
+    assertEquals(1, reboots.stream().map(TaskInfo::getPosition).distinct().count());
+    // A group added once per node used to leave duplicate subtasks behind in Created.
+    assertTrue(subTasks.stream().allMatch(t -> t.getTaskState() == Success));
   }
 
   @Test

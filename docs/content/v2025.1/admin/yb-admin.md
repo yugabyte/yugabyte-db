@@ -51,10 +51,10 @@ yb-admin \
 
 ### Online help
 
-To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
+To list all operations, run `yb-admin` with no arguments from the YugabyteDB home directory.
 
 ```sh
-./bin/yb-admin --help
+./bin/yb-admin
 ```
 
 ## Commands

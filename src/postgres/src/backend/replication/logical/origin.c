@@ -1711,7 +1711,6 @@ pg_replication_origin_xact_reset(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 Datum
 pg_replication_origin_advance(PG_FUNCTION_ARGS)
 {
@@ -1841,4 +1840,10 @@ pg_show_replication_origin_status(PG_FUNCTION_ARGS)
 #undef REPLICATION_ORIGIN_PROGRESS_COLS
 
 	return (Datum) 0;
+}
+
+void
+YbAtEOXact_ReplicationOrigin(void)
+{
+	replorigin_xact_state.origin_timestamp = 0;
 }

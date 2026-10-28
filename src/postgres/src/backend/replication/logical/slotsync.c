@@ -837,7 +837,8 @@ synchronize_one_slot(RemoteSlot *remote_slot, Oid remote_dbid,
 							  true,
 							  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
 							  NULL /* yb_consistent_snapshot_time */,
-							  CRS_SEQUENCE, YB_CRS_TRANSACTION);
+							  CRS_SEQUENCE, YB_CRS_TRANSACTION,
+							  NULL /* yb_publication_name */ );
 
 		/* For shorter lines. */
 		slot = MyReplicationSlot;

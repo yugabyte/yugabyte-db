@@ -319,9 +319,27 @@ public class PitrConfigHelper {
     Universe.getOrBadRequest(universe.getUniverseUUID(), customer);
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    List<PitrConfig> pitrConfigs = PitrConfig.getByUniverseUUID(universe.getUniverseUUID());
-    enrichPitrConfigs(universe, pitrConfigs);
-    return pitrConfigs;
+    UUID universeUuid = universe.getUniverseUUID();
+    if (!PitrConfig.existsForUniverse(universeUuid)) {
+      return List.of();
+    }
+
+    if (universe.getUniverseDetails().universePaused) {
+      List<PitrConfig> pitrConfigs = PitrConfig.getByUniverseUUID(universeUuid);
+      enrichPitrConfigs(universe, pitrConfigs);
+      return pitrConfigs;
+    }
+
+    try {
+      Map<UUID, SnapshotScheduleInfo> schedules = getSnapshotSchedulesByUuid(universe);
+      List<PitrConfig> pitrConfigs = PitrConfig.getByUniverseUUID(universeUuid, schedules.keySet());
+      enrichPitrConfigs(universe, pitrConfigs);
+      return pitrConfigs;
+    } catch (SnapshotSchedulesUnavailableException e) {
+      List<PitrConfig> pitrConfigs = PitrConfig.getByUniverseUUID(universeUuid);
+      applyUnknownState(pitrConfigs);
+      return pitrConfigs;
+    }
   }
 
   public PagedList<PitrConfig> listPitrConfigsPaged(
@@ -337,10 +355,32 @@ public class PitrConfigHelper {
       Customer customer = Customer.get(universe.getCustomerId());
       validateDrConfigOnUniverse(customer, universe.getUniverseUUID(), drConfigUuid);
     }
-    PagedList<PitrConfig> paged =
-        PitrConfig.getPagedListForUniverse(universe.getUniverseUUID(), drConfigUuid, normalized);
-    enrichPitrConfigs(universe, paged.getList());
-    return paged;
+
+    UUID universeUuid = universe.getUniverseUUID();
+    if (!PitrConfig.existsForUniverse(universeUuid)) {
+      return PitrConfig.getPagedListForUniverse(universeUuid, drConfigUuid, List.of(), normalized);
+    }
+
+    if (universe.getUniverseDetails().universePaused) {
+      PagedList<PitrConfig> paged =
+          PitrConfig.getPagedListForUniverse(universeUuid, drConfigUuid, null, normalized);
+      enrichPitrConfigs(universe, paged.getList());
+      return paged;
+    }
+
+    try {
+      Map<UUID, SnapshotScheduleInfo> schedules = getSnapshotSchedulesByUuid(universe);
+      PagedList<PitrConfig> paged =
+          PitrConfig.getPagedListForUniverse(
+              universeUuid, drConfigUuid, schedules.keySet(), normalized);
+      enrichPitrConfigs(universe, paged.getList());
+      return paged;
+    } catch (SnapshotSchedulesUnavailableException e) {
+      PagedList<PitrConfig> paged =
+          PitrConfig.getPagedListForUniverse(universeUuid, drConfigUuid, null, normalized);
+      applyUnknownState(paged.getList());
+      return paged;
+    }
   }
 
   private void validateDrConfigOnUniverse(Customer customer, UUID universeUuid, UUID drConfigUuid) {
@@ -437,6 +477,9 @@ public class PitrConfigHelper {
       return snapshotSchedulesCache.get(universeUuid);
     } catch (ExecutionException | UncheckedExecutionException e) {
       Throwable cause = e.getCause();
+      if (cause instanceof SnapshotSchedulesUnavailableException) {
+        throw (SnapshotSchedulesUnavailableException) cause;
+      }
       if (cause instanceof PlatformServiceException) {
         throw (PlatformServiceException) cause;
       }
@@ -459,7 +502,8 @@ public class PitrConfigHelper {
             "listSnapshotSchedules returned error for universe {} : {}",
             universe.getUniverseUUID(),
             scheduleResp.errorMessage());
-        return Map.of();
+        // Not cached by LoadingCache; list APIs fall back to all YBA rows as UNKNOWN.
+        throw new SnapshotSchedulesUnavailableException(scheduleResp.errorMessage());
       }
 
       List<SnapshotScheduleInfo> scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
@@ -473,6 +517,8 @@ public class PitrConfigHelper {
                   SnapshotScheduleInfo::getSnapshotScheduleUUID,
                   Function.identity(),
                   (first, second) -> first));
+    } catch (SnapshotSchedulesUnavailableException e) {
+      throw e;
     } catch (Exception e) {
       log.error("Failed to list snapshot schedules for universe {}", universe.getUniverseUUID(), e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -487,5 +533,15 @@ public class PitrConfigHelper {
     pitrConfig.setState(State.UNKNOWN);
     pitrConfig.setMinRecoverTimeInMillis(currentTimeMillis);
     pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
+  }
+
+  /**
+   * Soft failure from master {@code listSnapshotSchedules} ({@code hasError}). Distinct from hard
+   * RPC failures so list APIs can mirror legacy V1 behavior (return YBA rows as UNKNOWN).
+   */
+  static final class SnapshotSchedulesUnavailableException extends RuntimeException {
+    SnapshotSchedulesUnavailableException(String message) {
+      super(message);
+    }
   }
 }

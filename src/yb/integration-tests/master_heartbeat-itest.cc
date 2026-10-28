@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -62,6 +63,7 @@ using namespace std::literals;
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int32(committed_config_change_role_timeout_sec);
@@ -78,6 +80,7 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
+DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -615,6 +618,49 @@ TEST_F(MasterHeartbeatITestOneTServer, FullReportContinutation) {
   }
 }
 
+class MasterHeartbeatITestSixTablets : public MasterHeartbeatITest {
+ protected:
+  int num_tablets() override { return 6; }
+};
+
+// A tserver abandons a full report whenever the heartbeat RPC carrying the first chunk times out,
+// even if the master went on to process that RPC, and starts a new full report. The master must
+// accept the continuations of the new report. Here the master is slow enough that the first full
+// report chunk times out on the tserver but is still processed by the master.
+TEST_F(MasterHeartbeatITestSixTablets, FullReportCompletesAfterHeartbeatTimeout) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  // Each full report chunk carries 2 tablets, so the master processes it in 2 batches and sleeps
+  // between them. Every tserver hosts a replica of each of the 6 tablets, so a full report has
+  // several chunks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 2;
+  const auto heartbeat_rpc_timeout = MonoDelta::FromSeconds(2 * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) =
+      narrow_cast<int32_t>(heartbeat_rpc_timeout.ToMilliseconds());
+
+  auto ts = catalog_mgr.GetAllLiveNotBlacklistedTServers()[0];
+  ASSERT_TRUE(ts->has_tablet_report());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) =
+      (heartbeat_rpc_timeout + 1s).ToMilliseconds();
+  // Same effect as a master leader change: the next heartbeat gets needs_full_tablet_report.
+  ts->set_has_tablet_report(false);
+  // Wait until the master has stored the id of a full report whose first chunk timed out on the
+  // tserver, and the tserver has started a newer report.
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->receiving_full_report_seq_no().has_value(); },
+      30s * kTimeMultiplier, "Master stores the full report id"));
+  const auto stored_report = *ts->receiving_full_report_seq_no();
+  ASSERT_OK(WaitFor(
+      [&ts, stored_report] { return ts->latest_report_seqno() > stored_report; },
+      30s * kTimeMultiplier, "TServer starts a new report"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 0;
+
+  ASSERT_OK(WaitFor(
+      [&ts] { return ts->has_tablet_report(); }, 30s * kTimeMultiplier,
+      "Master receives a complete full report"));
+}
+
 TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   CreateTable();
@@ -834,6 +880,9 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:
   bool use_external_mini_cluster() override { return true; }
+  // The tservers are killed moments after they register. With YSQL on, a kill that lands while
+  // postgres is still starting can orphan the postmaster, which stalls the next restart.
+  bool enable_ysql() override { return false; }
 
   Status RestartAndWipeWithFlags(
       std::vector<ExternalTabletServer*> tservers,
@@ -1081,6 +1130,74 @@ TEST_F_EX(MasterHeartbeatITest, MaybeHasXClusterGuardedLease, MasterHeartbeatITe
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return tserver_desc->MaybeHasXClusterGuardedLease(); },
       3s * kTimeMultiplier, "Wait for xCluster-guarded information lease to be re-acquired"));
+}
+
+class MasterHeartbeatITestMultiMaster : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // A restarted replica reports no leader until the tablet leader's next raft heartbeat reaches
+    // it. Report to the master much more often than that, so the master sees that report.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 2000 * kTimeMultiplier;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  bool enable_ysql() override { return false; }
+  size_t num_masters() override { return 3; }
+  int num_tablets() override { return 1; }
+};
+
+// The hinted leader election is meant for the first election of a new tablet. A restarted follower
+// of a tablet with a live leader must not trigger one, even on a master leader that has not sent a
+// hint for the tablet yet (e.g. after a master leader change).
+TEST_F_EX(MasterHeartbeatITest, NoHintedElectionOnTServerRestart,
+          MasterHeartbeatITestMultiMaster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  ASSERT_RESULT(mini_cluster_->StepDownMasterLeader());
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table = table_name();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  ASSERT_NE(table_info, nullptr);
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // Wait for the new master leader to learn the tablet leader and all running replicas from tablet
+  // reports.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        if (!tablet->GetLeader().ok()) {
+          return false;
+        }
+        auto replicas = tablet->GetReplicaLocations();
+        return replicas->size() == num_tablet_servers() &&
+               std::ranges::all_of(*replicas, [](const auto& entry) {
+                 return entry.second.state == tablet::RaftGroupStatePB::RUNNING;
+               });
+      },
+      kTimeout, "New master leader learns tablet leader and replicas"));
+  const auto leader_uuid = ASSERT_RESULT(tablet->GetLeader())->permanent_uuid();
+
+  tserver::MiniTabletServer* follower = nullptr;
+  for (size_t i = 0; i < mini_cluster_->num_tablet_servers(); ++i) {
+    auto* ts = mini_cluster_->mini_tablet_server(i);
+    if (ts->server()->permanent_uuid() != leader_uuid) {
+      follower = ts;
+      break;
+    }
+  }
+  ASSERT_NE(follower, nullptr);
+
+  google::SetVLOGLevel("master_heartbeat_service*", 1);
+  StringWaiterLogSink hinted_election_log("Starting election at " + tablet->tablet_id());
+  StringWaiterLogSink skipped_election_log(Format(
+      "Skipping hinted leader election for existing tablet $0 reported by $1",
+      tablet->tablet_id(), follower->server()->permanent_uuid()));
+  ASSERT_OK(follower->Restart());
+  ASSERT_OK(skipped_election_log.WaitFor(kTimeout));
+  ASSERT_FALSE(hinted_election_log.IsEventOccurred());
 }
 
 }  // namespace yb::integration_tests

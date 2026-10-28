@@ -38,6 +38,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/request_id_allocator.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/origination_info.h"
@@ -507,8 +508,8 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
-  uint32_t XreplOriginId() const { return xrepl_origin_id_; }
-  void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
+  const CdrMetadata& cdr_metadata() const { return cdr_metadata_; }
+  void SetCdrMetadata(const CdrMetadata& value) { cdr_metadata_ = value; }
 
   const OriginationInfo& origination_info() const { return origination_info_; }
   void SetOriginationInfo(const OriginationInfo& value) { origination_info_ = value; }
@@ -534,7 +535,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
-  uint32_t xrepl_origin_id_ = 0;
+  CdrMetadata cdr_metadata_;
   OriginationInfo origination_info_;
 };
 
@@ -575,6 +576,10 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
+  // Table behind request_->index_request(); resolved only when the request is being traced.
+  void set_index_table(const YBTablePtr& table) { index_table_ = table; }
+  const YBTablePtr& index_table() const { return index_table_; }
+
  protected:
   Type type() const override { return PGSQL_READ; }
   OpGroup group() const override;
@@ -586,6 +591,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;
+  YBTablePtr index_table_;
 };
 
 class YBPgsqlLockOp : public YBPgsqlOp {

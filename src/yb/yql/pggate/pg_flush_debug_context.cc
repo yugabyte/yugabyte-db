@@ -48,7 +48,8 @@ YB_DEFINE_TYPED_ENUM(Reason, uint8_t,
   (kUnbatchableSqlStmtInPlFunc)
   (kCopyBatch)
   (kSwitchToDbCatalogVersionMode)
-  (kEndOfTopLevelStmt));
+  (kEndOfTopLevelStmt)
+  (kParallelWorkers));
 
 struct YbcContextArgs {
   uint64_t uintarg = 0;
@@ -112,6 +113,10 @@ YbcFlushDebugContext PgFlushDebugContext::YbcEndOfTopLevelStmt() {
   return MakeYbc(Reason::kEndOfTopLevelStmt);
 }
 
+YbcFlushDebugContext PgFlushDebugContext::YbcParallelWorkers() {
+  return MakeYbc(Reason::kParallelWorkers);
+}
+
 PgFlushDebugContext PgFlushDebugContext::Make(const YbcFlushDebugContext& ctx) {
   switch (static_cast<Reason>(ctx.reason)) {
     case Reason::kBeginSubTxn:
@@ -145,6 +150,8 @@ PgFlushDebugContext PgFlushDebugContext::Make(const YbcFlushDebugContext& ctx) {
           ctx.oidarg};
     case Reason::kEndOfTopLevelStmt:
       return {"at the end of top-level statement"};
+    case Reason::kParallelWorkers:
+      return {"before launching parallel workers"};
   }
   DCHECK(false);
   return {"for unknown reason"};

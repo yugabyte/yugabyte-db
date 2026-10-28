@@ -38,6 +38,7 @@ import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/univers
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { canOverrideCommunicationPorts } from '../../helpers/syncConnectionPoolingPorts';
 import { COMMUNICATION_PORT_FIELD_NAMES } from '../../helpers/duplicatePortValidation';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 
 const { Box, Typography } = mui;
 
@@ -128,7 +129,21 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const userTagsValue = watch(USER_TAGS_FIELD);
+  const hasNamedUserTag = !!userTagsValue?.some((tag) => tag.name);
   const watched = watch();
+
+  const { runtimeConfigs, devUserTags } = useRuntimeConfigValues();
+  const [devTagsApplied, setDevTagsApplied] = useState(false);
+  // Seed once per create flow so tags the user removed are not re-added on revisit.
+  useEffect(() => {
+    if (!isCloudVendorCloudType(provider?.code) || !runtimeConfigs) return;
+    if (methods.getValues('userTagsSeeded')) return;
+    if (devUserTags.length && !methods.getValues(USER_TAGS_FIELD)?.some((tag) => tag.name)) {
+      methods.setValue(USER_TAGS_FIELD, devUserTags);
+      setDevTagsApplied(true);
+    }
+    methods.setValue('userTagsSeeded', true);
+  }, [runtimeConfigs, devUserTags, provider?.code, methods]);
 
   useEffect(() => {
     if (isSubmitted && !hasErrors) {
@@ -191,9 +206,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
         )}
         {provider && isCloudVendorCloudType(provider?.code) && (
           <YBAccordion
+            // Remount once on seeding so tags that arrive after the first render expand it.
+            key={devTagsApplied ? 'user-tags-seeded' : 'user-tags'}
             titleContent={t('userTagsHeader')}
             sx={{ width: '100%' }}
-            defaultExpanded={userTagsValue?.length > 1 ? true : false}
+            defaultExpanded={hasNamedUserTag}
           >
             <UserTagsField disabled={false} />
           </YBAccordion>

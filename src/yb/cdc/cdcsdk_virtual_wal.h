@@ -229,7 +229,9 @@ class CDCSDKVirtualWAL {
   bool IsDmlOnPgCatalogTableForDetectingDDL(
       const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
 
-  Result<std::optional<uint32_t>> GetPublishedTableOidFromPgCatalogRecord(
+  std::optional<TableId> GetPublishedTableIdForOid(uint32_t oid) const;
+
+  Result<std::optional<TableId>> GetPublishedTableIdFromPgCatalogRecord(
       const std::shared_ptr<CDCSDKProtoRecordPB>& record) const;
 
   Status AddSyntheticDDLRecordFromCatalogDML(

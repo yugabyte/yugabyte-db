@@ -19,6 +19,8 @@ var (
 		Short:         "Command for node agent",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Before the command runs: the FIPS mode is fixed for the life of the process.
+		PersistentPreRun: applyFipsMode,
 	}
 
 	versionCmd = &cobra.Command{
@@ -43,4 +45,8 @@ func versionCmdHandler(cmd *cobra.Command, args []string) error {
 	config := util.CurrentConfig()
 	util.ConsoleLogger().Info(srv.Context(), config.String(util.PlatformVersionKey))
 	return nil
+}
+
+func applyFipsMode(cmd *cobra.Command, args []string) {
+	util.ApplyFipsMode(util.NodeAgentFipsEnabled(cmd.Flags()))
 }

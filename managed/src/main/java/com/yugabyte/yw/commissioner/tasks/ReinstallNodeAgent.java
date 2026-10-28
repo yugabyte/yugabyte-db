@@ -149,7 +149,9 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
                 // Fail only if the ping fails for the targeted nodes.
                 if (!pendingTargetNodeNames.isEmpty()) {
                   throw new RuntimeException(
-                      String.format("Nodes %s did not respond to ping", pendingTargetNodeNames));
+                      String.format(
+                          "Node agents on %s did not respond to ping. Check their service status",
+                          pendingTargetNodeNames));
                 }
               });
       // Update installNodeAgent property only if all the nodes have working node agents.

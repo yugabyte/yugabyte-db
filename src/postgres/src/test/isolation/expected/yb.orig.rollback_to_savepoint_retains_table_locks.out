@@ -1,0 +1,37 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_insert_t s1_savepoint s1_insert_u s1_rollback_to s2_add_check s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_insert_t: INSERT INTO t VALUES (2, 20);
+step s1_savepoint: SAVEPOINT a;
+step s1_insert_u: INSERT INTO u VALUES (1);
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_check: <... completed>
+ERROR:  check constraint "tc" of relation "t" is violated by some row
+step s2_select: SELECT * FROM t ORDER BY k;
+k| v
+-+--
+1| 1
+2|20
+(2 rows)
+
+
+starting permutation: s1_begin_rc s1_insert_t s1_savepoint s1_insert_u s1_rollback_to s2_add_check s1_commit s2_select
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_insert_t: INSERT INTO t VALUES (2, 20);
+step s1_savepoint: SAVEPOINT a;
+step s1_insert_u: INSERT INTO u VALUES (1);
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_check: <... completed>
+ERROR:  check constraint "tc" of relation "t" is violated by some row
+step s2_select: SELECT * FROM t ORDER BY k;
+k| v
+-+--
+1| 1
+2|20
+(2 rows)
+

@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpBackOffUnsuccessfulResponseHandler;
@@ -15,6 +14,7 @@ import com.google.api.client.http.HttpHeaders;
 import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.gax.core.FixedCredentialsProvider;
@@ -437,7 +437,9 @@ public class GCPProjectApiClient {
               new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
     }
     requestInitializer = getHttpRequestInitializerWithBackoff();
-    httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+    // Not GoogleNetHttpTransport.newTrustedTransport(): its bundled google.p12 can't be read in
+    // FIPS mode. This uses the JVM default trust store.
+    httpTransport = new NetHttpTransport();
     // Create Compute Engine object.
     return new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
         .setApplicationName("")

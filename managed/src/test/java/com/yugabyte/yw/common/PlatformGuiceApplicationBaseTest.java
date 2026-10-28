@@ -395,10 +395,6 @@ public abstract class PlatformGuiceApplicationBaseTest {
     return FakeApiHelper.doRequest(app, method, url);
   }
 
-  public Result doGetRequestNoAuth(String url) {
-    return FakeApiHelper.doGetRequestNoAuth(app, url);
-  }
-
   public Result doRequestWithAuthToken(String method, String url, String authToken) {
     return FakeApiHelper.doRequestWithAuthToken(app, method, url, authToken);
   }
@@ -409,6 +405,11 @@ public abstract class PlatformGuiceApplicationBaseTest {
 
   public Result doRequestWithCustomHeaders(String method, String url, Map<String, String> headers) {
     return FakeApiHelper.doRequestWithCustomHeaders(app, method, url, headers);
+  }
+
+  public Result doRequestWithAuthTokenAndHeaders(
+      String method, String url, String authToken, Map<String, String> headers) {
+    return FakeApiHelper.doRequestWithAuthTokenAndHeaders(app, method, url, authToken, headers);
   }
 
   public Result doRequestWithHAToken(String method, String url, String haToken) {

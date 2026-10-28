@@ -150,3 +150,28 @@ CREATE INDEX ON vec_reltuples USING ybhnsw (embedding vector_l2_ops);
 SELECT reltuples FROM pg_class WHERE relname = 'vec_reltuples';
 RESET yb_enable_update_reltuples_after_create_index;
 DROP TABLE vec_reltuples;
+
+-- KNN queries with an equality on the primary key only search the tablets that
+-- can hold the matching rows. The results must match the unrouted ones.
+CREATE TABLE vec_tenant (tenant int, id int, embedding vector(3),
+                         PRIMARY KEY ((tenant) HASH, id)) SPLIT INTO 3 TABLETS;
+CREATE INDEX ON vec_tenant USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec_tenant SELECT t, i, vector('[' || t || ', ' || i || ', 0]')
+  FROM generate_series(1, 6) t, generate_series(1, 4) i;
+EXPLAIN (COSTS OFF) SELECT * FROM vec_tenant WHERE tenant = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant IN (1, 5) ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5;
+SELECT * FROM vec_tenant WHERE tenant = 3 AND id = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = NULL ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = ANY('{}'::int[]) ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+DROP TABLE vec_tenant;
+
+CREATE TABLE vec_tenant_range (tenant int, id int, embedding vector(3),
+                               PRIMARY KEY (tenant ASC, id ASC))
+  SPLIT AT VALUES ((3), (4, 2));
+CREATE INDEX ON vec_tenant_range USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec_tenant_range SELECT t, i, vector('[' || t || ', ' || i || ', 0]')
+  FROM generate_series(1, 6) t, generate_series(1, 4) i;
+SELECT * FROM vec_tenant_range WHERE tenant = 4 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant_range WHERE tenant = 4 AND id = 3 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+DROP TABLE vec_tenant_range;

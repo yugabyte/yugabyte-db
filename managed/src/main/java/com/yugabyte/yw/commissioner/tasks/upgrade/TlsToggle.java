@@ -107,6 +107,11 @@ public class TlsToggle extends UpgradeTaskBase {
               taskParams().rootAndClientRootCASame,
               taskParams().rootCA,
               taskParams().getClientRootCA());
+          // Exporter TLS follows node-to-node encryption once every node is user-level. Decided
+          // after the universe holds the new setting.
+          if (taskParams().nodeToNodeChange != 0) {
+            createUpdateNodeExporterTlsTask(getUniverse());
+          }
           // Round 2 gflags upgrade
           createRound2GFlagUpdateTasks(nodes);
         },

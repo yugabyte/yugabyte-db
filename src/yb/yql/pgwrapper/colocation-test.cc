@@ -239,6 +239,62 @@ TEST_F(ColocatedTablesWithTablespacesTest, ColocatedTablespaceTest) {
   AssertLocation("t6", "colodb", placement_with_three_replicas);
 }
 
+// A colocated table in a non-default tablespace lives on that tablespace's parent
+// tablet, not the database default. Each parent reports its own leader size.
+TEST_F(ColocatedTablesWithTablespacesTest, ColocatedTablespaceParentSize) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
+  CreateTablespacesWithOneReplica(&conn, "tsp1", 1);
+  CreateTablespacesWithOneReplica(&conn, "tsp2", 2);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, value TEXT)"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v' FROM generate_series(1, 1000) AS i"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t2 SELECT i, 'v' FROM generate_series(1, 1000) AS i"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t3 SELECT i, 'v' FROM generate_series(1, 1000) AS i"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(DISTINCT tablegroup_oid) FROM ("
+      "  SELECT tablegroup_oid FROM yb_table_properties('t1'::regclass)"
+      "  UNION ALL"
+      "  SELECT tablegroup_oid FROM yb_table_properties('t2'::regclass)"
+      "  UNION ALL"
+      "  SELECT tablegroup_oid FROM yb_table_properties('t3'::regclass)) s")), 3);
+
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT pg_table_size('t1'::regclass) IS NULL"
+      "   AND pg_table_size('t2'::regclass) IS NULL"
+      "   AND pg_table_size('t3'::regclass) IS NULL")));
+
+  // Drive info is cached from tserver heartbeats. yb_tablegroup_size and the
+  // view are separate RPCs, so a heartbeat can land between them. Retry until
+  // every tablegroup size is positive and the sums match.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return conn.FetchRow<bool>(
+        "SELECT COALESCE("
+        "  count(*) = 3 AND bool_and(sz > 0) AND sum(sz) = min(parent_bytes),"
+        "  false) "
+        "FROM ("
+        "  SELECT yb_tablegroup_size(g.oid) AS sz, parents.nbytes AS parent_bytes "
+        "  FROM pg_yb_tablegroup g "
+        "  CROSS JOIN ("
+        "    SELECT COALESCE(sum((tablet_attrs->>'total_bytes')::bigint), 0) AS nbytes, "
+        "           count(*) AS nparents "
+        "    FROM yb_tablet_metadata "
+        "    WHERE db_name = current_database() "
+        "      AND relname LIKE '%.colocation.parent.tablename' "
+        "      AND tablet_attrs IS NOT NULL"
+        "  ) parents "
+        "  WHERE parents.nparents = 3"
+        ") s");
+  }, MonoDelta::FromSeconds(60),
+     "Wait for tablespace colocation parent sizes to match yb_tablegroup_size"));
+}
+
 TEST_F(ColocatedTablesWithTablespacesTest, ColocatedIndexWithTablespaceTest) {
   auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
   CreateTablespacesWithOneReplica(&conn, "tsp1", 1);

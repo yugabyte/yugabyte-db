@@ -62,7 +62,8 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
 						  false, false, false,
 						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
-						  NULL, CRS_SEQUENCE, YB_CRS_TRANSACTION);
+						  NULL, CRS_SEQUENCE, YB_CRS_TRANSACTION,
+						  NULL /* yb_publication_name */ );
 
 	if (immediately_reserve)
 	{
@@ -170,7 +171,8 @@ create_logical_replication_slot(char *name, char *plugin,
 						  false /* repack */ , failover, false /* synced */ ,
 						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL,
 						  YBParseLsnType(yb_lsn_type),
-						  YBParseOrderingMode(yb_ordering_mode));
+						  YBParseOrderingMode(yb_ordering_mode),
+						  NULL /* yb_publication_name */ );
 
 	/*
 	 * Ensure the logical decoding is enabled before initializing the logical

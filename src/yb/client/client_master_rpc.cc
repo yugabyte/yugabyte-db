@@ -151,13 +151,19 @@ void ClientMasterRpcBase::Finished(const Status& status) {
     // cluster shutdown, when the master is already down) would make us retry indefinitely,
     // ignoring the RPC deadline and hanging callers that wait for this RPC to complete.
     if (rpc_error != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD &&
-        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN &&
-        CoarseMonoClock::Now() < retrier().deadline()) {
-      LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
-                   << client_data_->leader_master_hostport().ToString()
-                   << "): " << new_status.ToString() << ", retrying...";
-      ResetMasterLeader(Retry::kTrue);
-      return;
+        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN) {
+      auto now = CoarseMonoClock::Now();
+      if (now < retrier().deadline()) {
+        LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
+                     << client_data_->leader_master_hostport().ToString()
+                     << "): " << new_status.ToString() << ", retrying...";
+        ResetMasterLeader(Retry::kTrue);
+        return;
+      }
+      // Retries stopped because of the deadline, so report it as a timeout.
+      new_status = STATUS_FORMAT(
+          TimedOut, "$0 timed out after deadline expired, passed $1 of $2, last error: $3",
+          *this, now - retrier().start(), retrier().deadline() - retrier().start(), new_status);
     }
   }
 

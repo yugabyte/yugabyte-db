@@ -31,7 +31,8 @@ const uint64_t kPgCronDataKey = 1;
 class PgCronLeaderService : public StatefulRpcServiceBase<PgCronLeaderServiceIf> {
  public:
   PgCronLeaderService(
-      std::function<void(MonoTime)> set_cron_leader_lease_fn,
+      std::function<void(MonoTime)> set_cron_lease_end_fn,
+      std::function<void(bool)> set_cron_can_start_jobs_fn,
       const scoped_refptr<MetricEntity>& metric_entity,
       const std::shared_future<client::YBClient*>& client_future);
 
@@ -53,11 +54,12 @@ class PgCronLeaderService : public StatefulRpcServiceBase<PgCronLeaderServiceIf>
 
   static Result<int64_t> ExtractLastMinute(const QLValue& column_value);
 
-  std::function<void(MonoTime)> set_cron_leader_lease_fn_;
+  std::function<void(MonoTime)> set_cron_lease_end_fn_;
+  std::function<void(bool)> set_cron_can_start_jobs_fn_;
 
   std::shared_mutex mutex_;
-  // The time from which the leader can be active.
-  MonoTime leader_activate_time_ GUARDED_BY(mutex_) = MonoTime::kUninitialized;
+  // The time from which this node may take the lease and start new runs.
+  MonoTime lease_start_allowed_time_ GUARDED_BY(mutex_) = MonoTime::kUninitialized;
 };
 
 }  // namespace stateful_service

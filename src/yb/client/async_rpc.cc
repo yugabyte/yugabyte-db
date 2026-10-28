@@ -42,6 +42,7 @@
 #include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -224,8 +225,23 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
   return ops_[0].yb_op->table();
 }
 
+bool AsyncRpc::HasResponse() const {
+  return retrier().controller().status().ok();
+}
+
+rpc::RpcController* AsyncRpc::PrepareController() {
+  auto* controller = Rpc::PrepareController();
+  if (batcher_->local_calls_can_time_out()) {
+    // The rpc keeps alive the request, the response and the batcher with the rest of buffers.
+    controller->set_local_call_buffers_holder(shared_from_this());
+  }
+  return controller;
+}
+
 void AsyncRpc::Finished(const Status& status) {
-  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
+  VLOG_WITH_FUNC(4)
+      << "status: " << status << ", error: "
+      << (HasResponse() ? AsString(response_error()) : "<no response>");
   Status new_status = status;
   RefCntBuffer data_holder;
   if (status.ok()) {
@@ -330,6 +346,47 @@ bool AsyncRpc::IsLocalCall() const {
 }
 
 namespace {
+
+// One "name(id)" entry per distinct table in the batch, mirroring pggate's Perform attribute.
+void PublishPendingRpcTableNames(const InFlightOps& ops) {
+  if (!dist_trace::HasActiveContext()) {
+    return;
+  }
+  std::string joined_names;
+  std::unordered_set<std::string_view> seen;
+  auto append = [&](std::string_view name, std::string_view id) {
+    if (!seen.insert(id).second) {
+      return;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    joined_names += name;
+    joined_names += '(';
+    joined_names += id;
+    joined_names += ')';
+  };
+  for (const auto& op : ops) {
+    const auto& table = op.yb_op->table();
+    append(table->name().table_name(), table->id());
+    if (op.yb_op->type() != YBOperation::PGSQL_READ) {
+      continue;
+    }
+    const auto& read_op = down_cast<const YBPgsqlReadOp&>(*op.yb_op);
+    if (!read_op.request().has_index_request()) {
+      continue;
+    }
+    // The index may be missing from the tserver table cache; keep the id so the span is still
+    // attributable.
+    const auto& index_table = read_op.index_table();
+    append(
+        index_table ? std::string_view(index_table->name().table_name()) : "?",
+        read_op.request().index_request().table_id());
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
+  }
+}
 
 template<class T>
 void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
@@ -604,7 +661,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
     RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
-  if (resp_.has_trace_buffer()) {
+  if (HasResponse() && resp_.has_trace_buffer()) {
     TRACE_TO(
         trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
         resp_.trace_buffer().ToBuffer());
@@ -644,6 +701,9 @@ void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) 
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
+  if (!HasResponse()) {
+    return {};
+  }
   return {GetPropagatedHybridTime(resp_),
           resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
                                      : ReadHybridTime()};
@@ -664,8 +724,12 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
   }
-  if (op->XreplOriginId()) {
-    req->set_xrepl_origin_id(op->XreplOriginId());
+  const auto& cdr_metadata = op->cdr_metadata();
+  if (cdr_metadata.source_origin) {
+    req->set_xrepl_origin_id(cdr_metadata.source_origin);
+  }
+  if (cdr_metadata.source_write_ht.is_valid()) {
+    req->set_xrepl_source_write_ht(cdr_metadata.source_write_ht.ToUint64());
   }
   if (op->origination_info().IsSet()) {
     op->origination_info().ToPB(req->mutable_origination_info());
@@ -802,6 +866,7 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::CallRemoteMethod() {
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
@@ -960,6 +1025,7 @@ ReadRpc::~ReadRpc() {
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
+  PublishPendingRpcTableNames(ops_);
   ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 

@@ -220,6 +220,10 @@ string Master::ToString() const {
   return Format("Master@$0", yb::ToString(first_rpc_address()));
 }
 
+Status Master::RestartPG() const {
+  return STATUS(NotSupported, "RestartPG not implemented for masters");
+}
+
 Status Master::Init() {
   CHECK_EQ(kStopped, state_.load());
 

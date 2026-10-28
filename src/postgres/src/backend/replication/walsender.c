@@ -1201,7 +1201,8 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						   CRSSnapshotAction *snapshot_action,
 						   bool *two_phase, bool *failover,
 						   YbCRSLsnType *lsn_type,
-						   YbCRSOrderingMode *ordering_mode)
+						   YbCRSOrderingMode *ordering_mode,
+						   char **yb_publication_name)
 {
 	ListCell   *lc;
 	bool		snapshot_action_given = false;
@@ -1317,6 +1318,17 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 						 errmsg("unrecognized value for CREATE_REPLICATION_SLOT option \"%s\": \"%s\"",
 								defel->defname, action)));
 		}
+		/* YB */
+		else if (strcmp(defel->defname, "yb_publication") == 0)
+		{
+			if (*yb_publication_name != NULL ||
+				cmd->kind != REPLICATION_KIND_LOGICAL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+
+			*yb_publication_name = defGetString(defel);
+		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
@@ -1344,18 +1356,22 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	bool		two_phase = false;
 	bool		failover = false;
 	CRSSnapshotAction snapshot_action = CRS_EXPORT_SNAPSHOT;
-	YbCRSLsnType lsn_type = CRS_SEQUENCE;
-	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
 	DestReceiver *dest;
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4] = {0};
 
+	/* YB declarations */
+	YbCRSLsnType lsn_type = CRS_SEQUENCE;
+	YbCRSOrderingMode yb_ordering_mode = YB_CRS_TRANSACTION;
+	char	   *yb_publication_name = NULL;
+
 	Assert(!MyReplicationSlot);
 
 	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase,
-							   &failover, &lsn_type, &yb_ordering_mode);
+							   &failover, &lsn_type, &yb_ordering_mode,
+							   &yb_publication_name);
 
 	if (cmd->kind == REPLICATION_KIND_PHYSICAL)
 	{
@@ -1368,7 +1384,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
 							  false, false, false, false,
 							  cmd->plugin, snapshot_action, NULL,
-							  lsn_type, yb_ordering_mode);
+							  lsn_type, yb_ordering_mode,
+							  NULL /* yb_publication_name */ );
 
 		if (reserve_wal)
 		{
@@ -1408,7 +1425,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
 								  two_phase, false, failover, false,
 								  cmd->plugin, snapshot_action, NULL,
-								  lsn_type, yb_ordering_mode);
+								  lsn_type, yb_ordering_mode,
+								  NULL /* yb_publication_name */ );
 		}
 
 		/*
@@ -1515,7 +1533,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								  false /* synced */,
 								  cmd->plugin, snapshot_action,
 								  &yb_consistent_snapshot_time, lsn_type,
-								  yb_ordering_mode);
+								  yb_ordering_mode, yb_publication_name);
 
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
 				snapshot_name = YbSnapBuildExportSnapshotWithReadTime(yb_consistent_snapshot_time);
@@ -1798,6 +1816,15 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 							  WalSndPrepareWrite, WalSndWriteData,
 							  WalSndUpdateProgress);
 	xlogreader = logical_decoding_ctx->reader;
+
+	/*
+	 * YB: Validate that a publication-bound slot is used with exactly its
+	 * bound publication. Like the decoding context creation above, this must
+	 * happen before sending the CopyBothResponse message so that the error is
+	 * reported as a failure of the START_REPLICATION command.
+	 */
+	if (IsYugaByteEnabled())
+		YBCValidateBoundPublication(logical_decoding_ctx->options.yb_publication_names);
 
 	WalSndSetState(WALSNDSTATE_CATCHUP);
 
@@ -4520,6 +4547,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 	YbcSlotEntryDescriptor *yb_slot_entries = NULL;
 	size_t		yb_num_slot_entries = 0;
+	bool		yb_slot_entries_fetched = false;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -4528,9 +4556,6 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	 * date before we're done, but we'll use the data anyway.
 	 */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
-
-	if (IsYugaByteEnabled())
-		YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -4648,6 +4673,13 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 			{
 				int64_t		lag_metric = -1;
 				int			slotno;
+
+				/* Only fetch slot entries if there is an active walsender. */
+				if (!yb_slot_entries_fetched)
+				{
+					YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
+					yb_slot_entries_fetched = true;
+				}
 
 				for (slotno = 0; slotno < yb_num_slot_entries; slotno++)
 				{

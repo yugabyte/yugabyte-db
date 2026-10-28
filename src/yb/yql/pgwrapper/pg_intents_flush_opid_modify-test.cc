@@ -54,22 +54,22 @@ TEST_F(PgMiniTestIntentsFlushOpId, TestIntentsFlushOpIdAfterIndexCreation) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
 
     // Get flushed OpIds for both regular and intents DB
-    auto flushed_op_ids = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    auto persistent_state = ASSERT_RESULT(tablet->GetPersistentState(false));
 
-    ASSERT_TRUE(flushed_op_ids.regular.valid() && flushed_op_ids.intents.valid())
+    ASSERT_TRUE(persistent_state.regular.valid() && persistent_state.intents.valid())
         << "Regular and intents flushed OpId should be valid for tablet " << peer->tablet_id();
-    auto op_id_diff = flushed_op_ids.regular.index - flushed_op_ids.intents.index;
+    auto op_id_diff = persistent_state.regular.index - persistent_state.intents.index;
     LOG(INFO) << "Tablet " << peer->tablet_id()
-              << ": Regular DB flushed OpId: " << flushed_op_ids.regular
-              << ", Intents DB flushed OpId: " << flushed_op_ids.intents
+              << ": Regular DB flushed OpId: " << persistent_state.regular
+              << ", Intents DB flushed OpId: " << persistent_state.intents
               << ", Difference: " << op_id_diff;
-    ASSERT_LE(flushed_op_ids.intents.index, flushed_op_ids.regular.index);
+    ASSERT_LE(persistent_state.intents.index, persistent_state.regular.index);
 
     ASSERT_EQ(op_id_diff, 0)
         << "Difference between intents DB and regular DB flushed OpId ("
         << op_id_diff << ") should be 0 for tablet " << peer->tablet_id()
-        << ". Regular OpId: " << flushed_op_ids.regular
-        << ", Intents OpId: " << flushed_op_ids.intents;
+        << ". Regular OpId: " << persistent_state.regular
+        << ", Intents OpId: " << persistent_state.intents;
   }
 }
 

@@ -44,22 +44,36 @@ public class EditKMSConfig extends KMSConfigTaskBase {
       for (UUID universeUUID : universeUUIDList) {
         Universe universe = Universe.maybeGet(universeUUID).orElse(null);
         if (universe != null) {
-          KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
-          if (activeKey == null) {
+          // Validate the active key when this config owns it. After a master key rotation to
+          // another config, the active key belongs to that config and this provider cannot
+          // decrypt it, so fall back to the latest key this config encrypted.
+          KmsHistory configKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
+          if (configKey == null) {
             log.info(
                 "Skipping retrieving keys validation for universe "
                     + universeUUID
-                    + "as no active key was found");
+                    + " as no active key was found");
             continue;
           }
-          byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+          if (!taskParams().configUUID.equals(configKey.getConfigUuid())) {
+            configKey =
+                EncryptionAtRestUtil.getLatestConfigKey(universeUUID, taskParams().configUUID);
+            if (configKey == null) {
+              log.info(
+                  "Skipping retrieving keys validation for universe "
+                      + universeUUID
+                      + " as no key was found for this KMS config");
+              continue;
+            }
+          }
+          byte[] keyRef = Base64.getDecoder().decode(configKey.getUuid().keyRef);
           if (kmsManager
                   .getServiceInstance(taskParams().kmsProvider.name())
                   .validateConfigForUpdate(
                       universeUUID,
                       taskParams().configUUID,
                       keyRef,
-                      activeKey.encryptionContext,
+                      configKey.encryptionContext,
                       universe.getUniverseDetails().encryptionAtRestConfig,
                       taskParams().providerConfig)
               == null) {

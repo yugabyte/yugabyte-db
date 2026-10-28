@@ -77,10 +77,20 @@ public class ImageBundleUtil {
                 info.setIsImageMarketplaceBased(stored.getIsImageMarketplaceBased());
                 return;
               }
-              Image image =
-                  ociCloudImpl.getImageOrBadRequest(provider, regionCode, info.getYbImage());
-              info.setIsImageMarketplaceBased(isMarketplaceBased(provider, regionCode, image));
+              info.setIsImageMarketplaceBased(
+                  lookUpImageMarketplaceBased(provider, regionCode, info.getYbImage()));
             });
+  }
+
+  /**
+   * Asks OCI whether an image is a Marketplace image or a custom image built from one. Returns null
+   * when a base image can no longer be read, so the origin is unknown. Throws when the image itself
+   * cannot be looked up.
+   */
+  @Nullable
+  public Boolean lookUpImageMarketplaceBased(Provider provider, String regionCode, String imageId) {
+    Image image = ociCloudImpl.getImageOrBadRequest(provider, regionCode, imageId);
+    return isMarketplaceBased(provider, regionCode, image);
   }
 
   @Nullable

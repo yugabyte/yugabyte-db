@@ -260,6 +260,7 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
+  pg_cache_util.cc
   pg_client_service.cc
   pg_client_session.cc
   pg_client_session_util.cc
@@ -274,6 +275,7 @@ set(TSERVER_SRCS
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   pg_txn_snapshot_manager.cc
+  tier_migration_reconciler.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc

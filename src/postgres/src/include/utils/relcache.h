@@ -189,4 +189,13 @@ extern long YbGetRelCacheInitFileRevalidationFailed(void);
 
 extern void YbPrefetchRequiredData(bool preload_rel_cache);
 
+/*
+ * Carry a connection that read the catalog at a version this node already had cached up to the
+ * version it would otherwise have read at, by applying the invalidation messages
+ * YbTryPrepareStaleCatalogPrefetch collected. Called once startup is past the point where
+ * removing a relcache entry is unsafe, and before anything reads the catalog for a decision
+ * that is never revisited.
+ */
+extern void YbFinishStaleCatalogPrefetch(void);
+
 #endif							/* RELCACHE_H */

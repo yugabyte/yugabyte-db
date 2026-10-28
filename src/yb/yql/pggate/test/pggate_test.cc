@@ -90,6 +90,10 @@ uint16_t GetSessionReplicationOriginId() {
   return 0;
 }
 
+int64_t GetSessionReplicationOriginTimestamp() {
+  return 0;
+}
+
 bool HasProcessableAbortInterruptNoOp() {
   return false;
 }
@@ -190,6 +194,7 @@ Status PggateTest::Init(
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
+  callbacks.GetSessionReplicationOriginTimestamp = &GetSessionReplicationOriginTimestamp;
   callbacks.HasProcessableAbortInterrupt =
       &HasProcessableAbortInterruptNoOp;
   callbacks.IsInParallelMode = &IsInParallelModeNoOp;

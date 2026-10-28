@@ -26,10 +26,14 @@ import com.azure.resourcemanager.compute.models.Sku;
 import com.azure.resourcemanager.compute.models.SubResourceReadOnly;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
+import com.azure.resourcemanager.network.NetworkManager;
+import com.azure.resourcemanager.network.fluent.NetworkInterfacesClient;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
 import com.azure.resourcemanager.network.models.LoadBalancerBackendAddress;
+import com.azure.resourcemanager.network.models.TagsObject;
+import com.azure.resourcemanager.resources.fluentcore.arm.ResourceUtils;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
@@ -39,7 +43,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +55,17 @@ public class AZUResourceGroupApiClient {
   private static final String ERROR_202 = "Status code 202, (empty body)";
   private static final int GROUP_DELETE_WAIT_RETRIES = 5;
   private static final int GROUP_DELETE_WAIT_SECONDS = 60;
+  // Azure network writes fail with these codes when the write can succeed later, usually because an
+  // earlier operation on the resource, or on one it references, is still finishing. Leave out codes
+  // that mean a newer write replaced this one: a retry would undo the newer write.
+  private static final Set<String> RETRYABLE_ERROR_CODES =
+      Set.of(
+          "ConflictingConcurrentWriteNotAllowed",
+          "AnotherOperationInProgress",
+          "ReferencedResourceNotProvisioned",
+          "RetryableError");
+  private static final int RETRYABLE_ERROR_RETRIES = 3;
+  private static final long RETRYABLE_ERROR_DELAY_MS = 5000;
 
   private AzureResourceManager azureResourceManager;
   private String resourceGroup;
@@ -61,11 +77,59 @@ public class AZUResourceGroupApiClient {
     this.azureMarketplaceOrderingManager = getAzureMarketplaceOrderingManager(azureCloudInfo);
   }
 
-  public BackendAddressPoolInner createNewBackendPoolForIPs(
-      String lbName, Map<String, String> ipToVmName, SubResource virtualNetwork) {
-    String backendPoolName = "bp-" + UUID.randomUUID().toString();
-    BackendAddressPoolInner backendPool = new BackendAddressPoolInner().withName(backendPoolName);
-    return updateIPsInBackendPool(lbName, ipToVmName, backendPool, virtualNetwork);
+  // The SDK retry policy retries 408, 429 and 5xx responses, not these codes. A failed
+  // long-running operation also reaches here as a ManagementException with the Azure code.
+  static <T> T retryOnRetryableError(Supplier<T> write, long retryDelayMs) {
+    for (int retry = 1; ; retry++) {
+      try {
+        return write.get();
+      } catch (ManagementException e) {
+        if (retry > RETRYABLE_ERROR_RETRIES
+            || e.getValue() == null
+            || !RETRYABLE_ERROR_CODES.contains(e.getValue().getCode())) {
+          throw e;
+        }
+        log.warn(
+            "Azure write failed with {}, retry {} of {}: {}",
+            e.getValue().getCode(),
+            retry,
+            RETRYABLE_ERROR_RETRIES,
+            e.getMessage());
+        try {
+          Thread.sleep(retryDelayMs);
+        } catch (InterruptedException ie) {
+          throw new CancellationException(ie.getMessage());
+        }
+      }
+    }
+  }
+
+  private static <T> T retryOnRetryableError(Supplier<T> write) {
+    return retryOnRetryableError(write, RETRYABLE_ERROR_DELAY_MS);
+  }
+
+  public BackendAddressPoolInner createBackendPool(String lbName, String poolName) {
+    return retryOnRetryableError(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancerBackendAddressPools()
+                .createOrUpdate(
+                    resourceGroup,
+                    lbName,
+                    poolName,
+                    new BackendAddressPoolInner().withName(poolName)));
+  }
+
+  public BackendAddressPoolInner getBackendPool(String lbName, String poolName) {
+    return azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancerBackendAddressPools()
+        .get(resourceGroup, lbName, poolName);
   }
 
   public BackendAddressPoolInner updateIPsInBackendPool(
@@ -82,23 +146,27 @@ public class AZUResourceGroupApiClient {
                         .withIpAddress(ipToName.getKey())
                         .withVirtualNetwork(virtualNetwork))
             .collect(Collectors.toList());
-    backendAddressPool = backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
-    return azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancerBackendAddressPools()
-        .createOrUpdate(
-            resourceGroup, lbName, backendAddressPool.name(), backendAddressPool, Context.NONE);
+    BackendAddressPoolInner pool =
+        backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
+    return retryOnRetryableError(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancerBackendAddressPools()
+                .createOrUpdate(resourceGroup, lbName, pool.name(), pool, Context.NONE));
   }
 
   public LoadBalancerInner updateLoadBalancer(String lbName, LoadBalancerInner loadBalancer) {
-    return azureResourceManager
-        .networks()
-        .manager()
-        .serviceClient()
-        .getLoadBalancers()
-        .createOrUpdate(resourceGroup, lbName, loadBalancer);
+    return retryOnRetryableError(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancers()
+                .createOrUpdate(resourceGroup, lbName, loadBalancer));
   }
 
   public LoadBalancerInner getLoadBalancerByName(String lbName) {
@@ -114,6 +182,49 @@ public class AZUResourceGroupApiClient {
           BAD_REQUEST, "Cannot find Load Balancer with given name: " + lbName);
     }
     return loadBalancer;
+  }
+
+  /** Returns null when the load balancer does not exist. */
+  public LoadBalancerInner getLoadBalancerIfExists(String lbName) {
+    try {
+      return azureResourceManager
+          .networks()
+          .manager()
+          .serviceClient()
+          .getLoadBalancers()
+          .getByResourceGroup(resourceGroup, lbName);
+    } catch (ManagementException e) {
+      if (e.getResponse() != null && e.getResponse().getStatusCode() == 404) {
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  /** Also deletes the pools, rules and probes of the load balancer. */
+  public void deleteLoadBalancer(String lbName) {
+    retryOnRetryableError(
+        () -> {
+          azureResourceManager
+              .networks()
+              .manager()
+              .serviceClient()
+              .getLoadBalancers()
+              .delete(resourceGroup, lbName);
+          return null;
+        });
+  }
+
+  /** Replaces all the tags of the load balancer. */
+  public void updateLoadBalancerTags(String lbName, Map<String, String> tags) {
+    retryOnRetryableError(
+        () ->
+            azureResourceManager
+                .networks()
+                .manager()
+                .serviceClient()
+                .getLoadBalancers()
+                .updateTags(resourceGroup, lbName, new TagsObject().withTags(tags)));
   }
 
   public String createCapacityReservationGroup(
@@ -350,20 +461,41 @@ public class AZUResourceGroupApiClient {
     return disk;
   }
 
-  public NetworkInterfaceInner getNetworkInterfaceByName(String networkInterfaceName) {
+  public NetworkInterfaceInner getNetworkInterface(String id) {
     NetworkInterfaceInner networkInterface =
-        azureResourceManager
-            .networks()
-            .manager()
-            .serviceClient()
-            .getNetworkInterfaces()
-            .getByResourceGroup(resourceGroup, networkInterfaceName);
+        networkInterfaces(id)
+            .getByResourceGroup(
+                ResourceUtils.groupFromResourceId(id), ResourceUtils.nameFromResourceId(id));
     if (networkInterface == null) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          "Cannot find network interface with name: " + networkInterfaceName);
+          INTERNAL_SERVER_ERROR, "Cannot find network interface: " + id);
     }
     return networkInterface;
+  }
+
+  public void updateNetworkInterface(NetworkInterfaceInner networkInterface) {
+    retryOnRetryableError(
+        () ->
+            networkInterfaces(networkInterface.id())
+                .createOrUpdate(
+                    ResourceUtils.groupFromResourceId(networkInterface.id()),
+                    networkInterface.name(),
+                    networkInterface));
+  }
+
+  // Devops creates the interfaces in the network subscription and resource group, which can differ
+  // from this client's, so each call goes where the ID says.
+  private NetworkInterfacesClient networkInterfaces(String id) {
+    NetworkManager network = azureResourceManager.networks().manager();
+    String subscription = ResourceUtils.subscriptionFromResourceId(id);
+    if (!network.subscriptionId().equalsIgnoreCase(subscription)) {
+      network =
+          NetworkManager.authenticate(
+              network.httpPipeline(),
+              new AzureProfile(
+                  azureResourceManager.tenantId(), subscription, network.environment()));
+    }
+    return network.serviceClient().getNetworkInterfaces();
   }
 
   private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {

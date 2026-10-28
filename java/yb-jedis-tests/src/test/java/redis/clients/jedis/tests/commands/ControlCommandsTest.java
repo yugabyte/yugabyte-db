@@ -20,6 +20,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class ControlCommandsTest extends JedisCommandTestBase {
   @Test
   @Ignore public void save() {

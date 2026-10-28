@@ -5,6 +5,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/fips140"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -242,12 +243,15 @@ func toGrpcErrorIfNeeded(code codes.Code, err error) error {
 func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
 	util.FileLogger().Debugf(ctx, "Received ping")
 	config := util.CurrentConfig()
+	_, err := os.Stat(task.RootNodeExporterUnit)
 	return &pb.PingResponse{
 		ServerInfo: &pb.ServerInfo{
-			Version:        config.String(util.PlatformVersionKey),
-			RestartNeeded:  config.Bool(util.NodeAgentRestartKey),
-			Compressor:     gzip.Name,
-			CertExpirySecs: loadedCertExpirySecs,
+			Version:              config.String(util.PlatformVersionKey),
+			RestartNeeded:        config.Bool(util.NodeAgentRestartKey),
+			Compressor:           gzip.Name,
+			CertExpirySecs:       loadedCertExpirySecs,
+			RootNodeExporterUnit: err == nil,
+			FipsEnabled:          fips140.Enabled(),
 		},
 	}, nil
 }
@@ -441,6 +445,21 @@ func (server *RPCServer) SubmitTask(
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running configure cloud federation - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureNodeExporterInput := req.GetConfigureNodeExporterInput()
+	if configureNodeExporterInput != nil {
+		configureNodeExporterHandler := task.NewConfigureNodeExporterHandler(
+			configureNodeExporterInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureNodeExporterHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running configure node exporter - %s", err.Error())
 			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID

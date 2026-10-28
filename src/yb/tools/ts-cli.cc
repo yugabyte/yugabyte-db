@@ -75,6 +75,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/uuid.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
@@ -120,6 +121,8 @@ using yb::tserver::ReleaseObjectLockRequestPB;
 using yb::tserver::ReleaseObjectLockResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
+using yb::tserver::VerifyVectorIndexesRequestPB;
+using yb::tserver::VerifyVectorIndexesResponsePB;
 
 const char* const kListTabletsOp = "list_tablets";
 const char* const kVerifyTabletOp = "verify_tablet";
@@ -143,6 +146,7 @@ const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kAlterTabletTierOp = "alter_tablet_tier";
 const char* const kGetTabletTierInfoOp = "get_tablet_tier_info";
 const char* const kCompactVectorIndexOp = "compact_vector_index";
+const char* const kVerifyVectorIndexesOp = "verify_vector_indexes";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
@@ -296,6 +300,12 @@ class TsAdminClient {
   // If vector indexes are empty, do the operation for all vector indexes for the given tablet.
   Status FlushOrCompactVectorIndex(
       bool is_compaction, const TabletId& tablet_id, const TableIds& vector_index_ids);
+
+  // Checks the vector indexes of the tablet replicas on this tablet server against their indexed
+  // tables, see CheckVectorIndex. An empty tablet_id means every tablet of the server,
+  // empty vector_index_ids means every vector index of the tablet. Fails when an inconsistency is
+  // found or an index could not be checked.
+  Status VerifyVectorIndexes(const TabletId& tablet_id, const TableIds& vector_index_ids);
 
   // Records target_tier as the tablet replica's placement intent and starts moving its SSTs
   // there. Returns as soon as the moves are scheduled; poll GetTabletTierInfo for progress. See
@@ -755,6 +765,75 @@ Status TsAdminClient::FlushOrCompactVectorIndex(
       is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY);
 }
 
+namespace {
+
+// The ybctid in the bytea literal format of ysqlsh, e.g. to look the row up by ybctid.
+std::string YbctidToString(bool present, const std::string& ybctid) {
+  return present ? "\\x" + strings::b2a_hex(ybctid) : "<none>";
+}
+
+} // namespace
+
+Status TsAdminClient::VerifyVectorIndexes(
+    const TabletId& tablet_id, const TableIds& vector_index_ids) {
+  VerifyVectorIndexesRequestPB req;
+  VerifyVectorIndexesResponsePB resp;
+  RpcController rpc;
+
+  req.set_tablet_id(tablet_id);
+  for (const auto& vector_index_id : vector_index_ids) {
+    req.add_index_table_ids(vector_index_id);
+  }
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(
+      ts_proxy_->VerifyVectorIndexes(req, &resp, &rpc), "VerifyVectorIndexes() failed");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Also the case for a server which predates the check.
+  if (resp.checks().empty()) {
+    std::cout << "No vector indexes checked" << std::endl;
+    SCHECK_FORMAT(
+        tablet_id.empty(), NotFound, "No vector indexes checked on tablet $0", tablet_id);
+    return Status::OK();
+  }
+  size_t num_inconsistencies = 0;
+  size_t num_unchecked = 0;
+  for (const auto& check : resp.checks()) {
+    std::cout << "Tablet " << check.tablet_id() << " (" << PeerRole_Name(check.role())
+              << "), vector index " << check.index_table_id() << ": ";
+    if (check.has_status()) {
+      ++num_unchecked;
+      std::cout << "not checked: " << StatusFromPB(check.status()) << std::endl;
+      continue;
+    }
+    const auto& result = check.result();
+    num_inconsistencies += result.inconsistencies_size();
+    std::cout << result.num_vectors() << " vectors, " << result.num_invisible_vectors()
+              << " invisible vectors, " << result.num_rows() << " rows, "
+              << result.inconsistencies_size() << " inconsistencies"
+              << (result.truncated() ? " (truncated)" : "") << std::endl;
+    for (const auto& inconsistency : result.inconsistencies()) {
+      std::cout << "  " << tablet::VectorIndexInconsistencyKind_Name(inconsistency.kind())
+                << ": vector " << Uuid::TryFullyDecode(inconsistency.vector_id()).ToString()
+                << ", ybctid " << YbctidToString(inconsistency.has_ybctid(), inconsistency.ybctid())
+                << ", index ybctid "
+                << YbctidToString(inconsistency.has_index_ybctid(), inconsistency.index_ybctid());
+      if (!inconsistency.details().empty()) {
+        std::cout << ", " << inconsistency.details();
+      }
+      std::cout << std::endl;
+    }
+  }
+  if (num_inconsistencies || num_unchecked) {
+    return STATUS_FORMAT(
+        Corruption, "Found $0 inconsistencies, $1 vector indexes not checked",
+        num_inconsistencies, num_unchecked);
+  }
+  return Status::OK();
+}
+
 Status TsAdminClient::GetSplitKey(const TabletId& tablet_id, int split_factor) {
   GetSplitKeyRequestPB req;
   GetSplitKeyResponsePB resp;
@@ -1195,6 +1274,8 @@ void SetUsage(const char* argv0) {
       << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kVerifyTabletOp
       << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n"
+      << "  " << kVerifyVectorIndexesOp
+      << " [<tablet_id> [<vector_index_id1> <vector_index_id2> ...]]\n"
       << "  " << kReloadCertificatesOp << "\n"
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
@@ -1448,6 +1529,14 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushOrCompactVectorIndex(
         op == kCompactVectorIndexOp , tablet_id, vector_index_ids),
         "Unable to flush or compact vector index");
+  } else if (op == kVerifyVectorIndexesOp) {
+    TabletId tablet_id = argc > 2 ? argv[2] : "";
+    TableIds vector_index_ids;
+    for (int i = 3; i < argc; i++) {
+      vector_index_ids.push_back(argv[i]);
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.VerifyVectorIndexes(tablet_id, vector_index_ids),
+                                    "Vector index verification failed");
   } else if (op == kReloadCertificatesOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

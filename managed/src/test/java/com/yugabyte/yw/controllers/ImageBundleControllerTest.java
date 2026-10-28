@@ -22,9 +22,11 @@ import com.google.common.collect.ImmutableSet;
 import com.oracle.bmc.core.model.Image;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.oci.OCICloudImpl;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -395,7 +398,7 @@ public class ImageBundleControllerTest extends FakeDBApplication {
     return ociProvider;
   }
 
-  private ImageBundle createOciBundle(Provider ociProvider, String ybImage, boolean marketplace) {
+  private ImageBundle createOciBundle(Provider ociProvider, String ybImage, Boolean marketplace) {
     BundleInfo info = new BundleInfo();
     info.setYbImage(ybImage);
     info.setIsImageMarketplaceBased(marketplace);
@@ -423,6 +426,43 @@ public class ImageBundleControllerTest extends FakeDBApplication {
 
   private BundleInfo storedOciRegion(ImageBundle bundle) {
     return ImageBundle.get(bundle.getUuid()).getDetails().getRegions().get(OCI_REGION);
+  }
+
+  private void useInUniverse(ImageBundle bundle) {
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.allowUsedBundleEdit.getKey(), "true");
+    Universe universe =
+        ModelFactory.createUniverse("oci-universe", customer.getId(), CloudType.oci);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.imageBundleUUID =
+                bundle.getUuid());
+  }
+
+  @Test
+  public void testResaveInUseOciBundleRecordsFlag() {
+    Provider ociProvider = ociProviderWithRegion();
+    ImageBundle bundle = createOciBundle(ociProvider, PLATFORM_IMAGE, null);
+    useInUniverse(bundle);
+    stubOciImage(PLATFORM_IMAGE, null);
+
+    Result result = editOciBundle(ociProvider, bundle, PLATFORM_IMAGE, null);
+    assertEquals(OK, result.status());
+    assertEquals(false, storedOciRegion(bundle).getIsImageMarketplaceBased());
+  }
+
+  @Test
+  public void testEditInUseOciBundleToMarketplaceAllowed() {
+    Provider ociProvider = ociProviderWithRegion();
+    ImageBundle bundle = createOciBundle(ociProvider, PLATFORM_IMAGE, false);
+    useInUniverse(bundle);
+    stubOciImage(MARKETPLACE_IMAGE, "publisherCompartment");
+
+    Result result = editOciBundle(ociProvider, bundle, MARKETPLACE_IMAGE, false);
+    assertEquals(OK, result.status());
+    assertEquals(true, storedOciRegion(bundle).getIsImageMarketplaceBased());
   }
 
   @Test

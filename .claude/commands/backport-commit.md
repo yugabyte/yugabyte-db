@@ -1,7 +1,7 @@
 ---
 description: Backport a commit to one or more YugabyteDB release branches as GitHub PRs
 argument-hint: <commit-sha> [<branch> ...]
-allowed-tools: Bash(.agents/scripts/backport-commit.sh *), Bash(.agents/scripts/trigger-jenkins.sh *)
+allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
 model: sonnet
 ---
 
@@ -28,7 +28,7 @@ $ARGUMENTS
 ## Prerequisites
 
 - `gh` CLI installed and authenticated (`gh auth status`).
-- A personal fork of `yugabyte/yugabyte-db` (the script auto-detects it from the authenticated `gh` user).
+- A fork of `yugabyte/yugabyte-db` to push to: the authenticated `gh` user's personal fork by default, or `YB_GH_FORK=<owner>/<repo>`, any fork of it, including one owned by the `yugabyte` org (e.g. `yugabyte/yugabyte-db-dev`).
 
 ## Workflow
 
@@ -133,17 +133,7 @@ jq -Rs '{body: .}' < /tmp/claude/pr-body-<pr-number>.md |
   gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<pr-number> --input -
 ```
 
-### Step 5: Trigger Jenkins on every PR
-
-Approve the waiting Jenkins runs on each PR (whether or not it had conflicts):
-
-```
-.agents/scripts/trigger-jenkins.sh <pr-number>
-```
-
-On a release branch whose `bld-*` workflows are not gated on the `jenkins` environment yet, Jenkins starts on push and the script reports that it already started.
-
-### Step 6: Report back to the user
+### Step 5: Report back to the user
 
 Output a single summary listing, per branch:
 - The PR URL.
@@ -155,6 +145,6 @@ Output a single summary listing, per branch:
 - The script auto-detects reviewers from the originating PR (union of pending review requests and actual reviewers, minus bots and self) — do not pass `-r` unless the user asks for a different list.
 - The script auto-links the originating PR in the backport body via the `/repos/<repo>/commits/<sha>/pulls` API; do not duplicate that link manually.
 - `master` is silently skipped by the script if passed as a branch — that's expected.
-- If a backport PR for `<head>=<fork-owner>:backport-<id>-<branch>` already exists, the script logs and skips it. Treat that as a no-op success for that branch.
+- If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.
 - Do **not** bypass the script's dirty-workspace check by stashing or `git checkout -- .` without confirming with the user — those changes may be the user's in-progress work.
 - Do **not** pass `-n` (preview mode) unless the user explicitly asks for a dry run; the command is meant to actually publish PRs.

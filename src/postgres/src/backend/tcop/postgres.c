@@ -215,6 +215,11 @@ static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
 static long YbNumHintCacheRefreshes = 0;
+/*
+ * Connections that started from a catalog version this node already had a prefetch cached at,
+ * rather than fetching the catalog from the master leader.
+ */
+static long YbNumStaleCatalogPrefetches = 0;
 static long YbNumHintCacheHits = 0;
 static long YbNumHintCacheMisses = 0;
 
@@ -255,7 +260,7 @@ static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_
 static void yb_abort_xact_command(void);
 
 static YbTraceparentResult YbExtractTraceParentFromComment(const char *query, char *traceparent_out);
-static void yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted);
+static YbcOtelSpanContext yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted, YbcOtelSpanContext comment_span_ctx, bool sample);
 
 /* ----------------------------------------------------------------
  *		infrastructure for valgrind debugging
@@ -1278,20 +1283,26 @@ YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
  * yb_maybe_start_trace_root_span
  *
  * Start a distributed trace root span for the extended query protocol if tracing
- * is enabled and no root span is currently active. The traceparent is extracted
- * from a SQL comment in the query string or from the yb_dist_tracecontext GUC.
+ * is enabled and no root span is currently active. The traceparent is taken
+ * from the yb_dist_tracecontext GUC, else from comment_span_ctx, else extracted
+ * from a SQL comment in the query string (and returned so Parse can keep it).
+ * A traceparent with the sampled flag clear (-00) means the caller is not
+ * tracing: nothing is started. With no traceparent, the span is sampled if
+ * sample is set.
  *
  * Called from the first extended protocol message handler in a cycle
  * (Parse, Bind, or Execute).
  */
-static void
-yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted)
+static YbcOtelSpanContext
+yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted,
+							   YbcOtelSpanContext comment_span_ctx, bool sample)
 {
 	if (!YBCIsDistTraceEnabled() || !YBCIsOtelScopeStackEmpty())
-		return;
+		return NULL;
 
 	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
 	YbcOtelSpanContext span_ctx = NULL;
+	YbcOtelSpanContext guc_span_ctx = yb_guc_remote_span_ctx;
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
@@ -1305,50 +1316,66 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 														: YbRedactPasswordIfExists(query_string,
 																				   CMDTAG_UNKNOWN);
 
-	YbTraceparentResult tp_result =
-		YbExtractTraceParentFromComment(redacted_query_string, traceparent);
-
-	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
-	if (yb_guc_remote_span_ctx)
+	if (!comment_span_ctx)
 	{
-		span_ctx = yb_guc_remote_span_ctx;
+		YbTraceparentResult tp_result =
+			YbExtractTraceParentFromComment(redacted_query_string, traceparent);
 
-		if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
-			tp_result != YB_TRACEPARENT_NO_FIELD)
+		if (tp_result == YB_TRACEPARENT_OK)
+		{
+			comment_span_ctx = YBCGetValidSpanContext(traceparent);
+
+			if (!comment_span_ctx)
+				ereport(WARNING,
+						(errmsg("traceparent format is invalid")));
+		}
+		else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+				 tp_result != YB_TRACEPARENT_NO_FIELD)
+			ereport(WARNING,
+					(errmsg("traceparent comment parsing failed: %s",
+							YbGetTraceparentResultErrmsg(tp_result))));
+	}
+
+	/* YB: GUC traceparent is higher priority over SQL comment traceparent. */
+	if (guc_span_ctx)
+	{
+		if (comment_span_ctx)
 			ereport(WARNING,
 					(errmsg("yb_dist_tracecontext GUC takes priority; "
 							"skipping SQL comment traceparent")));
+		span_ctx = guc_span_ctx;
 	}
-	else if (tp_result == YB_TRACEPARENT_OK)
-	{
-		span_ctx = YBCGetValidSpanContext(traceparent);
+	else
+		span_ctx = comment_span_ctx;
 
-		if (!span_ctx)
-			ereport(WARNING,
-					(errmsg("traceparent format is invalid")));
+	if (span_ctx)
+	{
+		/* The caller is not tracing this request (flags 00): honour it. */
+		if (!YBCIsSpanContextSampled(span_ctx))
+			return comment_span_ctx;
 	}
-	else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
-			 tp_result != YB_TRACEPARENT_NO_FIELD)
-		ereport(WARNING,
-				(errmsg("traceparent comment parsing failed: %s",
-						YbGetTraceparentResultErrmsg(tp_result))));
+	else
+	{
+		/* No traceparent: sampling mints a fresh trace. */
+		if (!sample || yb_dist_trace_sample_rate <= 0)
+			return comment_span_ctx;
+		/* Skip tserver internal connections, which conn-mgr backends are not. */
+		if (MyProcPort && MyProcPort->yb_is_tserver_auth_method &&
+			!YbIsClientYsqlConnMgr())
+			return comment_span_ctx;
+		/* One draw per cycle: a dropped Bind must not let Execute re-roll. */
+		if (!YBCDistTraceClaimSampleDraw() ||
+			pg_prng_double(&pg_global_prng_state) >= yb_dist_trace_sample_rate)
+			return comment_span_ctx;
+	}
 
 	/*
 	 * YB: Start a root span. The scope is owned by the otel_scope_stack
 	 * in ybc_dist_trace.cc. On error, YBCDistTraceClearStack (called at the top
 	 * of the main loop) cleans up any orphaned scopes.
 	 */
-	if (span_ctx)
-	{
-		YBCDistTraceStartRootSpan(redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
-
-		/*
-		 * YB: Destroy the span context if it came from the sql comment
-		 * as it is not used after this point.
-		 */
-		if (span_ctx != yb_guc_remote_span_ctx)
-			YBCDestroySpanContext(span_ctx);
-	}
+	YBCDistTraceStartRootSpan(redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
+	return comment_span_ctx;
 }
 
 /*
@@ -1384,7 +1411,7 @@ exec_simple_query(const char *query_string)
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
 
-	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
+	yb_maybe_start_trace_root_span(yb_redacted_query_string, true, NULL, true);
 
 	/*
 	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
@@ -1804,6 +1831,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	const char *yb_redacted_query_string;
 	CommandTag	yb_command_tag;
+	YbcOtelSpanContext yb_comment_span_ctx;
 
 	uint64		yb_msg_query_id = YbAshGetConstQueryId();
 
@@ -1828,7 +1856,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	set_ps_display("PARSE");
 
 	/* YB: Start the extended query protocol root span and ext.parse child. */
-	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
+	yb_comment_span_ctx = yb_maybe_start_trace_root_span(yb_redacted_query_string, true,
+														 NULL, true);
 	YB_DIST_TRACE_START_SPAN("ext.parse");
 
 	if (save_log_statement_stats)
@@ -1974,6 +2003,15 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					   NULL,
 					   CURSOR_OPT_PARALLEL_OK,	/* allow parallel mode */
 					   true);	/* fixed result */
+
+	/* YB: Keep the comment traceparent with the plan for later cycles. */
+	if (yb_comment_span_ctx)
+	{
+		MemoryContext yb_oldcontext = MemoryContextSwitchTo(psrc->context);
+
+		psrc->yb_comment_span_ctx = YBCCopySpanContext(yb_comment_span_ctx);
+		MemoryContextSwitchTo(yb_oldcontext);
+	}
 
 	/* If we got a cancel signal during analysis, quit */
 	CHECK_FOR_INTERRUPTS();
@@ -2138,7 +2176,8 @@ exec_bind_message(StringInfo input_message)
 	 * YB: Start root span if this is the first extended protocol message
 	 * (e.g. named prepared statement reuse without a preceding Parse).
 	 */
-	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
+	yb_maybe_start_trace_root_span(yb_redacted_query_string, true,
+								   psrc->yb_comment_span_ctx, true);
 	YB_DIST_TRACE_START_SPAN("ext.bind");
 
 	if (save_log_statement_stats)
@@ -2490,6 +2529,18 @@ exec_bind_message(StringInfo input_message)
 		}
 	}
 
+	/*
+	 * YB: A named portal can outlive its prepared statement (DEALLOCATE with
+	 * the portal still open), so it gets its own copy, like sourceText.
+	 */
+	if (psrc->yb_comment_span_ctx)
+	{
+		MemoryContext yb_oldcontext = MemoryContextSwitchTo(portal->portalContext);
+
+		portal->yb_comment_span_ctx = YBCCopySpanContext(psrc->yb_comment_span_ctx);
+		MemoryContextSwitchTo(yb_oldcontext);
+	}
+
 	/* Done with the snapshot used for parameter I/O and parsing/planning */
 	if (snapshot_set)
 		PopActiveSnapshot();
@@ -2655,11 +2706,8 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	set_ps_display_with_len(cmdtagname, cmdtaglen);
 
-	/*
-	 * YB: Start root span if this is the first extended protocol message.
-	 * sourceText has the original query including any traceparent comment.
-	 */
-	yb_maybe_start_trace_root_span(sourceText, false);
+	/* YB: Start root span if this is the first extended protocol message. */
+	yb_maybe_start_trace_root_span(sourceText, false, portal->yb_comment_span_ctx, true);
 	YB_DIST_TRACE_START_SPAN("ext.execute");
 
 	if (save_log_statement_stats)
@@ -4897,13 +4945,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 				YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
-			{
-				elog(LOG, "calling YBCPgInvalidateCache");
-				HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
-			}
-			else
-				HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
+			YbUpdatePggateTableCacheAfterApply();
 			yb_need_cache_refresh = false;
 			return true;
 		}
@@ -5230,9 +5272,10 @@ yb_is_begin_transaction(CommandTag command_tag)
  * with minimum parsing.
  * Note: This function will always return false if
  * yb_non_ddl_txn_for_sys_tables_allowed is set to true.
+ * If include_explain is true, EXPLAIN of such a statement also counts.
  */
 static bool
-yb_is_dml_command(const char *query_string)
+yb_is_dml_command_ext(const char *query_string, bool include_explain)
 {
 	if (yb_non_ddl_txn_for_sys_tables_allowed)
 	{
@@ -5248,7 +5291,7 @@ yb_is_dml_command(const char *query_string)
 
 	/*
 	 * Detect and return false for replication commands since they are never a
-	 * DML. This is needed to avoid calling YbParseCommandTag for replication
+	 * DML. This is needed to avoid parsing replication
 	 * commands which have a different grammar (repl_gram.y) and will always
 	 * lead to a syntax error.
 	 */
@@ -5263,7 +5306,17 @@ yb_is_dml_command(const char *query_string)
 		}
 	}
 
-	CommandTag	command_tag = YbParseCommandTag(query_string);
+	List	   *parsetree_list = yb_parse_query_silently(query_string);
+
+	if (list_length(parsetree_list) == 0)
+		return false;
+
+	Node	   *stmt = linitial_node(RawStmt, parsetree_list)->stmt;
+
+	if (include_explain && IsA(stmt, ExplainStmt))
+		stmt = ((ExplainStmt *) stmt)->query;
+
+	CommandTag	command_tag = CreateCommandTag(stmt);
 
 	return (command_tag == CMDTAG_DELETE ||
 			command_tag == CMDTAG_INSERT ||
@@ -5271,13 +5324,20 @@ yb_is_dml_command(const char *query_string)
 			command_tag == CMDTAG_UPDATE);
 }
 
+static bool
+yb_is_dml_command(const char *query_string)
+{
+	return yb_is_dml_command_ext(query_string, false);
+}
+
 /*
- * Only retry supported commands.
+ * Only retry supported commands.  EXPLAIN of a DML is retryable too: e.g. it
+ * can hit a schema version mismatch while an index drop alters its table.
  */
 static bool
 yb_check_retry_allowed(const char *query_string)
 {
-	return yb_is_dml_command(query_string);
+	return yb_is_dml_command_ext(query_string, true);
 }
 
 static void
@@ -7716,7 +7776,7 @@ PostgresMain(const char *dbname, const char *username)
 					const char *close_target;
 					bool		yb_skip_close_complete = false;
 
-					yb_maybe_start_trace_root_span(debug_query_string, false);
+					yb_maybe_start_trace_root_span(debug_query_string, false, NULL, false);
 					YB_DIST_TRACE_START_SPAN("ext.close");
 
 					forbidden_in_wal_sender(firstchar);
@@ -7804,7 +7864,7 @@ PostgresMain(const char *dbname, const char *username)
 					/* Set statement_timestamp() (needed for xact) */
 					SetCurrentStatementStartTimestamp();
 
-					yb_maybe_start_trace_root_span(debug_query_string, false);
+					yb_maybe_start_trace_root_span(debug_query_string, false, NULL, false);
 					YB_DIST_TRACE_START_SPAN("ext.describe");
 
 					describe_type = pq_getmsgbyte(&input_message);
@@ -7834,7 +7894,7 @@ PostgresMain(const char *dbname, const char *username)
 				break;
 
 			case PqMsg_Flush:
-				yb_maybe_start_trace_root_span(debug_query_string, false);
+				yb_maybe_start_trace_root_span(debug_query_string, false, NULL, false);
 				YB_DIST_TRACE_START_SPAN("ext.flush");
 
 
@@ -7846,7 +7906,7 @@ PostgresMain(const char *dbname, const char *username)
 				break;
 
 			case PqMsg_Sync:
-				yb_maybe_start_trace_root_span(debug_query_string, false);
+				yb_maybe_start_trace_root_span(debug_query_string, false, NULL, false);
 				YB_DIST_TRACE_START_SPAN("ext.sync");
 
 
@@ -7970,6 +8030,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_forwarded_cert_parse_failed = false;
+					MyProcPort->yb_logical_conn_server_cert_hash_len = 0;
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
@@ -8132,6 +8193,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->yb_forwarded_cert_parse_failed = false;
+					MyProcPort->yb_logical_conn_server_cert_hash_len = 0;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
@@ -8666,10 +8728,28 @@ YbGetCatCacheDeltaRefreshes()
 	return YbNumCatalogCacheDeltaRefreshes;
 }
 
+void
+YbIncrementCatCacheDeltaRefreshes()
+{
+	YbNumCatalogCacheDeltaRefreshes++;
+}
+
 long
 YbGetHintCacheRefreshes()
 {
 	return YbNumHintCacheRefreshes;
+}
+
+long
+YbGetStaleCatalogPrefetches()
+{
+	return YbNumStaleCatalogPrefetches;
+}
+
+void
+YbIncrementStaleCatalogPrefetches()
+{
+	YbNumStaleCatalogPrefetches++;
 }
 
 long
