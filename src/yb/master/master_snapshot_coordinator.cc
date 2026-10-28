@@ -139,6 +139,10 @@ DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
 
+DEFINE_test_flag(int32, delay_restore_after_ddl_verification_check_ms, 0,
+                 "Sleep for these many milliseconds between checking that no YSQL DDL "
+                 "verification is in progress and starting a snapshot schedule restore.");
+
 DEFINE_test_flag(bool, fatal_on_snapshot_verify, true,
                  "Whether to use DFATAL to log error messages when verifying a snapshot.");
 
@@ -887,6 +891,10 @@ class MasterSnapshotCoordinator::Impl {
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
     RETURN_NOT_OK(CheckNoYsqlDdlVerificationInProgressForSnapshot(snapshot_id));
+    if (FLAGS_TEST_delay_restore_after_ddl_verification_check_ms > 0) {
+      SleepFor(MonoDelta::FromMilliseconds(
+          FLAGS_TEST_delay_restore_after_ddl_verification_check_ms));
+    }
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
