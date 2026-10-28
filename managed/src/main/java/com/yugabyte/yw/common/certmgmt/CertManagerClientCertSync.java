@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -115,6 +116,9 @@ public class CertManagerClientCertSync {
   public static void deleteClientCert(UUID universeUUID) {
     synchronized (CertManagerClientCertSync.class) {
       Path dir = getClientCertDir(universeUUID);
+      // The DB rows go even if the directory is already gone, or startup would restore it.
+      FileData.deleteFileFromDB(dir.resolve(CertificateHelper.CLIENT_CERT).toString());
+      FileData.deleteFileFromDB(dir.resolve(CertificateHelper.CLIENT_KEY).toString());
       if (Files.isDirectory(dir)) {
         FileUtils.deleteQuietly(dir.toFile());
         log.info("Removed cert-manager client cert from {}", dir);
@@ -243,8 +247,9 @@ public class CertManagerClientCertSync {
 
   /**
    * Re-copies the client cert if the local copy is missing, doesn't match, or is close to expiry,
-   * and removes it once the universe no longer requires one. Never throws, so callers on a
-   * background or task path are not failed by an unreachable cluster.
+   * as long as the Secret's cert is issued by the universe's current root CA, and removes it once
+   * the universe no longer requires one. Never throws, so callers on a background or task path are
+   * not failed by an unreachable cluster.
    */
   public void refreshIfNeeded(Universe snapshot) {
     // A queued health check carries the universe as it was when scheduled; it may since have been
@@ -256,7 +261,10 @@ public class CertManagerClientCertSync {
     Universe universe = current.get();
     try {
       if (!isClientCertRequired(universe)) {
-        deleteClientCert(universe.getUniverseUUID());
+        // Health checks reach every universe; only one that had a copy has DB rows to remove.
+        if (Files.isDirectory(getClientCertDir(universe.getUniverseUUID()))) {
+          deleteClientCert(universe.getUniverseUUID());
+        }
         return;
       }
       Optional<Pair<String, String>> local = getLocalPair(universe.getUniverseUUID());
@@ -275,6 +283,17 @@ public class CertManagerClientCertSync {
         return;
       }
       checkKeyAlgorithm(universe, pem.get());
+      // Once the issuer moves to a new CA, cert-manager reissues (or renews) the Secret from it
+      // before the servers trust that CA; only the root CA rotation, which copies the cert with
+      // sync(), may switch YBA to it.
+      if (!isIssuedByRootCA(pem.get().getLeft(), universe.getUniverseDetails().rootCA)) {
+        log.warn(
+            "Client cert Secret {} of universe {} is not issued by its current root CA; keeping"
+                + " the existing copy until a root CA rotation",
+            getSecretName(universe),
+            universe.getName());
+        return;
+      }
       writeIfUniverseExists(universe.getUniverseUUID(), pem.get());
     } catch (Exception e) {
       log.warn("Failed to refresh client cert of universe {}", universe.getName(), e);
@@ -290,6 +309,55 @@ public class CertManagerClientCertSync {
         return;
       }
       writeLocked(getClientCertDir(universeUUID), pem);
+    }
+  }
+
+  /**
+   * Whether certPem (a leaf, optionally followed by its intermediates, as cert-manager writes
+   * tls.crt) chains to a cert in rootCA's file. Mid-rotation that file holds both CAs.
+   */
+  @VisibleForTesting
+  static boolean isIssuedByRootCA(String certPem, @Nullable UUID rootCA) {
+    if (rootCA == null) {
+      return false;
+    }
+    try {
+      List<X509Certificate> trusted =
+          CertificateHelper.convertStringToX509CertList(
+              Files.readString(
+                  Paths.get(CertificateInfo.getOrBadRequest(rootCA).getCertificate())));
+      List<X509Certificate> chain = CertificateHelper.convertStringToX509CertList(certPem);
+      X509Certificate cert = chain.get(0);
+      // Bounded by the chain length, so a cycle in a malformed bundle can't loop.
+      for (int i = 0; i <= chain.size(); i++) {
+        if (isSignedByAny(cert, trusted)) {
+          return true;
+        }
+        X509Certificate current = cert;
+        Optional<X509Certificate> issuer =
+            chain.stream().filter(c -> c != current && isSignedBy(current, c)).findFirst();
+        if (issuer.isEmpty()) {
+          return false;
+        }
+        cert = issuer.get();
+      }
+      return false;
+    } catch (Exception e) {
+      log.warn("Could not check the issuer of a client cert against root CA {}", rootCA, e);
+      return false;
+    }
+  }
+
+  private static boolean isSignedByAny(X509Certificate cert, List<X509Certificate> cas) {
+    return cas.stream().anyMatch(ca -> isSignedBy(cert, ca));
+  }
+
+  private static boolean isSignedBy(X509Certificate cert, X509Certificate ca) {
+    try {
+      cert.verify(ca.getPublicKey());
+      return true;
+    } catch (Exception e) {
+      return false;
     }
   }
 
@@ -384,6 +452,9 @@ public class CertManagerClientCertSync {
     // second rename fails, the next sync or refresh finds the key doesn't match and rewrites both.
     replace(dir, CertificateHelper.CLIENT_KEY, pem.getRight());
     replace(dir, CertificateHelper.CLIENT_CERT, pem.getLeft());
+    // In the DB like other certs, so a restored or newly promoted YBA gets it back at startup.
+    FileData.upsertFileInDB(dir.resolve(CertificateHelper.CLIENT_KEY).toString());
+    FileData.upsertFileInDB(dir.resolve(CertificateHelper.CLIENT_CERT).toString());
     log.info("Synced cert-manager client cert into {}", dir);
   }
 

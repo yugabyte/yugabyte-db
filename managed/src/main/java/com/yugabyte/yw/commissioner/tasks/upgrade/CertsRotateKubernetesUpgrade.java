@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -12,6 +14,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertManagerClientCertSync;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -57,6 +61,20 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     if (taskParams().rootCARotationType == null
         || taskParams().rootCARotationType == CertsRotateParams.CertRotationType.None) {
       throw new RuntimeException("RootCA rotation type is not set");
+    }
+    // The task-start refresh only copies a cert issued by the current root CA. If YBA has none,
+    // the Secret was already reissued from the new CA, and every server would refuse YBA.
+    if (taskParams().rootCARotationType == CertsRotateParams.CertRotationType.RootCert
+        && CertManagerClientCertSync.isClientCertRequired(universe)
+        && CertManagerClientCertSync.getClientCertFiles(universe).isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "YugabyteDB Anywhere has no client certificate issued by the universe's current root CA,"
+              + " which its servers require (node_to_node_encryption_use_client_certificates)."
+              + " Point the cert-manager issuer back at the current root CA, wait for cert-manager"
+              + " to reissue the universe's certificates and for YugabyteDB Anywhere to copy the"
+              + " client certificate on its next health check, then move the issuer to the new CA"
+              + " and retry the rotation.");
     }
     if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
       if (taskParams().upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {

@@ -26,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -88,7 +89,9 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
         new HashMap<>(Map.of(CertManagerClientCertSync.USE_CLIENT_CERTS_GFLAG, "true"));
 
     String certDir = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
-    caCertFile = TestHelper.createTempFile(certDir, "ca.root.crt", "ca-cert");
+    caCertFile =
+        TestHelper.createTempFile(
+            certDir, "ca.root.crt", CertificateHelper.getAsPemString(ROOT_CA.getRight()));
     rootCA = createCA(CertConfigType.K8SCertManager, caCertFile);
 
     universe = ModelFactory.createUniverse("demo-universe", customer.getId());
@@ -123,27 +126,67 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
     return uuid;
   }
 
+  /** A CA's key and cert; ROOT_CA is the universe's root CA unless a test says otherwise. */
+  public static final Pair<KeyPair, X509Certificate> ROOT_CA = newCA("test-root-ca");
+
+  private static Pair<KeyPair, X509Certificate> newCA(String cn) {
+    return newCA(cn, null);
+  }
+
+  /** A CA signed by issuer, or self-signed when issuer is null. */
+  private static Pair<KeyPair, X509Certificate> newCA(
+      String cn, Pair<KeyPair, X509Certificate> issuer) {
+    try {
+      KeyPair keyPair = CertificateHelper.getKeyPairObject();
+      X500Name name = new X500Name("CN=" + cn);
+      Instant now = Instant.now();
+      X509Certificate cert =
+          new JcaX509CertificateConverter()
+              .getCertificate(
+                  new JcaX509v3CertificateBuilder(
+                          issuer == null
+                              ? name
+                              : new X500Name(issuer.getRight().getSubjectX500Principal().getName()),
+                          BigInteger.valueOf(now.toEpochMilli()),
+                          Date.from(now.minus(Duration.ofDays(1))),
+                          Date.from(now.plus(Duration.ofDays(365))),
+                          name,
+                          keyPair.getPublic())
+                      .build(
+                          new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO)
+                              .build((issuer == null ? keyPair : issuer.getLeft()).getPrivate())));
+      return Pair.of(keyPair, cert);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /** A client cert issued by ROOT_CA. */
   public static Pair<String, String> newCertPem(Duration validFor) throws Exception {
-    return newCertPem(Instant.now().plus(validFor));
+    return newCertPem(Instant.now().plus(validFor), ROOT_CA);
   }
 
   private static Pair<String, String> newCertPem(Instant notAfter) throws Exception {
+    return newCertPem(notAfter, ROOT_CA);
+  }
+
+  private static Pair<String, String> newCertPem(
+      Instant notAfter, Pair<KeyPair, X509Certificate> ca) throws Exception {
     KeyPair keyPair = CertificateHelper.getKeyPairObject();
-    X500Name subject = new X500Name("CN=yugabyte");
     Instant now = Instant.now();
     X509Certificate cert =
         new JcaX509CertificateConverter()
             .getCertificate(
                 new JcaX509v3CertificateBuilder(
-                        subject,
+                        new X500Name(ca.getRight().getSubjectX500Principal().getName()),
                         BigInteger.valueOf(now.toEpochMilli()),
                         Date.from(now.minus(Duration.ofDays(100))),
                         Date.from(notAfter),
-                        subject,
+                        new X500Name("CN=yugabyte"),
                         keyPair.getPublic())
                     .build(
                         new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO)
-                            .build(keyPair.getPrivate())));
+                            .build(ca.getLeft().getPrivate())));
     return Pair.of(
         CertificateHelper.getAsPemString(cert),
         CertificateHelper.getAsPemString(keyPair.getPrivate()));
@@ -360,6 +403,71 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
 
     verify(mockKubernetesManager, never()).getSecret(any(), anyString(), any());
     assertFalse(Files.exists(clientDir));
+  }
+
+  @Test
+  public void testRefreshKeepsCopyWhenSecretIsFromAnotherCA() throws Exception {
+    // The issuer moved to a new CA ahead of the rotation, and the Secret was renewed from it.
+    Pair<String, String> local = newCertPem(Duration.ofDays(10));
+    writeLocal(local);
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenReturn(secret(newCertPem(Instant.now().plus(Duration.ofDays(90)), newCA("next-ca"))));
+
+    certSync.refreshIfNeeded(universe);
+
+    assertEquals(local.getLeft(), localCert());
+  }
+
+  @Test
+  public void testRefreshCopiesNothingFromAnotherCA() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenReturn(secret(newCertPem(Instant.now().plus(Duration.ofDays(90)), newCA("next-ca"))));
+
+    certSync.refreshIfNeeded(universe);
+
+    assertFalse(Files.exists(clientDir.resolve(CertificateHelper.CLIENT_CERT)));
+  }
+
+  @Test
+  public void testRefreshAcceptsEitherCAOfMultiCertRoot() throws Exception {
+    // Mid-rotation the root CA file holds the old and the new CA.
+    Pair<KeyPair, X509Certificate> next = newCA("next-ca");
+    Files.writeString(
+        Paths.get(caCertFile),
+        CertificateHelper.getAsPemString(ROOT_CA.getRight())
+            + CertificateHelper.getAsPemString(next.getRight()));
+    Pair<String, String> pem = newCertPem(Instant.now().plus(Duration.ofDays(90)), next);
+    when(mockKubernetesManager.getSecret(any(), anyString(), any())).thenReturn(secret(pem));
+
+    certSync.refreshIfNeeded(universe);
+
+    assertEquals(pem.getLeft(), localCert());
+  }
+
+  @Test
+  public void testIssuedByRootCAFollowsIntermediate() throws Exception {
+    Pair<KeyPair, X509Certificate> intermediate = newCA("intermediate-ca", ROOT_CA);
+    Pair<String, String> leaf = newCertPem(Instant.now().plus(Duration.ofDays(90)), intermediate);
+    String chain = leaf.getLeft() + CertificateHelper.getAsPemString(intermediate.getRight());
+
+    assertTrue(CertManagerClientCertSync.isIssuedByRootCA(chain, rootCA));
+    assertFalse(CertManagerClientCertSync.isIssuedByRootCA(leaf.getLeft(), rootCA));
+  }
+
+  @Test
+  public void testCopyPersistedInDBAndRemovedOnDelete() throws Exception {
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenReturn(secret(newCertPem(Duration.ofDays(90))));
+    certSync.sync(universe, Duration.ZERO);
+    String certPath = clientDir.resolve(CertificateHelper.CLIENT_CERT).toString();
+    String keyPath = clientDir.resolve(CertificateHelper.CLIENT_KEY).toString();
+    assertTrue(FileData.getFromFile(FileData.getRelativePath(certPath)) != null);
+    assertTrue(FileData.getFromFile(FileData.getRelativePath(keyPath)) != null);
+
+    CertManagerClientCertSync.deleteClientCert(universe.getUniverseUUID());
+
+    assertTrue(FileData.getFromFile(FileData.getRelativePath(certPath)) == null);
+    assertTrue(FileData.getFromFile(FileData.getRelativePath(keyPath)) == null);
   }
 
   @Test
