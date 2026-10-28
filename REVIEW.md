@@ -127,7 +127,7 @@ For changes to catalog objects (namespaces, tables, tablets, and other COW objec
 1. **Lock order.** Every acquisition follows the [lock order](#catalog-manager-lock-order) below. Flag an inversion at HIGH.
 2. **Failover between persisted steps.** An operation that persists several states to the sys catalog can stop after any of them when the master leader fails. For each persisted intermediate state, check that the new leader resumes the operation to completion or rolls it back, and that it does not leave an object stuck in that state. Flag a state that no code path on the new leader picks up at HIGH.
 3. **Deadlocks with other operations.** List the other operations that can run on the same objects at the same time, such as tserver heartbeats, the load balancer, tablet splitting, background tasks, DDL rollback, backfill, xCluster/CDC, and snapshot restore. Check each one for a lock cycle with the change, including cycles through waits that are not locks, such as a lock held while waiting for an RPC callback that needs the same lock. Flag a possible deadlock at HIGH.
-4. **Hold time of high locks.** Locks high in the order, such as `CatalogManager::mutex_`, must be held as briefly as possible and never across an RPC, a sys catalog write, or other IO. `mutex_` is a spinlock and most master leader RPCs take it, so a thread that blocks while holding it stalls those RPCs and burns CPU in the waiting threads (#23040). Flag at HIGH, unless it is an already existing issue, then it is MEDIUM.
+4. **Hold time of `CatalogManager::mutex_`.** `CatalogManager::mutex_` must be held as briefly as possible and never across an RPC, a sys catalog write, or other IO. It is a spinlock and most master leader RPCs take it, so a thread that blocks while holding it stalls those RPCs and burns CPU in the waiting threads (#23040). Long holds of COW locks can also stall other operations, but `mutex_` is far more sensitive. The leader shared lock is held for the whole duration of many RPCs and does not have this restriction. Flag at HIGH, unless it is an already existing issue, then it is MEDIUM.
 
 ### Catalog manager lock order
 
@@ -142,13 +142,13 @@ Code in `src/yb/master/` must acquire locks in this order. A thread that holds a
 
 COW lock means the read/write/commit lock of a copy-on-write catalog object (`src/yb/util/rwc_lock.h`). Several objects of the same kind must be locked in id order; an unsorted loop over tablets or tables that takes write locks is a deadlock risk.
 
-Commit tablet write locks before table write locks. Heartbeat processing holds a table read lock while it takes and commits tablet write locks. A thread that holds tablet write locks and commits its table write lock first waits for the heartbeat to release the table read lock, while the heartbeat waits for the tablet write lock that the thread still holds: deadlock (#10304, #32090). Debug builds assert this rule through the held-tablet-write-lock count in `src/yb/master/catalog_entity_info.h`; Code paths exempt from this rule are marked with `TableCommitLockAssertSuppression` (`src/yb/util/cow_object.h`).
+Commit COW write locks in the reverse order of acquisition: a lock acquired later commits earlier. This applies to all COW objects: tablets commit before their table, and of two tables the one with the larger `table_id` commits first. A commit on object A waits until every reader of A releases its read lock. If the committing thread still holds a write lock on an object B that comes after A, a reader that holds A and then tries to lock B (a correct acquisition order) waits for the writer, while the writer waits for that reader: deadlock. Heartbeat processing is one such reader: it holds a table read lock while it takes tablet write locks (#10304, #32090). Debug builds assert the table/tablet case through the held-tablet-write-lock count in `src/yb/master/catalog_entity_info.h`. Code paths exempt from that assert are marked with `TableCommitLockAssertSuppression` (`src/yb/util/cow_object.h`).
 
 Inversions to flag at HIGH:
 
 - A COW lock taken before `CatalogManager::mutex_` on the same thread, or a `SCOPED_LEADER_SHARED_LOCK` taken while `mutex_` or a COW lock is held.
 - Several objects of one kind locked without sorting by id.
-- A table write lock committed before the tablet write locks of the same operation.
+- A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
 
 ## What to ignore entirely
 
