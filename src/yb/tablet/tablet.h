@@ -181,6 +181,12 @@ struct TierMigrationStatus {
   Status last_error;
 };
 
+// Tiered storage: a placement intent, (tier, path_id) as RaftGroupMetadata persists it.
+struct TierTarget {
+  std::string tier;
+  uint32_t path_id = 0;
+};
+
 // Policy for one reconciler pass (Tablet::RunTierReconcilePass). The values are tserver flags;
 // the tablet only applies them.
 struct TierReconcileOptions {
@@ -807,8 +813,11 @@ class Tablet : public AbstractTablet,
   // for them. The moves run on the compaction/flush thread pool and the pass ends in
   // FinishTierMigrationPass once the last one reports; whatever it leaves behind (files busy
   // with a compaction, hard errors, files a concurrent flush/compaction landed on the old disk)
-  // is for the next pass. Returns ServiceUnavailable while a pass is already in flight.
-  Result<TierMigrationStatus> StartTierMigrationPass();
+  // is for the next pass. Returns ServiceUnavailable while a pass is already in flight, or, with
+  // expected_target (AlterTabletTier passes the target it just wrote), when a concurrent request
+  // replaced the persisted target before this pass could claim the tablet.
+  Result<TierMigrationStatus> StartTierMigrationPass(
+      const std::optional<TierTarget>& expected_target = std::nullopt);
 
   // Tiered storage. The background reconciler's pass: StartTierMigrationPass plus the terminal
   // states. A scan that finds nothing outside the target directory marks the tablet kDone. A
@@ -1395,14 +1404,22 @@ class Tablet : public AbstractTablet,
   // operation keeps the DB open for as long as the caller holds it.
   Result<ScopedRWOperation> CheckTierTargetUsable(uint32_t target_path_id);
 
-  // Tiered storage: the one place the persisted target is written. Refuses while a pass is in
-  // flight, so a pass always runs toward the current persisted target.
+  // Tiered storage: the one place a live tablet's target is written; TSTabletManager repairs a
+  // stale path_id at open, before any pass can exist. Refuses while a pass is in flight, so a
+  // pass always runs toward the current persisted target.
   Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
       REQUIRES(tier_target_mutex_);
 
-  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
+  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass. With
+  // expected_target, the claim also checks that the persisted target is still that one.
   Result<TierReconcileResult> RunTierMigrationPass(
-      const TierReconcileOptions& options, ReconcilerPass reconciler_pass);
+      const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+      const std::optional<TierTarget>& expected_target);
+
+  // Tiered storage: OK while (target_tier, target_path_id) is still the persisted target,
+  // ServiceUnavailable naming the replacement otherwise.
+  Status CheckTierTargetStillPersisted(const std::string& target_tier, uint32_t target_path_id)
+      const REQUIRES(tier_target_mutex_);
 
   // Tiered storage: schedules one ScheduleDBPathMove call per candidate file. Each callback may
   // run inline, on this thread, if the pool rejects the task. Does not block.

@@ -467,6 +467,45 @@ TEST_F(TierMigrationTest, TargetReplacedBeforePassStartIsRefused) {
   ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 0u);
 }
 
+// The other ordering: the concurrent write lands after this request's, and this request's own
+// pass start runs first. The claim must notice that the persisted target is no longer the one
+// this request wrote, instead of starting a pass toward the other target and reporting it as this
+// request's success.
+TEST_F(TierMigrationTest, TargetReplacedBeforeOwnPassClaimsIsRefused) {
+  WriteFileWithKey(1);
+
+  // The bare write stands in for the concurrent request: it replaces the target without starting
+  // a pass, so this request's pass start is the first to claim the tablet.
+  bool slip_in = true;
+  Status write_status;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "Tablet::AlterTabletTier:BeforeStartPass", [this, &slip_in, &write_status](void*) {
+        if (slip_in) {
+          slip_in = false;
+          write_status = tablet()->SetTierMigrationTarget("nvme", kDecoyPathId);
+        }
+      });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto first = tablet()->AlterTabletTier("hdd", kTargetPathId);
+  ASSERT_NOK(first);
+  ASSERT_TRUE(first.status().IsServiceUnavailable()) << first.status();
+  ASSERT_OK(write_status);
+  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "nvme");
+  ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kDecoyPathId);
+  // Nothing claimed the tablet, and the file has not moved.
+  ASSERT_FALSE(tablet()->tier_migration_status().pass_in_flight);
+  auto info = ASSERT_RESULT(tablet()->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, kHomePathId), 1u);
+
+  // The next pass works on the target that won.
+  auto result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.scheduled, 1u);
+  info = ASSERT_RESULT(WaitForPassToFinish());
+  ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 1u);
+  ASSERT_EQ(SstCountOnPath(info, kHomePathId), 0u);
+}
+
 // The refusal is what keeps a pass for one target from booking its outcome against another: a
 // hard-failing pass still finishes toward its own target, and its failure count and error stay
 // with that target. The new target then starts with a clean record.

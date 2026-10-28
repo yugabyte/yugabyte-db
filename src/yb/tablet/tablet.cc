@@ -5177,8 +5177,23 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   return Status::OK();
 }
 
+Status Tablet::CheckTierTargetStillPersisted(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  const auto persisted_tier = metadata()->target_storage_tier();
+  const auto persisted_path_id = metadata()->target_tier_path_id();
+  if (persisted_tier == target_tier && persisted_path_id == target_path_id) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      ServiceUnavailable,
+      "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
+      "pass could start",
+      persisted_tier, persisted_path_id);
+}
+
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
-    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5198,6 +5213,12 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     std::lock_guard target_lock(tier_target_mutex_);
     if (metadata()->target_storage_tier().empty()) {
       return STATUS(IllegalState, "Tablet has no target storage tier");
+    }
+    if (expected_target) {
+      // A concurrent AlterTabletTier may have replaced the target the caller wrote; a pass toward
+      // the replacement would be reported to the caller as its own.
+      RETURN_NOT_OK(
+          CheckTierTargetStillPersisted(expected_target->tier, expected_target->path_id));
     }
     target_path_id = metadata()->target_tier_path_id();
     target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
@@ -5293,9 +5314,10 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   return result;
 }
 
-Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass(
+    const std::optional<TierTarget>& expected_target) {
   auto result = VERIFY_RESULT(
-      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse));
+      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse, expected_target));
   // Nothing to move: the verdict is the reconciler's to act on now. A pass that scheduled moves
   // wakes it from FinishTierMigrationPass instead, and one waiting on the post-split compaction
   // has nothing for it yet.
@@ -5306,7 +5328,7 @@ Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
 }
 
 Result<TierReconcileResult> Tablet::RunTierReconcilePass(const TierReconcileOptions& options) {
-  return RunTierMigrationPass(options, ReconcilerPass::kTrue);
+  return RunTierMigrationPass(options, ReconcilerPass::kTrue, /* expected_target = */ std::nullopt);
 }
 
 TierMigrationStatus Tablet::tier_migration_status() const {
@@ -5335,22 +5357,16 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
   // Lets a test slip another target in after the write, before the pass starts.
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::AlterTabletTier:BeforeStartPass");
 
-  auto status = StartTierMigrationPass();
+  auto status = StartTierMigrationPass(TierTarget{.tier = target_tier, .path_id = target_path_id});
   if (status.ok() || !status.status().IsServiceUnavailable()) {
     return status;
   }
-  // A pass started between the target write above and here. While the target is still this one,
-  // the pass read it after the write and serves this request, so report its progress. If a
-  // concurrent request replaced the target, the pass is toward that target and this request lost.
+  // A pass is in flight, or the target was replaced. While the target is still this one, the pass
+  // read it after the write above and serves this request, so report its progress. Checked again
+  // here rather than inferred from the status: the pass that refused the start may have ended and
+  // the target been replaced since.
   std::lock_guard target_lock(tier_target_mutex_);
-  if (metadata()->target_storage_tier() != target_tier ||
-      metadata()->target_tier_path_id() != target_path_id) {
-    return STATUS_FORMAT(
-        ServiceUnavailable,
-        "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
-        "pass could start",
-        metadata()->target_storage_tier(), metadata()->target_tier_path_id());
-  }
+  RETURN_NOT_OK(CheckTierTargetStillPersisted(target_tier, target_path_id));
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
