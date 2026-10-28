@@ -344,6 +344,21 @@ public class CertManagerClientCertSyncTest extends FakeDBApplication {
   }
 
   @Test
+  public void testSyncWaitsForSecretFromRootCA() throws Exception {
+    // Step 3 of a root CA rotation, with the Secret not yet reissued from the new CA.
+    Pair<String, String> local = newCertPem(Duration.ofDays(90));
+    writeLocal(local);
+    when(mockKubernetesManager.getSecret(any(), anyString(), any()))
+        .thenReturn(secret(newCertPem(Instant.now().plus(Duration.ofDays(90)), newCA("old-ca"))));
+
+    RuntimeException e =
+        assertThrows(RuntimeException.class, () -> certSync.sync(universe, Duration.ZERO));
+
+    assertTrue(e.getMessage(), e.getMessage().contains("not issued by root CA " + rootCA));
+    assertEquals(local.getLeft(), localCert());
+  }
+
+  @Test
   public void testSyncRewritesMismatchedKey() throws Exception {
     Pair<String, String> pem = newCertPem(Duration.ofDays(90));
     writeLocal(Pair.of(pem.getLeft(), "stale-key"));

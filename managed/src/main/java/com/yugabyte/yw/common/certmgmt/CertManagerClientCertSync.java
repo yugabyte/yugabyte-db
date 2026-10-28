@@ -200,8 +200,8 @@ public class CertManagerClientCertSync {
 
   /**
    * Copies the client cert from the universe's Secret, waiting up to timeout for cert-manager to
-   * fill it in. Errors other than a missing Secret are retried too, in case they are transient, and
-   * the last one is the cause of the timeout.
+   * fill it in from the universe's root CA. Errors other than a missing Secret are retried too, in
+   * case they are transient, and the last one is the cause of the timeout.
    */
   public void sync(Universe universe, Duration timeout) {
     Instant deadline = Instant.now().plus(timeout);
@@ -220,12 +220,24 @@ public class CertManagerClientCertSync {
       }
       if (pem.isPresent()) {
         checkKeyAlgorithm(universe, pem.get());
-        try {
-          write(universe.getUniverseUUID(), pem.get());
-        } catch (IOException e) {
-          throw new UncheckedIOException(e);
+        // During a root CA rotation, a Secret not yet reissued from the new CA would be refused by
+        // pods that trust only that CA.
+        UUID rootCA = universe.getUniverseDetails().rootCA;
+        if (isIssuedByRootCA(pem.get().getLeft(), rootCA)) {
+          try {
+            write(universe.getUniverseUUID(), pem.get());
+          } catch (IOException e) {
+            throw new UncheckedIOException(e);
+          }
+          return;
         }
-        return;
+        log.info(
+            "Waiting for cert-manager to reissue client cert Secret {} of universe {} from its root"
+                + " CA",
+            getSecretName(universe),
+            universe.getName());
+        lastError =
+            new IllegalStateException("the Secret's cert is not issued by root CA " + rootCA);
       }
       if (Instant.now().isAfter(deadline)) {
         throw new RuntimeException(
