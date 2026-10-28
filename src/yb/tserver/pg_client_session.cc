@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
@@ -1507,9 +1508,10 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
-      if (req->options().xrepl_origin_id()) {
-        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
-      }
+      write_op->SetCdrMetadata({
+          .source_origin = req->options().xrepl_origin_id(),
+          .source_write_ht = HybridTime::FromPB(req->options().xrepl_source_write_ht()),
+      });
       if (origination_info.IsSet()) {
         write_op->SetOriginationInfo(origination_info);
       }
@@ -2025,6 +2027,16 @@ class PgClientSession::Impl {
       }
     }
 
+    std::optional<std::string> bound_publication_name;
+    std::vector<TableId> bound_publication_table_ids;
+    bool bound_publication_all_tables = false;
+    if (!req.bound_publication_name().empty()) {
+      bound_publication_name = req.bound_publication_name();
+      bound_publication_table_ids.assign(
+          req.bound_publication_table_ids().begin(), req.bound_publication_table_ids().end());
+      bound_publication_all_tables = req.bound_publication_all_tables();
+    }
+
     uint64_t consistent_snapshot_time;
     auto stream_result = VERIFY_RESULT(client_.CreateCDCSDKStreamForNamespace(
         GetPgsqlNamespaceId(req.database_oid()), options,
@@ -2035,7 +2047,11 @@ class PgClientSession::Impl {
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
         &consistent_snapshot_time,
         lsn_type,
-        ordering_mode));
+        ordering_mode,
+        /* bound_table_ids */ {},
+        bound_publication_name,
+        bound_publication_table_ids,
+        bound_publication_all_tables));
     *resp->mutable_stream_id() = stream_result.ToString();
     resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
     return Status::OK();

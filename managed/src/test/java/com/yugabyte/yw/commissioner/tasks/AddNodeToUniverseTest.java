@@ -33,6 +33,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -671,6 +672,33 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false, true, false);
     verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
+  }
+
+  @Test
+  public void testAddDedicatedMasterNodeIsNotLoadBalancerTarget() {
+    // PLAT-23221: a master-only node must not be registered with the load balancer.
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+          ApiUtils.configureDedicatedMasterFields(primary.userIntent);
+          primary.userIntent.enableLB = true;
+          primary.placementInfo.azStream().forEach(az -> az.lbName = "lb1");
+          NodeDetails node = u.getNode(DEFAULT_NODE_NAME);
+          node.dedicatedTo = ServerType.MASTER;
+          node.isMaster = false;
+          node.isTserver = false;
+        });
+
+    TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ManageLoadBalancerGroup));
+    verify(cloudAPI, never()).manageNodeGroup(any(), any(), any(), any(), any(), any());
   }
 
   @Test

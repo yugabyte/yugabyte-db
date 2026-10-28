@@ -19,7 +19,7 @@ import {
 import {
   DatabaseSettings,
   GeneralSettings,
-  InstanceSettings,
+  InstanceSettingsStep,
   NodesAvailability,
   ResilienceAndRegions,
   SecuritySettings,
@@ -48,7 +48,7 @@ function getStepsMappings(
     [CreateUniverseSteps.RESILIENCE_AND_REGIONS]: (
       <ResilienceAndRegions ref={currentComponentRef} />
     ),
-    [CreateUniverseSteps.INSTANCE - adjust]: <InstanceSettings ref={currentComponentRef} />,
+    [CreateUniverseSteps.INSTANCE - adjust]: <InstanceSettingsStep ref={currentComponentRef} />,
     [CreateUniverseSteps.DATABASE - adjust]: <DatabaseSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.SECURITY - adjust]: <SecuritySettings ref={currentComponentRef} />,
     [CreateUniverseSteps.ADVANCED_PROXY - adjust]: <ProxySettings ref={currentComponentRef} />,

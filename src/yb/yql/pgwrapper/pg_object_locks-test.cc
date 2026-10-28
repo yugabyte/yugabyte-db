@@ -3081,6 +3081,7 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
   // waits for A's ACCESS SHARE on the tserver, which must use A's post-promotion status tablet.
   std::promise<void> b_holds_exclusive;
   auto b_granted = b_holds_exclusive.get_future();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 10000;
   ASSERT_OK(ExpectExactlyOneSucceedsWithDeadlock(
       conn_a, conn_b,
       [&]() -> Status {
@@ -3092,7 +3093,8 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
         b_holds_exclusive.set_value();
         RETURN_NOT_OK(s);
         return conn_b.Execute("LOCK TABLE t1_1 IN ACCESS EXCLUSIVE MODE");
-      }));
+      },
+      20s * kTimeMultiplier));
 }
 
 }  // namespace yb::pgwrapper

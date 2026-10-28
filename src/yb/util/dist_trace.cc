@@ -91,9 +91,6 @@ namespace internal {
 
 bool g_dist_trace_enabled = false;
 
-// Service name for the tracing resource and tracer (e.g. "ysql", "Master", "TabletServer").
-std::string g_service_name;
-
 }  // namespace internal
 
 namespace trace_sdk = opentelemetry::sdk::trace;
@@ -104,10 +101,14 @@ namespace context = opentelemetry::context;
 
 namespace {
 
+// Instrumentation scope of every span. The process identity lives in the service.name resource
+// attribute, so the tracer does not need it.
+constexpr char kTracerName[] = "distributed_tracer";
+
 // The ysql process gets its own queue-size flag; tserver/master share otel_batch_max_queue_size.
-uint32_t EffectiveBatchMaxQueueSize() {
-  return internal::g_service_name == kYsqlServiceName ? FLAGS_otel_ysql_batch_max_queue_size
-                                                      : FLAGS_otel_batch_max_queue_size;
+uint32_t EffectiveBatchMaxQueueSize(nostd::string_view service_name) {
+  return service_name == kYsqlServiceName ? FLAGS_otel_ysql_batch_max_queue_size
+                                          : FLAGS_otel_batch_max_queue_size;
 }
 
 // A batch of pending RPC span attributes, owned as plain (key, value) strings.
@@ -215,24 +216,27 @@ auto CreateExporter() {
   return otlp_exporter::OtlpHttpExporterFactory::Create(opts);
 }
 
-trace_sdk::BatchSpanProcessorOptions MakeBatchProcessorOptions() {
+trace_sdk::BatchSpanProcessorOptions MakeBatchProcessorOptions(nostd::string_view service_name) {
   trace_sdk::BatchSpanProcessorOptions batching_opts;
-  batching_opts.max_queue_size = static_cast<size_t>(EffectiveBatchMaxQueueSize());
+  batching_opts.max_queue_size = static_cast<size_t>(EffectiveBatchMaxQueueSize(service_name));
   batching_opts.schedule_delay_millis =
       std::chrono::milliseconds(FLAGS_otel_batch_schedule_delay_ms);
   batching_opts.max_export_batch_size = static_cast<size_t>(FLAGS_otel_batch_max_export_batch_size);
   return batching_opts;
 }
 
-auto CreateProcessor(std::unique_ptr<opentelemetry::sdk::trace::SpanExporter> exporter) {
+auto CreateProcessor(
+    std::unique_ptr<opentelemetry::sdk::trace::SpanExporter> exporter,
+    nostd::string_view service_name) {
   return trace_sdk::BatchSpanProcessorFactory::Create(
-      std::move(exporter), MakeBatchProcessorOptions());
+      std::move(exporter), MakeBatchProcessorOptions(service_name));
 }
 
-Status InitDistTraceProvider(const resource_sdk::Resource& resource_attrs) {
-  return WithMaskedYsqlSignals([&resource_attrs]() -> Status {
+Status InitDistTraceProvider(
+    const resource_sdk::Resource& resource_attrs, nostd::string_view service_name) {
+  return WithMaskedYsqlSignals([&resource_attrs, service_name]() -> Status {
     auto exporter = CreateExporter();
-    auto processor = CreateProcessor(std::move(exporter));
+    auto processor = CreateProcessor(std::move(exporter), service_name);
 
     // ParentBased: a span under an unsampled (-00) parent is dropped, and so is everything
     // beneath it. Roots we start have no parent and are always recorded.
@@ -293,9 +297,8 @@ void InitDistTrace(nostd::string_view service_name, nostd::string_view node_uuid
   // are mapped to LOG(...), where YB logging applies its own routing.
   internal_log::GlobalLogHandler::SetLogLevel(GetOtelInternalLogLevel());
 
-  internal::g_service_name = std::string(service_name);
   auto resource_attrs = CreateResource(service_name, node_uuid);
-  const auto status = InitDistTraceProvider(resource_attrs);
+  const auto status = InitDistTraceProvider(resource_attrs, service_name);
   if (!status.ok()) {
     LOG(DFATAL) << "Failed to initialize OpenTelemetry tracing: " << status;
     return;
@@ -305,8 +308,9 @@ void InitDistTrace(nostd::string_view service_name, nostd::string_view node_uuid
       nostd::shared_ptr<context::propagation::TextMapPropagator>(
           new trace::propagation::HttpTraceContext()));
 
-  LOG(INFO) << "OTEL: Initialized tracing for service: " << internal::g_service_name
-            << "\nBatchSpanProcessor config: max_queue_size=" << EffectiveBatchMaxQueueSize()
+  LOG(INFO) << "OTEL: Initialized tracing for service: " << service_name
+            << "\nBatchSpanProcessor config: max_queue_size="
+            << EffectiveBatchMaxQueueSize(service_name)
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms
             << ", max_export_batch_size=" << FLAGS_otel_batch_max_export_batch_size;
 }
@@ -322,8 +326,7 @@ void ShutdownDistTrace() {
 
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer() {
   DCHECK(IsDistTraceEnabled());
-  return DCHECK_NOTNULL(
-      trace::Provider::GetTracerProvider()->GetTracer(internal::g_service_name));
+  return DCHECK_NOTNULL(trace::Provider::GetTracerProvider()->GetTracer(kTracerName));
 }
 
 // A SpanContext is not valid when either its trace ID or span ID is all zeros.

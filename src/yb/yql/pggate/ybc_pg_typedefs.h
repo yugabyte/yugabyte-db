@@ -406,6 +406,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  int64_t (*GetSessionReplicationOriginTimestamp)();
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
@@ -706,6 +707,7 @@ typedef struct {
   bool expired;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  const char *bound_publication_name;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {
@@ -741,6 +743,7 @@ typedef enum {
   YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
   YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+  YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH = 7,
 } YbcPgRowMessageAction;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -777,6 +780,8 @@ typedef struct {
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
   bool explicit_alter_publication_detected;
+  uint64_t publication_refresh_record_time;
+  char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgChangeRecordBatch;
 
 typedef struct {

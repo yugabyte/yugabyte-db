@@ -466,6 +466,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
   std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
+  // Storage dirs of the vector indexes this tablet lists.
+  std::vector<std::string> vector_index_dirs() const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -533,6 +535,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::optional<uint64_t> post_split_compaction_file_number_upper_bound() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return kv_store_.post_split_compaction_file_number_upper_bound;
+  }
+
+  // Returns rocksdb_parent_data_compacted and post_split_compaction_file_number_upper_bound read
+  // under one lock, so that a concurrent OnPostSplitCompactionDone() is never seen half-applied.
+  std::pair<bool, std::optional<uint64_t>> post_split_compaction_state() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return {kv_store_.rocksdb_parent_data_compacted,
+            kv_store_.post_split_compaction_file_number_upper_bound};
   }
 
   void set_post_split_compaction_file_number_upper_bound(uint64_t value) {

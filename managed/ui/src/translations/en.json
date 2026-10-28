@@ -666,6 +666,21 @@
         "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled.",
         "advancedObservabilityLicenseNotice": "<strong>Advanced Observability is a licensed feature.</strong> Please confirm your organization has an Advanced Observability license. If not, contact your Yugabyte account team."
       },
+      "crossCloudFederation": {
+        "menuLabel": "Edit Cross-Cloud Federated Access",
+        "modalTitle": "Edit Cross-Cloud Federated Access",
+        "toggleLabel": "Enable Federated Access for Backups",
+        "subText": "Allow database nodes in this universe to access backup storage in other clouds using federated IAM.",
+        "enableInfoTitle": "Cloud provider configuration required",
+        "enableInfoText": "Before applying changes, make sure you have enabled access to the cloud services you want to use in the <bold>{{providerName}}</bold> provider configuration.",
+        "providerDisabledTitle": "Enable cloud service access to continue",
+        "providerDisabledText": "Federated access for backups is not enabled in the <providerLink>{{providerName}}</providerLink> infrastructure configuration. Enable it before applying changes.",
+        "disableWarningTitle": "Disabling federated access will affect backups and restores",
+        "disableWarningImpact": "Database nodes in this universe will lose federated access to backup storage in other clouds. Backups and restores using that storage will fail, including scheduled backups.",
+        "disableWarningPermissions": "Existing IAM permissions in AWS and Google Cloud will remain unchanged. To revoke those permissions, remove them in the respective cloud providers.",
+        "enableSuccess": "Cross-cloud federated access enabled.",
+        "disableSuccess": "Cross-cloud federated access disabled."
+      },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
         "toggleLabel": "Enhanced Postgres Compatibility",
@@ -2901,7 +2916,10 @@
         "successMsg": "Success. Click <0>here</0> for task details",
         "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
         "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade.",
-        "runPrecheckOnlyButton": "Run Pre-check Only"
+        "runPrecheckOnlyButton": "Run Pre-check Only",
+        "marketplaceBasedWarning": "This upgrade replaces every node with a new instance, which gets a new IP and name, and moves the data onto it. If you have verified that the current and target images are eligible for an in-place upgrade, set the runtime configuration {{configKey}} to allow an in-place image upgrade instead.",
+        "fullMoveInfoContent": "<b>Note!</b><br/><br/>A full move is <b>time-consuming</b>. YBA creates a new node from the target image for each existing node, moves the data onto the new nodes, and then removes the old ones. The new nodes get new IP addresses and names.<br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
+        "unknownMarketplaceFlagWarning": "Whether this image bundle is based on an OCI Marketplace image is unknown. An in-place upgrade will try to determine that and will fail if the image is Marketplace-based or if the lookup fails."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -4026,7 +4044,9 @@
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
         "cloudProvider": "Infrastructure Provider",
+        "spanAcrossProviders": "Span across providers",
         "providerconfiguration": "Infrastructure Provider Config",
+        "providerConfigurationForCloud": "{{cloud}} Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Integrations → Infrastructure</b>. You may need admin privileges to complete this step.",
         "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
@@ -4037,7 +4057,10 @@
           "cloudProviderRequired": "Cloud provider is required",
           "universeNameUnique": "Universe name \"{{display_name}}\" is already taken. Use a different name.",
           "providerConfigurationRequired": "Provider configuration is required",
-          "databaseVersionRequired": "Database version is required"
+          "databaseVersionRequired": "Database version is required",
+          "providerLimitReachedTitle": "Provider limit reached",
+          "providerLimitReachedBody": "You can select up to 3 providers. Deselect one to select another.",
+          "kubernetesNotSupportedMulti": "Provider not supported. Kubernetes isn’t available for multi-provider universes."
         }
       },
       "resilienceAndRegions": {
@@ -4057,6 +4080,10 @@
           "description": "Choose how to configure cluster resilience and placement.",
           "learnMore": "Learn more"
         },
+        "configurationMode": {
+          "title": "Configuration Mode",
+          "description": "Choose how you want to configure cluster placement and resilience."
+        },
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
@@ -4064,10 +4091,14 @@
           "caution": "Caution!",
           "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
-        "helpText": "Advanced placement options such as <a>Read Replicas</a> can be configured post cluster creation.",
+        "helpText": "Advanced placement options such as <a>Read Replicas</a> and <b>Geo Partitioning</b> can be configured post cluster creation.",
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
+        "expertModeNotSupportedMulti": "Expert mode for multi-provider universes is not available yet.",
+        "providerRegions": "{{provider}} Regions",
+        "providerRegionLegend": "{{provider}} Region",
+        "select": "Select",
         "switchToGuidedModal": {
           "title": "Are you sure?",
           "unsupportedTitle": "Current placement configuration is not supported in the Guided mode.",
@@ -4092,11 +4123,14 @@
           "nodeErr": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>1 region</b>. You have selected <b>{{selected_regions}} regions</b>. Update your selection to proceed.",
           "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
           "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
-          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
+          "providerRegionRequired": "Select at least one region for each provider.",
+          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments.",
+          "multiProviderFtDisabled": "Not supported for multi-provider. Multi-provider universes require zone or region distribution."
         },
         "guidedMode": {
           "header": "Resilience",
           "helpText": "Start by Selecting the cluster’s <a>resilience</a> level to guide the setup.",
+          "helpTextMulti": "Select the cluster’s <a>resilience</a> level to guide the setup.",
           "selectedResilienceRequires": "Selected resilience level requires:",
           "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
           "wordRegion": "region",
@@ -4133,7 +4167,8 @@
             "title": "None (Not resilient)",
             "subText": "Not resilient to any outages"
           },
-          "resilientTo": "Resilient to"
+          "resilientTo": "Resilient to",
+          "multiProviderFtDisabledTooltip": "<bold>Not supported for multi-provider. </bold>Multi-provider universes require zone or region distribution."
         },
         "infoTooltips": {
           "resilience": {
@@ -4253,6 +4288,7 @@
           "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} TServer nodes</b>. The current configuration falls below this requirement.",
           "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
           "nodeLevelGuidedExactlyOneAz": "<b>Invalid configuration:</b> Guided node-level resilience requires exactly <b>one availability zone</b>. Remove extra zones to proceed.",
+          "regionLevelOneAzPerRegion": "<b>Invalid configuration:</b> Region-level resilience allows <b>one availability zone per region</b>. Remove extra zones to proceed.",
           "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
@@ -4270,7 +4306,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required"
         },
@@ -4324,6 +4359,24 @@
         "cantChangeLater": "This CANNOT be changed after creation",
         "EBSVolume": {
           "title": "EBS Volume Encryption"
+        },
+        "multiProvider": {
+          "tserverModalTitle": "Cluster TServer Instance",
+          "masterModalTitle": "Configure Master Server Instances",
+          "configureEmpty": "Configure compute and storage for the TServer nodes.",
+          "configureMasterReady": "Configure compute and storage for the Master server nodes.",
+          "configureMasterInstance": "Configure Master Server Instance",
+          "configureTserverFirst": "Configure TServer instances first.",
+          "masterNote": "<b>Note!</b> CPU Architecture and Linux version are global settings and can not be overridden. You can change these settings from the \u201cDefault Instance Configuration\u201d.",
+          "masterNoteAws": "<b>Note!</b> CPU Architecture, Linux version and AWS Spot instance usage are global settings and can not be overridden. You can change these settings from the \u201cDefault Instance Configuration\u201d.",
+          "configureMasterEmpty": "Configure compute and storage for master servers. Instance capacity follows the same cross-provider requirements as TServers.",
+          "configureInstance": "Configure Instance",
+          "aligned": "All instance configurations are aligned.",
+          "capacityBannerTitle": "Keep instance capacity aligned across providers.",
+          "capacityBannerBody": "Configure similar instance capacity for every provider to maintain balanced performance.",
+          "volumePerNode": "Volume / Node",
+          "storage": "Storage",
+          "defaultLinux": "Default"
         }
       },
       "databaseSettings": {
@@ -4473,7 +4526,10 @@
           "tagNamePlaceholder": "Ex : Department",
           "tagValue": "Tag value",
           "tagValuePlaceholder": "Ex : Dev",
-          "addTag": "Add User Tag"
+          "addTag": "Add User Tag",
+          "tagNameRequired": "Tag name is required.",
+          "tagValueRequired": "Tag value is required.",
+          "tagNameDuplicate": "Tag name must be unique."
         },
         "accessKeyLabel": "SSH Access Key",
         "accessKeyRequired": "Access Key is required",
@@ -5265,7 +5321,6 @@
           "minValue": "{{field}} must be at least {{min}}",
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
-          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
           "required": "{{field}} is required",
           "regionRequired": "Select a region.",

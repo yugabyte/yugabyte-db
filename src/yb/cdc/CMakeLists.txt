@@ -56,7 +56,7 @@ YRPC_GENERATE(
   CDC_YRPC_SRCS CDC_YRPC_HDRS CDC_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  MESSAGES_PROTO_FILES cdc_service.proto)
+  PROTO_FILES cdc_service.proto)
 set(CDC_YRPC_LIBS
   yrpc
   yb_common_proto
@@ -121,4 +121,5 @@ ADD_YB_LIBRARY(
 
 # Tests
 set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(cdc_trace_attrs-test)
 ADD_YB_TEST(xcluster_producer-test)

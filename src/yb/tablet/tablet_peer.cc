@@ -75,6 +75,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -187,6 +188,7 @@ TabletPeer::TabletPeer(
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     MetricRegistry* metric_registry,
     TabletSplitter* tablet_splitter,
+    const PersistenceGate* persistence_gate,
     const std::shared_future<client::YBClient*>& client_future)
     : meta_(meta),
       tablet_id_(meta->raft_group_id()),
@@ -201,6 +203,7 @@ TabletPeer::TabletPeer(
       preparing_operations_counter_(operation_tracker_.LogPrefix()),
       metric_registry_(metric_registry),
       tablet_splitter_(tablet_splitter),
+      persistence_gate_(persistence_gate),
       client_future_(client_future),
       data_disk_space_checker_(meta->fs_manager()->env(), meta->data_root_dir()) {}
 
@@ -305,7 +308,7 @@ Status TabletPeer::InitTabletPeer(
       };
     });
 
-    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler());
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();
@@ -509,8 +512,27 @@ Status CheckWriteFence(const consensus::LWReplicateMsg& msg) {
 
 }  // namespace
 
-Status TabletPeer::CheckReplicateAllowed(const consensus::LWReplicateMsg& replicate_msg) {
-  return CheckWriteFence(replicate_msg);
+Status TabletPeer::CheckReplicateAllowed(consensus::LWReplicateMsg& replicate_msg) {
+  RETURN_NOT_OK(CheckWriteFence(replicate_msg));
+  if (persistence_gate_) {
+    RETURN_NOT_OK(persistence_gate_->CheckPersistAllowed(replicate_msg));
+  }
+  // Only the persistence gate reads the stamps, so keep them out of the WAL and off the followers.
+  switch (replicate_msg.op_type()) {
+    case consensus::OperationType::WRITE_OP:
+      replicate_msg.mutable_write()->clear_origination_info();
+      break;
+    case consensus::OperationType::UPDATE_TRANSACTION_OP:
+      replicate_msg.mutable_transaction_state()->clear_origination_info();
+      break;
+    default:
+      break;
+  }
+  return Status::OK();
+}
+
+bool TabletPeer::ShouldRelinquishLeadership() {
+  return persistence_gate_ && persistence_gate_->ShouldRelinquishLeadership();
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {

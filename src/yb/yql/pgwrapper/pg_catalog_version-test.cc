@@ -4434,7 +4434,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

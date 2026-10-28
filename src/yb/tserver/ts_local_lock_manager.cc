@@ -33,6 +33,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -127,6 +128,8 @@ void ReleaseObjectLocksForLostMessages(
     std::weak_ptr<TSLocalLockManager> lock_manager_weak,
     const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
     const Status& status) {
+  // Fires at the acquire deadline, long after the DDL finished; must not extend the DDL's trace.
+  auto detach_token = dist_trace::DetachTraceContext();
   if (!status.ok()) {
     LOG_WITH_FUNC(ERROR) << "Aborting Release request"
                          << (VLOG_IS_ON(1) ? release_req->ShortDebugString() : "") << " due to "

@@ -91,6 +91,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
@@ -323,6 +324,19 @@ DEFINE_NON_RUNTIME_uint32(deleted_tablet_cache_max_size, 10000,
     "Maximum size for the cache of recently deleted tablet ids. Used to "
     "reject remote bootstrap requests for recently deleted tablets.");
 
+DEFINE_RUNTIME_bool(xcluster_lease_relinquish_leadership, true,
+    "Whether tablets on a TServer without an xCluster-guarded information lease give up "
+    "leadership and do not seek it.  Applies only while the persistence gate is enforced and "
+    "YSQL is enabled.  Set to false as an escape hatch, at the cost of leaders "
+    "refusing YSQL writes until their TServer regains the lease.");
+TAG_FLAG(xcluster_lease_relinquish_leadership, advanced);
+
+DEFINE_NON_RUNTIME_int32(xcluster_lease_relinquish_leadership_check_interval_ms, 200,
+    "How often a TServer checks whether its tablet leaders must step down because it holds no "
+    "xCluster-guarded information lease (see xcluster_lease_relinquish_leadership).  <= 0 disables "
+    "the check.");
+TAG_FLAG(xcluster_lease_relinquish_leadership_check_interval_ms, advanced);
+
 DEFINE_RUNTIME_bool(reject_rbs_for_deleted_tablet, true,
     "Whether to reject a request to RBS a tablet that the receiving tserver has recently deleted.");
 
@@ -351,6 +365,8 @@ DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
 DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_ysql);
+DECLARE_int64(protege_synchronization_timeout_ms);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -708,6 +724,32 @@ TSTabletManager::~TSTabletManager() {
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
 
+  // The term is unused: a TServer's map does not depend on the term its tablet leaders are in.
+  // Without a lease the TServer cannot know whether StopPersisting has blocked a database, so it
+  // fails closed.
+  persistence_gate_ = std::make_unique<tablet::PersistenceGate>(
+      [&xcluster_context = server_->GetXClusterContext(),
+       tserver_uuid = server_->permanent_uuid()](
+          int64_t /*op_term*/, uint32_t database_oid) -> Result<std::optional<HybridTime>> {
+        auto blocked_through = xcluster_context.GetPersistenceBlockedThrough(database_oid);
+        if (!blocked_through.ok()) {
+          // Retryable: the client retries ServiceUnavailable as if this TServer were no longer the
+          // leader, so the op succeeds once this TServer regains its lease or the tablet's
+          // leadership moves to one that has one.
+          return STATUS_FORMAT(
+              ServiceUnavailable,
+              "Tablet server $0 cannot accept YSQL writes: it holds no xCluster lease (cannot "
+              "reach master)",
+              tserver_uuid);
+        }
+        return blocked_through;
+      },
+      server_->metric_entity(),
+      [server = server_] {
+        return FLAGS_enable_ysql && FLAGS_xcluster_lease_relinquish_leadership &&
+               !server->IsXClusterLeaseRequirementMet();
+      });
+
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
   tablet_options_.listeners = server_->options().listeners;
@@ -998,6 +1040,9 @@ Status TSTabletManager::Init() {
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
+  relinquish_leadership_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::RelinquishLeadershipIfNeeded, this));
+
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
 
@@ -1078,6 +1123,9 @@ Status TSTabletManager::Start() {
       metrics_cleaner_.get(), "Old metrics cleanup",
       FLAGS_cleanup_metrics_interval_sec * 1s);
   StartScheduledTask(
+      relinquish_leadership_poller_.get(), "Relinquish leadership when needed",
+      FLAGS_xcluster_lease_relinquish_leadership_check_interval_ms * 1ms);
+  StartScheduledTask(
       data_size_metric_updater_.get(), "Data size metric updater",
       FLAGS_data_size_metric_updater_interval_sec * 1s);
   if (sst_stats_resync_poller_) {
@@ -1092,6 +1140,83 @@ Status TSTabletManager::Start() {
   }
 
   return Status::OK();
+}
+
+void TSTabletManager::RelinquishLeadershipIfNeeded() {
+  if (!persistence_gate_->ShouldRelinquishLeadership()) {
+    return;
+  }
+  // Stepping down takes each leader's Raft lock, so it runs on the Raft pool rather than on the
+  // scheduler's thread, one sweep at a time.
+  if (relinquish_leadership_running_.exchange(true, std::memory_order_acq_rel)) {
+    return;
+  }
+  auto status = raft_pool_->SubmitFunc([this] {
+    StepDownLocalLeaders();
+    relinquish_leadership_running_.store(false, std::memory_order_release);
+  });
+  if (!status.ok()) {
+    relinquish_leadership_running_.store(false, std::memory_order_release);
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+        << "Failed to submit leadership relinquishment: " << status;
+  }
+}
+
+void TSTabletManager::StepDownLocalLeaders() {
+  // A graceful step-down whose protege lags waits protege_synchronization_timeout_ms before
+  // handing over anyway, and asking again restarts that wait, so each leader is asked once, and
+  // again only after well past that wait, in case that step-down did not happen.
+  const auto retry_interval = std::max<CoarseDuration>(
+      5s, 2ms * FLAGS_protege_synchronization_timeout_ms);
+  const auto now = CoarseMonoClock::Now();
+  for (const auto& peer : GetTabletPeers()) {
+    // The lease can return, or shutdown start, while a sweep over many tablets runs.
+    if (IsShutdownStarted() || !persistence_gate_->ShouldRelinquishLeadership()) {
+      return;
+    }
+
+    // GetTabletPeers() includes leaders that are not ready, e.g., without a leader lease because
+    // their followers are not acknowledging in time.  A peer that is shutting down is left alone.
+    if (peer->state() != tablet::RaftGroupStatePB::RUNNING ||
+        peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
+      continue;
+    }
+
+    const auto& tablet_id = peer->tablet_id();
+    // A new entry holds the clock's epoch, i.e., never asked.
+    auto& last_asked = relinquish_step_down_requests_[tablet_id];
+    if (now < last_asked + retry_interval) {
+      continue;
+    }
+    last_asked = now;
+
+    auto consensus = peer->GetRaftConsensus();
+    if (!consensus.ok()) {
+      continue;
+    }
+    // No new leader is named, so StepDown hands leadership to the best caught-up follower.  If that
+    // follower cannot lead either, it refuses the election, and this replica's own veto keeps it
+    // from taking leadership back.
+    //
+    // A leader that refuses YSQL writes is worth replacing even mid remote bootstrap, at the risk
+    // of that remote bootstrap having to be redone.
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(tablet_id);
+    req.set_dest_uuid(server_->permanent_uuid());
+    consensus::LeaderStepDownResponsePB resp;
+    LOG_WITH_PREFIX(DETAIL) << "Stepping down as leader of tablet " << tablet_id
+                            << ": this TServer holds no xCluster-guarded information lease";
+    auto status = (*consensus)->StepDown(
+        &req, &resp, consensus::IgnorePeersInTransition::kTrue);
+    if (status.ok() && resp.has_error()) {
+      if (resp.error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+        // Lost leadership since LeaderStatus() above.
+        continue;
+      }
+      status = StatusFromPB(resp.error().status());
+    }
+    WARN_NOT_OK(status, Format("Failed to step down as leader of tablet $0", tablet_id));
+  }
 }
 
 void TSTabletManager::CleanupSplitTablets() {
@@ -2057,6 +2182,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
       Bind(&TSTabletManager::ApplyChange, Unretained(this), tablet_id),
       metric_registry_,
       this,
+      persistence_gate_.get(),
       server_->client_future()));
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(RegisterTabletUnlocked(tablet_id, tablet_peer, mode));
@@ -2209,9 +2335,8 @@ Status TSTabletManager::DeleteTablet(
         tracked_dirs.push_back(tp.path);
       }
     }
-    for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
-      tracked_dirs.push_back(
-          meta->vector_index_dir(info->index_info->vector_idx_options()));
+    for (auto& dir : meta->vector_index_dirs()) {
+      tracked_dirs.push_back(std::move(dir));
     }
     for (const auto& path : tracked_dirs) {
       resp->add_directories()->set_path(path);
@@ -2511,6 +2636,7 @@ void TSTabletManager::OpenTablet(
         .wait_queue_cgroup = wait_queue_cgroup,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
+        .intent_cleanup_pool = raft_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
         .tier_migration_hooks = tier_migration_reconciler_->tablet_hooks(),
         .metadata_cache = metadata_cache,
@@ -2781,6 +2907,8 @@ void TSTabletManager::StartShutdown() {
   metrics_emitter_->Shutdown();
 
   metrics_cleaner_->Shutdown();
+
+  relinquish_leadership_poller_->Shutdown();
 
   waiting_txn_registry_poller_->Shutdown();
 

@@ -247,8 +247,21 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
-  Status RestartPG() const override;
-  Status KillPg() const override;
+
+  // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
+  // xCluster-guarded information lease, PG is paused instead and started by MaybeStartPg once the
+  // lease arrives.
+  Status RestartPG() const override EXCLUDES(pg_start_mutex_);
+  Status KillPg() const override EXCLUDES(pg_start_mutex_);
+
+  // Starts PG if RestartPG left it paused for want of the xCluster lease and that no longer
+  // applies.
+  void MaybeStartPg() const EXCLUDES(pg_start_mutex_);
+
+  // Whether this TServer satisfies the xCluster-guarded information lease requirement: it holds the
+  // lease or the persistence gate that requires it is not enforced.  Decides both whether PG may
+  // start and whether this TServer's tablets must give up leadership.
+  bool IsXClusterLeaseRequirementMet() const;
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -699,6 +712,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
+  Status RestartPgUnlocked() const REQUIRES(pg_start_mutex_);
+  Status KillPgUnlocked() const REQUIRES(pg_start_mutex_);
+
   struct ClusterConfig {
     std::atomic<int32_t> version{kUnknownClusterConfigVersion};
     mutable std::mutex mutex;
@@ -754,6 +770,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
+  int64_t GetXClusterGuardedInfoLeaseHeldForMetrics() const;
+
   std::map<std::string, std::string> ValidateConfCsvViaPg(
       const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
@@ -764,6 +782,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<TserverXClusterContext> xcluster_context_;
 
+  // Declared after xcluster_context_ so it detaches the lease gauge, which reads
+  // xcluster_context_, before xcluster_context_ is destroyed.
+  std::shared_ptr<void> xcluster_guarded_info_lease_metric_detacher_;
+
   PgMutationCounter pg_node_level_mutation_counter_;
 
   PgConfigReloader pg_config_reloader_;
@@ -772,11 +794,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
-  std::function<Status(void)> pg_restarter_;
-  std::function<Status(void)> pg_killer_;
-  pgwrapper::PgConfigGenerator pg_config_generator_;
 
-  std::function<Status(void)> conn_manager_restarter_;
+  // Serializes starting and pausing PG between the YSQL lease manager and the heartbeater.
+  mutable std::mutex pg_start_mutex_;
+  mutable bool pg_awaiting_xcluster_lease_ GUARDED_BY(pg_start_mutex_) = false;
+  std::function<Status(void)> pg_restarter_ GUARDED_BY(pg_start_mutex_);
+  std::function<Status(void)> pg_killer_ GUARDED_BY(pg_start_mutex_);
+  std::function<Status(void)> conn_manager_restarter_ GUARDED_BY(pg_start_mutex_);
+
+  pgwrapper::PgConfigGenerator pg_config_generator_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

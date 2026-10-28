@@ -178,6 +178,35 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     return Status::OK();
   }
 
+  // Sets up RF1 clusters replicating table vec_test (id int, embedding vector(3)) of a single
+  // tablet with ybhnsw index vec_test_idx, and returns the id of the producer tablet.
+  Result<TabletId> SetUpSingleTabletVectorIndexTable() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.replication_factor = 1;
+    RETURN_NOT_OK(SetUpClusters(params));
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto producer_table = VERIFY_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(
+        producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+    SCHECK_EQ(tablets.size(), 1, IllegalState, "Unexpected number of producer tablets");
+    return tablets[0].tablet_id();
+  }
+
   // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
   // the master waits for the pause to finish using the RPC's client deadline.
   Status SetReplicationEnabled(bool is_enabled, MonoDelta timeout) {
@@ -6159,34 +6188,13 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
   // Even with a single vector per insert, this many inserts roll several chunks of kChunkSize.
   constexpr int kParkAtInsert = 30;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
   // point used to park the apply.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
 
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   // Pause replication of the table, so the consumer later receives all transactions in one batch.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
@@ -6278,29 +6286,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
 // completes. Here the apply is parked between the two writes, and the vector index flush must
 // complete meanwhile (GH #34246).
 TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
@@ -6373,6 +6359,80 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
       "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kOpenTxnRowId);
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// A regular DB flush must not advance the intents DB flushed OpId past vectors that an external
+// transaction apply left only in memory (GH #34699).
+TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
+
+  // Commit while replication is paused, so the consumer gets the intents of the transaction
+  // together with its apply and never writes them to the intents DB. An intents DB write would
+  // disable advancing the intents DB flushed OpId for the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // A distributed transaction is replicated as an external transaction, a single row insert would
+  // take the fast path and reach the consumer as a plain write.
+  constexpr int kNumRows = 20;
+  ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+  }
+  ASSERT_OK(producer_conn_->CommitTransaction());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+
+  {
+    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
+    // check after the restart.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+    const auto consumer_table = ASSERT_RESULT(
+        GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    auto peers = ListTableActiveTabletPeers(consumer_cluster(), consumer_table.table_id());
+    ASSERT_EQ(peers.size(), 1);
+    auto consumer_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+    // The intents DB flushed OpId starts below the vector index one, so the wait below only
+    // succeeds if the flush advances it.
+    auto state = ASSERT_RESULT(consumer_tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.intents, state.vector_indexes[0].op_id) << AsString(state);
+
+    ASSERT_OK(consumer_cluster()->FlushTablets(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+    // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
+    // flush returns. It must stop at the vector index flushed OpId.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
+    }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(
+      tserver::WaitTabletsBootstrapped::kTrue));
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(query)));
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
 }
 

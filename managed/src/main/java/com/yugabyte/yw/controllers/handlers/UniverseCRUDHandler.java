@@ -1893,7 +1893,7 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    taskParams.clusters.add(primaryCluster);
+    taskParams.clusters.add(0, primaryCluster);
 
     // Set the provider code.
     Provider provider = Util.getSingleProvider(addOnCluster);
@@ -1978,7 +1978,9 @@ public class UniverseCRUDHandler {
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
     }
-    taskParams.clusters.add(primaryCluster);
+    // Add the primary cluster at the beginning of the cluster list.
+    // TODO fix all other places where cluster at index 0 is assumed to be the primary cluster.
+    taskParams.clusters.add(0, primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
     if (readOnlyCluster.userIntent.provider != null) {

@@ -129,6 +129,10 @@ class XClusterManager : public XClusterManagerIf,
 
   Result<SysPersistenceBlockMapEntryPB> GetPersistenceBlockMap() const;
 
+  // See PersistenceBlockMap::GetBlockedThrough.
+  Result<std::optional<HybridTime>> GetPersistenceBlockedThrough(
+      int64_t term, uint32_t database_oid) const;
+
   // Called when a YSQL database is dropped; a database without an entry may persist anything.
   Status ErasePersistenceBlock(const LeaderEpoch& epoch, const NamespaceId& namespace_id);
 

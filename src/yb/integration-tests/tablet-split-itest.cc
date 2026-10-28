@@ -72,6 +72,8 @@
 #include "yb/qlexpr/ql_expr.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/index_reader.h"
 
@@ -131,6 +133,7 @@ DECLARE_int32(load_balancer_max_concurrent_removals);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+DECLARE_int64(TEST_rocksdb_compact_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(TEST_do_not_start_election_test_only);
@@ -3342,6 +3345,147 @@ TEST_F(TabletSplitSingleServerITest, PostSplitCompactionScheduledOnTabletOpen) {
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(15s * kTimeMultiplier));
   ASSERT_EQ(ASSERT_RESULT(NumTestTableTabletPeersPostSplitCompacted()), 2);
+}
+
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/34755.
+TEST_F(TabletSplitSingleServerITest, PostSplitCompactionNoOpWhileParentFilesBeingCompacted) {
+  constexpr int kNumBatches = 5;
+  constexpr int kNumRowsPerBatch = 2000;
+  constexpr auto kNumRows = kNumBatches * kNumRowsPerBatch;
+  // Slow enough for the child's background compaction to still be running at the end of the
+  // check below. Lower it if the test reports that the background compaction finished too early.
+  constexpr int64_t kSlowCompactionRateBytesPerSec = 16_KB;
+  const auto kCheckDuration = 3s * kTimeMultiplier;
+
+  auto set_compaction_rate_limit = [](int64_t bytes_per_sec) {
+    return SET_FLAG(
+        TEST_rocksdb_compact_rate_limit_bytes_per_sec,
+        static_cast<decltype(FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec)>(
+            bytes_per_sec));
+  };
+
+  // The children run their post-split compaction only when the test triggers it below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  // No background compactions on the parent, so that it keeps one SST file per batch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 1000;
+
+  CreateSingleTablet();
+  auto min_hash = std::numeric_limits<docdb::DocKeyHash>::max();
+  auto max_hash = std::numeric_limits<docdb::DocKeyHash>::min();
+  for (int i = 0; i < kNumBatches; ++i) {
+    const auto hash_range =
+        ASSERT_RESULT(WriteRowsAndFlush(kNumRowsPerBatch, i * kNumRowsPerBatch + 1));
+    min_hash = std::min(min_hash, hash_range.first);
+    max_hash = std::max(max_hash, hash_range.second);
+  }
+  ASSERT_OK(CheckRowsCount(kNumRows));
+
+  // The children are opened with these settings: a background compaction starts right after the
+  // split, picks up all of the inherited files, and runs slowly enough to still hold them when the
+  // post-split compaction runs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
+  ASSERT_OK(set_compaction_rate_limit(kSlowCompactionRateBytesPerSec));
+
+  const docdb::DocKeyHash split_hash_code = (min_hash + max_hash) / 2;
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));
+
+  struct Child {
+    tablet::TabletPtr tablet;
+    uint64_t file_number_upper_bound;
+  };
+  std::vector<Child> children;
+  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_FALSE(tablet->metadata()->rocksdb_parent_data_compacted());
+    const auto upper_bound = tablet->metadata()->post_split_compaction_file_number_upper_bound();
+    ASSERT_TRUE(upper_bound.has_value());
+    ASSERT_GT(*upper_bound, 0U);
+    children.push_back(Child{.tablet = tablet, .file_number_upper_bound = *upper_bound});
+  }
+  ASSERT_EQ(children.size(), 2U);
+
+  // Returns the number of live files inherited from the parent and how many of them are currently
+  // being compacted.
+  auto inherited_files = [](const Child& child) {
+    size_t num_inherited = 0;
+    size_t num_being_compacted = 0;
+    for (const auto& file : child.tablet->regular_db()->GetLiveFilesMetaData()) {
+      if (file.name_id < child.file_number_upper_bound) {
+        ++num_inherited;
+        num_being_compacted += file.being_compacted;
+      }
+    }
+    return std::make_pair(num_inherited, num_being_compacted);
+  };
+
+  // Wait for the background compaction to hold every inherited file, so that the post-split
+  // compaction has nothing it can pick.
+  for (const auto& child : children) {
+    ASSERT_OK(LoggedWaitFor(
+        [&inherited_files, &child] {
+          const auto [num_inherited, num_being_compacted] = inherited_files(child);
+          return num_inherited > 0 && num_being_compacted == num_inherited;
+        },
+        30s * kTimeMultiplier,
+        Format("Background compaction holds all inherited files of $0",
+               child.tablet->tablet_id())));
+  }
+
+  // Run the post-split compaction while the inherited files are held by the background compaction.
+  // It picks nothing and completes as a no-op. Run it on separate threads so that the check below
+  // does not depend on how long it takes.
+  TestThreadHolder thread_holder;
+  for (const auto& child : children) {
+    thread_holder.AddThreadFunctor([tablet = child.tablet] {
+      ASSERT_OK(tablet->ForceRocksDBCompact(
+          rocksdb::CompactionReason::kPostSplitCompaction, docdb::SkipFlush::kTrue));
+    });
+  }
+  // Lift the rate limit on any exit, so that the threads above don't wait for the slow
+  // compactions. Declared after thread_holder so that it runs before the threads are joined.
+  ScopeExit lift_rate_limit([&set_compaction_rate_limit] {
+    // A negative value also applies its absolute value to the compactions already running.
+    WARN_NOT_OK(set_compaction_rate_limit(-static_cast<int64_t>(1_GB)),
+                "Failed to lift the compaction rate limit");
+  });
+
+  // While the inherited files are live, the parent data must not be reported as compacted, however
+  // the post-split compaction above has completed.
+  const auto deadline = CoarseMonoClock::Now() + kCheckDuration;
+  while (CoarseMonoClock::Now() < deadline) {
+    for (const auto& child : children) {
+      // Read the flag before listing the files: the flag may only be set after the inherited files
+      // are gone from the current version.
+      const auto parent_data_compacted = child.tablet->metadata()->rocksdb_parent_data_compacted();
+      const auto num_inherited = inherited_files(child).first;
+      ASSERT_TRUE(num_inherited == 0 || !parent_data_compacted)
+          << child.tablet->tablet_id() << " reports its parent data as compacted while it "
+          << "still has " << num_inherited << " inherited files";
+    }
+    SleepFor(50ms);
+  }
+
+  // Make sure the background compaction was still holding the inherited files for the whole check,
+  // i.e. the race above was actually exercised.
+  for (const auto& child : children) {
+    ASSERT_GT(inherited_files(child).first, 0U)
+        << "Background compaction on " << child.tablet->tablet_id() << " finished too early, "
+        << "lower kSlowCompactionRateBytesPerSec";
+  }
+
+  // Once the compactions finish, the parent data must be reported as compacted and no inherited
+  // files may remain.
+  ASSERT_OK(set_compaction_rate_limit(-static_cast<int64_t>(1_GB)));
+  for (const auto& child : children) {
+    ASSERT_OK(LoggedWaitFor(
+        [&child] { return child.tablet->metadata()->rocksdb_parent_data_compacted(); },
+        60s * kTimeMultiplier,
+        Format("Parent data compacted on $0", child.tablet->tablet_id())));
+    ASSERT_EQ(inherited_files(child).first, 0U);
+  }
+  thread_holder.JoinAll();
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
 }
 
 TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {

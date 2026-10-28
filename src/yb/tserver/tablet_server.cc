@@ -324,6 +324,11 @@ DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_ident_conf_csv);
 DECLARE_string(ysql_pg_conf_csv);
 
+METRIC_DEFINE_gauge_int64(server, xcluster_guarded_info_lease_held,
+    "xCluster-Guarded Information Lease Held",
+    yb::MetricUnit::kUnits,
+    "1 if this TServer holds an unexpired xCluster-guarded information lease, 0 otherwise.");
+
 namespace yb::tserver {
 
 METRIC_DEFINE_gauge_uint64(
@@ -485,6 +490,10 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       METRIC_active_table_metrics_table_count.Instantiate(metric_entity(), 0);
   active_table_metrics_list_version_ =
       METRIC_active_table_metrics_list_version.Instantiate(metric_entity(), 0);
+  METRIC_xcluster_guarded_info_lease_held.InstantiateFunctionGauge(
+      metric_entity(),
+      Bind(&TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics, Unretained(this)))
+    ->AutoDetachToLastValue(&xcluster_guarded_info_lease_metric_detacher_);
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   ysql_db_catalog_version_index_used_ =
@@ -1149,6 +1158,50 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 }
 
 Status TabletServer::RestartPG() const {
+  std::lock_guard lock(pg_start_mutex_);
+  if (!IsXClusterLeaseRequirementMet()) {
+    LOG(DETAIL) << "Keeping Postgres paused until this TServer holds an xCluster-guarded "
+                << "information lease";
+    pg_awaiting_xcluster_lease_ = true;
+    return KillPgUnlocked();
+  }
+  pg_awaiting_xcluster_lease_ = false;
+  return RestartPgUnlocked();
+}
+
+Status TabletServer::KillPg() const {
+  std::lock_guard lock(pg_start_mutex_);
+  pg_awaiting_xcluster_lease_ = false;
+  return KillPgUnlocked();
+}
+
+void TabletServer::MaybeStartPg() const {
+  std::lock_guard lock(pg_start_mutex_);
+  if (!pg_awaiting_xcluster_lease_ || !IsXClusterLeaseRequirementMet()) {
+    return;
+  }
+  // The YSQL lease checker marks the lease dead before its KillPg clears
+  // pg_awaiting_xcluster_lease_, so check the lease itself too.  This does not check the lease
+  // epoch: a new epoch's RestartPG may still arrive just after this start, which then restarts
+  // Postgres once more, so no backend outlives its epoch.
+  if (auto lease_info = GetYSQLLeaseInfo(); lease_info.ok() && !lease_info->is_live) {
+    return;
+  }
+  LOG(DETAIL)
+      << "Starting Postgres now that this TServer holds an xCluster-guarded information lease";
+  pg_awaiting_xcluster_lease_ = false;
+  WARN_NOT_OK(RestartPgUnlocked(), "Failed to start PG postmaster");
+}
+
+bool TabletServer::IsXClusterLeaseRequirementMet() const {
+  return !IsPersistenceGateEnforced() || xcluster_context_->HasXClusterGuardedInfoLease();
+}
+
+int64_t TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics() const {
+  return xcluster_context_->HasUnexpiredXClusterGuardedInfoLease() ? 1 : 0;
+}
+
+Status TabletServer::RestartPgUnlocked() const {
   if (!pg_restarter_) {
     return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
   }
@@ -1159,7 +1212,7 @@ Status TabletServer::RestartPG() const {
   return conn_manager_restarter_();
 }
 
-Status TabletServer::KillPg() const {
+Status TabletServer::KillPgUnlocked() const {
   if (pg_killer_) {
     return pg_killer_();
   }
@@ -2671,6 +2724,9 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
   if (lease_expiration_time) {
     xcluster_context_->UpdateXClusterGuardedLease(lease_expiration_time);
   }
+  // Called on every heartbeat, not just when the xCluster lease is acquired, so that disabling the
+  // persistence gate also starts a PG that RestartPG left paused.
+  MaybeStartPg();
 
   auto* xcluster_consumer = GetXClusterConsumer();
 
@@ -2799,10 +2855,18 @@ void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
 }
 
 void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
+  std::lock_guard lock(pg_start_mutex_);
+  // PgSupervisor::Stop deregisters unconditionally, so a supervisor registering over another's
+  // callbacks would later lose them when the old one stops.
+  DCHECK(!restarter || !pg_restarter_) << "PG restarter callback already registered";
   pg_restarter_ = std::move(restarter);
 }
 
 void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
+  std::lock_guard lock(pg_start_mutex_);
+  // PgSupervisor::Stop deregisters unconditionally, so a supervisor registering over another's
+  // callbacks would later lose them when the old one stops.
+  DCHECK(!killer || !pg_killer_) << "PG killer callback already registered";
   pg_killer_ = std::move(killer);
 }
 
@@ -2811,6 +2875,7 @@ void TabletServer::RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator genera
 }
 
 void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)> restarter) {
+  std::lock_guard lock(pg_start_mutex_);
   conn_manager_restarter_ = std::move(restarter);
 }
 

@@ -281,7 +281,8 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
                                    uint8_t* scratch) const {
   ThreadRestrictions::AssertIOAllowed();
   Status s;
-  ssize_t r = -1;
+  // Stays 0 for a zero-length read, which must succeed.
+  ssize_t r = 0;
   size_t left = n;
   uint8_t* ptr = scratch;
   while (left > 0) {

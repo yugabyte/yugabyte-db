@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -74,7 +75,9 @@ var runSampleAppsUniverseCmd = &cobra.Command{
 
 		}
 
-		userIntent := clusters[0].GetUserIntent()
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universe.GetUniverseUUID())
+		userIntent := primaryCluster.GetUserIntent()
 		providerCode := userIntent.GetProviderType()
 
 		nodes := details.GetNodeDetailsSet()
