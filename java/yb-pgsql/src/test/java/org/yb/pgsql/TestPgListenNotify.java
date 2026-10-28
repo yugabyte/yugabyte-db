@@ -423,6 +423,80 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A postmaster restart keeps the notifications poller registered, since it restarts after a
+   * crash, but loses the shared memory that tracks it. The poller from before the restart must
+   * exit instead of running alongside the one the next LISTEN starts, where it would take that
+   * LISTEN's session down when its own replication slot is dropped.
+   *
+   * Scenario:
+   *   1. Session 1 listens, which starts the poller.
+   *   2. The poller is killed with SIGKILL, so the postmaster restarts all backends.
+   *   3. Session 2 listens on the same node, which starts a new poller.
+   *   4. Exactly one poller runs, and session 2 receives a notification and stays connected.
+   */
+  @Test
+  public void testStalePollerExitsAfterPostmasterRestart() throws Exception {
+    final String channel = "stale_poller";
+
+    Connection listener1 = getConnectionBuilder().withTServer(0).connect();
+    int pollerPid;
+    try (Statement stmt = listener1.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      pollerPid = getPollerPid(stmt);
+    }
+
+    // Unlike SIGTERM, a bg worker killed by a signal restarts all backends.
+    ProcessUtil.signalProcess(pollerPid, "KILL");
+    LOG.info("Sent SIGKILL to notifications poller (pid " + pollerPid + ")");
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = listener1.createStatement()) {
+        stmt.execute("SELECT 1");
+        return false;
+      } catch (SQLException e) {
+        return true;
+      }
+    }, Timeouts.adjustTimeoutSecForBuildType(30_000));
+
+    try (Connection listener2 = connectWithRetry(0);
+         Statement stmt2 = listener2.createStatement()) {
+      // Leave time for the old poller to be relaunched.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+      stmt2.execute("LISTEN " + channel);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+
+      List<Row> pollers = getRowList(stmt2,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("Expected exactly one notifications poller, got " + pollers,
+          1, pollers.size());
+
+      try (Connection notifier = getConnectionBuilder().connect();
+           Statement notifierStmt = notifier.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listener2, channel, PAYLOAD);
+
+      // Also fails if session 2 was terminated in the meantime.
+      waitAndAssertNoNotifications(listener2, "No further notifications expected");
+    }
+  }
+
+  /**
+   * Connects to the given tserver, retrying while its postmaster restarts.
+   */
+  private Connection connectWithRetry(int tserverIndex) throws Exception {
+    long deadline = System.currentTimeMillis() + Timeouts.adjustTimeoutSecForBuildType(60_000);
+    while (true) {
+      try {
+        return getConnectionBuilder().withTServer(tserverIndex).connect();
+      } catch (SQLException e) {
+        if (System.currentTimeMillis() > deadline)
+          throw e;
+        Thread.sleep(500);
+      }
+    }
+  }
+
+  /**
    * Verifies that a connection receives its own notifications (self-notify).
    */
   @Test

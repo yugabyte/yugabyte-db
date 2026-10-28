@@ -588,6 +588,9 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
+/* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
+static TimestampTz ybNotifsPollerId = 0;
+
 /*
  * The 'notifications poller' process batches the notifications of a transaction
  * in-memory. On receiving the corresponding COMMIT record from virtual wal, it
@@ -643,6 +646,14 @@ typedef struct
 	volatile YbNotifsPollerInitStatus init_status;
 	char		error_message[1024];
 	volatile bool has_runtime_error;
+
+	/*
+	 * Identifies the poller started for the node's current listeners; zero
+	 * when there are none. Protected by NotifyQueueLock. The postmaster
+	 * restarts a poller after a crash even if nothing tracks it any more, so
+	 * a poller whose id no longer matches exits instead of running.
+	 */
+	TimestampTz poller_id;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -687,6 +698,7 @@ static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
 /* YB: helper functions for 'notifications poller' bg worker */
+static bool ybIsStaleNotifsPoller(void);
 static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
@@ -1404,6 +1416,20 @@ Exec_ListenPreCommit(void)
 					 errdetail("%s", poller_data->error_message)));
 		}
 	}
+	else
+	{
+		bool		found;
+		YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+
+		/*
+		 * This listener starts a new poller, with a new id. An error from the
+		 * previous poller no longer applies: clear it under the lock, since
+		 * ybStartNotifsPollerBgWorker runs only after the slot is created and
+		 * LISTENs that join this one in the meantime must not be refused.
+		 */
+		poller_data->has_runtime_error = false;
+		poller_data->poller_id = GetCurrentTimestamp();
+	}
 
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
 	{
@@ -1693,6 +1719,13 @@ ybCleanupListenState(void)
 	bool		amPostmaster = MyProcPid == PostmasterPid;
 	bool		found;
 	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
+
+	/*
+	 * Any poller still around is now stale, and exits when it next starts or
+	 * fails. That includes one whose handle never reached shared memory
+	 * because the LISTEN that started it failed first.
+	 */
+	yb_poller_data->poller_id = 0;
 
 	if (found && yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
 	{
@@ -3118,10 +3151,14 @@ ybStartNotifsPollerBgWorker(void)
 	worker.bgw_restart_time = 1;	/* restart after a crash */
 	sprintf(worker.bgw_library_name, "postgres");
 	sprintf(worker.bgw_function_name, "YbNotifsPollerMain");
-	worker.bgw_main_arg = (Datum) 0;
+	worker.bgw_main_arg = Int64GetDatum(poller_data->poller_id);
 	worker.bgw_notify_pid = getpid();
 
-	RegisterDynamicBackgroundWorker(&worker, &local_handle);
+	if (!RegisterDynamicBackgroundWorker(&worker, &local_handle))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("could not register background process"),
+				 errhint("You may need to increase max_worker_processes.")));
 
 	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
 	if (status != BGWH_STARTED)
@@ -3192,6 +3229,16 @@ YbNotifsPollerMain(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
+	ybNotifsPollerId = DatumGetInt64(main_arg);
+	if (ybIsStaleNotifsPoller())
+	{
+		ereport(LOG,
+				(errmsg("notifications poller exiting: it is not the poller "
+						"of the current listeners on this node")));
+		/* Exit code 0 unregisters the worker, so it is not restarted. */
+		proc_exit(0);
+	}
+
 	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
 	ybNotifsPollerInit();
@@ -3203,6 +3250,26 @@ static List *
 ybNotifsPublications()
 {
 	return list_make1(PgYbNotificationsPublicationName);
+}
+
+/*
+ * Is this poller no longer the one for the node's current listeners? That is
+ * the case for a poller whose LISTEN failed before handing it over, and for
+ * one left over from before a postmaster restart (restartable bg workers
+ * survive it, shared memory does not).
+ */
+static bool
+ybIsStaleNotifsPoller(void)
+{
+	bool		found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	bool		stale;
+
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	stale = poller_data->poller_id != ybNotifsPollerId;
+	LWLockRelease(NotifyQueueLock);
+
+	return stale;
 }
 
 static void
@@ -3303,6 +3370,21 @@ ybNotifsPollerLoop()
 		{
 			MemoryContext error_cxt = MemoryContextSwitchTo(TopMemoryContext);
 			ErrorData  *edata = CopyErrorData();
+
+			/*
+			 * A stale poller, say one whose slot was dropped under it, must
+			 * not report its error: the listeners it would terminate belong
+			 * to the poller that replaced it.
+			 */
+			if (ybIsStaleNotifsPoller())
+			{
+				ereport(LOG,
+						(errmsg("notifications poller exiting: it is not the "
+								"poller of the current listeners on this node"),
+						 errdetail("%s", edata->message)));
+				FlushErrorState();
+				proc_exit(0);
+			}
 
 			ereport(WARNING,
 					(errmsg("notifications poller encountered a non-retryable "
