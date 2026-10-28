@@ -5,6 +5,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -15,8 +17,10 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
@@ -240,6 +244,42 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .addTasks(TaskType.ChangeAdminPassword)
         .addTasks(TaskType.ChangeAdminPassword)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  // The multi-tenancy restart rewrites each server's conf after the API step. It must keep the
+  // API settings from this request, not the ones the universe had before it.
+  @Test
+  public void testMultiTenancyChangeKeepsNewYsqlAuth() {
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.ysqlPassword = "foo";
+    MultiTenancyConfig mtConfig = new MultiTenancyConfig();
+    mtConfig.setQosMaxDbCount(5);
+    params.multiTenancy = mtConfig;
+    // The controller copies the universe clusters into the params; the MT step reads them.
+    params.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    List<TaskInfo> mtConfigureTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+            .filter(t -> t.getTaskParams().path("gflags").has(GFlagsUtil.QOS_MAX_DB_COUNT))
+            .collect(Collectors.toList());
+    assertFalse(mtConfigureTasks.isEmpty());
+    for (TaskInfo task : mtConfigureTasks) {
+      assertTrue(task.getTaskParams().get("enableYSQLAuth").asBoolean());
+      assertTrue(task.getTaskParams().get("enableYSQL").asBoolean());
+      assertFalse(task.getTaskParams().get("enableYCQL").asBoolean());
+    }
   }
 
   private MockUpgrade initMockUpgrade() {

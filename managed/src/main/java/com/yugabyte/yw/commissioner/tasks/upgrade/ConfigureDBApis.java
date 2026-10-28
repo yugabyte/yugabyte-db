@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -135,6 +137,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 toOrderedSet(getNodesToBeRestarted().asPair());
             createRollingNodesUpgradeTaskFlow(
                 (nodes, processTypes) -> {
+                  Map<String, NodeDetails> nodesByName =
+                      nodes.stream().collect(Collectors.toMap(NodeDetails::getNodeName, n -> n));
                   for (ServerType processType : processTypes) {
                     if (processType.equals(ServerType.MASTER)
                         || processType.equals(ServerType.TSERVER)) {
@@ -142,6 +146,12 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                           nodes,
                           processType,
                           params -> {
+                            // The override params are built from the universe as it was before
+                            // this task, and the conf file is rewritten whole. Carry the API
+                            // settings applied above, or this restart reverts them (e.g.
+                            // ysql_enable_auth back to false).
+                            applyTargetApiSettings(
+                                params, nodesByName.get(params.nodeName), processType, universe);
                             params.gflags.put(
                                 GFlagsUtil.ENABLE_QOS, mtConfig.isEnableQos() ? "true" : "false");
                             if (mtConfig.getQosMaxDbCount() != null) {
@@ -175,6 +185,28 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           createManageLoadBalancerTasks(
               createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
         });
+  }
+
+  // universe must be the one passed to createTaskToConfigureApiThroughRollingGFlagsUpgrade, whose
+  // clusters carry the connection pooling gflags merged in there.
+  private void applyTargetApiSettings(
+      AnsibleConfigureServers.Params params,
+      NodeDetails node,
+      ServerType processType,
+      Universe universe) {
+    params.enableYSQL = taskParams().enableYSQL;
+    params.enableYSQLAuth = taskParams().enableYSQLAuth;
+    params.enableConnectionPooling = taskParams().enableConnectionPooling;
+    params.enableYCQL = taskParams().enableYCQL;
+    params.enableYCQLAuth = taskParams().enableYCQLAuth;
+    params.communicationPorts = taskParams().communicationPorts;
+    params.overrideNodePorts = true;
+    params.gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            processType,
+            universe.getUniverseDetails().getClusterByUuid(node.placementUuid),
+            universe.getUniverseDetails().clusters);
   }
 
   private void createTaskToConfigureApiThroughRollingGFlagsUpgrade(Universe universe) {
