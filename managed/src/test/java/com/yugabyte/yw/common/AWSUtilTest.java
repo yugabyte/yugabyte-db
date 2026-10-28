@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -809,6 +810,50 @@ public class AWSUtilTest extends FakeDBApplication {
                     s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
     assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
     assertTrue(e.getMessage().contains("check the host base or signing region"));
+  }
+
+  private static YbcBackupResponse.ResponseCloudStoreSpec successMarkerSpec(String cloudDir) {
+    YbcBackupResponse.ResponseCloudStoreSpec spec = new YbcBackupResponse.ResponseCloudStoreSpec();
+    spec.defaultLocation = new YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation();
+    spec.defaultLocation.bucket = "test-bucket";
+    spec.defaultLocation.cloudDir = cloudDir;
+    return spec;
+  }
+
+  @Test
+  public void testSuccessMarkerListingReportsAccessDenied() {
+    // The restore path's check: a HeadBucket 403 with no message becomes a clear 412.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(403).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(
+                    s3Data, successMarkerSpec("backup/univ-1")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertEquals(
+        "Cannot list objects in cloud location with bucket test-bucket and cloud directory"
+            + " backup/univ-1: access denied (HTTP 403); check the credentials and that they may"
+            + " list the bucket (s3:ListBucket on AWS S3)",
+        e.getMessage());
+  }
+
+  @Test
+  public void testSuccessMarkerListingPassesOnS3Failure() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(503).build());
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(
+                s3Data, successMarkerSpec("backup/univ-1")));
   }
 
   @Test
