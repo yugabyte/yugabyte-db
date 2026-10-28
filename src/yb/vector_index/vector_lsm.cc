@@ -71,6 +71,20 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
     "Pool is just used to avoid memory allocations and does not limit the total "
     "number of tasks.");
 
+DEFINE_RUNTIME_bool(vector_index_compaction_graph_merge, false,
+    "Build the vector index chunk produced by a compaction by merging the HNSW graphs of the "
+    "compacted chunks (HNSW-Merger), instead of inserting all their vectors into an empty graph. "
+    "Applies only to hnswlib vector indexes, when the output fits a single chunk.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_graph_merge_ef_percentage, 25,
+    "Percentage of ef_construction that gives the number of nearest vectors each vector of a "
+    "merged graph searches for in the graph it is merged into. The number is at least 2 * M. "
+    "See vector_index_compaction_graph_merge.");
+
+DEFINE_RUNTIME_uint64(vector_index_compaction_graph_merge_ef, 0,
+    "Number of nearest vectors each vector of a merged graph searches for in the graph it is "
+    "merged into. Overrides vector_index_compaction_graph_merge_ef_percentage when not 0.");
+
 DEFINE_RUNTIME_uint64(vector_index_compaction_always_include_size_threshold, 64_MB,
     "Always include chunks of smaller or equal size in a compaction by size ratio.");
 
@@ -2765,6 +2779,122 @@ void PopulateMergeTasks(
   }
 }
 
+// Runs batches of a parallel loop on a thread pool, one batch per task run. A task is enqueued
+// again while batches are left, so other tasks of the pool run between the batches.
+class ParallelBatches {
+ public:
+  // run_batch runs the next batch and returns false when no batches are left.
+  ParallelBatches(
+      rpc::ThreadPool& thread_pool, std::function<Result<bool>()> run_batch, size_t num_tasks)
+      : thread_pool_(thread_pool), run_batch_(std::move(run_batch)), latch_(num_tasks),
+        tasks_(num_tasks) {
+    for (auto& task : tasks_) {
+      task.batches = this;
+    }
+  }
+
+  // Runs all batches, calling wait_callback periodically while waiting. Returns the first failure.
+  Status Run(const std::function<void()>& wait_callback) {
+    for (auto& task : tasks_) {
+      // Done is called with an error when the task could not be enqueued.
+      thread_pool_.Enqueue(&task);
+    }
+    while (!latch_.WaitFor(MonoDelta::FromMilliseconds(200))) {
+      wait_callback();
+    }
+    std::lock_guard lock(mutex_);
+    return status_;
+  }
+
+ private:
+  struct Task : public rpc::ThreadPoolTask {
+    void Run() override {
+      auto result = batches->run_batch_();
+      more = result.ok() && *result;
+      status = result.ok() ? Status::OK() : result.status();
+    }
+
+    void Done(const Status& pool_status) override {
+      batches->TaskDone(*this, pool_status.ok() ? status : pool_status);
+    }
+
+    ParallelBatches* batches = nullptr;
+    bool more = false;
+    Status status;
+  };
+
+  void TaskDone(Task& task, const Status& status) {
+    {
+      std::lock_guard lock(mutex_);
+      if (!status.ok() && status_.ok()) {
+        status_ = status;
+      }
+      if (!status_.ok() || !task.more) {
+        // Under mutex_: Run takes mutex_ after the wait, so it cannot destroy the latch while
+        // CountDown still uses it.
+        latch_.CountDown();
+        return;
+      }
+    }
+    thread_pool_.Enqueue(&task);
+  }
+
+  rpc::ThreadPool& thread_pool_;
+  const std::function<Result<bool>()> run_batch_;
+  CountDownLatch latch_;
+  std::mutex mutex_;
+  Status status_;
+  std::vector<Task> tasks_;
+};
+
+// Iterates vectors of the index that have the specified numbers, in increasing order.
+// Could be used as merge source instead of MergingIterator.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class SelectedVectorsIterator {
+ public:
+  using ValueType = typename VectorIndexIf<Vector, DistanceResult>::IteratorValue;
+
+  SelectedVectorsIterator(
+      const VectorIndexIf<Vector, DistanceResult>& index, std::vector<uint32_t> selected)
+      : it_(index.begin()), selected_(std::move(selected)) {
+    DCHECK(std::ranges::is_sorted(selected_));
+  }
+
+  size_t size() const {
+    return selected_.size();
+  }
+
+  bool Valid() const {
+    return next_ < selected_.size();
+  }
+
+  bool Next() {
+    if (!Valid()) {
+      return false;
+    }
+    auto no = selected_[next_++];
+    it_ += no - it_no_;
+    it_no_ = no;
+    value_ = *it_;
+    return true;
+  }
+
+  ValueType& operator*() {
+    return *value_;
+  }
+
+  ValueType* operator->() {
+    return &*value_;
+  }
+
+ private:
+  typename VectorIndexIf<Vector, DistanceResult>::Iterator it_;
+  uint32_t it_no_ = 0;
+  std::vector<uint32_t> selected_;
+  size_t next_ = 0;
+  std::optional<ValueType> value_;
+};
+
 } // namespace
 
 // An iterator that merges multiple vector index iterators and filters out entries.
@@ -2925,6 +3055,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
   using VectorIndexPtr = typename LSM::VectorIndexPtr;
   using Iterator = typename LSM::MergingIterator;
   using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
+  using GraphReader = HnswGraphReaderIf<Vector>;
 
   Merger(LSM& lsm, MergeRegistry& merge_registry, PriorityThreadPoolSuspender* suspender)
       : lsm_(lsm), merge_registry_(merge_registry), suspender_(suspender) {
@@ -2937,9 +3068,6 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     const auto input_size = input_it.GetNumVectors();
     const auto num_vectors_per_chunk = max_vectors_per_output_chunk == 0 ?
         input_size : std::min(input_size, max_vectors_per_output_chunk);
-
-    auto do_merge = merge_registry_.MaxCapacity() == 0
-        ? &Merger::DoMerge : &Merger::DoMergeWithThreadPool;
 
     // While there's something to read. All the underlying calls must hold the invariant that
     // input iterator is already positioned to the next vector.
@@ -2954,7 +3082,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
       } else {
         merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
             num_vectors_per_chunk, rocksdb::Cache::ReservationMode::kAlways));
-        RETURN_NOT_OK(std::invoke(do_merge, this, input_it, num_vectors_per_chunk, merged_index));
+        RETURN_NOT_OK(RunMerge(input_it, num_vectors_per_chunk, merged_index));
 
         if (TEST_sleep_on_merged_chunk_populated) {
           SleepFor(TEST_sleep_on_merged_chunk_populated);
@@ -2974,16 +3102,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         // reservation for as long as the chunk lives.
         merged_index.reset();
       } else {
-        // Check shutting down in progress before saving new vector index on disk.
-        RETURN_NOT_OK(lsm_.RUNNING_STATUS());
-
-        // Save index to disk, the index may be updated to a different structure.
-        VectorIndexPtr new_index;
-        std::tie(merged_index_file, new_index) = VERIFY_RESULT(
-            lsm_.SaveIndexToFile(*merged_index, lsm_.NextSerialNo()));
-        if (new_index) {
-          merged_index = new_index;
-        }
+        merged_index_file = VERIFY_RESULT(SaveMergedIndex(merged_index));
       }
 
       if (merged_index_file || merged_chunks.empty() || input_it.FrontiersUpdated()) {
@@ -3001,13 +3120,213 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     return merged_chunks;
   }
 
+  // Merges the chunks into a single chunk using their HNSW graphs: copies the largest graph
+  // without filtered out vectors, then merges other such graphs into it, largest first
+  // (HNSW-Merger). Vectors of the remaining chunks are inserted as usual.
+  // Returns nullopt, without filtering any vector, when the chunks could not be merged this way.
+  Result<std::optional<ImmutableChunkPtrs>> MergeGraphs(
+      const ImmutableChunkPtrs& chunks, VectorLSMMergeFilter& filter,
+      size_t max_vectors_per_output_chunk) {
+    if (!lsm_.options_.vector_index_traits->BuildsFromHnswGraphs()) {
+      return std::nullopt;
+    }
+    std::vector<std::unique_ptr<GraphReader>> readers;
+    readers.reserve(chunks.size());
+    size_t input_size = 0;
+    bool has_graphs = false;
+    for (const auto& chunk : chunks) {
+      readers.push_back(chunk->index ? chunk->index->CreateHnswGraphReader() : nullptr);
+      has_graphs |= readers.back() != nullptr;
+      input_size += chunk->index ? chunk->index->Size() : 0;
+    }
+    if (!has_graphs ||
+        (max_vectors_per_output_chunk && input_size > max_vectors_per_output_chunk)) {
+      return std::nullopt;
+    }
+    auto merged_index = VERIFY_RESULT(lsm_.CreateVectorIndex(
+        input_size, rocksdb::Cache::ReservationMode::kAlways));
+    auto* builder = merged_index->HnswGraphBuilder();
+    RSTATUS_DCHECK(builder, IllegalState, "Vector index could not be built from HNSW graphs");
+
+    const auto start = MonoTime::Now();
+    std::vector<std::vector<uint32_t>> kept(chunks.size());
+    size_t num_kept = 0;
+    for (size_t i = 0; i != chunks.size(); ++i) {
+      kept[i] = VERIFY_RESULT(FilterChunk(*chunks[i], readers[i].get(), filter));
+      num_kept += kept[i].size();
+    }
+
+    storage::UserFrontiersPtr merged_frontiers;
+    for (const auto& chunk : chunks) {
+      DCHECK(chunk->user_frontiers);
+      storage::UpdateFrontiers(merged_frontiers, *chunk->user_frontiers);
+    }
+
+    VectorLSMFileMetaDataPtr merged_index_file;
+    if (num_kept == 0) {
+      // Keep the chunk to not lose the merged frontiers.
+      merged_index = nullptr;
+    } else {
+      // Graphs without filtered out vectors, largest first. Readers are reset once not needed,
+      // to release the blocks they pinned.
+      std::vector<size_t> graphs;
+      for (size_t i = 0; i != chunks.size(); ++i) {
+        if (readers[i] && !kept[i].empty() && kept[i].size() == readers[i]->Size()) {
+          graphs.push_back(i);
+        } else {
+          readers[i].reset();
+        }
+      }
+      std::ranges::stable_sort(graphs, std::ranges::greater(), [&kept](size_t i) {
+        return kept[i].size();
+      });
+
+      // TODO(vector_index): ef needed to match the recall of a rebuilt graph grows with the number
+      // and size of merged graphs (see adaptive lambda in HNSW-Merger), while larger ef slows down
+      // the merge and makes the graph denser. Determine the best way to calculate it.
+      const auto ef = FLAGS_vector_index_compaction_graph_merge_ef
+          ? FLAGS_vector_index_compaction_graph_merge_ef
+          : builder->MergeEf(FLAGS_vector_index_compaction_graph_merge_ef_percentage);
+      if (!graphs.empty()) {
+        auto checkpoint = [this] {
+          MaybeYield();
+          return lsm_.RUNNING_STATUS();
+        };
+        RETURN_NOT_OK(builder->CopyGraph(*readers[graphs.front()], checkpoint));
+        readers[graphs.front()].reset();
+        auto parallel_for = [this](size_t count, const std::function<Status(size_t)>& fn) {
+          return ParallelFor(count, fn);
+        };
+        for (auto it = graphs.begin() + 1; it != graphs.end(); ++it) {
+          RETURN_NOT_OK(builder->MergeGraph(*readers[*it], ef, parallel_for, checkpoint));
+          readers[*it].reset();
+        }
+        for (auto i : graphs) {
+          kept[i].clear();
+        }
+      }
+
+      size_t num_inserted = 0;
+      for (size_t i = 0; i != chunks.size(); ++i) {
+        if (kept[i].empty()) {
+          continue;
+        }
+        num_inserted += kept[i].size();
+        SelectedVectorsIterator<Vector, DistanceResult> source(
+            *chunks[i]->index, std::move(kept[i]));
+        RETURN_NOT_OK(RunMerge(source, source.size(), merged_index));
+      }
+
+      auto num_graphs = graphs.size();
+      LOG_WITH_PREFIX(INFO)
+          << "Graphs merge done [vectors: " << merged_index->Size() << ", graphs: " << num_graphs
+          << ", ef: " << ef << ", inserted without graph: " << num_inserted << ", time: "
+          << MonoTime::Now() - start << "]";
+      TEST_SYNC_POINT_CALLBACK("VectorLSM::MergeGraphs:Merged", &num_graphs);
+
+      if (TEST_sleep_on_merged_chunk_populated) {
+        SleepFor(TEST_sleep_on_merged_chunk_populated);
+      }
+
+      merged_index_file = VERIFY_RESULT(SaveMergedIndex(merged_index));
+    }
+
+    return ImmutableChunkPtrs{std::make_shared<ImmutableChunk>(
+        chunks.back()->order_no, std::move(merged_index_file), std::move(merged_index),
+        std::move(merged_frontiers), ImmutableChunkState::kOnDisk)};
+  }
+
  private:
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
   }
 
+  // Returns numbers of the chunk vectors kept by the filter.
+  Result<std::vector<uint32_t>> FilterChunk(
+      const ImmutableChunk& chunk, GraphReader* reader, VectorLSMMergeFilter& filter) {
+    std::vector<uint32_t> result;
+    if (!chunk.index) {
+      return result;
+    }
+    uint32_t vector = 0;
+    auto filter_vector = [this, &filter, &result, &vector](
+        VectorId vector_id, Slice payload) -> Status {
+      if (filter.Filter(vector_id, payload) == storage::FilterDecision::kKeep) {
+        result.push_back(vector);
+      }
+      if (++vector % 1024 == 0) {
+        MaybeYield();
+        return lsm_.RUNNING_STATUS();
+      }
+      return Status::OK();
+    };
+    if (reader) {
+      while (vector != reader->Size()) {
+        auto [vector_id, payload] = reader->GetVectorIdAndPayload(vector);
+        RETURN_NOT_OK(filter_vector(vector_id, payload));
+      }
+    } else {
+      for (const auto& entry : *chunk.index) {
+        RETURN_NOT_OK(filter_vector(entry.vector_id, entry.payload));
+      }
+    }
+    return result;
+  }
+
+  // Runs fn for numbers from 0 to count on the insert thread pool, in batches of
+  // vector_index_task_size, so inserts interleave with them. Returns the first failure.
+  Status ParallelFor(size_t count, const std::function<Status(size_t)>& fn) {
+    const size_t batch_size = FLAGS_vector_index_task_size;
+    std::atomic<size_t> next = 0;
+    auto run_batch = [this, count, batch_size, &fn, &next]() -> Result<bool> {
+      auto begin = next.fetch_add(batch_size, std::memory_order::relaxed);
+      if (begin >= count) {
+        return false;
+      }
+      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+      for (auto i = begin, end = std::min(begin + batch_size, count); i != end; ++i) {
+        RETURN_NOT_OK(fn(i));
+      }
+      return true;
+    };
+    auto& thread_pool = *lsm_.options_.insert_thread_pool;
+    const auto num_tasks = std::min({
+        ceil_div(count, batch_size), thread_pool.options().max_workers,
+        merge_registry_.MaxCapacity()});
+    if (num_tasks <= 1) {
+      while (VERIFY_RESULT(run_batch())) {
+        MaybeYield();
+      }
+      return Status::OK();
+    }
+    return ParallelBatches(thread_pool, run_batch, num_tasks).Run([this] { MaybeYield(); });
+  }
+
+  // Saves the merged index to a new chunk file. The index could be replaced with the saved one.
+  Result<VectorLSMFileMetaDataPtr> SaveMergedIndex(VectorIndexPtr& merged_index) {
+    // Check shutting down in progress before saving new vector index on disk.
+    RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+    auto [file, new_index] = VERIFY_RESULT(
+        lsm_.SaveIndexToFile(*merged_index, lsm_.NextSerialNo()));
+    if (new_index) {
+      merged_index = std::move(new_index);
+    }
+    return std::move(file);
+  }
+
+  // Source is MergingIterator or SelectedVectorsIterator.
+  template <class Source>
+  Status RunMerge(Source& source, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
+    if (merge_registry_.MaxCapacity() == 0) {
+      return DoMerge(source, num_vectors_to_merge, std::move(target_index));
+    }
+    return DoMergeWithThreadPool(source, num_vectors_to_merge, std::move(target_index));
+  }
+
+  template <class Source>
   Status DoMerge(
-      Iterator& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
+      Source& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
     // Let's be more conservative and don't check shutdown status on every inserted vector.
     const size_t min_iterations_to_check_shutdown =
         std::min<size_t>(2, 200000 / target_index->Dimensions());
@@ -3031,8 +3350,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     return Status::OK();
   }
 
+  template <class Source>
   Status DoMergeWithThreadPool(
-      Iterator& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
+      Source& source_iterator, size_t num_vectors_to_merge, VectorIndexPtr target_index) {
     size_t num_total_tasks = ceil_div<size_t>(num_vectors_to_merge, FLAGS_vector_index_task_size);
     const size_t num_vectors_per_task = ceil_div(num_vectors_to_merge, num_total_tasks);
 
@@ -3137,14 +3457,20 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
       IllegalState, "Vector merge filter factory must be specified");
   auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-  MergingIterator merge_iterator(input_chunks, *merge_filter);
-
   Merger merger(*this, *this->merge_registry_, suspender);
-  auto merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));
+  std::optional<ImmutableChunkPtrs> merged_chunks;
+  if (FLAGS_vector_index_compaction_graph_merge) {
+    merged_chunks = VERIFY_RESULT(merger.MergeGraphs(
+        input_chunks, *merge_filter, max_vectors_per_output_chunk));
+  }
+  if (!merged_chunks) {
+    MergingIterator merge_iterator(input_chunks, *merge_filter);
+    merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));
+  }
 
-  LOG_WITH_PREFIX(INFO) << "Compacted into " << merged_chunks.size() << " chunks";
+  LOG_WITH_PREFIX(INFO) << "Compacted into " << merged_chunks->size() << " chunks";
 
-  return merged_chunks;
+  return std::move(*merged_chunks);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

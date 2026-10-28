@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -43,6 +44,14 @@ class AbstractIterator {
  public:
   virtual ~AbstractIterator() = default;
   virtual void Next() = 0;
+
+  // Moves the iterator n positions forward. Implementations could do it faster than n Next calls.
+  virtual void Advance(size_t n) {
+    for (; n > 0; --n) {
+      Next();
+    }
+  }
+
   virtual ValueType Dereference() const = 0;
   virtual bool NotEquals(const AbstractIterator& other) const = 0;
 };
@@ -62,6 +71,11 @@ class PolymorphicIterator {
 
   PolymorphicIterator& operator++() {
     impl_->Next();
+    return *this;
+  }
+
+  PolymorphicIterator& operator+=(size_t n) {
+    impl_->Advance(n);
     return *this;
   }
 

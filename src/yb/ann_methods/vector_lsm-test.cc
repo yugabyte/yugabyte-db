@@ -45,6 +45,7 @@ using namespace yb::size_literals;
 
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
+DECLARE_bool(vector_index_compaction_graph_merge);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
 DECLARE_int32(vector_index_compaction_size_amp_max_percent);
@@ -968,6 +969,98 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionInnerProduct) {
 
 TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
   TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kCosine);
+}
+
+// Compaction merges graphs of chunks without filtered out vectors, and inserts kept vectors of
+// other chunks.
+TEST_P(VectorLSMTest, GraphMergeCompaction) {
+  constexpr size_t kDimensions = 16;
+  constexpr size_t kChunkSize = 500;
+  constexpr size_t kNumChunks = 4;
+  constexpr size_t kChunkWithFilteredVectors = 1;
+  constexpr size_t kNumQueries = 100;
+  constexpr size_t kNumResults = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_graph_merge) = true;
+  // Search the merged graph to check its quality.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+
+  size_t num_merged_graphs = 0;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::MergeGraphs:Merged", [&num_merged_graphs](void* arg) {
+    num_merged_graphs = *static_cast<size_t*>(arg);
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
+  InsertEntries kept_entries;
+  std::unordered_set<VectorId> filtered_ids;
+  for (size_t i = 0; i != kNumChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kChunkSize));
+    for (size_t j = 0; j != inserted_entries_.size(); ++j) {
+      if (i == kChunkWithFilteredVectors && j % 2) {
+        filtered_ids.insert(inserted_entries_[j].vector_id);
+      } else {
+        kept_entries.push_back(inserted_entries_[j]);
+      }
+    }
+  }
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+
+  auto filter = [&filtered_ids](VectorId vector_id, Slice payload) {
+    return filtered_ids.contains(vector_id) ? storage::FilterDecision::kDiscard
+                                            : storage::FilterDecision::kKeep;
+  };
+  SetMergeFilter(std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter)));
+
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(lsm.NumImmutableChunks(), 1);
+  // Only hnswlib chunks could be built from graphs.
+  ASSERT_EQ(
+      num_merged_graphs,
+      GetANNMethodKind(GetParam()) == ANNMethodKind::kHnswlib ? kNumChunks - 1 : 0);
+
+  std::unordered_map<VectorId, const FloatVectorLSM::InsertEntry*> expected_entries;
+  for (const auto& entry : kept_entries) {
+    expected_entries.emplace(entry.vector_id, &entry);
+  }
+  auto indexes = ASSERT_RESULT(lsm.ManifestIndexes());
+  ASSERT_EQ(indexes.size(), 1);
+  for (const auto& entry : *indexes.front()) {
+    auto it = expected_entries.find(entry.vector_id);
+    ASSERT_NE(it, expected_entries.end()) << entry.vector_id;
+    ASSERT_EQ(entry.vector, it->second->vector);
+    ASSERT_EQ(entry.payload, it->second->payload.AsSlice());
+    expected_entries.erase(it);
+  }
+  ASSERT_TRUE(expected_entries.empty()) << expected_entries.size() << " vectors are missing";
+
+  std::uniform_real_distribution<> distribution;
+  size_t num_found = 0;
+  for (size_t i = 0; i != kNumQueries; ++i) {
+    auto query = RandomFloatVector(kDimensions, distribution);
+    std::vector<std::pair<float, VectorId>> expected;
+    for (const auto& entry : kept_entries) {
+      expected.emplace_back(lsm.Distance(query, entry.vector), entry.vector_id);
+    }
+    std::ranges::partial_sort(expected, expected.begin() + kNumResults);
+    expected.resize(kNumResults);
+    auto results = ASSERT_RESULT(lsm.Search(
+        query, {.max_num_results = kNumResults, .ef = 64}));
+    for (const auto& result : results) {
+      num_found += std::ranges::count(
+          expected, result.vector_id, &std::pair<float, VectorId>::second);
+    }
+  }
+  const auto recall = 1.0 * num_found / (kNumQueries * kNumResults);
+  LOG(INFO) << "Recall@" << kNumResults << ": " << recall;
+  ASSERT_GE(recall, 0.9);
 }
 
 // The purpose of this test is to make sure compaction works fine if all chunks got

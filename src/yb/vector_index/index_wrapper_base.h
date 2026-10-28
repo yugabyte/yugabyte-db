@@ -231,15 +231,7 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
 
   Status DoInsert(VectorId vector_id, const Vector& v, Slice payload) {
     auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v));
-    if (payloads_) {
-      RSTATUS_DCHECK(
-          !payload.empty(), InvalidArgument,
-          "Vector $0 has no payload, while the chunk stores payloads", vector_id);
-      payloads_->Insert(slot, payload);
-    } else {
-      DCHECK(payload.empty());
-    }
-    return Status::OK();
+    return StorePayload(vector_id, slot, payload);
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
@@ -273,6 +265,18 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
   // Returns the payload map or nullptr when the chunk does not store payloads.
   const VectorPayloadMap* payloads() const {
     return payloads_ ? &*payloads_ : nullptr;
+  }
+
+  Status StorePayload(VectorId vector_id, size_t slot, Slice payload) {
+    if (payloads_) {
+      RSTATUS_DCHECK(
+          !payload.empty(), InvalidArgument,
+          "Vector $0 has no payload, while the chunk stores payloads", vector_id);
+      payloads_->Insert(slot, payload);
+    } else {
+      DCHECK(payload.empty());
+    }
+    return Status::OK();
   }
 
  private:

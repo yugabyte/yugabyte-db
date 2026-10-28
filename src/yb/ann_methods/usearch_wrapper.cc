@@ -109,6 +109,10 @@ class UsearchVectorIterator
     ++it_;
   }
 
+  void Advance(size_t n) override {
+    it_ += static_cast<std::ptrdiff_t>(n);
+  }
+
   bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
     const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
     if (!other_iterator) return true;

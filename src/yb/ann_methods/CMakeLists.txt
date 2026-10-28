@@ -26,6 +26,7 @@ ADD_YB_LIBRARY(ann_methods_test_proto
         NONLINK_DEPS ${ANN_METHODS_TEST_PROTO_TGTS})
 
 set(ANN_METHODS_SRCS
+    hnswlib_graph_merge.cc
     hnswlib_wrapper.cc
     index_memory_consumption.cc
     usearch_wrapper.cc
