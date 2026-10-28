@@ -218,7 +218,7 @@ function mapInstanceTags(
   if (!isCloudVendorCloudType(providerCode)) return undefined;
   return otherAdvancedSettings.instanceTags.reduce(
     (acc, tag) => {
-      if (tag.name && tag.value) acc[tag.name] = tag.value;
+      if (tag.name && tag.value) acc[tag.name.trim()] = tag.value.trim();
       return acc;
     },
     {} as Record<string, string>

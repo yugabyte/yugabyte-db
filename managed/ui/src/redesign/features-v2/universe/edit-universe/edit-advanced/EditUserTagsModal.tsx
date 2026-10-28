@@ -1,3 +1,5 @@
+import * as Yup from 'yup';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -11,6 +13,7 @@ import {
   transformInstanceTags,
   transformTagsArrayToObject
 } from '../../../../features/universe/universe-form/utils/helpers';
+import { userTagsSchema } from '../../create-universe/steps/advanced-settings/userTagsValidation';
 import { InstanceTag } from '../../create-universe/steps/advanced-settings/dtos';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
@@ -40,18 +43,16 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
   const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const userTags = transformInstanceTags(primaryCluster?.instance_tags || {});
-  const defaultValues = {
-    instanceTags:
-      userTags.length > 0
-        ? userTags
-        : [
-            { name: '', value: '' },
-            { name: '', value: '' }
-          ]
-  };
+  // Blank rows are validation errors, so start empty rather than with placeholder rows.
+  const defaultValues = { instanceTags: userTags };
+  const { t: tTags } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.otherAdvancedSettings'
+  });
 
   const methods = useForm<UserTagsFormProps>({
-    defaultValues
+    defaultValues,
+    resolver: yupResolver(Yup.object({ instanceTags: userTagsSchema(tTags) }) as any),
+    mode: 'onChange'
   });
 
   const { handleSubmit } = methods;
