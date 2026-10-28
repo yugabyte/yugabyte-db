@@ -296,6 +296,7 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
 
 Status PgTxnManager::RecreateTransaction() {
   VLOG_TXN_STATE(2);
+  tserver_release_pending_ = true;
   return RecreateTransaction(SavePriority::kTrue);
 }
 
@@ -470,6 +471,7 @@ Status PgTxnManager::CalculateIsolation(
 
 Status PgTxnManager::RestartTransaction() {
   need_restart_ = true;
+  tserver_release_pending_ = true;
   return Status::OK();
 }
 
@@ -926,6 +928,7 @@ Status PgTxnManager::SetupPerformOptions(
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
+  tserver_release_pending_ = false;
   options.set_isolation(isolation_level_);
   options.set_ddl_mode(IsDdlMode());
   options.set_ddl_use_regular_transaction_block(IsDdlModeWithRegularTransactionBlock());
@@ -1172,10 +1175,11 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
-  // A pending restart releases all of the session's fastpath locks when the tserver applies it, so
-  // locks taken here before that (e.g. re-acquired for a query layer retry) would be silently lost.
-  // The RPC path applies the restart before acquiring.
-  if (need_restart_) {
+  // A query layer retry restarts or replaces the txn locally; the tserver releases all of the
+  // session's fastpath locks when the next RPC tells it so. Locks taken here before that (the
+  // retry re-acquiring its locks) would be silently lost, while the lock RPC applies the release
+  // before acquiring.
+  if (tserver_release_pending_) {
     return false;
   }
 

@@ -41,6 +41,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -63,6 +64,7 @@ DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_double(TEST_inject_read_restart_with_probability);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
@@ -2259,42 +2261,113 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   }
 }
 
-// GH #35007: a REPEATABLE READ txn whose first statement is transparently restarted on a read
-// restart must still hold its table locks afterwards, so a conflicting DDL waits for it.
-TEST_F(PgObjectLocksFastpathTest, TableLocksSurviveReadRestartRetry) {
-  auto setup_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(setup_conn.Execute("INSERT INTO hot VALUES (1, 0)"));
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE gate (k INT PRIMARY KEY)"));
-  ASSERT_OK(setup_conn.Execute("INSERT INTO gate VALUES (1)"));
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v INT, s INT)"));
+// GH #35007: a REPEATABLE READ txn whose first statement is transparently retried must still hold
+// its table locks afterwards, so a conflicting DDL waits for it. The retry re-acquires the locks
+// before the tserver learns of the restart, and the tserver releases all of the session's locks
+// when it does.
+class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
+ protected:
+  void SetUp() override {
+    PgObjectLocksFastpathTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO hot VALUES (1, 0)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v INT)"));
+  }
 
-  auto writer = ASSERT_RESULT(Connect());
-  // QPM explains a newly seen plan at ExecutorEnd, which re-opens t2 with ACCESS SHARE after the
-  // retry and would block the DDL on its own, hiding a lost ROW EXCLUSIVE lock.
-  ASSERT_OK(writer.Execute("SET yb_pg_stat_plans_track = 'none'"));
-  auto updater = ASSERT_RESULT(Connect());
-  auto ddl_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
+  void DoTearDown() override {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    SyncPoint::GetInstance()->ClearTrace();
+    PgObjectLocksFastpathTest::DoTearDown();
+  }
+
+  Result<PGConn> ConnectWriter() {
+    auto conn = VERIFY_RESULT(Connect());
+    // QPM explains a newly seen plan at ExecutorEnd, which re-opens its tables with ACCESS SHARE
+    // after the retry and would block the DDL on its own, hiding a lost ROW EXCLUSIVE lock.
+    RETURN_NOT_OK(conn.Execute("SET yb_pg_stat_plans_track = 'none'"));
+    return conn;
+  }
+
+  void AssertDdlWaitsForWriter() {
+    auto ddl_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
+    ASSERT_NOK_STR_CONTAINS(
+        ddl_conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID"),
+        "statement timeout");
+  }
+};
+
+TEST_F(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  // A fan-out read runs at a read time picked by the client, so an injected restart reaches
+  // postgres instead of being retried inside DocDB.
+  ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
+  auto writer = ASSERT_RESULT(ConnectWriter());
+
+  std::atomic<int> restarts{0};
+  SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransaction", [&](void*) {
+    ++restarts;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+  ASSERT_OK(writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate"));
+  ASSERT_GE(restarts.load(), 1);
+
+  AssertDdlWaitsForWriter();
+  ASSERT_OK(writer.CommitTransaction());
+}
+
+class PgObjectLocksFailOnConflictRetryTest : public PgObjectLocksRetryTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgObjectLocksRetryTest::SetUp();
+  }
+};
+
+TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
+  auto blocker = ASSERT_RESULT(Connect());
+  ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
+
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
+
+  // The tserver replaces the writer's txn on the retry's first RPC. Hold it there until the
+  // blocker has committed, so that this first retry is the one that succeeds.
+  CountDownLatch replacing(1);
+  CountDownLatch blocker_committed(1);
+  std::atomic<bool> first_replace{true};
+  SyncPoint::GetInstance()->SetCallBack("PgClientSession::ReplaceTransaction", [&](void*) {
+    if (first_replace.exchange(false)) {
+      replacing.CountDown();
+      blocker_committed.Wait();
+    }
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
 
   ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   {
-    // Scanning gate picks the read time; hot is read only after the sleep, by which point the
-    // concurrent update below has committed inside the uncertainty window -> read restart.
     std::jthread t([&] {
-      std::this_thread::sleep_for(300ms);
-      ASSERT_OK(updater.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
+      ASSERT_OK(writer.Execute(
+          "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
+          "INSERT INTO t2 SELECT 1, v FROM u"));
     });
-    ASSERT_OK(writer.Execute(
-        "INSERT INTO t2 SELECT 1, -1, (SELECT v FROM hot h WHERE h.k = g.k) FROM gate g "
-        "WHERE pg_sleep(1 + g.k * 0) IS NOT NULL"));
+    auto release_tserver = ScopeExit([&] { blocker_committed.CountDown(); });
+    ASSERT_TRUE(replacing.WaitFor(30s * kTimeMultiplier));
+    ASSERT_OK(blocker.CommitTransaction());
   }
-  ASSERT_NOK_STR_CONTAINS(
-      ddl_conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID"),
-      "statement timeout");
+
+  AssertDdlWaitsForWriter();
   ASSERT_OK(writer.CommitTransaction());
-  // s == 1 means the statement read hot after the update, i.e. it was retried.
-  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT s FROM t2 WHERE id = 1")), 1);
+  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT v FROM t2 WHERE id = 1")), 2);
 }
 
 TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {

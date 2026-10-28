@@ -4107,6 +4107,7 @@ class PgClientSession::Impl {
       if (options.use_existing_priority()) {
         saved_priority_ = txn->GetPriority();
       }
+      TEST_SYNC_POINT("PgClientSession::ReplaceTransaction");
       RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kSessionKind, deadline));
       txn->Abort();
       ClearTransaction(*session);
@@ -4263,6 +4264,7 @@ class PgClientSession::Impl {
   }
 
   Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
+    TEST_SYNC_POINT("PgClientSession::RestartTransaction");
     auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
