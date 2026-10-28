@@ -731,16 +731,26 @@ public class AWSUtilTest extends FakeDBApplication {
 
   @Test
   public void testBucketRegionWarmUpReportsRefusalForNonFederatedConfig() {
-    // YB-Controller backups of this config need s3:GetBucketLocation, so saving it must fail.
+    // YB-Controller backups of this config need s3:GetBucketLocation, so saving it must fail, with
+    // a reason that names the call: S3's own message for it is a bare "Access Denied".
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";
     when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
-        .thenThrow(S3Exception.builder().statusCode(403).message("403").build());
-    assertThrows(
-        S3Exception.class,
-        () ->
-            mockAWSUtil.warmUpBucketRegion(
-                mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+        .thenThrow(
+            S3Exception.builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("Access Denied").build())
+                .build());
+    S3Exception e =
+        assertThrows(
+            S3Exception.class,
+            () ->
+                mockAWSUtil.warmUpBucketRegion(
+                    mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+    assertEquals(403, e.statusCode());
+    assertEquals(
+        "s3:GetBucketLocation on bucket test-bucket: Access Denied",
+        e.awsErrorDetails().errorMessage());
   }
 
   @Test

@@ -89,6 +89,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -1126,13 +1127,30 @@ public class AWSUtil implements CloudUtil {
     if (isCrossCloudFederationConfig(s3Data)) {
       return;
     }
+    String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
+    if (StringUtils.isBlank(bucket)) {
+      return;
+    }
     try {
-      String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
-      if (StringUtils.isNotBlank(bucket)) {
-        getBucketRegion(bucket, client);
-      }
+      getBucketRegion(bucket, client);
     } catch (SdkClientException e) {
       log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
+    } catch (S3Exception e) {
+      // S3's message for this call, e.g. "Access Denied", names neither the action nor the bucket.
+      AwsErrorDetails details = e.awsErrorDetails();
+      String reason =
+          details != null && StringUtils.isNotBlank(details.errorMessage())
+              ? details.errorMessage()
+              : "HTTP " + e.statusCode();
+      String named = String.format("s3:GetBucketLocation on bucket %s: %s", bucket, reason);
+      throw (S3Exception)
+          e.toBuilder()
+              .message(named)
+              .awsErrorDetails(
+                  (details != null ? details.toBuilder() : AwsErrorDetails.builder())
+                      .errorMessage(named)
+                      .build())
+              .build();
     }
   }
 
