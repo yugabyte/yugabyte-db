@@ -9,10 +9,8 @@ import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
-import {
-  transformInstanceTags,
-  transformTagsArrayToObject
-} from '../../../../features/universe/universe-form/utils/helpers';
+import { transformInstanceTags } from '../../../../features/universe/universe-form/utils/helpers';
+import { instanceTagsToObject } from '../../create-universe/utils/instanceTags';
 import { userTagsSchema } from '../../create-universe/steps/advanced-settings/userTagsValidation';
 import { InstanceTag } from '../../create-universe/steps/advanced-settings/dtos';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -71,7 +69,7 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
           clusters: [
             {
               uuid: primaryCluster.uuid,
-              instance_tags: transformTagsArrayToObject(values?.instanceTags)
+              instance_tags: instanceTagsToObject(values?.instanceTags)
             }
           ]
         }

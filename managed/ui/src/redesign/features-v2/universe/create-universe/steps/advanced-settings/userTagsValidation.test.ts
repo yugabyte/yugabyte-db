@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Yup from 'yup';
 import { TFunction } from 'i18next';
 import { userTagsSchema } from './userTagsValidation';
+import { instanceTagsToObject } from '../../utils/instanceTags';
 
 const t = ((key: string) => key) as unknown as TFunction;
 
@@ -51,5 +52,11 @@ describe('userTagsSchema', () => {
         { name: ' a ', value: '2' }
       ])
     ).toEqual(['instanceTags.1.name:userTags.tagNameDuplicate']);
+  });
+});
+
+describe('instanceTagsToObject', () => {
+  it('trims names and values so the sent key matches the validated one', () => {
+    expect(instanceTagsToObject([{ name: ' env ', value: ' dev ' }])).toEqual({ env: 'dev' });
   });
 });
