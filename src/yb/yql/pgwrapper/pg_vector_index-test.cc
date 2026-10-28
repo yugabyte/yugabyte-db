@@ -2238,6 +2238,8 @@ class PgVectorIndexColocationOnlyTest
   }
 
   Status CloneSourceDb() {
+    // Cloning a database is off by default on this branch.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     client::SnapshotTestUtil snapshot_util;
     snapshot_util.SetProxy(&client_->proxy_cache());
     snapshot_util.SetCluster(cluster_.get());
@@ -2909,7 +2911,6 @@ TEST_P(PgVectorIndexColocationOnlyTest, SnapshotScheduleRestoreBeforeVectorColum
 TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
 
   constexpr size_t kNumRows = 8;
 
