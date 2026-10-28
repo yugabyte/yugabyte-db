@@ -5704,6 +5704,15 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 	if (useful_pathkeys != NIL)
 		useful_pathkeys = yb_truncate_embedded_index_pathkeys(root, rel, index,
 															  useful_pathkeys);
+
+	/*
+	 * The truncation can cut into the pathkeys that span the distinct prefix.
+	 * Then mark the prefix as not spanned, as build_index_pathkeys does, so
+	 * that yb_create_distinct_index_path builds no Unique node on these
+	 * pathkeys.
+	 */
+	if (*yb_distinct_nkeys > list_length(useful_pathkeys))
+		*yb_distinct_nkeys = -1;
 	*yb_merge_scan_stream_cols =
 		yb_finalize_merge_scan_stream_cols(index, rel->relids,
 										   *yb_merge_scan_stream_cols,

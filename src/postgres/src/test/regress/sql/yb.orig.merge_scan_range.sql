@@ -656,6 +656,30 @@ ANALYZE r5n;
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 
 --
+-- Expression middle secondary index
+--
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4)
+SPLIT AT VALUES (
+    (1),
+    (2),
+    (2, 2),
+    (2, 2, 2),
+    (2, 2, 2, 2),
+    (3));
+ANALYZE r5n;
+
+-- DISTINCT
+-- TODO(#36013): merge scan errors.
+-- With larger response pages, merge scan is the cheaper plan for this query.
+SET yb_fetch_row_limit = 1024;
+\set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
+\i :run_query
+SET yb_fetch_row_limit = 16;
+
+-- (Drop this index)
+DROP INDEX r5n_r2_r3_expr_r5_r4_idx;
+
+--
 -- Expression suffix secondary index
 --
 CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (-r3), (-r4))
