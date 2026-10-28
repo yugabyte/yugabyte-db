@@ -2447,12 +2447,14 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
   // Kill the leader right before the pg_upgrade binary runs, with the new version postgres up.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "true"));
   ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+  // The RPC can fail before the SIGKILLed process is reaped; Restart() requires it to be gone.
+  ASSERT_OK(WaitFor(
+      [leader]() -> Result<bool> { return !leader->IsProcessAlive(); }, 30s,
+      "yb-master to be killed before pg_upgrade"));
   ASSERT_TRUE(Env::Default()->DirExists(socket_dir))
       << "Killed master did not leave its socket directory behind: " << socket_dir;
 
   // Only the restarted master can remove the directory.
-  // The RPC can fail before the SIGKILLed process is reaped, so Restart() alone may see it alive.
-  leader->Shutdown();
   ASSERT_OK(leader->Restart());
   ASSERT_FALSE(Env::Default()->DirExists(socket_dir))
       << "Stale socket directory was not cleaned up: " << socket_dir;
