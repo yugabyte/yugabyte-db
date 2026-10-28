@@ -373,6 +373,19 @@ TEST_F(PgBackendsTest, MultipleWaiters) {
   }
 }
 
+// With no tserver holding a live lease, there are no backends to wait on.
+TEST_F(PgBackendsTest, NoLeasedTservers) {
+  ASSERT_OK(BumpCatalogVersion(1));
+  const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
+  conn_.reset();
+  cluster_->tserver_daemons()[0]->Shutdown();
+
+  // Wait for the master's lease cleanup poller to mark the lease expired.
+  SleepFor(MonoDelta::FromSeconds(kYsqlLeaseSec + 10));
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(5))));
+}
+
 class PgBackendsTestConnLimit : public PgBackendsTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
