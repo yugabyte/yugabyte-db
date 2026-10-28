@@ -18,8 +18,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -31,11 +34,17 @@ import org.apache.commons.collections4.CollectionUtils;
  * - removing exactly the pods the edit added (plus PVC/namespace cleanup for any net-new AZ) - and
  * restores {@code universe_details_json} from {@code state_transition_details}.
  *
- * <p>K8s counterpart of {@link RollbackEditUniverse}. The K8s path is strictly simpler than the VM
- * one: there are no cloud instance tags, capacity reservations, master {@code server_blacklist}, or
- * shell-configured masters to reconcile - pod removal is placement-driven, and tserver blacklist /
- * data migration only run <em>after</em> the checkpoint (unsafe window), so a safe-window rollback
- * never has any to clear.
+ * <p>K8s counterpart of {@link RollbackEditUniverse}. The K8s path is simpler than the VM one:
+ * there are no cloud instance tags, capacity reservations, or shell-configured masters to reconcile
+ * - pod removal is placement-driven. Unlike the VM edit, the K8s edit does not blacklist new
+ * tservers before starting them, so in an existing AZ the load balancer can already have moved
+ * data onto them within the safe window. The rollback therefore drains them (blacklist, wait for
+ * data move, safe-to-delete check) before removing them, and clears their blacklist entries after,
+ * since later edits reuse the pod names. Like the edit's own removal path, the drain needs the
+ * cluster's surviving tservers to be up, so the rollback first waits for them with the usual
+ * bounded timeout. If one is down, the rollback fails there, before that cluster's tservers are
+ * blacklisted, and can be retried once it is back. Clusters are rolled back one after the other,
+ * so a failure in the read replica comes after the primary was already rolled back.
  *
  * <p>Primary {@code dedicatedNodes} flips are refused via {@link
  * StateTransitionDetails#requireRollbackable()}.
@@ -219,6 +228,36 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
     KubernetesPlacement preEditPlacement = new KubernetesPlacement(beforePI, isReadOnlyCluster);
     KubernetesPlacement targetPlacement = new KubernetesPlacement(targetPI, isReadOnlyCluster);
 
+    // The tservers the failed edit added, as recorded by its POD_INFO. Move their data off first,
+    // as the edit's own removal path does.
+    Set<NodeDetails> addedTservers =
+        getPodsToRemove(
+                preEditPlacement,
+                targetPlacement,
+                ServerType.TSERVER,
+                universe,
+                isMultiAz,
+                isReadOnlyCluster)
+            .values()
+            .stream()
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
+    if (!addedTservers.isEmpty()) {
+      // The data move needs the surviving tservers. If one is down it may never finish, so fail
+      // here, with a bounded wait and before this cluster's tservers are blacklisted, rather than
+      // hang in WaitForDataMove. The rollback can be retried once they are back.
+      Set<NodeDetails> survivingTservers =
+          universe.getNodesInCluster(targetCluster.uuid).stream()
+              .filter(node -> node.isTserver && !addedTservers.contains(node))
+              .collect(Collectors.toSet());
+      createWaitForServersTasks(survivingTservers, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      createModifyBlackListTask(addedTservers, null /* removeNodes */, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      createCheckNodeSafeToDeleteTasks(universe, addedTservers);
+    }
+
     deletePodsTask(
         universe.getName(),
         targetPlacement /* currPlacement = failed target */,
@@ -230,6 +269,11 @@ public class RollbackEditKubernetesUniverse extends KubernetesTaskBase {
         isReadOnlyCluster,
         taskParams().useNewHelmNamingStyle,
         universe.isYbcEnabled());
+
+    if (!addedTservers.isEmpty()) {
+      // Clear the entries so a later edit can reuse these pod names.
+      createClearTserverBlacklistTasks(universe, addedTservers);
+    }
 
     // Resync YBA's view of the surviving pods.
     createSingleKubernetesExecutorTask(
