@@ -114,7 +114,7 @@ static void RunYsck(vector<string>* error_messages) {
   shared_ptr<Ysck> ysck(new Ysck(cluster));
 
   // This is required for everything below.
-  PUSH_PREPEND_NOT_OK(ysck->CheckMasterRunning(), error_messages,
+  PUSH_PREPEND_NOT_OK(AddClientCertificateHint(ysck->CheckMasterRunning()), error_messages,
                       "Master aliveness check error");
   if (!error_messages->empty()) return;
 

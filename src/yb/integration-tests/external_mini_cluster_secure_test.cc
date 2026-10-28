@@ -144,6 +144,38 @@ class ExternalMiniClusterSecureTest :
     return FLAGS_certs_dir;
   }
 
+  // Writes the TLS flags of this cluster's server.conf, for tools to read with --flagfile.
+  Result<std::string> WriteServerFlagfile(const std::string& cert_node_filename) {
+    auto content = Format(
+        "--certs_dir=$0\n--use_node_to_node_encryption=true\n--allow_insecure_connections=false\n"
+        "--node_to_node_encryption_use_client_certificates=$1\n",
+        FLAGS_certs_dir, FLAGS_node_to_node_encryption_use_client_certificates);
+    if (!cert_node_filename.empty()) {
+      content += Format("--cert_node_filename=$0\n", cert_node_filename);
+    }
+    auto path = JoinPathSegments(GetTestDataDirectory(), "server.conf");
+    RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, path));
+    return path;
+  }
+
+  std::vector<std::vector<std::string>> ToolCommands(const std::vector<std::string>& tls_args) {
+    std::vector<std::vector<std::string>> commands = {
+        ToStringVector(
+            GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
+            "--timeout_ms", "5000", "list_tables"),
+        ToStringVector(
+            GetToolPath("yb-ts-cli"), "--server_address",
+            cluster_->tablet_server(0)->bound_rpc_addr(), "--timeout_ms", "5000", "list_tablets"),
+        ToStringVector(
+            GetToolPath("yb-ysck"), "--master_address",
+            cluster_->GetLeaderMaster()->bound_rpc_addr(), "--timeout_ms", "5000"),
+    };
+    for (auto& command : commands) {
+      command.insert(command.end(), tls_args.begin(), tls_args.end());
+    }
+    return commands;
+  }
+
 
   Result<CassandraSession> EstablishCqlSession(std::initializer_list<std::string> ca_cert_files) {
     std::vector<std::string> hosts;
@@ -228,44 +260,12 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
     opts.enable_ysql = true;
     return opts;
   }
-
-  // Writes the TLS flags of a server.conf that requires client certificates, for tools to read
-  // with --flagfile.
-  Result<std::string> WriteServerFlagfile(const std::string& cert_node_filename) {
-    auto content = Format(
-        "--certs_dir=$0\n--use_node_to_node_encryption=true\n--allow_insecure_connections=false\n"
-        "--node_to_node_encryption_use_client_certificates=true\n", FLAGS_certs_dir);
-    if (!cert_node_filename.empty()) {
-      content += Format("--cert_node_filename=$0\n", cert_node_filename);
-    }
-    auto path = JoinPathSegments(GetTestDataDirectory(), "server.conf");
-    RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, path));
-    return path;
-  }
-
-  std::vector<std::vector<std::string>> ToolCommands(const std::vector<std::string>& tls_args) {
-    std::vector<std::vector<std::string>> commands = {
-        ToStringVector(
-            GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
-            "--timeout_ms", "5000", "list_tables"),
-        ToStringVector(
-            GetToolPath("yb-ts-cli"), "--server_address",
-            cluster_->tablet_server(0)->bound_rpc_addr(), "list_tablets"),
-        ToStringVector(
-            GetToolPath("yb-ysck"), "--master_address",
-            cluster_->GetLeaderMaster()->bound_rpc_addr()),
-    };
-    for (auto& command : commands) {
-      command.insert(command.end(), tls_args.begin(), tls_args.end());
-    }
-    return commands;
-  }
 };
 
 TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithClientCertsTest) {
   for (const auto& command : ToolCommands(
            {"--certs_dir_name", ToolCertDirectory(), "--client_node_name=127.0.0.100"})) {
-    LOG(INFO) << "Running " << ToString(command);
+    LOG(INFO) << "Running " << AsString(command);
     ASSERT_OK(Subprocess::Call(command));
   }
 }
@@ -276,22 +276,59 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbToolsWithServerFlagfile,
           ExternalMiniClusterSecureWithClientCertsTest) {
   auto flagfile = ASSERT_RESULT(WriteServerFlagfile("127.0.0.100"));
   for (const auto& command : ToolCommands({"--flagfile", flagfile})) {
-    LOG(INFO) << "Running " << ToString(command);
+    LOG(INFO) << "Running " << AsString(command);
     ASSERT_OK(Subprocess::Call(command));
   }
 }
 
-// When the cluster requires client certificates and none is named, the tools fail right away with
-// an error naming --client_node_name instead of timing out.
+// A server.conf that doesn't require client certificates doesn't make the tools read the node's
+// certificate and key, so they work for anyone who can read ca.crt.
+TEST_F(ExternalMiniClusterSecureTest, YbToolsWithServerFlagfileWithoutClientCerts) {
+  auto flagfile = ASSERT_RESULT(WriteServerFlagfile("no-such-node"));
+  for (const auto& command : ToolCommands({"--flagfile", flagfile})) {
+    LOG(INFO) << "Running " << AsString(command);
+    ASSERT_OK(Subprocess::Call(command));
+  }
+}
+
+// When a server.conf says the cluster requires client certificates and none is named, the tools
+// fail right away with an error naming --client_node_name instead of timing out.
+// --cert_node_filename names a certificate in the server.conf's --certs_dir, so it is not used
+// with an explicit --certs_dir_name.
 TEST_F_EX(ExternalMiniClusterSecureTest, YbToolsWithoutClientNodeName,
           ExternalMiniClusterSecureWithClientCertsTest) {
-  auto flagfile = ASSERT_RESULT(WriteServerFlagfile(/* cert_node_filename= */ ""));
-  for (const auto& command : ToolCommands({"--flagfile", flagfile})) {
-    LOG(INFO) << "Running " << ToString(command);
+  for (const auto& [cert_node_filename, extra_args] :
+       std::vector<std::pair<std::string, std::vector<std::string>>>{
+           {"", {}},
+           {"127.0.0.100", {"--certs_dir_name", ToolCertDirectory()}}}) {
+    std::vector<std::string> tls_args{"--flagfile", ASSERT_RESULT(WriteServerFlagfile(
+        cert_node_filename))};
+    tls_args.insert(tls_args.end(), extra_args.begin(), extra_args.end());
+    for (const auto& command : ToolCommands(tls_args)) {
+      LOG(INFO) << "Running " << AsString(command);
+      std::string output, error;
+      ASSERT_NOK(Subprocess::Call(command, &output, &error));
+      LOG(INFO) << "stdout: " << output << ", stderr: " << error;
+      ASSERT_STR_CONTAINS(error, "no client certificate was specified. Pass --client_node_name");
+    }
+  }
+}
+
+// With only --certs_dir_name the tools can't tell that the cluster requires client certificates,
+// so the server rejects the handshake. The connection error then names --client_node_name.
+TEST_F_EX(ExternalMiniClusterSecureTest, YbToolsWithoutClientCertificate,
+          ExternalMiniClusterSecureWithClientCertsTest) {
+  for (const auto& command : ToolCommands({"--certs_dir_name", ToolCertDirectory()})) {
+    LOG(INFO) << "Running " << AsString(command);
     std::string output, error;
     ASSERT_NOK(Subprocess::Call(command, &output, &error));
     LOG(INFO) << "stdout: " << output << ", stderr: " << error;
-    ASSERT_STR_CONTAINS(error, "no client certificate was specified. Pass --client_node_name");
+    // yb-admin prints its own hint for every connection failure.
+    ASSERT_STR_CONTAINS(
+        error, command[0] == GetToolPath("yb-admin")
+            ? "or --client_node_name for a cluster that requires client certificates"
+            : "No client certificate was presented. If the cluster runs with "
+              "--node_to_node_encryption_use_client_certificates, pass --client_node_name");
   }
 }
 
