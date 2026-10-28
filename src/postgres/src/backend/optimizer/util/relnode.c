@@ -2072,7 +2072,9 @@ get_appendrel_parampathinfo(RelOptInfo *appendrel, Relids required_outer)
 	Assert(!bms_overlap(appendrel->relids, required_outer));
 
 	/* If we already have a PPI for this parameterization, just return it */
-	if ((ppi = find_param_path_info(appendrel, required_outer)))
+	/* YB: an unbatched one; create_append_path can add batched ones */
+	if ((ppi = yb_find_batched_param_path_info(appendrel, required_outer,
+											   NULL)))
 		return ppi;
 
 	/* Else build the ParamPathInfo */
