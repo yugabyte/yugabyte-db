@@ -284,6 +284,11 @@ class MultiLevelIndexBuilder : public IndexBuilder {
   // Size of index blocks at the current level.
   size_t current_level_size_ = 0;
 
+  // Data blocks in the file through the last entry added at this level. With
+  // write_cumulative_index_entry_counts off, levels above the bottom count their own entries
+  // instead.
+  uint64_t cumulative_entry_count_ = 0;
+
   struct IndexBlockInfo {
     // Whether the index block is ready for processing, other fields are only correct when
     // is_ready is true.
@@ -295,6 +300,9 @@ class MultiLevelIndexBuilder : public IndexBuilder {
     // First key for the next index block at the same level (only correct if has_next_block is
     // true).
     std::string next_block_first_key;
+    // Data blocks in the file through the end of this index block. Same caveat as
+    // cumulative_entry_count_.
+    uint64_t cumulative_entry_count = 0;
 
     bool IsReadyAndLast() const { return is_ready && !has_next_block; }
   };
