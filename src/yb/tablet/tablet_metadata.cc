@@ -744,8 +744,8 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         RETURN_NOT_OK(RestoreVectorIndexOptions(it->second.get(), snapshot_table));
       }
       // A local vector index with no snapshot entry, e.g. one created after the snapshot and kept
-      // by an in-place restore, gets no restored storage. It reopens empty and is backfilled after
-      // the restore.
+      // by an in-place restore, gets no restored storage. If it was open, the restore wiped its
+      // storage, so it reopens empty and is backfilled after the restore.
     }
     return Status::OK();
   }
