@@ -145,3 +145,27 @@ describe('getCreateEITPayload (kubernetes)', () => {
     expect(payload.client_root_ca).toBe('');
   });
 });
+
+describe('mapCreateUniversePayload proxy config', () => {
+  const getProxyConfig = (proxySettings: Record<string, unknown>) =>
+    mapCreateUniversePayload({
+      ...buildFormValues(CloudType.aws, {}),
+      proxySettings
+    } as unknown as createUniverseFormProps).spec.clusters[0].networking_spec?.proxy_config;
+
+  const base = { enableProxyServer: true, byPassProxyListValues: ['a.com'] };
+
+  it('omits no_proxy_list when bypass is unchecked', () => {
+    expect(getProxyConfig({ ...base, byPassProxyList: false })).not.toHaveProperty('no_proxy_list');
+  });
+
+  it('sends no_proxy_list when bypass is checked', () => {
+    expect(getProxyConfig({ ...base, byPassProxyList: true })?.no_proxy_list).toEqual(['a.com']);
+  });
+
+  it('omits proxy_config when the proxy is disabled', () => {
+    expect(getProxyConfig({ ...base, enableProxyServer: false, byPassProxyList: true })).toBe(
+      undefined
+    );
+  });
+});

@@ -244,7 +244,9 @@ function mapClusterNetworkingSpec(
             https_proxy: proxySettings.secureWebProxy
               ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
               : '',
-            no_proxy_list: proxySettings.byPassProxyListValues ?? []
+            ...(proxySettings.byPassProxyList
+              ? { no_proxy_list: proxySettings.byPassProxyListValues ?? [] }
+              : {})
           }
         }
       : {})

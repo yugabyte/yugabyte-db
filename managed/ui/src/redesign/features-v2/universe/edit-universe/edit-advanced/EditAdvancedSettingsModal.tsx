@@ -69,9 +69,10 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
                         https_proxy: !!values?.secureWebProxy
                           ? `${values?.secureWebProxyServer}:${values?.secureWebProxyPort}`
                           : '',
-                        ...(!!values?.byPassProxyList
-                          ? { no_proxy_list: values?.byPassProxyListValues ?? [] }
-                          : {})
+                        // Always sent so that turning the toggle off clears a stored list.
+                        no_proxy_list: values?.byPassProxyList
+                          ? (values?.byPassProxyListValues ?? [])
+                          : []
                       }
                     }
                   : {})
