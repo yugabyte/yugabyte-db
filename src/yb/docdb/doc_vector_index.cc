@@ -285,7 +285,7 @@ EncodedDistance EncodeDistance(float distance) {
 }
 
 // Whether the row the payload points to is within the tablet key bounds.
-Result<bool> PayloadWithinKeyBounds(const KeyBounds& key_bounds, Slice payload) {
+Result<bool> IsPayloadWithinKeyBounds(const KeyBounds& key_bounds, Slice payload) {
   if (!key_bounds.IsInitialized()) {
     return true;
   }
@@ -317,7 +317,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
       // The index stores payloads, so it has no reverse mapping entries at all and compaction
       // cannot tell whether the row the payload points to still exists.
       // Vectors of the sibling tablet left by a split are dropped by the key bounds.
-      auto within_bounds = PayloadWithinKeyBounds(key_bounds_, payload);
+      auto within_bounds = IsPayloadWithinKeyBounds(key_bounds_, payload);
       if (!within_bounds.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Failed to decode payload of " << vector_id << ": " << within_bounds.status();
@@ -499,20 +499,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
-    auto search_options = options;
-    const auto& key_bounds = context_->key_bounds();
-    if (StoresPayload() && key_bounds.IsInitialized()) {
-      // Chunks inherited from the split parent keep the sibling tablet vectors until compaction.
-      // Skip them, so they do not displace the vectors of this tablet from the result.
-      search_options.filter = [&key_bounds, &filter = options.filter](
-          const vector_index::VectorId& vector_id, Slice payload) {
-        // A payload which fails to decode is reported when its ybctid is resolved below.
-        auto within_bounds = PayloadWithinKeyBounds(key_bounds, payload);
-        return (!within_bounds.ok() || *within_bounds) && filter(vector_id, payload);
-      };
-    }
-    auto entries = VERIFY_RESULT(lsm_.Search(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), search_options));
+    auto entries = VERIFY_RESULT(SearchWithinKeyBounds(
+        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
@@ -676,6 +664,25 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
+  }
+
+  Result<typename LSM::SearchResults> SearchWithinKeyBounds(
+      const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    const auto& key_bounds = context_->key_bounds();
+    if (!StoresPayload() || !key_bounds.IsInitialized()) {
+      return lsm_.Search(query_vector, options);
+    }
+    // Chunks inherited from the split parent keep the sibling tablet vectors until compaction.
+    // Skip them, so they do not displace the vectors of this tablet from the result.
+    auto search_options = options;
+    search_options.filter = [&key_bounds, &filter = options.filter](
+        const vector_index::VectorId& vector_id, Slice payload) {
+      // A payload which fails to decode is passed through: the caller's filter
+      // or the ybctid resolution in Search reports it if it reaches either.
+      auto within_bounds = IsPayloadWithinKeyBounds(key_bounds, payload);
+      return (!within_bounds.ok() || *within_bounds) && filter(vector_id, payload);
+    };
+    return lsm_.Search(query_vector, search_options);
   }
 
   // Detects whether a new split occurred. If so, records the new split generation and
