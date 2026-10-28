@@ -43,6 +43,8 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlQuery;
+import io.ebean.Transaction;
+import io.ebean.TransactionCallbackAdapter;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
@@ -639,6 +641,18 @@ public class Universe extends Model {
     LOG.info("Deleting universe " + universe.getName() + ":" + universeUUID);
     universe.delete();
     CertManagerClientCertSync.deleteClientCert(universeUUID);
+    // Inside a transaction (detach), other threads still see the universe until commit, so a
+    // concurrent client cert refresh can write it back; remove it again once the delete commits.
+    Transaction txn = DB.currentTransaction();
+    if (txn != null && txn.isActive()) {
+      txn.register(
+          new TransactionCallbackAdapter() {
+            @Override
+            public void postCommit() {
+              CertManagerClientCertSync.deleteClientCert(universeUUID);
+            }
+          });
+    }
   }
 
   /**

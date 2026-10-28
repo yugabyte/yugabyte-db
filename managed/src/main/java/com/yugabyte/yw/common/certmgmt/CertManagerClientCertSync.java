@@ -246,7 +246,14 @@ public class CertManagerClientCertSync {
    * and removes it once the universe no longer requires one. Never throws, so callers on a
    * background or task path are not failed by an unreachable cluster.
    */
-  public void refreshIfNeeded(Universe universe) {
+  public void refreshIfNeeded(Universe snapshot) {
+    // A queued health check carries the universe as it was when scheduled; it may since have been
+    // deleted or detached, with its Secret still readable.
+    Optional<Universe> current = Universe.maybeGet(snapshot.getUniverseUUID());
+    if (current.isEmpty()) {
+      return;
+    }
+    Universe universe = current.get();
     try {
       if (!isClientCertRequired(universe)) {
         deleteClientCert(universe.getUniverseUUID());
@@ -268,9 +275,22 @@ public class CertManagerClientCertSync {
         return;
       }
       checkKeyAlgorithm(universe, pem.get());
-      write(universe.getUniverseUUID(), pem.get());
+      writeIfUniverseExists(universe.getUniverseUUID(), pem.get());
     } catch (Exception e) {
       log.warn("Failed to refresh client cert of universe {}", universe.getName(), e);
+    }
+  }
+
+  // Checked under the lock deleteClientCert holds, so a delete can't land between check and write.
+  // A delete still in an open transaction is covered by Universe.delete repeating it on commit.
+  private static void writeIfUniverseExists(UUID universeUUID, Pair<String, String> pem)
+      throws IOException {
+    synchronized (CertManagerClientCertSync.class) {
+      if (Universe.maybeGet(universeUUID).isEmpty()) {
+        log.info("Universe {} was deleted; not writing its client cert", universeUUID);
+        return;
+      }
+      writeLocked(getClientCertDir(universeUUID), pem);
     }
   }
 
