@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.MOVED_PERMANENTLY;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -235,7 +236,7 @@ public class AWSUtil implements CloudUtil {
           log.error(msg, e);
           return false;
         } catch (AwsServiceException e) {
-          // S3 refused, typically access denied: its message names the action and the resource.
+          // S3 answered with an error; awsServiceError says which become a clear 412.
           throw awsServiceError(msg, e);
         }
       }
@@ -301,17 +302,23 @@ public class AWSUtil implements CloudUtil {
    * The error to raise for an S3 error answer to a bucket listing check. A refusal (4xx) is the
    * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one, which
    * names the action and the resource. A HEAD request (HeadBucket, the first call of the check)
-   * gets no message, so a 403 there is described without guessing its cause. An S3-side failure
-   * (5xx, throttling) is passed on as it is.
+   * gets no message, so a 403 there is described without guessing its cause. So is a 301, a bucket
+   * in another region than the client's. Anything else (an S3-side 5xx or throttling) is passed on
+   * as it is.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
-    if (e.statusCode() >= INTERNAL_SERVER_ERROR) {
+    boolean refused = e.statusCode() >= BAD_REQUEST && e.statusCode() < INTERNAL_SERVER_ERROR;
+    if (!refused && e.statusCode() != MOVED_PERMANENTLY) {
       return e;
     }
     log.error(msg, e);
     String reason;
     if (e.awsErrorDetails() != null && StringUtils.isNotBlank(e.awsErrorDetails().errorMessage())) {
       reason = e.awsErrorDetails().errorMessage();
+    } else if (e.statusCode() == MOVED_PERMANENTLY) {
+      reason =
+          "the bucket is in another region than the client's (HTTP 301); check the host base or"
+              + " signing region";
     } else if (e.statusCode() == FORBIDDEN) {
       reason =
           "access denied (HTTP 403); check the credentials and that they may list the bucket"

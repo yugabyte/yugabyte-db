@@ -772,6 +772,23 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCanCredentialListObjectsReportsBucketInAnotherRegion() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(301).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.canCredentialListObjects(
+                    s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("check the host base or signing region"));
+  }
+
+  @Test
   public void testCheckFileExistsReportsAccessDenied() {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";
