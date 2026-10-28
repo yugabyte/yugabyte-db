@@ -1981,10 +1981,11 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   auto follower_uuid = follower->permanent_uuid();
   auto tablet_id = follower->tablet_id();
 
-  auto& sync_point = *SyncPoint::GetInstance();
   CountDownLatch start_shutdown_latch(1);
   CountDownLatch write_batch_latch(1);
-  sync_point.SetCallBack(
+  OpId apply_op_id;
+  SyncPointScope sync_point;
+  sync_point->SetCallBack(
       "TransactionParticipant::Impl::StartShutdown",
       [follower, &start_shutdown_latch](void* arg) {
     auto* context = static_cast<tablet::TransactionParticipantContext*>(arg);
@@ -1993,8 +1994,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
       start_shutdown_latch.CountDown();
     }
   });
-  OpId apply_op_id;
-  sync_point.SetCallBack(
+  sync_point->SetCallBack(
       "RaftConsensus::UpdateReplica",
       [follower, &write_batch_latch, &start_shutdown_latch, &apply_op_id](void* arg) {
     auto* request = static_cast<consensus::LWConsensusRequestPB*>(arg);
@@ -2018,15 +2018,8 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
       request->mutable_committed_op_id()->set_index(4);
     }
   });
-  // The callbacks capture locals of this test. Clear them before they dangle, or a later test in
-  // the same process that enables sync points runs them.
-  auto sync_point_cleanup = ScopeExit([&sync_point] {
-    sync_point.DisableProcessing();
-    sync_point.ClearAllCallBacks();
-    sync_point.ClearTrace();
-  });
 
-  sync_point.EnableProcessing();
+  sync_point->EnableProcessing();
 
   TestThreadHolder thread_holder;
 
@@ -2043,7 +2036,7 @@ TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
   auto mini_tserver = cluster_->find_tablet_server(follower_uuid);
   mini_tserver->Shutdown();
   LOG(INFO) << "RESTART MID";
-  sync_point.DisableProcessing();
+  sync_point->DisableProcessing();
   follower = nullptr;
   ASSERT_OK(mini_tserver->Start());
   LOG(INFO) << "RESTART END";
