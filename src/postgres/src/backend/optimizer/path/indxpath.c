@@ -5706,10 +5706,9 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 															  useful_pathkeys);
 
 	/*
-	 * The truncation can cut into the pathkeys that span the distinct prefix.
-	 * Then mark the prefix as not spanned, as build_index_pathkeys does, so
-	 * that yb_create_distinct_index_path builds no Unique node on these
-	 * pathkeys.
+	 * yb_distinct_nkeys is the number of pathkeys that span the distinct
+	 * prefix, or -1 if they do not span it.  The truncation can cut into those
+	 * pathkeys, and then they no longer span the prefix.
 	 */
 	if (*yb_distinct_nkeys > list_length(useful_pathkeys))
 		*yb_distinct_nkeys = -1;
