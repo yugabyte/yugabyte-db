@@ -1227,6 +1227,15 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+##### --ysql_ddl_rpc_timeout_sec
+
+{{% tags/wrap %}}
+
+Default: `180`
+{{% /tags/wrap %}}
+
+Timeout, in seconds, for YSQL DDL operations, such as creating a logical replication slot. This flag can be changed at runtime, but the flag is read by the PostgreSQL process, so a change takes effect only after PostgreSQL restarts.
+
 ### Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).
