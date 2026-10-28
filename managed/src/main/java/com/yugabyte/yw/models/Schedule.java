@@ -531,13 +531,11 @@ public class Schedule extends Model {
     Schedule schedule = null;
     Optional<Schedule> optionalSchedule =
         Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+            scheduleParams.scheduleName, scheduleParams.getUniverseUUID(), customerUUID);
     if (!optionalSchedule.isPresent()) {
       schedule =
           Schedule.create(
-              scheduleParams.customerUUID,
+              customerUUID,
               scheduleParams.getUniverseUUID(),
               scheduleParams,
               TaskType.CreateBackup,
