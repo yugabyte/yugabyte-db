@@ -19,7 +19,7 @@ The examples in the following sections illustrate failure scenarios and techniqu
 
 ## Prerequisites
 
-Follow the [setup instructions](../../../../quick-start/macos/) to start a single local YugabyteDB instance, and create a table as follows:
+Follow the [setup instructions](/stable/explore/cluster-setup-local/) to start a single local YugabyteDB instance, and create a table as follows:
 
 1. Create the table as follows:
 
