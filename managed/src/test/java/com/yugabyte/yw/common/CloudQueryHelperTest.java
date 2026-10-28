@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Region;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -86,7 +85,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       case machine_image:
         return cloudQueryHelper.queryImage(regionUUID, "yb-image");
       default:
-        when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
+        when(hostCloudDetector.isHostCloud(Common.CloudType.aws)).thenReturn(true);
         return cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
     }
   }
@@ -166,7 +165,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     unreachable.message = "\"Unable to auto-discover AWS provider information\"";
     when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(unreachable);
-    when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
+    when(hostCloudDetector.isHostCloud(Common.CloudType.aws)).thenReturn(true);
     assertEquals(
         "Unable to auto-discover AWS provider information",
         cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws).asText());
@@ -177,7 +176,8 @@ public class CloudQueryHelperTest extends FakeDBApplication {
 
   @Test
   public void testGetHostInfoOfAnotherCloudSkipsYbops() {
-    when(hostCloudDetector.getHostCloud()).thenReturn(Optional.of(Common.CloudType.aws));
+    // YBA runs on AWS: asking about GCP is answered without running ybops.
+    when(hostCloudDetector.isHostCloud(Common.CloudType.gcp)).thenReturn(false);
     JsonNode json = cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp);
     assertEquals("Unable to auto-discover GCP provider information", json.asText());
     verify(shellProcessHandler, never()).run(anyList(), any(ShellProcessContext.class));

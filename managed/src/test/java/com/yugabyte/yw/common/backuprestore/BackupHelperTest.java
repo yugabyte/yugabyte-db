@@ -1533,13 +1533,14 @@ public class BackupHelperTest extends FakeDBApplication {
     stubTarget(CloudType.aws);
     hostCloud(CloudType.aws);
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    // As created through the API: no keys and no IAM role flag, only the federation flag.
     s3Data.useCrossCloudFederation = true;
-    s3Data.isIAMInstanceProfile = true;
 
     spyBackupHelper.applyCrossCloudFederationFromBackup(
         s3Data, backupWithSnapshot("audience", "arn:aws:iam::123456789012:role/r"));
 
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+    assertTrue(AWSUtil.usesIamRoleCredentials(s3Data));
   }
 
   /** YBA on AWS -> GCS: still federates with its AWS identity. */

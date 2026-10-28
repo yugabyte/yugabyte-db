@@ -685,6 +685,20 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testIamRoleCredentialsForFederatedConfigWithoutKeys() {
+    // A federated config carries no keys, so without its stamp YBA uses its own IAM role.
+    assertTrue(AWSUtil.usesIamRoleCredentials(federationS3Data()));
+    CustomerConfigStorageS3Data withKeys = federationS3Data();
+    withKeys.awsAccessKeyId = "key";
+    assertFalse(AWSUtil.usesIamRoleCredentials(withKeys));
+    // A plain config keeps using its keys unless it asks for the IAM role.
+    assertFalse(AWSUtil.usesIamRoleCredentials(new CustomerConfigStorageS3Data()));
+    CustomerConfigStorageS3Data iamRole = new CustomerConfigStorageS3Data();
+    iamRole.isIAMInstanceProfile = true;
+    assertTrue(AWSUtil.usesIamRoleCredentials(iamRole));
+  }
+
+  @Test
   public void testWebTokenCredentialSourceIsNotFederation() {
     // WEB_TOKEN predates this feature and means EKS/IRSA web-identity. Treating it as the
     // federation marker would silently reclassify every pre-existing config that uses it.
