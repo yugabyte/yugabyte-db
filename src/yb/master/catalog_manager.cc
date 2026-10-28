@@ -3761,6 +3761,9 @@ std::vector<std::pair<TabletId, DeletedSplitParent>> CatalogManager::GetDeletedS
 
 TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   TabletInfos result;
+  if (ids.empty()) {
+    return result;
+  }
   result.reserve(ids.size());
   SharedLock lock(mutex_);
   for (const auto& id : ids) {
@@ -9392,8 +9395,11 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) c
 
 std::unordered_map<TableId, TableInfoPtr> CatalogManager::GetTableInfos(
     const std::vector<TableId>& table_ids) {
-  SharedLock lock(mutex_);
   std::unordered_map<TableId, TableInfoPtr> id_to_table;
+  if (table_ids.empty()) {
+    return id_to_table;
+  }
+  SharedLock lock(mutex_);
   for (const auto& id : table_ids) {
     id_to_table[id] = GetTableInfoUnlocked(id);
   }
