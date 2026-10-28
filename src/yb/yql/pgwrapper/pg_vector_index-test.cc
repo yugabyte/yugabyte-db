@@ -2881,6 +2881,8 @@ TEST_P(PgVectorIndexColocationOnlyTest, CloneRemapsVectorIndexMap) {
 TEST_P(PgVectorIndexColocationOnlyTest, CloneKeepsNewRowsAcrossRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // Cloning a database is off by default on this branch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
 
   constexpr auto kSourceDb = "source_db";
   constexpr auto kCloneDb = "clone_db";
