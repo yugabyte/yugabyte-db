@@ -179,6 +179,7 @@ export interface UserIntent {
   useSystemd: boolean;
   enableConnectionPooling?: boolean;
   multiTenancy?: { enableQos: boolean; qosMaxDbCpuPercent?: number; qosMaxDbCount?: number };
+  federationConfigured?: boolean;
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
