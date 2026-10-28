@@ -60,6 +60,9 @@ static VIRTUAL_ARGUMENT: ReadOnly<pg_sys::NullableDatum> =
 /// This trait is exposed to external code so macro-generated wrapper fn may expand to calls to it.
 /// The number of invariants implementers must uphold is unlikely to be adequately documented.
 /// Prefer to use ArgAbi as a trait bound instead of implementing it, or even calling it, yourself.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be passed into a Postgres function as a Datum"
+)]
 pub unsafe trait ArgAbi<'fcx>: Sized {
     /// Unbox an argument with a matching type.
     ///
@@ -88,7 +91,7 @@ pub unsafe trait ArgAbi<'fcx>: Sized {
         }
     }
 
-    /// "Is this a virtual arg?"
+    /// Virtual args do not affect Datum arg iteration
     fn is_virtual_arg() -> bool {
         false
     }
@@ -134,7 +137,7 @@ unsafe impl<'fcx, T> ArgAbi<'fcx> for crate::PgBox<T> {
         let index = arg.index();
         unsafe {
             Self::from_datum(arg.2.value, arg.is_null())
-                .unwrap_or_else(|| panic!("argument {} must not be null", index))
+                .unwrap_or_else(|| panic!("argument {index} must not be null"))
         }
     }
 }
@@ -144,7 +147,7 @@ unsafe impl<'fcx> ArgAbi<'fcx> for PgHeapTuple<'fcx, AllocatedByRust> {
         let index = arg.index();
         unsafe {
             FromDatum::from_datum(arg.2.value, arg.is_null())
-                .unwrap_or_else(|| panic!("argument {} must not be null", index))
+                .unwrap_or_else(|| panic!("argument {index} must not be null"))
         }
     }
 }
@@ -189,7 +192,7 @@ where
         let index = arg.index();
         unsafe {
             arg.unbox_arg_using_from_datum()
-                .unwrap_or_else(|| panic!("argument {} must not be null", index))
+                .unwrap_or_else(|| panic!("argument {index} must not be null"))
         }
     }
 }
@@ -378,6 +381,10 @@ pub unsafe trait RetAbi: Sized {
 /// Postgres functions, pgrx uses a very complicated trait, RetAbi. In practice, however, most
 /// types do not need to think about its many sharp-edged cases. Instead, they should implement
 /// this simplified trait, BoxRet. A blanket impl of RetAbi for BoxRet takes care of the rest.
+#[diagnostic::on_unimplemented(
+    message = "{Self} cannot be returned from a Postgres function as a Datum",
+    note = "implement BoxRet instead if possible"
+)]
 pub unsafe trait BoxRet: Sized {
     /// # Safety
     /// You have to actually return the resulting Datum to the function.
@@ -520,7 +527,7 @@ unsafe impl BoxRet for f64 {
     }
 }
 
-unsafe impl<'a> BoxRet for &'a [u8] {
+unsafe impl BoxRet for &[u8] {
     unsafe fn box_into<'fcx>(self, fcinfo: &mut FcInfo<'fcx>) -> Datum<'fcx> {
         match self.into_datum() {
             Some(datum) => unsafe { fcinfo.return_raw_datum(datum) },
@@ -529,7 +536,7 @@ unsafe impl<'a> BoxRet for &'a [u8] {
     }
 }
 
-unsafe impl<'a> BoxRet for &'a str {
+unsafe impl BoxRet for &str {
     unsafe fn box_into<'fcx>(self, fcinfo: &mut FcInfo<'fcx>) -> Datum<'fcx> {
         match self.into_datum() {
             Some(datum) => unsafe { fcinfo.return_raw_datum(datum) },
@@ -538,7 +545,7 @@ unsafe impl<'a> BoxRet for &'a str {
     }
 }
 
-unsafe impl<'a> BoxRet for &'a CStr {
+unsafe impl BoxRet for &CStr {
     unsafe fn box_into<'fcx>(self, fcinfo: &mut FcInfo<'fcx>) -> Datum<'fcx> {
         match self.into_datum() {
             Some(datum) => unsafe { fcinfo.return_raw_datum(datum) },
@@ -1023,4 +1030,9 @@ impl<'fcx> ReturnSetInfoWrapper<'fcx> {
     pub fn get_tuple_desc(&mut self) -> *mut pgrx_pg_sys::TupleDescData {
         unsafe { (*self.0).setDesc }
     }
+}
+
+/// Denotes a type that may be passed as a Datum
+pub unsafe trait DatumPass {
+    const PASS: PassBy;
 }

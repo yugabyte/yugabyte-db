@@ -1,6 +1,7 @@
 {
   "attribution": {
-    "commit": ""
+    "commit": "",
+    "pr": ""
   },
   "permissions": {
     "allow": [

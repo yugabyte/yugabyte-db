@@ -1,11 +1,14 @@
 package com.yugabyte.yw.cloud.gcp;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpBackOffUnsuccessfulResponseHandler;
 import com.google.api.client.http.HttpHeaders;
@@ -14,13 +17,17 @@ import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.ExponentialBackOff;
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
 import com.google.api.services.compute.Compute;
+import com.google.api.services.compute.ComputeRequest;
+import com.google.api.services.compute.model.Address;
 import com.google.api.services.compute.model.AllocationSpecificSKUReservation;
-import com.google.api.services.compute.model.Backend;
+import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.BackendService;
+import com.google.api.services.compute.model.Disk;
 import com.google.api.services.compute.model.Firewall;
 import com.google.api.services.compute.model.FirewallList;
 import com.google.api.services.compute.model.FirewallPolicy;
@@ -36,11 +43,14 @@ import com.google.api.services.compute.model.InstanceGroupsListInstancesRequest;
 import com.google.api.services.compute.model.InstanceGroupsRemoveInstancesRequest;
 import com.google.api.services.compute.model.InstanceList;
 import com.google.api.services.compute.model.InstanceReference;
+import com.google.api.services.compute.model.InstanceTemplate;
 import com.google.api.services.compute.model.InstanceTemplateList;
 import com.google.api.services.compute.model.InstanceWithNamedPorts;
 import com.google.api.services.compute.model.Network;
 import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
+import com.google.api.services.compute.model.OperationList;
+import com.google.api.services.compute.model.RegionSetLabelsRequest;
 import com.google.api.services.compute.model.Reservation;
 import com.google.api.services.compute.model.ReservationAggregatedList;
 import com.google.api.services.compute.model.ReservationList;
@@ -49,6 +59,9 @@ import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.oauth2.ComputeEngineCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.kms.v1.CryptoKey;
+import com.google.cloud.kms.v1.KeyManagementServiceClient;
+import com.google.cloud.kms.v1.KeyManagementServiceSettings;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.GCPUtil;
@@ -65,13 +78,16 @@ import java.io.IOException;
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -111,10 +127,6 @@ public class GCPProjectApiClient {
       try {
         while (operation != null && !status.equals("DONE")) {
           Thread.sleep(pollingInterval.toMillis());
-          long elapsed = System.currentTimeMillis() - start;
-          if (elapsed >= timeoutInterval.toMillis()) {
-            throw new InterruptedException("Timed out waiting for operation to complete");
-          }
           log.info("Waiting for operation to complete: " + operation.getName());
           if (zone != null) {
             Compute.ZoneOperations.Get get = compute.zoneOperations().get(project, zone, opId);
@@ -129,6 +141,10 @@ public class GCPProjectApiClient {
           }
           if (operation != null) {
             status = operation.getStatus();
+          }
+          if (!status.equals("DONE")
+              && System.currentTimeMillis() - start >= timeoutInterval.toMillis()) {
+            throw new InterruptedException("Timed out waiting for operation to complete");
           }
         }
       } catch (InterruptedException e) {
@@ -168,17 +184,7 @@ public class GCPProjectApiClient {
    * @return InstanceGroup object with details about the instance group
    */
   public InstanceGroup getInstanceGroup(String zone, String instanceGroupName) {
-    InstanceGroup instanceGroup;
-    try {
-      instanceGroup = compute.instanceGroups().get(project, zone, instanceGroupName).execute();
-    } catch (GoogleJsonResponseException e) {
-      log.error("Error in fetching instance groups", e);
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Failed to fetch instance group name: " + instanceGroupName);
-    } catch (IOException e) {
-      log.error("Error in fetching instance groups", e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
-    }
+    InstanceGroup instanceGroup = getInstanceGroupIfExists(zone, instanceGroupName);
     if (instanceGroup == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to find instance group with name " + instanceGroupName);
@@ -186,9 +192,16 @@ public class GCPProjectApiClient {
     return instanceGroup;
   }
 
-  public boolean checkInstanceTempelate(String instanceTempelateName) {
+  /**
+   * Checks whether an instance template exists. Uses list rather than get so that it needs only
+   * compute.instanceTemplates.list, which every provider that passes a template to
+   * instances().insert() already has.
+   *
+   * @param instanceTemplateName Name of the global instance template
+   */
+  public boolean checkInstanceTemplateExists(String instanceTemplateName) {
     try {
-      String filter = "name eq " + instanceTempelateName;
+      String filter = "name eq " + instanceTemplateName;
       InstanceTemplateList instanceTemplateList =
           compute.instanceTemplates().list(project).setFilter(filter).execute();
       return instanceTemplateList.getItems() != null;
@@ -197,6 +210,79 @@ public class GCPProjectApiClient {
       throw new PlatformServiceException(
           BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
     }
+  }
+
+  /**
+   * Fetches an instance template by name. Needs compute.instanceTemplates.get, which is only
+   * required when {@code yb.gcp.read_instance_template} is on.
+   *
+   * @param instanceTemplateName Name of the global instance template
+   * @return the template, or {@code null} if no template by that name exists in the project
+   */
+  public InstanceTemplate getInstanceTemplate(String instanceTemplateName) {
+    try {
+      return compute.instanceTemplates().get(project, instanceTemplateName).execute();
+    } catch (GoogleJsonResponseException e) {
+      if (e.getStatusCode() == NOT_FOUND) {
+        return null;
+      }
+      log.error("Error in retrieving instance template", e);
+      if (e.getStatusCode() == FORBIDDEN) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "The SA does not have compute.instanceTemplates.get on instance template %s. Grant"
+                    + " that permission, or turn off yb.gcp.read_instance_template.",
+                instanceTemplateName));
+      }
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
+    } catch (Exception e) {
+      log.error("Error in retrieving instance template", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
+    }
+  }
+
+  /** The CMEK keys an instance template declares, split by the disk role they apply to. */
+  @Value
+  public static class TemplateDiskKmsKeys {
+    String bootDiskKey;
+    String dataDiskKey;
+  }
+
+  /**
+   * Returns the CMEK keys declared on an instance template's boot and data disks. The data disks
+   * YBA creates are identical, so the first data disk key in the template applies to all of them.
+   */
+  public static TemplateDiskKmsKeys getTemplateDiskKmsKeys(InstanceTemplate instanceTemplate) {
+    if (instanceTemplate == null
+        || instanceTemplate.getProperties() == null
+        || instanceTemplate.getProperties().getDisks() == null) {
+      return new TemplateDiskKmsKeys(null, null);
+    }
+    String bootDiskKey = null;
+    String dataDiskKey = null;
+    for (AttachedDisk disk : instanceTemplate.getProperties().getDisks()) {
+      if (disk.getDiskEncryptionKey() == null
+          || StringUtils.isEmpty(disk.getDiskEncryptionKey().getKmsKeyName())) {
+        continue;
+      }
+      String diskKey = disk.getDiskEncryptionKey().getKmsKeyName();
+      if (Boolean.TRUE.equals(disk.getBoot())) {
+        bootDiskKey = diskKey;
+      } else if (dataDiskKey == null) {
+        dataDiskKey = diskKey;
+      }
+    }
+    if (bootDiskKey != null || dataDiskKey != null) {
+      log.info(
+          "Instance template {} CMEK keys: boot disk {}, data disks {}",
+          instanceTemplate.getName(),
+          bootDiskKey,
+          dataDiskKey);
+    }
+    return new TemplateDiskKmsKeys(bootDiskKey, dataDiskKey);
   }
 
   public void checkInstanceFetching() throws IOException, GeneralSecurityException {
@@ -211,47 +297,13 @@ public class GCPProjectApiClient {
    * @return BackendService object, containing details about the backend service
    */
   public BackendService getBackendService(String region, String backendServiceName) {
-    BackendService backendService;
-    try {
-      backendService =
-          compute.regionBackendServices().get(project, region, backendServiceName).execute();
-    } catch (GoogleJsonResponseException e) {
-      log.error("Error in getting region backend services", e);
-      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } catch (IOException e) {
-      log.error("Error in getting region backend services", e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
-    }
+    BackendService backendService = getRegionalBackendServiceIfExists(region, backendServiceName);
     if (backendService == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot find backed service (Load balancer) with given name " + backendServiceName);
     }
     return backendService;
-  }
-
-  /**
-   * Delete the given list of instance groups from the GCP Project Input is a map from availablity
-   * zone to backend instead of just a list of backends to make the request more efficient We delete
-   * all the instance groups in a single zone throguh a single HTTP request instead of making a
-   * serperate call for each instance group
-   *
-   * @param zonesToBackend Mapping from Availablity zone to the list of backends in that zone to be
-   *     deleted
-   * @throws IOException when connection to GCP fails
-   */
-  public void deleteBackends(Map<String, Backend> zonesToBackend) throws IOException {
-    for (Map.Entry<String, Backend> zoneToBackend : zonesToBackend.entrySet()) {
-      String zone = zoneToBackend.getKey();
-      Backend backend = zoneToBackend.getValue();
-      String instanceGroupUrl = backend.getGroup();
-      String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
-      log.warn("Deleting instance group: " + instanceGroupName);
-      Operation response =
-          compute.instanceGroups().delete(project, zone, instanceGroupName).execute();
-      operationPoller.waitForOperationCompletion(response);
-      log.info("Sucessfully deleted instance group: " + instanceGroupName);
-    }
   }
 
   /**
@@ -310,64 +362,48 @@ public class GCPProjectApiClient {
    * Creates a new regional TCP health check on the specified port, with default parameters
    *
    * @param region Region for which the health check needs to be created
+   * @param healthCheckName Name of the health check
    * @param port Port at which the health check will probe to check for the health of the VM
    * @return URL for the newly created health check
-   * @throws IOException when connection to GCP fails
    */
-  public String createNewTCPHealthCheckForPort(String region, Integer port) throws IOException {
-    String healthCheckName = "hc-" + port.toString() + UUID.randomUUID().toString();
-    HealthCheck healthCheck = new HealthCheck();
-    healthCheck.setName(healthCheckName);
-    healthCheck.setType(Protocol.TCP.name());
-    TCPHealthCheck tcpHealthCheck = new TCPHealthCheck();
-    tcpHealthCheck.setPort(port);
-    healthCheck.setTcpHealthCheck(tcpHealthCheck);
-    log.debug("Creating new health check " + healthCheck);
-    Operation response =
-        compute.regionHealthChecks().insert(project, region, healthCheck).execute();
-    operationPoller.waitForOperationCompletion(response);
-    log.info("Sucessfully created new TCP health check for port " + port);
-    return response.getTargetLink();
+  public String createNewTCPHealthCheckForPort(
+      String region, String healthCheckName, Integer port) {
+    HealthCheck healthCheck =
+        new HealthCheck()
+            .setName(healthCheckName)
+            .setType(Protocol.TCP.name())
+            .setTcpHealthCheck(new TCPHealthCheck().setPort(port));
+    return executeAndWait(
+        "create health check " + healthCheckName,
+        () -> compute.regionHealthChecks().insert(project, region, healthCheck));
   }
 
   /**
    * Creates a new regional HTTP health check on the specified port, with default parameters
    *
    * @param region Region for which the health check needs to be created
+   * @param healthCheckName Name of the health check
    * @param port Port at which the health check will probe to check for the health of the VM
    * @param requestPath Path at which the health check will probe to check status
    * @return URL for the newly created health check
-   * @throws IOException when connection to GCP fails
    */
-  public String createNewHTTPHealthCheckForPort(String region, Integer port, String requestPath)
-      throws IOException {
-    String healthCheckName = "hc-" + port.toString() + UUID.randomUUID().toString();
-    HealthCheck healthCheck = new HealthCheck();
-    healthCheck.setName(healthCheckName);
-    healthCheck.setType(Protocol.HTTP.name());
-    HTTPHealthCheck httpHealthCheck = new HTTPHealthCheck();
-    httpHealthCheck.setPort(port);
-    httpHealthCheck.setRequestPath(requestPath);
-    healthCheck.setHttpHealthCheck(httpHealthCheck);
-    log.debug("Creating new health check " + healthCheck);
-    Operation response =
-        compute.regionHealthChecks().insert(project, region, healthCheck).execute();
-    operationPoller.waitForOperationCompletion(response);
-    log.info("Sucessfully created new HTTP health check for port " + port);
-    return response.getTargetLink();
+  public String createNewHTTPHealthCheckForPort(
+      String region, String healthCheckName, Integer port, String requestPath) {
+    HealthCheck healthCheck =
+        new HealthCheck()
+            .setName(healthCheckName)
+            .setType(Protocol.HTTP.name())
+            .setHttpHealthCheck(new HTTPHealthCheck().setPort(port).setRequestPath(requestPath));
+    return executeAndWait(
+        "create health check " + healthCheckName,
+        () -> compute.regionHealthChecks().insert(project, region, healthCheck));
   }
 
-  public String updateHealthCheck(String region, HealthCheck healthCheck) throws IOException {
+  public String updateHealthCheck(String region, HealthCheck healthCheck) {
     String healthCheckName = healthCheck.getName();
-    log.debug("Updating health check " + healthCheck);
-    Operation response =
-        compute
-            .regionHealthChecks()
-            .update(project, region, healthCheckName, healthCheck)
-            .execute();
-    operationPoller.waitForOperationCompletion(response);
-    log.info("Sucessfully updated health check " + healthCheckName);
-    return response.getTargetLink();
+    return executeAndWait(
+        "update health check " + healthCheckName,
+        () -> compute.regionHealthChecks().update(project, region, healthCheckName, healthCheck));
   }
 
   /**
@@ -378,19 +414,12 @@ public class GCPProjectApiClient {
    * @return HelathCheck object containing the details of the health check
    */
   public HealthCheck getRegionalHelathCheckByName(String region, String healthCheckName) {
-    try {
-      HealthCheck healthCheck =
-          compute.regionHealthChecks().get(project, region, healthCheckName).execute();
-      return healthCheck;
-    } catch (GoogleJsonResponseException e) {
-      log.error("Error in getting region health checks", e);
+    HealthCheck healthCheck = getRegionalHealthCheckIfExists(region, healthCheckName);
+    if (healthCheck == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch health check for name: " + healthCheckName);
-    } catch (IOException e) {
-      log.error("Error in getting region health checks", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to fetch health check " + healthCheckName);
     }
+    return healthCheck;
   }
 
   public Compute buildComputeClient(GCPCloudInfo cloudInfo)
@@ -457,11 +486,12 @@ public class GCPProjectApiClient {
    * as that of the instance group
    *
    * @param zone Zone for which the instance group needs to be created
+   * @param instanceGroupName Name of the instance group
    * @return URL of the newly created instance group
    * @throws IOException when connection to GCP fails
    */
-  public String createNewInstanceGroupInZone(String zone) throws IOException {
-    String instanceGroupName = "ig-" + UUID.randomUUID().toString();
+  public String createNewInstanceGroupInZone(String zone, String instanceGroupName)
+      throws IOException {
     InstanceGroup instanceGroup = new InstanceGroup();
     instanceGroup.setName(instanceGroupName);
     log.info("About to create new instance group " + instanceGroupName);
@@ -613,6 +643,185 @@ public class GCPProjectApiClient {
     operationPoller.waitForOperationCompletion(response);
   }
 
+  // Not found: get returns null, delete is a no-op.
+
+  @FunctionalInterface
+  private interface ComputeCall<T> {
+    ComputeRequest<T> build() throws IOException;
+  }
+
+  public HealthCheck getRegionalHealthCheckIfExists(String region, String name) {
+    return getIfExists(
+        "health check " + name, () -> compute.regionHealthChecks().get(project, region, name));
+  }
+
+  public void deleteRegionalHealthCheck(String region, String name) {
+    deleteIfExists(
+        "health check " + name, () -> compute.regionHealthChecks().delete(project, region, name));
+  }
+
+  public BackendService getRegionalBackendServiceIfExists(String region, String name) {
+    return getIfExists(
+        "backend service " + name,
+        () -> compute.regionBackendServices().get(project, region, name));
+  }
+
+  public String createInternalBackendService(
+      String region, String name, String networkUrl, String healthCheckUrl) {
+    BackendService backendService =
+        new BackendService()
+            .setName(name)
+            .setLoadBalancingScheme("INTERNAL")
+            .setProtocol(Protocol.TCP.name())
+            .setNetwork(networkUrl)
+            .setHealthChecks(List.of(healthCheckUrl));
+    return executeAndWait(
+        "create backend service " + name,
+        () -> compute.regionBackendServices().insert(project, region, backendService));
+  }
+
+  public void deleteRegionalBackendService(String region, String name) {
+    deleteIfExists(
+        "backend service " + name,
+        () -> compute.regionBackendServices().delete(project, region, name));
+  }
+
+  public Address getRegionalAddressIfExists(String region, String name) {
+    return getIfExists("address " + name, () -> compute.addresses().get(project, region, name));
+  }
+
+  // Re-reads the address: the insert operation does not carry the IP that GCP chose.
+  public Address createInternalAddress(String region, String name, String subnetworkUrl) {
+    Address address =
+        new Address().setName(name).setAddressType("INTERNAL").setSubnetwork(subnetworkUrl);
+    executeAndWait(
+        "create address " + name, () -> compute.addresses().insert(project, region, address));
+    return getRegionalAddressIfExists(region, name);
+  }
+
+  public void deleteRegionalAddress(String region, String name) {
+    deleteIfExists("address " + name, () -> compute.addresses().delete(project, region, name));
+  }
+
+  public ForwardingRule getRegionalForwardingRuleIfExists(String region, String name) {
+    return getIfExists(
+        "forwarding rule " + name, () -> compute.forwardingRules().get(project, region, name));
+  }
+
+  public ForwardingRule createInternalForwardingRule(
+      String region,
+      String name,
+      String backendServiceUrl,
+      String addressUrl,
+      String networkUrl,
+      String subnetworkUrl,
+      List<Integer> ports) {
+    ForwardingRule rule =
+        new ForwardingRule()
+            .setName(name)
+            .setLoadBalancingScheme("INTERNAL")
+            .setIPProtocol(Protocol.TCP.name())
+            .setPorts(ports.stream().map(String::valueOf).collect(Collectors.toList()))
+            .setBackendService(backendServiceUrl)
+            .setIPAddress(addressUrl)
+            .setNetwork(networkUrl)
+            .setSubnetwork(subnetworkUrl)
+            .setAllowGlobalAccess(true);
+    executeAndWait(
+        "create forwarding rule " + name,
+        () -> compute.forwardingRules().insert(project, region, rule));
+    // Re-read for the label fingerprint.
+    return getRegionalForwardingRuleIfExists(region, name);
+  }
+
+  public void deleteRegionalForwardingRule(String region, String name) {
+    deleteIfExists(
+        "forwarding rule " + name, () -> compute.forwardingRules().delete(project, region, name));
+  }
+
+  public InstanceGroup getInstanceGroupIfExists(String zone, String name) {
+    return getIfExists(
+        "instance group " + name, () -> compute.instanceGroups().get(project, zone, name));
+  }
+
+  public void deleteInstanceGroup(String zone, String name) {
+    deleteIfExists(
+        "instance group " + name, () -> compute.instanceGroups().delete(project, zone, name));
+  }
+
+  /** The fingerprint must come from the current resource. */
+  public void setAddressLabels(
+      String region, String name, String labelFingerprint, Map<String, String> labels) {
+    RegionSetLabelsRequest request =
+        new RegionSetLabelsRequest().setLabelFingerprint(labelFingerprint).setLabels(labels);
+    executeAndWait(
+        "set the labels of address " + name,
+        () -> compute.addresses().setLabels(project, region, name, request));
+  }
+
+  public void setForwardingRuleLabels(
+      String region, String name, String labelFingerprint, Map<String, String> labels) {
+    RegionSetLabelsRequest request =
+        new RegionSetLabelsRequest().setLabelFingerprint(labelFingerprint).setLabels(labels);
+    executeAndWait(
+        "set the labels of forwarding rule " + name,
+        () -> compute.forwardingRules().setLabels(project, region, name, request));
+  }
+
+  private <T> T getIfExists(String what, ComputeCall<T> call) {
+    try {
+      return call.build().execute();
+    } catch (IOException e) {
+      if (isNotFound(e)) {
+        return null;
+      }
+      throw toPlatformException("get " + what, e);
+    }
+  }
+
+  // Returns the URL of the resource that the operation created or changed.
+  private String executeAndWait(String what, ComputeCall<Operation> call) {
+    Operation operation;
+    try {
+      operation = call.build().execute();
+    } catch (IOException e) {
+      throw toPlatformException(what, e);
+    }
+    operationPoller.waitForOperationCompletion(operation);
+    log.info("Finished: {}", what);
+    return operation.getTargetLink();
+  }
+
+  private void deleteIfExists(String what, ComputeCall<Operation> call) {
+    try {
+      operationPoller.waitForOperationCompletion(call.build().execute());
+      log.info("Deleted {}", what);
+    } catch (IOException e) {
+      if (isNotFound(e)) {
+        log.info("{} does not exist", StringUtils.capitalize(what));
+        return;
+      }
+      throw toPlatformException("delete " + what, e);
+    }
+  }
+
+  private static boolean isNotFound(IOException e) {
+    return e instanceof GoogleJsonResponseException
+        && ((GoogleJsonResponseException) e).getStatusCode() == NOT_FOUND;
+  }
+
+  private static PlatformServiceException toPlatformException(String what, IOException e) {
+    log.error("Failed to " + what, e);
+    if (e instanceof GoogleJsonResponseException) {
+      GoogleJsonError details = ((GoogleJsonResponseException) e).getDetails();
+      String message =
+          details != null && details.getMessage() != null ? details.getMessage() : e.getMessage();
+      return new PlatformServiceException(BAD_REQUEST, "Failed to " + what + ": " + message);
+    }
+    return new PlatformServiceException(
+        INTERNAL_SERVER_ERROR, "Failed to " + what + ": " + e.getMessage());
+  }
+
   public List<String> checkTagsExistence(
       List<String> firewallTagsList, String vpcNetwork, String vpcProject) {
     try {
@@ -661,13 +870,44 @@ public class GCPProjectApiClient {
     }
   }
 
+  private CloudResourceManager buildCloudResourceManagerClient() {
+    return new CloudResourceManager.Builder(
+            httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
+        .setApplicationName("")
+        .build();
+  }
+
+  private KeyManagementServiceClient buildKmsClient() throws IOException {
+    return KeyManagementServiceClient.create(
+        KeyManagementServiceSettings.newBuilder()
+            .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
+            .build());
+  }
+
+  /**
+   * Fetches a Cloud KMS crypto key. Any {@code cryptoKeyVersions} suffix on the name is stripped
+   * first, since Compute returns fully-versioned key names but the KMS API expects the key itself.
+   *
+   * @throws com.google.api.gax.rpc.ApiException if the key is missing or inaccessible
+   */
+  public CryptoKey getCryptoKey(String kmsKeyName) {
+    try (KeyManagementServiceClient kmsClient = buildKmsClient()) {
+      return kmsClient.getCryptoKey(stripCryptoKeyVersion(kmsKeyName));
+    } catch (IOException e) {
+      log.error("Error in building the Cloud KMS client", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to connect to Cloud KMS [check logs for more info]");
+    }
+  }
+
+  private static String stripCryptoKeyVersion(String kmsKeyName) {
+    int versionIndex = kmsKeyName.indexOf("/cryptoKeyVersions/");
+    return versionIndex < 0 ? kmsKeyName : kmsKeyName.substring(0, versionIndex);
+  }
+
   public List<String> testIam(List<String> reqPermissions) {
     try {
-      CloudResourceManager crmService =
-          new CloudResourceManager.Builder(
-                  httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
-              .setApplicationName("")
-              .build();
+      CloudResourceManager crmService = buildCloudResourceManagerClient();
 
       TestIamPermissionsRequest request =
           new TestIamPermissionsRequest().setPermissions(reqPermissions);
@@ -1015,6 +1255,95 @@ public class GCPProjectApiClient {
     return count != null && inUseCount != null && inUseCount.equals(count);
   }
 
+  /**
+   * Checks if a reservation is empty (no reserved instances are in use).
+   *
+   * @param reservation The reservation to check
+   * @return true if inUseCount is null or zero, false otherwise
+   */
+  public static boolean isReservationEmpty(Reservation reservation) {
+    if (reservation == null || reservation.getSpecificReservation() == null) {
+      return false;
+    }
+    Long inUseCount = reservation.getSpecificReservation().getInUseCount();
+    return inUseCount == null || inUseCount == 0L;
+  }
+
+  /**
+   * Checks whether the reservation was created at least {@code age} ago, based on its GCP {@code
+   * creationTimestamp}.
+   *
+   * @param reservation The reservation to check
+   * @param age Minimum age threshold
+   * @return true if the reservation is older than {@code age}; false if younger, missing a
+   *     timestamp, or the timestamp cannot be parsed
+   */
+  public static boolean isReservationOlderThan(Reservation reservation, Duration age) {
+    if (reservation == null
+        || age == null
+        || StringUtils.isBlank(reservation.getCreationTimestamp())) {
+      return false;
+    }
+    try {
+      Instant created = OffsetDateTime.parse(reservation.getCreationTimestamp()).toInstant();
+      return created.isBefore(Instant.now().minus(age));
+    } catch (DateTimeParseException e) {
+      log.warn(
+          "Failed to parse creationTimestamp '{}' for reservation {}",
+          reservation.getCreationTimestamp(),
+          reservation.getName(),
+          e);
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a capacity reservation only if it is currently empty (no instances in use). Re-fetches
+   * the reservation before deleting to avoid racing with a newly attaching VM.
+   *
+   * @param reservationName Name of the reservation to delete
+   * @param zone GCP zone where the reservation exists
+   * @return true if deleted, false if not empty or not found
+   * @throws IOException when connection to GCP fails
+   */
+  public boolean deleteCapacityReservationIfEmpty(String reservationName, String zone)
+      throws IOException {
+    log.debug(
+        "Checking emptiness of capacity reservation: " + reservationName + " in zone: " + zone);
+
+    com.google.api.services.compute.model.Reservation reservation =
+        compute.reservations().get(project, zone, reservationName).execute();
+
+    if (reservation == null) {
+      log.warn("Reservation not found: " + reservationName + " in zone: " + zone);
+      return false;
+    }
+
+    if (!isReservationEmpty(reservation)) {
+      Long inUseCount =
+          reservation.getSpecificReservation() == null
+              ? null
+              : reservation.getSpecificReservation().getInUseCount();
+      log.info(
+          "Reservation "
+              + reservationName
+              + " is not empty (inUseCount: "
+              + inUseCount
+              + "). Skipping deletion.");
+      return false;
+    }
+
+    log.debug("Deleting empty capacity reservation: " + reservationName + " in zone: " + zone);
+    Operation response = compute.reservations().delete(project, zone, reservationName).execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info(
+        "Successfully deleted empty capacity reservation: "
+            + reservationName
+            + " in zone: "
+            + zone);
+    return true;
+  }
+
   private Reservation fetchReservationIfExists(String reservationName, String zone)
       throws IOException {
     ReservationList list =
@@ -1024,5 +1353,100 @@ public class GCPProjectApiClient {
             .setFilter("name = \"" + reservationName + "\"")
             .execute();
     return CollectionUtils.isEmpty(list.getItems()) ? null : list.getItems().get(0);
+  }
+
+  /**
+   * Instance machine type, data disks ({@code index != 0}, same as ybops), and the latest
+   * zone-operation start for an update/resize of those disks. The disk resource has no last-resize
+   * field. Missing ops time is left null so the caller can fail closed.
+   */
+  public CloudAPI.NodeDiskSpec describeNodeDataDiskSpec(String zone, String instanceName)
+      throws IOException {
+    if (StringUtils.isBlank(zone) || StringUtils.isBlank(instanceName)) {
+      throw new PlatformServiceException(BAD_REQUEST, "GCP node is missing zone or instance name");
+    }
+    Instance instance = compute.instances().get(project, zone, instanceName).execute();
+    if (instance == null || CollectionUtils.isEmpty(instance.getDisks())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "GCP instance " + instanceName + " has no disks");
+    }
+    List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
+    for (AttachedDisk attached : instance.getDisks()) {
+      if (attached.getIndex() == null || attached.getIndex() == 0) {
+        continue;
+      }
+      String diskName = CloudAPI.getResourceNameFromResourceUrl(attached.getSource());
+      if (StringUtils.isBlank(diskName)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "GCP data disk on " + instanceName + " has no source");
+      }
+      Disk disk = compute.disks().get(project, zone, diskName).execute();
+      perDisk.add(
+          new CloudAPI.NodeDiskSpec(
+              null,
+              toInt(disk.getProvisionedIops()),
+              toInt(disk.getProvisionedThroughput()),
+              toInt(disk.getSizeGb()),
+              latestDiskModifyStart(zone, disk)));
+    }
+    return CloudAPI.NodeDiskSpec.mergeDataDisks(
+        CloudAPI.getResourceNameFromResourceUrl(instance.getMachineType()), perDisk);
+  }
+
+  private Instant latestDiskModifyStart(String zone, Disk disk) throws IOException {
+    String targetLink = disk.getSelfLink();
+    if (StringUtils.isBlank(targetLink)) {
+      return null;
+    }
+    Instant latest = null;
+    String pageToken = null;
+    String filter = "targetLink eq " + targetLink;
+    do {
+      Compute.ZoneOperations.List request =
+          compute.zoneOperations().list(project, zone).setFilter(filter);
+      if (StringUtils.isNotBlank(pageToken)) {
+        request.setPageToken(pageToken);
+      }
+      OperationList operations = request.execute();
+      if (operations.getItems() != null) {
+        for (Operation operation : operations.getItems()) {
+          if (!isDiskModifyOperation(operation.getOperationType())) {
+            continue;
+          }
+          Instant start = parseGcpTime(operation.getStartTime());
+          if (start != null && (latest == null || start.isAfter(latest))) {
+            latest = start;
+          }
+        }
+      }
+      pageToken = operations.getNextPageToken();
+    } while (StringUtils.isNotBlank(pageToken));
+    return latest;
+  }
+
+  private static boolean isDiskModifyOperation(String operationType) {
+    if (operationType == null) {
+      return false;
+    }
+    String type = operationType.toLowerCase();
+    return type.equals("update")
+        || type.equals("resize")
+        || type.contains("update")
+        || type.contains("resize");
+  }
+
+  private static Instant parseGcpTime(String startTime) {
+    if (StringUtils.isBlank(startTime)) {
+      return null;
+    }
+    try {
+      return OffsetDateTime.parse(startTime).toInstant();
+    } catch (DateTimeParseException ignored) {
+      return Instant.parse(startTime);
+    }
+  }
+
+  private static Integer toInt(Long value) {
+    return value == null ? null : Math.toIntExact(value);
   }
 }

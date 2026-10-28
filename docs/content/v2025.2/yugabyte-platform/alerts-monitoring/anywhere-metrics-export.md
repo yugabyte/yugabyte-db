@@ -16,6 +16,8 @@ You can export [universe metrics](../anywhere-metrics/) to third-party tools for
 
 ## Prerequisite
 
+- Enable metrics export by setting the **Enable Metrics Export** Global Configuration option (config key `yb.universe.metrics_export_enabled`) to true (enabled by default in in v2026.1.2.0 and later). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
 - Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export metrics to. Refer to [Manage export configurations](../anywhere-export-configuration/).
 
 ## Limitations

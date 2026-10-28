@@ -44,10 +44,10 @@ yugabyte=#  CREATE FOREIGN TABLE mytable (col1 int, col2 int) SERVER my_server O
 
 ## See also
 
-- [`CREATE FOREIGN DATA WRAPPER`](../ddl_create_foreign_data_wrapper/)
-- [`CREATE FOREIGN TABLE`](../ddl_create_foreign_table/)
-- [`CREATE SERVER`](../ddl_create_server/)
-- [`CREATE USER MAPPING`](../ddl_create_user_mapping/)
-- [`IMPORT FOREIGN SCHEMA`](../ddl_import_foreign_schema/)
-- [`ALTER FOREIGN TABLE`](../ddl_alter_foreign_table/)
-- [`DROP FOREIGN TABLE`](../ddl_drop_foreign_table/)
+- [CREATE FOREIGN DATA WRAPPER](../ddl_create_foreign_data_wrapper/)
+- [CREATE FOREIGN TABLE](../ddl_create_foreign_table/)
+- [CREATE SERVER](../ddl_create_server/)
+- [CREATE USER MAPPING](../ddl_create_user_mapping/)
+- [IMPORT FOREIGN SCHEMA](../ddl_import_foreign_schema/)
+- [ALTER FOREIGN TABLE](../ddl_alter_foreign_table/)
+- [DROP FOREIGN TABLE](../ddl_drop_foreign_table/)

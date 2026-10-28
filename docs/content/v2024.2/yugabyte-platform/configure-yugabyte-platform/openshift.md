@@ -97,7 +97,7 @@ The next step is to create a `kubeconfig` file for this service account. The `ku
 You download a helper script for generating a `kubeconfig` file by executing the following command:
 
 ```shell
-wget https://raw.githubusercontent.com/YugaByte/charts/master/v2024.2/yugabyte/generate_kubeconfig.py
+wget https://raw.githubusercontent.com/yugabyte/charts/2024.2/stable/yugabyte/generate_kubeconfig.py
 ```
 
 To generate the `kubeconfig` file, execute the following:

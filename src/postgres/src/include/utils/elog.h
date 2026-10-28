@@ -143,9 +143,6 @@ struct Node;
  * optlevel -O0.
  *----------
  */
-/* YB_TODO_PG19MERGE (amartsinchyk)
- * The macros for multi-thread needs review and modifications to match PG19.
- */
 #ifdef HAVE_PG_INTEGER_CONSTANT_P
 #define ereport_domain(elevel, domain, ...)	\
 	do { \
@@ -295,7 +292,12 @@ extern int	getinternalerrposition(void);
 	do { \
 		struct Node *context_ = (context); \
 		pg_prevent_errno_in_scope(); \
-		if (errsave_start(context_, domain)) \
+		if (IsMultiThreadedMode()) \
+		{ \
+			if (yb_errsave_start(context_)) \
+				__VA_ARGS__, yb_errsave_finish(context_, __FILE__, __LINE__, __func__); \
+		} \
+		else if (errsave_start(context_, domain)) \
 			__VA_ARGS__, errsave_finish(context_, __FILE__, __LINE__, __func__); \
 	} while(0)
 
@@ -584,6 +586,9 @@ typedef struct YbStatusErrorData {
  */
 extern bool yb_errstart(int elevel);
 extern pg_attribute_cold bool yb_errstart_cold(int elevel);
+extern bool yb_errsave_start(struct Node *context);
+extern void yb_errsave_finish(struct Node *context, const char *filename,
+							  int lineno, const char *funcname);
 extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
 extern void yb_errapply_yb_status(const YbStatusErrorData *status_data,
 								  int backtrace_extra_frames_skip);

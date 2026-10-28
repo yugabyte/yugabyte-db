@@ -583,6 +583,12 @@ Identical to `\echo` except that the output is written to the query output chann
 
 Resets (clears) the query buffer.
 
+##### \restrict *restrict_key*
+
+Enters restricted mode. While in restricted mode, ysqlsh rejects every meta-command except `\unrestrict`; SQL statements still run normally. The only way out is `\unrestrict` with the same key, so a script cannot escape restricted mode by setting a variable or reading a file.
+
+Plain-text dumps from [ysql_dump](../../admin/ysql-dump/) and [ysql_dumpall](../../admin/ysql-dumpall/) wrap their output in `\restrict` and `\unrestrict`. The command is handled in ysqlsh and never sent to the server, so the ysqlsh version that replays the dump decides whether it loads. See also [TA-2968](/stable/releases/techadvisories/ta-2968/).
+
 ##### \s [ *filename* ]
 
 Print ysqlsh command line history to *filename*. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
@@ -641,6 +647,10 @@ Specifies attributes to be placed in the `table` tag in HTML output format. This
 ##### \timing [ on | off ]
 
 With a parameter, turns displaying of how long each SQL statement takes `on` or `off`. Without a parameter, toggles the display between `on` and `off`. The display is in milliseconds; intervals longer than 1 second are also shown in minutes:seconds format, with hours and days fields added if needed.
+
+##### \unrestrict *restrict_key*
+
+Leaves restricted mode, if the key matches the one given to [`\restrict`](#restrict-restrict). Unlike most other meta-commands, the entire remainder of the line is always taken to be the argument of `\unrestrict`, and neither variable interpolation nor backquote expansion are performed.
 
 ##### \unset *name*
 

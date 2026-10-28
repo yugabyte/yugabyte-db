@@ -1,0 +1,11 @@
+title: PerfAdvisorEndpoint
+description: |
+  PerfAdvisorEndpoint
+
+  An external Perf Advisor that a universe registered in online mode forwards its collected data to.
+type: object
+properties:
+  info:
+    $ref: "./PerfAdvisorEndpointInfo.yaml"
+  spec:
+    $ref: "./PerfAdvisorEndpointSpec.yaml"

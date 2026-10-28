@@ -413,6 +413,22 @@ network_errors:
         "node_network_receive_errs_irate": "RX"
         "node_network_transmit_errs_irate": "TX"
 
+network_tcp_retransmits:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_netstat_Tcp_RetransSegs_irate"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "TCP Retransmits / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_netstat_Tcp_RetransSegs_irate": "Retransmits"
+
 system_load_over_time:
   metric: ""
   filters:
@@ -2079,6 +2095,43 @@ table_docdb_transaction:
       alias:
         "transaction_conflicts": "Conflicts"
         "expired_transactions": "Expired"
+docdb_keys_found:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    saved_name: "docdb_keys_found|docdb_obsolete_keys_found_past_cutoff"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "DocDB Keys Found"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "docdb_keys_found": "Keys Found"
+        "docdb_obsolete_keys_found_past_cutoff": "Obsolete Keys Found"
+
+table_docdb_keys_found:
+  metric: ""
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "docdb_keys_found|docdb_obsolete_keys_found_past_cutoff"
+    export_type: "tserver_export"
+    table_name: ".+"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "DocDB Keys Found"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "docdb_keys_found": "Keys Found"
+        "docdb_obsolete_keys_found_past_cutoff": "Obsolete Keys Found"
+
 #Ysql Metrics
 ysql_server_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -3981,6 +4034,32 @@ process_proportional_memory:
         "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
+postgres_worker_pss_max:
+  metric: "yb_postgres_worker_pss_max_kb"
+  function: "max_over_time|max"
+  range: true
+  operator: "/ 1024"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "Postgres Worker PSS (Max)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+
+postgres_worker_pss_p95:
+  metric: "yb_postgres_worker_pss_p95_kb"
+  function: "max_over_time|max"
+  range: true
+  operator: "/ 1024"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "Postgres Worker PSS (P95)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+
 process_io_read:
   metric: "process_io_read_rate"
   function: "avg_over_time|avg"
@@ -4056,14 +4135,13 @@ process_open_files:
         "total_count": "Total"
 
 ysql_catalog_cache_misses:
-  metric: "rpc_latency_count"
+  metric: "rpc_latency_count|yb_ysqlserver_CatalogCacheMisses_count"
   function: "rate|sum"
   range: true
   filters:
     export_type: "ysql_export"
-    server_type: "yb_ysqlserver"
-    service_type: "SQLProcessor"
-    service_method: "CatalogCacheTableMisses"
+    saved_name: "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count|\
+      yb_ysqlserver_CatalogCacheMisses_count"
     table_name: "..*"
   panel_group: "YSQL"
   layout:
@@ -4073,6 +4151,7 @@ ysql_catalog_cache_misses:
     yaxis:
       alias:
         rpc_latency_count: "Catalog Cache Miss Count"
+        yb_ysqlserver_CatalogCacheMisses_count: "Catalog Cache Miss Count"
 
 # ---------------------------------------------------------------------------
 # YBA-platform host metrics (VM install).

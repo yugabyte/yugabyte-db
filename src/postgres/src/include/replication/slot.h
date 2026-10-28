@@ -318,6 +318,9 @@ typedef struct ReplicationSlot
 	 * slotsync_skip_reason provides no practical benefit.
 	 */
 	SlotSyncSkipReason slotsync_skip_reason;
+
+	/* YB fields */
+	YbCRSLsnType yb_lsn_type;
 } ReplicationSlot;
 
 #define SlotIsPhysical(slot) ((slot)->data.database == InvalidOid)

@@ -1148,115 +1148,20 @@ create_pg_locale(Oid collid, MemoryContext context)
 	return result;
 }
 
-/*
- * YB_TODO_PG19MERGE: PG commits 06421b08436414b42cd169501005f15adee986f1 and
- * 51edc4ca54f826cfac012c7306eee479f07a5dc7 removed lc_collate_is_c and
- * lc_ctype_is_c.
- */
-#if 0
-bool
-lc_collate_is_c(Oid collation)
-{
-	/*
-	 * If we're asked about "collation 0", return false, so that the code will
-	 * go into the non-C path and report that the collation is bogus.
-	 */
-	if (!OidIsValid(collation))
-		return false;
-
-	/*
-	 * At tserver side (for YB expression pushdown) YBCPgIsYugaByteEnabled()
-	 * is false. We assert at PG side before default collation is resolved,
-	 * only C collation is possible (PG 15 has made all catalog tables with
-	 * collation aware columns to all have C collation.
-	 */
-	Assert(!YBCPgIsYugaByteEnabled() || yb_default_collation_resolved || collation == C_COLLATION_OID);
-
-	/*
-	 * If we're asked about the default collation, we have to inquire of the C
-	 * library.  Cache the result so we only have to compute it once.
-	 */
-	if (collation == DEFAULT_COLLATION_OID)
-	{
-		static YB_THREAD_LOCAL int result = -1;
-		char	   *localeptr;
-
-		if (default_locale.provider == COLLPROVIDER_ICU)
-			return false;
-
-		if (result >= 0)
-			return (bool) result;
-		localeptr = setlocale(LC_COLLATE, NULL);
-		if (!localeptr)
-			elog(ERROR, "invalid LC_COLLATE setting");
-
-		if (strcmp(localeptr, "C") == 0)
-			result = true;
-		else if (strcmp(localeptr, "POSIX") == 0)
-			result = true;
-		else
-			result = false;
-		return (bool) result;
-	}
-
-	/*
-	 * If we're asked about the built-in C/POSIX collations, we know that.
-	 */
-	if (collation == C_COLLATION_OID ||
-		collation == POSIX_COLLATION_OID)
-		return true;
-
-	/*
-	 * Otherwise, we have to consult pg_collation, but we cache that.
-	 */
-	return (lookup_collation_cache(collation, true))->collate_is_c;
-}
-
-bool
-lc_ctype_is_c(Oid collation)
-{
-	if (!OidIsValid(collation))
-		return false;
-
-	if (collation == DEFAULT_COLLATION_OID)
-	{
-		static YB_THREAD_LOCAL int result = -1;
-		char	   *localeptr;
-
-		if (default_locale.provider == COLLPROVIDER_ICU)
-			return false;
-
-		if (result >= 0)
-			return (bool) result;
-		localeptr = setlocale(LC_CTYPE, NULL);
-		if (!localeptr)
-			elog(ERROR, "invalid LC_CTYPE setting");
-
-		if (strcmp(localeptr, "C") == 0)
-			result = true;
-		else if (strcmp(localeptr, "POSIX") == 0)
-			result = true;
-		else
-			result = false;
-		return (bool) result;
-	}
-
-	if (collation == C_COLLATION_OID ||
-		collation == POSIX_COLLATION_OID)
-		return true;
-
-	return (lookup_collation_cache(collation, true))->ctype_is_c;
-}
-
-struct pg_locale_struct default_locale;
-#endif
-
 void
 init_database_collation(void)
 {
 	HeapTuple	tup;
 	Form_pg_database dbform;
 	pg_locale_t result;
+
+	/*
+	 * YB: default_locale may already be set up on first use of the default
+	 * collation (see pg_newlocale_from_collation), e.g. during relcache
+	 * preloading.
+	 */
+	if (IsYugaByteEnabled() && default_locale != NULL)
+		return;
 
 	Assert(default_locale == NULL);
 
@@ -1314,6 +1219,16 @@ pg_newlocale_from_collation(Oid collid)
 {
 	collation_cache_entry *cache_entry;
 	bool		found;
+
+	/*
+	 * YB: YbPresetDatabaseCollation runs before syscache lookups are safe, so
+	 * it cannot set up default_locale. Set it up on first use, which can be
+	 * before CheckMyDatabase, e.g. when relcache preloading builds the
+	 * partition descriptor of a table list-partitioned on a text column.
+	 */
+	if (IsYugaByteEnabled() && collid == DEFAULT_COLLATION_OID &&
+		default_locale == NULL && yb_default_collation_resolved)
+		init_database_collation();
 
 	if (collid == DEFAULT_COLLATION_OID)
 		return default_locale;

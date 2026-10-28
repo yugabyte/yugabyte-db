@@ -90,7 +90,22 @@ public class KubernetesPartitions {
             isReadOnlyCluster
                 ? podUpgradeParams.rollMaxBatchSize.getReadReplicaBatchSize()
                 : podUpgradeParams.rollMaxBatchSize.getPrimaryBatchSize();
-        rollStep = Math.min(numPods, rollStep);
+        int requestedRollStep = rollStep;
+        // rollStep must stay >= 1 so that maxIndex below covers every pod exactly once: a
+        // non-positive step yields a non-positive maxIndex (rolling nothing at all) or an
+        // infinite one. Degrade to sequential rolling instead, as the VM path does.
+        rollStep = Math.max(1, Math.min(numPods, rollStep));
+        if (requestedRollStep < 1) {
+          // Only reachable on a retry, since the request boundary rejects a sub-1 batch size; a
+          // task wedged with one replays its stored params and would otherwise roll one pod at a
+          // time with nothing tying that back to the stored value.
+          log.warn(
+              "Requested roll batch size of {} cannot partition {} pods; rolling sequentially with"
+                  + " a step of {}",
+              requestedRollStep,
+              numPods,
+              rollStep);
+        }
         if (rollStep > 1) {
           log.debug("Using roll step of {}", rollStep);
         }

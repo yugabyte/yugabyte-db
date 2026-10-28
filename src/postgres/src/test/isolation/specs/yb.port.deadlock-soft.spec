@@ -47,4 +47,4 @@ step e2c	{ COMMIT; }
 # aborted txn so as to allow the other txn to make progress. In YB, the
 # Object Lock Manager is indifferent to the status of the transaction and
 # would treat the lock as active unless explicitly released.
-permutation d1a1 d2a2 e1l e2l d1a2 d2a1 e2c d1c e1c d2c
+permutation d1a1 d2a2 e1l e2l d1a2(*, e2l) d2a1(*, e2l, e1l) e2c d1c e1c d2c

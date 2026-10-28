@@ -441,6 +441,26 @@ SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order b
 
 -- Cleanup
 DROP TABLE test_25394;
+-- Partial index whose predicate is on a range primary key.  Such a predicate
+-- can be turned into a bind on the key range the scan reads rather than a
+-- storage filter, in which case rows outside such a bind would never be
+-- scanned, unlike the non-key predicate above which is evaluated per row.  The
+-- base table reltuples must still be the total number of rows in the table.
+CREATE TABLE pktest_25394 (id INT, val INT, PRIMARY KEY (id ASC));
+INSERT INTO pktest_25394 SELECT i, i*10 FROM generate_series(1,200) AS i;
+CREATE INDEX CONCURRENTLY pktest_25394_val_idx ON pktest_25394(val);
+CREATE INDEX CONCURRENTLY pktest_25394_partial_val_idx ON pktest_25394(val) WHERE id > 100;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'pktest_25394%' order by relname;
+           relname            | reltuples 
+------------------------------+-----------
+ pktest_25394                 |       200
+ pktest_25394_partial_val_idx |       100
+ pktest_25394_pkey            |         0
+ pktest_25394_val_idx         |       200
+(4 rows)
+
+-- Cleanup
+DROP TABLE pktest_25394;
 --------------------------------
 -- Non-concurrent Index Creation
 --------------------------------

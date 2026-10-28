@@ -47,6 +47,62 @@ func TestSaveCerts(t *testing.T) {
 	}
 }
 
+// TestSaveCertsFromLocalPaths tests saving certs from local paths.
+func TestSaveCertsFromLocalPaths(t *testing.T) {
+	config := CurrentConfig()
+	tmpDir := t.TempDir()
+	certContent, keyContent := "local-cert-content", "local-key-content"
+	certSrc := filepath.Join(tmpDir, "host.crt")
+	keySrc := filepath.Join(tmpDir, "host.key")
+	if err := os.WriteFile(certSrc, []byte(certContent), 0644); err != nil {
+		t.Fatalf("Unable to write source cert - %s", err.Error())
+	}
+	if err := os.WriteFile(keySrc, []byte(keyContent), 0644); err != nil {
+		t.Fatalf("Unable to write source key - %s", err.Error())
+	}
+
+	subDir := "test-local-paths"
+	err := SaveCerts(context.TODO(), config, &model.NodeAgentConfig{
+		ServerCertLocalPath: certSrc,
+		ServerKeyLocalPath:  keySrc,
+		SignerPublicKey:     "signer-pub",
+		SignerPrivateKey:    "signer-priv",
+	}, subDir)
+	if err != nil {
+		t.Fatalf("Error while saving certs from local paths - %s", err.Error())
+	}
+
+	dir := filepath.Join(CertsDir(), subDir)
+	checks := map[string]string{
+		NodeAgentCertFile:    certContent,
+		NodeAgentKeyFile:     keyContent,
+		SignerPublicKeyFile:  "signer-pub",
+		SignerPrivateKeyFile: "signer-priv",
+	}
+	for filename, expected := range checks {
+		data, err := os.ReadFile(filepath.Join(dir, filename))
+		if err != nil {
+			t.Fatalf("Unable to read %s - %s", filename, err.Error())
+		}
+		if string(data) != expected {
+			t.Fatalf("Incorrect data in %s: got %q want %q", filename, data, expected)
+		}
+	}
+}
+
+// TestSaveCertsMissingLocalPath tests saving certs with missing local paths.
+// This must fail instead of silently ignoring the missing paths.
+func TestSaveCertsMissingLocalPath(t *testing.T) {
+	config := CurrentConfig()
+	err := SaveCerts(context.TODO(), config, &model.NodeAgentConfig{
+		ServerCertLocalPath: filepath.Join(t.TempDir(), "missing.crt"),
+		ServerKeyLocalPath:  filepath.Join(t.TempDir(), "missing.key"),
+	}, "test-missing-local")
+	if err == nil {
+		t.Fatal("Expected error for missing local cert path")
+	}
+}
+
 func TestPublicKeyFromFile(t *testing.T) {
 	config := CurrentConfig()
 	paths := SignerPublicKeyPaths(config)

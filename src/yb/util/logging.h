@@ -463,6 +463,10 @@ void DisableCoreDumps();
 // based on the FATAL log path.
 std::string GetFatalDetailsPathPrefix();
 
+// Set the version information to record, along with the process start time, at the top of fatal
+// failure details files. Must be called once, during single-threaded initialization.
+void SetFatalDetailsHeader(const std::string& version_info);
+
 // Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
 // printing the failure stack trace into a separate file.
 class LogFatalHandlerSink : public google::LogSink {

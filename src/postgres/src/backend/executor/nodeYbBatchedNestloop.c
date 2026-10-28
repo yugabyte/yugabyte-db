@@ -133,6 +133,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 	ExprState  *joinqual;
 	ExprState  *otherqual;
 	ExprContext *econtext;
+	uint64_t	max_size;
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -158,20 +159,29 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 	 */
 	elog(DEBUG2, "entering main loop");
 
-	bnlstate->batch_size = GetMaxBatchSize(batchnl);
+	max_size = GetMaxBatchSize(batchnl);
+	bnlstate->batch_size = max_size;
 
-	if (!pstate->state->yb_exec_params.limit_use_default)
+	if (pstate->state->yb_exec_params.plan_limit > 0)
 	{
-		uint32_t	limit = pstate->state->yb_exec_params.limit_count;
+		uint64_t	first_size = batchnl->first_batch_size;
 
-		limit = ceil(limit * batchnl->first_batch_factor);
-		if (limit > 0 && limit < GetMaxBatchSize(batchnl))
+		/*
+		 * Trim the first batch to the size the planner priced.  Without one
+		 * (the LIMIT was not known at plan time) trim to the rows the LIMIT
+		 * needs, as if each outer row produced one output row.
+		 */
+		if (first_size == 0)
+			first_size = Min(pstate->state->yb_exec_params.plan_limit, max_size);
+		if (first_size > 0 && first_size < max_size)
 		{
 			if (!bnlstate->is_first_batch_done)
-				bnlstate->batch_size = limit;
+			{
+				bnlstate->batch_size = first_size;
+				bnlstate->first_batch_size = first_size;
+			}
 
-			limit = GetCurrentBatchSize(bnlstate);
-			pstate->state->yb_exec_params.limit_count = limit;
+			pstate->state->yb_exec_params.plan_limit = GetCurrentBatchSize(bnlstate);
 		}
 	}
 
@@ -447,12 +457,12 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 }
 
 /*
- * Whether or not we are using the hash batching strategy. We go with
- * the hash strategy if we have at least one hashable clause in our join
- * condition as signified by num_hashClauseInfos.
+ * Whether the hash batching strategy is used: hashing is enabled and at
+ * least one join clause is hashable, as signified by num_hashClauseInfos.
+ * EXPLAIN reports the tuplestore strategy through this same test.
  */
-static bool inline
-UseHash(YbBatchedNestLoop *plan, YbBatchedNestLoopState *nl)
+bool
+YbBnlUseHash(const YbBatchedNestLoop *plan)
 {
 	return yb_bnl_enable_hashing && plan->num_hashClauseInfos > 0;
 }
@@ -478,7 +488,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	TupleDesc	innerDesc = innerPlanState(bnlstate)->ps_ResultTupleDesc;
 	int			nkeys = plan->num_hashClauseInfos;
 
-	Assert(UseHash(plan, bnlstate));
+	Assert(YbBnlUseHash(plan));
 
 	/* Outer tuple's join keys */
 	List	   *outerKeytlist = NIL;
@@ -512,15 +522,23 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		outerKeytlist = lappend(outerKeytlist,
 								makeTargetEntry(outerExpr, i + 1, NULL, false));
 
-		/* Inner tuple's join key */
-		FormData_pg_attribute *attr =
-			TupleDescAttr(innerDesc, current_hinfo->innerHashAttNo - 1);
-		Expr	   *innerExpr = (Expr *) makeVar(INNER_VAR,
-												 current_hinfo->innerHashAttNo,
-												 attr->atttypid,
-												 attr->atttypmod,
-												 attr->attcollation,
-												 0);
+		/* Inner tuple's join key: a column of the inner tuple or an expression */
+		Expr	   *innerExpr;
+
+		if (current_hinfo->innerHashExpr != NULL)
+			innerExpr = current_hinfo->innerHashExpr;
+		else
+		{
+			FormData_pg_attribute *attr =
+				TupleDescAttr(innerDesc, current_hinfo->innerHashAttNo - 1);
+
+			innerExpr = (Expr *) makeVar(INNER_VAR,
+										 current_hinfo->innerHashAttNo,
+										 attr->atttypid,
+										 attr->atttypmod,
+										 attr->attcollation,
+										 0);
+		}
 		innerKeytlist = lappend(innerKeytlist,
 								makeTargetEntry(innerExpr, i + 1, NULL, false));
 
@@ -661,6 +679,15 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 											 keySlot,
 											 bnlstate->inner_lookup_fn,
 											 bnlstate->inner_hash_fn);
+
+	/*
+	 * The key projection and the hash functions allocate in the per-tuple
+	 * memory, which the main loop does not reset when it moves to the next
+	 * inner tuple without returning a row; release it now that the lookup is
+	 * done.
+	 */
+	ResetExprContext(econtext);
+
 	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
@@ -1103,6 +1130,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 								 plan->nl.join.jointype == JOIN_SEMI);
 
 	bnlstate->is_first_batch_done = false;
+	bnlstate->first_batch_size = 0;
 
 	/* set up null tuples for outer joins, if needed */
 	switch (plan->nl.join.jointype)
@@ -1139,7 +1167,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	bnlstate->bnl_is_sorted = false;
 	bnlstate->bnl_tuple_sort = NULL;
 
-	if (UseHash(plan, bnlstate))
+	if (YbBnlUseHash(plan))
 	{
 		InitHash(bnlstate);
 		REGISTER_LOCAL_JOIN_FN(FlushTuple, Hash);

@@ -1,0 +1,66 @@
+{
+  "lastUpdated": "2026-08-14T09:09:55.872Z",
+  "currency": "USD",
+  "computeFamilies": {
+    "A1": {
+      "ocpuPerHour": 0.01,
+      "memoryGbPerHour": 0.0015
+    },
+    "A2": {
+      "ocpuPerHour": 0.014,
+      "memoryGbPerHour": 0.002
+    },
+    "A4": {
+      "ocpuPerHour": 0.0138,
+      "memoryGbPerHour": 0.0027
+    },
+    "B1": {
+      "ocpuPerHour": 0.0638,
+      "memoryGbPerHour": 0.0
+    },
+    "E2": {
+      "ocpuPerHour": 0.03,
+      "memoryGbPerHour": 0.0
+    },
+    "E2Micro": {
+      "ocpuPerHour": 0.0,
+      "memoryGbPerHour": 0.0
+    },
+    "E3": {
+      "ocpuPerHour": 0.025,
+      "memoryGbPerHour": 0.0015
+    },
+    "E4": {
+      "ocpuPerHour": 0.025,
+      "memoryGbPerHour": 0.0015
+    },
+    "E5": {
+      "ocpuPerHour": 0.03,
+      "memoryGbPerHour": 0.002
+    },
+    "E6": {
+      "ocpuPerHour": 0.03,
+      "memoryGbPerHour": 0.002
+    },
+    "OptimizedX9": {
+      "ocpuPerHour": 0.054,
+      "memoryGbPerHour": 0.0015
+    },
+    "X5": {
+      "ocpuPerHour": 0.0638,
+      "memoryGbPerHour": 0.0
+    },
+    "X7": {
+      "ocpuPerHour": 0.0638,
+      "memoryGbPerHour": 0.0
+    },
+    "X9": {
+      "ocpuPerHour": 0.04,
+      "memoryGbPerHour": 0.0015
+    }
+  },
+  "blockVolume": {
+    "storageGbPerMonth": 0.0255,
+    "vpuPerGbPerMonth": 0.0017
+  }
+}

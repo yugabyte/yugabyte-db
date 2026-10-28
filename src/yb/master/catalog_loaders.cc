@@ -51,6 +51,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
+
 DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
@@ -213,6 +215,25 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
     catalog_manager_->deleted_tablets_.insert(tablet_id);
+    return Status::OK();
+  }
+
+  // A deleted split parent is only needed to redirect a lookup to its children and to be listed in
+  // the master UI, so load it straight into that form rather than as a TabletInfo that
+  // RemoveDeletedTabletsFromTables would drop.
+  // Tablets of a table that is going away are loaded as usual, as RemoveDeletedTabletsFromTables
+  // leaves them alone too.
+  if (FLAGS_master_enable_deleted_tablet_cleanup &&
+      metadata.state() == SysTabletsEntryPB::DELETED && metadata.split_tablet_ids_size() > 0 &&
+      !primary_table->LockForRead()->started_hiding_or_deleting()) {
+    catalog_manager_->deleted_tablets_.insert(tablet_id);
+    catalog_manager_->deleted_split_parents_.insert_or_assign(
+        tablet_id,
+        DeletedSplitParent{
+            .table_id = metadata.table_id(),
+            .child_ids = std::vector<TabletId>(
+                metadata.split_tablet_ids().begin(), metadata.split_tablet_ids().end()),
+            .state_msg = metadata.state_msg()});
     return Status::OK();
   }
 
@@ -507,6 +528,20 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
+      // NEXT_VER_PREPARING marks a live database whose new-version catalog copy was interrupted.
+      if (pb_data.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_PREPARING) {
+        LOG(INFO) << "Loading namespace in state PREPARING because its ysql major catalog upgrade "
+                  << "was interrupted: " << ns->ToString();
+        l.mutable_data()->pb.set_ysql_next_major_version_state(
+            SysNamespaceEntryPB::NEXT_VER_FAILED);
+        catalog_manager_->namespace_ids_map_[ns_id] = ns;
+        if (!pb_data.name().empty()) {
+          catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+        }
+        l.Commit();
+        break;
+      }
+
       // PREPARING means the server restarted before completing NS creation. For YSQL consider it
       // FAILED & remove any partially-created data. We must do this to avoid leaking the namespace
       // because such databases are not visible to clients through pg sessions as the pg process

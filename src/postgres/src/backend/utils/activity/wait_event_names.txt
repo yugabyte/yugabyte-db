@@ -291,8 +291,8 @@ WAL_SUMMARY_WRITE	"Waiting for a write to a WAL summary file."
 WAL_SYNC	"Waiting for a WAL file to reach durable storage."
 WAL_SYNC_METHOD_ASSIGN	"Waiting for data to reach durable storage while assigning a new WAL sync method."
 WAL_WRITE	"Waiting for a write to a WAL file."
-YB_COPY_COMMAND_STREAM_READ	"YB_TODO_PG19MERGE: add description."
-YB_COPY_COMMAND_STREAM_WRITE	"YB_TODO_PG19MERGE: add description."
+YB_COPY_COMMAND_STREAM_READ	"Waiting for a read from a file or program during COPY."
+YB_COPY_COMMAND_STREAM_WRITE	"Waiting for a write to a file or program during COPY."
 YB_IO_END	"YB: sentinel for IO wait events iteration."
 
 ABI_compatibility:

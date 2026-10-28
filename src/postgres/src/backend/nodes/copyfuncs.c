@@ -222,10 +222,14 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	COPY_SCALAR_FIELD(nl.join.inner_unique);
 	COPY_NODE_FIELD(nl.join.joinqual);
 	COPY_NODE_FIELD(nl.nestParams);
+	COPY_SCALAR_FIELD(first_batch_size);
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
 	if (from->num_hashClauseInfos > 0)
 		COPY_POINTER_FIELD(hashClauseInfos,
 						   from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+		newnode->hashClauseInfos[i].innerHashExpr =
+			(Expr *) copyObject(from->hashClauseInfos[i].innerHashExpr);
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr =
 			(Expr *) copyObject(from->hashClauseInfos[i].outerParamExpr);

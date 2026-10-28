@@ -124,16 +124,22 @@ AsyncClearMetacache::AsyncClearMetacache(
 std::string AsyncClearMetacache::description() const { return "Async ClearMetacache RPC"; }
 
 void AsyncClearMetacache::HandleResponse(int attempt) {
-  Status resp_status = Status::OK();
   if (resp_.has_error()) {
-    resp_status = StatusFromPB(resp_.error().status());
+    auto resp_status = StatusFromPB(resp_.error().status());
     LOG(WARNING) << "Clear Metacache entries for namespace " << namespace_id
                  << " failed: " << resp_status;
     TransitionToFailedState(state(), resp_status);
   } else {
     TransitionToCompleteState();
   }
-  WARN_NOT_OK(callback_(), "Failed to execute the callback of AsyncClearMetacache");
+}
+
+// The callback runs from Finished rather than from HandleResponse so that it runs exactly once per
+// task, on every terminal path. A task that never gets a response (an unreachable tserver, or
+// retries exhausted against the deadline) reaches a terminal state without HandleResponse, and the
+// clone would otherwise sit in RESTORED forever waiting for a tserver that will never report.
+void AsyncClearMetacache::Finished(const Status& status) {
+  WARN_NOT_OK(callback_(status), "Failed to execute the callback of AsyncClearMetacache");
 }
 
 bool AsyncClearMetacache::SendRequest(int attempt) {
@@ -161,16 +167,20 @@ std::string AsyncEnableDbConns::description() const {
 }
 
 void AsyncEnableDbConns::HandleResponse(int attempt) {
-  Status resp_status;
   if (resp_.has_error()) {
-    resp_status = StatusFromPB(resp_.error().status());
+    auto resp_status = StatusFromPB(resp_.error().status());
     LOG(WARNING) << "Failed to enable connections on cloned database " << target_db_name_
                  << ". Status: " << resp_status;
     TransitionToFailedState(state(), resp_status);
   } else {
     TransitionToCompleteState();
   }
-  WARN_NOT_OK(callback_(resp_status), "Failed to execute callback of AsyncEnableDbConns");
+}
+
+// Runs from Finished for the same reason as AsyncClearMetacache above: exactly once, on every
+// terminal path, including the ones that never reach HandleResponse.
+void AsyncEnableDbConns::Finished(const Status& status) {
+  WARN_NOT_OK(callback_(status), "Failed to execute callback of AsyncEnableDbConns");
 }
 
 bool AsyncEnableDbConns::SendRequest(int attempt) {

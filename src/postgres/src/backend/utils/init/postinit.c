@@ -100,6 +100,7 @@
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb_ash.h"
+#include <poll.h>
 
 /* has this backend called EmitConnectionWarnings()? */
 static bool ConnectionWarningsEmitted;
@@ -127,8 +128,17 @@ static void EmitConnectionWarnings(void);
 
 /* YB functions */
 static void YbPresetDatabaseCollation(HeapTuple tuple);
+static void YbEnableStartupClientConnectionCheck(void);
+static void YbDisableStartupClientConnectionCheck(void);
+static void YbCheckClientConnectionFromSignalHandler(void);
 
 static long YbNumAuthorizedConnections = 0L;
+
+/*
+ * Set while InitPostgres runs with the client connection check armed; see
+ * YbEnableStartupClientConnectionCheck.
+ */
+static volatile sig_atomic_t yb_startup_client_connection_check = false;
 
 /*** InitPostgres support ***/
 
@@ -759,12 +769,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 
-	/*
-	 * YB: default_locale may already be set up by YbPresetDatabaseCollation
-	 * for the same database.
-	 */
-	if (!(IsYugaByteEnabled() && yb_default_collation_resolved))
-		init_database_collation();
+	init_database_collation();
 
 	/*
 	 * Check collation version.  See similar code in
@@ -1135,7 +1140,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 						IdleStatsUpdateTimeoutHandler);
 	}
 
-	MyProc->ybInitializationCompleted = true;
+	YbMyProcState->initialization_completed = true;
 
 	/*
 	 * If this is either a bootstrap process or a standalone backend, start up
@@ -1193,6 +1198,30 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Connect to YugaByte cluster. */
 	YBInitPostgresBackend("postgres", yb_init_info);
 
+	/* YB: Disabled by YbInitPostgres. */
+	if (IsUnderPostmaster)
+		YbEnableStartupClientConnectionCheck();
+
+	if (!bootstrap && MyProcPort != NULL &&
+		MyProcPort->yb_dist_traceparent != NULL &&
+		MyProcPort->yb_dist_traceparent[0] != '\0')
+	{
+		char		tracecontext[YB_TRACEPARENT_KEY_PREFIX_LEN +
+								 2 * YB_TRACEPARENT_QUOTE_LEN +
+								 YB_TRACEPARENT_VALUE_LEN + 1];
+
+		snprintf(tracecontext, sizeof(tracecontext),
+				 YB_TRACEPARENT_KEY_PREFIX "'%s'",
+				 MyProcPort->yb_dist_traceparent);
+
+		/* Warn instead of failing the connection when the value is rejected. */
+		(void) set_config_option_ext("yb_dist_tracecontext", tracecontext,
+									 PGC_BACKEND, PGC_S_SESSION,
+									 BOOTSTRAP_SUPERUSERID, GUC_ACTION_SET,
+									 true /* changeVal */ , WARNING,
+									 false /* is_reload */ );
+	}
+
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
 		HandleYBStatus(YBCPgTableExists(Template1DbOid,
@@ -1230,10 +1259,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
-										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
+										YB_YQL_PREFETCH_KIND_CONNECTION_START);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache();
+			YBCStartSysTablePrefetchingNoCache(YB_YQL_PREFETCH_KIND_CONNECTION_START);
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1592,7 +1622,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	MyDatabaseId = dboid;
 
 	if (IsYugaByteEnabled())
+	{
 		YBCSetupPgBackendCgroup(MyDatabaseId);
+		YBCPgSetConnectedDatabaseOid(MyDatabaseId);
+	}
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.
@@ -1846,13 +1879,102 @@ YbInitPostgres(const char *in_dbname, Oid dboid,
 	}
 	PG_CATCH();
 	{
+		YbDisableStartupClientConnectionCheck();
 		YbEnsureSysTablePrefetchingStopped();
 		YBCUpdateInitPostgresMetrics();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+	YbDisableStartupClientConnectionCheck();
 	YbEnsureSysTablePrefetchingStopped();
 	YBCUpdateInitPostgresMetrics();
+}
+
+/*
+ * PG's client_connection_check_interval normally applies only after the
+ * backend has initialized.  In YB, initialization RPCs such as the catalog
+ * preload can take a while, so this check honors the GUC during those RPCs
+ * too.  They run before the per-database and per-role values of
+ * client_connection_check_interval are loaded, so only the server-wide
+ * setting (ysql_pg_conf_csv) is respected here.
+ */
+static void
+YbEnableStartupClientConnectionCheck(void)
+{
+	/*
+	 * MyProcPort is not set for other types of workers, which don't process
+	 * queries.
+	 */
+	if (!*YBCGetGFlags()->ysql_enable_startup_client_connection_check ||
+		client_connection_check_interval <= 0 || MyProcPort == NULL)
+		return;
+
+	yb_startup_client_connection_check = true;
+	/* Set up a signal handler to fire periodically (SIGALRM). */
+	enable_timeout_every(CLIENT_CONNECTION_CHECK_TIMEOUT,
+						 TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
+													 client_connection_check_interval),
+						 client_connection_check_interval);
+}
+
+static void
+YbDisableStartupClientConnectionCheck(void)
+{
+	if (!yb_startup_client_connection_check)
+		return;
+
+	disable_timeout(CLIENT_CONNECTION_CHECK_TIMEOUT, false);
+	yb_startup_client_connection_check = false;
+}
+
+/*
+ * The goal is to do the same work as pq_check_connection, but in signal
+ * context.  pq_check_connection is not safe to run inside a signal handler.
+ *
+ * On a lost client this does what die() does, but sets ClientConnectionLost
+ * instead of ProcDiePending, so that ProcessInterrupts reports the lost
+ * client.  Interrupting pggate fails the pending request, and the error path
+ * runs CHECK_FOR_INTERRUPTS, which exits with FATAL.  The timer is still armed
+ * when InitPostgres exits with FATAL; after proc_exit destroys pggate,
+ * IsYugaByteEnabled() returns false.
+ */
+static void
+YbCheckClientConnectionFromSignalHandler(void)
+{
+	struct pollfd pfd;
+	short		hangup_events = POLLHUP | POLLERR;
+
+	if (ClientConnectionLost || proc_exit_inprogress)
+		return;
+
+	/*
+	 * MyProcPort is non-NULL only in backends started for a client
+	 * connection: regular backends and walsenders.  Background workers,
+	 * parallel workers and autovacuum have none, so the check is never armed
+	 * for them.
+	 */
+	pfd.fd = MyProcPort->sock;
+	/*
+	 * POLLRDHUP is a Linux-only flag that captures graceful close of conn. The
+	 * other poll flags capture errors on the socket. This means that the
+	 * client connection check cannot detect graceful client close on MacOS.
+	 */
+#ifdef POLLRDHUP
+	hangup_events |= POLLRDHUP;
+#endif
+	pfd.events = hangup_events;
+	pfd.revents = 0;
+	if (poll(&pfd, 1, 0) > 0 && (pfd.revents & hangup_events) != 0)
+	{
+		ClientConnectionLost = true;
+		InterruptPending = true;
+
+
+		if (IsYugaByteEnabled())
+			YBCInterruptPgGate(); /* abort pending RPCs, if any */
+
+		SetLatch(MyLatch); /* wake up PG waits, if any */
+	}
 }
 
 /*
@@ -1885,11 +2007,11 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 				 errhint("Recreate the database with another locale or install the missing locale.")));
 	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
 	/*
-	 * Set up default_locale now, otherwise
-	 * pg_newlocale_from_collation(DEFAULT_COLLATION_OID) returns NULL until
-	 * CheckMyDatabase runs, which is after relcache preloading.
+	 * Do not call init_database_collation here: its syscache lookup would
+	 * happen before the relcache is initialized and before the latest catalog
+	 * version is resolved. pg_newlocale_from_collation sets up default_locale
+	 * on first use instead.
 	 */
-	init_database_collation();
 	yb_default_collation_resolved = true;
 }
 
@@ -1905,13 +2027,12 @@ YbGetAuthorizedConnections()
  * connection manager.
  */
 void
-YbAuthPassthroughSetupGUCAndReport(void)
+YbAuthPassthroughSetupGUCAndReport(Oid dboid)
 {
 	/* This function is only for auth passthrough via Connection Manager */
 	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
 
-	const char *dbname = MyProcPort->database_name;
-	Oid			dboid = get_database_oid(dbname, false);
+	Assert(OidIsValid(dboid));
 
 	/*
 	 * Process any options passed in the startup packet. This is important
@@ -2144,6 +2265,12 @@ IdleStatsUpdateTimeoutHandler(void)
 static void
 ClientCheckTimeoutHandler(void)
 {
+	if (yb_startup_client_connection_check)
+	{
+		YbCheckClientConnectionFromSignalHandler();
+		return;
+	}
+
 	CheckClientConnectionPending = true;
 	InterruptPending = true;
 	SetLatch(MyLatch);

@@ -51,6 +51,8 @@ pub fn anonymize_lifetimes(value: &mut syn::Type) {
             if let Some(lifetime) = type_ref.lifetime.as_mut() {
                 lifetime.ident = syn::Ident::new("_", lifetime.ident.span());
             }
+            // &'a T could be &'a &'b U so recurse to get &&U
+            anonymize_lifetimes(&mut type_ref.elem);
         }
         syn::Type::Tuple(type_tuple) => type_tuple.elems.iter_mut().for_each(anonymize_lifetimes),
         _ => {}

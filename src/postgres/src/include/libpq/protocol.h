@@ -108,4 +108,17 @@
 #define AUTH_REQ_SASL_FIN  12	/* Final SASL message */
 #define AUTH_REQ_MAX	   AUTH_REQ_SASL_FIN	/* maximum AUTH_REQ_* value */
 
+/*
+ * YB: request codes sent only by YSQL Connection Manager. Backends reject them
+ * from any other client.
+ * YbConnMgr_Parse shares its byte with PqMsg_PasswordMessage and friends. They
+ * are distinguished by the context in which the message is received.
+ */
+#define YbConnMgr_Parse						'p'
+#define YbConnMgr_AuthPassthroughRequest	'A'
+#define YbConnMgr_SetSessionParameter		's'
+#define YbConnMgr_ResetAll					'G'
+#define YbConnMgr_ResetGucDefaults			'g'
+#define YbConnMgr_ThrowError				'x'
+
 #endif							/* PROTOCOL_H */

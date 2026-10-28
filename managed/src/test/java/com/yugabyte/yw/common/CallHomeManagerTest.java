@@ -884,7 +884,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
             defaultCustomer.getUuid(), u.getUniverseUUID(), storageConfig.getConfigUUID());
 
     UUID providerUUID =
-        UUID.fromString(u.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        u.getUniverseDetails().getPrimaryCluster().userIntent.maybeGetSingleProviderUUID().get();
     InstanceType it =
         InstanceType.upsert(
             providerUUID, "m3.medium", 4.0, 8.0, new InstanceType.InstanceTypeDetails());
@@ -893,7 +893,9 @@ public class CallHomeManagerTest extends FakeDBApplication {
         univ -> {
           UniverseDefinitionTaskParams.UserIntent intent =
               univ.getUniverseDetails().getPrimaryCluster().userIntent;
-          intent.instanceType = it.getInstanceTypeCode();
+
+          TestUtils.getProviderInitializerForTests(intent, providerUUID)
+              .setInstanceType(it.getInstanceTypeCode());
           intent.numNodes = 3;
         });
 

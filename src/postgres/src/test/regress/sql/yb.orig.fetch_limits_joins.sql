@@ -27,18 +27,20 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t
 SET yb_bnl_batch_size = 1; -- disable BNLJ
 
 -- #### merge joins ####
+-- ANALYZE turns BUFFERS on. The t_large sort spills, and those temp block
+-- counts differ on assert builds.
 SET yb_fetch_row_limit = 1024;
 SET yb_fetch_size_limit = 0;
 
 -- the default behaviour sends 6 RPCs per table
-EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, BUFFERS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
 
 SET yb_fetch_row_limit = 0;
 -- size limit affects both tables in a Merge Join
 SET yb_fetch_size_limit = '500kB';
-EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, BUFFERS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
 SET yb_fetch_size_limit = '50kB';
-EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, BUFFERS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
 
 -- #### hash joins ####
 SET yb_fetch_row_limit = 1024;

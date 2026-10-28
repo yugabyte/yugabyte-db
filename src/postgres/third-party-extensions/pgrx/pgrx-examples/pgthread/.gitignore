@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+/target
+*.iml
+**/*.rs.bk
+Cargo.lock
+sql/*
+c_ext/*.o
+c_ext/*.dylib
+c_ext/*.so

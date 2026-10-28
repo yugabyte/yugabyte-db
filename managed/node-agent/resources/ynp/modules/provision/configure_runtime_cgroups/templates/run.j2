@@ -1,10 +1,10 @@
-# Detect cgroup layout, create v1 CPU cgroup leaf (world-writable per policy), persist cgroup type only.
+# Detect the cgroup layout and persist it for the yb-tserver cgroup wrapper. The root-only half
+# (v1 leaf and boot unit, v2 user@ delegation) is done by ConfigureRootCgroups.
 set -euo pipefail
 
 YB_USER_HOME="{{ yb_user_home }}"
 YB_USER="{{ yb_user }}"
 STATE_DIR="${YB_USER_HOME}/.yugabyte"
-CGROUP_V1_NAME="yugabyte-db"
 
 detect_cgroup_mode() {
   if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
@@ -66,29 +66,13 @@ cgroup_v1_cpu_root() {
 {% endraw %}
 }
 
-# One-time mkdir/chmod during this provision run so yb-tserver can be patched in the same run.
-# Reboot persistence is handled by yb-cgroup-v1-setup.service (written in ConfigureSystemd).
-setup_v1_cpu_cgroup() {
-  local cpu_root="$1"
-  local leaf="${cpu_root}/${CGROUP_V1_NAME}"
-  if [ "$SUDO_ACCESS" != "true" ]; then
-    echo "WARN: v1 cgroup setup requires root (mkdir/chmod); yb-cgroup-v1-setup.service will still apply on boot if enabled"
-    return 0
-  fi
-  install -d -m 0755 "$leaf"
-  chmod -R a+rw "$leaf" || true
-  echo "Created v1 cgroup at ${leaf} with a+rw"
-}
-
 CGROUP_MODE="$(detect_cgroup_mode)"
 echo "Detected cgroup mode: ${CGROUP_MODE}"
 
 cpu_root=""
 if [ "$CGROUP_MODE" = "v1" ]; then
   cpu_root="$(cgroup_v1_cpu_root)"
-  if [ -n "$cpu_root" ]; then
-    setup_v1_cpu_cgroup "$cpu_root"
-  else
+  if [ -z "$cpu_root" ]; then
     echo "WARN: v1 cpu controller path not found"
   fi
 fi

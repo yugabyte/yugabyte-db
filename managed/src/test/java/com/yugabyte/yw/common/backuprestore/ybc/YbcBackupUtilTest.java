@@ -345,6 +345,15 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetFipsEnabledFromSuccessMarker() {
+    assertEquals(true, YbcBackupUtil.getFipsEnabledFromSuccessMarker("{\"fips_enabled\":true}"));
+    assertEquals(false, YbcBackupUtil.getFipsEnabledFromSuccessMarker("{\"fips_enabled\":false}"));
+    // Markers written before the mode was recorded.
+    assertNull(YbcBackupUtil.getFipsEnabledFromSuccessMarker("{\"ybdb_version\":\"2.20.0.0\"}"));
+    assertNull(YbcBackupUtil.getFipsEnabledFromSuccessMarker(""));
+  }
+
+  @Test
   @Parameters(value = {"backup/ybc_extended_args_backup_keys.json"})
   public void testGetExtendedBackupArgs(String filePath) throws Exception {
     BackupTableParams tableParams = new BackupTableParams();
@@ -371,6 +380,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
     backupConfig.backupUUID = tableParams.backupUuid.toString();
     backupConfig.customerUUID = tableParams.customerUuid.toString();
+    backupConfig.fipsEnabled = false;
     backupConfig.ysqlMajorVersion = "15";
     backupConfig.ysqlMigrationFiles = Set.of("001_init.sql", "002_add_table.sql");
     BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);

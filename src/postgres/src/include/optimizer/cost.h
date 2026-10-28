@@ -35,7 +35,7 @@
 
 /* YB */
 #define YB_DEFAULT_PARALLEL_TUPLE_COST  0.22
-#define YB_DEFAULT_PARALLEL_SETUP_COST  1700.0
+#define YB_DEFAULT_PARALLEL_SETUP_COST  4080.0
 #define YB_DEFAULT_INTERCLOUD_COST 10.0
 #define	YB_DEFAULT_INTERREGION_COST 10.0
 #define	YB_DEFAULT_INTERZONE_COST 9.5
@@ -318,5 +318,12 @@ extern double compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel,
 								   Path *bitmapqual, double loop_count,
 								   Cost *cost_p, double *tuples_p);
 extern double compute_gather_rows(Path *path);
+
+/* YB declarations */
+extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
+								  PlannerInfo *root, RelOptInfo *joinrel,
+								  Path *outer_path, Path *inner_path,
+								  List *pathkeys, JoinType jointype,
+								  JoinPathExtraData *extra);
 
 #endif							/* COST_H */

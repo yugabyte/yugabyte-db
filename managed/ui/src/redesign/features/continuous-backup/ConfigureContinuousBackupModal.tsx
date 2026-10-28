@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -16,7 +17,22 @@ import {
   createContinuousBackup,
   editContinuousBackup
 } from '../../../v2/api/continuous-backup/continuous-backup';
-import { INPUT_FIELD_WIDTH_PX } from './constants';
+import {
+  ReactSelectOption,
+  YBReactSelectField
+} from '../../../components/configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
+import {
+  BACKUP_FREQUENCY_UNIT_TO_DURATION_I18N_KEY,
+  BackupFrequencyFormUnit,
+  getBackupFrequencyUnitOptions,
+  INPUT_FIELD_WIDTH_PX
+} from './constants';
+import {
+  convertBackupFrequencyBetweenFormUnits,
+  convertFrequencyToFormInterval,
+  getBackupFrequencyMaxValue,
+  getBackupFrequencyMinValue
+} from './utils';
 import { ContinuousBackup, TimeUnitType } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { BackupStorageConfigReactSelectOption } from './BackupStorageConfigSelect';
 import { CONTINUOUS_BACKUP_QUERY_KEY } from '../../helpers/api';
@@ -44,6 +60,7 @@ interface ConfigureContinuousBackupFormValues {
   storageConfig: BackupStorageConfigReactSelectOption | undefined;
   storageSubfolder: string;
   backupFrequency: number;
+  backupFrequencyUnit: ReactSelectOption;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -192,7 +209,7 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
         storage_config_uuid: values.storageConfig?.value ?? '',
         backup_dir: values.storageSubfolder,
         frequency: values.backupFrequency,
-        frequency_time_unit: TimeUnitType.MINUTES
+        frequency_time_unit: values.backupFrequencyUnit.value
       }),
     {
       onSuccess: () => {
@@ -219,7 +236,7 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
         storage_config_uuid: values.storageConfig?.value ?? '',
         backup_dir: values.storageSubfolder,
         frequency: values.backupFrequency,
-        frequency_time_unit: TimeUnitType.MINUTES
+        frequency_time_unit: values.backupFrequencyUnit.value
       }),
     {
       onSuccess: () => {
@@ -240,18 +257,86 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
     (props.operation === ConfigureContinuousBackupOperation.EDIT
       ? props.continuousBackupConfig.spec?.storage_config_uuid
       : '') ?? '';
-  const defaultValues =
+  const backupFrequencyUnitOptions = getBackupFrequencyUnitOptions((unit) => {
+    const label = t(`duration.${BACKUP_FREQUENCY_UNIT_TO_DURATION_I18N_KEY[unit]}_other`, {
+      keyPrefix: 'common'
+    });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  });
+  const defaultBackupFrequencyUnitOption =
+    backupFrequencyUnitOptions.find((option) => option.value === TimeUnitType.MINUTES) ??
+    backupFrequencyUnitOptions[0];
+
+  const editFormInterval =
     props.operation === ConfigureContinuousBackupOperation.EDIT
+      ? convertFrequencyToFormInterval(
+          props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE,
+          props.continuousBackupConfig.spec?.frequency_time_unit
+        )
+      : null;
+  const defaultValues =
+    props.operation === ConfigureContinuousBackupOperation.EDIT && editFormInterval
       ? {
-          backupFrequency:
-            props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE,
+          backupFrequency: editFormInterval.frequency,
+          backupFrequencyUnit:
+            backupFrequencyUnitOptions.find((option) => option.value === editFormInterval.unit) ??
+            defaultBackupFrequencyUnitOption,
           storageSubfolder: props.continuousBackupConfig.spec?.backup_dir
         }
-      : { backupFrequency: DEFAULT_BACKUP_FREQUENCY_MINUTE };
+      : {
+          backupFrequency: DEFAULT_BACKUP_FREQUENCY_MINUTE,
+          backupFrequencyUnit: defaultBackupFrequencyUnitOption
+        };
   const formMethods = useForm<ConfigureContinuousBackupFormValues>({
     defaultValues,
     mode: 'onChange'
   });
+
+  const previousBackupFrequencyUnitRef = useRef<BackupFrequencyFormUnit>(
+    defaultValues.backupFrequencyUnit.value
+  );
+
+  useEffect(() => {
+    if (!modalProps.open) {
+      return;
+    }
+    formMethods.reset({
+      ...formMethods.getValues(),
+      ...defaultValues
+    });
+    previousBackupFrequencyUnitRef.current =
+      defaultValues.backupFrequencyUnit.value as BackupFrequencyFormUnit;
+  }, [modalProps.open]);
+
+  const backupFrequencyUnit = formMethods.watch('backupFrequencyUnit')?.value as
+    | BackupFrequencyFormUnit
+    | undefined;
+  const backupFrequencyMinValue = getBackupFrequencyMinValue(backupFrequencyUnit);
+  const backupFrequencyMaxValue = getBackupFrequencyMaxValue(backupFrequencyUnit);
+
+  useEffect(() => {
+    // Changing the frequency unit may require revalidation of the value.
+    if (backupFrequencyUnit !== undefined) {
+      formMethods.trigger('backupFrequency');
+    }
+  }, [backupFrequencyUnit]);
+
+  const handleBackupFrequencyUnitChange = (option: ReactSelectOption) => {
+    // YBReactSelectField updates the form value before invoking onChange, so
+    // read the previous unit from a ref rather than getValues.
+    const currentFrequency = formMethods.getValues('backupFrequency');
+    const fromUnit = previousBackupFrequencyUnitRef.current;
+    const toUnit = option.value as BackupFrequencyFormUnit;
+    if (fromUnit !== toUnit) {
+      const convertedFrequency = convertBackupFrequencyBetweenFormUnits(
+        currentFrequency,
+        fromUnit,
+        toUnit
+      );
+      formMethods.setValue('backupFrequency', convertedFrequency, { shouldValidate: true });
+    }
+    previousBackupFrequencyUnitRef.current = toUnit;
+  };
 
   const onSubmit: SubmitHandler<ConfigureContinuousBackupFormValues> = async (formValues) => {
     const { operation } = props;
@@ -331,17 +416,9 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                   control={formMethods.control}
                   name="backupFrequency"
                   type="number"
-                  inputProps={{ min: 2, max: 1440 }}
+                  inputProps={{ min: backupFrequencyMinValue, max: backupFrequencyMaxValue }}
                   rules={{
                     required: t('formFieldRequired', { keyPrefix: 'common' }),
-                    min: {
-                      value: 2,
-                      message: t('error.backupFrequencyMustBeGreaterThanOrEqualTo2')
-                    },
-                    max: {
-                      value: 1440,
-                      message: t('error.backupFrequencyMustBeLessThanOrEqualTo1440')
-                    },
                     validate: {
                       pattern: (value) => {
                         const integerPattern = /^\d+$/;
@@ -349,15 +426,50 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                           integerPattern.test(value?.toString() ?? '') ||
                           t('error.backupFrequencyMustBePositiveInteger')
                         );
-                      }
+                      },
+                      min: (value) =>
+                        (value as number) >= backupFrequencyMinValue ||
+                        t('error.backupFrequencyBelowMinimum', {
+                          min: backupFrequencyMinValue,
+                          unit: t(
+                            `duration.${BACKUP_FREQUENCY_UNIT_TO_DURATION_I18N_KEY[
+                              backupFrequencyUnit ?? TimeUnitType.MINUTES
+                            ]}`,
+                            {
+                              count: backupFrequencyMinValue,
+                              keyPrefix: 'common'
+                            }
+                          ).toLocaleLowerCase()
+                        }),
+                      max: (value) =>
+                        (value as number) <= backupFrequencyMaxValue ||
+                        t('error.backupFrequencyAboveMaximum', {
+                          max: backupFrequencyMaxValue,
+                          unit: t(
+                            `duration.${BACKUP_FREQUENCY_UNIT_TO_DURATION_I18N_KEY[
+                              backupFrequencyUnit ?? TimeUnitType.MINUTES
+                            ]}`,
+                            {
+                              count: backupFrequencyMaxValue,
+                              keyPrefix: 'common'
+                            }
+                          ).toLocaleLowerCase()
+                        })
                     }
                   }}
                   hideInlineError
                   disabled={isFormDisabled}
                 />
-                <Typography variant="body2">
-                  {t('duration.minutes', { keyPrefix: 'common' }).toLocaleLowerCase()}
-                </Typography>
+                <YBReactSelectField
+                  control={formMethods.control}
+                  name="backupFrequencyUnit"
+                  options={backupFrequencyUnitOptions}
+                  onChange={handleBackupFrequencyUnitChange}
+                  autoSizeMinWidth={120}
+                  maxWidth="160px"
+                  rules={{ required: t('formFieldRequired', { keyPrefix: 'common' }) }}
+                  isDisabled={isFormDisabled}
+                />
               </div>
               {formMethods.formState.errors.backupFrequency?.message && (
                 <FormHelperText error={true}>

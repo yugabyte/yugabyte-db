@@ -42,8 +42,10 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -78,6 +80,7 @@ import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -94,6 +97,8 @@ import io.fabric8.mockwebserver.ServerRequest;
 import io.fabric8.mockwebserver.ServerResponse;
 import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.Aws;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.Azure;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.CipherTrust;
@@ -114,6 +119,7 @@ import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumMap;
@@ -121,6 +127,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -264,6 +271,56 @@ public class OperatorUtilsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGenerateBackupParamsOmitsKeyspaceIsFullBackup() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.remove("keyspace");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertTrue(scheduleParams.keyspaceTableList.isEmpty());
+    assertTrue(new BackupTableParams(scheduleParams).isFullBackup());
+  }
+
+  @Test
+  public void testGenerateBackupParamsNullKeyspaceIsFullBackup() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    // Fabric8 valueToTree of an omitted CR field emits "keyspace": null, not a missing field.
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.putNull("keyspace");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertTrue(scheduleParams.keyspaceTableList.isEmpty());
+    assertTrue(new BackupTableParams(scheduleParams).isFullBackup());
+  }
+
+  @Test
+  public void testGenerateBackupParamsNamedKeyspaceIsSingleEntry() throws Exception {
+    doReturn(testStorageConfig.getConfigUUID())
+        .when(operatorUtils)
+        .getStorageConfigUUIDFromName(anyString(), nullable(SharedIndexInformer.class));
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    ObjectNode spec = getScheduleBackupParamsJson();
+    spec.put("keyspace", "foo");
+    BackupRequestParams scheduleParams = operatorUtils.getBackupRequestFromCr(spec, null, null);
+    assertEquals(1, scheduleParams.keyspaceTableList.size());
+    assertEquals("foo", scheduleParams.keyspaceTableList.get(0).keyspace);
+    assertFalse(new BackupTableParams(scheduleParams).isFullBackup());
+  }
+
+  @Test
   public void testGenerateBackupParamsScheduledBackupFailUniverseNotFound() throws Exception {
     doReturn(null)
         .when(operatorUtils)
@@ -380,6 +437,42 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
   private void resetMockKubernetesClientForChecking() {
     kubernetesClient = kubernetesMockServer.createClient();
+  }
+
+  /** Marks the test universe as backed by a YBUniverse custom resource named {@code crName}. */
+  private void setUniverseResourceDetails(String crName, String namespace) {
+    Universe.saveDetails(
+        testUniverse.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.setKubernetesResourceDetails(new KubernetesResourceDetails(crName, namespace));
+          universe.setUniverseDetails(details);
+        });
+    testUniverse = Universe.getOrBadRequest(testUniverse.getUniverseUUID());
+  }
+
+  /**
+   * Builds a YBUniverse custom resource. A null {@code ybaResourceId} leaves the resource
+   * unannotated; {@code specUniverseName} exercises the legacy naming scheme, which YBA still
+   * resolves by but no longer names new universes after.
+   */
+  private YBUniverse makeYbUniverse(
+      String crName, String namespace, String specUniverseName, UUID ybaResourceId) {
+    ObjectMetaBuilder metaBuilder =
+        new ObjectMetaBuilder()
+            .withName(crName)
+            .withNamespace(namespace)
+            .withUid(UUID.randomUUID().toString());
+    if (ybaResourceId != null) {
+      metaBuilder.withAnnotations(
+          Map.of(ResourceAnnotationKeys.YBA_RESOURCE_ID, ybaResourceId.toString()));
+    }
+    YBUniverse ybUniverse = new YBUniverse();
+    ybUniverse.setMetadata(metaBuilder.build());
+    YBUniverseSpec spec = new YBUniverseSpec();
+    spec.setUniverseName(specUniverseName);
+    ybUniverse.setSpec(spec);
+    return ybUniverse;
   }
 
   @Test
@@ -780,6 +873,10 @@ public class OperatorUtilsTest extends FakeDBApplication {
     backupSchedule.setTaskParams(Json.toJson(params));
     backupSchedule.save();
 
+    // The custom resource is named differently from the universe, which is the normal case for an
+    // operator-created universe: its YBA name carries a hash suffix the resource name lacks.
+    setUniverseResourceDetails("operator-universe-cr", "test-namespace");
+
     operatorUtils.createBackupScheduleCr(
         backupSchedule, "test-schedule", "test-storage-config", "test-namespace");
 
@@ -797,7 +894,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     io.yugabyte.operator.v1alpha1.BackupScheduleSpec spec = schedule.getSpec();
     assertEquals(spec.getStorageConfig(), "test-storage-config");
-    assertEquals(spec.getUniverse(), "operator-universe");
+    // spec.universe must be the YBUniverse resource name, since that is what
+    // getUniverseFromNameAndNamespace looks the resource up by.
+    assertEquals(spec.getUniverse(), "operator-universe-cr");
     assertEquals("PGSQL_TABLE_TYPE", spec.getBackupType().toString());
     assertEquals("foo", spec.getKeyspace()); // From ModelFactory.createScheduleBackup
     assertEquals(
@@ -809,6 +908,36 @@ public class OperatorUtilsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateBackupScheduleCrOmitsKeyspaceForFullBackup() throws Exception {
+    Schedule backupSchedule =
+        ModelFactory.createScheduleBackupRequestParams(
+            testCustomer.getUuid(),
+            testUniverse.getUniverseUUID(),
+            testStorageConfig.getConfigUUID(),
+            TaskType.BackupUniverse);
+
+    BackupRequestParams params =
+        Json.fromJson(backupSchedule.getTaskParams(), BackupRequestParams.class);
+    params.keyspaceTableList = new ArrayList<>();
+    backupSchedule.setTaskParams(Json.toJson(params));
+    backupSchedule.save();
+
+    setUniverseResourceDetails("operator-universe-cr", "test-namespace");
+
+    operatorUtils.createBackupScheduleCr(
+        backupSchedule, "test-full-schedule", "test-storage-config", "test-namespace");
+
+    resetMockKubernetesClientForChecking();
+    KubernetesResourceList<io.yugabyte.operator.v1alpha1.BackupSchedule> backupSchedules =
+        kubernetesClient
+            .resources(io.yugabyte.operator.v1alpha1.BackupSchedule.class)
+            .inNamespace("test-namespace")
+            .list();
+    assertEquals(1, backupSchedules.getItems().size());
+    assertNull(backupSchedules.getItems().get(0).getSpec().getKeyspace());
+  }
+
+  @Test
   public void testCreateBackupScheduleCrAlreadyExists() throws Exception {
     Schedule backupSchedule =
         ModelFactory.createScheduleBackupRequestParams(
@@ -817,6 +946,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
             testStorageConfig.getConfigUUID(),
             TaskType.BackupUniverse);
     backupSchedule.save();
+    setUniverseResourceDetails("operator-universe-cr", "test-namespace");
 
     // Create the first backup schedule
     operatorUtils.createBackupScheduleCr(
@@ -2331,5 +2461,233 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals("us-west-2", spec.getAws().getRegion());
     // The CMK is carried over so that a later edit does not create a second one.
     assertEquals("arn:aws:kms:us-west-2:1:key/cmk", spec.getAws().getCmkID());
+  }
+
+  // A universe import stores the provider's kubeconfig in a Secret, and the reconciler names the
+  // file after that Secret - so the name always differs from the one the provider was created
+  // with even though the credentials are identical. Comparing names reported drift forever and
+  // drove an endless edit retry. PLAT-22036.
+  @Test
+  public void testHasKubeConfigChangedComparesContentNotFileName() throws Exception {
+    java.io.File kubeConfig = java.io.File.createTempFile("sa-kubeconfig", ".yaml");
+    kubeConfig.deleteOnExit();
+    String content = "apiVersion: v1\nkind: Config\nusers:\n- name: sa\n";
+    java.nio.file.Files.write(kubeConfig.toPath(), content.getBytes(StandardCharsets.UTF_8));
+
+    Map<String, String> existing = new HashMap<>();
+    existing.put("KUBECONFIG", kubeConfig.getAbsolutePath());
+
+    // Same credentials, but reached by a Secret-derived file name, as after an import.
+    Map<String, String> importedSameContent = new HashMap<>();
+    importedSameContent.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    importedSameContent.put("KUBECONFIG_CONTENT", content);
+    assertFalse(
+        "a renamed but identical kubeconfig is not a change",
+        operatorUtils.hasKubeConfigChanged(existing, importedSameContent));
+
+    // Trailing whitespace is the one difference an externally written file picks up.
+    Map<String, String> trailingNewline = new HashMap<>();
+    trailingNewline.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    trailingNewline.put("KUBECONFIG_CONTENT", content + "\n\n");
+    assertFalse(
+        "a trailing newline is not a change",
+        operatorUtils.hasKubeConfigChanged(existing, trailingNewline));
+
+    // Genuinely different credentials under that same name must still be caught.
+    Map<String, String> changed = new HashMap<>();
+    changed.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    changed.put("KUBECONFIG_CONTENT", content + "# rotated\n");
+    assertTrue(
+        "different kubeconfig content is a change",
+        operatorUtils.hasKubeConfigChanged(existing, changed));
+
+    // Same keys, different order - deliberately treated as a change rather than parsed and
+    // deep-compared, since deciding which YAML differences are semantically irrelevant risks
+    // silently ignoring a real credential change.
+    Map<String, String> reordered = new HashMap<>();
+    reordered.put("KUBECONFIG_NAME", "my-provider-provider-kubeconfig.conf");
+    reordered.put("KUBECONFIG_CONTENT", "kind: Config\napiVersion: v1\nusers:\n- name: sa\n");
+    assertTrue(
+        "reordered yaml is conservatively treated as a change",
+        operatorUtils.hasKubeConfigChanged(existing, reordered));
+
+    // With no content to compare (non-operator callers) the name comparison still applies.
+    Map<String, String> nameOnly = new HashMap<>();
+    nameOnly.put("KUBECONFIG_NAME", "some-other-name.conf");
+    assertTrue(
+        "without content the file name is still the fallback",
+        operatorUtils.hasKubeConfigChanged(existing, nameOnly));
+
+    // An in-cluster provider carries neither, and must not report drift.
+    assertFalse(
+        "in-cluster credentials on both sides are not a change",
+        operatorUtils.hasKubeConfigChanged(new HashMap<>(), new HashMap<>()));
+  }
+
+  // The reconcile loop compares the kubeconfig every pass, but the file only changes on a
+  // rotation, so it is cached and dropped when the reconciler submits an edit for that provider.
+  @Test
+  public void testKubeConfigFileIsCachedUntilTheProviderIsEdited() throws Exception {
+    UUID providerUUID = UUID.randomUUID();
+    java.io.File providerDir =
+        new java.io.File(System.getProperty("java.io.tmpdir"), providerUUID.toString());
+    assertTrue("temp provider dir", providerDir.mkdirs() || providerDir.isDirectory());
+    java.io.File kubeConfig = new java.io.File(providerDir, "kubeconfig.yaml");
+    kubeConfig.deleteOnExit();
+    providerDir.deleteOnExit();
+
+    String original = "apiVersion: v1\nkind: Config\nusers:\n- name: original\n";
+    java.nio.file.Files.write(kubeConfig.toPath(), original.getBytes(StandardCharsets.UTF_8));
+
+    Map<String, String> existing = new HashMap<>();
+    existing.put("KUBECONFIG", kubeConfig.getAbsolutePath());
+    Map<String, String> desired = new HashMap<>();
+    desired.put("KUBECONFIG_CONTENT", original);
+
+    assertFalse(
+        "identical content is not a change", operatorUtils.hasKubeConfigChanged(existing, desired));
+
+    // Rewriting the file behind the cache must not be observed - that is the point of caching.
+    java.nio.file.Files.write(
+        kubeConfig.toPath(),
+        "apiVersion: v1\nkind: Config\nusers:\n- name: rotated\n".getBytes(StandardCharsets.UTF_8));
+    assertFalse(
+        "the cached copy is still served", operatorUtils.hasKubeConfigChanged(existing, desired));
+
+    // An edit for this provider drops its entries, so the next read picks the new file up.
+    operatorUtils.invalidateKubeConfigCache(providerUUID);
+    assertTrue(
+        "after invalidation the rotated file is read",
+        operatorUtils.hasKubeConfigChanged(existing, desired));
+  }
+
+  /*--- getUniverseFromCr tests ---*/
+
+  @Test
+  public void testGetUniverseFromCrResolvesImportedUniverseByAnnotation() {
+    // An imported universe keeps the name it already had in YBA, while getUniverseName() derives
+    // "imported-cr-<hash>" from the resource metadata, so the annotation is the only link.
+    YBUniverse ybUniverse =
+        makeYbUniverse(
+            "imported-cr",
+            "test-namespace",
+            null /* specUniverseName */,
+            testUniverse.getUniverseUUID());
+
+    Optional<Universe> universe = OperatorUtils.getUniverseFromCr(testCustomer.getId(), ybUniverse);
+
+    assertTrue(universe.isPresent());
+    assertEquals(testUniverse.getUniverseUUID(), universe.get().getUniverseUUID());
+  }
+
+  @Test
+  public void testGetUniverseFromCrFallsBackToMetadataName() {
+    YBUniverse ybUniverse =
+        makeYbUniverse(
+            "unannotated-cr", "test-namespace", null /* specUniverseName */, null /* resourceId */);
+    Universe metadataNamedUniverse =
+        ModelFactory.createUniverse(
+            OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), testCustomer.getId());
+
+    Optional<Universe> universe = OperatorUtils.getUniverseFromCr(testCustomer.getId(), ybUniverse);
+
+    assertTrue(universe.isPresent());
+    assertEquals(metadataNamedUniverse.getUniverseUUID(), universe.get().getUniverseUUID());
+  }
+
+  @Test
+  public void testGetUniverseFromCrFallsBackToSpecNameWhenUnannotated() {
+    YBUniverse ybUniverse =
+        makeYbUniverse(
+            "imported-cr", "test-namespace", testUniverse.getName(), null /* ybaResourceId */);
+
+    Optional<Universe> universe = OperatorUtils.getUniverseFromCr(testCustomer.getId(), ybUniverse);
+
+    assertTrue(universe.isPresent());
+    assertEquals(testUniverse.getUniverseUUID(), universe.get().getUniverseUUID());
+  }
+
+  @Test
+  public void testGetUniverseFromCrFallsBackToNameWhenAnnotationIsStale() {
+    YBUniverse ybUniverse =
+        makeYbUniverse("imported-cr", "test-namespace", testUniverse.getName(), UUID.randomUUID());
+
+    Optional<Universe> universe = OperatorUtils.getUniverseFromCr(testCustomer.getId(), ybUniverse);
+
+    assertTrue(universe.isPresent());
+    assertEquals(testUniverse.getUniverseUUID(), universe.get().getUniverseUUID());
+  }
+
+  @Test
+  public void testGetUniverseFromCrDoesNotCrossCustomerBoundary() {
+    Customer otherCustomer = ModelFactory.testCustomer("other-customer");
+    YBUniverse ybUniverse =
+        makeYbUniverse(
+            "imported-cr",
+            "test-namespace",
+            testUniverse.getName(),
+            testUniverse.getUniverseUUID());
+
+    Optional<Universe> universe =
+        OperatorUtils.getUniverseFromCr(otherCustomer.getId(), ybUniverse);
+
+    assertFalse(universe.isPresent());
+  }
+
+  @Test
+  public void testGetUniverseFromCrNullResource() {
+    assertFalse(
+        OperatorUtils.getUniverseFromCr(testCustomer.getId(), null /* ybUniverse */).isPresent());
+  }
+
+  /*--- getUniverseFromNameAndNamespace tests ---*/
+
+  @Test
+  public void testGetUniverseFromNameAndNamespaceResolvesImportedUniverse() throws Exception {
+    String namespace = "test-namespace";
+    YBUniverse ybUniverse =
+        makeYbUniverse(
+            "imported-cr", namespace, null /* specUniverseName */, testUniverse.getUniverseUUID());
+    kubernetesClient
+        .resources(YBUniverse.class)
+        .inNamespace(namespace)
+        .resource(ybUniverse)
+        .create();
+
+    Universe universe =
+        operatorUtils.getUniverseFromNameAndNamespace(
+            testCustomer.getId(), "imported-cr", namespace);
+
+    assertNotNull(universe);
+    assertEquals(testUniverse.getUniverseUUID(), universe.getUniverseUUID());
+  }
+
+  @Test
+  public void testGetUniverseFromNameAndNamespaceMissingCustomResource() throws Exception {
+    assertNull(
+        operatorUtils.getUniverseFromNameAndNamespace(
+            testCustomer.getId(), "does-not-exist", "test-namespace"));
+  }
+
+  @Test
+  public void testCreateBackupScheduleCrWithoutResourceDetailsThrows() {
+    Schedule backupSchedule =
+        ModelFactory.createScheduleBackupRequestParams(
+            testCustomer.getUuid(),
+            testUniverse.getUniverseUUID(),
+            testStorageConfig.getConfigUUID(),
+            TaskType.BackupUniverse);
+    backupSchedule.save();
+
+    // testUniverse has no Kubernetes resource details, so there is no resource name to point at.
+    Exception ex =
+        assertThrows(
+            Exception.class,
+            () ->
+                operatorUtils.createBackupScheduleCr(
+                    backupSchedule, "test-schedule", "test-storage-config", "test-namespace"));
+    // createBackupScheduleCr wraps anything it catches, so the guard message lands on the cause.
+    assertNotNull(ex.getCause());
+    assertTrue(ex.getCause().getMessage().contains("has no Kubernetes resource details"));
   }
 }

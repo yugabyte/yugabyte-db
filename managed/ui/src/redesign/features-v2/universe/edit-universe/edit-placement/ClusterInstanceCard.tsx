@@ -23,9 +23,11 @@ import {
   getDedicatedTserverMasterDisplayCounts,
   getResilientType,
   useEditUniverseContext,
-  useIsUniverseReady,
+  useIsUniverseEditActionDisabled,
   withUniverseResource
 } from '../EditUniverseUtils';
+import { K8OperatorEditBlockedTooltip } from '../K8OperatorEditBlockedTooltip';
+
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
@@ -182,7 +184,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const { universeData } = useEditUniverseContext();
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
   if (!universeData) return null;
   const universeUUID = universeData.info?.universe_uuid;
@@ -336,55 +338,57 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   {item.showDividerBefore ? (
                     <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
                   ) : null}
-                  <MenuItem
-                    data-test-id={item.dataTestId}
-                    onClick={item.onClick}
-                    sx={{
-                      px: 2,
-                      py: 0.5,
-                      alignItems: 'flex-start',
-                      color: item.destructive ? '#DA1515' : '#0B1117'
-                    }}
-                    disabled={!isUniverseReady}
-                  >
-                    <Box
+                  <K8OperatorEditBlockedTooltip>
+                    <MenuItem
+                      data-test-id={item.dataTestId}
+                      onClick={item.onClick}
                       sx={{
-                        display: 'flex',
+                        px: 2,
+                        py: 0.5,
                         alignItems: 'flex-start',
-                        gap: '4px',
-                        width: '100%'
+                        color: item.destructive ? '#DA1515' : '#0B1117'
                       }}
+                      disabled={isEditActionDisabled}
                     >
-                      {item.startIcon ? (
-                        <Box
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            flexShrink: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: item.destructive ? '#DA1515' : 'inherit',
-                            '& svg': { display: 'block' }
-                          }}
-                        >
-                          {item.startIcon}
-                        </Box>
-                      ) : null}
-                      <Typography
-                        component="span"
+                      <Box
                         sx={{
-                          fontSize: '13px',
-                          lineHeight: '16px',
-                          fontWeight: 400,
-                          py: 0.5,
-                          color: item.destructive ? '#DA1515' : '#0B1117'
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '4px',
+                          width: '100%'
                         }}
                       >
-                        {item.label}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
+                        {item.startIcon ? (
+                          <Box
+                            sx={{
+                              width: 24,
+                              height: 24,
+                              flexShrink: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: item.destructive ? '#DA1515' : 'inherit',
+                              '& svg': { display: 'block' }
+                            }}
+                          >
+                            {item.startIcon}
+                          </Box>
+                        ) : null}
+                        <Typography
+                          component="span"
+                          sx={{
+                            fontSize: '13px',
+                            lineHeight: '16px',
+                            fontWeight: 400,
+                            py: 0.5,
+                            color: item.destructive ? '#DA1515' : '#0B1117'
+                          }}
+                        >
+                          {item.label}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </K8OperatorEditBlockedTooltip>
                 </Fragment>
               ))
             : [
@@ -395,17 +399,19 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   )}
                   isControl
                 >
-                  <MenuItem
-                    key="resilience"
-                    data-test-id="edit-placement-add-region"
-                    onClick={() => {
-                      editResilienceAndRegionsClicked?.();
-                    }}
-                    disabled={!isUniverseReady}
-                  >
-                    {<EditIcon />}
-                    {t('editResilienceAndRegions')}
-                  </MenuItem>
+                  <K8OperatorEditBlockedTooltip>
+                    <MenuItem
+                      key="resilience"
+                      data-test-id="edit-placement-add-region"
+                      onClick={() => {
+                        editResilienceAndRegionsClicked?.();
+                      }}
+                      disabled={isEditActionDisabled}
+                    >
+                      {<EditIcon />}
+                      {t('editResilienceAndRegions')}
+                    </MenuItem>
+                  </K8OperatorEditBlockedTooltip>
                 </RbacValidator>,
                 <RbacValidator
                   accessRequiredOn={withUniverseResource(
@@ -414,17 +420,19 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   )}
                   isControl
                 >
-                  <MenuItem
-                    key="nodes-az"
-                    data-test-id="edit-placement-auto-balance"
-                    onClick={() => {
-                      editPlacementClicked?.();
-                    }}
-                    disabled={!isUniverseReady}
-                  >
-                    {<EditIcon />}
-                    {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
-                  </MenuItem>
+                  <K8OperatorEditBlockedTooltip>
+                    <MenuItem
+                      key="nodes-az"
+                      data-test-id="edit-placement-auto-balance"
+                      onClick={() => {
+                        editPlacementClicked?.();
+                      }}
+                      disabled={isEditActionDisabled}
+                    >
+                      {<EditIcon />}
+                      {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
+                    </MenuItem>
+                  </K8OperatorEditBlockedTooltip>
                 </RbacValidator>,
                 ...(editMasterServerNodeAllocationClicked && dedicatedFromSpec
                   ? [
@@ -435,17 +443,19 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                         )}
                         isControl
                       >
-                        <MenuItem
-                          key="master-alloc"
-                          data-test-id="edit-placement-clear-affinities"
-                          onClick={() => {
-                            editMasterServerNodeAllocationClicked();
-                          }}
-                          disabled={!isUniverseReady}
-                        >
-                          {<EditIcon />}
-                          {t('editMasterServerNodeAllocation')}
-                        </MenuItem>
+                        <K8OperatorEditBlockedTooltip>
+                          <MenuItem
+                            key="master-alloc"
+                            data-test-id="edit-placement-clear-affinities"
+                            onClick={() => {
+                              editMasterServerNodeAllocationClicked();
+                            }}
+                            disabled={isEditActionDisabled}
+                          >
+                            {<EditIcon />}
+                            {t('editMasterServerNodeAllocation')}
+                          </MenuItem>
+                        </K8OperatorEditBlockedTooltip>
                       </RbacValidator>
                     ]
                   : [])

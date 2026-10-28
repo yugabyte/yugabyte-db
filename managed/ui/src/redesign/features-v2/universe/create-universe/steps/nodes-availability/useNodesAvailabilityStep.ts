@@ -42,6 +42,7 @@ import {
   computeFreeNodesByAzUuid,
   findFirstOnPremNodeViolation
 } from './validation/onPrem';
+import { useRuntimeConfigValues } from '../../helpers/utils';
 
 /** Fields that drive guided-mode AZ/node layout from the Regions step. */
 function getGuidedPlacementSyncSignature(r: ResilienceAndRegionsProps): string {
@@ -76,7 +77,8 @@ function regionCodesMatchAvailabilityZones(
 export function applyNodesStepPlacementFromResilience(
   methods: UseFormReturn<NodeAvailabilityProps>,
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
-  saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => void
+  saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => void,
+  enablePrimaryRf9 = false
 ): void {
   const isExpert =
     resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE;
@@ -94,7 +96,10 @@ export function applyNodesStepPlacementFromResilience(
   const zonesSnapshot = methods.getValues('availabilityZones');
   if (isEmpty(zonesSnapshot)) {
     if (isExpert) {
-      const expertPlacement = getExpertAvailabilityZonesOrEmpty(resilienceAndRegionsSettings);
+      const expertPlacement = getExpertAvailabilityZonesOrEmpty(
+        resilienceAndRegionsSettings,
+        enablePrimaryRf9
+      );
       methods.setValue(REPLICATION_FACTOR, expertPlacement.replicationFactor);
       methods.setValue('availabilityZones', expertPlacement.availabilityZones);
       if (
@@ -196,10 +201,11 @@ export function useNodesAvailabilityStep(
       saveResilienceAndRegionsSettings
     }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
-  
+
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability'
   });
+  const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
   const providerUuid = generalSettings?.providerConfiguration?.uuid;
   const isOnPrem =
@@ -446,7 +452,8 @@ export function useNodesAvailabilityStep(
     applyNodesStepPlacementFromResilience(
       methods,
       resilienceAndRegionsSettings,
-      saveResilienceAndRegionsSettings
+      saveResilienceAndRegionsSettings,
+      enablePrimaryRf9
     );
   });
 
@@ -491,13 +498,15 @@ export function useNodesAvailabilityStep(
     applyNodesStepPlacementFromResilience(
       methods,
       resilienceAndRegionsSettings!,
-      saveResilienceAndRegionsSettings
+      saveResilienceAndRegionsSettings,
+      enablePrimaryRf9
     );
   }, [
     guidedPlacementSyncSignature,
     methods,
     resilienceAndRegionsSettings,
-    saveResilienceAndRegionsSettings
+    saveResilienceAndRegionsSettings,
+    enablePrimaryRf9
   ]);
 
   // Re-sync when resilience/region context changes — not on every availabilityZones edit (that
@@ -522,9 +531,16 @@ export function useNodesAvailabilityStep(
     applyNodesStepPlacementFromResilience(
       methods,
       resilienceAndRegionsSettings,
-      saveResilienceAndRegionsSettings
+      saveResilienceAndRegionsSettings,
+      enablePrimaryRf9
     );
-  }, [resilienceAndRegionsSettings, methods, saveResilienceAndRegionsSettings, isGeoPartition]);
+  }, [
+    resilienceAndRegionsSettings,
+    methods,
+    saveResilienceAndRegionsSettings,
+    isGeoPartition,
+    enablePrimaryRf9
+  ]);
 
   useImperativeHandle(
     forwardedRef,

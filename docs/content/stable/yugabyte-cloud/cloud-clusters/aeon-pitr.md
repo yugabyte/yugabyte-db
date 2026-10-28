@@ -1,8 +1,8 @@
 ---
-title: Point-in-time recovery in YugabyteDB Aeon
-headerTitle: Point-in-time recovery
-linkTitle: Point-in-time recovery
-description: Using Point-in-time recovery in YugabyteDB Aeon
+title: Clone to point in time in YugabyteDB Aeon
+headerTitle: Clone to point in time
+linkTitle: Clone to point in time
+description: Clone a database to a point in time in YugabyteDB Aeon
 headContent: Create a database clone for recovery or testing
 menu:
   stable_yugabyte-cloud:
@@ -18,7 +18,7 @@ type: docs
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
 {{< /page-finder/head >}}
 
-To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) and database branching. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone - effectively branch the database - at the current time or at a specific time in the past.
+To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) and database branching. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone - effectively a branch of the database - at the current time or at a specific time in the past.
 
 The clone is a zero-copy, independent writable clone of your database that you can use for the following:
 
@@ -28,11 +28,11 @@ The clone is a zero-copy, independent writable clone of your database that you c
 
 You can change the retention window for the clone. The default is two days.
 
-For more information on database cloning, refer to [Instant database cloning](../../../manage/backup-restore/instant-db-cloning/).
+For more information on database cloning, refer to [Clone to PIT](../../../manage/backup-restore/point-in-time-recovery/clone/).
 
 For more information on PITR in YugabyteDB, refer to [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
 
-To configure point in time recovery, and create a clone at a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
+To configure PITR and create a clone at a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
 
 ## Clone a database
 

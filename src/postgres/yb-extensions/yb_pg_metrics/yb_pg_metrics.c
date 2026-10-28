@@ -688,7 +688,7 @@ webserver_worker_main(Datum unused)
 	YbcConnectionMetrics conn_metrics;
 
 	conn_metrics.max_conn = &MaxConnections;
-	conn_metrics.too_many_conn = yb_too_many_conn;
+	conn_metrics.too_many_conn = &ProcGlobal->yb_too_many_conn;
 	conn_metrics.new_conn = yb_new_conn;
 
 	RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -93,6 +94,7 @@ public class BackupsController extends AuthenticatedController {
   private final ScheduleTaskHelper scheduleTaskHelper;
   private final BackupAndRestoreHandler backupAndRestoreHandler;
   private final TaskInfoManager taskManager;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public BackupsController(
@@ -102,7 +104,8 @@ public class BackupsController extends AuthenticatedController {
       YbcManager ybcManager,
       ScheduleTaskHelper scheduleTaskHelper,
       TaskInfoManager taskManager,
-      BackupAndRestoreHandler backupAndRestoreHandler) {
+      BackupAndRestoreHandler backupAndRestoreHandler,
+      RuntimeConfGetter runtimeConfGetter) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
     this.backupHelper = backupHelper;
@@ -110,6 +113,7 @@ public class BackupsController extends AuthenticatedController {
     this.scheduleTaskHelper = scheduleTaskHelper;
     this.taskManager = taskManager;
     this.backupAndRestoreHandler = backupAndRestoreHandler;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   @Deprecated
@@ -359,7 +363,7 @@ public class BackupsController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(requestParams.getUniverseUUID());
     BackupScheduleTaskParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, BackupScheduleTaskParams.class, universe);
+            request, BackupScheduleTaskParams.class, universe.getUniverseUUID(), runtimeConfGetter);
     taskParams.setCustomerUUID(customer.getUuid());
     taskParams.setScheduleParams(requestParams);
     UUID taskUUID =
@@ -458,7 +462,7 @@ public class BackupsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     if (!backupHelper.isSkipConfigBasedPreflightValidation(universe)) {
-      backupHelper.validateStorageConfig(customerConfig);
+      backupHelper.validateStorageConfig(customerConfig, universe);
     }
 
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =

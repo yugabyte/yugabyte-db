@@ -29,6 +29,7 @@
 #include <stdio.h>
 
 #include "catalog/yb_type.h"
+#include "nodes/miscnodes.h"
 #include "utils/elog.h"
 #include "ybgate/ybgate_api-test.h"
 #include "ybgate/ybgate_status.h"
@@ -68,6 +69,18 @@ yb_try_or_fail(bool rethrow)
 	}
 	PG_END_TRY();
 	return true;
+}
+
+/*
+ * yb_test_ereturn - soft error through ereturn(), which returns the dummy
+ * value when the error is recorded in the context
+ */
+static Datum
+yb_test_ereturn(Node *context)
+{
+	ereturn(context, (Datum) 0,
+			(errcode(ERRCODE_DIVISION_BY_ZERO),
+			 errmsg("ereturn soft error")));
 }
 
 /*
@@ -333,6 +346,73 @@ yb_test(YbGateTestCase case_no)
 					ReThrowError(edata);
 			}
 			PG_END_TRY();
+			break;
+		case YBGATE_TEST_ERRSAVE_NO_CONTEXT:
+			/* Soft error report with no ErrorSaveContext to collect it */
+			errsave(NULL,
+					(errcode(ERRCODE_DIVISION_BY_ZERO),
+					 errmsg("errsave without a soft error context")));
+			break;
+		case YBGATE_TEST_ERRSAVE_OTHER_CONTEXT:
+			{
+				/*
+				 * fcinfo->context can be a node of another type, which is no
+				 * soft error context.
+				 */
+				Node		other = {T_Const};
+
+				errsave(&other,
+						(errcode(ERRCODE_DIVISION_BY_ZERO),
+						 errmsg("errsave with another node as the context")));
+			}
+			break;
+		case YBGATE_TEST_ERRSAVE_WITH_CONTEXT:
+			{
+				ErrorSaveContext escontext = {T_ErrorSaveContext};
+
+				/* Recorded in the context, and control returns here */
+				errsave((Node *) &escontext,
+						(errcode(ERRCODE_DIVISION_BY_ZERO),
+						 errmsg("soft error with a context")));
+				if (!escontext.error_occurred)
+					elog(ERROR, "soft error not recorded in the context");
+			}
+			break;
+		case YBGATE_TEST_ERRSAVE_DETAILS_WANTED:
+			{
+				ErrorSaveContext escontext = {T_ErrorSaveContext};
+
+				/*
+				 * The details cannot be saved (#35437), so this is a hard
+				 * error.
+				 */
+				escontext.details_wanted = true;
+				errsave((Node *) &escontext,
+						(errcode(ERRCODE_DIVISION_BY_ZERO),
+						 errmsg("soft error with details wanted")));
+				elog(ERROR, "errsave returned although details were wanted");
+			}
+			break;
+		case YBGATE_TEST_ERETURN_NO_CONTEXT:
+			/* ereturn() reports through errsave_domain(), so it raises too */
+			(void) yb_test_ereturn(NULL);
+			break;
+		case YBGATE_TEST_ERETURN_WITH_CONTEXT:
+			{
+				ErrorSaveContext escontext = {T_ErrorSaveContext};
+
+				/* The soft path returns the dummy value */
+				if (yb_test_ereturn((Node *) &escontext) != (Datum) 0)
+					elog(ERROR, "ereturn did not return the dummy value");
+				if (!escontext.error_occurred)
+					elog(ERROR, "soft error not recorded in the context");
+			}
+			break;
+		case YBGATE_TEST_EREPORT_HINT_INTERNAL:
+			/* The hint is dropped; the error keeps its own message */
+			ereport(ERROR,
+					(errmsg("error with an internal hint"),
+					 errhint_internal("hint text")));
 			break;
 		default:
 			elog(ERROR, "Invalid test case number: %d", case_no);

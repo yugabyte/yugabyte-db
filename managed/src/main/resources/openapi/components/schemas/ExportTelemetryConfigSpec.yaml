@@ -1,5 +1,5 @@
-x-yba-api-since: 2026.1.0.0
-x-yba-api-visibility: internal
+x-yba-api-since: 2026.1.2.0
+x-yba-api-visibility: preview
 type: object
 description: Request to configure all telemetry export configs for a universe
 properties:

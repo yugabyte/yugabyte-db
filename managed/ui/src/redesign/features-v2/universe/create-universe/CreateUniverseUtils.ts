@@ -20,6 +20,9 @@ export {
   getExpertNodesStepDefaultPlacement,
   toExpertResilienceForDefaults,
   getExpertAvailabilityZonesOrEmpty,
+  getExpertRfOptions,
+  getExpertDefaultRfs,
+  maxExpertRfOption,
   getPlacementRegions,
   getAZCount,
   distributeReplicationFactorAcrossAzs
@@ -35,7 +38,10 @@ export {
   effectiveUseDedicatedNodes,
   getNodeSpec
 } from './utils/createUniverseNodeSpec';
-export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';
+export {
+  isV2CreateEditUniverseEnabled,
+  isNewUniverseExperienceForAllUsers
+} from './utils/createUniverseRuntime';
 export {
   canOverrideCommunicationPorts,
   shouldApplyConnectionPoolingPortOverrides,

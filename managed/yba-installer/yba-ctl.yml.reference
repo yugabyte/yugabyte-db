@@ -20,6 +20,13 @@ host: ""
 server_cert_path: ""
 server_key_path: ""
 
+# FIPS 140-3 mode.
+# When true, the platform JVM runs BouncyCastle in approved-only mode
+# (-Dorg.bouncycastle.fips.approved_only=true) and YBA enforces the FIPS password policy.
+# Cannot be modified after installation.
+fips:
+   enabled: false
+
 # Linux user which will run all services that make up YugabyteDB Anywhere.
 # With default settings, the user "yugabyte" will be created and used.
 # If customized, the specified user is assumed to exist and will be used.
@@ -185,7 +192,9 @@ postgres:
 
 
    # Specify the connection parameters to an existing postgres db.
-   # A database named 'yugaware' must already be created on this host.
+   # A database named 'yugaware' must already be created on this host. With perfAdvisor.enabled,
+   # Perf Advisor's database 'ts' is created there by yba-ctl if the user may create databases;
+   # otherwise create it beforehand too.
    useExisting:
       enabled: false # enable to use an existing postgres install
       username: ""

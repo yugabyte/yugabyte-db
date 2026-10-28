@@ -17,6 +17,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -72,14 +73,14 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
         if (p == end) {
           return STATUS(Corruption, "Encoded string is empty");
         }
-        return STATUS(
-            Corruption, StringPrintf(
-                            "Encoded string is not terminated with \\0x%02x\\0x%02x", kEndOfString,
-                            kEndOfString));
+        return STATUS_FORMAT(
+            Corruption, "Encoded string is not terminated with \\0x$0\\0x$0",
+            HexString(static_cast<uint8_t>(kEndOfString), 2));
       }
       DCHECK_EQ(stop, end - 1);
-      return STATUS(
-          Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ", kEndOfString));
+      return STATUS_FORMAT(
+          Corruption, "Encoded string ends with only one \\0x$0 ",
+          HexString(static_cast<uint8_t>(kEndOfString), 2));
     }
     if (PREDICT_TRUE(stop[1] == kEndOfString)) {
       result->append(p, stop);
@@ -87,12 +88,13 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
       break;
     }
     if (PREDICT_FALSE(stop[1] != kEndOfStringEscape)) {
-      return STATUS(
+      return STATUS_FORMAT(
           Corruption,
-          StringPrintf(
-              "Invalid sequence in encoded string: "
-              R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
-              kEndOfString, stop[1], kEndOfString, kEndOfString, kEndOfString, kEndOfStringEscape));
+          "Invalid sequence in encoded string: "
+          R"#(\0x$0\0x$1 (must be either \0x$0\0x$0 or \0x$0\0x$2))#",
+          HexString(static_cast<uint8_t>(kEndOfString), 2),
+          HexString(static_cast<uint8_t>(stop[1]), 2),
+          HexString(static_cast<uint8_t>(kEndOfStringEscape), 2));
     }
     result->append(p, stop + 1);
     p = stop + 2;

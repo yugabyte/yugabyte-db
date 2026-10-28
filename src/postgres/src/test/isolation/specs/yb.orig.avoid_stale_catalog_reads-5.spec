@@ -9,16 +9,14 @@
 #   ERROR:  Table with identifier <id> not found: OBJECT_NOT_FOUND
 #
 # Mechanics:
-# The materialized view's defining query embeds pg_sleep(5), so every REFRESH holds the
-# AccessExclusiveLock on mv for ~5s. This is long enough that the YB isolation tester's heuristic
-# (assume a step is blocked after 4s of being busy, see YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED
-# in isolationtester.c) lets us issue the next session's step while the first REFRESH is still running.
+# s2 refreshes inside a transaction block, holding the AccessExclusiveLock on mv until its COMMIT
+# step, so s1 always blocks behind s2 and s2 always refreshes first.
 #
 # Sequence:
 #  s2: SET yb_max_num_invalidation_messages = 0;  -- s2's DDL will record no inval messages
-#  s2: REFRESH MATERIALIZED VIEW mv;  -- acquires AccessExclusiveLock, runs ~5s, commits with no inval msgs
+#  s2: BEGIN; REFRESH MATERIALIZED VIEW mv;  -- acquires AccessExclusiveLock on mv
 #  s1: REFRESH MATERIALIZED VIEW mv;  -- blocks on s2's lock
-#  s2 commits: bumps the catalog version with no usable inval messages
+#  s2: COMMIT;  -- bumps the catalog version with no inval messages
 #  s1 acquires the lock and, lacking inval messages to reconcile, must fall back to a full cache
 #     invalidation to pick up s2's new matview relfilenode rather than erroring on the stale one.
 #
@@ -31,8 +29,7 @@ setup
 {
   CREATE TABLE base_t(k int PRIMARY KEY, v int);
   INSERT INTO base_t SELECT g, g FROM generate_series(1, 100) g;
-  -- pg_sleep(5) makes every REFRESH hold the AccessExclusiveLock for ~5s.
-  CREATE MATERIALIZED VIEW mv AS SELECT k, v FROM base_t, pg_sleep(5);
+  CREATE MATERIALIZED VIEW mv AS SELECT k, v FROM base_t;
 }
 
 teardown
@@ -46,6 +43,7 @@ step s1_refresh { REFRESH MATERIALIZED VIEW mv; }
 
 session s2
 step s2_set_inval_zero { SET yb_max_num_invalidation_messages = 0; }
-step s2_refresh { REFRESH MATERIALIZED VIEW mv; }
+step s2_begin_refresh { BEGIN; REFRESH MATERIALIZED VIEW mv; }
+step s2_commit { COMMIT; }
 
-permutation s2_set_inval_zero s2_refresh s1_refresh
+permutation s2_set_inval_zero s2_begin_refresh s1_refresh s2_commit

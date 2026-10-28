@@ -28,7 +28,7 @@ import { CurrentFormStep } from './CurrentFormStep';
 import {
   XClusterConfigAction,
   XClusterConfigType,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  getXClusterUniverseTableFilters
 } from '../constants';
 
 import { CategorizedNeedBootstrapPerTableResponse, XClusterTableType } from '../XClusterTypes';
@@ -74,6 +74,10 @@ export const FormStep = {
   CONFIRM_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
+
+// The v1 xCluster create API never creates configs in automatic DDL mode, so materialized views
+// can never be part of the config.
+const XCLUSTER_UNIVERSE_TABLE_FILTERS_NO_MATVIEW = getXClusterUniverseTableFilters(false);
 
 const MODAL_NAME = 'CreateConfigModal';
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
@@ -186,9 +190,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS_NO_MATVIEW),
     () =>
-      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS_NO_MATVIEW).then(
         (response) => response.data
       )
   );
@@ -513,7 +517,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: tableType,
             xClusterConfigType: xClusterConfigType,
-            targetUniverseUuid: targetUniverseUuid
+            targetUniverseUuid: targetUniverseUuid,
+            isMatviewReplicationSupported: false
           }}
           categorizedNeedBootstrapPerTableResponse={categorizedNeedBootstrapPerTableResponse}
         />

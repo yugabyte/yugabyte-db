@@ -1,0 +1,12 @@
+title: SupportBundle
+description: |
+  Support bundle for a universe or for the YBA platform host.
+
+  Contains the user-provided `spec` and system-generated `info`.
+  Returned as response payload for support bundle APIs.
+type: object
+properties:
+  spec:
+    $ref: "./SupportBundleSpec.yaml"
+  info:
+    $ref: "./SupportBundleInfo.yaml"

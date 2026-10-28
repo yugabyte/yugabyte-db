@@ -4,7 +4,7 @@
 use crate as pg_sys;
 
 #[pgrx_macros::pg_guard]
-extern "C-unwind" {
+unsafe extern "C-unwind" {
     #[link_name = "SpinLockInit__pgrx_cshim"]
     pub fn SpinLockInit(lock: *mut pg_sys::slock_t);
     #[link_name = "SpinLockAcquire__pgrx_cshim"]

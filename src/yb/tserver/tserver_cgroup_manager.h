@@ -155,6 +155,7 @@ class TServerCgroupManager {
 
 namespace yb::tserver {
 
+bool TServerCgroupManagementEnabled(bool enable_qos);
 bool TServerCgroupManagementEnabled();
 
 } // namespace yb::tserver

@@ -27,7 +27,7 @@ std::string MillisecondsToString(int64_t milliseconds) {
   }
   int64_t seconds = milliseconds / 1000;
   milliseconds -= seconds * 1000;
-  return StringPrintf("%s%" PRId64 ".%03" PRId64 "s", sign, seconds, milliseconds);
+  return Format("$0$1.$2s", sign, seconds, ZeroPadded(milliseconds, 3));
 }
 
 std::string CStringArrayToString(char** elements, size_t length) {
@@ -56,7 +56,7 @@ std::string ToStringTimePoint(const std::chrono::time_point<Clock, Duration>& tp
   int64_t remainder_micros = micros % 1'000'000;
 
   // Format as "<seconds>.<microseconds padded to 6 digits>s", mirroring MillisecondsToString.
-  return StringPrintf("%s%" PRId64 ".%06" PRId64 "s", sign, seconds, remainder_micros);
+  return Format("$0$1.$2s", sign, seconds, ZeroPadded(remainder_micros, 6));
 }
 
 } // namespace

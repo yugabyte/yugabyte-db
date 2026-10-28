@@ -815,6 +815,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	WRITE_BOOL_FIELD(nl.join.inner_unique);
 	WRITE_NODE_FIELD(nl.join.joinqual);
 	WRITE_NODE_FIELD(nl.nestParams);
+	WRITE_INT_FIELD(first_batch_size);
 	WRITE_INT_FIELD(num_hashClauseInfos);
 	appendStringInfoString(str, " :hashOps");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
@@ -823,6 +824,13 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	appendStringInfoString(str, " :innerHashAttNos");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
+
+	appendStringInfoString(str, " :innerHashExprs");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].innerHashExpr);
+	}
 
 	appendStringInfoString(str, " :outerParamExprs");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)

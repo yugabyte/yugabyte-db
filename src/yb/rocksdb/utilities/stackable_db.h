@@ -285,7 +285,11 @@ class StackableDB : public DB {
 
   yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return db_->GetMiddleKey(lower_bound_key);
-  };
+  }
+
+  std::unique_ptr<PinnedVersion> PinCurrentVersion() override {
+    return db_->PinCurrentVersion();
+  }
 
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle *column_family,
@@ -335,8 +339,9 @@ class StackableDB : public DB {
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(
       ColumnFamilyHandle* column_family,
-      TablePropertiesCollection* props) override {
-    return db_->GetPropertiesOfAllTables(column_family, props);
+      TablePropertiesCollection* props,
+      TablePropertiesErrorHandling error_handling = TablePropertiesErrorHandling::kFail) override {
+    return db_->GetPropertiesOfAllTables(column_family, props, error_handling);
   }
 
   using DB::GetPropertiesOfTablesInRange;

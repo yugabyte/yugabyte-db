@@ -28,20 +28,17 @@ import org.yb.util.SkipOnTSAN;
 @SkipOnTSAN
 @RunWith(value = YBParameterizedTestRunner.class)
 public class TestPgRegressPgTable extends BasePgRegressTestPorted {
-  private final boolean objectLockingEnabled;
-  private final boolean concurrentDDLEnabled;
+  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
+  // cross-flag validators in common_flags.cc, so a single parameter drives all three.
+  private final boolean useLegacyDDLMode;
 
-  public TestPgRegressPgTable(boolean objectLockingEnabled, boolean concurrentDDLEnabled) {
-    this.objectLockingEnabled = objectLockingEnabled;
-    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  public TestPgRegressPgTable(boolean useLegacyDDLMode) {
+    this.useLegacyDDLMode = useLegacyDDLMode;
   }
 
-  @Parameterized.Parameters(name = "objectLocking={0}-concurrentDDL={1}")
+  @Parameterized.Parameters(name = "useLegacyDDLMode={0}")
   public static List<Object[]> parameters() {
-    return Arrays.asList(
-        new Object[]{false, false},
-        new Object[]{true, false},
-        new Object[]{true, true});
+    return Arrays.asList(new Object[]{true}, new Object[]{false});
   }
 
   @Override
@@ -54,10 +51,14 @@ public class TestPgRegressPgTable extends BasePgRegressTestPorted {
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28393) error output is flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", String.valueOf(objectLockingEnabled));
-    flagMap.put("enable_object_locking_for_table_locks", String.valueOf(objectLockingEnabled));
-    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
-    flagMap.put("ysql_enable_concurrent_ddl", String.valueOf(concurrentDDLEnabled));
+    toggleDDLMode(flagMap, useLegacyDDLMode);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, useLegacyDDLMode);
     return flagMap;
   }
 

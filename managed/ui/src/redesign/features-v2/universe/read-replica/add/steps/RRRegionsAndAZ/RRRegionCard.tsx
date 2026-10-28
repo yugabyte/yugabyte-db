@@ -51,11 +51,7 @@ const RegionSelectValue = ({ region }: { region: Region }) => {
   return (
     <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
       {flag ? (
-        <Box
-          component="span"
-          sx={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}
-          aria-hidden
-        >
+        <Box component="span" sx={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }} aria-hidden>
           {flag}
         </Box>
       ) : null}
@@ -134,8 +130,19 @@ export const RRRegionCard: FC<Props> = ({
     | RRPlacementRegionForm
     | undefined;
   const isNewRegion = Boolean(regionRow?.isNew);
+  const baselineZoneUuids = useMemo(() => {
+    const uuids = (baselineRegion?.zones ?? [])
+      .map((z) => z.zoneUuid)
+      .filter((u): u is string => Boolean(u));
+    return new Set(uuids);
+  }, [baselineRegion]);
+  // Only compare against a real loaded RR placement (edit flow). Add-RR defaults have null uuids.
+  const isNewAz = (zone: RRPlacementZoneForm | undefined) => {
+    if (isNewRegion || baselineZoneUuids.size === 0) return false;
+    if (!zone?.zoneUuid) return true;
+    return !baselineZoneUuids.has(zone.zoneUuid);
+  };
 
-  
   const allRegionRows = useWatch({ control, name: 'regions' }) ?? [];
   const selectedRegionUuidsKey = allRegionRows.map((row) => row?.regionUuid ?? '').join(',');
   const regionUuidsSelectedElsewhere = useMemo(() => {
@@ -158,7 +165,10 @@ export const RRRegionCard: FC<Props> = ({
   const watchedZones = watch(`regions.${regionIndex}.zones`) ?? [];
 
   const onRegionUuidChange = (uuid: string | null) => {
-    setValue(`regions.${regionIndex}.regionUuid`, uuid, { shouldValidate: true, shouldDirty: true });
+    setValue(`regions.${regionIndex}.regionUuid`, uuid, {
+      shouldValidate: true,
+      shouldDirty: true
+    });
     const region = regionsList.find((r) => r.uuid === uuid);
     const firstAzUuid = region?.zones?.[0]?.uuid ?? null;
     setValue(
@@ -195,7 +205,7 @@ export const RRRegionCard: FC<Props> = ({
           sx={{ px: 3, pt: 1.25, pb: 0, mb: -1 }}
           data-testid={`rr-region-new-badge-${regionIndex}`}
         >
-          <YBTag size="small" variant="light" color="success" customSx={{ color: '#13A768' }}>
+          <YBTag size="small" variant="light" color="gradient">
             {t('newRegionBadge')}
           </YBTag>
         </Box>
@@ -245,7 +255,7 @@ export const RRRegionCard: FC<Props> = ({
                   }}
                   menuProps={menuProps as any}
                   dataTestId={`rr-region-select-${regionIndex}`}
-                  sx={{ width: '100%' }}
+                  sx={{ width: '312px' }}
                 >
                   {regionsList.map((r) => (
                     <MenuItem
@@ -299,6 +309,16 @@ export const RRRegionCard: FC<Props> = ({
 
           return (
             <Box key={fieldItem.id} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {isNewAz(fieldItem) ? (
+                <Box
+                  sx={{ pl: `${REGION_LABEL_COL_WIDTH + 24}px` }}
+                  data-testid={`rr-region-new-az-badge-${regionIndex}-${zoneIndex}`}
+                >
+                  <YBTag size="small" variant="light" color="gradient">
+                    {t('newRegionBadge')}
+                  </YBTag>
+                </Box>
+              ) : null}
               <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', width: '100%' }}>
                 <Box
                   sx={{
@@ -539,7 +559,10 @@ export const RRRegionCard: FC<Props> = ({
                     <RemoveAzIcon />
                   </IconButton>
                 ) : (
-                  <Box sx={{ marginTop: '24px', width: 32, height: 32, flexShrink: 0 }} aria-hidden />
+                  <Box
+                    sx={{ marginTop: '24px', width: 32, height: 32, flexShrink: 0 }}
+                    aria-hidden
+                  />
                 )}
               </Box>
               {azDirtyVsBaseline ? (

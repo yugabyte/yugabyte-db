@@ -12,8 +12,8 @@ use crate::pg_sys;
 use crate::pgbox::AllocatedByPostgres;
 use crate::rel::PgRelation;
 use crate::trigger_support::{
-    called_as_trigger, PgTriggerError, PgTriggerLevel, PgTriggerOperation, PgTriggerWhen,
-    TriggerEvent, TriggerTuple,
+    PgTriggerError, PgTriggerLevel, PgTriggerOperation, PgTriggerWhen, TriggerEvent, TriggerTuple,
+    called_as_trigger,
 };
 use std::ffi::c_char;
 
@@ -77,6 +77,7 @@ impl<'a> PgTrigger<'a> {
     /// Returns the new database row for INSERT/UPDATE operations in row-level triggers.
     ///
     /// Returns `None` in statement-level triggers and DELETE operations.
+    #[allow(clippy::new_ret_no_self)]
     // Derived from `pgrx_pg_sys::TriggerData.tg_newtuple` and `pgrx_pg_sys::TriggerData.tg_newslot.tts_tupleDescriptor`
     pub fn new(&self) -> Option<PgHeapTuple<'_, AllocatedByPostgres>> {
         // Safety: Given that we have a known good `FunctionCallInfo`, which PostgreSQL has checked is indeed a trigger,
@@ -199,6 +200,9 @@ impl<'a> PgTrigger<'a> {
     pub fn extra_args(&self) -> Result<Vec<String>, PgTriggerError> {
         let tgargs = self.trigger.tgargs;
         let tgnargs = self.trigger.tgnargs;
+        if tgnargs == 0 {
+            return Ok(Vec::new());
+        }
         // Safety: Given that we have a known good `FunctionCallInfo`, which PostgreSQL has checked is indeed a trigger,
         // containing a known good `TriggerData` which also contains a known good `Trigger`... and the user agreed to
         // our `unsafe` constructor safety rules, we choose to trust this is indeed a valid pointer offered to us by

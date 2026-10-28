@@ -28,6 +28,7 @@
 typedef int XidStatus;
 
 /* YB includes */
+#include "storage/yb_proc_state.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
@@ -391,39 +392,10 @@ typedef struct PGPROC
 	 ************************************************************************/
 
 	/*
-	 * YB: We use this structure to keep track of locked LWLocks for release
-	 * during error recovery.  Normally, only a few will be held at once, but
-	 * occasionally the number can be much higher; for example, the
-	 * pg_buffercache extension locks all buffer partitions simultaneously.
+	 *YB: Per-process state that the postmaster reads after a backend dies, to
+	 * decide between cleaning up after it and a full restart.
 	 */
-	bool		ybLWLockAcquired;
-	int			ybSpinLocksAcquired;
-	/*
-	 * YB: Keep track of if the proc has been fully initialized. If a process
-	 * that was not fully initialized is killed, we don't know how to clean up
-	 * after it. Restart the postmaster in those cases.
-	 */
-	bool		ybInitializationCompleted;
-	/*
-	 * YB: Keep track of if the proc has been terminated and is cleaning up
-	 * after itself. If a process is killed while cleaning itself up, we don't
-	 * know how to clean up after it. Restart the postmaster in those cases.
-	 */
-	bool		ybTerminationStarted;
-
-	/*
-	 * YB: True when we are in a critical section. Set by START_CRIT_SECTION
-	 * and reset by END_CRIT_SECTION when we leave our last critical section.
-	 *
-	 * There may be cases where MyProc is NULL and we enter a critical section.
-	 * These cases should be caught by ybInitializationCompleted and cause a
-	 * postmaster restart anyway.
-	 *
-	 * In critical sections, ERRORs are escalated to PANICs, causing a
-	 * postmaster restart. We also restart the postmaster if a process dies
-	 * while in a critical section.
-	 */
-	bool		ybEnteredCriticalSection;
+	YbProcState ybProcState;
 
 	/*
 	 * yb_ash_metadata is protected by yb_ash_metadata_lock instead of backendLock.
@@ -435,14 +407,11 @@ typedef struct PGPROC
 	bool		yb_is_ash_metadata_set;
 
 	/*
-	 * YB:  The sync RPCs in pg_client.cc have a common wait event -
-	 * WaitingOnTServer and have the wait event aux set as the RPC name.
-	 * Instead of storing the RPC name as a string, we store an int because
-	 * it's faster to set an int than a string, and we only have 16 bytes for
-	 * wait event aux and some RPC names cannot fully fit into it. The enum
-	 * list is in wait_state.h (PggateRPC)
+	 * YB: Auxiliary value of the wait event this backend is in, which tells apart
+	 * the waits sharing one wait event. The actual meaning of aux value depends on
+	 * the associated wait event.
 	 */
-	uint16		yb_rpc_code;
+	uint32		yb_wait_event_aux;
 
 	YbcPgSharedDataPlaceholder yb_shared_data;
 }
@@ -561,6 +530,10 @@ typedef struct PROC_HDR
 	int			spins_per_delay;
 	/* Buffer id of the buffer that Startup process waits for pin on, or -1 */
 	int			startupBufferPinWaitBufId;
+
+	/* YB fields */
+	/* Number of connections rejected for exceeding the connection limit */
+	int			yb_too_many_conn;
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
@@ -651,8 +624,8 @@ extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
 extern int	yb_max_query_layer_retries;
-extern int *yb_too_many_conn;
 extern void YbRemoveLockGroupLeader(PGPROC *proc);
 extern void YbReleaseProcToFreeList(PGPROC *proc);
+extern bool YbIsAuxiliaryProc(PGPROC *proc);
 
 #endif							/* _PROC_H_ */

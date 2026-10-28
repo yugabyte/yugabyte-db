@@ -36,14 +36,19 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_bool(vector_index_include_into_post_split_compaction);
+DECLARE_bool(vector_index_require_parent_data_compacted_before_split);
 
 namespace yb {
 namespace tablet {
+
+extern bool TEST_vector_index_force_parent_data_not_compacted;
 
 class TabletSplitTest : public YBTabletTest {
  public:
@@ -88,6 +93,25 @@ class TabletSplitTest : public YBTabletTest {
     std::string tmp;
     AppendToKey(row.column(0).value(), &tmp);
     return YBPartition::HashColumnCompoundValue(tmp);
+  }
+
+  Result<TabletPtr> CreateSplitChildTablet(const std::string& id_suffix = "sub") {
+    const auto split_hash_code = std::numeric_limits<docdb::DocKeyHash>::max() / 2;
+    const auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+    auto partition = *tablet()->metadata()->partition();
+    partition.set_partition_key_end(partition_key);
+
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
+    docdb::KeyBounds key_bounds;
+    key_bounds.upper = encoded_doc_key;
+
+    const auto child_tablet_id = Format("$0-$1", tablet()->tablet_id(), id_suffix);
+    RETURN_NOT_OK(tablet()->CreateSplitChildTablet(
+        child_tablet_id, partition, key_bounds, yb::OpId{}, HybridTime{}));
+
+    return harness_->OpenTablet(child_tablet_id);
   }
 
   std::unique_ptr<LocalTabletWriter> writer_;
@@ -169,7 +193,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       key_bounds.upper.Clear();
     }
 
-    ASSERT_OK(tablet()->CreateSubtablet(
+    ASSERT_OK(tablet()->CreateSplitChildTablet(
         subtablet_id, *partition, key_bounds, yb::OpId() /* split_op_id */,
         HybridTime() /* split_hybrid_time */));
     split_tablets.push_back(ASSERT_RESULT(harness_->OpenTablet(subtablet_id)));
@@ -234,6 +258,92 @@ TEST_F(TabletSplitTest, SplitTablet) {
   ASSERT_TRUE(source_rows.empty()) << boost::algorithm::join(source_rows, "\n");
   ASSERT_TRUE(source_rows2.empty()) << boost::algorithm::join(source_rows2, "\n");
   ASSERT_TRUE(source_docdb_dump.empty()) << boost::algorithm::join(source_docdb_dump, "\n");
+}
+
+TEST_F(TabletSplitTest, StillHasOrphanedPostSplitDataVectorIndex) {
+  // The knobs below are process-wide, restore them to not affect the following tests.
+  auto flags_restorer = ScopeExit([
+      include = FLAGS_vector_index_include_into_post_split_compaction,
+      require = FLAGS_vector_index_require_parent_data_compacted_before_split,
+      force_not_compacted = TEST_vector_index_force_parent_data_not_compacted] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = include;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = require;
+    ANNOTATE_UNPROTECTED_WRITE(
+        TEST_vector_index_force_parent_data_not_compacted) = force_not_compacted;
+  });
+
+  auto split_tablet = ASSERT_RESULT(CreateSplitChildTablet());
+  auto* metadata = split_tablet->metadata();
+  metadata->set_rocksdb_parent_data_compacted(true);
+
+  {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = true;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = false;
+    ASSERT_FALSE(ASSERT_RESULT(split_tablet->StillHasOrphanedPostSplitData()));
+  }
+
+  {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = true;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = true;
+    ASSERT_TRUE(ASSERT_RESULT(split_tablet->StillHasOrphanedPostSplitData()));
+  }
+
+  {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = false;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = true;
+    ASSERT_FALSE(ASSERT_RESULT(split_tablet->StillHasOrphanedPostSplitData()));
+  }
+
+  {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = false;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = false;
+    ASSERT_FALSE(ASSERT_RESULT(split_tablet->StillHasOrphanedPostSplitData()));
+  }
+
+  // Parent data compacted should pass if indexes are not included into the compaction.
+  {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = false;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_vector_index_require_parent_data_compacted_before_split) = true;
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = true;
+    ASSERT_FALSE(ASSERT_RESULT(split_tablet->StillHasOrphanedPostSplitData()));
+  }
+}
+
+TEST_F(TabletSplitTest, SplitGenerationOnSubtablet) {
+  // New tablets default to 0 (absent PB loads as 0).
+  ASSERT_EQ(tablet()->metadata()->split_generation(), 0);
+
+  auto child = ASSERT_RESULT(CreateSplitChildTablet("gen1"));
+  ASSERT_EQ(child->metadata()->split_generation(), 1);
+  ASSERT_EQ(tablet()->metadata()->split_generation(), 0);
+
+  // Grandchild from child: generation 2.
+  {
+    const auto split_hash_code = std::numeric_limits<docdb::DocKeyHash>::max() / 4;
+    auto partition = *child->metadata()->partition();
+    partition.set_partition_key_end(
+        dockv::PartitionSchema::EncodeMultiColumnHashValue(split_hash_code));
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
+    docdb::KeyBounds key_bounds;
+    key_bounds.upper = encoded_doc_key;
+    const auto grandchild_id = Format("$0-gen2", child->tablet_id());
+    ASSERT_OK(child->CreateSplitChildTablet(
+        grandchild_id, partition, key_bounds, yb::OpId{}, HybridTime{}));
+    auto grandchild = ASSERT_RESULT(harness_->OpenTablet(grandchild_id));
+    ASSERT_EQ(grandchild->metadata()->split_generation(), 2);
+
+    RaftGroupReplicaSuperBlockPB sb;
+    grandchild->metadata()->ToSuperBlock(&sb);
+    ASSERT_EQ(sb.kv_store().split_generation(), 2);
+  }
 }
 
 // TODO: Need to test with distributed transactions both pending and committed

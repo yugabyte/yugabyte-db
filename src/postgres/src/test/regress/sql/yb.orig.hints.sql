@@ -135,9 +135,6 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
 -- Hint generation for WHERE subqueries.
 explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1=a3 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
 
--- Change join order and use all merge joins.
-/*+ Leading((((t1 unnamed_subquery) unnamed_subquery_1) t2)) MergeJoin(t1 unnamed_subquery) MergeJoin(t1 unnamed_subquery unnamed_subquery_1) MergeJoin(unnamed_subquery unnamed_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
-
 -- Hint generation for VALUES clause(s). Should see no errors/warnings.
 explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3)) val1(c0, c1), t0, t1, (values(1, 1), (2, 2), (3, 3)) val2(c0, c1)  where val1.c1=a0 and a0=a1 and val2.c1=val1.c1;
 
@@ -256,16 +253,15 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
--- YB_TODO_PG19MERGE: Join method choice is not working
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
--- Leading on partitioned tables with partitionwise joins enabled. The hint cannot name
--- the partition joins, so they stay denied and the hinted order is planned at the parent level.
+-- Leading on partitioned tables with partitionwise joins enabled. The partition joins follow
+-- the hinted order too, but the Leading hint registers only the join at the parent level,
+-- which ranks ahead of any partitionwise plan, so the hinted order is planned there.
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
--- YB_TODO_PG19MERGE: hints force a parallel plan until #21733's deletion of the UNION ALL block is re-applied
 /*+ NestLoop(t1_1 t2_1) Leading(t2_1 t1_1) MergeJoin(t1 t2) Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) IndexScan(t2_1 iprt2_p2_b) */ explain (hints on, costs off) select count(*) from (select *
  from prt1_p1 t1, prt2_p1 t2 where t1.a+1=t2.b and t1.a=5 union all select * from prt1_p2 t1, prt2_p2 t2 where t1.a=t2.b and t1.a=10) dt;
 
@@ -406,6 +402,10 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- No plan can be found using the hint. Should generate warnings.
 /*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
+-- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
+-- NoSeqScan: still no valid path.
+/*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
+
 -- No plan can be found using the hint. Should generate warnings.
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
@@ -427,6 +427,16 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- Cannot do a ROJ so should get a warning.
 /*+ leading((t4 t5)) nestLoop(t4 t5) */ explain (costs on, uids on) select count(*) from t4 right join t5 on a4=a5;
 
+-- Change join order and use all merge joins.  The middle join has no merge
+-- clause, so its MergeJoin hint cannot be honored and gets a warning.
+/*+ Leading((((t1 unnamed_subquery) unnamed_subquery_1) t2)) MergeJoin(t1 unnamed_subquery) MergeJoin(t1 unnamed_subquery unnamed_subquery_1) MergeJoin(unnamed_subquery unnamed_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+
+-- Same with sort-based deduping of the subqueries; the Leading order must
+-- still hold.
+set enable_hashagg to off;
+/*+ Leading((((t1 unnamed_subquery) unnamed_subquery_1) t2)) MergeJoin(t1 unnamed_subquery) MergeJoin(t1 unnamed_subquery unnamed_subquery_1) MergeJoin(unnamed_subquery unnamed_subquery_1 t1 t2) */ explain (hints on, costs off) select count(*) from t1, t2 where a1=a2 and b1 in (select a4 from t4 group by a4, b4) and b2 in (select a5 from t5 group by a5, b5);
+reset enable_hashagg;
+
 -- Try to use hash join without an equality predicate. Should get an error, re-plan, and get first 5 rows.
 set pg_hint_plan.yb_bad_hint_mode to replan;
 /*+ hashJoin(t3 t4) */ select unn3, unn4 from t3 join t4 on a3<a4 order by unn3, unn4 limit 5;
@@ -443,6 +453,31 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Bad table name in parallel hint. Should get warnings/errors.
 /*+ Parallel(t11 3 hard) */ explain (hints on, costs off) select count(*) from t1;
+
+-- Hard Parallel on a partitioned table disables non-partial paths on the
+-- inheritance parent but leaves hinted partial paths.  Should not warn that
+-- hinting found no path.
+set pg_hint_plan.yb_enable_internal_hint_test to off;
+set yb_enable_base_scans_cost_model to on;
+set yb_enable_parallel_append to on;
+set parallel_setup_cost to 0;
+set parallel_tuple_cost to 0;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+
+-- Hard Parallel gets the parallel plan at the default parallel costs too.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1;
+
+-- pg_current_xact_id() is parallel unsafe, so the query cannot run in
+-- parallel.  Hard Parallel is not used as intended.
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
+set pg_hint_plan.yb_bad_hint_mode to error;
+/*+ Parallel(prt1 2 hard) */ explain (costs off) select count(*) from prt1 where pg_current_xact_id() is not null;
+set pg_hint_plan.yb_bad_hint_mode to warn;
+reset yb_enable_base_scans_cost_model;
+reset yb_enable_parallel_append;
+set pg_hint_plan.yb_enable_internal_hint_test to on;
 
 -- Use bad name 't22' in hint. Should get warnings and whatever plan was found without the bad leading hint.
 /*+ Leading(((((t5 t4) t1) t3) t22)) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;

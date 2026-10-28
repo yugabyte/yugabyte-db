@@ -66,9 +66,9 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 To enable built-in connection pooling for universes deployed using YugabyteDB Anywhere:
 
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
-- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
+- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/scale-deployments/edit-config-flags/#connection-pooling).
 
-Note that when managing universes using YugabyteDB Anywhere, do not set the following flags manually: `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address`. To customize other [Connection Manager settings](#configure), use [Edit configuration flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#connection-pooling-flags) (**Actions > Edit Flags**).
+Note that when managing universes using YugabyteDB Anywhere, do not set the following flags manually: `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address`. To customize other [Connection Manager settings](#configure), use [Edit configuration flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) (**Actions > Edit Flags**).
 
 **Connect**
 
@@ -112,7 +112,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_superuser_sticky | Make superuser connections sticky.<br>Default: true |
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`.<br>Default: 5433 |
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation.<br>Default: 3600 |
-| ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include 'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.<br>Default: "" |
+| ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manager, which may include `log_debug`, `log_session`, `log_query`, and `log_stats`. Only the log settings present in this string are enabled; omitted settings remain disabled. `log_config` is accepted for backward compatibility but has no effect, as config logging is always on.<br>Default: "" |
 | ysql_conn_mgr_log_max_size | Maximum YSQL Connection Manager log size (in bytes) after which the log file is rolled over. Set to 0 to disable size-based rollover.<br>Default: 0 |
 | ysql_conn_mgr_log_rotate_interval | Duration (in seconds) after which the YSQL Connection Manager log file is rolled over. Set to 0 to disable time-based rollover.<br>Default: 0 |
 | ysql_conn_mgr_use_auth_backend | When set to true ("auth backend mode"), each incoming authentication request is handled by a freshly spawned postgres backend. Set this parameter to false to use an authentication passthrough mechanism, where backends from a pool of "control backends" are reused for all authentication requests; this can potentially reduce new connection acquisition latency. Contact {{% support-general %}} about whether setting this parameter to false is recommended for your workload.<br>Default: true |

@@ -152,7 +152,6 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
             .build();
     YnpPreflightCheckOutput checkOutput =
         nodeAgentClient.runYnpPreflightCheck(nodeAgent, checkParams, null /* custom user */);
-    log.info("YNP preflight check for node instance {} ran successfully", instance.getNodeName());
     if (checkOutput.getExitCode() != 0) {
       String errMsg =
           String.format(
@@ -161,6 +160,7 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
       log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+    log.info("YNP preflight check for node instance {} ran successfully", instance.getNodeName());
   }
 
   @Override

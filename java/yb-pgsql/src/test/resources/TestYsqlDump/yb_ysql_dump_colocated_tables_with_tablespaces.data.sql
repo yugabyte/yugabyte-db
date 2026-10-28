@@ -2,7 +2,7 @@
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -27,19 +27,22 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -48,7 +51,6 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
-\restrict <key>
 
 SET default_table_access_method = heap;
 
@@ -78,12 +80,14 @@ CREATE TABLE public.t2 (
 WITH (colocation_id='20001', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t2 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: mv1; Type: MATERIALIZED VIEW; Schema: public; Owner: yugabyte_test
 --
@@ -110,12 +114,14 @@ WITH (colocation_id='20004', yb_presplit='') AS
    FROM public.t2;
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER MATERIALIZED VIEW public.mv1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -142,12 +148,14 @@ CREATE TABLE public.t1 (
 WITH (colocation_id='20001', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t1 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t3; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -174,12 +182,14 @@ CREATE TABLE public.t3 (
 WITH (colocation_id='20002', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t3 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t4; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -209,12 +219,14 @@ CREATE TABLE public.t4 (
 WITH (colocation_id='20001', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t4 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t5; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -241,12 +253,14 @@ CREATE TABLE public.t5 (
 WITH (colocation_id='20001', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t5 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t6; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -273,12 +287,14 @@ CREATE TABLE public.t6 (
 WITH (colocation_id='20002', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t6 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Name: t7; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -314,12 +330,14 @@ CREATE TABLE public.t7 (
 WITH (colocation_id='20003', yb_presplit='');
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t7 OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
 --
 -- Data for Name: t1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
@@ -548,39 +566,45 @@ CREATE INDEX NONCONCURRENTLY i3 ON public.t7 USING lsm (c ASC) WITH (colocation_
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
 
 --
@@ -692,5 +716,5 @@ END $$;
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 

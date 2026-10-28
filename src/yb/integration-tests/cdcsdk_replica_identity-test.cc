@@ -400,7 +400,13 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateRe
                                        {2, 3}, {1, 999}, {2, 99}};
   ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
 
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // A transaction's APPLY reaches the tablet WAL asynchronously after commit, so a single
+  // GetChanges can observe only a prefix of the DML records. Poll until all 6 are streamed.
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, /* expected_count */ 6,
+      /* is_explicit_checkpoint */ true, /* cp */ nullptr, /* tablet_idx */ 0,
+      /* safe_hybrid_time */ -1, /* wal_segment_index */ 0, /* timeout_secs */ 60));
 
   uint32_t seen_dml_records = 0;
   for (const auto& record : change_resp.cdc_sdk_proto_records()) {

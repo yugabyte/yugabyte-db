@@ -92,6 +92,6 @@ The 'DROP' now succeeds and the `\d` meta-command shows that the table _"childre
 
 ## See also
 
-- [`CREATE TABLE`](../ddl_create_table)
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
+- [CREATE TABLE](../ddl_create_table)
+- [INSERT](../dml_insert)
+- [SELECT](../dml_select/)

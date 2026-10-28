@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -37,15 +39,13 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
-DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -95,6 +95,9 @@ class PgReadTimeTest : public PgMiniTestBase {
     // Disable auto analyze because it introduces flakiness to
     // metric: METRIC_picked_read_time_on_docdb.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // A load balancer leader stepdown mid-statement makes the client retry the operation against
+    // the new leader, and each retry might pick a read time on docdb again.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
@@ -779,12 +782,16 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   auto hostport = pg_host_port();
   std::string kHostFlag = "--host=" + hostport.host();
   std::string kPortFlag = "--port=" + std::to_string(hostport.port());
+  // Plain-text dumps are wrapped in psql restricted mode, and ysql_dump picks a random key per
+  // run unless one is given. Step 6 compares the two dumps byte for byte, so pin the key.
+  const std::string kRestrictKeyFlag = "--restrict-key=test";
   std::vector<std::string> args = {
       GetPgToolPath("ysql_dump"),
       kHostFlag,
       kPortFlag,
       "--schema-only",
       "--include-yb-metadata",
+      kRestrictKeyFlag,
       "yugabyte"  // Database name
   };
   LOG(INFO) << "Run tool: " << AsString(args);
@@ -804,6 +811,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
       "--schema-only",
       timestamp_flag,
       "--include-yb-metadata",
+      kRestrictKeyFlag,
       "yugabyte"  // database name
   };
   LOG(INFO) << "Run tool: " << AsString(args);
@@ -1295,9 +1303,7 @@ class PgReadTimeBaseTest
 
   void SetUp() override {
     const auto concurrent_ddl = IsConcurrentDdl();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = concurrent_ddl;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
+    ToggleDDLMode(/* use_legacy = */ !concurrent_ddl);
     PgReadTimeTest::SetUp();
   }
 
@@ -1313,7 +1319,8 @@ class PgReadTimeBaseTest
   void StartConcurrentInserts(
       TestThreadHolder* threads, const std::string& table, int start_key) {
     threads->AddThreadFunctor([this, &stop = threads->stop_flag(), table, start_key] {
-      auto conn = ASSERT_RESULT(Connect());
+      // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+      auto conn = ASSERT_RESULT_FAST(Connect());
       LoopUntilStop(stop, [&conn, table, start_key] {
         for (int k = start_key; k < start_key + kChurnBatch; ++k) {
           (void)conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 1)", table, k);
@@ -1540,9 +1547,10 @@ TEST_P(PgBackfillReadTimeTest, PrecedesClampDefer) {
 
   for (const auto* mode : {"relaxed", "deferred"}) {
     ASSERT_OK(internal.ExecuteFormat("SET yb_read_after_commit_visibility = '$0'", mode));
-    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double>(Format(
+    const auto bf = ASSERT_RESULT((internal.FetchRow<std::string, double, double>(Format(
         "BACKFILL INDEX $0 WITH x'0880011a00' READ TIME $1 PARTITION x''", idx_oid, t1_ht))));
     ASSERT_EQ(std::get<1>(bf), 6) << mode;
+    ASSERT_EQ(std::get<2>(bf), 6) << mode;
   }
 }
 
@@ -1718,7 +1726,8 @@ TEST_P(PgCatalogReadTimeTest, ConflictsWithRestartRead) {
 
   TestThreadHolder threads;
   threads.AddThreadFunctor([this, &stop = threads.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
+    // _FAST: SUCCEED() would race with HasFatalFailure() in RunFor on the main thread.
+    auto conn = ASSERT_RESULT_FAST(Connect());
     int i = 0;
     LoopUntilStop(stop, [&conn, &i] {
       const auto create_status =

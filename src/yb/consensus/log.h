@@ -56,6 +56,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/disk_space_checker.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
@@ -230,7 +231,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Returns a reader that is able to read through the previous segments.
   // Returns IllegalState if the log has been closed and the reader is no longer available.
-  Result<LogReader*> GetLogReader() const;
+  Result<LogReaderPtr> GetLogReader() const;
 
   Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
@@ -436,6 +437,9 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
   FRIEND_TEST(LogTest, TestLogMetricsWithSegmentReuse);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetric);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricUnderDurableWalWrite);
+  FRIEND_TEST(LogTest, TestWalSyncOverdueMetricWhenIntervalDisabled);
   FRIEND_TEST(LogTest, AsyncRolloverMarker);
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
@@ -466,6 +470,11 @@ class Log : public RefCountedThreadSafe<Log> {
       const PreLogRolloverCallback& pre_log_rollover_callback,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue,
       MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback = {});
+
+  // Value of the log_wal_sync_overdue_ms gauge: how far past interval_durable_wal_write_ the
+  // oldest unsynced entry is, or 0 if nothing is unsynced or the interval does not apply. Read on
+  // the metrics thread, concurrently with the appender and the background fsync.
+  int64_t WalSyncOverdueMs() const;
 
   Env* get_env() {
     return options_.env;
@@ -655,7 +664,9 @@ class Log : public RefCountedThreadSafe<Log> {
   LogState log_state_;
 
   // A reader for the previous segments that were not yet GC'd.
-  std::unique_ptr<LogReader> reader_;
+  // Shared so that a reference handed out by GetLogReader() outlives a concurrent Close()
+  // resetting reader_ mid-read.
+  LogReaderPtr reader_;
 
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
@@ -738,6 +749,9 @@ class Log : public RefCountedThreadSafe<Log> {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<LogMetrics> metrics_;
+  // Detaches the function gauge in metrics_ from this Log on destruction. Declared after the
+  // members the gauge reads.
+  std::shared_ptr<void> metric_detacher_;
 
   std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
@@ -785,10 +799,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The callback guarantees that value returned would be a 'valid' Hybrid time.
   MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback_;
 
-  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
-  std::atomic<bool> has_free_disk_space_{false};
-  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
-  std::shared_timed_mutex disk_space_mutex_;
+  DiskSpaceChecker disk_space_checker_;
 
   // Protect access to the get_xcluster_min_index_to_retain_.
   mutable PerCpuRwMutex get_xcluster_index_lock_;

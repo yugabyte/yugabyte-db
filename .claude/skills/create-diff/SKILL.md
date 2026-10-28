@@ -107,6 +107,17 @@ the user.
   ask whether to proceed.
 - If the output is clean, continue to the next step.
 
+### Step 2.5: PG code style pass (only when src/postgres files changed)
+
+If the branch changes anything under `src/postgres`, load the
+`pg-code-style-guide` skill and check the diff against it (yb prefixes,
+YB marker blocks, upstream lines untouched, regress test rules).  Fix
+violations now -- this is the last point where cleanup is free; after
+publishing they come back as review comments.
+
+Commit any resulting fixes on the branch -- amend Step 1's commit or add
+a new one -- before Step 6, and re-run the linter (Step 2).
+
 ### Step 3: Determine tracker reference
 
 You will need a GitHub or JIRA issue describing the issue this diff is

@@ -37,7 +37,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -160,7 +160,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
-  @Inject private EmbeddedCollectorInitializer embeddedCollectorInitializer;
+  @Inject private PACollectorSync paCollectorSync;
 
   private final ApiHelper apiHelper;
 
@@ -449,9 +449,13 @@ public class SessionController extends AbstractPlatformController {
     Users user = Users.getByEmail(email);
     // Block local SuperAdmin accounts from using the SSO callback; SSO-provisioned SuperAdmin
     // users (for example via OIDC group mapping) must still be able to sign in via SSO.
+    // Resolved through role bindings, not users.role: that column stays at its original value for a
+    // SuperAdmin granted via setRoleBindings, so reading it would let such a user through here and
+    // findUserByEmailOrCreateNewUser would then recompute their role and rebuild their bindings,
+    // silently costing them SuperAdmin. UserType is checked first as it needs no query.
     if (user != null
-        && user.getRole().equals(Users.Role.SuperAdmin)
-        && UserType.local.equals(user.getUserType())) {
+        && UserType.local.equals(user.getUserType())
+        && roleBindingUtil.isSuperAdmin(user)) {
       throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
@@ -786,7 +790,7 @@ public class SessionController extends AbstractPlatformController {
     }
 
     // Have to call it here, because customer only present inside the same transaction.
-    embeddedCollectorInitializer.initialize(cust);
+    paCollectorSync.initialize(cust);
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;

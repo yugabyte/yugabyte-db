@@ -98,6 +98,12 @@ public class ResourceTracker {
       KubernetesResourceDetails dependency,
       String dependencyYamlData,
       UUID localInstanceUuid) {
+    if (owner == null) {
+      log.warn(
+          "Skipping dependency tracking for {}, no owner given",
+          dependency == null ? "unknown resource" : dependency.toResourceName());
+      return;
+    }
     String ownerName = owner.toResourceName();
     String depName = dependency.toResourceName();
 

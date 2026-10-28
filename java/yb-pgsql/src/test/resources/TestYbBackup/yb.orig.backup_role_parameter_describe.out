@@ -1,4 +1,4 @@
-              List of relations
+               List of tables
  Schema |    Name    | Type  |     Owner     
 --------+------------+-------+---------------
  public | test_table | table | yugabyte_test
@@ -16,12 +16,12 @@
 
  log_min_messages 
 ------------------
- log
+ LOG
 (1 row)
 
  log_min_messages 
 ------------------
- debug1
+ DEBUG1
 (1 row)
 
  log_min_messages 
@@ -31,11 +31,11 @@
 
  log_min_messages 
 ------------------
- log
+ LOG
 (1 row)
 
  log_min_messages 
 ------------------
- debug1
+ DEBUG1
 (1 row)
 

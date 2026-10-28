@@ -330,6 +330,7 @@ YbCleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 	int			i;
 
 	ProcNumber	yb_procno = GetNumberFromPGProc(proc);
+	bool		yb_caller_is_postmaster = (proc != MyProc);
 
 	Assert(segP);
 
@@ -337,8 +338,26 @@ YbCleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 
 	stateP = &segP->procState[yb_procno];
 
-	/* Update next local transaction ID for next holder of this proc number */
-	stateP->nextLXID = nextLocalTransactionId;
+	/*
+	 * YB: A killed process may have already cleaned up its slot.
+	 */
+	if (yb_caller_is_postmaster && stateP->procPid != proc->pid)
+	{
+		LWLockRelease(SInvalWriteLock);
+		return;
+	}
+
+	/*
+	 * Update next local transaction ID for next holder of this proc number
+	 *
+	 * YB: A killed process's nextLocalTransactionId is lost, so leave nextLXID
+	 * as is. This results in the killed process's last-used VirtualTransactionId
+	 * to be reused. In YB, nobody waits on vxids, so this is harmless. The
+	 * stale VXID may at most show up in an observability tool like
+	 * log_line_prefix.
+	 */
+	if (!yb_caller_is_postmaster)
+		stateP->nextLXID = nextLocalTransactionId;
 
 	/* Mark myself inactive */
 	stateP->procPid = 0;
@@ -382,13 +401,8 @@ CleanupInvalidationState(int status, Datum arg)
  * YbCleanupInvalidationStateForProc
  *		Mark the given backend as no longer active.
  *
- * This function is called from reaper() when the parent is notified that its
- * child died unexpectedly.
- *
- * YB_TODO_PG19MERGE: Not yet correct for a process other than the caller:
- * YbCleanupInvalidationStateInternal stores the caller's own
- * nextLocalTransactionId into the given process's slot.  Its only caller,
- * CleanupKilledProcess, is currently under #if 0.
+ * This function is called from YbCleanupKilledProcess() when the postmaster is
+ * notified that its child died unexpectedly.
  */
 void
 YbCleanupInvalidationStateForProc(PGPROC *proc)

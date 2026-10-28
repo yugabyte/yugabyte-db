@@ -109,6 +109,16 @@
       color: #2B59C3;
     }
 
+    &.new-ui {
+      background: #CDEFE1;
+      color: #097345;
+    }
+
+    &.classic-ui {
+      background: #E9EDF0;
+      color: #4E5F6D;
+    }
+
     &:hover {
       text-decoration: none !important;
 

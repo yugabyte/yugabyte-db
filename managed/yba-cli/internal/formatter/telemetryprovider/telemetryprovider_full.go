@@ -210,8 +210,73 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 		}
 
 		ftp.Output.Write([]byte("\n"))
+	case util.DynatraceTelemetryProviderType:
+		if err := ftp.section(
+			ftpc, dynatraceType, "Dynatrace Telemetry Provider Details"); err != nil {
+			return err
+		}
+		ftp.Output.Write([]byte("\n"))
+	case util.S3TelemetryProviderType:
+		if err := ftp.section(ftpc, s3Type1, "S3 Telemetry Provider Details"); err != nil {
+			return err
+		}
+		for _, tmplStr := range []string{s3Type2, s3Type3, s3Type4, s3Type5} {
+			if err := ftp.section(ftpc, tmplStr, ""); err != nil {
+				return err
+			}
+		}
+		ftp.Output.Write([]byte("\n"))
+	case util.OTLPTelemetryProviderType:
+		if err := ftp.section(ftpc, otlpType1, "OTLP Telemetry Provider Details"); err != nil {
+			return err
+		}
+		for _, tmplStr := range []string{otlpType2, otlpType3, otlpType4} {
+			if err := ftp.section(ftpc, tmplStr, ""); err != nil {
+				return err
+			}
+		}
+		switch config.GetAuthType() {
+		case util.BasicAuthTelemetryAuthType:
+			if err := ftp.section(ftpc, lokiType2, ""); err != nil {
+				return err
+			}
+		case util.BearerTokenTelemetryAuthType:
+			if err := ftp.section(ftpc, otlpBearer, ""); err != nil {
+				return err
+			}
+		}
+		if config.HasRetryOnFailure() {
+			if err := ftp.section(ftpc, otlpRetry, ""); err != nil {
+				return err
+			}
+		}
+		ftp.Output.Write([]byte("\n"))
 	}
 
+	return nil
+}
+
+// section renders one subsection, headed by title when given.
+func (ftp *FullTelemetryProviderContext) section(
+	ftpc *fullTelemetryProviderContext,
+	tmplStr string,
+	title string,
+) error {
+	tmpl, err := ftp.startSubsection(tmplStr)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if title != "" {
+		ftp.subSection(title)
+	} else {
+		ftp.Output.Write([]byte("\n"))
+	}
+	if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	ftp.PostFormat(tmpl, NewTelemetryProviderContext())
 	return nil
 }
 

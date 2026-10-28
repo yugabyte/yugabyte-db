@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.tasks.RegisterUniverseWithPACollector;
 import com.yugabyte.yw.commissioner.tasks.UnregisterUniverseFromPACollector;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.pa.PaRegistrationMode;
+import com.yugabyte.yw.common.pa.PerfAdvisorEndpointService;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.PerfAdvisorEndpoint;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
@@ -35,9 +38,13 @@ import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.*;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -48,6 +55,7 @@ import play.mvc.Result;
 public class PACollectorController extends AuthenticatedController {
 
   @Inject private PerfAdvisorService perfAdvisorService;
+  @Inject private PerfAdvisorEndpointService perfAdvisorEndpointService;
   @Inject private Commissioner commissioner;
 
   @ApiOperation(
@@ -189,7 +197,7 @@ public class PACollectorController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
     if (collector.isEmbedded()) {
-      // The embedded collector is fully owned by EmbeddedCollectorInitializer - deleting it
+      // The embedded collector is fully owned by PACollectorSync - deleting it
       // via the API would just leave it half-configured until the next initializer tick
       // recreates it. Force users to disable it via runtime config (yb.pa.url) instead.
       throw new PlatformServiceException(
@@ -233,8 +241,22 @@ public class PACollectorController extends AuthenticatedController {
       throw new PlatformServiceException(NOT_FOUND, "Universe is not registered with PA Collector");
     }
 
-    boolean advancedObservability = metadata.isMetricsExportToPrometheusEnabled();
-    return PlatformResults.withData(new PaRegistrationStatusResponse(true, advancedObservability));
+    PaRegistrationMode mode = PaRegistrationMode.of(metadata);
+    // The collector reports its own export config ids, which are Perf Advisor Endpoint uuids by
+    // construction. Resolved to a local record so callers see a name rather than a bare uuid.
+    UUID endpointUuid =
+        CollectionUtils.isEmpty(metadata.getExportConfigIds())
+            ? null
+            : metadata.getExportConfigIds().get(0);
+    String endpointName =
+        endpointUuid == null
+            ? null
+            : Optional.ofNullable(perfAdvisorEndpointService.get(customerUUID, endpointUuid))
+                .map(PerfAdvisorEndpoint::getName)
+                .orElse(null);
+    return PlatformResults.withData(
+        new PaRegistrationStatusResponse(
+            true, metadata.isMetricsExportToPrometheusEnabled(), mode, endpointUuid, endpointName));
   }
 
   @ApiOperation(
@@ -253,16 +275,26 @@ public class PACollectorController extends AuthenticatedController {
       UUID universeUUID,
       UUID collectorUUID,
       Boolean advancedObservability,
+      String mode,
+      UUID paEndpointUUID,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
+    PaRegistrationMode targetRegistrationMode =
+        resolveRegistrationMode(mode, advancedObservability, paEndpointUUID);
+    if (targetRegistrationMode.requiresExportConfig()) {
+      // Gated here rather than inside the task: online mode is off by default, and a task that can
+      // only fail is a worse answer than a rejected request. Resolving the endpoint now also turns
+      // an unknown uuid into a bad request instead of a failed subtask.
+      perfAdvisorEndpointService.checkEnabled(customerUUID);
+      perfAdvisorEndpointService.getOrBadRequest(customerUUID, paEndpointUUID);
+    }
+
     PerfAdvisorService.PaMemoryMode currentMode = currentPaMemoryMode(universe, collector);
     PerfAdvisorService.PaMemoryMode targetMode =
-        Boolean.TRUE.equals(advancedObservability)
-            ? PerfAdvisorService.PaMemoryMode.ADVANCED
-            : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
+        PerfAdvisorService.toMemoryMode(targetRegistrationMode);
     perfAdvisorService.validatePerfAdvisorMemory(
         universe,
         currentMode,
@@ -273,7 +305,8 @@ public class PACollectorController extends AuthenticatedController {
     params.setUniverseUUID(universeUUID);
     params.customerUuid = customerUUID;
     params.paCollectorUuid = collectorUUID;
-    params.advancedObservability = Boolean.TRUE.equals(advancedObservability);
+    params.mode = targetRegistrationMode;
+    params.paEndpointUuid = paEndpointUUID;
 
     UUID taskUUID = commissioner.submit(TaskType.RegisterUniverseWithPACollector, params);
     CustomerTask.create(
@@ -283,11 +316,7 @@ public class PACollectorController extends AuthenticatedController {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.RegisterWithPACollector,
         universe.getName(),
-        universe.getUniverseDetails().getPaCollectorUuid() == null
-            ? "Enable PA Collector For"
-            : (advancedObservability
-                ? "Enable Advanced Observability For"
-                : "Disable Advanced Observability For"));
+        registrationTaskDescription(universe, targetRegistrationMode));
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -389,8 +418,52 @@ public class PACollectorController extends AuthenticatedController {
       // Be conservative and treat as not currently consuming any PA memory.
       return PerfAdvisorService.PaMemoryMode.NONE;
     }
-    return metadata.isMetricsExportToPrometheusEnabled()
-        ? PerfAdvisorService.PaMemoryMode.ADVANCED
-        : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
+    return PerfAdvisorService.toMemoryMode(PaRegistrationMode.of(metadata));
+  }
+
+  /**
+   * The mode query parameter supersedes {@code advancedObservability}, which predates online mode
+   * and stays accepted so existing callers keep working.
+   */
+  private PaRegistrationMode resolveRegistrationMode(
+      String mode, Boolean advancedObservability, UUID paEndpointUUID) {
+    PaRegistrationMode registrationMode;
+    if (StringUtils.isEmpty(mode)) {
+      registrationMode = PaRegistrationMode.of(Boolean.TRUE.equals(advancedObservability));
+    } else {
+      try {
+        registrationMode = PaRegistrationMode.valueOf(mode.toUpperCase());
+      } catch (IllegalArgumentException e) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unknown registration mode '"
+                + mode
+                + "'. Expected one of "
+                + Arrays.toString(PaRegistrationMode.values()));
+      }
+    }
+    // PA rejects an ONLINE universe with no destination too, but failing here keeps the user out
+    // of a task that can only fail.
+    if (registrationMode.requiresExportConfig() && paEndpointUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "A Perf Advisor Endpoint is required to register a universe in ONLINE mode");
+    }
+    if (!registrationMode.requiresExportConfig() && paEndpointUUID != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "A Perf Advisor Endpoint only applies to ONLINE mode, not " + registrationMode);
+    }
+    return registrationMode;
+  }
+
+  private static String registrationTaskDescription(Universe universe, PaRegistrationMode mode) {
+    if (universe.getUniverseDetails().getPaCollectorUuid() == null) {
+      return "Enable PA Collector For";
+    }
+    return switch (mode) {
+      case ADVANCED -> "Enable Advanced Observability For";
+      case BASIC -> "Disable Advanced Observability For";
+      case ONLINE -> "Enable Online Perf Advisor Collection For";
+    };
   }
 }

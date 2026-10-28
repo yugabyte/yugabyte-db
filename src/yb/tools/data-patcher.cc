@@ -153,12 +153,19 @@ std::unique_ptr<OptionsDescription> ChangeTimeOptions(const std::string& caption
   return result;
 }
 
+// Tablet DB directories come in pairs: the intents DB lives next to the regular one with the
+// ".intents" suffix, and the two are configured differently (see CreateRocksDBTableFactory).
+StorageDbType StorageDbTypeForDir(const std::string& dir) {
+  return boost::ends_with(dir, kIntentsExtension) ? StorageDbType::kIntents
+                                                  : StorageDbType::kRegular;
+}
+
 class RocksDBHelper {
  public:
-  RocksDBHelper() : immutable_cf_options_(options_) {
+  explicit RocksDBHelper(StorageDbType db_type) : immutable_cf_options_(options_) {
     docdb::InitRocksDBOptions(
         &options_, kLogPrefix, yb::TabletId{}, /* statistics= */ nullptr, tablet_options_,
-        table_options_);
+        db_type, table_options_);
     internal_key_comparator_ = std::make_shared<rocksdb::InternalKeyComparator>(
         options_.comparator);
   }
@@ -330,9 +337,7 @@ Status AddDeltaToSstFile(
   LOG(INFO) << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
 
   constexpr size_t kKeySuffixLen = 8;
-  const auto storage_db_type =
-      boost::ends_with(DirName(fname), kIntentsExtension) ? StorageDbType::kIntents
-                                                          : StorageDbType::kRegular;
+  const auto storage_db_type = StorageDbTypeForDir(DirName(fname));
 
   auto table_reader = VERIFY_RESULT(helper->NewTableReader(fname));
 
@@ -582,7 +587,7 @@ Status ChangeTimeInDataFiles(
   std::shuffle(files_to_process.begin(), files_to_process.end(), ThreadLocalRandom());
   for (const auto& fname : files_to_process) {
     runner->Submit([fname, delta, bound_time, max_num_old_wal_entries, debug]() {
-      RocksDBHelper helper;
+      RocksDBHelper helper(StorageDbTypeForDir(DirName(fname)));
       return AddDeltaToSstFile(fname, delta, bound_time, max_num_old_wal_entries, debug, &helper);
     });
   }
@@ -594,11 +599,10 @@ Status ChangeTimeInWalDir(
     const std::string& dir) {
   auto env = Env::Default();
   auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
-  std::unique_ptr<log::LogReader> log_reader;
-  RETURN_NOT_OK(log::LogReader::Open(
+  auto log_reader = VERIFY_RESULT(log::LogReader::Open(
       env, log_index, kLogPrefix, dir, /*table_metric_entity=*/nullptr,
       /*tablet_metric_entity=*/nullptr,
-      /*read_wal_mem_tracker=*/nullptr, &log_reader));
+      /*read_wal_mem_tracker=*/nullptr));
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
   auto patched_dir = dir + kPatchedExtension;
@@ -897,10 +901,6 @@ class ApplyPatch {
           std::bind(&ApplyPatch::WalkWalCallback, this, _1, _2, _3)));
     }
 
-    RocksDBHelper helper;
-    auto options = helper.options();
-    options.skip_stats_update_on_db_open = true;
-
     int num_revert_errors = 0;
 
     int num_dirs_handled = 0;
@@ -933,6 +933,9 @@ class ApplyPatch {
         if (dirs == &data_dirs_) {
           if (valid_rocksdb_dirs_.count(dir)) {
             LOG(INFO) << "Patching non-live RocksDB metadata in " << patched_path;
+            RocksDBHelper helper(StorageDbTypeForDir(dir));
+            auto options = helper.options();
+            options.skip_stats_update_on_db_open = true;
             docdb::RocksDBPatcher patcher(patched_path, options);
             RETURN_NOT_OK(patcher.Load());
             RETURN_NOT_OK(patcher.UpdateFileSizes());

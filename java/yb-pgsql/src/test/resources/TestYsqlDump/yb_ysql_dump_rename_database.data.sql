@@ -2,8 +2,10 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.31.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
+\restrict test
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -17,6 +19,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -26,16 +29,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 --
 -- Name: rename_db_tgt; Type: DATABASE; Schema: -; Owner: yugabyte_test
@@ -44,11 +51,17 @@ SET row_security = off;
 CREATE DATABASE rename_db_tgt WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER DATABASE rename_db_tgt OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \connect rename_db_tgt
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -62,6 +75,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -90,12 +104,18 @@ COMMENT ON DATABASE rename_db_tgt IS 'rename_database test source';
 --
 
 ALTER DATABASE rename_db_tgt SET "TimeZone" TO 'UTC';
+\unrestrict test
 \if :use_roles
+\restrict test
 ALTER ROLE yugabyte_test IN DATABASE rename_db_tgt SET search_path TO 'public';
+\unrestrict test
 \endif
+\restrict test
 
 
+\unrestrict test
 \connect rename_db_tgt
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -109,6 +129,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -131,8 +152,8 @@ END $$;
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16390'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16391'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16391'::pg_catalog.oid);
 
 CREATE SEQUENCE public.s
     START WITH 1
@@ -142,13 +163,21 @@ CREATE SEQUENCE public.s
     CACHE 1;
 
 
+\unrestrict test
 \if :use_roles
-    ALTER TABLE public.s OWNER TO yugabyte_test;
+\restrict test
+    ALTER SEQUENCE public.s OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
+\unrestrict test
 \if :use_tablespaces
+\restrict test
     SET default_tablespace = '';
+\unrestrict test
 \endif
+\restrict test
 
 SET default_table_access_method = heap;
 
@@ -171,8 +200,8 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.o
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16387'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16388'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16388'::pg_catalog.oid);
 
 CREATE TABLE public.t (
     k integer NOT NULL,
@@ -183,9 +212,13 @@ WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER TABLE public.t OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Name: vw; Type: VIEW; Schema: public; Owner: yugabyte_test
@@ -193,25 +226,29 @@ SPLIT INTO 3 TABLETS;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16393'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16394'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16392'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16393'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16391'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16392'::pg_catalog.oid);
 
 CREATE VIEW public.vw AS
- SELECT t.k,
-    t.v
+ SELECT k,
+    v
    FROM public.t;
 
 
+\unrestrict test
 \if :use_roles
-    ALTER TABLE public.vw OWNER TO yugabyte_test;
+\restrict test
+    ALTER VIEW public.vw OWNER TO yugabyte_test;
+\unrestrict test
 \endif
+\restrict test
 
 --
 -- Data for Name: t; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
@@ -235,12 +272,13 @@ SELECT pg_catalog.setval('public.s', 1, false);
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -250,43 +288,55 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16389'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16389'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16390'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16390'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY t_v_idx ON public.t USING lsm (v HASH) WITH (yb_presplit='3') SPLIT INTO 3 TABLETS;
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
@@ -294,12 +344,13 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -308,16 +359,19 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't_v_idx',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict test
 

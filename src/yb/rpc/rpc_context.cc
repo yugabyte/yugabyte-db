@@ -142,6 +142,12 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                        std::shared_ptr<RpcCallParams> params)
     : call_(std::move(call)),
       params_(std::move(params)) {
+  call_->CreateServerSpan();
+  if (const auto& span = call_->server_span(); span) {
+    const auto& local = call_->local_address();
+    span->SetAttribute("server.address", local.address().to_string());
+    span->SetAttribute("server.port", static_cast<int64_t>(local.port()));
+  }
   const Status s = call_->ParseParam(params_.get());
   if (PREDICT_FALSE(!s.ok())) {
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
@@ -152,6 +158,9 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
 
 RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call)
     : call_(call), params_(call.get(), boost::null_deleter()) {
+  if (auto outbound_call = call->outbound_call(); outbound_call) {
+    call_->CreateServerSpan(outbound_call->otel_span_context());
+  }
   TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 

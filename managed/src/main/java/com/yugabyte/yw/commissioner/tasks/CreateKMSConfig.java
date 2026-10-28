@@ -33,10 +33,12 @@ public class CreateKMSConfig extends KMSConfigTaskBase {
   public void run() {
     log.info("Creating KMS Configuration for customer: " + taskParams().customerUUID.toString());
 
-    // A config with this name already exists, so a previous attempt succeeded: nothing to do.
+    // A config with this UUID or name already exists, so a previous attempt succeeded: nothing to
+    // do.
     boolean alreadyExists =
-        KmsConfig.listKMSConfigs(taskParams().customerUUID).stream()
-            .anyMatch(config -> config.getName().equals(taskParams().kmsConfigName));
+        KmsConfig.get(taskParams().configUUID) != null
+            || KmsConfig.listKMSConfigs(taskParams().customerUUID).stream()
+                .anyMatch(config -> config.getName().equals(taskParams().kmsConfigName));
     if (alreadyExists) {
       log.info(
           "KMS Configuration '{}' already exists for customer {}, skipping creation",
@@ -49,7 +51,10 @@ public class CreateKMSConfig extends KMSConfigTaskBase {
         kmsManager
             .getServiceInstance(taskParams().kmsProvider.name())
             .createAuthConfig(
-                taskParams().customerUUID, taskParams().kmsConfigName, taskParams().providerConfig);
+                taskParams().customerUUID,
+                taskParams().kmsConfigName,
+                taskParams().providerConfig,
+                taskParams().configUUID);
 
     if (createResult == null) {
       throw new RuntimeException(

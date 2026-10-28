@@ -9,7 +9,7 @@ import {
   getPlacementSpecForCluster,
   isKubernetesCluster,
   useEditUniverseContext,
-  useIsUniverseReady
+  useIsUniverseEditActionDisabled
 } from '../EditUniverseUtils';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { useApplyMasterAllocation } from '../hooks/useApplyMasterAllocation';
@@ -58,7 +58,7 @@ export const PlacementTab = () => {
   const singlePrimaryGeoPartition =
     primaryGeoPartitions.length === 1 ? primaryGeoPartitions[0] : undefined;
   const isMultiPrimaryGeoPartition = primaryGeoPartitions.length > 1;
-  const isUniverseReady = useIsUniverseReady();
+  const isEditActionDisabled = useIsUniverseEditActionDisabled();
 
   const [showDeleteReadReplicaModal, setShowDeleteReadReplicaModal] = useState(false);
 
@@ -96,7 +96,7 @@ export const PlacementTab = () => {
           window.location.href = getAddReadReplicaRoute(universeUuid);
         },
         startIcon: <EditIcon />,
-        disabled: !isUniverseReady
+        disabled: isEditActionDisabled
       },
       {
         id: 'delete-read-replica',
@@ -106,10 +106,10 @@ export const PlacementTab = () => {
         destructive: true,
         onClick: () => setShowDeleteReadReplicaModal(true),
         startIcon: <DeleteOutlineIcon />,
-        disabled: !isUniverseReady
+        disabled: isEditActionDisabled
       }
     ];
-  }, [isUniverseReady, readReplicaCluster?.uuid, t, universeUuid]);
+  }, [isEditActionDisabled, readReplicaCluster?.uuid, t, universeUuid]);
 
   const [showEditResilienceAndRegionsModal, setShowEditResilienceAndRegionsModal] =
     useToggle(false);

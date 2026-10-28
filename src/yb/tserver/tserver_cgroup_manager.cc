@@ -12,8 +12,6 @@
 
 #include "yb/tserver/tserver_cgroup_manager.h"
 
-#ifdef __linux__
-
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -21,8 +19,9 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/cgroups.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/metrics.h"
 #include "yb/util/os-util.h"
@@ -31,6 +30,8 @@
 #include "yb/util/url-coding.h"
 
 DECLARE_bool(enable_qos);
+
+#ifdef __linux__
 
 DEFINE_RUNTIME_double(qos_max_db_cpu_percent, 100.0,
     "Maximum per-database CPU as a percentage of the @capped-pool budget "
@@ -93,11 +94,11 @@ DEFINE_validator(qos_evaluation_window_us,
     // Linux requires cfs_period_us to be between 1ms and 1s.
     FLAG_RANGE_VALIDATOR(1'000, 1'000'000),
     FLAG_DELAYED_OK_VALIDATOR(yb::Cgroup::CheckMaxCpuValidForPeriod(
-        FLAGS_qos_max_db_cpu_percent / 100.0, _value)));
+        FINAL_FLAG_VALUE(qos_max_db_cpu_percent) / 100.0, _value)));
 DEFINE_validator(qos_max_db_cpu_percent,
     FLAG_RANGE_VALIDATOR(0.0, 100.0),
     FLAG_DELAYED_OK_VALIDATOR(yb::Cgroup::CheckMaxCpuValidForPeriod(
-        _value / 100.0, FLAGS_qos_evaluation_window_us)));
+        _value / 100.0, FINAL_FLAG_VALUE(qos_evaluation_window_us))));
 DEFINE_validator(qos_system_high_cpu_reserved_percent,
     FLAG_RANGE_VALIDATOR(0.0, 100.0));
 DEFINE_validator(qos_system_high_cpu_max_percent,
@@ -184,7 +185,7 @@ REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCp
 REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
 
 std::string FormatNanoseconds(int64_t ns) {
-  return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
+  return FixedPoint(static_cast<double>(ns) / 1e9, 3);
 }
 
 void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& out) {
@@ -645,7 +646,7 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
             <td>$3% ($4)</td>
             <td>$5</td>
         )#", depth, depth == 0 ? "Root" : name, throttle_status,
-        StringPrintf("%.3f", (100.0 * cpu_weight) / total_weight), cpu_weight, quota_str,
+        FixedPoint((100.0 * cpu_weight) / total_weight, 3), cpu_weight, quota_str,
         cgroup.is_leaf() ? "expand" : "collapse");
 
     if (current_stats.ok()) {
@@ -664,7 +665,7 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
           FormatNanoseconds(current_stats->usage_sys_ns),
           FormatNanoseconds(current_stats->usage_ns),
           FormatNanoseconds(current_stats->throttled_time_ns),
-          StringPrintf("%.3f", throttled_percentage),
+          FixedPoint(throttled_percentage, 3),
           current_stats->nr_throttled,
           current_stats->nr_periods);
     } else {
@@ -706,12 +707,16 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
 
 namespace yb::tserver {
 
-bool TServerCgroupManagementEnabled() {
+bool TServerCgroupManagementEnabled(bool enable_qos) {
 #ifdef __linux__
-  return FLAGS_enable_qos;
+  return enable_qos;
 #else
   return false;
 #endif
+}
+
+bool TServerCgroupManagementEnabled() {
+  return TServerCgroupManagementEnabled(FLAGS_enable_qos);
 }
 
 } // namespace yb::tserver

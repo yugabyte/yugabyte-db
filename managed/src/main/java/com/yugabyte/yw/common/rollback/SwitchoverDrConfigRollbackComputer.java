@@ -20,6 +20,13 @@ import play.libs.Json;
 @Slf4j
 public class SwitchoverDrConfigRollbackComputer implements TaskRollbackComputer {
 
+  public static final TaskType ROLLBACK_TASK_TYPE = TaskType.SwitchoverDrConfigRollback;
+
+  @Override
+  public TaskType rollbackTaskType() {
+    return ROLLBACK_TASK_TYPE;
+  }
+
   @Override
   public RollbackSubmission compute(RollbackContext context) {
     DrConfigTaskParams taskParams =
@@ -44,6 +51,6 @@ public class SwitchoverDrConfigRollbackComputer implements TaskRollbackComputer 
     }
     log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
     return new RollbackSubmission(
-        TaskType.SwitchoverDrConfigRollback, taskParams, CustomerTask.TaskType.SwitchoverRollback);
+        rollbackTaskType(), taskParams, CustomerTask.TaskType.SwitchoverRollback);
   }
 }

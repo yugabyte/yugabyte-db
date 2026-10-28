@@ -224,6 +224,19 @@ func AWSRegionFromEnv() (string, error) {
 	return region, nil
 }
 
+// OCIS3CredentialsFromEnv retrieves "OCI_S3_ACCESS_KEY_ID" and "OCI_S3_SECRET_ACCESS_KEY".
+func OCIS3CredentialsFromEnv() (accessKeyID, secretAccessKey string, err error) {
+	accessKeyID, accessPresent := os.LookupEnv(OCIS3AccessKeyIDField)
+	secretAccessKey, secretPresent := os.LookupEnv(OCIS3SecretAccessKeyField)
+	if !accessPresent || !secretPresent ||
+		len(accessKeyID) == 0 || len(secretAccessKey) == 0 {
+		return "", "", fmt.Errorf(
+			"%s and %s environment variables must both be set",
+			OCIS3AccessKeyIDField, OCIS3SecretAccessKeyField)
+	}
+	return accessKeyID, secretAccessKey, nil
+}
+
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
 func AzureStorageCredentialsFromEnv() (string, error) {
 	azureSasToken, isPresent := os.LookupEnv(AzureStorageSasTokenEnv)
@@ -322,6 +335,15 @@ func HashicorpVaultAddressFromEnv() (string, error) {
 		return "", fmt.Errorf(errorString)
 	}
 	return hca.Address, nil
+}
+
+// OCIValueFromEnv retrives value of the given OCI env variable
+func OCIValueFromEnv(envName string) (string, error) {
+	value, isPresent := os.LookupEnv(envName)
+	if !isPresent || IsEmptyString(value) {
+		return "", fmt.Errorf("%s env variable not found", envName)
+	}
+	return value, nil
 }
 
 // ReadFileToString retrieves file content from given file path

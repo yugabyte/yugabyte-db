@@ -25,42 +25,43 @@ pub use cast::PgCastEntity;
 pub use operator::PgOperatorEntity;
 pub use returning::{PgExternReturnEntity, PgExternReturnEntityIteratedItem};
 
+use crate::UsedTypeEntity;
 use crate::fmt;
-use crate::metadata::{Returns, SqlMapping};
+use crate::metadata::{Returns, SqlArrayMapping, SqlMapping};
 use crate::pgrx_sql::PgrxSql;
-use crate::to_sql::entity::ToSqlConfigEntity;
 use crate::to_sql::ToSql;
-use crate::{ExternArgs, SqlGraphEntity, SqlGraphIdentifier, TypeMatch};
+use crate::to_sql::entity::ToSqlConfigEntity;
+use crate::{ExternArgs, SqlGraphEntity, SqlGraphIdentifier};
 
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
+use petgraph::graph::NodeIndex;
 
 /// The output of a [`PgExtern`](crate::pg_extern::PgExtern) from `quote::ToTokens::to_tokens`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PgExternEntity {
-    pub name: &'static str,
-    pub unaliased_name: &'static str,
-    pub module_path: &'static str,
-    pub full_path: &'static str,
-    pub metadata: crate::metadata::FunctionMetadataEntity,
-    pub fn_args: Vec<PgExternArgumentEntity>,
-    pub fn_return: PgExternReturnEntity,
-    pub schema: Option<&'static str>,
-    pub file: &'static str,
+pub struct PgExternEntity<'a> {
+    pub name: &'a str,
+    pub unaliased_name: &'a str,
+    pub module_path: &'a str,
+    pub full_path: &'a str,
+    pub fn_args: Vec<PgExternArgumentEntity<'a>>,
+    pub fn_return: PgExternReturnEntity<'a>,
+    pub schema: Option<&'a str>,
+    pub file: &'a str,
     pub line: u32,
     pub extern_attrs: Vec<ExternArgs>,
-    pub search_path: Option<Vec<&'static str>>,
-    pub operator: Option<PgOperatorEntity>,
+    pub search_path: Option<Vec<&'a str>>,
+    pub operator: Option<PgOperatorEntity<'a>>,
     pub cast: Option<PgCastEntity>,
-    pub to_sql_config: ToSqlConfigEntity,
+    pub to_sql_config: ToSqlConfigEntity<'a>,
 }
 
-impl From<PgExternEntity> for SqlGraphEntity {
-    fn from(val: PgExternEntity) -> Self {
+impl<'a> From<PgExternEntity<'a>> for SqlGraphEntity<'a> {
+    fn from(val: PgExternEntity<'a>) -> Self {
         SqlGraphEntity::Function(val)
     }
 }
 
-impl SqlGraphIdentifier for PgExternEntity {
+impl SqlGraphIdentifier for PgExternEntity<'_> {
     fn dot_identifier(&self) -> String {
         format!("fn {}", self.name)
     }
@@ -68,7 +69,7 @@ impl SqlGraphIdentifier for PgExternEntity {
         self.full_path.to_string()
     }
 
-    fn file(&self) -> Option<&'static str> {
+    fn file(&self) -> Option<&str> {
         Some(self.file)
     }
 
@@ -77,7 +78,121 @@ impl SqlGraphIdentifier for PgExternEntity {
     }
 }
 
-impl ToSql for PgExternEntity {
+impl PgExternEntity<'_> {
+    fn sql_name(&self, context: &PgrxSql) -> String {
+        let self_index = context.externs[self];
+        let schema = self
+            .schema
+            .map(|schema| format!("{schema}."))
+            .unwrap_or_else(|| context.schema_prefix_for(&self_index));
+
+        format!("{schema}\"{}\"", self.name)
+    }
+}
+
+fn composite_sql_type(composite_type: Option<&str>) -> eyre::Result<String> {
+    composite_type
+        .map(ToString::to_string)
+        .ok_or_else(|| eyre!("Composite mapping requires composite_type"))
+}
+
+fn array_sql_type(mapping: &SqlArrayMapping, composite_type: Option<&str>) -> eyre::Result<String> {
+    Ok(match mapping {
+        SqlArrayMapping::As(sql) => fmt::with_array_brackets(sql.clone(), 1),
+        SqlArrayMapping::Composite => {
+            fmt::with_array_brackets(composite_sql_type(composite_type)?, 1)
+        }
+    })
+}
+
+fn sql_type(mapping: &SqlMapping, composite_type: Option<&str>) -> eyre::Result<String> {
+    match mapping {
+        SqlMapping::As(sql) => Ok(sql.clone()),
+        SqlMapping::Composite => composite_sql_type(composite_type),
+        SqlMapping::Array(value) => array_sql_type(value, composite_type),
+        SqlMapping::Skip => Err(eyre!("Found a skipped SQL type where SQL should be emitted")),
+    }
+}
+
+/// Render the SQL spelling of one `UsedType`, with schema prefix applied.
+/// This is the bit that sits right after `"name" VARIADIC ` in a CREATE
+/// FUNCTION signature.
+pub(crate) fn render_used_type_sql(
+    context: &PgrxSql,
+    owner: NodeIndex,
+    slot: &str,
+    used_ty: &UsedTypeEntity,
+) -> eyre::Result<String> {
+    let schema_prefix = context.schema_prefix_for_used_type(&owner, slot, used_ty)?;
+    let body = match used_ty.metadata.argument_sql {
+        Ok(SqlMapping::As(ref sql)) => sql.clone(),
+        Ok(ref mapping @ (SqlMapping::Composite | SqlMapping::Array(_))) => {
+            sql_type(mapping, used_ty.composite_type)?
+        }
+        Ok(SqlMapping::Skip) => {
+            return Err(eyre!("Found a skipped SQL type where SQL should be emitted"));
+        }
+        Err(err) => return Err(err.into()),
+    };
+    Ok(format!("{schema_prefix}{body}"))
+}
+
+/// Render the comma-separated argument-type list for a pg_extern, matching
+/// the positional shape of CREATE FUNCTION but without names or defaults.
+/// Skipped args are filtered out; variadic args get a `VARIADIC ` prefix.
+pub(crate) fn render_function_argtypes(
+    context: &PgrxSql,
+    owner: NodeIndex,
+    f: &PgExternEntity,
+) -> eyre::Result<String> {
+    let mut pieces = Vec::new();
+    for arg in f.fn_args.iter().filter(|a| a.used_ty.emits_argument_sql()) {
+        let slot = format!("argument `{}`", arg.pattern);
+        let rendered = render_used_type_sql(context, owner, &slot, &arg.used_ty)?;
+        if arg.used_ty.variadic {
+            pieces.push(format!("VARIADIC {rendered}"));
+        } else {
+            pieces.push(rendered);
+        }
+    }
+    Ok(pieces.join(", "))
+}
+
+/// Render the return type of a pg_extern for contexts that need a plain
+/// scalar, such as CREATE CAST. Errors if the function returns a set or a
+/// table.
+pub(crate) fn render_function_return_type(
+    context: &PgrxSql,
+    owner: NodeIndex,
+    f: &PgExternEntity,
+) -> eyre::Result<String> {
+    let ty = match &f.fn_return {
+        PgExternReturnEntity::Type { ty } => ty,
+        PgExternReturnEntity::None => {
+            return Err(eyre!("Cannot render return type for a function with no return"));
+        }
+        other => {
+            return Err(eyre!("Cannot render a scalar return type for {other:?}"));
+        }
+    };
+    let schema_prefix = context.schema_prefix_for_used_type(&owner, "return type", ty)?;
+    let body = match &ty.metadata.return_sql {
+        Ok(Returns::One(SqlMapping::As(sql))) => sql.clone(),
+        Ok(Returns::One(mapping @ (SqlMapping::Composite | SqlMapping::Array(_)))) => {
+            sql_type(mapping, ty.composite_type)?
+        }
+        Ok(Returns::One(SqlMapping::Skip)) => {
+            return Err(eyre!("Return type was SqlMapping::Skip"));
+        }
+        Ok(other) => {
+            return Err(eyre!("Return type is not a scalar: {other:?}"));
+        }
+        Err(err) => return Err((*err).into()),
+    };
+    Ok(format!("{schema_prefix}{body}"))
+}
+
+impl ToSql for PgExternEntity<'_> {
     fn to_sql(&self, context: &PgrxSql) -> eyre::Result<String> {
         let self_index = context.externs[self];
         let mut extern_attrs = self.extern_attrs.clone();
@@ -86,9 +201,9 @@ impl ToSql for PgExternEntity {
         let mut strict_upgrade = !extern_attrs.iter().any(|i| i == &ExternArgs::Strict);
         if strict_upgrade {
             // It may be possible to infer a `STRICT` marker though.
-            // But we can only do that if the user hasn't used `Option<T>` or `pgrx::Internal`
-            for arg in &self.metadata.arguments {
-                if arg.optional {
+            // But we can only do that if the user hasn't used a nullable argument wrapper.
+            for arg in &self.fn_args {
+                if arg.used_ty.optional {
                     strict_upgrade = false;
                 }
             }
@@ -107,58 +222,58 @@ impl ToSql for PgExternEntity {
             .unwrap_or_else(|| context.schema_prefix_for(&self_index));
         let arguments = if !self.fn_args.is_empty() {
             let mut args = Vec::new();
-            let metadata_without_arg_skips = &self
-                .metadata
-                .arguments
+            let sql_args = self
+                .fn_args
                 .iter()
-                .filter(|v| v.argument_sql != Ok(SqlMapping::Skip))
+                .filter(|arg| arg.used_ty.emits_argument_sql())
                 .collect::<Vec<_>>();
-            for (idx, arg) in self.fn_args.iter().enumerate() {
-                let graph_index = context
-                    .graph
-                    .neighbors_undirected(self_index)
-                    .find(|neighbor| context.graph[*neighbor].type_matches(&arg.used_ty))
-                    .ok_or_else(|| eyre!("Could not find arg type in graph. Got: {:?}", arg))?;
-                let needs_comma = idx < (metadata_without_arg_skips.len().saturating_sub(1));
-                let metadata_argument = &self.metadata.arguments[idx];
-                match metadata_argument.argument_sql {
+            for (idx, arg) in sql_args.iter().enumerate() {
+                let needs_comma = idx < (sql_args.len().saturating_sub(1));
+                let schema_prefix = context.schema_prefix_for_used_type(
+                    &self_index,
+                    &format!("argument `{}`", arg.pattern),
+                    &arg.used_ty,
+                )?;
+                match arg.used_ty.metadata.argument_sql {
                     Ok(SqlMapping::As(ref argument_sql)) => {
-                        let buf = format!("\
+                        let buf = format!(
+                            "\
                                             \t\"{pattern}\" {variadic}{schema_prefix}{sql_type}{default}{maybe_comma}/* {type_name} */\
                                         ",
-                                            pattern = arg.pattern,
-                                            schema_prefix = context.schema_prefix_for(&graph_index),
-                                            // First try to match on [`TypeId`] since it's most reliable.
-                                            sql_type = argument_sql,
-                                            default = if let Some(def) = arg.used_ty.default { format!(" DEFAULT {def}") } else { String::from("") },
-                                            variadic = if metadata_argument.variadic { "VARIADIC " } else { "" },
-                                            maybe_comma = if needs_comma { ", " } else { " " },
-                                            type_name = metadata_argument.type_name,
-                                    );
+                            pattern = arg.pattern,
+                            schema_prefix = schema_prefix,
+                            // The SQL spelling comes from the embedded schema metadata.
+                            sql_type = argument_sql,
+                            default = if let Some(def) = arg.used_ty.default {
+                                format!(" DEFAULT {def}")
+                            } else {
+                                String::from("")
+                            },
+                            variadic = if arg.used_ty.variadic { "VARIADIC " } else { "" },
+                            maybe_comma = if needs_comma { ", " } else { " " },
+                            type_name = arg.used_ty.full_path,
+                        );
                         args.push(buf);
                     }
-                    Ok(SqlMapping::Composite { array_brackets }) => {
-                        let sql = self.fn_args[idx]
-                            .used_ty
-                            .composite_type
-                            .map(|v| fmt::with_array_brackets(v.into(), array_brackets))
-                            .ok_or_else(|| {
-                                eyre!(
-                                    "Macro expansion time suggested a composite_type!() in return"
-                                )
-                            })?;
-                        let buf = format!("\
+                    Ok(ref mapping @ (SqlMapping::Composite | SqlMapping::Array(_))) => {
+                        let sql = sql_type(mapping, arg.used_ty.composite_type)?;
+                        let buf = format!(
+                            "\
                             \t\"{pattern}\" {variadic}{schema_prefix}{sql_type}{default}{maybe_comma}/* {type_name} */\
                         ",
                             pattern = arg.pattern,
-                            schema_prefix = context.schema_prefix_for(&graph_index),
-                            // First try to match on [`TypeId`] since it's most reliable.
+                            schema_prefix = schema_prefix,
+                            // The SQL spelling comes from the embedded schema metadata.
                             sql_type = sql,
-                            default = if let Some(def) = arg.used_ty.default { format!(" DEFAULT {def}") } else { String::from("") },
-                            variadic = if metadata_argument.variadic { "VARIADIC " } else { "" },
+                            default = if let Some(def) = arg.used_ty.default {
+                                format!(" DEFAULT {def}")
+                            } else {
+                                String::from("")
+                            },
+                            variadic = if arg.used_ty.variadic { "VARIADIC " } else { "" },
                             maybe_comma = if needs_comma { ", " } else { " " },
-                            type_name = metadata_argument.type_name,
-                    );
+                            type_name = arg.used_ty.full_path,
+                        );
                         args.push(buf);
                     }
                     Ok(SqlMapping::Skip) => (),
@@ -173,83 +288,100 @@ impl ToSql for PgExternEntity {
         let returns = match &self.fn_return {
             PgExternReturnEntity::None => String::from("RETURNS void"),
             PgExternReturnEntity::Type { ty } => {
-                let graph_index = context
-                    .graph
-                    .neighbors_undirected(self_index)
-                    .find(|neighbor| context.graph[*neighbor].type_matches(ty))
-                    .ok_or_else(|| eyre!("Could not find return type in graph."))?;
-                let metadata_retval = self.metadata.retval.clone();
-                let sql_type = match metadata_retval.return_sql {
-                    Ok(Returns::One(SqlMapping::As(ref sql))) => sql.clone(),
-                    Ok(Returns::One(SqlMapping::Composite { array_brackets })) => fmt::with_array_brackets(ty.composite_type.unwrap().into(), array_brackets),
-                    Ok(other) => return Err(eyre!("Got non-plain mapped/composite return variant SQL in what macro-expansion thought was a type, got: {other:?}")),
-                    Err(err) => return Err(err).wrap_err("Error mapping return SQL")
+                let (schema_prefix, sql_type) = match &ty.metadata.return_sql {
+                    Ok(Returns::One(SqlMapping::As(sql))) => (
+                        context.schema_prefix_for_used_type(&self_index, "return type", ty)?,
+                        sql.clone(),
+                    ),
+                    Ok(Returns::One(mapping @ (SqlMapping::Composite | SqlMapping::Array(_)))) => (
+                        context.schema_prefix_for_used_type(&self_index, "return type", ty)?,
+                        sql_type(mapping, ty.composite_type)?,
+                    ),
+                    Ok(other) => {
+                        return Err(eyre!(
+                            "Got non-plain mapped/composite return variant SQL in what macro-expansion thought was a type, got: {other:?}"
+                        ));
+                    }
+                    Err(err) => return Err(*err).wrap_err("Error mapping return SQL"),
                 };
                 format!(
                     "RETURNS {schema_prefix}{sql_type} /* {full_path} */",
-                    schema_prefix = context.schema_prefix_for(&graph_index),
                     full_path = ty.full_path
                 )
             }
             PgExternReturnEntity::SetOf { ty, .. } => {
-                let graph_index = context
-                    .graph
-                    .neighbors_undirected(self_index)
-                    .find(|neighbor| context.graph[*neighbor].type_matches(ty))
-                    .ok_or_else(|| eyre!("Could not find return type in graph."))?;
-                let metadata_retval = self.metadata.retval.clone();
-                let sql_type = match metadata_retval.return_sql {
-                        Ok(Returns::SetOf(SqlMapping::As(ref sql))) => sql.clone(),
-                        Ok(Returns::SetOf(SqlMapping::Composite { array_brackets })) => fmt::with_array_brackets(ty.composite_type.unwrap().into(), array_brackets),
-                        Ok(_other) => return Err(eyre!("Got non-setof mapped/composite return variant SQL in what macro-expansion thought was a setof")),
-                        Err(err) => return Err(err).wrap_err("Error mapping return SQL"),
-                    };
+                let (schema_prefix, sql_type) = match &ty.metadata.return_sql {
+                    Ok(Returns::One(SqlMapping::As(sql)))
+                    | Ok(Returns::SetOf(SqlMapping::As(sql))) => (
+                        context.schema_prefix_for_used_type(
+                            &self_index,
+                            "setof return type",
+                            ty,
+                        )?,
+                        sql.clone(),
+                    ),
+                    Ok(Returns::One(mapping @ (SqlMapping::Composite | SqlMapping::Array(_))))
+                    | Ok(Returns::SetOf(
+                        mapping @ (SqlMapping::Composite | SqlMapping::Array(_)),
+                    )) => (
+                        context.schema_prefix_for_used_type(
+                            &self_index,
+                            "setof return type",
+                            ty,
+                        )?,
+                        sql_type(mapping, ty.composite_type)?,
+                    ),
+                    Ok(other) => {
+                        return Err(eyre!(
+                            "Got non-scalar mapped/composite return variant SQL in what macro-expansion thought was a setof item, got: {other:?}"
+                        ));
+                    }
+                    Err(err) => return Err(*err).wrap_err("Error mapping return SQL"),
+                };
                 format!(
                     "RETURNS SETOF {schema_prefix}{sql_type} /* {full_path} */",
-                    schema_prefix = context.schema_prefix_for(&graph_index),
                     full_path = ty.full_path
                 )
             }
             PgExternReturnEntity::Iterated { tys: table_items, .. } => {
                 let mut items = String::new();
-                let metadata_retval = self.metadata.retval.clone();
-                let metadata_retval_sqls: Vec<String> = match metadata_retval.return_sql {
-                        Ok(Returns::Table(variants)) => {
-                            variants.iter().enumerate().map(|(idx, variant)| {
-                                match variant {
-                                    SqlMapping::As(sql) => sql.clone(),
-                                    SqlMapping::Composite { array_brackets } => {
-                                        let composite = table_items[idx].ty.composite_type.unwrap();
-                                        fmt::with_array_brackets(composite.into(), *array_brackets)
-                                    },
-                                    SqlMapping::Skip => todo!(),
-                                }
-                            }).collect()
-                        },
-                        Ok(_other) => return Err(eyre!("Got non-table return variant SQL in what macro-expansion thought was a table")),
-                        Err(err) => return Err(err).wrap_err("Error mapping return SQL"),
-                    };
-
-                for (idx, returning::PgExternReturnEntityIteratedItem { ty, name: col_name }) in
+                for (idx, PgExternReturnEntityIteratedItem { ty, name: col_name }) in
                     table_items.iter().enumerate()
                 {
-                    let graph_index =
-                        context.graph.neighbors_undirected(self_index).find(|neighbor| {
-                            context.graph[*neighbor].id_or_name_matches(&ty.ty_id, ty.ty_source)
-                        });
-
                     let needs_comma = idx < (table_items.len() - 1);
+                    let (schema_prefix, ty_resolved) = match &ty.metadata.return_sql {
+                        Ok(Returns::One(SqlMapping::As(sql))) => (
+                            context.schema_prefix_for_used_type(
+                                &self_index,
+                                "table return column",
+                                ty,
+                            )?,
+                            sql.clone(),
+                        ),
+                        Ok(Returns::One(
+                            mapping @ (SqlMapping::Composite | SqlMapping::Array(_)),
+                        )) => (
+                            context.schema_prefix_for_used_type(
+                                &self_index,
+                                "table return column",
+                                ty,
+                            )?,
+                            sql_type(mapping, ty.composite_type)?,
+                        ),
+                        Ok(other) => {
+                            return Err(eyre!(
+                                "Got non-scalar table return item SQL in what macro-expansion thought was a table, got: {other:?}"
+                            ));
+                        }
+                        Err(err) => return Err(*err).wrap_err("Error mapping return SQL"),
+                    };
                     let item = format!(
                         "\n\t{col_name} {schema_prefix}{ty_resolved}{needs_comma} /* {ty_name} */",
                         col_name = col_name.expect(
                             "An iterator of tuples should have `named!()` macro declarations."
                         ),
-                        schema_prefix = if let Some(graph_index) = graph_index {
-                            context.schema_prefix_for(&graph_index)
-                        } else {
-                            "".into()
-                        },
-                        ty_resolved = metadata_retval_sqls[idx],
+                        schema_prefix = schema_prefix,
+                        ty_resolved = ty_resolved,
                         needs_comma = if needs_comma { ", " } else { " " },
                         ty_name = ty.full_path
                     );
@@ -283,7 +415,22 @@ impl ToSql for PgExternEntity {
                 let mut retval = extern_attrs
                     .iter()
                     .filter(|attr| **attr != ExternArgs::CreateOrReplace)
-                    .map(|attr| attr.to_string().to_uppercase())
+                    .map(|attr| {
+                        if matches!(attr, ExternArgs::Support(..)) {
+                            let support_fn_name = attr.to_string();
+
+                            let support_fn_name =
+                            if let Some(entity) = context.find_matching_fn(&support_fn_name) {
+                                entity.sql_name(context)
+                            } else {
+                                panic!("cannot locate SUPPORT function `{support_fn_name}` attached to function `{}`", self.full_path)
+                            };
+
+                            format!("SUPPORT {support_fn_name}")
+                        } else {
+                            attr.to_string().to_uppercase()
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" ");
                 retval.push('\n');
@@ -297,11 +444,13 @@ impl ToSql for PgExternEntity {
                 .extern_attrs
                 .iter()
                 .filter_map(|x| match x {
-                    ExternArgs::Requires(requirements) => Some(requirements),
+                    ExternArgs::Requires(requirements) => Some(requirements.clone()),
+                    ExternArgs::Support(support_fn) => Some(vec![support_fn.clone()]),
                     _ => None,
                 })
                 .flatten()
                 .collect::<Vec<_>>();
+
             if !requires_attrs.is_empty() {
                 format!(
                     "-- requires:\n{}\n",
@@ -345,219 +494,95 @@ impl ToSql for PgExternEntity {
                 optionals.push(String::from("\tMERGES"));
             };
 
-            let left_arg =
-                self.metadata.arguments.first().ok_or_else(|| {
-                    eyre!("Did not find `left_arg` for operator `{}`.", self.name)
-                })?;
-            let left_fn_arg = self
+            let left_arg = self
                 .fn_args
                 .first()
                 .ok_or_else(|| eyre!("Did not find `left_arg` for operator `{}`.", self.name))?;
-            let left_arg_graph_index = context
-                .graph
-                .neighbors_undirected(self_index)
-                .find(|neighbor| {
-                    context.graph[*neighbor]
-                        .id_or_name_matches(&left_fn_arg.used_ty.ty_id, left_arg.type_name)
-                })
-                .ok_or_else(|| {
-                    eyre!("Could not find left arg type in graph. Got: {:?}", left_arg)
-                })?;
-            let left_arg_sql = match left_arg.argument_sql {
-                Ok(SqlMapping::As(ref sql)) => sql.clone(),
-                Ok(SqlMapping::Composite { array_brackets }) => {
-                    if array_brackets {
-                        let composite_type = self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?;
-                        format!("{composite_type}[]")
-                    } else {
-                        self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?.to_string()
-                    }
-                }
-                Ok(SqlMapping::Skip) => {
-                    return Err(eyre!(
-                        "Found an skipped SQL type in an operator, this is not valid"
-                    ))
-                }
-                Err(err) => return Err(err.into()),
-            };
+            let left_arg_sql = render_used_type_sql(
+                context,
+                self_index,
+                "operator left argument",
+                &left_arg.used_ty,
+            )?;
 
-            let right_arg =
-                self.metadata.arguments.get(1).ok_or_else(|| {
-                    eyre!("Did not find `left_arg` for operator `{}`.", self.name)
-                })?;
-            let right_fn_arg = self
+            let right_arg = self
                 .fn_args
                 .get(1)
                 .ok_or_else(|| eyre!("Did not find `left_arg` for operator `{}`.", self.name))?;
-            let right_arg_graph_index = context
-                .graph
-                .neighbors_undirected(self_index)
-                .find(|neighbor| {
-                    context.graph[*neighbor]
-                        .id_or_name_matches(&right_fn_arg.used_ty.ty_id, right_arg.type_name)
-                })
-                .ok_or_else(|| {
-                    eyre!("Could not find right arg type in graph. Got: {:?}", right_arg)
-                })?;
-            let right_arg_sql = match right_arg.argument_sql {
-                Ok(SqlMapping::As(ref sql)) => sql.clone(),
-                Ok(SqlMapping::Composite { array_brackets }) => {
-                    if array_brackets {
-                        let composite_type = self.fn_args[1].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?;
-                        format!("{composite_type}[]")
-                    } else {
-                        self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?.to_string()
-                    }
-                }
-                Ok(SqlMapping::Skip) => {
-                    return Err(eyre!(
-                        "Found an skipped SQL type in an operator, this is not valid"
-                    ))
-                }
-                Err(err) => return Err(err.into()),
-            };
+            let right_arg_sql = render_used_type_sql(
+                context,
+                self_index,
+                "operator right argument",
+                &right_arg.used_ty,
+            )?;
 
             let schema = self
                 .schema
                 .map(|schema| format!("{schema}."))
                 .unwrap_or_else(|| context.schema_prefix_for(&self_index));
 
-            let operator_sql = format!("\n\n\
+            let operator_sql = format!(
+                "\n\n\
                                                     -- {file}:{line}\n\
                                                     -- {module_path}::{name}\n\
                                                     CREATE OPERATOR {schema}{opname} (\n\
                                                         \tPROCEDURE={schema}\"{name}\",\n\
-                                                        \tLEFTARG={schema_prefix_left}{left_arg_sql}, /* {left_name} */\n\
-                                                        \tRIGHTARG={schema_prefix_right}{right_arg_sql}{maybe_comma} /* {right_name} */\n\
+                                                        \tLEFTARG={left_arg_sql}, /* {left_name} */\n\
+                                                        \tRIGHTARG={right_arg_sql}{maybe_comma} /* {right_name} */\n\
                                                         {optionals}\
                                                     );\
                                                     ",
-                                                    opname = op.opname.unwrap(),
-                                                    left_name = left_arg.type_name,
-                                                    right_name = right_arg.type_name,
-                                                    schema_prefix_left = context.schema_prefix_for(&left_arg_graph_index),
-                                                    schema_prefix_right = context.schema_prefix_for(&right_arg_graph_index),
-                                                    maybe_comma = if !optionals.is_empty() { "," } else { "" },
-                                                    optionals = if !optionals.is_empty() { optionals.join(",\n") + "\n" } else { "".to_string() },
-                                            );
+                opname = op.opname.unwrap(),
+                left_name = left_arg.used_ty.full_path,
+                right_name = right_arg.used_ty.full_path,
+                maybe_comma = if !optionals.is_empty() { "," } else { "" },
+                optionals = if !optionals.is_empty() {
+                    optionals.join(",\n") + "\n"
+                } else {
+                    "".to_string()
+                },
+            );
             ext_sql += &operator_sql
         };
         if let Some(cast) = &self.cast {
-            let target_arg = &self.metadata.retval;
-            let target_fn_arg = &self.fn_return;
-            let target_arg_graph_index = context
-                .graph
-                .neighbors_undirected(self_index)
-                .find(|neighbor| match (&context.graph[*neighbor], target_fn_arg) {
-                    (SqlGraphEntity::Type(ty), PgExternReturnEntity::Type { ty: rty }) => {
-                        ty.id_matches(&rty.ty_id)
-                    }
-                    (SqlGraphEntity::Enum(en), PgExternReturnEntity::Type { ty: rty }) => {
-                        en.id_matches(&rty.ty_id)
-                    }
-                    (SqlGraphEntity::BuiltinType(defined), _) => defined == target_arg.type_name,
-                    _ => false,
-                })
-                .ok_or_else(|| {
-                    eyre!("Could not find source type in graph. Got: {:?}", target_arg)
-                })?;
-            let target_arg_sql = match target_arg.argument_sql {
-                Ok(SqlMapping::As(ref sql)) => sql.clone(),
-                Ok(SqlMapping::Composite { array_brackets }) => {
-                    if array_brackets {
-                        let composite_type = self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?;
-                        format!("{composite_type}[]")
-                    } else {
-                        self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?.to_string()
-                    }
+            let target_ty = match &self.fn_return {
+                PgExternReturnEntity::Type { ty } => ty,
+                other => {
+                    return Err(eyre!("Casts must return a plain type, got: {other:?}"));
                 }
-                Ok(SqlMapping::Skip) => {
-                    return Err(eyre!("Found an skipped SQL type in a cast, this is not valid"))
-                }
-                Err(err) => return Err(err.into()),
             };
-            if self.metadata.arguments.len() != 1 {
-                return Err(eyre!(
-                    "PG cast function ({}) must have exactly one argument, got {}",
-                    self.name,
-                    self.metadata.arguments.len()
-                ));
-            }
-            if self.fn_args.len() != 1 {
-                return Err(eyre!(
-                    "PG cast function ({}) must have exactly one argument, got {}",
-                    self.name,
-                    self.fn_args.len()
-                ));
-            }
+            let target_arg_sql = render_function_return_type(context, self_index, self)?;
             let source_arg = self
-                .metadata
-                .arguments
-                .first()
-                .ok_or_else(|| eyre!("Did not find source type for cast `{}`.", self.name))?;
-            let source_fn_arg = self
                 .fn_args
                 .first()
                 .ok_or_else(|| eyre!("Did not find source type for cast `{}`.", self.name))?;
-            let source_arg_graph_index = context
-                .graph
-                .neighbors_undirected(self_index)
-                .find(|neighbor| {
-                    context.graph[*neighbor]
-                        .id_or_name_matches(&source_fn_arg.used_ty.ty_id, source_arg.type_name)
-                })
-                .ok_or_else(|| {
-                    eyre!("Could not find source type in graph. Got: {:?}", source_arg)
-                })?;
-            let source_arg_sql = match source_arg.argument_sql {
-                Ok(SqlMapping::As(ref sql)) => sql.clone(),
-                Ok(SqlMapping::Composite { array_brackets }) => {
-                    if array_brackets {
-                        let composite_type = self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?;
-                        format!("{composite_type}[]")
-                    } else {
-                        self.fn_args[0].used_ty.composite_type
-                            .ok_or(eyre!("Found a composite type but macro expansion time did not reveal a name, use `pgrx::composite_type!()`"))?.to_string()
-                    }
-                }
-                Ok(SqlMapping::Skip) => {
-                    return Err(eyre!("Found an skipped SQL type in a cast, this is not valid"))
-                }
-                Err(err) => return Err(err.into()),
-            };
+            let source_arg_sql =
+                render_used_type_sql(context, self_index, "cast source type", &source_arg.used_ty)?;
             let optional = match cast {
                 PgCastEntity::Default => String::from(""),
                 PgCastEntity::Assignment => String::from(" AS ASSIGNMENT"),
                 PgCastEntity::Implicit => String::from(" AS IMPLICIT"),
             };
 
-            let cast_sql = format!("\n\n\
+            let cast_sql = format!(
+                "\n\n\
                                                     -- {file}:{line}\n\
                                                     -- {module_path}::{name}\n\
                                                     CREATE CAST (\n\
-                                                        \t{schema_prefix_source}{source_arg_sql} /* {source_name} */\n\
+                                                        \t{source_arg_sql} /* {source_name} */\n\
                                                         \tAS\n\
-                                                        \t{schema_prefix_target}{target_arg_sql} /* {target_name} */\n\
+                                                        \t{target_arg_sql} /* {target_name} */\n\
                                                     )\n\
                                                     WITH FUNCTION {function_name}{optional};\
                                                     ",
-                                                    file = self.file,
-                                                    line = self.line,
-                                                    name = self.name,
-                                                    module_path = self.module_path,
-                                                    schema_prefix_source = context.schema_prefix_for(&source_arg_graph_index),
-                                                    source_name = source_arg.type_name,
-                                                    schema_prefix_target = context.schema_prefix_for(&target_arg_graph_index),
-                                                    target_name = target_arg.type_name,
-                                                    function_name = self.name,
-                                            );
+                file = self.file,
+                line = self.line,
+                name = self.name,
+                module_path = self.module_path,
+                source_name = source_arg.used_ty.full_path,
+                target_name = target_ty.full_path,
+                function_name = self.name,
+            );
             ext_sql += &cast_sql
         };
         Ok(ext_sql)

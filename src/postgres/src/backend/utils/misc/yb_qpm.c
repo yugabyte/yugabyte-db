@@ -38,6 +38,7 @@
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -342,7 +343,14 @@ qpmReadFile()
 		YbQpmHashEntry entry;
 
 		if (fread(&entry, entrySize, 1, file) != 1)
-			return -1;
+		{
+			/* The entries read so far have no LRU slot yet, so drop them. */
+			for (int j = 0; j < cnt; j++)
+				(void) hash_search(qpmHashTable, &(entries[j]->key), HASH_REMOVE,
+								   NULL);
+			pfree(entries);
+			goto read_error;
+		}
 
 		/*
 		 * Insert the entry into the hash table.
@@ -705,33 +713,21 @@ YbQpmInstallHooks(void)
 static void
 yb_qpm_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	/*
+	 * Skip queries with queryId zero as these are utility statements that will
+	 * not be tracked by QPM.
+	 *
+	 * Request the timer before ExecutorStart allocates query_instr. That is
+	 * the same timer pg_stat_statements reads, so avg_exec_time matches
+	 * mean_exec_time.
+	 */
+	if (YbQpmIsEnabled() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
+		queryDesc->query_instr_options |= INSTRUMENT_TIMER;
+
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
 	else
 		standard_ExecutorStart(queryDesc, eflags);
-
-	/*
-	 * Skip queries with queryId zero as these are utility statements that will
-	 * not be tracked by QPM.
-	 */
-	if (YbQpmIsEnabled() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
-	{
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-#if 0
-		/*
-		 * pg_stat_statements or another execution may have already allocated
-		 * the instrumentation object. Skip in such cases.
-		 */
-		if (queryDesc->totaltime == NULL)
-		{
-			MemoryContext oldcxt;
-
-			oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-			queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL, false);
-			MemoryContextSwitchTo(oldcxt);
-		}
-#endif
-	}
 }
 
 static void
@@ -848,13 +844,9 @@ qpmProcess(QueryDesc *queryDesc)
 		 !qpmReferencesCatalogRelation(queryDesc)))
 	{
 		CHECK_GLOBALS;
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists */
-#if 0
-		if (queryDesc->totaltime != NULL)
-			InstrEndLoop(queryDesc->totaltime);
-#endif
 		/*
-		 * Insert or update an entry.
+		 * Insert or update an entry. query_instr->total is already final:
+		 * ExecutorRun and ExecutorFinish start and stop the timer.
 		 */
 		qpmInsert(0, 0, queryDesc->plannedstmt->queryId, 0,
 				  NULL, NULL, NULL,
@@ -999,19 +991,14 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 		Assert(*planText != NULL && strlen(*planText) > 0);
 		*freePlanText = true;
 
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-#if 0
-		if (queryDesc->totaltime != NULL)
+		if (queryDesc->query_instr != NULL)
 		{
-			Assert(queryDesc->totaltime->total > 0.0);
-
 			/*
 			 * Get the total elapsed time (in milliseconds) from the query descriptor.
 			 */
-			*totalTime = queryDesc->totaltime->total * 1000.0;
+			*totalTime = INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total);
 			*estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
 		}
-#endif
 	}
 }
 
@@ -1110,14 +1097,11 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 		else
 			hashEntry->lastUsedTime = *lastUsedTime;
 
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
-#if 0
-		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->totaltime != NULL)
+		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->query_instr != NULL)
 			/*
 			 * Get the total elapsed time (in milliseconds) from the query descriptor.
 			 */
-			totalTime = queryDesc->totaltime->total * 1000.0;
-#endif
+			totalTime = INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total);
 
 		if (totalTime > 0.0)
 		{
@@ -1636,6 +1620,7 @@ YbQpmShmemInit(void *arg)
 typedef struct YbPlanStatePtr
 {
 	PlanState  *ps;
+	bool processed;
 	NodeInstrumentation *instrument;
 	WorkerNodeInstrumentation *worker_instrument;
 	struct SharedJitInstrumentation *worker_jit_instrument;
@@ -1644,8 +1629,23 @@ typedef struct YbPlanStatePtr
 static void
 walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 {
+	ListCell   *lc;
+
 	if (ps == NULL)
 		return;
+
+	/*
+	 * Skip plan states we have already processed since the same subplan can
+	 * appear in the subplan lists (ps->subPlan) of different nodes, e.g.,
+	 * Hash and HashJoin.
+	 */
+	foreach(lc, *pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+
+		if (psp->processed && psp->ps == ps)
+			return;
+	}
 
 	if (save)
 	{
@@ -1660,10 +1660,16 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		psp->instrument = ps->instrument;
 		psp->worker_instrument = ps->worker_instrument;
 		psp->worker_jit_instrument = ps->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		*pspList = lappend(*pspList, psp);
 		ps->instrument = NULL;
 		ps->worker_instrument = NULL;
 		ps->worker_jit_instrument = NULL;
+
 		++(*pos);
 	}
 	else
@@ -1680,6 +1686,11 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 		ps->instrument = psp->instrument;
 		ps->worker_instrument = psp->worker_instrument;
 		ps->worker_jit_instrument = psp->worker_jit_instrument;
+
+		/*
+		 * Mark node as processed.
+		 */
+		psp->processed = true;
 		++(*pos);
 	}
 
@@ -1694,8 +1705,6 @@ walkPlanState(PlanState *ps, bool save, List **pspList, int *pos)
 	walkPlanState(ps->righttree, save, pspList, pos);
 
 	/* initPlans */
-	ListCell   *lc;
-
 	foreach(lc, ps->initPlan)
 	{
 		SubPlanState *sps = (SubPlanState *) lfirst(lc);
@@ -1767,6 +1776,13 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	/*
 	 * Restore the instrumentation pointers.
 	 */
+	ListCell *lc;
+	foreach(lc, pspList)
+	{
+		YbPlanStatePtr *psp = (YbPlanStatePtr *) lfirst(lc);
+		psp->processed = false;
+	}
+
 	pos = 0;
 	walkPlanState(queryDesc->planstate, false, &pspList, &pos);
 	list_free_deep(pspList);

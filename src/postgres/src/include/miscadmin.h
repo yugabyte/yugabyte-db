@@ -29,15 +29,9 @@
 #include "pgtime.h"				/* for pg_time_t */
 
 /* YB includes */
+#include "storage/yb_proc_state.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-/*
- * YB_TODO_PG19MERGE: YB used to `#include "storage/proc.h"` here "for MyProc"
- * so callers that #include "miscadmin.h" got MyProc transitively. That
- * created an include cycle with PG19's PGPROC (which now uses BackendType
- * from this file). Removed; callers that need MyProc should include
- * "storage/proc.h" directly. See the corresponding note in storage/spin.h.
- */
 
 #define InvalidPid				(-1)
 
@@ -119,7 +113,7 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
-extern void YBCheckForInterrupts(void);
+extern bool YBHasProcessableAbortInterrupt(void);
 
 /* Test whether an interrupt is pending */
 #ifndef WIN32
@@ -170,20 +164,9 @@ do { \
 } while(0)
 
 #else							/* YB: !FRONTEND */
-/*
- * YB_TODO_PG19MERGE: YB's per-backend "entered critical section" tracking
- * used to be inline in these macros via MyProc->ybEnteredCriticalSection.
- * That forced miscadmin.h to include proc.h "for MyProc", which combined
- * with PG19's PGPROC gaining a BackendType field (whose type lives in
- * miscadmin.h) created an include cycle. As an interim, move the YB body
- * into non-inline helpers in proc.c.
- */
-extern void YbEnterCriticalSection(void);
-extern void YbExitCriticalSection(void);
-
 #define START_CRIT_SECTION()  \
 do { \
-	YbEnterCriticalSection(); \
+	YbMyProcState->entered_crit_section = true; \
 	CritSectionCount++; \
 } while(0)
 
@@ -192,7 +175,7 @@ do { \
 	Assert(CritSectionCount > 0); \
 	CritSectionCount--; \
 	if (CritSectionCount == 0) \
-		YbExitCriticalSection(); \
+		YbMyProcState->entered_crit_section = false; \
 } while(0)
 #endif							/* YB: FRONTEND */
 
@@ -445,7 +428,11 @@ typedef enum BackendType
 
 /*
  * YB: include YB_* values appended after B_LOGGER.  log_min_messages[] and
- * other per-BackendType arrays are indexed by MyBackendType.
+ * other per-BackendType arrays are indexed by MyBackendType and built from
+ * postmaster/proctypelist.h.
+ * postmaster.c's BackendTypeMask is a uint32 bitmask, and requires
+ * BACKEND_NUM_TYPES < 32. So there's room for one more type before the mask
+ * needs widening.
  */
 #define BACKEND_NUM_TYPES (YB_XCLUSTER_SETUP_BACKEND + 1)
 
@@ -597,7 +584,7 @@ extern void StoreConnectionWarning(char *msg, char *detail);
 
 extern void YbCheckMyDatabase(const char *name, bool am_superuser,
 							  bool override_allow_connections, Oid db_oid);
-extern void YbAuthPassthroughSetupGUCAndReport(void);
+extern void YbAuthPassthroughSetupGUCAndReport(Oid dboid);
 
 /* in utils/init/miscinit.c */
 extern PGDLLIMPORT bool IgnoreSystemIndexes;

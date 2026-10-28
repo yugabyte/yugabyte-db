@@ -49,6 +49,10 @@ public class TestPgBackwardIndexScan extends BasePgSQLTest {
   public void setUp() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SET yb_enable_base_scans_cost_model = true");
+      // ANALYZE samples 300 * default_statistics_target rows. The test table has 90000 rows, so a
+      // target of 300 makes the sample cover the whole table, which keeps the selectivity (and
+      // hence the seek and next estimates) deterministic instead of varying with the sample.
+      stmt.execute("SET default_statistics_target = 300");
     }
   }
 
@@ -181,7 +185,7 @@ public class TestPgBackwardIndexScan extends BasePgSQLTest {
 
       testSeekAndNextEstimationIndexOnlyScanBackwardHelper(stmt,
         "SELECT k1, k2 FROM t1 WHERE k2 < 10 ORDER BY k1 DESC",
-        "t1", "t1_idx_1", 4805, 5251);
+        "t1", "t1_idx_1", 5300, 5251);
       testSeekAndNextEstimationIndexOnlyScanBackwardHelper(stmt,
         "SELECT k1, k2 FROM t1 WHERE k2 > 290 ORDER BY k1 DESC",
         "t1", "t1_idx_1", 6773, 6835);
@@ -207,7 +211,7 @@ public class TestPgBackwardIndexScan extends BasePgSQLTest {
 
       testSeekAndNextEstimationIndexOnlyScanBackwardHelper(stmt,
         "SELECT k1, k2 FROM t1 WHERE k2 < 10 ORDER BY k1 ASC",
-        "t1", "t1_idx_2", 4805, 5251);
+        "t1", "t1_idx_2", 5300, 5251);
       testSeekAndNextEstimationIndexOnlyScanBackwardHelper(stmt,
         "SELECT k1, k2 FROM t1 WHERE k2 > 290 ORDER BY k1 ASC",
         "t1", "t1_idx_2", 6773, 6835);

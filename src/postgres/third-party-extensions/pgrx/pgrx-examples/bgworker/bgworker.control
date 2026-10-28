@@ -1,5 +1,5 @@
 comment = 'bgworker:  Created by pgrx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/bgworker'
+module_pathname = 'bgworker'
 relocatable = false
 superuser = false

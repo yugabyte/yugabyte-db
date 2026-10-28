@@ -34,6 +34,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
@@ -63,6 +64,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tcmalloc_profile.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_pool.h"
 #include "yb/util/yb_partition.h"
@@ -79,7 +81,9 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
@@ -278,8 +282,17 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
   return Status::OK();
 }
 
-void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
-  pgapi->StartSysTablePrefetching({caching_info, implicit_cast<uint64_t>(yb_fetch_row_limit)});
+void YBCStartSysTablePrefetchingImpl(
+    std::optional<PrefetcherOptions::CachingInfo> caching_info,
+    YbcPgSysTablePrefetchKind kind) {
+  const auto* flags = YBCGetGFlags();
+  const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
+  const auto max_size_limit = YBCGetMaxRpcResponseSize();
+  pgapi->StartSysTablePrefetching({
+      caching_info,
+      *flags->ysql_catalog_prefetch_row_limit,
+      kind,
+      configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit});
 }
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
@@ -469,7 +482,7 @@ static bool yb_is_binary_upgrade = false;
 
 
 Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
-  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp, data.origination_time));
   RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
   RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
       data.read_from_followers_enabled, data.follower_read_staleness_ms));
@@ -521,6 +534,10 @@ YbcStatus YBCInitPgGate(
 
 void YBCSetupPgBackendCgroup(YbcPgOid dboid) {
   pgapi->SetupPgBackendCgroup(dboid);
+}
+
+void YBCPgSetConnectedDatabaseOid(YbcPgOid dboid) {
+  pgapi->SetConnectedDatabaseOid(dboid);
 }
 
 void YBCDestroyPgGate() {
@@ -623,6 +640,14 @@ void YBCPgResetCatalogReadTime() {
   pgapi->ResetCatalogReadTime();
 }
 
+void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id) {
+  pgapi->SetHistoricalReadContext(MakeReadHybridTime(read_time), transaction_id);
+}
+
+void YBCPgResetHistoricalReadContext() {
+  pgapi->ResetHistoricalReadContext();
+}
+
 YbcReadHybridTime YBCGetPgCatalogReadTime() {
   return MakeYbcReadHybridTime(pgapi->GetCatalogReadTime());
 }
@@ -690,6 +715,10 @@ int64_t YBCGetTCMallocSamplingPeriod() { return GetTCMallocSamplingPeriod(); }
 
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   SetTCMallocSamplingPeriod(sample_period_bytes);
+}
+
+void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
+  TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
 YbcStatus YBCGetHeapSnapshot(
@@ -1579,11 +1608,11 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read,
+    YbcPgTableLocalityInfo locality_info, YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
     YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewSample(
-      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_read,
+      {database_oid, table_relfilenode_oid}, locality_info, skip_intents_info,
       targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1},
       handle));
 }
@@ -1613,10 +1642,10 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    bool skip_intents_write,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info,
     YbcPgStatement *handle) {
   auto result = pgapi->NewInsertBlock(
-      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_write);
+      PgObjectId(database_oid, table_oid), locality_info, transaction_setting, skip_intents_info);
   if (result.ok()) {
     *handle = *result;
     return nullptr;
@@ -1628,11 +1657,11 @@ YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1662,11 +1691,11 @@ YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1678,11 +1707,11 @@ YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         bool skip_intents_write,
+                         YbcPgSkipIntentsOptimizationInfo skip_intents_info,
                          YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting,
-                                      skip_intents_write, handle));
+                                      skip_intents_info, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1711,11 +1740,12 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle) {
 // SELECT Operations -------------------------------------------------------------------------------
 YbcStatus YBCPgNewSelect(
     YbcPgOid database_oid, YbcPgOid table_relfilenode_oid, const YbcPgPrepareParameters* params,
-    YbcPgTableLocalityInfo locality_info, bool skip_intents_read, YbcPgStatement* handle) {
+    YbcPgTableLocalityInfo locality_info,
+    YbcPgSkipIntentsOptimizationInfo skip_intents_info, YbcPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
       PgObjectId{database_oid, table_relfilenode_oid},
       PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
-      params, locality_info, skip_intents_read, handle));
+      params, locality_info, skip_intents_info, handle));
 }
 
 YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
@@ -1743,7 +1773,7 @@ YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParam
   return ToYBCStatus(pgapi->FetchRequestedYbctids(handle, exec_params, ybctids));
 }
 
-YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* ybctids) {
+YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uint64_t* ybctids) {
   return ToYBCStatus(pgapi->BindYbctids(handle, n, ybctids));
 }
 
@@ -1910,8 +1940,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgBeginTransaction(int64_t start_time) {
-  return ToYBCStatus(pgapi->BeginTransaction(start_time));
+YbcStatus YBCPgBeginTransaction(int64_t start_time, uint64_t origination_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time, origination_time));
 }
 
 YbcStatus YBCPgRecreateTransaction() {
@@ -2080,9 +2110,14 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !YBCIsObjectLockingEnabled() || !FLAGS_ysql_enable_concurrent_ddl ||
-      YBCIsInitDbModeEnvVarSet() || YBCIsSysTablePrefetchingStarted() ||
-      pgapi->IsParallelWorker();
+  return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
+      !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
+      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+}
+
+bool YBCIsDdlTransactionBlockEnabled() {
+  return pgapi && yb_ddl_transaction_block_enabled &&
+      pgapi->IsTableLockingEnabledForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2253,6 +2288,10 @@ void YBCRefreshClusterReplicationInfo() {
   pgapi->replication_info_snapshot().Refresh();
 }
 
+uint32_t YBCGetSharedYsqlCatalogPrefetchLoad() {
+  return pgapi->GetSharedYsqlCatalogPrefetchLoad();
+}
+
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
@@ -2333,6 +2372,10 @@ void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
   pgapi->SetLockTimeout(lock_timeout_ms);
 }
 
+int32_t YBCGetDefaultRpcTimeoutMs() {
+  return narrow_cast<int32_t>(DefaultRpcTimeout().ToMilliseconds());
+}
+
 void YBCSetTimeout(int timeout_ms) {
   if (!pgapi || timeout_ms <= 0) {
     return;
@@ -2347,22 +2390,9 @@ void YBCClearTimeout() {
   pgapi->ClearTimeout();
 }
 
-void YBCCheckForInterrupts() {
-  // CHECK_FOR_INTERRUPTS may longjmp, so it is only safe on the backend main thread. Extensions
-  // such as pg_duckdb run pggate calls on their own worker threads; there the interrupt is left
-  // for the main thread. Logged so that an unintended off-main-thread caller stays observable.
-  if (!is_main_thread()) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
-        << __PRETTY_FUNCTION__ << " invoked off the main thread, skipping the interrupt check";
-    return;
-  }
-
-  // If we're in the midst of shutting down, do not bother checking for interrupts.
-  if (!pgapi) {
-    return;
-  }
-
-  pgapi->pg_callbacks()->CheckForInterrupts();
+bool YBCHasProcessableAbortInterrupt() {
+  return PREDICT_FALSE(!pgapi)
+      ? false : pgapi->pg_callbacks()->HasProcessableAbortInterrupt();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -2499,21 +2529,24 @@ void* YBCPgGetThreadLocalErrStatus() {
   return PgGetThreadLocalErrStatus();
 }
 
-void YBCStartSysTablePrefetchingNoCache() {
-  YBCStartSysTablePrefetchingImpl(std::nullopt);
+void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(std::nullopt, kind);
 }
 
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo version_info,
-    YbcPgSysTablePrefetcherCacheMode cache_mode) {
-  YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
-      {
-          version_info.version,
-          MakeReadHybridTime(version_info.version_read_time),
-          version_info.is_db_catalog_version_mode
-      },
-      database_oid, YBCMapPrefetcherCacheMode(cache_mode)});
+    YbcPgSysTablePrefetcherCacheMode cache_mode,
+    YbcPgSysTablePrefetchKind kind) {
+  YBCStartSysTablePrefetchingImpl(
+      PrefetcherOptions::CachingInfo{
+          {
+              version_info.version,
+              MakeReadHybridTime(version_info.version_read_time),
+              version_info.is_db_catalog_version_mode
+          },
+          database_oid, YBCMapPrefetcherCacheMode(cache_mode)},
+      kind);
 }
 
 void YBCStopSysTablePrefetching() {
@@ -3061,6 +3094,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       }
     }
 
+    const auto& docdb_txn_id = row_message_pb.transaction_id();
+    const bool has_docdb_txn_id = !docdb_txn_id.empty();
+
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -3068,12 +3104,21 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .commit_time = static_cast<uint64_t>(
             YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(commit_time_ht.GetPhysicalValueMicros())),
         .commit_time_ht = commit_time_ht.ToUint64(),
+        .record_time_ht =
+            row_message_pb.has_record_time() ? row_message_pb.record_time() : 0,
         .action = GetRowMessageAction(row_message_pb),
         .table_oid = table_oid,
         .lsn = row_message_pb.pg_lsn(),
         .xid = row_message_pb.pg_transaction_id(),
         .xrepl_origin_id =
-            row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0};
+            row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
+        .has_docdb_txn_id = has_docdb_txn_id,
+        .docdb_txn_id = {}};
+    if (has_docdb_txn_id) {
+      snprintf(
+          resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",
+          docdb_txn_id.c_str());
+    }
 
     min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
     max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
@@ -3492,10 +3537,14 @@ void YBCPgGlobalViewReadSetParams(
   DCHECK_NOTNULL(handle)->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcPgResultPB YBCPgGlobalViewReadExecScan(
+YbcPgGvScanResult YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid) {
   return pgapi->ExecGlobalViewScan(handle, database_name, query, tserver_uuid);
+}
+
+bool YBCPgGlobalViewReadNextRow(YbcPgGlobalViewRead handle, const char **values) {
+  return DCHECK_NOTNULL(handle)->NextRow(values);
 }
 
 const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle) {

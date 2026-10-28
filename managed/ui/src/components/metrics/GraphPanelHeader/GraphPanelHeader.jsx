@@ -42,7 +42,7 @@ import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/hel
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
 import { RedirectToUniverseTelemetryExportModal } from '@app/redesign/features/export-telemetry/RedirectToUniverseTelemetryExportModal';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/utils/createUniverseRuntime';
+import { isUniverseRevampExperienceEnabled } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
 
 import './GraphPanelHeader.scss';
 import 'react-widgets/dist/css/react-widgets.css';
@@ -181,24 +181,30 @@ class GraphPanelHeader extends Component {
         filterParams.filterValue = '';
         filterParams.filterLabel = 'Custom';
       } else {
-        const currentFilterItem = filterTypes.find(
-          (filterType) =>
-            filterType.type === currentQuery.filterType &&
-            filterType.value === currentQuery.filterValue
-        );
-        filterParams.filterLabel = currentFilterItem?.label;
+        // Other pages' query params (e.g. a Perf Advisor drilldown's queryId) can reach here without
+        // a metrics filter, so fall back to the default range rather than crash.
+        const currentFilterItem =
+          filterTypes.find(
+            (filterType) =>
+              filterType.type === currentQuery.filterType &&
+              filterType.value === currentQuery.filterValue
+          ) ?? defaultFilter;
+        filterParams.filterType = currentFilterItem.type;
+        filterParams.filterValue = currentFilterItem.value;
+        filterParams.filterLabel = currentFilterItem.label;
         filterParams.endMoment = moment();
         filterParams.startMoment = moment().subtract(
           currentFilterItem.value,
           currentFilterItem.type
         );
       }
+      // Params absent from the URL must keep their defaults; the graph filter is replaced wholesale.
+      const graphFilters = { ...defaultFilters, ..._.omitBy(filterParams, _.isUndefined) };
       this.state = {
-        ...defaultFilters,
-        ...filterParams,
+        ...graphFilters,
         selectedTimezone: sessionStorage.getItem('metricsTimezone') ?? DEFAULT_TIMEZONE.value
       };
-      props.changeGraphQueryFilters(filterParams);
+      props.changeGraphQueryFilters(graphFilters);
     } else {
       this.state = defaultFilters;
     }
@@ -629,7 +635,10 @@ class GraphPanelHeader extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
       )?.value === 'true';
-    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+    const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      runtimeConfigs?.data,
+      currentUser?.data?.role
+    );
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {

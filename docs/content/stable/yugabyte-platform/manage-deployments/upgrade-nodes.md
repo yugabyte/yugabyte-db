@@ -47,6 +47,8 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 
 If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
 
+If patching takes longer than the WAL log retention time, the node can be treated as failed and its data re-replicated. See [Enter maintenance mode](../remove-nodes/#enter-and-exit-maintenance-mode).
+
 Before you start, make sure that all nodes in the universe are running correctly.
 
 ## Patch nodes
@@ -55,9 +57,9 @@ Typically, the following sequence will be automated using scripts that call the 
 
 For each node in the universe, use the following general procedure:
 
-1. Stop the processes for the node to be patched.
+1. Enter maintenance mode for the node to be patched.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Stop Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Enter Maintenance Mode**.
 
     If using the YugabyteDB Anywhere API, use the following command:
 
@@ -90,9 +92,9 @@ For each node in the universe, use the following general procedure:
         --data-raw '{"nodeAction":"REPROVISION"}'
         ```
 
-1. Start the processes for the node.
+1. Exit maintenance mode for the node.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Exit Maintenance Mode**.
 
     If using the YugabyteDB Anywhere API, use the following command:
 

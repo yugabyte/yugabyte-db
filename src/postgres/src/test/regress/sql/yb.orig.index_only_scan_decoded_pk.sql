@@ -162,8 +162,19 @@ $$ AS query \gset
 \i :run_query
 
 -- Test: aggregates on decoded PK columns (pushdown disabled)
+-- PG rewrites COUNT(id) to COUNT(*) when id is NOT NULL.
+-- Each tablet counts its own index rows and PG adds those counts.
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+
+-- SUM(id) reads the decoded primary key. PG sums those ids itself.
+-- SUM(id) depends on yb_enable_primary_key_decode_from_index,
+-- unlike COUNT(*) and COUNT(id).
+-- The result is the sum of the ids.
+SELECT $$
+:P SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
 \i :run_query
 
@@ -314,6 +325,8 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
+-- PG rewrites COUNT(h1) and COUNT(h2) to COUNT(*) when h1 and h2 are NOT NULL.
+-- Each tablet counts its own index rows and PG adds those counts.
 SELECT $$
 :P SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
 $$ AS query \gset
@@ -428,8 +441,25 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
+-- PG rewrites COUNT(id) to COUNT(*) when id is NOT NULL, so this query does not read id.
+-- With primary-key decoding off the plan is an index-only scan.
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+
+-- COUNT(*) and COUNT(id) above differ only when id can be NULL, because COUNT(id) skips nulls.
+-- id is NOT NULL, so both return the same count and both use an index-only scan.
+SELECT $$
+:P SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
+$$ AS query \gset
+\i :run_query
+
+-- With primary-key decoding off (yb_enable_primary_key_decode_from_index=off),
+-- the index cannot supply id, so this query reads the table.
+-- The result is the sum of the ids.
+SELECT $$
+:P SELECT SUM(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
 \i :run_query
 

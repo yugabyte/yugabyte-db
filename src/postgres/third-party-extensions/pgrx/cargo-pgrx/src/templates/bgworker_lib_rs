@@ -2,7 +2,7 @@ use pgrx::bgworkers::*;
 use pgrx::prelude::*;
 use std::time::Duration;
 
-::pgrx::pg_module_magic!();
+::pgrx::pg_module_magic!(c"{name}", pgrx::pg_sys::PG_VERSION);
 
 /*
 In order to use this bgworker with a cargo-pgrx managed database, you'll need to add this line to
@@ -31,7 +31,7 @@ pub extern "C-unwind" fn _PG_init() {{
 }}
 
 #[pg_guard]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C-unwind" fn background_worker_main(arg: pg_sys::Datum) {{
     let arg = unsafe {{ i32::from_datum(arg, false) }};
 

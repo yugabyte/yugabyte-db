@@ -8,8 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -62,12 +62,7 @@ public class ScheduleTaskHelper {
     taskParams.setScheduleParams(scheduleParams);
 
     TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.DeleteBackupScheduleKubernetes
             : TaskType.DeleteBackupSchedule;
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -86,12 +81,7 @@ public class ScheduleTaskHelper {
   public UUID createCreateScheduledBackupTask(
       BackupScheduleTaskParams taskParams, Customer customer, Universe universe) {
     TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.CreateBackupScheduleKubernetes
             : TaskType.CreateBackupSchedule;
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -113,12 +103,7 @@ public class ScheduleTaskHelper {
       Universe universe,
       Schedule schedule) {
     TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.EditBackupScheduleKubernetes
             : TaskType.EditBackupSchedule;
     UUID taskUUID = commissioner.submit(taskType, taskParams);

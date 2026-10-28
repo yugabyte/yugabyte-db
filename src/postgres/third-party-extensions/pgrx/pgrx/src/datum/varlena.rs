@@ -9,11 +9,11 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 //! Wrapper for Postgres 'varlena' type, over Rust types of a fixed size (ie, `impl Copy`)
 use crate::{
-    pg_sys, rust_regtypein, set_varsize_4b, set_varsize_short, vardata_any, varsize_any,
-    varsize_any_exhdr, void_mut_ptr, FromDatum, IntoDatum, PgMemoryContexts, StringInfo,
+    FromDatum, IntoDatum, PgMemoryContexts, StringInfo, pg_sys, rust_regtypein, set_varsize_4b,
+    set_varsize_short, vardata_any, varsize_any, varsize_any_exhdr, void_mut_ptr,
 };
 use pgrx_sql_entity_graph::metadata::{
-    ArgumentError, Returns, ReturnsError, SqlMapping, SqlTranslatable,
+    ArgumentError, ReturnsError, ReturnsRef, SqlMappingRef, SqlTranslatable,
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -347,11 +347,7 @@ where
         is_null: bool,
         _typoid: pg_sys::Oid,
     ) -> Option<Self> {
-        if is_null {
-            None
-        } else {
-            Some(PgVarlena::<T>::from_datum(datum))
-        }
+        if is_null { None } else { Some(PgVarlena::<T>::from_datum(datum)) }
     }
 
     unsafe fn from_datum_in_memory_context(
@@ -428,11 +424,8 @@ unsafe impl<T> SqlTranslatable for PgVarlena<T>
 where
     T: SqlTranslatable + Copy,
 {
-    fn argument_sql() -> Result<SqlMapping, ArgumentError> {
-        T::argument_sql()
-    }
-
-    fn return_sql() -> Result<Returns, ReturnsError> {
-        T::return_sql()
-    }
+    const TYPE_IDENT: &'static str = T::TYPE_IDENT;
+    const TYPE_ORIGIN: pgrx_sql_entity_graph::metadata::TypeOrigin = T::TYPE_ORIGIN;
+    const ARGUMENT_SQL: Result<SqlMappingRef, ArgumentError> = T::ARGUMENT_SQL;
+    const RETURN_SQL: Result<ReturnsRef, ReturnsError> = T::RETURN_SQL;
 }

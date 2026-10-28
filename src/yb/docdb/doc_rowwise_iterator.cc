@@ -498,14 +498,25 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
         root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
   }
 
-  auto cached_tombstone_time = doc_read_context_.table_tombstone_time();
-  if (cached_tombstone_time.has_value()) {
+  const auto read_ht = read_operation_data_.read_time.read;
+  const auto watermark_before = doc_read_context_.tombstone_cache_watermark();
+  const auto gen_before = doc_read_context_.tombstone_cache_generation();
+  if (auto cached_tombstone_time =
+          doc_read_context_.GetCachedTableTombstoneTime(read_ht)) {
     return *cached_tombstone_time;
   }
 
   auto doc_ht = VERIFY_RESULT(docdb::GetTableTombstoneTime(
       root_doc_key, doc_db_, txn_op_context_, read_operation_data_));
-  doc_read_context_.set_table_tombstone_time(doc_ht);
+  // Cache doc_ht only if this read is still eligible and watermark/generation did not change
+  // during the DocDB lookup. Stamp with gen_before so a mid-lookup truncate cannot make a
+  // pre-truncate "no tombstone" result look current.
+  const auto watermark_after = doc_read_context_.tombstone_cache_watermark();
+  const auto gen_after = doc_read_context_.tombstone_cache_generation();
+  if (doc_read_context_.IsTombstoneCacheEligible(read_ht) &&
+      watermark_before == watermark_after && gen_before == gen_after) {
+    doc_read_context_.set_table_tombstone_time(doc_ht, gen_before);
+  }
   return doc_ht;
 }
 

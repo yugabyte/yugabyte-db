@@ -22,6 +22,8 @@
  public | range_test_id_seq                              | sequence          | yugabyte_test
  public | rls_private                                    | table             | yugabyte_test
  public | rls_public                                     | table             | yugabyte_test
+ public | tbl                                           +| table             | yugabyte_test
+        | x                                              |                   | 
  public | tbl1                                           | table             | yugabyte_test
  public | tbl10                                          | table             | yugabyte_test
  public | tbl11                                          | table             | yugabyte_test
@@ -53,7 +55,7 @@
  public | tr1                                            | table             | yugabyte_test
  public | tr2                                            | table             | yugabyte_test
  public | uaccount                                       | table             | regress_rls_alice
-(52 rows)
+(53 rows)
 
           List of tablespaces
     Name    |     Owner     | Location 
@@ -63,19 +65,19 @@
  tsp1       | yugabyte_test | 
 (3 rows)
 
-                                              List of roles
-      Role name       |                         Attributes                         |      Member of      
-----------------------+------------------------------------------------------------+---------------------
- postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- regress_rls_alice    | Cannot login                                               | {}
- rls_user             | Cannot login                                               | {}
- tablegroup_test_user | Superuser                                                  | {}
- yb_db_admin          | No inheritance, Cannot login                               | {}
- yb_extension         | Cannot login                                               | {}
- yb_fdw               | Cannot login                                               | {}
- yb_global_views_user |                                                            | {pg_read_all_stats}
- yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
+                                   List of roles
+      Role name       |                         Attributes                         
+----------------------+------------------------------------------------------------
+ postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS
+ regress_rls_alice    | Cannot login
+ rls_user             | Cannot login
+ tablegroup_test_user | Superuser
+ yb_db_admin          | No inheritance, Cannot login
+ yb_extension         | Cannot login
+ yb_fdw               | Cannot login
+ yb_global_views_user | 
+ yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS
+ yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS
 
         List of schemas
    Name    |       Owner       
@@ -164,7 +166,7 @@ Indexes:
  public     | tr2                                         | tr2_c_idx                                        |            | CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC)
  public     | tr2                                         | tr2_c_b_a_idx                                    |            | CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC)
  hint_plan  | hints                                       | hints_pkey                                       |            | CREATE UNIQUE INDEX hints_pkey ON hint_plan.hints USING lsm (id HASH)
- hint_plan  | hints                                       | hints_norm_and_app                               |            | CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC)
+ hint_plan  | hints                                       | hints_id_and_app                                 |            | CREATE UNIQUE INDEX hints_id_and_app ON hint_plan.hints USING lsm (query_id HASH, application_name ASC)
  public     | p1                                          | p1_pkey                                          |            | CREATE UNIQUE INDEX p1_pkey ON public.p1 USING lsm (k HASH)
  public     | p1                                          | c1                                               |            | CREATE UNIQUE INDEX c1 ON public.p1 USING lsm (v ASC)
  public     | p2                                          | p2_pkey                                          |            | CREATE UNIQUE INDEX p2_pkey ON public.p2 USING lsm (k HASH)
@@ -190,7 +192,10 @@ Indexes:
  public     | level2_1                                    | level2_1_pkey                                    |            | CREATE UNIQUE INDEX level2_1_pkey ON public.level2_1 USING lsm (c4 HASH)
  public     | level2_1                                    | level2_1_c3_idx                                  |            | CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC)
  public     | range_test                                  | range_test_pkey                                  |            | CREATE UNIQUE INDEX range_test_pkey ON public.range_test USING lsm (id HASH)
-(56 rows)
+ public     | tbl                                        +| tbl                                             +|            | CREATE UNIQUE INDEX "tbl                                                                                                                                                      +
+            | x                                           | x_pkey                                           |            | x_pkey" ON public."tbl                                                                                                                                                        +
+            |                                             |                                                  |            | x" USING lsm (k HASH)
+(57 rows)
 
                Table "public.level0"
  Column |  Type   | Collation | Nullable | Default 
@@ -215,7 +220,8 @@ Indexes:
     "level1_0_pkey" PRIMARY KEY, lsm (c1 ASC)
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
-Inherits: level0
+Inherits:
+    level0
 Number of child tables: 2 (Use \d+ to list them.)
 
               Table "public.level1_1"
@@ -231,7 +237,8 @@ Indexes:
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
     "level1_1_c1_cons" CHECK (c1 >= 2)
-Inherits: level0
+Inherits:
+    level0
 Number of child tables: 1 (Use \d+ to list them.)
 
               Table "public.level2_0"
@@ -243,7 +250,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  c4     | text    |           |          | 
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
-Inherits: level1_0
+Inherits:
+    level1_0
 
               Table "public.level2_1"
  Column |  Type   | Collation | Nullable | Default 
@@ -258,8 +266,9 @@ Indexes:
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
     "level1_1_c1_cons" CHECK (c1 >= 2)
-Inherits: level1_0,
-          level1_1
+Inherits:
+    level1_0
+    level1_1
 
  tableoid | c1 | c2  | c3  | c4  
 ----------+----+-----+-----+-----

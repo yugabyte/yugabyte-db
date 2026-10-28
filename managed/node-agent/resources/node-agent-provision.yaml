@@ -58,8 +58,13 @@ yba:
   # Skip TLS certificate verification.
   skip_tls_verify: true
 
+  # Optional name (label) of a YBA certificate config to use for node-agent TLS.
+  # It can be found in the YBA UI under
+  # Integrations -> Security -> Encryption in Transit -> Certificates section.
+  # When unset, YBA generates a self-signed root CA for the node agent.
+  certificate_name: ""
+
   # The UUID of the customer in Yugabyte Anywhere.
-  # This is a unique identifier provided by YBA.
   customer_uuid: <customer_uuid>
 
   # API key for authenticating with Yugabyte Anywhere.

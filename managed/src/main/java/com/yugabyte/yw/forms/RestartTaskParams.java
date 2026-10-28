@@ -4,8 +4,8 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import play.mvc.Http.Status;
 
@@ -23,10 +23,8 @@ public class RestartTaskParams extends UpgradeTaskParams {
     super.verifyParams(universe, isFirstTry);
 
     // Only a "Rolling Upgrade" type of restart is allowed on a K8S universe
-    CloudType currCloudType =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
-        && currCloudType.equals(CloudType.kubernetes)) {
+        && Util.isKubernetesBasedUniverse(universe)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Can perform only a rolling upgrade on a Kubernetes universe "

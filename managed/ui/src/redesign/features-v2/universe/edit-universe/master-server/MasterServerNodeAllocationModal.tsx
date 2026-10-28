@@ -1,4 +1,5 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { browserHistory } from 'react-router';
 import { mui, yba } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { DedicatedNode } from '../../create-universe/steps/nodes-availability/DedicatedNodes';
@@ -21,6 +22,8 @@ import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.sch
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { EditHardwareConfirmModal } from '../edit-hardware/EditHardwareConfirmModal';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
+import { EditUniverseTabs } from '../EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '../editUniverseTabUtils';
 
 interface MasterServerNodeAllocationModalProps {
   visible: boolean;
@@ -64,6 +67,15 @@ const Header = styled(Box)(({ theme }) => ({
   cursor: 'pointer'
 }));
 
+const SettingsHardwareLink = styled(Typography)(({ theme }) => ({
+  fontWeight: 600,
+  color: theme.palette.primary[600],
+  cursor: 'pointer',
+  '&:hover': {
+    textDecoration: 'underline'
+  }
+}));
+
 export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModalProps> = ({
   visible,
   onClose,
@@ -82,6 +94,8 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
+  const wasAlreadyDedicated = !!primaryCluster?.node_spec?.dedicated_nodes;
+  const universeUuid = universeData?.info?.universe_uuid ?? '';
 
   const resolvedPartition = useMemo(() => {
     if (!primaryCluster?.partitions_spec?.length) return undefined;
@@ -134,6 +148,7 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
 
   const { watch, handleSubmit } = methods;
   const enableDedicatedNodes = watch('useDedicatedNodes');
+  const canEditMasterInstance = enableDedicatedNodes && !wasAlreadyDedicated;
 
   if (!visible) {
     return null;
@@ -153,6 +168,13 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
     setPendingInstanceSettings(null);
     setEditHardwareOpen(false);
     onClose();
+  };
+
+  const handleNavigateToHardware = () => {
+    handleClose();
+    if (universeUuid) {
+      browserHistory.push(getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.HARDWARE));
+    }
   };
 
   return (
@@ -201,31 +223,38 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
               </div>
               {enableDedicatedNodes && (
                 <StyledEditMasterServerPanel>
-                  <Header
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setEditHardwareOpen(true);
-                    }}
-                  >
-                    <EditIcon />
-                    <Typography variant="body1">{t('editMasterServer')}</Typography>
-                  </Header>
+                  {canEditMasterInstance && (
+                    <Header
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditHardwareOpen(true);
+                      }}
+                    >
+                      <EditIcon />
+                      <Typography variant="body1">{t('editMasterServer')}</Typography>
+                    </Header>
+                  )}
                   <Box
-                    sx={(theme) => {
-                      return {
-                        marginLeft: '32px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '2px',
-                        color: theme.palette.grey[700]
-                      };
-                    }}
+                    sx={(theme) => ({
+                      marginLeft: canEditMasterInstance ? '36px' : 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      color: theme.palette.grey[700]
+                    })}
                   >
                     <Typography variant="subtitle1">{t('subText')}</Typography>
-                    <Typography variant="subtitle2" fontWeight={600}>
+                    <SettingsHardwareLink
+                      variant="subtitle2"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleNavigateToHardware();
+                      }}
+                    >
                       {t('settingsAndHardware')}
-                    </Typography>
+                    </SettingsHardwareLink>
                   </Box>
                 </StyledEditMasterServerPanel>
               )}
@@ -233,20 +262,22 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
           </FormProvider>
         </CreateUniverseContext.Provider>
       </YBModal>
-      <EditHardwareConfirmModal
-        visible={editHardwareOpen}
-        title={t('masterServerInstance', { keyPrefix: 'editUniverse.hardware' })}
-        onSubmit={() => {
-          setEditHardwareOpen(false);
-        }}
-        onHide={() => setEditHardwareOpen(false)}
-        mode="master"
-        isDedicatedNodes={enableDedicatedNodes}
-        submitLabel={t('save', { keyPrefix: 'common' })}
-        initialInstanceSettings={pendingInstanceSettings ?? undefined}
-        onInstanceSettingsConfirm={(data) => setPendingInstanceSettings(data)}
-        skipHardwareReviewStep
-      />
+      {canEditMasterInstance && (
+        <EditHardwareConfirmModal
+          visible={editHardwareOpen}
+          title={t('masterServerInstance', { keyPrefix: 'editUniverse.hardware' })}
+          onSubmit={() => {
+            setEditHardwareOpen(false);
+          }}
+          onHide={() => setEditHardwareOpen(false)}
+          mode="master"
+          isDedicatedNodes={enableDedicatedNodes}
+          submitLabel={t('save', { keyPrefix: 'common' })}
+          initialInstanceSettings={pendingInstanceSettings ?? undefined}
+          onInstanceSettingsConfirm={(data) => setPendingInstanceSettings(data)}
+          skipHardwareReviewStep
+        />
+      )}
     </>
   );
 };

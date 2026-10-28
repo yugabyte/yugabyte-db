@@ -75,6 +75,14 @@ By analyzing the pg_stat_statements view, database administrators can identify s
 To get more info on query level statistics, see [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements)
 {{</lead>}}
 
+## Cluster-wide database views
+
+Per-node views such as `pg_stat_activity` and `pg_stat_statements` only cover the node you are connected to. Cluster-wide database views (`gv$<view_name>`) return the union of those rows from every live YB-TServer, with a `server_uuid` column identifying the source node.
+
+{{<lead link="./cluster-wide-db-views">}}
+To query statistics across the cluster from a single session, see [Cluster-wide database views](./cluster-wide-db-views)
+{{</lead>}}
+
 ## Live queries
 
 The pg_stat_activity system view provides real-time information about the currently active database sessions. Use it to monitor user connections, query execution, and session states to understand database activity, and diagnose performance issues.

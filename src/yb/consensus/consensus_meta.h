@@ -239,6 +239,12 @@ class ConsensusMetadata {
   // Persist current state of the protobuf to disk.
   Status Flush();
 
+  // Flushes only if the durable state differs from previous, a copy taken with
+  // GetConsensusMetadataPB() before a sequence of possible changes.
+  Status FlushIfChanged(const ConsensusMetadataPB& previous);
+
+  const std::string& peer_uuid() const { return peer_uuid_; }
+
   // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
   int64_t on_disk_size() const {
     return on_disk_size_.load(std::memory_order_acquire);

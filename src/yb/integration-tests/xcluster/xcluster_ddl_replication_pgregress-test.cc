@@ -390,7 +390,9 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressRolesOwnersPermissions) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterDefaultPrivileges) {
   std::string pre_execute_sql_text = "CREATE ROLE sandeep WITH LOGIN PASSWORD 'password';";
   ASSERT_OK(TestPgRegress(
-      {"alter_default_privileges.sql"}, pre_execute_sql_text));
+      {"alter_default_privileges.sql", "alter_default_privileges2.sql",
+       "alter_default_privileges3.sql", "alter_default_privileges4.sql"},
+      pre_execute_sql_text));
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {

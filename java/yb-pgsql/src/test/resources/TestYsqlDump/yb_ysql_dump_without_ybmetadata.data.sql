@@ -2,7 +2,7 @@
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -865,5 +865,5 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 

@@ -5927,10 +5927,10 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
-	 * If this is a partitioned table, prepare alter table handles for all
-	 * the partitions as well.
+	 * YB: If this is a partitioned table, prepare alter table handles for
+	 * all the partitions as well. Lock the descendants before reading them.
 	 */
-	List	   *children = find_all_inheritors(main_relid, NoLock, NULL);
+	List	   *children = find_all_inheritors(main_relid, lockmode, NULL);
 	ListCell   *child;
 
 	foreach(child, children)
@@ -23117,6 +23117,16 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		/* Invalidate relcache entries for the parent -- must be before close */
 		CacheInvalidateRelcache(rel);
 
+		/*
+		 * YB: the partition's DocDB schema version was also bumped (see
+		 * YBCPrepareAlterTableCmd), so invalidate it too.  Other backends
+		 * otherwise keep a stale table cache entry for it and fail with a
+		 * schema version mismatch.  In PG15, DetachAddConstraintIfNeeded()
+		 * did this as a side effect of adding a constraint to the partition.
+		 */
+		if (IsYugaByteEnabled())
+			CacheInvalidateRelcache(partRel);
+
 		table_close(partRel, NoLock);
 		table_close(rel, NoLock);
 		tab->rel = NULL;
@@ -25471,7 +25481,11 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		stmt = YbGenerateClonedExtStatsStmt(new_rel, old_relid,
 											stat_ext_form->oid, attmap);
 		stmt->defnames = stringToQualifiedNameList(orig_stats_name, NULL /* escontext */ );
-		CreateStatistics(stmt, true /* check_rights */ );
+		/*
+		 * Re-creating statistics during a rewrite must not require CREATE on
+		 * the schema, matching the !is_rebuild case in ATExecAddStatistics.
+		 */
+		CreateStatistics(stmt, false /* check_rights */ );
 	}
 	systable_endscan(scan);
 	table_close(pg_statistic_ext, RowExclusiveLock);

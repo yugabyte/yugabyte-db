@@ -16,7 +16,7 @@
 
 */
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, ToTokens, TokenStreamExt};
+use quote::{ToTokens, TokenStreamExt, quote};
 use syn::parse::{Parse, ParseBuffer};
 
 /// A parsed `#[pg_operator]` operator.
@@ -57,6 +57,81 @@ impl ToTokens for PgOperator {
     }
 }
 
+impl PgOperator {
+    pub fn section_len_tokens(&self) -> TokenStream2 {
+        let opname_len = self
+            .opname
+            .as_ref()
+            .map(|item| {
+                let value = item.op_name.to_string().replacen(' ', "", 256);
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::str_len(#value)
+                }
+            })
+            .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() });
+        let attr_len = |item: &Option<PgrxOperatorAttributeWithIdent>| {
+            item.as_ref()
+                .map(|item| {
+                    let value = item.fn_name.to_string().replace(' ', "");
+                    quote! {
+                        ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                            + ::pgrx::pgrx_sql_entity_graph::section::str_len(#value)
+                    }
+                })
+                .unwrap_or_else(|| quote! { ::pgrx::pgrx_sql_entity_graph::section::bool_len() })
+        };
+        let commutator_len = attr_len(&self.commutator);
+        let negator_len = attr_len(&self.negator);
+        let restrict_len = attr_len(&self.restrict);
+        let join_len = attr_len(&self.join);
+        quote! {
+            (#opname_len)
+                + (#commutator_len)
+                + (#negator_len)
+                + (#restrict_len)
+                + (#join_len)
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+                + ::pgrx::pgrx_sql_entity_graph::section::bool_len()
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream2) -> TokenStream2 {
+        let opname_writer = self
+            .opname
+            .as_ref()
+            .map(|item| {
+                let value = item.op_name.to_string().replacen(' ', "", 256);
+                quote! { .bool(true).str(#value) }
+            })
+            .unwrap_or_else(|| quote! { .bool(false) });
+        let attr_writer = |item: &Option<PgrxOperatorAttributeWithIdent>| {
+            item.as_ref()
+                .map(|item| {
+                    let value = item.fn_name.to_string().replace(' ', "");
+                    quote! { .bool(true).str(#value) }
+                })
+                .unwrap_or_else(|| quote! { .bool(false) })
+        };
+        let commutator_writer = attr_writer(&self.commutator);
+        let negator_writer = attr_writer(&self.negator);
+        let restrict_writer = attr_writer(&self.restrict);
+        let join_writer = attr_writer(&self.join);
+        let hashes = self.hashes;
+        let merges = self.merges;
+        quote! {
+            #writer
+                #opname_writer
+                #commutator_writer
+                #negator_writer
+                #restrict_writer
+                #join_writer
+                .bool(#hashes)
+                .bool(#merges)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PgrxOperatorAttributeWithIdent {
     pub fn_name: TokenStream2,
@@ -64,7 +139,7 @@ pub struct PgrxOperatorAttributeWithIdent {
 
 impl Parse for PgrxOperatorAttributeWithIdent {
     fn parse(input: &ParseBuffer) -> Result<Self, syn::Error> {
-        Ok(PgrxOperatorAttributeWithIdent { fn_name: input.parse()? })
+        Ok(Self { fn_name: input.parse()? })
     }
 }
 
@@ -86,7 +161,7 @@ pub struct PgrxOperatorOpName {
 
 impl Parse for PgrxOperatorOpName {
     fn parse(input: &ParseBuffer) -> Result<Self, syn::Error> {
-        Ok(PgrxOperatorOpName { op_name: input.parse()? })
+        Ok(Self { op_name: input.parse()? })
     }
 }
 

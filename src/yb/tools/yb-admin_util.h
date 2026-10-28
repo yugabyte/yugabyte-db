@@ -15,7 +15,9 @@
 #include <set>
 #include <utility>
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 
 namespace yb {
@@ -27,6 +29,20 @@ SnapshotId StringToSnapshotId(const std::string& str);
 
 void SortListTabletServerEntries(
     google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>& servers);
+
+HostPortPB SelectTabletServerAddress(
+    const google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>& servers);
+
+// Picks the address of a server to send an RPC to: the broadcast address when one is registered,
+// the private RPC address otherwise. Setting --yb_admin_force_use_private_ip reverses the
+// preference. Returns an empty HostPortPB when the server registered no address at all.
+HostPortPB SelectServerAddress(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_addresses);
+
+HostPortPB SelectServerAddress(const ServerRegistrationPB& registration);
+
+HostPortPB SelectServerAddress(const master::TSInfoPB& ts_info);
 
 }  // namespace tools
 }  // namespace yb

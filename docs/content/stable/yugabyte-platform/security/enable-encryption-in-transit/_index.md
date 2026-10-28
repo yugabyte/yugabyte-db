@@ -46,12 +46,16 @@ For information on rotating certificates, refer to [Rotate certificates](rotate-
 
 ## Enable encryption in transit
 
-You enable Node-to-Node and Client-to-Node encryption in transit when you [create a universe](../../create-deployments/create-universe-multi-zone/).
+You enable Node-to-Node and Client-to-Node encryption in transit when you [create a universe](../../create-deployments/create-universes-wizard/).
 
-You can also enable and disable encryption in transit for an existing universe as follows:
+To enable and disable encryption in transit for an existing universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
+
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
+
 1. Enable or disable the **Enable encryption in transit for this Universe** option.
 1. Click **Apply**.
 

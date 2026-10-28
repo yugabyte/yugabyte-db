@@ -25,6 +25,7 @@ SET yb_bnl_batch_size to 1;
 \set Q1 '/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */'
 \set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;'
 :query
+DEBUG:  rehashing catalog cache id 13 for pg_opclass; 65 tups, 32 buckets
 DEBUG:  skipping a scan due to unsatisfiable condition
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
@@ -50,10 +51,11 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Storage Table Rows Scanned: 1
    ->  Materialize (actual rows=4.00 loops=1)
          ->  Seq Scan on nulltest t1 (actual rows=4.00 loops=1)
+               Disabled: true
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
-(12 rows)
+(13 rows)
 
 \set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;'
 :query
@@ -68,10 +70,11 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Storage Table Rows Scanned: 1
    ->  Materialize (actual rows=4.00 loops=1)
          ->  Seq Scan on nulltest t1 (actual rows=4.00 loops=1)
+               Disabled: true
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
-(12 rows)
+(13 rows)
 
 \set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);'
 :query
@@ -100,10 +103,11 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Storage Table Rows Scanned: 1
    ->  Materialize (actual rows=4.00 loops=1)
          ->  Seq Scan on nulltest t1 (actual rows=4.00 loops=1)
+               Disabled: true
                Storage Table Read Requests: 1
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
-(12 rows)
+(13 rows)
 
 \set Q1 '/*+ IndexScan(t1) */'
 \set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
@@ -115,12 +119,13 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1)
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=0.00 loops=1)
+   Disabled: true
    Filter: (ROW(a, b) <= ROW(NULL::integer, 1))
    Rows Removed by Filter: 4
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(6 rows)
+(7 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 i_nulltest_ba) */ SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
 (output identical to previous)
@@ -201,12 +206,13 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1)
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on nulltest t1 (actual rows=2.00 loops=1)
+   Disabled: true
    Filter: (ROW(a, b) <= ROW(2, NULL::integer))
    Rows Removed by Filter: 2
    Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
-(6 rows)
+(7 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
 (output identical to previous)

@@ -23,6 +23,7 @@ import { normalizeEditPlacementNodesAvailability } from './normalizeEditPlacemen
 import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
+import { useRuntimeConfigValues } from '../../create-universe/helpers/utils';
 
 const { Box } = mui;
 
@@ -37,6 +38,7 @@ export const EditPlacementNodesAndAvailability = () => {
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
   const { setNodesAndAvailability, setResilience, setActiveStep } = addEditPlacementMethods;
   const toast = useYBToast();
+  const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
   const { hideModal, onSubmit, isSubmittingPlacementUpdate, selectedPartitionUUID } = extraMethods;
 
@@ -49,6 +51,11 @@ export const EditPlacementNodesAndAvailability = () => {
     )
   );
 
+  const universeNodesDefaults = useMemo(
+    () => getNodesAvailabilityDefaultsForEditPlacement(universeData!, selectedPartitionUUID),
+    [universeData, selectedPartitionUUID]
+  );
+
   const baselineRegionCodes = useMemo(
     () =>
       getResilienceAndRegionsProps(universeData!, providerRegions, selectedPartitionUUID).regions.map(
@@ -57,9 +64,17 @@ export const EditPlacementNodesAndAvailability = () => {
     [universeData, providerRegions, selectedPartitionUUID]
   );
 
+  const baselineZoneUuidsByRegion = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const [regionCode, zones] of Object.entries(universeNodesDefaults.availabilityZones ?? {})) {
+      map[regionCode] = (zones ?? []).map((z) => z.uuid).filter(Boolean);
+    }
+    return map;
+  }, [universeNodesDefaults]);
+
   const calculateNodesandAvailability = useMemo(
-    () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
-    [addEditPlacementData]
+    () => normalizeEditPlacementNodesAvailability(addEditPlacementData, enablePrimaryRf9),
+    [addEditPlacementData, enablePrimaryRf9]
   );
 
   return (
@@ -121,6 +136,7 @@ export const EditPlacementNodesAndAvailability = () => {
             isGeoPartition
             hideDedicatedNodes
             baselineRegionCodes={baselineRegionCodes}
+            baselineZoneUuidsByRegion={baselineZoneUuidsByRegion}
           />
         </Box>
         <UniverseActionButtons

@@ -47,6 +47,13 @@ spec:
                   message: >
                     "Either 'schedulingFrequency' must be non-zero or
                     'cronExpression' must be a non-empty string."
+                # Field-level self == oldSelf is skipped when keyspace is absent
+                # (Kubernetes CEL does not evaluate rules on missing fields), so
+                # omit==omit is allowed. This spec-level rule forbids toggling
+                # between unset and set (omit cannot later gain a name, and a
+                # named keyspace cannot later be cleared).
+                - rule: has(self.keyspace) == has(oldSelf.keyspace)
+                  message: keyspace cannot be changed between unset and set
               properties:
                 name:
                   type: string
@@ -91,7 +98,11 @@ spec:
                   - message: tableByTableBackup cannot be changed
                     rule: self == oldSelf
                 keyspace:
-                  description: Name of keyspace to be backed up.
+                  description: >
+                    Name of the YSQL database or YCQL keyspace to back up.
+                    Omit to back up all databases (YSQL) or all keyspaces (YCQL)
+                    of backupType. A named value backs up that one database/keyspace only.
+                    Immutable: omit must stay omit, and a named value cannot change.
                   type: string
                   x-kubernetes-validations:
                   - message: keyspace cannot be changed
@@ -137,7 +148,6 @@ spec:
                   type: boolean
                   default: true
               required:
-              - keyspace
               - backupType
               - storageConfig
               - universe

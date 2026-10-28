@@ -31,6 +31,19 @@ struct VectorLSMMetadataLoadResult {
 
 Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::string& dir);
 
+// Files of a vector index found in its storage directory.
+struct VectorLSMFiles {
+  // Manifest and chunk files, in the manifest load order.
+  std::vector<std::string> manifest_and_chunk_files;
+
+  // Whether the directory has at least one vector payload file, see VectorPayloadMap. Payload
+  // files are verified to accompany chunk files and are not listed, so expected file lists in
+  // tests are backend independent.
+  bool has_payload_files = false;
+};
+
+Result<VectorLSMFiles> ListVectorLSMFiles(Env* env, const std::string& dir);
+
 Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
     Env* env, const std::string& dir, size_t file_index);
 

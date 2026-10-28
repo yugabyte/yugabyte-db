@@ -1205,20 +1205,18 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 		elog(ERROR, "too many LWLocks taken");
 
 	/*
-	 * ybLWLockAcquired is true when a postgres backend has acquired one or more
-	 * LWLocks.ybLWLockAcquired is false if and only if a backed does not hold
+	 * lwlock_acquired is true when a postgres backend has acquired one or more
+	 * LWLocks. lwlock_acquired is false if and only if a backend does not hold
 	 * any LWLock.
 	 *
-	 * When ybLWLockAcquired is set true, when the backend starts the process of
+	 * lwlock_acquired is set to true when the backend starts the process of
 	 * acquiring a LWLock. If a postgres backend dies at a point when
-	 * ybLWLockAcquired is true the postmaster issues a full postmaster restart.
-	 * This is because during the acquisition of LWLocks by postgres backends,
-	 * they are prone to modify shared memory. At this time, if the backend dies
-	 * there is a chance of shared memory being corrupted. Hence,
-	 * the postmaster issues a full postmaster restart.
+	 * lwlock_acquired is true, the postmaster issues a full restart. This is
+	 * because during the acquisition of LWLocks by postgres backends, they are
+	 * prone to modify shared memory. At this time, if the backend dies there is
+	 * a chance of shared memory being corrupted.
 	 */
-	if (proc != NULL)
-		proc->ybLWLockAcquired = true;
+	YbMyProcState->lwlock_acquired = true;
 
 	/*
 	 * Lock out cancel/die interrupts until we exit the code section protected
@@ -1377,8 +1375,7 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	HOLD_INTERRUPTS();
 
 	/* YB */
-	if (MyProc != NULL)
-		MyProc->ybLWLockAcquired = true;
+	YbMyProcState->lwlock_acquired = true;
 
 	/* Check for the lock */
 	mustwait = LWLockAttemptLock(lock, mode);
@@ -1386,8 +1383,8 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	if (mustwait)
 	{
 		/* YB */
-		if (MyProc != NULL && !num_held_lwlocks)
-			MyProc->ybLWLockAcquired = false;
+		if (!num_held_lwlocks)
+			YbMyProcState->lwlock_acquired = false;
 
 		/* Failed to get lock, so release interrupt holdoff */
 		RESUME_INTERRUPTS();
@@ -1449,8 +1446,7 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 	HOLD_INTERRUPTS();
 
 	/* YB */
-	if (MyProc != NULL)
-		MyProc->ybLWLockAcquired = true;
+	YbMyProcState->lwlock_acquired = true;
 
 	/*
 	 * NB: We're using nearly the same twice-in-a-row lock acquisition
@@ -1879,14 +1875,14 @@ LWLockRelease(LWLock *lock)
 	}
 
 	/*
-	 * ybLWLockAcquired is true when the current backend is holding any of the
-	 * shared LWLock. Similarly, ybLWLockAcquired is false when it is holding 0
+	 * lwlock_acquired is true when the current backend is holding any of the
+	 * shared LWLock. Similarly, lwlock_acquired is false when it is holding 0
 	 * (zero) LWLocks. Hence, in situations where a backend acquires multiple
-	 * LWLocks, ybLWLockAcquired is set to false only when the number of acquired
+	 * LWLocks, lwlock_acquired is set to false only when the number of acquired
 	 * LWLocks is 0.
 	 */
-	if (MyProc != NULL && !num_held_lwlocks)
-		MyProc->ybLWLockAcquired = false;
+	if (!num_held_lwlocks)
+		YbMyProcState->lwlock_acquired = false;
 
 	/*
 	 * Now okay to allow cancel/die interrupts.

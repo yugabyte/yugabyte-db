@@ -16,8 +16,10 @@
 #include <string>
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -26,6 +28,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_status.h"
@@ -34,6 +38,7 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
@@ -67,9 +72,26 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false
     "producer's loop-prevention predicate, allowing index backfill writes to replicate "
     "end-to-end. Bi-directional and pre-existing streams are unaffected.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_wal_anchor_stream_infra, kExternal, false, true,
+    "Auto infra flag for the xCluster WAL_ANCHOR stream feature. NOTE: If you want to disable "
+    "the feature, use enable_xcluster_wal_anchor_stream instead.");
+
+DEFINE_RUNTIME_bool(enable_xcluster_wal_anchor_stream, true,
+    "In xCluster automatic DDL replication mode, create a per table WAL_ANCHOR stream during the "
+    "creation of a new table. The anchor pins the source WAL at the table's creation point so a "
+    "target retry (after a DDL/transaction rollback) can still replay the full source WAL. Once "
+    "the table is committed on the target, the anchor stream is deleted by a background task. When "
+    "false, the source stops creating anchors for new tables, and the target stops asking for "
+    "stream recreation on rollback and stops marking newly committed tables for anchor deletion. "
+    "Anchors that are already marked are still deleted, so disable this on the source first, and "
+    "on the target only once the source has no anchor streams left.");
+
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
+
+DEFINE_test_flag(bool, return_legacy_universe_replication_info, false,
+    "Omit fields that older masters did not populate in GetUniverseReplicationInfo responses.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_auto_add_new_index_to_bidirectional_xcluster_infra, kExternal,
     false, true,
@@ -91,6 +113,9 @@ DEFINE_RUNTIME_uint32(xcluster_ddl_tables_retention_secs, /*1 week*/ 7 * 24 * 60
     "at least one day.");
 
 DEFINE_validator(xcluster_ddl_tables_retention_secs, FLAG_GE_VALUE_VALIDATOR(1 * 24 * 60 * 60));
+
+DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_bool(persist_tserver_registry);
 
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
@@ -125,6 +150,7 @@ XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : XClusterSourceManager(master, catalog_manager, sys_catalog),
       XClusterTargetManager(master, catalog_manager, sys_catalog),
+      master_(master),
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog) {
   xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
@@ -224,6 +250,95 @@ Status XClusterManager::FillHeartbeatResponse(
   RETURN_NOT_OK(XClusterTargetManager::FillHeartbeatResponse(req, resp));
 
   return xcluster_config_->FillHeartbeatResponse(req, resp);
+}
+
+Status XClusterManager::FillXClusterGuardedInfo(
+    int64_t leader_term, XClusterGuardedInfoPB& info) {
+  std::lock_guard l(xcluster_guarded_info_version_mutex_);
+  ++xcluster_guarded_info_copy_count_;
+  auto& version = *info.mutable_xcluster_guarded_info_version();
+  version.set_term(leader_term);
+  version.set_count(xcluster_guarded_info_copy_count_);
+
+  RETURN_NOT_OK(xcluster_config_->FillXClusterInfoPerNamespace(info));
+  info.set_oid_cache_invalidations_count(
+      VERIFY_RESULT(catalog_manager_.GetOidCacheInvalidationsCount()));
+  return Status::OK();
+}
+
+Status XClusterManager::PropagateXClusterGuardedInfo(MonoTime deadline) {
+  if (!FLAGS_enforce_xcluster_guarded_lease) {
+    // Nothing depends on the information having propagated while leases are not enforced, and
+    // mid-upgrade some TServers may not implement the RPC yet.
+    return Status::OK();
+  }
+  SCHECK(
+      FLAGS_persist_tserver_registry, IllegalState,
+      "PropagateXClusterGuardedInfo requires the TServer registry to be persisted");
+
+  auto info = std::make_shared<XClusterGuardedInfoPB>();
+  // For correctness, this needs to be the current master leader term, not the one when the RPC or
+  // asynchronous workflow that eventually called this started.  (Using the earlier term might cause
+  // the xCluster-guarded info we pass to be ignored if the TServer has already seen something from
+  // the newer term.)
+  RETURN_NOT_OK(
+      FillXClusterGuardedInfo(catalog_manager_.GetLeaderEpochInternal().leader_term, *info));
+
+  // Any TServer we know lacks a lease right now must acquire xCluster-guarded information more
+  // recent than now, and hence more recent than info, before it can reacquire a lease, so it can
+  // be skipped.
+  TSDescriptorVector descriptors;
+  for (auto& descriptor : master_.ts_manager()->GetAllDescriptors()) {
+    if (descriptor->MaybeHasXClusterGuardedLease()) {
+      descriptors.push_back(std::move(descriptor));
+    }
+  }
+
+  // Shared with the task callbacks, which may run after we give up waiting.
+  struct Outcome {
+    explicit Outcome(size_t count)
+        : statuses(count, STATUS(IllegalState, "Propagation task never reported")), latch(count) {}
+    std::vector<Status> statuses;
+    CountDownLatch latch;
+  };
+  auto outcome = std::make_shared<Outcome>(descriptors.size());
+  for (size_t i = 0; i < descriptors.size(); ++i) {
+    auto task = std::make_shared<AsyncApplyXClusterGuardedInfoIfNewer>(
+        &master_, catalog_manager_.AsyncTaskPool(), descriptors[i]->permanent_uuid(), info,
+        deadline, [outcome, i](const Status& status) {
+          outcome->statuses[i] = status;
+          outcome->latch.CountDown();
+        });
+    auto s = catalog_manager_.ScheduleTask(task);
+    if (!s.ok()) {
+      // ScheduleTask may or may not have aborted the task depending on where it failed; aborting
+      // is idempotent and runs the callback exactly once overall.
+      task->AbortAndReturnPrevState(s, /*call_task_finisher=*/true);
+    }
+  }
+  // Every task reaches a terminal state by its deadline; the slack only guards against surprises.
+  if (!outcome->latch.WaitUntil(deadline + MonoDelta::FromSeconds(1))) {
+    return STATUS(TimedOut, "Timed out waiting for xCluster-guarded info propagation tasks");
+  }
+
+  for (size_t i = 0; i < descriptors.size(); ++i) {
+    const auto& s = outcome->statuses[i];
+    if (s.ok()) {
+      continue;
+    }
+    // A TServer that lost its lease while we were trying no longer needs the information: any
+    // lease it gets later comes with information copied after this call started.
+    if (!descriptors[i]->MaybeHasXClusterGuardedLease()) {
+      LOG(INFO) << "Ignoring failure to propagate xCluster-guarded info to TServer "
+                << descriptors[i]->permanent_uuid() << " because it no longer holds a lease: " << s;
+      continue;
+    }
+    // Each task already logged its own failure.
+    return s.CloneAndPrepend(Format(
+        "Failed to propagate xCluster-guarded info to TServer $0",
+        descriptors[i]->permanent_uuid()));
+  }
+  return Status::OK();
 }
 
 Status XClusterManager::SetXClusterRole(
@@ -529,7 +644,8 @@ Status XClusterManager::GetXClusterStreams(
     // Handle the table_ids case.
     std::vector<TableId> table_ids(req->source_table_ids().begin(), req->source_table_ids().end());
     ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreamsForTableIds(
-        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids));
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids,
+        req->create_stream_if_missing(), epoch));
   } else {
     // Handle the table_info case and the empty (all tables) case.
     std::vector<std::pair<TableName, PgSchemaName>> table_names;
@@ -656,6 +772,18 @@ Status XClusterManager::RepairOutboundXClusterReplicationGroupRemoveTable(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->table_id(), epoch);
 }
 
+Status XClusterManager::DeleteXClusterWalAnchorStreams(
+    const DeleteXClusterWalAnchorStreamsRequestPB* req,
+    DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<TableId> source_table_ids(
+      req->source_table_ids().begin(), req->source_table_ids().end());
+  return XClusterSourceManager::DeleteXClusterWalAnchorStreams(
+      xcluster::ReplicationGroupId(req->replication_group_id()), source_table_ids);
+}
+
 Status XClusterManager::GetXClusterOutboundReplicationGroups(
     const GetXClusterOutboundReplicationGroupsRequestPB* req,
     GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
@@ -727,7 +855,11 @@ Status XClusterManager::GetUniverseReplicationInfo(
       xcluster::ReplicationGroupId(req->replication_group_id())));
 
   resp->set_replication_type(replication_info.replication_type);
-  resp->set_source_master_addresses(replication_info.master_addrs);
+  resp->set_deprecated_source_master_addresses(replication_info.master_addrs);
+  if (!FLAGS_TEST_return_legacy_universe_replication_info) {
+    resp->mutable_source_master_addrs()->CopyFrom(replication_info.source_master_addrs);
+    resp->set_automatic_ddl_mode(replication_info.automatic_ddl_mode);
+  }
 
   for (const auto& [_, tables] : replication_info.table_statuses_by_namespace) {
     for (const auto& table_status : tables) {
@@ -794,6 +926,10 @@ XClusterManager::GetInboundTransactionalReplicationGroups() const {
 Status XClusterManager::ClearXClusterFieldsAfterYsqlDDL(
     TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) {
   return XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(table_info, table_pb, epoch);
+}
+
+void XClusterManager::MarkWalAnchorDeletionPending(const TableId& table_id) {
+  XClusterTargetManager::MarkWalAnchorDeletionPending(table_id);
 }
 
 void XClusterManager::NotifyAutoFlagsConfigChanged() {

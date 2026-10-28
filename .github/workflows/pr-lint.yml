@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - README.md
       - 'docs/**'
+      - '.github/vale-styles/**'
 
 jobs:
   pr-lint:

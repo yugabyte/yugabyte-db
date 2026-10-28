@@ -1,0 +1,7 @@
+error[E0046]: not all trait items implemented, missing: `TYPE_IDENT`
+ --> tests/compile-fail/type-ident-manual-impl-must-define-key.rs:7:1
+  |
+7 | unsafe impl SqlTranslatable for ManualTypeWithoutTypeIdent {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `TYPE_IDENT` in implementation
+  |
+  = help: implement the missing item: `const TYPE_IDENT: &'static str = "";`

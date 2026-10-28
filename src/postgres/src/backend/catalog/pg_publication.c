@@ -1053,6 +1053,9 @@ GetAllTablesPublications(void)
  *
  * For a FOR ALL TABLES publication, the returned list excludes tables mentioned
  * in the EXCEPT clause.
+ *
+ * YB: pubid is InvalidOid when there is no publication (see YBCGetTables);
+ * then nothing is excluded and all publishable relations are returned.
  */
 List *
 GetAllPublicationRelations(Oid pubid, char relkind, bool pubviaroot)
@@ -1067,7 +1070,8 @@ GetAllPublicationRelations(Oid pubid, char relkind, bool pubviaroot)
 	Assert(!(relkind == RELKIND_SEQUENCE && pubviaroot));
 
 	/* EXCEPT filtering applies only to relations, not sequences */
-	if (relkind == RELKIND_RELATION)
+	/* YB: YBCGetTables passes InvalidOid when there is no publication. */
+	if (relkind == RELKIND_RELATION && OidIsValid(pubid))
 		exceptlist = GetExcludedPublicationTables(pubid, pubviaroot ?
 												  PUBLICATION_PART_ROOT :
 												  PUBLICATION_PART_LEAF);

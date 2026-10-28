@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <absl/synchronization/mutex.h>
+
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/server/clock.h"
@@ -77,7 +79,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   RaftGroupMetadata& metadata_;
   const std::string log_prefix_;
 
-  mutable std::mutex mutex_;
+  mutable absl::Mutex mutex_;
   // Set of active read timestamps.
   std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
   docdb::HistoryCutoff committed_history_cutoff_information_ GUARDED_BY(mutex_)

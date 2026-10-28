@@ -13,6 +13,7 @@
 
 #include <string>
 
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/json_document.h"
 #include "yb/util/slice.h"
@@ -167,6 +168,11 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
 
 TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   auto conn_explain = ASSERT_RESULT(ConnectWithHintTable());
+  // The planner refreshes the hint cache by scanning hint_plan.hints within the statement's read
+  // snapshot, so the concurrent hint updates below can force a read restart. EXPLAIN is not query
+  // layer retriable by default; opt it in so the restart is handled transparently, as it is for a
+  // plain SELECT.
+  ASSERT_OK(conn_explain.Execute("SET yb_extra_commands_to_retry TO 'EXPLAIN'"));
   auto conn_hint1 = ASSERT_RESULT(ConnectWithHintTable());
   auto conn_hint2 = ASSERT_RESULT(ConnectWithHintTable());
 
@@ -273,19 +279,8 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     // TODO(#28742): Enabling ysql_yb_ddl_transaction_block_enabled causes the test to fail with
     // "could not serialize access due to concurrent update" errors.
     PgHintTableTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    // Concurrent DDL requires object locking, so keep the two flags consistent.
-    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ true);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ true);
   }
 };
 

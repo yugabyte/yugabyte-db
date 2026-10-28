@@ -39,11 +39,11 @@ For this example, create a table of users that you are going to partition by the
 ```plpgsql
 CREATE TABLE users (
     id INTEGER NOT NULL,
-    geo VARCHAR,
+    geo VARCHAR
 ) PARTITION BY LIST (geo);
 ```
 
-Partition your data for users in the US and Europe to ensure that the application in `us-east` uses the `us` partition, and the application in `eu-west` uses the `europe` partition.
+Partition your data for users in the US and Europe to ensure that the application in `us-east-2` uses the `us` partition, and the application in `eu-west-2` uses the `eu` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.
@@ -65,32 +65,32 @@ CREATE TABLE eu PARTITION OF users (
 
 ## Replica placement
 
-Configure your `us` partition leader preference to place the leader in `us-east-1`, one replica in `us-east-1` (nearby region) and the other replica in `us-east-2`. Placing one replica in the same region as the leader ensures that the local replica is up-to-date and will be quickly promoted to leader in case the leader fails. This way , all the replicas of the `US` users are located in the `US` regions.
+Configure your `us` partition leader preference to place the leader in `us-east-2`, one replica in `us-east-1` (nearby region), and the other replica in `us-central-1`. Placing one replica in a nearby region ensures that it stays up to date and is quickly promoted to leader if the leader fails. This way, all the replicas of the `US` users are located in the `US` regions.
 
 ```plpgsql
 --  tablespace for us data
 CREATE TABLESPACE us WITH (
     replica_placement='{"num_replicas": 3,
     "placement_blocks":[
-        {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
-        {"cloud":"aws","region":"us-east-2","zone":"us-east-1c","min_num_replicas":1,"leader_preference":2},
-        {"cloud":"aws","region":"us-central-1","zone":"us-east-2b","min_num_replicas":1,"leader_preference":3}
+        {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":1},
+        {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":2},
+        {"cloud":"aws","region":"us-central-1","zone":"us-central-1a","min_num_replicas":1,"leader_preference":3}
         ]}'
 );
 ```
 
 ![Place US replicas](/images/develop/global-apps/locality-optimized-geo-partition-us.png)
 
-Similarly, set up your `europe` partitions in `eu-west-1` and `eu-west-2`.
+Similarly, set up your `eu` partition leader preference to place the leader in `eu-west-2`, one replica in `eu-west-1` (nearby region), and the other replica in `eu-central-1`.
 
 ```plpgsql
 --  tablespace for Europe data
 CREATE TABLESPACE eu WITH (
     replica_placement='{"num_replicas": 3,
     "placement_blocks":[
-        {"cloud":"aws","region":"eu-west-1","zone":"eu-west-1a","min_num_replicas":1,"leader_preference":1},
-        {"cloud":"aws","region":"eu-west-2","zone":"eu-west-1c","min_num_replicas":1,"leader_preference":2},
-        {"cloud":"aws","region":"eu-central-1","zone":"eu-west-2a","min_num_replicas":1,"leader_preference":3}
+        {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2a","min_num_replicas":1,"leader_preference":1},
+        {"cloud":"aws","region":"eu-west-1","zone":"eu-west-1a","min_num_replicas":1,"leader_preference":2},
+        {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1a","min_num_replicas":1,"leader_preference":3}
     ]}'
 );
 ```
@@ -101,7 +101,7 @@ This ensures all the EU user data is located in Europe.
 
 ## Low latency
 
-Consider the US application. As you have placed the `us` partition leader in `us-east-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
+Consider the US application. As you have placed the `us` partition leader in `us-east-2`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region (`us-east-1`), the write latency is also low (`<10ms`).
 
 ![US application](/images/develop/global-apps/locality-optimized-geo-partition-us-app.png)
 

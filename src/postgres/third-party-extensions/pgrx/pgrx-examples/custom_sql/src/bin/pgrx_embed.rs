@@ -1,1 +1,0 @@
-::pgrx::pgrx_embed!();

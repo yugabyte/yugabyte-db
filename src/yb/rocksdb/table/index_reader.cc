@@ -230,9 +230,13 @@ namespace {
 using BlockIteratorWrapper = IteratorWrapperBase<BlockIter, /* kSkipLastEntry = */ false>;
 using BlockBoundaryRestarts = std::pair<uint32_t, uint32_t>;
 
-// Get the bounding restarts of an index or data block.
+// Get the bounding restarts of an index or data block, restricted to the inclusive bounds
+// [lower_bound_key, upper_bound_key]. Bounds are resolved at restart granularity: the
+// returned restarts are the ones holding the boundary entries, so with a restart interval greater
+// than 1 the first restart can start below lower_bound_key. Empty range (no key >= lower_bound_key,
+// or no key <= upper_bound_key) is signaled by second < first.
 Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
-    BlockIter* block_iter, Slice lower_bound_key) {
+    BlockIter* block_iter, Slice lower_bound_key, Slice upper_bound_key = Slice{}) {
   if (DCHECK_NOTNULL(block_iter)->GetNumRestarts() == 0) {
     // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constructor.
     return STATUS(Corruption, "Restarts number cannot be zero, this might be a data corruption!");
@@ -255,18 +259,41 @@ Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
 
   RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek to lower bound entry");
   if (!block_iter->Valid()) {
-    // All the entries are below the lower bound, so the SST file has no user keys and cannot
-    // provide a middle key. Return Incomplete so the caller skips this file, refer to
-    // Version::GetMiddleKey.
-    return STATUS(Incomplete, "No entries above the lower bound");
+    // lower_bound_key exceeds every key in this block: nothing here qualifies.
+    return BlockBoundaryRestarts{1, 0};
   }
 
   BlockBoundaryRestarts restarts;
   restarts.first = block_iter->GetCurrentRestart();
-  restarts.second = block_iter->GetNumRestarts() - 1;
+
+  if (upper_bound_key.empty()) {
+    restarts.second = block_iter->GetNumRestarts() - 1;
+    VLOG_WITH_FUNC(3) << yb::Format(
+        "Bound: [$0, $1], qualifying entries: $2, total entries: $3", restarts.first,
+        restarts.second, 1 + restarts.second - restarts.first, 1 + restarts.second);
+    return restarts;
+  }
+
+  // Seek lands on the first entry >= upper_bound_key under the block's comparator, so the only
+  // question left is whether it *is* the bound -- and comparator-equality is byte-equality for
+  // internal keys, hence compare() != 0 rather than an icmp call. Past the end of the block, the
+  // whole block qualifies.
+  block_iter->Seek(upper_bound_key);
+  RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek to upper bound entry");
+  if (block_iter->Valid() && block_iter->key().compare(upper_bound_key) != 0) {
+    block_iter->Prev();
+    RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to step back from upper bound entry");
+    if (!block_iter->Valid()) {
+      // upper_bound_key precedes every key in this block: nothing here qualifies.
+      return BlockBoundaryRestarts{1, 0};
+    }
+  }
+  restarts.second = block_iter->Valid() ?
+    block_iter->GetCurrentRestart() : block_iter->GetNumRestarts() - 1;
+
   VLOG_WITH_FUNC(3) << yb::Format(
-      "Bound: [$0, $1], qualifying entries: $2, total entries: $3",
-      restarts.first, restarts.second, 1 + restarts.second - restarts.first, 1 + restarts.second);
+      "Bound: [$0, $1], qualifying entries: $2, total entries: $3", restarts.first, restarts.second,
+      1 + restarts.second - restarts.first, 1 + restarts.second);
   return restarts;
 }
 
@@ -279,7 +306,7 @@ Result<Slice> GetValueAtRestartIndex(BlockIter* block_iter, uint32_t restart_idx
   return block_iter->value();
 }
 
-} // namespace
+}  // namespace
 
 class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase {
  public:
@@ -396,17 +423,24 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
 
   uint64_t TEST_GetNumDoSeekCalls() const { return num_do_seek_calls_; }
 
-  // Find the approximate middle key starting from the given lower bound key.
+  // Find the approximate middle key within the inclusive bounds [lower_bound_key, upper_bound_key].
+  // Entries are considered at restart granularity, so the returned key can start slightly
+  // below lower_bound_key when the restart interval is greater than 1 (see
+  // GetBlockBoundaryRestarts).
   // Algorithm:
   //   1. Start with the sequence of entries from the top-level index block.
   //   2. Repeat until a midpoint is found or no more levels remain:
   //      - If the sequence has 3 or more entries, return the midpoint entry.
-  //      - If the sequence has exactly 2 entries, descend to their blocks (main and aux), replace
-  //        the sequence with entries from those blocks in order, and continue.
-  //      - If the sequence has exactly 1 entry, descend to its block, replace the sequence with
-  //        entries from that block, and continue.
-  //   3. If no midpoint was found, return a failed status.
-  yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) const override {
+  //      - If the sequence has exactly 2 entries and more levels remain, descend to their blocks
+  //        (main and aux), replace the sequence with entries from those blocks in order, and
+  //        continue.
+  //      - If the sequence has exactly 1 entry and more levels remain, descend to its block,
+  //        replace the sequence with entries from that block, and continue.
+  //      - If at the data block level with 1 or 2 entries, stop. Incomplete lets
+  //        BlockBasedTable::GetMiddleKey fall back to Block::GetMiddleKey.
+  //   3. Return Incomplete if no midpoint is found (empty range, or 1-2 data-level entries).
+  yb::Result<std::string> GetMiddleKey(
+      Slice lower_bound_key, Slice upper_bound_key = Slice{}) const override {
     VLOG_WITH_FUNC(3) << "Total levels: " << num_levels_;
 
     // Owners for child block iterators that we may descend to.
@@ -432,19 +466,34 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       //   2. The middle key is obtained from a data block, where the default interval is 16
       // We should add checks for the index block restart interval and handle data blocks better.
 
-      // Find the bounding restarts for the main block.
-      auto main_bounds = VERIFY_RESULT(GetBlockBoundaryRestarts(main_block_iter, lower_bound_key));
+      // Find the bounding restarts for the main block. The main block should contain the lower
+      // bound (the index routed us here); if it does not qualify under the upper bound either
+      // (second < first), there is no midpoint in this range.
+      const auto main_bounds = VERIFY_RESULT(
+          GetBlockBoundaryRestarts(main_block_iter, lower_bound_key, upper_bound_key));
+      if (main_bounds.second < main_bounds.first) {
+        return STATUS(Incomplete, "No qualifying entries in range for middle key");
+      }
       // Number of entries in the main block.
       auto num_main_entries = main_bounds.second - main_bounds.first + 1;
       // Number of entries in the main block + aux block.
       auto num_total_entries = num_main_entries;
 
-      // Find the bounding restarts for the aux block, if an aux block exists.
       BlockBoundaryRestarts aux_bounds;
       if (aux_block_iter) {
-        aux_bounds = VERIFY_RESULT(GetBlockBoundaryRestarts(aux_block_iter, Slice{}));
-        DCHECK_EQ(aux_bounds.first, 0);
-        num_total_entries += aux_bounds.second - aux_bounds.first + 1;
+        // The aux block sits entirely above the main block, so the lower bound is satisfied by
+        // construction but the upper bound is not -- counting the whole block would inflate
+        // num_total_entries and let the midpoint land above upper_bound_key.
+        aux_bounds =
+            VERIFY_RESULT(GetBlockBoundaryRestarts(aux_block_iter, Slice{}, upper_bound_key));
+        if (aux_bounds.second < aux_bounds.first) {
+          // Nothing in the aux block qualifies. Drop it so the midpoint selection and the descent
+          // below behave as if there were no aux block at all.
+          aux_block_iter = nullptr;
+        } else {
+          DCHECK_EQ(aux_bounds.first, 0);
+          num_total_entries += aux_bounds.second - aux_bounds.first + 1;
+        }
       }
 
       // If more than 2 restarts exist across the main and aux block, find the restart in the
@@ -472,7 +521,9 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
         return middle_key.ToBuffer();
       }
 
-      // If at last level, we cannot descend further.
+      // If at last level, we cannot descend further. num_total_entries is 1 or 2 here (the >2
+      // case already returned). Break so the function returns Incomplete; GetMiddleKey uses
+      // that to fall back to the data-block middle-key path.
       if (cur_level == num_levels_) {
         break;
       }
@@ -514,7 +565,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       }
     }
 
-    // Return Incomplete when there are less than 3 data block restarts in the SST with user keys.
+    // Reached via break: last level with fewer than 3 entries, or zero qualifying entries.
     return STATUS(Incomplete, "Insufficient number of entries");
   }
 

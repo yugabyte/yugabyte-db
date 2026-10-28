@@ -31,6 +31,7 @@
 //
 
 #include "yb/integration-tests/create-table-itest-base.h"
+#include "yb/util/format.h"
 
 using std::string;
 using std::vector;
@@ -51,7 +52,7 @@ Status CreateTableITestBase::CreateTableWithPlacement(
       ->table_name(YBTableName(
           db_type,
           kTableName.namespace_name(),
-          Substitute("$0:$1", kTableName.table_name(), table_suffix)))
+          Format("$0:$1", kTableName.table_name(), table_suffix)))
       .replication_info(replication_info)
       .table_type(table_type)
       .wait(true)

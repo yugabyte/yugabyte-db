@@ -146,12 +146,6 @@ RUN set -x; \
               --no-user-group yugabyte; \
     fi
 
-# Create with correct permissions the openssl-config directory which will be used for fips
-# credentials generated via post-install.sh
-RUN mkdir -p $YB_HOME/openssl-config \
-    && chown -R 10001:0 $YB_HOME/openssl-config \
-    && chmod -R g=u $YB_HOME/openssl-config
-
 COPY --from=stage1 $YB_HOME $YB_HOME
 
 # Create with correct permissions the openssl-config directory which will be used for fips
@@ -185,6 +179,10 @@ RUN mkdir $YB_HOME/controller && \
     ln -s ${YBC_DIR}/bin $YB_HOME/controller/bin && \
     # Link the logs
     ln -s /mnt/disk0/ybc-data/controller/logs $YB_HOME/controller/logs
+
+
+RUN chown 10001:0 $YB_HOME \
+    && chmod g=u $YB_HOME
 
 # Copy licenses
 ARG ghr_url=https://raw.githubusercontent.com/yugabyte/yugabyte-db/master

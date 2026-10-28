@@ -57,8 +57,6 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
-  uint32_t get_oid_cache_invalidations_count() const override { return 0; }
-
   // Get the global catalog versions. When use_cache is true and the heartbeat catalog version
   // cache is enabled, reads from the cache (stale-tolerant). Otherwise reads from disk.
   void get_ysql_catalog_version(uint64_t* current_version,

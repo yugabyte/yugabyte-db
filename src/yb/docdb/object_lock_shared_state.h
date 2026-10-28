@@ -68,6 +68,34 @@ struct ObjectLockFastpathRequest {
 
 static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
 
+struct ObjectLockExclusiveIntent;
+
+// This object is a handle to a shared memory array of exclusive lock intents, and may be stored in
+// private memory.
+class ObjectLockExclusiveIntents {
+ public:
+  ObjectLockExclusiveIntents();
+  ObjectLockExclusiveIntents(ObjectLockExclusiveIntents&& other);
+  ~ObjectLockExclusiveIntents();
+
+  ObjectLockExclusiveIntents& operator=(ObjectLockExclusiveIntents&& other);
+
+  static Result<ObjectLockExclusiveIntents> Make(
+      SharedMemoryBackingAllocator& allocator,
+      const std::map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
+
+ private:
+  friend class ObjectLockSharedState;
+
+  ObjectLockExclusiveIntents(
+      SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> array, size_t count);
+
+  std::span<const ObjectLockExclusiveIntent> SharedMemorySpan() const;
+
+  SharedMemoryUniquePtr<ObjectLockExclusiveIntent[]> intents_;
+  size_t count_ = 0;
+};
+
 using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
 
 class ObjectLockSharedState {
@@ -76,10 +104,26 @@ class ObjectLockSharedState {
  public:
   ObjectLockSharedState(
       SharedMemoryBackingAllocator& allocator,
-      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents);
+      const ObjectLockExclusiveIntents& exclusive_intents);
   ~ObjectLockSharedState();
 
+  // Try to add a lock request from postgres side.
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
+
+  // Try to perform an unlock all from postgres side.
+  [[nodiscard]] bool UnlockAll();
+
+  // Try to add a lock request from tserver side. Similar to Lock() except for accounting.
+  [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request) PARENT_PROCESS_ONLY;
+
+  // Try to perform an unlock all from tserver side. Similar to UnlockAll() except for accounting.
+  [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY;
+
+  void ForceDropAll() PARENT_PROCESS_ONLY;
+
+  // Indicate that TServer has loaded the transaction corresponding to this state into the lock
+  // manager.
+  void MarkTServerLoaded() PARENT_PROCESS_ONLY;
 
   void Enable() PARENT_PROCESS_ONLY;
 
@@ -87,20 +131,21 @@ class ObjectLockSharedState {
 
   void Shutdown() PARENT_PROCESS_ONLY;
 
-  // Returns whether any lock requests were consumed.
-  bool ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
-  // Returns whether any lock requests were consumed.
-  bool ConsumeAndAcquireExclusiveLockIntents(
+  void ConsumeAndResetExclusiveLockIntentsTo(
       const FastLockRequestConsumer& consume,
-      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
+      const ObjectLockExclusiveIntents& exclusive_intents) PARENT_PROCESS_ONLY;
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
+  void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
-  size_t CumulativeLockRequestCount() const;
+  uint64_t PgLockRequestCount() const;
+  uint64_t PgLockReleaseCount() const;
+  uint64_t TServerLockRequestCount() const;
+  uint64_t TServerLockReleaseCount() const;
 
-  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
+  [[nodiscard]] bool TEST_has_exclusive_intents() const PARENT_PROCESS_ONLY;
 
  private:
   const SharedMemoryUniquePtr<Impl> impl_;

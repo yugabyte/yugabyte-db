@@ -118,6 +118,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Each transaction has an 8MB limit for invalidation messages distributed from
@@ -227,7 +228,7 @@ typedef struct ReorderBufferDiskChange
  * resource management here, but it's not entirely clear what that would look
  * like.
  *
- * YB NOTE: This is overridden by yb_reorderbuffer_max_changes_in_memory GUC.
+ * YB NOTE: Spill decisions use yb_reorderbuffer_max_memory_kb.
  */
 int			logical_decoding_work_mem;
 static const Size max_changes_in_memory = 4096; /* XXX for restore only */
@@ -552,6 +553,13 @@ ReorderBufferFreeChange(ReorderBuffer *rb, ReorderBufferChange *change,
 				ReorderBufferFreeTupleBuf(change->data.tp.oldtuple);
 				change->data.tp.oldtuple = NULL;
 			}
+
+			/* YB */
+			if (change->data.tp.yb_new_is_omitted)
+			{
+				pfree(change->data.tp.yb_new_is_omitted);
+				change->data.tp.yb_new_is_omitted = NULL;
+			}
 			break;
 		case REORDER_BUFFER_CHANGE_MESSAGE:
 			if (change->data.msg.prefix != NULL)
@@ -585,6 +593,7 @@ ReorderBufferFreeChange(ReorderBuffer *rb, ReorderBufferChange *change,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			break;
 	}
 
@@ -611,10 +620,6 @@ ReorderBufferAllocTupleBuf(ReorderBuffer *rb, Size tuple_len)
 
 	if (IsYugaByteEnabled())
 	{
-#if 0
-		tuple->yb_is_omitted = NULL;
-		tuple->yb_is_omitted_size = 0;
-#endif
 		YbWalSndTotalTimeInReorderBufferMicros +=
 			YbCalculateTimeDifferenceInMicros(yb_start_time);
 	}
@@ -628,10 +633,6 @@ ReorderBufferAllocTupleBuf(ReorderBuffer *rb, Size tuple_len)
 void
 ReorderBufferFreeTupleBuf(HeapTuple tuple)
 {
-#if 0
-	if (IsYugaByteEnabled() && tuple->yb_is_omitted)
-		pfree(tuple->yb_is_omitted);
-#endif
 	pfree(tuple);
 }
 
@@ -1802,6 +1803,16 @@ ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prep
 static bool
 ReorderBufferCheckAndTruncateAbortedTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 {
+	/*
+	 * YB: txn->xid is a synthetic id assigned by the VirtualWAL, not a PG xid,
+	 * so a CLOG lookup returns the status of an unrelated local xid (or fails
+	 * past the end of local CLOG) and can truncate a committed transaction.
+	 * The VirtualWAL only ships committed transactions, so none of them can be
+	 * aborted.
+	 */
+	if (IsYugaByteEnabled())
+		return false;
+
 	/* Quick return for regression tests */
 	if (unlikely(debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE))
 		return false;
@@ -2397,6 +2408,11 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
+						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
+														change->data.tp.yb_in_txn_limit,
+														change->data.tp.yb_txn_id);
+
 						/*
 						 * In YB, the replica identity used for streaming is the
 						 * one that existed at the time of slot (stream)
@@ -2647,6 +2663,16 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 					elog(ERROR, "tuplecid value in changequeue");
+					break;
+
+				case YB_REORDER_BUFFER_CHANGE_DDL:
+					YBCInvalidateCachesForHistoricalReadContext();
+					/*
+					 * Inform the output plugin about the schema change so that
+					 * it can send the RELATION message to the client.
+					 */
+					YBReorderBufferSchemaChange(rb,
+												change->data.yb_ddl.table_oid);
 					break;
 			}
 
@@ -3995,7 +4021,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	bool		update_stats = true;
 
 	if (rb->size >= (IsYugaByteEnabled() ?
-					 yb_reorderbuffer_max_changes_in_memory :
+					 yb_reorderbuffer_max_memory_kb :
 					 logical_decoding_work_mem) * (Size) 1024)
 	{
 		/*
@@ -4026,7 +4052,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	 * value before the most recent change.
 	 */
 	while (rb->size >= (IsYugaByteEnabled() ?
-						yb_reorderbuffer_max_changes_in_memory :
+						yb_reorderbuffer_max_memory_kb :
 						logical_decoding_work_mem) * (Size) 1024 ||
 		   (debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_IMMEDIATE &&
 			rb->size > 0))
@@ -4094,7 +4120,7 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 
 	/* We must be under the memory limit now. */
 	Assert(rb->size < (IsYugaByteEnabled() ?
-					   yb_reorderbuffer_max_changes_in_memory :
+					   yb_reorderbuffer_max_memory_kb :
 					   logical_decoding_work_mem) * (Size) 1024);
 }
 
@@ -4222,10 +4248,6 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				Size		oldlen = 0;
 				Size		newlen = 0;
 
-				/* YB: is_omitted is only applicable to UPDATE. */
-				bool		yb_handle_is_omitted = (change->action ==
-													REORDER_BUFFER_CHANGE_UPDATE);
-
 				oldtup = change->data.tp.oldtuple;
 				newtup = change->data.tp.newtuple;
 
@@ -4234,13 +4256,6 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					sz += sizeof(HeapTupleData);
 					oldlen = oldtup->t_len;
 					sz += oldlen;
-
-					/* YB: account for the size of the is_omitted array. */
-#if 0
-					if (IsYugaByteEnabled() && yb_handle_is_omitted)
-						sz += (sizeof(int) +
-							   oldtup->yb_is_omitted_size * sizeof(bool));
-#endif
 				}
 
 				if (newtup)
@@ -4248,15 +4263,11 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					sz += sizeof(HeapTupleData);
 					newlen = newtup->t_len;
 					sz += newlen;
-
-					/* YB: account for the size of the is_omitted array. */
-					if (IsYugaByteEnabled() && yb_handle_is_omitted)
-					{}
-#if 0
-						sz += (sizeof(int) +
-							   newtup->yb_is_omitted_size * sizeof(bool));
-#endif
 				}
+
+				/* YB */
+				if (change->data.tp.yb_new_is_omitted)
+					sz += change->data.tp.yb_new_is_omitted_natts * sizeof(bool);
 
 				/* make sure we have enough space */
 				ReorderBufferSerializeReserve(rb, sz);
@@ -4272,22 +4283,6 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					memcpy(data, oldtup->t_data, oldlen);
 					data += oldlen;
-
-					/* write the yb_is_omitted array. */
-#if 0
-					if (IsYugaByteEnabled() && yb_handle_is_omitted)
-					{
-						memcpy(data, &oldtup->yb_is_omitted_size, sizeof(int));
-						data += sizeof(int);
-
-						if (oldtup->yb_is_omitted_size > 0)
-						{
-							memcpy(data, oldtup->yb_is_omitted,
-								   oldtup->yb_is_omitted_size * sizeof(bool));
-							data += oldtup->yb_is_omitted_size * sizeof(bool);
-						}
-					}
-#endif
 				}
 
 				if (newlen)
@@ -4297,23 +4292,23 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					memcpy(data, newtup->t_data, newlen);
 					data += newlen;
-
-					/* write the yb_is_omitted array. */
-#if 0
-					if (IsYugaByteEnabled() && yb_handle_is_omitted)
-					{
-						memcpy(data, &newtup->yb_is_omitted_size, sizeof(int));
-						data += sizeof(int);
-
-						if (newtup->yb_is_omitted_size > 0)
-						{
-							memcpy(data, newtup->yb_is_omitted,
-								   newtup->yb_is_omitted_size * sizeof(bool));
-							data += newtup->yb_is_omitted_size * sizeof(bool);
-						}
-					}
-#endif
 				}
+
+				/*
+				 * YB: the array goes after both tuples. On restore, the stale
+				 * pointer copied with the static part says whether it is
+				 * present, as it does for oldtuple and newtuple.
+				 */
+				if (change->data.tp.yb_new_is_omitted)
+				{
+					Size		yb_omitted_len =
+						change->data.tp.yb_new_is_omitted_natts * sizeof(bool);
+
+					memcpy(data, change->data.tp.yb_new_is_omitted,
+						   yb_omitted_len);
+					data += yb_omitted_len;
+				}
+				Assert(data == (char *) rb->outbuf + sz);
 				break;
 			}
 		case REORDER_BUFFER_CHANGE_MESSAGE:
@@ -4424,6 +4419,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4649,6 +4645,10 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 					sz += newlen;
 				}
 
+				/* YB */
+				if (change->data.tp.yb_new_is_omitted)
+					sz += change->data.tp.yb_new_is_omitted_natts * sizeof(bool);
+
 				break;
 			}
 		case REORDER_BUFFER_CHANGE_MESSAGE:
@@ -4688,6 +4688,7 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4725,9 +4726,12 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while ((restored <
-			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
-		   && (*segno <= last_segno))
+	/*
+	 * YB restores a fixed number of changes so restore batching is independent
+	 * from the memory limit that controls spilling.
+	 */
+	while ((restored < max_changes_in_memory) &&
+		   (*segno <= last_segno))
 	{
 		int			readBytes;
 		ReorderBufferDiskChange *ondisk;
@@ -4871,8 +4875,6 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			if (change->data.tp.oldtuple)
 			{
 				uint32		tuplelen = ((HeapTuple) data)->t_len;
-				bool		yb_handle_is_omitted = (change->action ==
-													REORDER_BUFFER_CHANGE_UPDATE);
 
 				change->data.tp.oldtuple =
 					ReorderBufferAllocTupleBuf(rb, tuplelen - SizeofHeapTupleHeader);
@@ -4889,39 +4891,12 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				/* restore tuple data itself */
 				memcpy(change->data.tp.oldtuple->t_data, data, tuplelen);
 				data += tuplelen;
-
-				if (IsYugaByteEnabled() && yb_handle_is_omitted)
-				{
-#if 0
-					int			is_omitted_size;
-
-					/* restore yb_is_omitted_size */
-					memcpy(&change->data.tp.oldtuple->yb_is_omitted_size, data,
-						   sizeof(int));
-					data += sizeof(int);
-					is_omitted_size =
-						change->data.tp.oldtuple->yb_is_omitted_size;
-
-					/* restore yb_is_omitted */
-					if (is_omitted_size > 0)
-					{
-						change->data.tp.oldtuple->yb_is_omitted =
-							YBAllocateIsOmittedArray(rb, is_omitted_size);
-
-						memcpy(change->data.tp.oldtuple->yb_is_omitted, data,
-							   is_omitted_size * sizeof(bool));
-						data += is_omitted_size * sizeof(bool);
-					}
-#endif
-				}
 			}
 
 			if (change->data.tp.newtuple)
 			{
 				/* here, data might not be suitably aligned! */
 				uint32		tuplelen;
-				bool		yb_handle_is_omitted = (change->action ==
-													REORDER_BUFFER_CHANGE_UPDATE);
 
 				memcpy(&tuplelen, data + offsetof(HeapTupleData, t_len),
 					   sizeof(uint32));
@@ -4941,32 +4916,20 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				/* restore tuple data itself */
 				memcpy(change->data.tp.newtuple->t_data, data, tuplelen);
 				data += tuplelen;
-
-				if (IsYugaByteEnabled() && yb_handle_is_omitted)
-				{
-#if 0
-					int			is_omitted_size;
-
-					/* restore yb_is_omitted_size */
-					memcpy(&change->data.tp.newtuple->yb_is_omitted_size, data,
-						   sizeof(int));
-					data += sizeof(int);
-					is_omitted_size =
-						change->data.tp.newtuple->yb_is_omitted_size;
-
-					/* restore yb_is_omitted */
-					if (is_omitted_size > 0)
-					{
-						change->data.tp.newtuple->yb_is_omitted =
-							YBAllocateIsOmittedArray(rb, is_omitted_size);
-
-						memcpy(change->data.tp.newtuple->yb_is_omitted, data,
-							   is_omitted_size * sizeof(bool));
-						data += is_omitted_size * sizeof(bool);
-					}
-#endif
-				}
 			}
+
+			/* YB: see ReorderBufferSerializeChange. */
+			if (change->data.tp.yb_new_is_omitted)
+			{
+				int			natts = change->data.tp.yb_new_is_omitted_natts;
+
+				change->data.tp.yb_new_is_omitted =
+					YBAllocateIsOmittedArray(rb, natts);
+				memcpy(change->data.tp.yb_new_is_omitted, data,
+					   natts * sizeof(bool));
+				data += natts * sizeof(bool);
+			}
+			Assert(data == (char *) ondisk + ondisk->size);
 
 			break;
 		case REORDER_BUFFER_CHANGE_MESSAGE:
@@ -5044,6 +5007,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT:
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
+		case YB_REORDER_BUFFER_CHANGE_DDL:
 			break;
 	}
 

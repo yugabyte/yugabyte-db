@@ -50,13 +50,13 @@
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_util.h"
 
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -509,13 +509,13 @@ void TestYcqlWorkload::State::Start(const TestWorkloadOptions& options) {
   start_latch_.Reset(options.num_write_threads + options.num_read_threads);
   for (int i = 0; i < options.num_write_threads; ++i) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("test-writer-$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("test-writer-$0", i),
                                 &State::WriteThread, this, options, &new_thread));
     threads_.push_back(new_thread);
   }
   for (int i = 0; i < options.num_read_threads; ++i) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("test", strings::Substitute("test-reader-$0", i),
+    CHECK_OK(yb::Thread::Create("test", Format("test-reader-$0", i),
                                 &State::ReadThread, this, options, &new_thread));
     threads_.push_back(new_thread);
   }

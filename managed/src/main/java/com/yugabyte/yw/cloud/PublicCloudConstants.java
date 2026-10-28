@@ -47,6 +47,13 @@ public class PublicCloudConstants {
   public static final String GP3_PIOPS = "gp3.piops";
   public static final String GP3_THROUGHPUT = "gp3.throughput";
 
+  /** OCI meter PriceComponent codes (rates, not per-shape SKUs). */
+  public static final String OCI_COMPUTE_OCPU_FORMAT = "oci.compute.%s.ocpu";
+
+  public static final String OCI_COMPUTE_MEMORY_FORMAT = "oci.compute.%s.memory";
+  public static final String OCI_BLOCK_STORAGE = "oci.block.storage";
+  public static final String OCI_BLOCK_VPU = "oci.block.vpu";
+
   public enum Tenancy {
     Shared,
     Dedicated,

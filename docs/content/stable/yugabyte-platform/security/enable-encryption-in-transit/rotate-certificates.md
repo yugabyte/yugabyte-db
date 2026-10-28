@@ -28,7 +28,7 @@ If you are using your own certificates, before rotating certificates, ensure tha
 
 If you are using Kubertnetes cert-manager, certificate renewal is handled automatically by cert-manager before expiry. For information on rotating and managing certificates using cert-manager, refer to [Rotate certificates in cert-manager](../add-certificate-kubernetes/#rotate-certificates-in-cert-manager).
 
-Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
+Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../create-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
 
 ## Enable or disable encryption in transit
 
@@ -40,13 +40,13 @@ You can enable or disable:
 
 This requires a simultaneous restart of all nodes, resulting in some downtime.
 
-To enable or disable encryption in transit:
+To enable or disable encryption in transit, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
 
-<!--    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)-->
+    This displays the **Manage encryption in transit** dialog.
 
 1. Set the **Enable encryption in transit for this Universe** option.
 
@@ -91,11 +91,13 @@ For universes with _only_ client-to-node encryption enabled, when rotating certi
 
 ### Rotate server certificates
 
-To rotate server (node) certificates for a universe, do the following:
+To rotate server (node) certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
@@ -111,11 +113,13 @@ To rotate server (node) certificates for a universe, do the following:
 
 ### Rotate root certificates
 
-To rotate root certificates for a universe, do the following:
+To rotate root certificates for a universe, navigate to the universe and do the following:
 
-1. Navigate to your universe.
+1. {{<tags/ui/new>}} Click **Settings > Security**, and under **Encryption in Transit** click **Edit**.
 
-1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+    {{<tags/ui/classic>}} Click **Actions > More > Edit Security > Encryption in-Transit**.
+
+    This displays the **Manage encryption in transit** dialog.
 
 1. On the **Certificate Authority** tab, select the new root certificate(s).
 

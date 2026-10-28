@@ -376,7 +376,7 @@ public class UniverseMetricProvider implements MetricsProvider {
                 UniverseDefinitionTaskParams.Cluster cluster =
                     universe.getCluster(nodeDetails.placementUuid);
                 if (cluster != null && cluster.userIntent != null) {
-                  DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+                  DeviceInfo deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(nodeDetails);
                   Integer iops = deviceInfo.diskIops;
                   Integer throughput = deviceInfo.throughput;
                   if (iops != null) {

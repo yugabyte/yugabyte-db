@@ -45,6 +45,19 @@ const (
 	// AWSEndpointEnv field name to denote in Json request
 	AWSEndpointEnv = "AWS_KMS_ENDPOINT"
 
+	// OCIStorageRegionField field name to denote in storage config Json request
+	OCIStorageRegionField = "OCI_REGION"
+	// OCINamespaceField field name to denote in Json request
+	OCINamespaceField = "OCI_NAMESPACE"
+	// UseOCIIAM field name to denote in Json request
+	UseOCIIAM = "USE_OCI_IAM"
+	// OCIS3AccessKeyIDField field name to denote in Json request
+	OCIS3AccessKeyIDField = "OCI_S3_ACCESS_KEY_ID"
+	// OCIS3SecretAccessKeyField field name to denote in Json request
+	OCIS3SecretAccessKeyField = "OCI_S3_SECRET_ACCESS_KEY"
+	// OCIS3HostBaseField field name to denote in Json request
+	OCIS3HostBaseField = "OCI_S3_HOST_BASE"
+
 	// AzureSubscriptionIDEnv env variable name for azure provider
 	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
 	// AzureRGEnv env variable name for azure provider
@@ -91,6 +104,44 @@ const (
 	CipherTrustKeyAlgorithmField = "KEY_ALGORITHM"
 	// CipherTrustKeySizeField field name to denote in Json request
 	CipherTrustKeySizeField = "KEY_SIZE"
+
+	// OCI KMS config field names. These match OciKmsAuthConfigField on the server.
+	// OCITenancyIDField field name to denote in Json request
+	OCITenancyIDField = "ociTenancyId"
+	// OCIUserIDField field name to denote in Json request
+	OCIUserIDField = "ociUserId"
+	// OCIFingerprintField field name to denote in Json request
+	OCIFingerprintField = "ociFingerprint"
+	// OCIPrivateKeyContentField field name to denote in Json request
+	OCIPrivateKeyContentField = "ociPrivateKeyContent"
+	// OCIAuthTypeField field name to denote in Json request
+	OCIAuthTypeField = "ociAuthType"
+	// OCICompartmentIDField field name to denote in Json request
+	OCICompartmentIDField = "ociCompartmentId"
+	// OCIVaultIDField field name to denote in Json request
+	OCIVaultIDField = "ociVaultId"
+	// OCIKmsRegionField field name to denote in KMS config Json request
+	OCIKmsRegionField = "ociRegion"
+	// OCIKeyNameField field name to denote in Json request
+	OCIKeyNameField = "ociKeyName"
+	// OCIKeyOCIDField field name to denote in Json request
+	OCIKeyOCIDField = "ociKeyOcid"
+
+	// OCIKmsAuthTypeAPIKey is API signing key authentication
+	OCIKmsAuthTypeAPIKey = "API_KEY"
+	// OCIKmsAuthTypeInstancePrincipal is OCI instance principal authentication
+	OCIKmsAuthTypeInstancePrincipal = "INSTANCE_PRINCIPAL"
+
+	// OCITenancyIDEnv env variable name for oci kms config
+	OCITenancyIDEnv = "OCI_TENANCY"
+	// OCIUserIDEnv env variable name for oci kms config
+	OCIUserIDEnv = "OCI_USER"
+	// OCIFingerprintEnv env variable name for oci kms config
+	OCIFingerprintEnv = "OCI_FINGERPRINT"
+	// OCIPrivateKeyFileEnv env variable name for oci kms config
+	OCIPrivateKeyFileEnv = "OCI_PRIVATE_KEY_FILE"
+	// OCIRegionEnv env variable name for oci kms config
+	OCIRegionEnv = "OCI_REGION"
 
 	// HashicorpVaultTokenEnv env variable name for hashicorp vault
 	HashicorpVaultTokenEnv = "VAULT_TOKEN"
@@ -167,6 +218,29 @@ const (
 	// YBAAllowTelemetryProviderMinPreviewVersion specifies minimum version
 	// required to use Telemetry Provider resource via YBA CLI
 	YBAAllowTelemetryProviderMinPreviewVersion = "2.23.1.0-b27"
+
+	// YBAAllowTelemetryProviderTypesMinPreviewVersion specifies minimum version
+	// required to use the telemetry provider types API (preview line)
+	YBAAllowTelemetryProviderTypesMinPreviewVersion = "2.29.0.0-b0"
+	// YBAAllowTelemetryProviderTypesMinStableVersion specifies minimum version
+	// required to use the telemetry provider types API (stable line)
+	YBAAllowTelemetryProviderTypesMinStableVersion = "2025.2.0.0-b1"
+
+	// YBAAllowExportTelemetryConfigMinPreviewVersion specifies minimum version required to
+	// use the unified export telemetry config API. This is when the endpoint first shipped,
+	// not when it was promoted from internal to preview (2026.1.2.0 / 2.31.0.0).
+	YBAAllowExportTelemetryConfigMinPreviewVersion = "2.29.0.0-b0"
+	// YBAAllowExportTelemetryConfigMinStableVersion specifies minimum version required to
+	// use the unified export telemetry config API
+	YBAAllowExportTelemetryConfigMinStableVersion = "2026.1.0.0-b1"
+
+	// YBAAllowServerLogsExportMinPreviewVersion specifies minimum version required for the
+	// six server log sections. The API shipped earlier with only audit_logs, query_logs
+	// and metrics.
+	YBAAllowServerLogsExportMinPreviewVersion = "2.31.0.0-b0"
+	// YBAAllowServerLogsExportMinStableVersion specifies minimum version required for the
+	// six server log sections of the unified export telemetry config API
+	YBAAllowServerLogsExportMinStableVersion = "2026.1.2.0-b1"
 
 	// YBAAllowTelemetryProviderMinStableVersion specifies minimum version
 	// required to use Telemetry Provider resource via YBA CLI
@@ -462,6 +536,12 @@ const (
 	GCPCloudMonitoringTelemetryProviderType = "GCP_CLOUD_MONITORING"
 	// LokiTelemetryProviderType type
 	LokiTelemetryProviderType = "LOKI"
+	// DynatraceTelemetryProviderType type
+	DynatraceTelemetryProviderType = "DYNATRACE"
+	// S3TelemetryProviderType type
+	S3TelemetryProviderType = "S3"
+	// OTLPTelemetryProviderType type
+	OTLPTelemetryProviderType = "OTLP"
 )
 
 // LokiAuthTypes for loki
@@ -470,6 +550,55 @@ const (
 	BasicLokiAuthType = "BasicAuth"
 	// NoAuthLokiAuthType type
 	NoLokiAuthType = "NoAuth"
+)
+
+// Telemetry provider auth types, shared by OTLP and Loki. These are the
+// serialized names of AuthCredentials.AuthType, not display strings.
+const (
+	// NoAuthTelemetryAuthType type
+	NoAuthTelemetryAuthType = "NoAuth"
+	// BasicAuthTelemetryAuthType type
+	BasicAuthTelemetryAuthType = "BasicAuth"
+	// BearerTokenTelemetryAuthType type
+	BearerTokenTelemetryAuthType = "BearerToken"
+)
+
+// OTLP exporter protocols. The value selects the collector exporter type
+// (gRPC -> otlp, HTTP -> otlphttp), so it is not a free-form string.
+const (
+	// GRPCOTLPProtocol type
+	GRPCOTLPProtocol = "gRPC"
+	// HTTPOTLPProtocol type
+	HTTPOTLPProtocol = "HTTP"
+)
+
+// Compression types accepted by the OTLP exporter. Substituted directly into
+// the collector config, so the lowercase spelling is significant.
+const (
+	// GzipCompressionType type
+	GzipCompressionType = "gzip"
+	// NoneCompressionType type
+	NoneCompressionType = "none"
+	// SnappyCompressionType type
+	SnappyCompressionType = "snappy"
+	// ZstdCompressionType type
+	ZstdCompressionType = "zstd"
+)
+
+// Marshalers accepted by the S3 exporter. SUMO_IC is logs-only.
+const (
+	// OTLPJSONMarshaler type
+	OTLPJSONMarshaler = "OTLP_JSON"
+	// SumoICMarshaler type
+	SumoICMarshaler = "SUMO_IC"
+)
+
+// S3 partition granularities.
+const (
+	// HourS3Partition type
+	HourS3Partition = "hour"
+	// MinuteS3Partition type
+	MinuteS3Partition = "minute"
 )
 
 // Different kms types
@@ -484,6 +613,8 @@ const (
 	HashicorpVaultEARType = "HASHICORP"
 	// CipherTrustEARType type
 	CipherTrustEARType = "CIPHERTRUST"
+	// OCIEARType type
+	OCIEARType = "OCI"
 )
 
 // Different storage configuration types
@@ -496,6 +627,8 @@ const (
 	GCSStorageConfigType = "GCS"
 	// NFSStorageConfigType type
 	NFSStorageConfigType = "NFS"
+	// OCIStorageConfigType type
+	OCIStorageConfigType = "OCI"
 )
 
 // ClusterTypes for universe

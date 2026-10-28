@@ -919,7 +919,8 @@ TEST_F(MetricsTest, MetricsAggregatorCreateCleanupRace) {
   auto creator_fn = [&]() {
     while (!stop.load(std::memory_order_relaxed)) {
       int id = metric_id.fetch_add(1, std::memory_order_relaxed);
-      std::string name = Format("race_metric_$0", id);
+      // Reused names go through the shared lock lookup, unless cleanup has just erased them.
+      std::string name = Format("race_metric_$0", id % 2 ? id % 8 : id);
 
       MetricEntity::AttributeMap attrs;
       attrs["table_id"] = "table_1";

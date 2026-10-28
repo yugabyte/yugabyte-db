@@ -1082,7 +1082,7 @@ YbGetExecNodeSpanName(PlanState *node)
 		case T_YbSkippableEntities:
 		case T_YbUpdateAffectedEntities:
 		case T_YbMergeScanInfo:
-		case T_YbMergeScanSaopColInfo:
+		case T_YbMergeScanStreamColInfo:
 		case T_YbSortInfo:
 		/*
 		 * YB_TODO_PG19MERGE: PG19 adds/renames many node tags.

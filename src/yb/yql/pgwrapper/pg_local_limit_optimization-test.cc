@@ -31,6 +31,7 @@ DECLARE_string(vmodule);
 DECLARE_string(ysql_log_statement);
 DECLARE_int32(ysql_log_min_duration_statement);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(ysql_colocate_database_by_default);
 
 namespace yb::pgwrapper {
@@ -96,6 +97,11 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // of tablets that we use.
     // The tests depend on the exact tablet distribution.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    // A leader move leaves the tablet without a leader for tens of ms.
+    // The read RPC then reaches the tablet after the concurrent insert,
+    // so the insert falls into the ambiguity window and a read restart
+    // error is legitimately raised.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     // Disable colocation so that dummy tables do not interfere with
     // the 'keys' table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_colocate_database_by_default) = false;
@@ -186,7 +192,12 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // Wait for read query to pick read time.
     // Telegraphed by Read time: in the log.
     // Requires vmodule=read_query=1
-    StringWaiterLogSink wait_for_read_time("Read time: ");
+    // When the read time is picked on the first tablet, wait for the read to
+    // reach the second tablet (read time passed in with in_txn_limit set).
+    // Otherwise, the insert may commit there before the local limit is picked.
+    RegexWaiterLogSink wait_for_read_time(
+        !is_single_tablet_ && scan_cmd_ == ScanCmd::kOrdered
+            ? R"#(.*Read time: .*in_txn_limit: \{.*)#" : ".*Read time: .*");
     CountDownLatch read_thread_started(1);
     auto table_scan = std::async(std::launch::async, [&]() {
       // Signal insert to proceed

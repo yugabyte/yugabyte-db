@@ -15,13 +15,14 @@ export const InstanceSettingsValidationSchema = (
   t: TFunction,
   useK8CustomResources: boolean,
   provider: CloudType | undefined,
-  useDedicatedNodes: boolean
+  useDedicatedNodes: boolean,
+  maxVolumeCount = 32
 ) => {
   const isK8s = provider === 'kubernetes';
   const requireTserverK8Spec = isK8s && useK8CustomResources;
   const volumeInfoSchema = requireTserverK8Spec
-    ? K8VolumeInfoValidationSchema(t)
-    : DeviceInfoValidationSchema(t);
+    ? K8VolumeInfoValidationSchema(t, maxVolumeCount)
+    : DeviceInfoValidationSchema(t, maxVolumeCount);
   const masterHardwareShown = !!useDedicatedNodes || (isK8s && useK8CustomResources);
   const requiresSeparateMasterHardware = (keepSame: unknown) => {
     const same = Array.isArray(keepSame) ? keepSame[0] : keepSame;
@@ -167,12 +168,10 @@ const requiredPositiveNumber = (t: TFunction, field: string, min = 1, max?: numb
       return n <= max;
     });
 
-const MAX_NUM_VOLUMES = 32;
-
-export const DeviceInfoValidationSchema = (t: TFunction) => {
+export const DeviceInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, MAX_NUM_VOLUMES),
+    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, maxVolumeCount),
 
     diskIops: Yup.mixed()
       .nullable()
@@ -280,10 +279,10 @@ export const DeviceInfoValidationSchema = (t: TFunction) => {
   });
 };
 
-export const K8VolumeInfoValidationSchema = (t: TFunction) => {
+export const K8VolumeInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
-    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, MAX_NUM_VOLUMES),
+    numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, maxVolumeCount),
     storageClass: Yup.string()
       .nullable()
       .test(

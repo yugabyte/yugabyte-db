@@ -305,6 +305,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/node_agents'
     },
+    UPGRADE_NODE_AGENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/upgrade/node-agent'
+    },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
     CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
@@ -543,7 +547,7 @@ export const ApiPermissionMap = {
     },
     RETRY_TASKS: {
         requestType: ApiRequestType.POST,
-        endpoint: '/tasks/$tUUID<[^/]+>/retry'
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/tasks/$tUUID<[^/]+>/retry'
     },
     ROLLBACK_TASKS: {
         requestType: ApiRequestType.POST,
@@ -735,6 +739,26 @@ export const ApiPermissionMap = {
     DOWNLOAD_SUPPORT_BUNDLE: {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/support_bundle/$sbUUID<[^/]+>/download'
+    },
+    CREATE_SUPPORT_BUNDLE_V2: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/support-bundles'
+    },
+    PAGE_LIST_SUPPORT_BUNDLES_V2: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/support-bundles/page'
+    },
+    ESTIMATE_SUPPORT_BUNDLE_V2: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/support-bundles/estimate-size'
+    },
+    DELETE_SUPPORT_BUNDLE_V2: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/universes/$uniUUID<[^/]+>/support-bundles/$sbUUID<[^/]+>'
+    },
+    DOWNLOAD_SUPPORT_BUNDLE_V2: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/universes/$uniUUID<[^/]+>/support-bundles/$sbUUID<[^/]+>/download'
     },
 
     GET_UNIVERSE_TABLES: {
@@ -1224,3 +1248,19 @@ export const ApiPermissionMap = {
         endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/clusters/$clsUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;
+
+/**
+ * Returns the ApiPermissionMap entries for support-bundle operations,
+ * selecting v1 or v2 endpoints based on the UI runtime config flag.
+ */
+export const getSupportBundlePermissions = (useV2Api: boolean) => ({
+  create: useV2Api ? ApiPermissionMap.CREATE_SUPPORT_BUNDLE_V2 : ApiPermissionMap.CREATE_SUPPORT_BUNDLE,
+  delete: useV2Api ? ApiPermissionMap.DELETE_SUPPORT_BUNDLE_V2 : ApiPermissionMap.DELETE_SUPPORT_BUNDLE,
+  download: useV2Api
+    ? ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE_V2
+    : ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE,
+  list: useV2Api ? ApiPermissionMap.PAGE_LIST_SUPPORT_BUNDLES_V2 : ApiPermissionMap.GET_SUPPORT_BUNDLE,
+  estimate: useV2Api
+    ? ApiPermissionMap.ESTIMATE_SUPPORT_BUNDLE_V2
+    : ApiPermissionMap.CREATE_SUPPORT_BUNDLE
+});

@@ -22,6 +22,8 @@
 
 namespace yb {
 
+class XClusterGuardedInfoPB;
+
 template<class State>
 class CowWriteLock;
 
@@ -55,6 +57,9 @@ class XClusterConfig {
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const
       EXCLUDES(mutex_);
+
+  // Copies xcluster_info_per_namespace into info.
+  Status FillXClusterInfoPerNamespace(XClusterGuardedInfoPB& info) const EXCLUDES(mutex_);
 
   Status SetXClusterRole(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,

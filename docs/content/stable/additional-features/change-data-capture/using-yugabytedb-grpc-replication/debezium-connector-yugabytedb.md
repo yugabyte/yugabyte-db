@@ -40,17 +40,19 @@ dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 
 Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
 
+Starting with `dz.1.9.5.yb.grpc.2026.1.2.0.1`, the YugabyteDB part is the full four-part release and the trailing number is the connector patch for that database version. For example, `dz.1.9.5.yb.grpc.2026.1.2.0.2` is connector patch 2 for YugabyteDB v2026.1.2.0.
+
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 
 Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
-In addition, the connector supports Kafka Connect v2.x and later.
+{{<tags/feature/ea idea="2809">}}Starting with connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2), the gRPC connector supports Kafka Connect 3.9 and Kafka Connect 4.x (4.0 and later). Earlier connector releases cannot run on a Kafka Connect 4.x worker because they bundled Kafka's own classes. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
 
-{{< warning title="YugabyteDB v2026.1.1.0 and later" >}}
+{{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
-Starting with YugabyteDB v2026.1.1.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
+Starting with YugabyteDB v2026.1.2.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
 
-If your universe is on YugabyteDB v2026.1.1.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.1) or later.
+If your universe is on YugabyteDB v2026.1.2.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.2](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2) or later.
 
 {{< /warning >}}
 
@@ -953,7 +955,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
 * You have a change data stream created on the database you want to monitor the changes for. You can create the stream in the following ways:
-  * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.1.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
+  * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.2.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
   * Using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command. You then pass the generated stream ID to the connector using the `database.streamid` property.
 * The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
@@ -1022,7 +1024,7 @@ See [Transformers](#transformers).
 
 ### Using a replication slot and publication
 
-{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.1.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
+{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.2.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
 
 ```sql
 SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
@@ -1030,7 +1032,7 @@ SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
 
 Streams created this way appear in `pg_replication_slots` with `yb_grpc` as the plugin, and derive the before image behavior of each table from its [replica identity](../../using-logical-replication/key-concepts/#replica-identity), analogous to logical replication streams. (Streams created using yb-admin continue to rely on the `record_type` stream option.)
 
-You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.1` or later.
+You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.2` or later.
 
 Consume the stream in one of the following ways:
 
@@ -1122,9 +1124,9 @@ The following properties are _required_ unless a default value is available:
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. Do not also set the `slot.name` property. |
-| slot.name | debezium | Name of the replication slot of a gRPC stream created using the PostgreSQL replication slot syntax. Use in place of `database.streamid`; the two are mutually exclusive. If the slot does not exist, the connector creates it using `plugin.name`. See [Using a replication slot and publication](#using-a-replication-slot-and-publication). Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
-| publication.name | dbz_publication | Name of the publication from which the connector derives the set of tables to capture when `slot.name` is used. The publication must exist before the connector starts. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
-| plugin.name | yboutput | Name of the logical decoding plugin of the replication slot. Set to `yb_grpc` when using `slot.name` so that a slot created by the connector is a gRPC stream. Connector version `dz.1.9.5.yb.grpc.2026.1.1` and later with YugabyteDB v2026.1.1.0 and later. |
+| slot.name | debezium | Name of the replication slot of a gRPC stream created using the PostgreSQL replication slot syntax. Use in place of `database.streamid`; the two are mutually exclusive. If the slot does not exist, the connector creates it using `plugin.name`. See [Using a replication slot and publication](#using-a-replication-slot-and-publication). Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
+| publication.name | dbz_publication | Name of the publication from which the connector derives the set of tables to capture when `slot.name` is used. The publication must exist before the connector starts. Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
+| plugin.name | yboutput | Name of the logical decoding plugin of the replication slot. Set to `yb_grpc` when using `slot.name` so that a slot created by the connector is a gRPC stream. Connector version `dz.1.9.5.yb.grpc.2026.1.2` and later with YugabyteDB v2026.1.2.0 and later. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. Ignored when `slot.name` and `publication.name` are used; in that case the list of tables is derived from the publication. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |
@@ -1185,7 +1187,23 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID or publication. If a new table has been found in the stream ID and if it has been included in the `table.include.list` (or, when using `publication.name`, added to the publication), the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID or publication. |
+| heartbeat.interval.ms | 0 | Requires connector version `dz.1.9.5.yb.grpc.2026.1.2` or later. Earlier versions accept this property but don't send heartbeats.<br/><br/>How often, in milliseconds, the connector sends a heartbeat record for each tablet to the heartbeat topic (see `heartbeat.topics.prefix`). When Kafka Connect commits a heartbeat record, the connector advances that tablet's checkpoint on the server, even if the connector emits no change events for the tablet (for example, because a single message transformation (SMT) filters out all of its records). This allows YugabyteDB to clear WAL that is no longer needed. The connector sends heartbeats during both the snapshot and streaming phases. The default value of `0` disables heartbeats.<br/><br/>If you filter records using an SMT, enable heartbeats and make sure that the SMT doesn't drop the heartbeat records. If you use `BinaryDataConverter` as the value converter, also configure a delegate converter as described in the note following this table. |
+| heartbeat.topics.prefix | `__debezium-heartbeat` | Controls the name of the topic to which the connector sends heartbeat records. The topic name has the pattern `<heartbeat.topics.prefix>.<database.server.name>`. For example, if `database.server.name` is `dbserver1`, the default topic name is `__debezium-heartbeat.dbserver1`.<br/><br/>If automatic topic creation is disabled on your Kafka cluster, create the heartbeat topic before you enable heartbeats. |
 | transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
+
+{{< note title="Heartbeats with BinaryDataConverter" >}}
+
+Heartbeat records have a structured (`Struct`) key and value. If you use `io.debezium.converters.BinaryDataConverter` as the value converter, for example to write pre-serialized payloads to Kafka unchanged, configure a delegate converter for records whose value isn't binary. Otherwise, the connector task fails when it sends the first heartbeat record, with an error that includes `requires a delegate.converter.type to be configured`. For example:
+
+```properties
+value.converter=io.debezium.converters.BinaryDataConverter
+value.converter.delegate.converter.type=org.apache.kafka.connect.json.JsonConverter
+value.converter.delegate.converter.type.schemas.enable=false
+```
+
+Records whose value is already binary are still written unchanged; the delegate converter serializes only records whose value isn't binary, such as heartbeat and transaction metadata records. If `key.converter` is also `BinaryDataConverter`, configure `key.converter.delegate.converter.type` in the same way. For more information, refer to [Using Avro as the payload format](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html#avro-as-payload-format) in the Debezium documentation.
+
+{{< /note >}}
 
 ### Transformers
 

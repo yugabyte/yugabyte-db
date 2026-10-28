@@ -24,6 +24,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/format.h"
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -73,7 +74,7 @@ Status add_double_subkey(std::string_view subkey, RedisKeyValueMsg *kv_pb) {
 Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
   auto result = CheckedStoll(slice);
   if (!result.ok()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "$0 field $1 is not a valid number", field, slice.ToDebugString());
   }
   return *result;
@@ -86,7 +87,7 @@ Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
   }
   if (*val < std::numeric_limits<int32_t>::min() ||
       *val > std::numeric_limits<int32_t>::max()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "$0 field $1 is not within valid bounds", field, slice.ToDebugString());
   }
   return static_cast<int32_t>(*val);
@@ -96,7 +97,7 @@ Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
 
 Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args[1].empty()) {
-    return STATUS_SUBSTITUTE(InvalidCommand,
+    return STATUS_FORMAT(InvalidCommand,
         "A SET request must have a non empty key field");
   }
   op->mutable_request()->mutable_set_request(); // Allocates new RedisSetRequestPB().
@@ -114,7 +115,7 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
     if (upper_arg == "EX" || upper_arg == "PX") {
       if (args.size() < idx + 2) {
-        return STATUS_SUBSTITUTE(InvalidCommand,
+        return STATUS_FORMAT(InvalidCommand,
             "Expected TTL field after the EX flag, no value found");
       }
       auto ttl_val = ParseInt64(args[idx + 1], "TTL");
@@ -143,7 +144,7 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 Status ParseSetNX(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args[1].empty()) {
-    return STATUS_SUBSTITUTE(InvalidCommand,
+    return STATUS_FORMAT(InvalidCommand,
         "A SETNX request must have a non empty key field");
   }
 
@@ -165,7 +166,7 @@ Status ParseSetNX(YBRedisWriteOp *op, const RedisClientCommand& args) {
 // TODO: support MSET
 Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args.size() < 3 || args.size() % 2 == 0) {
-    return STATUS_SUBSTITUTE(InvalidCommand,
+    return STATUS_FORMAT(InvalidCommand,
         "An MSET request must have at least 3, odd number of arguments, found $0", args.size());
   }
   return STATUS(InvalidCommand, "MSET command not yet supported");
@@ -210,14 +211,14 @@ Status ParseZAddOptions(
       options->set_incr(true);
     } else if (boost::iequals(args[*idx].ToBuffer(), kNX)) {
       if (options->update_options() == SortedSetOptionsPB_UpdateOptions_XX) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-                                 "XX and NX options at the same time are not compatible");
+        return STATUS_FORMAT(InvalidArgument,
+                             "XX and NX options at the same time are not compatible");
       }
       options->set_update_options(SortedSetOptionsPB_UpdateOptions_NX);
     } else if (boost::iequals(args[*idx].ToBuffer(), kXX)) {
       if (options->update_options() == SortedSetOptionsPB_UpdateOptions_NX) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-                                 "XX and NX options at the same time are not compatible");
+        return STATUS_FORMAT(InvalidArgument,
+                             "XX and NX options at the same time are not compatible");
       }
       options->set_update_options(SortedSetOptionsPB_UpdateOptions_XX);
     } else {
@@ -234,9 +235,9 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
                               const RedisDataType& type,
                               AddSubKey add_sub_key) {
   if (args.size() < 4 || (args.size() % 2 == 1 && type == REDIS_TYPE_HASH)) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-                             "wrong number of arguments: $0 for command: $1", args.size(),
-                             string(args[0].cdata(), args[0].size()));
+    return STATUS_FORMAT(InvalidArgument,
+                         "wrong number of arguments: $0 for command: $1", args.size(),
+                         string(args[0].cdata(), args[0].size()));
   }
 
   op->mutable_request()->mutable_set_request(); // Allocates new RedisSetRequestPB().
@@ -255,19 +256,19 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
 
     // If the INCR flag is set, can only have one [score member] pair.
     if (op->request().set_request().sorted_set_options().incr() && (args.size() - start_idx) != 2) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "wrong number of tokens after INCR flag specified: Need 2 but found "
-                                   "$0 for command: $1", args.size() - start_idx,
-                               string(args[0].cdata(), args[0].size()));
+      return STATUS_FORMAT(InvalidArgument,
+                           "wrong number of tokens after INCR flag specified: Need 2 but found "
+                               "$0 for command: $1", args.size() - start_idx,
+                           string(args[0].cdata(), args[0].size()));
     }
   }
 
   // Need [score member] to come in pairs.
   if ((args.size() - start_idx) % 2 == 1 || args.size() - start_idx == 0) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-                             "Expect even and non-zero number of arguments "
-                             "for command: $0, found $1",
-                             string(args[0].cdata(), args[0].size()), args.size() - start_idx);
+    return STATUS_FORMAT(InvalidArgument,
+                         "Expect even and non-zero number of arguments "
+                         "for command: $0, found $1",
+                         string(args[0].cdata(), args[0].size()), args.size() - start_idx);
   }
 
   std::unordered_map<string, string> kv_map;
@@ -278,8 +279,8 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
       ToUpperCase(args[i].ToBuffer(), &upper_arg);
       if (upper_arg == kExpireAt || upper_arg == kExpireIn) {
         if (i + 2 != args.size()) {
-          return STATUS_SUBSTITUTE(InvalidCommand, "$0 should be at the end of the command",
-                                   string(args[i].cdata(), args[i].size()));
+          return STATUS_FORMAT(InvalidCommand, "$0 should be at the end of the command",
+                               string(args[i].cdata(), args[i].size()));
         }
         auto temp = CheckedStoll(args[i + 1]);
         RETURN_NOT_OK(temp);
@@ -287,17 +288,17 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
         if (upper_arg == kExpireIn) {
           ttl = *temp;
           if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSetExSeconds) {
-            return STATUS_SUBSTITUTE(InvalidCommand, "TTL: $0 needs be in the range [$1, $2]", ttl,
-                                     kRedisMinTtlSetExSeconds, kRedisMaxTtlSeconds);
+            return STATUS_FORMAT(InvalidCommand, "TTL: $0 needs be in the range [$1, $2]", ttl,
+                                 kRedisMinTtlSetExSeconds, kRedisMaxTtlSeconds);
           }
         } else {
           auto current_time = GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
           ttl = *temp - current_time;
           if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSetExSeconds) {
-            return STATUS_SUBSTITUTE(InvalidCommand, "EXPIRE_AT: $0 needs be in the range [$1, $2]",
-                                     *temp,
-                                     kRedisMinTtlSetExSeconds + current_time,
-                                     kRedisMaxTtlSeconds + current_time);
+            return STATUS_FORMAT(InvalidCommand, "EXPIRE_AT: $0 needs be in the range [$1, $2]",
+                                 *temp,
+                                 kRedisMinTtlSetExSeconds + current_time,
+                                 kRedisMaxTtlSeconds + current_time);
           }
         }
 
@@ -475,7 +476,7 @@ Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
   // TODO: Should we have an upper bound?
   // A very large offset would allocate a lot of memory and maybe crash
   if (*offset < 0) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "offset field of SETRANGE must be non-negative, found: $0", *offset);
   }
   op->mutable_request()->mutable_set_range_request()->set_offset(*offset);
@@ -504,7 +505,7 @@ Status ParseIncrBy(YBRedisWriteOp* op, const RedisClientCommand& args) {
 Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   if (key.empty()) {
-    return STATUS_SUBSTITUTE(InvalidCommand,
+    return STATUS_FORMAT(InvalidCommand,
         "A GET request must have non empty key field");
   }
   op->mutable_request()->mutable_key_value()->dup_key(key);
@@ -557,7 +558,7 @@ Status ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundMsg* bound_pb,
         break;
       }
       default:
-        return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type: $0", request_type);
+        return STATUS_FORMAT(InvalidArgument, "Invalid request type: $0", request_type);
     }
 
   }
@@ -611,7 +612,7 @@ Status ParseTsLastN(YBRedisReadOp* op, const RedisClientCommand& args) {
   auto limit = ParseInt32(args[2], "limit");
   RETURN_NOT_OK(limit);
   if ((*limit) <= 0) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_FORMAT(InvalidArgument,
         "$0 field $1 is not within valid bounds", "limit", args[2].ToDebugString());
   }
   op->mutable_request()->mutable_key_value()->dup_key(key);
@@ -659,21 +660,21 @@ Status ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) 
 
   if (args.size() > 4) {
     if (args.size() != 6) {
-      return STATUS_SUBSTITUTE(InvalidCommand,
-                               "Invalid number of arguments. Command should have 4 or 6 arguments");
+      return STATUS_FORMAT(InvalidCommand,
+                           "Invalid number of arguments. Command should have 4 or 6 arguments");
     }
     string upper_arg;
     ToUpperCase(args[4].ToBuffer(), &upper_arg);
     if (upper_arg != "LIMIT") {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "Invalid argument $0. Expecting $1", args[4].ToBuffer(), "limit");
+      return STATUS_FORMAT(InvalidArgument,
+                           "Invalid argument $0. Expecting $1", args[4].ToBuffer(), "limit");
     }
     auto limit = ParseInt32(args[5], "limit");
     RETURN_NOT_OK(limit);
     if ((*limit) <= 0) {
-      return STATUS_SUBSTITUTE(InvalidArgument,
-                               "$0 field $1 is not within valid bounds", "limit",
-                               args[5].ToDebugString());
+      return STATUS_FORMAT(InvalidArgument,
+                           "$0 field $1 is not within valid bounds", "limit",
+                           args[5].ToDebugString());
     }
     op->mutable_request()->set_range_request_limit(*limit);
   }
@@ -683,7 +684,7 @@ Status ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) 
 
 Status ParseWithScores(const Slice& slice, RedisCollectionGetRangeRequestMsg* request) {
   if(!boost::iequals(slice.ToBuffer(), kWithScores)) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "unexpected argument $0", slice.ToBuffer());
+    return STATUS_FORMAT(InvalidArgument, "unexpected argument $0", slice.ToBuffer());
   }
   request->set_with_scores(true);
   return Status::OK();
@@ -696,7 +697,7 @@ Status ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientCommand& arg
     ToUpperCase(args[i].ToBuffer(), &upper_arg);
     if (upper_arg == "LIMIT") {
       if (i >= args_size - 2) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "Not enough args passed into LIMIT clause, "
+        return STATUS_FORMAT(InvalidArgument, "Not enough args passed into LIMIT clause, "
             "expected 2 but found $0", args_size - (i + 1));
       }
       auto offset = VERIFY_RESULT(ParseInt64(args[++i], "offset"));
@@ -706,7 +707,7 @@ Status ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientCommand& arg
     } else if (upper_arg == "WITHSCORES") {
       op->mutable_request()->mutable_get_collection_range_request()->set_with_scores(true);
     } else {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument $0", args[i].ToBuffer());
+      return STATUS_FORMAT(InvalidArgument, "Invalid argument $0", args[i].ToBuffer());
     }
   }
   return Status::OK();

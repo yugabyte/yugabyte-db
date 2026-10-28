@@ -428,6 +428,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		uint64		yb_restart_commit_ht;
 		const char *yb_lsn_type;
 		bool		yb_stream_expired;
+		uint64		yb_active_pid = 0;
 
 		if (IsYugaByteEnabled())
 		{
@@ -455,8 +456,14 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
 			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			slot_contents.data.xmin = slot->xmin;
-			/* YB_TODO_PG19MERGE: does YbcReplicationSlotDescriptor.active_pid need to be changed */
-			slot_contents.active_proc = slot->active_pid;
+			/*
+			 * active_pid is the OS pid of the backend consuming this slot,
+			 * possibly on another node with no PGPROC here, so it can't go
+			 * in active_proc.  The memset left active_proc at 0, a valid
+			 * ProcNumber; mark it invalid.
+			 */
+			yb_active_pid = slot->active_pid;
+			slot_contents.active_proc = INVALID_PROC_NUMBER;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
 			 * It is not used in our implementation.
@@ -508,10 +515,20 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		else
 			values[i++] = BoolGetDatum(slot_contents.active_proc != INVALID_PROC_NUMBER);
 
-		if (slot_contents.active_proc != INVALID_PROC_NUMBER)
-			values[i++] = Int32GetDatum(GetPGProcByNumber(slot_contents.active_proc)->pid);
+		if (IsYugaByteEnabled())
+		{
+			if (yb_active_pid != 0)
+				values[i++] = Int32GetDatum((int32) yb_active_pid);
+			else
+				nulls[i++] = true;
+		}
 		else
-			nulls[i++] = true;
+		{
+			if (slot_contents.active_proc != INVALID_PROC_NUMBER)
+				values[i++] = Int32GetDatum(GetPGProcByNumber(slot_contents.active_proc)->pid);
+			else
+				nulls[i++] = true;
+		}
 
 		if (slot_contents.data.xmin != InvalidTransactionId)
 			values[i++] = TransactionIdGetDatum(slot_contents.data.xmin);

@@ -7,14 +7,14 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+use crate::CommandExecute;
 use crate::command::stop::stop_postgres;
 use crate::command::version::pgrx_default;
-use crate::CommandExecute;
 use bzip2::bufread::BzDecoder;
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
 use pgrx_pg_config::{
-    get_c_locale_flags, ConfigToml, PgConfig, PgConfigSelector, Pgrx, PgrxHomeError,
+    ConfigToml, PgConfig, PgConfigSelector, Pgrx, PgrxHomeError, get_c_locale_flags,
 };
 use tar::Archive;
 
@@ -61,6 +61,9 @@ pub(crate) struct Init {
     /// If installed locally, the path to PG17's `pgconfig` tool, or `download` to have pgrx download/compile/install it
     #[clap(env = "PG17_PG_CONFIG", long)]
     pg17: Option<String>,
+    /// If installed locally, the path to PG18's `pgconfig` tool, or `download` to have pgrx download/compile/install it
+    #[clap(env = "PG18_PG_CONFIG", long)]
+    pg18: Option<String>,
     #[clap(from_global, action = ArgAction::Count)]
     verbose: u8,
     #[clap(long, help = "Base port number")]
@@ -85,20 +88,23 @@ pub(crate) struct Init {
     jobserver: OnceLock<jobslot::Client>,
 }
 
+impl Init {
+    /// Resolve the make job count: explicit `--jobs`, else the host's
+    /// available parallelism, else 1. Used to size the jobserver and to
+    /// pass `-jN` to `make` (without `-jN`, GNU make ignores the jobserver
+    /// auth in MAKEFLAGS and stays serial).
+    fn resolved_jobs(&self) -> usize {
+        self.jobs
+            .or_else(|| std::thread::available_parallelism().map(NonZeroUsize::get).ok())
+            .unwrap_or(1)
+    }
+}
+
 impl CommandExecute for Init {
     #[tracing::instrument(level = "error", skip(self))]
     fn execute(self) -> eyre::Result<()> {
         self.jobserver
-            .set(
-                jobslot::Client::new(
-                    self.jobs
-                        .or_else(|| {
-                            std::thread::available_parallelism().map(NonZeroUsize::get).ok()
-                        })
-                        .unwrap_or(1),
-                )
-                .expect("failed to create jobserver"),
-            )
+            .set(jobslot::Client::new(self.resolved_jobs()).expect("failed to create jobserver"))
             .unwrap();
 
         let mut versions = HashMap::new();
@@ -117,6 +123,9 @@ impl CommandExecute for Init {
         }
         if let Some(ref version) = self.pg17 {
             versions.insert("pg17", version.clone());
+        }
+        if let Some(ref version) = self.pg18 {
+            versions.insert("pg18", version.clone());
         }
 
         if versions.is_empty() {
@@ -296,7 +305,7 @@ fn untar(bytes: &[u8], pgrxdir: &Path, pg_config: &PgConfig, init: &Init) -> eyr
     {
         // it's a zip download from EDB
         use std::io::Cursor;
-        zip_extract::extract(Cursor::new(bytes), &unpackdir, false)?;
+        zip::ZipArchive::new(Cursor::new(bytes))?.extract(&unpackdir)?;
     } else {
         let mut tar_decoder = Archive::new(BzDecoder::new(bytes));
         tar_decoder.unpack(&unpackdir)?;
@@ -491,6 +500,8 @@ fn make_postgres(pg_config: &PgConfig, pgdir: &Path, init: &Init) -> eyre::Resul
     let mut command = std::process::Command::new("make");
 
     command
+        .arg("-j")
+        .arg(init.resolved_jobs().to_string())
         .arg("world-bin")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -535,6 +546,8 @@ fn make_install_postgres(version: &PgConfig, pgdir: &Path, init: &Init) -> eyre:
     let mut command = std::process::Command::new("make");
 
     command
+        .arg("-j")
+        .arg(init.resolved_jobs().to_string())
         .arg("install-world-bin")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

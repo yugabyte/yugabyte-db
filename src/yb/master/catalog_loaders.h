@@ -99,6 +99,8 @@ DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,
 
 #undef DECLARE_LOADER_CLASS
 
+DECLARE_SINGLETON_LOADER_CLASS(HistoryRetentionPin, std::string, SysHistoryRetentionPinEntryPB);
+
 bool ShouldLoadObject(const SysNamespaceEntryPB& metadata);
 bool ShouldLoadObject(const SysTablesEntryPB& pb);
 bool ShouldLoadObject(const SysTabletsEntryPB& pb);

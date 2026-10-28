@@ -24,17 +24,6 @@ export const getFailedTaskDetails = (taskUUID: string) => {
 };
 
 /**
- * Retry the failed tasks.
- * @param taskUUID The UUID of the task.
- * @returns The response of the retry task API.
- */
-
-export const retryTasks = (taskUUID: string) => {
-  const cUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}`);
-};
-
-/**
  * Abort the task.
  * @param taskUUID The UUID of the task.
  * @returns The response of the abort task API.

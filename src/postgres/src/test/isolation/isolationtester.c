@@ -16,6 +16,9 @@
 #include "pg_getopt.h"
 #include "pqexpbuffer.h"
 
+/* YB includes */
+#include <stdio.h>
+
 #define PREP_WAITING "isolationtester_waiting"
 
 /*
@@ -81,6 +84,8 @@ static void blackholeNoticeProcessor(void *arg, const char *message);
 
 /* YB declarations */
 static bool yb_step_never_waits(PermutationStep *pstep);
+static bool yb_step_may_block(TestSpec *testspec, PermutationStep **steps,
+							  int i);
 
 /* This is YB specific logic. See usage for description */
 #define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
@@ -165,6 +170,23 @@ main(int argc, char **argv)
 	conns = pg_malloc0_array(IsoConnInfo, nconns);
 	atexit(disconnect_atexit);
 
+	/* YB: Get the list of host-ports from the comma separated env YBHOSTPORTLIST. */
+	char *host_port_list[256];
+	int num_hosts = 0;
+
+	char *yb_host_port_list = getenv("YBHOSTPORTLIST");
+	if (yb_host_port_list)
+	{
+		char *list_copy = strdup(yb_host_port_list);
+		char *token = strtok(list_copy, ",");
+		while (token && num_hosts < 256)
+		{
+			host_port_list[num_hosts++] = strdup(token);
+			token = strtok(NULL, ",");
+		}
+		free(list_copy);
+	}
+
 	for (i = 0; i < nconns; i++)
 	{
 		const char *sessionname;
@@ -175,6 +197,19 @@ main(int argc, char **argv)
 			sessionname = testspec->sessions[i - 1]->name;
 
 		conns[i].sessionname = sessionname;
+
+		/* YB: Split the host and port from host_port_list[i % num_hosts] */
+		if (num_hosts > 0)
+		{
+			char *host_port = host_port_list[i % num_hosts];
+			char *colon = strchr(host_port, ':');
+			char *host = strndup(host_port, colon - host_port);
+			char *port = strdup(colon + 1);
+			setenv("PGHOST", host, 1);
+			setenv("PGPORT", port, 1);
+			free(host);
+			free(port);
+		}
 
 		conns[i].conn = PQconnectdb(conninfo);
 		if (PQstatus(conns[i].conn) != CONNECTION_OK)
@@ -226,6 +261,10 @@ main(int argc, char **argv)
 		conns[i].backend_pid = PQbackendPID(conns[i].conn);
 		conns[i].backend_pid_str = psprintf("%d", conns[i].backend_pid);
 	}
+
+	/* YB: free host port list */
+	for (i = 0; i < num_hosts; i++)
+		free(host_port_list[i]);
 
 	/*
 	 * Build the query we'll use to detect lock contention among sessions in
@@ -706,11 +745,14 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 		/*
 		 * Try to complete this step without blocking.  YB: except for the last
 		 * step of the permutation when nothing else is in flight -- no later
-		 * step can unblock it, so just wait for it instead of letting the
-		 * assume-session-blocked timeout report a merely slow step as waiting.
+		 * step can unblock it -- and except when no other session can be
+		 * holding a conflicting lock.  Either way just wait for the step
+		 * instead of letting the assume-session-blocked timeout report a
+		 * merely slow step as waiting.
 		 */
 		mustwait = try_complete_step(testspec, pstep,
-									 (i == nsteps - 1 && nwaiting == 0) ?
+									 ((i == nsteps - 1 && nwaiting == 0) ||
+									  !yb_step_may_block(testspec, steps, i)) ?
 									 0 : STEP_NONBLOCK);
 
 		/* Check for completion of any steps that were previously waiting. */
@@ -1201,6 +1243,34 @@ step_has_blocker(PermutationStep *pstep)
 				break;
 		}
 	}
+	return false;
+}
+
+/*
+ * YB: Detect whether any session other than the one running steps[i] can
+ * already hold a lock conflicting with it, which is the precondition for the
+ * YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED heuristic to mean anything.
+ * Such a session must have taken those locks in its setup SQL or in an earlier
+ * step of this permutation.
+ */
+static bool
+yb_step_may_block(TestSpec *testspec, PermutationStep **steps, int i)
+{
+	int			session = steps[i]->step->session;
+	int			j;
+
+	for (j = 0; j < testspec->nsessions; j++)
+	{
+		if (j != session && testspec->sessions[j]->setupsql)
+			return true;
+	}
+
+	for (j = 0; j < i; j++)
+	{
+		if (steps[j]->step->session != session)
+			return true;
+	}
+
 	return false;
 }
 

@@ -52,6 +52,7 @@
 #endif
 
 /* YB includes */
+#include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -2943,7 +2944,12 @@ check_ident_usermap(IdentLine *identLine, const char *usermap_name,
 		return;
 
 	/* Get the target role's OID.  Note we do not error out for bad role. */
-	roleid = get_role_oid(pg_user, true);
+	/*
+	 * YB: YCQL reaches here via ybgate in multi-threaded mode, where catalog
+	 * lookups raise an error. The OID only serves "+group" membership checks,
+	 * which is_member() treats as no match when the OID is invalid.
+	 */
+	roleid = IsMultiThreadedMode() ? InvalidOid : get_role_oid(pg_user, true);
 
 	/* Match? */
 	if (token_has_regexp(identLine->system_user))
@@ -3285,8 +3291,8 @@ yb_set_hba_tserver_key(Port *port)
 
 	/*
 	 * Parsing and setting startup parameter happen after authentication.
-	 * Therefore, the startup parameter "yb_use_tserver_key_auth" is not yet
-	 * set, we need to parse the startup parameter list.
+	 * Therefore, the YSQL Connection Manager tserver-key authentication
+	 * startup parameter is not yet set, so parse the startup parameter list.
 	 */
 	gucopts = list_head(port->guc_options);
 	while (gucopts)
@@ -3300,7 +3306,7 @@ yb_set_hba_tserver_key(Port *port)
 		value = lfirst(gucopts);
 		gucopts = lnext(port->guc_options, gucopts);
 
-		if (strcasecmp(name, "yb_use_tserver_key_auth") == 0)
+		if (strcasecmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)
 		{
 			bool		result;
 

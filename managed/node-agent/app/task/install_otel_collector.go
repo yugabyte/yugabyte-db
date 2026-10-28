@@ -11,6 +11,7 @@ import (
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"path/filepath"
+	"strings"
 )
 
 const OtelCollectorService = "otel-collector.service"
@@ -96,6 +97,15 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	// Runs ahead of the stop in 4) and the config swap in 5) so a rejected config leaves the
+	// running collector and its existing config.yml untouched.
+	if h.param.GetOtelColConfigFile() != "" {
+		if err = h.validateOtelCollectorConfig(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+	}
+
 	// 3) Place the otel-collector.service at desired location.
 	otelColMaxMemory := h.param.GetOtelColMaxMemory()
 	if otelColMaxMemory == 0 {
@@ -160,8 +170,32 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		if err = module.EnableSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 			return nil, err
 		}
+		// start/enable both return 0 over a collector that died parsing its config.
+		if err = module.VerifySystemdServiceStarted(
+			ctx, h.username, OtelCollectorService, h.logOut,
+		); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
+}
+
+// Covers config unmarshalling and Validate() only - components are not constructed until the
+// service runs, so an exporter that fails to build still has to be caught after start.
+func (h *InstallOtelCollector) validateOtelCollectorConfig(
+	ctx context.Context,
+	ybHome string,
+) error {
+	cmd := fmt.Sprintf(
+		"%s validate --config=file:%s",
+		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
+		h.param.GetOtelColConfigFile(),
+	)
+	if _, err := module.RunShellCmd(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+		return fmt.Errorf("otel-collector config was rejected: %w", err)
+	}
+	return nil
 }
 
 // GetOtelCollectorSetupSteps returns the sequence of steps needed for configuring the otel collector.
@@ -307,7 +341,8 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	steps = append(steps, logCleanupEnvSteps(otelColLogCleanupEnv,
 		h.param.GetYcqlAuditLogLevel(),
 		h.param.GetYsqlAuditLogRetentionDays(),
-		h.param.GetYcqlAuditLogRetentionDays())...)
+		h.param.GetYcqlAuditLogRetentionDays(),
+		h.param.GetYsqlAuditLineStartRegex())...)
 
 	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
 		steps = append(steps, struct {
@@ -391,6 +426,7 @@ func (h *InstallOtelCollector) refreshLogPurgeScript(
 func logCleanupEnvSteps(
 	envPath, ycqlAuditLogLevel string,
 	ysqlAuditLogRetentionDays, ycqlAuditLogRetentionDays uint32,
+	ysqlAuditLineStartRegex string,
 ) []struct {
 	Desc string
 	Cmd  string
@@ -420,10 +456,28 @@ func logCleanupEnvSteps(
 			),
 		},
 		{
+			"write-otel-log-cleanup-line-start-regex",
+			// Single-quoted in the file so the sourcing shell treats the regex
+			// literally; the whole line is shell-quoted again so the writer shell
+			// emits it verbatim.
+			fmt.Sprintf(
+				"printf '%%s\\n' %s >> %s",
+				shellSingleQuote("ysql_audit_line_start_regex="+
+					shellSingleQuote(ysqlAuditLineStartRegex)),
+				envPath,
+			),
+		},
+		{
 			"set-permission-otel-log-cleanup-env",
 			fmt.Sprintf(`chmod 0440 %s`, envPath),
 		},
 	}
+}
+
+// shellSingleQuote wraps s in single quotes, escaping embedded single quotes,
+// so it survives one layer of shell word-splitting/expansion verbatim.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // writeLogCleanupEnv (re)generates <yb_home>/otel-collector/log_cleanup_env
@@ -447,6 +501,7 @@ func (h *InstallOtelCollector) writeLogCleanupEnv(ctx context.Context, ybHome st
 	steps = append(steps, logCleanupEnvSteps(envPath,
 		h.param.GetYcqlAuditLogLevel(),
 		h.param.GetYsqlAuditLogRetentionDays(),
-		h.param.GetYcqlAuditLogRetentionDays())...)
+		h.param.GetYcqlAuditLogRetentionDays(),
+		h.param.GetYsqlAuditLineStartRegex())...)
 	return module.RunShellSteps(ctx, h.username, steps, h.logOut)
 }

@@ -21,8 +21,10 @@ properties:
     type: integer
     format: int64
   frequency_time_unit:
-    description: The time unit for the interval between backups.
-    $ref: "./TimeUnitType.yaml"
+    description: |
+      The time unit for the interval between backups. Must be SECONDS or larger; NANOSECONDS, MICROSECONDS, and MILLISECONDS are rejected.
+    allOf:
+      - $ref: "./TimeUnitType.yaml"
   num_backups:
     description: The number of historical backups to retain in the storage bucket.
     type: integer

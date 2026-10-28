@@ -1,5 +1,6 @@
 package org.yb.minicluster;
 
+import com.google.common.io.ByteStreams;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -195,9 +196,11 @@ public class YugabytedCommands {
         ProcessBuilder procBuilder = new ProcessBuilder(command.split(" "));
         procBuilder.redirectErrorStream(true);
         Process proc = procBuilder.start();
+        String output = new String(ByteStreams.toByteArray(proc.getInputStream()));
         int exitCode = proc.waitFor();
         if (exitCode != 0) {
-            LOG.error("Enable PITR command failed with exit code: " + exitCode);
+            LOG.error("Enable PITR command failed with exit code: " + exitCode + ", output:\n" +
+                      output);
             return false;
         }
         return true;

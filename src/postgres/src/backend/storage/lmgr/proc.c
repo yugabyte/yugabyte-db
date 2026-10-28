@@ -85,7 +85,6 @@ static void *FastPathLockArrayShmemPtr;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 PGPROC	   *PreparedXactProcs = NULL;
 PGPROC	   *KilledProcToClean = NULL;
-int		   *yb_too_many_conn = NULL;
 
 static void ProcGlobalShmemRequest(void *arg);
 static void ProcGlobalShmemInit(void *arg);
@@ -107,6 +106,18 @@ static void ProcKill(int code, Datum arg);
 static void AuxiliaryProcKill(int code, Datum arg);
 static DeadLockState CheckDeadLock(void);
 
+/* YB declarations */
+static void YbSwitchToSharedProcState(void);
+static void YbSwitchBackToLocalProcState(void);
+
+/*
+ * YB: like MyLatch, YbMyProcState points at process-local storage until
+ * MyProc is set, and must be switched back as soon as MyProc is cleared.
+ */
+static YbProcState YbLocalProcState;
+
+YbProcState *YbMyProcState = &YbLocalProcState;
+
 /*
  * Calculate shared-memory space needed by Fast-Path locks.
  */
@@ -125,17 +136,6 @@ CalculateFastPathLockShmemSize(void)
 	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
 	size = add_size(size, mul_size(TotalProcs, (fpLockBitsSize + fpRelIdSize)));
-
-	/*
-	 * YB_TODO_PG19MERGE: yb_too_many_conn used to piggyback on the
-	 * old catch-all PGProcShmemSize() budget that PG commit
-	 * c6d55714ba4c282dcf5fb5fe5ef2a5cad0b06e81 split up.
-	 * Give yb_too_many_conn its own ShmemRequestStruct in
-	 * ProcGlobalShmemRequest (or move it to an existing struct)
-	 * and drop the ShmemAlloc. Original YB line that lived here:
-	 *
-	 * size = add_size(size, sizeof(int));
-	 */
 
 	Assert(TotalProcs > 0);
 	Assert(size > 0);
@@ -405,8 +405,7 @@ ProcGlobalShmemInit(void *arg)
 	AuxiliaryProcs = &procs[MaxBackends];
 	PreparedXactProcs = &procs[FIRST_PREPARED_XACT_PROC_NUMBER];
 
-	yb_too_many_conn = (int *) ShmemAlloc(sizeof(int));
-	(*yb_too_many_conn) = 0;
+	ProcGlobal->yb_too_many_conn = 0;
 }
 
 /*
@@ -475,7 +474,7 @@ InitProcess(void)
 		SpinLockRelease(&ProcGlobal->freeProcsLock);
 
 		/* YB: increment rejection counter */
-		(*yb_too_many_conn)++;
+		ProcGlobal->yb_too_many_conn++;
 
 		if (AmWalSenderProcess())
 			ereport(FATAL,
@@ -486,6 +485,7 @@ InitProcess(void)
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("sorry, too many clients already")));
 	}
+	YbSwitchToSharedProcState();
 	MyProcNumber = GetNumberFromPGProc(MyProc);
 
 	/*
@@ -493,15 +493,6 @@ InitProcess(void)
 	 * the case, it would get returned to the wrong list.
 	 */
 	Assert(MyProc->procgloballist == procgloballist);
-
-	/*
-	* YB: If the process is killed before this point, it does not have a pid
-	* set. The postmaster will not be able to identify the corresponding
-	* MyProc, so it will restart anyways.
-	*/
-	MyProc->ybInitializationCompleted = false;
-	MyProc->ybTerminationStarted = false;
-	MyProc->ybEnteredCriticalSection = false;
 
 	/*
 	 * Initialize all fields of MyProc, except for those previously
@@ -567,9 +558,6 @@ InitProcess(void)
 	MyProc->clogGroupMemberPage = -1;
 	MyProc->clogGroupMemberLsn = InvalidXLogRecPtr;
 	Assert(pg_atomic_read_u32(&MyProc->clogGroupNext) == INVALID_PROC_NUMBER);
-
-	MyProc->ybLWLockAcquired = false;
-	MyProc->ybSpinLocksAcquired = 0;
 
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
@@ -724,6 +712,7 @@ InitAuxiliaryProcess(void)
 	SpinLockRelease(&ProcGlobal->freeProcsLock);
 
 	MyProc = auxproc;
+	YbSwitchToSharedProcState();
 	MyProcNumber = GetNumberFromPGProc(MyProc);
 
 	/*
@@ -990,7 +979,7 @@ ProcKill(int code, Datum arg)
 
 	Assert(MyProc != NULL);
 
-	MyProc->ybTerminationStarted = true;
+	YbMyProcState->termination_started = true;
 
 	/* not safe if forked by system(), etc. */
 	if (MyProc->pid != (int) getpid())
@@ -1044,6 +1033,7 @@ ProcKill(int code, Datum arg)
 
 	proc = MyProc;
 	MyProc = NULL;
+	YbSwitchBackToLocalProcState();
 	MyProcNumber = INVALID_PROC_NUMBER;
 	DisownLatch(&proc->procLatch);
 
@@ -1153,6 +1143,7 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	proc = MyProc;
 	MyProc = NULL;
+	YbSwitchBackToLocalProcState();
 	MyProcNumber = INVALID_PROC_NUMBER;
 	DisownLatch(&proc->procLatch);
 
@@ -2187,48 +2178,38 @@ BecomeLockGroupMember(PGPROC *leader, int pid)
 	return ok;
 }
 
+static void
+YbSwitchToSharedProcState(void)
+{
+	Assert(MyProc != NULL);
+	Assert(YbMyProcState == &YbLocalProcState);
+
+	/* Standalone backends have no postmaster to read the state. */
+	if (!IsUnderPostmaster)
+		return;
+
+	/*
+	 * The PROC entry is left dirty by the previous backend that owned it.
+	 * Clear it before using it.
+	 */
+	MemSet(&MyProc->ybProcState, 0, sizeof(YbProcState));
+
+	YbMyProcState = &MyProc->ybProcState;
+}
+
+static void
+YbSwitchBackToLocalProcState(void)
+{
+	Assert(MyProc == NULL);
+
+	YbMyProcState = &YbLocalProcState;
+}
+
 /*
- * YB_TODO_PG19MERGE: non-inline helpers for the YB spinlock-held counter.
- *
- * These used to live inline in storage/spin.h, but PG19's PGPROC gained a
- * BackendType field whose type is in miscadmin.h, which combined with YB's
- * `#include "storage/proc.h"` in miscadmin.h ("for MyProc") created an
- * include cycle. Moved here so spin.h no longer has to pull in proc.h /
- * miscadmin.h.
+ * YbIsAuxiliaryProc -- is the given PGPROC an Auxiliary process?
  */
-void
-YbSpinLockTrackAcquire(void)
+bool
+YbIsAuxiliaryProc(PGPROC *proc)
 {
-	if (IsUnderPostmaster && MyProc)
-		MyProc->ybSpinLocksAcquired++;
-}
-
-void
-YbSpinLockTrackRelease(void)
-{
-	if (IsUnderPostmaster && MyProc && MyProc->ybSpinLocksAcquired >= 1)
-		MyProc->ybSpinLocksAcquired--;
-}
-
-/*
- * YB_TODO_PG19MERGE: companion helpers for the START_CRIT_SECTION /
- * END_CRIT_SECTION macros in miscadmin.h. Same motivation as
- * YbSpinLockTrack{Acquire,Release} above - the YB body that touches
- * MyProc->ybEnteredCriticalSection used to be inline in the macros, which
- * forced miscadmin.h to pull in proc.h and created an include cycle once
- * PG19's PGPROC gained a BackendType field. Moved off the macros so
- * miscadmin.h no longer needs proc.h.
- */
-void
-YbEnterCriticalSection(void)
-{
-	if (MyProc)
-		MyProc->ybEnteredCriticalSection = true;
-}
-
-void
-YbExitCriticalSection(void)
-{
-	if (MyProc)
-		MyProc->ybEnteredCriticalSection = false;
+	return proc >= AuxiliaryProcs && proc < AuxiliaryProcs + NUM_AUXILIARY_PROCS;
 }

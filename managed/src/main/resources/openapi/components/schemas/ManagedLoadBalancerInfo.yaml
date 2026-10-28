@@ -1,0 +1,33 @@
+x-yba-api-visibility: preview
+x-yba-api-since: 2.31.0.0
+title: ManagedLoadBalancerInfo
+description: A load balancer that YBA created for the cluster. It serves a set of availability zones in one region. Part of ClusterInfo.
+type: object
+properties:
+  scheme:
+    description: Who can reach the load balancer. Today always PRIVATE.
+    allOf:
+      - $ref: "./ManagedLoadBalancerScheme.yaml"
+    readOnly: true
+  region_code:
+    description: The region of the load balancer.
+    type: string
+    example: us-west-2
+    readOnly: true
+  az_uuids:
+    description: 'The availability zones that the load balancer serves, as the UUIDs of the provider zones. Today every zone of the region. A later release can give a region several load balancers that each serve some of its zones.'
+    type: array
+    items:
+      type: string
+      format: uuid
+    readOnly: true
+  name:
+    description: The name of the load balancer in the cloud.
+    type: string
+    example: lbi-h6uf6zcxc5cwfm74fsld6zvpuy
+    readOnly: true
+  address:
+    description: 'The address that the cloud gives the load balancer. A DNS name on AWS, an IP address on GCP and Azure. Empty until the load balancer is created.'
+    type: string
+    example: lbi-h6uf6zcxc5cwfm74fsld6zvpuy-0123456789abcdef.elb.us-west-2.amazonaws.com
+    readOnly: true

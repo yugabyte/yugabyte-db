@@ -331,6 +331,7 @@ DEALLOCATE pstmt;
 
 -- test interaction between subquery and partial_paths
 SET LOCAL min_parallel_table_scan_size TO 0;
+SET LOCAL yb_test_force_parallel = force;
 CREATE VIEW tenk1_vw_sec WITH (security_barrier) AS SELECT * FROM tenk1;
 EXPLAIN (COSTS OFF)
 SELECT 1 FROM tenk1_vw_sec

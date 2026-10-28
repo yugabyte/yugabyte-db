@@ -131,6 +131,7 @@
 
 /* YB includes */
 #include "access/xact.h"
+#include "access/xlogwait.h"
 #include "commands/async.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
@@ -483,10 +484,11 @@ static bool StartBackgroundWorker(RegisteredBgWorker *rw);
 static void InitPostmasterDeathWatchHandle(void);
 
 /* YB declarations */
-/* YB_TODO_PG19MERGE: definition + only caller currently #if 0'd; re-enable together. */
-#if 0
-static bool CleanupKilledProcess(PGPROC *proc);
-#endif
+/*
+ * YB_TODO_PG19MERGE: only caller (reaper) is currently #if 0'd; drop
+ * pg_attribute_unused() when it is re-enabled.
+ */
+pg_attribute_unused() static bool YbCleanupKilledProcess(PGPROC *proc);
 static bool YbIsAuxBackendAllowed(BackendType type);
 
 #ifdef WIN32
@@ -2490,12 +2492,13 @@ process_pm_child_exit(void)
 			 * a process dies while holding a lock. Otherwise, we can do some
 			 * cleanup.
 			 */
-			if (proc->ybLWLockAcquired || proc->ybSpinLocksAcquired > 0)
+			if (proc->ybProcState.lwlock_acquired ||
+				proc->ybProcState.spinlocks_acquired > 0)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
-								"acquiring %s", proc->ybLWLockAcquired ? "LWLock" : "SpinLock")));
+								"acquiring %s", proc->ybProcState.lwlock_acquired ? "LWLock" : "SpinLock")));
 				break;
 			}
 
@@ -2528,7 +2531,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (!proc->ybInitializationCompleted)
+			if (!proc->ybProcState.initialization_completed)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2537,7 +2540,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (proc->ybTerminationStarted)
+			if (proc->ybProcState.termination_started)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2546,7 +2549,7 @@ process_pm_child_exit(void)
 				break;
 			}
 
-			if (proc->ybEnteredCriticalSection)
+			if (proc->ybProcState.entered_crit_section)
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2557,7 +2560,7 @@ process_pm_child_exit(void)
 
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
-			if (!CleanupKilledProcess(proc))
+			if (!YbCleanupKilledProcess(proc))
 			{
 				YbCrashInUnmanageableState = true;
 				ereport(WARNING,
@@ -2924,48 +2927,44 @@ process_pm_child_exit(void)
 }
 
 /*
- * YB_TODO_PG19MERGE: PG no longer uses backend id -- update this function.
- * Also, add a Yb prefix to its name.
- */
-#if 0
-/*
- * CleanupKilledProcess - cleanup after an unexpectedly killed process.
+ * YbCleanupKilledProcess - cleanup after an unexpectedly killed process.
  *
- * Returns true if the process was succesfully cleaned up, false if the process
- * cannot be cleaned up.
+ * Releases the shared state a regular backend acquires in InitPostgres so the
+ * postmaster can avoid a restart.
+ * This is supported for processes that satisfy the following conditions:
+ *   - Is a regular backend process (not an auxiliary or background worker)
+ *   - Has completed InitPostgres (ybInitializationCompleted)
+ *   - Had not started exiting (ybTerminationStarted)
+ *   - Is not in a critical section (ybEnteredCriticalSection);
+ *   - Does not have any PG lock state and is not in a lock group.
+ *
+ * Returns true if the process was successfully cleaned up.
+ * Returns false without modifying any shared state, if it cannot be cleaned up.
  */
 static bool
-CleanupKilledProcess(PGPROC *proc)
+YbCleanupKilledProcess(PGPROC *proc)
 {
-	KilledProcToClean = proc;
-	if (proc->backendId == InvalidBackendId)
+	Assert(proc->backendType != B_BG_WORKER &&
+		   proc->ybProcState.initialization_completed &&
+		   !proc->ybProcState.termination_started &&
+		   !proc->ybProcState.entered_crit_section);
+
+	if (YbIsAuxiliaryProc(proc))
 	{
-		/* These come from ShutdownAuxiliaryProcess */
-		YbConditionVariableCancelSleepForProc(proc);
-		/*
-		 * We don't need to call pgstat_report_wait_end because it refers only
-		 * to a static variable, not a member of the PGPROC struct.
-		 */
-	}
-	else
-	{
-		/* From InitProcessPhase2 */
-		ProcArrayRemove(proc, InvalidTransactionId);
-
-		/* From ProcSignalInit */
-		CleanupProcSignalStateForProc(proc);
-
-		/* From SharedInvalBackendInit */
-		YbCleanupInvalidationStateForProc(proc);
-
-		/* From Exec_ListenPreCommit */
-		YbCleanupListenStateForProc(proc);
+		elog(WARNING, "cannot cleanup after an auxiliary process");
+		return false;
 	}
 
-	/* From ProcKill */
-	ReplicationSlotCleanupForProc(proc);
-	SyncRepCleanupAtProcExit(proc);
-	YbConditionVariableCancelSleepForProc(proc);
+	/*
+	 * YB's locking infrastructure lives in DocDB, so it is expected that the PG
+	 * lock table should be untouched. A killed child process holding PG locks
+	 * is treated as an unmanageable crash.
+	 */
+	if (YbProcHasLockManagerState(proc))
+	{
+		elog(WARNING, "cannot cleanup after a process holding or waiting on PG locks");
+		return false;
+	}
 
 	if (proc->lockGroupLeader != NULL)
 	{
@@ -2973,7 +2972,32 @@ CleanupKilledProcess(PGPROC *proc)
 		return false;
 	}
 
+	KilledProcToClean = proc;
+
+	/* From InitProcessPhase2 */
+	ProcArrayRemove(proc, InvalidTransactionId);
+
+	/* From ProcSignalInit */
+	YbCleanupProcSignalStateForProc(proc);
+
+	/* From SharedInvalBackendInit */
+	YbCleanupInvalidationStateForProc(proc);
+
+	/* From Exec_ListenPreCommit */
+	YbCleanupListenStateForProc(proc);
+
+	/* From ProcKill */
+	ReplicationSlotCleanupForProc(proc, false);
+	SyncRepCleanupAtProcExit(proc);
+	YbWaitLSNCleanupForProc(GetNumberFromPGProc(proc));
+	YbConditionVariableCancelSleepForProc(proc);
+
 	DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+	/* From ProcKill: mark the proc no longer in use */
+	proc->pid = 0;
+	proc->vxid.procNumber = INVALID_PROC_NUMBER;
+	proc->vxid.lxid = InvalidTransactionId;
 
 	YbReleaseProcToFreeList(proc);
 
@@ -2981,7 +3005,6 @@ CleanupKilledProcess(PGPROC *proc)
 	return true;
 }
 
-#endif
 /*
  * CleanupBackend -- cleanup after terminated backend.
  *
@@ -3490,7 +3513,13 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(PgArchPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() && !take_action)
+	/*
+	 * YB: during shutdown fall through so pmState advances; otherwise a child
+	 * killed after the shutdown signal (e.g. the checkpointer after the
+	 * SIGKILL timeout) leaves the postmaster stuck in PM_SHUTDOWN.
+	 */
+	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() &&
+		!take_action && Shutdown == NoShutdown)
 		return;
 
 	/* We do NOT restart the syslogger */

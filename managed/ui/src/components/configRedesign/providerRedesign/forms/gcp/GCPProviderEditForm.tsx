@@ -92,6 +92,12 @@ import {
   ImageBundle
 } from '../../types';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
+import {
+  buildFederationTargets,
+  federationFormValuesFromProvider,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -123,6 +129,12 @@ export interface GCPProviderEditFormFieldValues {
   version: number;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const ProviderCredentialType = {
@@ -134,6 +146,7 @@ type ProviderCredentialType = typeof ProviderCredentialType[keyof typeof Provide
 const YB_VPC_NAME_BASE = 'yb-gcp-network';
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -515,6 +528,12 @@ export const GCPProviderEditForm = ({
                   </FormField>
                 </>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="gcp"
+              />
+
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -848,6 +867,7 @@ const constructDefaultFormValues = (
 ): Partial<GCPProviderEditFormFieldValues> => ({
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId ?? '',
+  ...federationFormValuesFromProvider(providerConfig.details.cloudInfo.gcp, 'gcp'),
   editCloudCredentials: false,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -1002,7 +1022,11 @@ const constructProviderPayload = async (
                   sharedVPCProject: cloudInfo.gcp.sharedVPCProject
                 })
               }),
-          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
+          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
+          enableFederatedIam: formValues.enableFederatedIam,
+          ...(formValues.enableFederatedIam && {
+            crossCloudFederationTargets: buildFederationTargets(formValues)
+          })
         }
       },
       ntpServers: formValues.ntpServers,

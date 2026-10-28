@@ -50,6 +50,8 @@ Snapshot UUID                           State       Creation Time
 0d4b4935-2c95-4523-95ab-9ead1e95e794    COMPLETE    2023-04-20 00:20:38.214201
 ```
 
+To take snapshots at regular intervals, use the [create_snapshot_schedule](../../../admin/yb-admin/#create-snapshot-schedule) command. Creating a schedule also enables [Rewind to PIT](../point-in-time-recovery/rewind/) and [Clone to PIT](../point-in-time-recovery/clone/) for that database. See [Enable and disable PITR](../point-in-time-recovery/enable-pitr/).
+
 ## Delete a snapshot
 
 Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it by executing the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command, as follows:
@@ -68,7 +70,9 @@ To restore the data backed up in one of the previously created snapshots, run th
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database in the same cluster.
 
-Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
+To restore to a chosen time *within* the snapshot's retained history (rather than only the snapshot creation time), pass a restore target. See [Restore to PIT](../point-in-time-recovery/restore/).
+
+Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [Rewind to PIT](../point-in-time-recovery/rewind/) or [Restore to PIT](../point-in-time-recovery/restore/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
 
 ## Move a snapshot to external storage
 

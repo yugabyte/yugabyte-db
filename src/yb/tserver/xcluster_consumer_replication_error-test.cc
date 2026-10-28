@@ -22,7 +22,7 @@ using XClusterReplicationErrorSendState::kSent;
 
 void ValidateErrorInMap(
     const XClusterReplicationErrorsToSendMap& errors_map, const XClusterPollerId& poller_id,
-    ReplicationErrorPb error) {
+    ReplicationErrorPb error, const std::string& error_detail = {}) {
   ASSERT_TRUE(
       errors_map.contains(poller_id.replication_group_id) &&
       errors_map.at(poller_id.replication_group_id).contains(poller_id.consumer_table_id) &&
@@ -36,6 +36,7 @@ void ValidateErrorInMap(
 
   ASSERT_EQ(poller_error.consumer_term, poller_id.leader_term);
   ASSERT_EQ(poller_error.error, error);
+  ASSERT_EQ(poller_error.error_detail, error_detail);
 }
 
 TEST(XClusterConsumerReplicationError, TestCollector) {
@@ -64,7 +65,7 @@ TEST(XClusterConsumerReplicationError, TestCollector) {
   ASSERT_EQ(collector.TEST_GetSendState(), kSent);
 
   // Store error for Poller1.
-  collector.StoreError(poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
+  collector.StoreError(poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID, "detail1");
   ASSERT_EQ(collector.TEST_GetSendState(), kNotSent);
   error_map = collector.TEST_GetErrorMap();
   ASSERT_EQ(error_map[poller1].send_state, kNotSent);
@@ -75,7 +76,8 @@ TEST(XClusterConsumerReplicationError, TestCollector) {
   result = collector.GetErrorsToSend(/* get_all_errors */ false);
   ASSERT_EQ(result.size(), 1);
   ASSERT_NO_FATALS(
-      ValidateErrorInMap(result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
+      ValidateErrorInMap(
+          result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID, "detail1"));
   ASSERT_EQ(collector.TEST_GetSendState(), kSending);
   error_map = collector.TEST_GetErrorMap();
   ASSERT_EQ(error_map[poller1].send_state, kSending);
@@ -94,7 +96,8 @@ TEST(XClusterConsumerReplicationError, TestCollector) {
   result = collector.GetErrorsToSend(/* get_all_errors */ false);
   ASSERT_EQ(result.size(), 2);
   ASSERT_NO_FATALS(
-      ValidateErrorInMap(result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
+      ValidateErrorInMap(
+          result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID, "detail1"));
   ASSERT_NO_FATALS(
       ValidateErrorInMap(result, poller3, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));
   ASSERT_EQ(collector.TEST_GetSendState(), kSending);
@@ -150,7 +153,8 @@ TEST(XClusterConsumerReplicationError, TestCollector) {
   result = collector.GetErrorsToSend(/* get_all_errors */ true);
   ASSERT_EQ(result.size(), 2);
   ASSERT_NO_FATALS(
-      ValidateErrorInMap(result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
+      ValidateErrorInMap(
+          result, poller1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID, "detail1"));
   ASSERT_NO_FATALS(ValidateErrorInMap(result, poller2, ReplicationErrorPb::REPLICATION_OK));
   ASSERT_NO_FATALS(
       ValidateErrorInMap(result, poller3, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH));

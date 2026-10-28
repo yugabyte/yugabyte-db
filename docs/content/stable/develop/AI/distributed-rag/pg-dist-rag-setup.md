@@ -348,5 +348,6 @@ WHERE index_name = 'engineering_kb';
 
 ## Learn more
 
+- [Hello Distributed RAG](../hello-dist-rag/)
 - [pg_dist_rag extension](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md)
 - [RAG agent source code](https://github.com/yugabyte/yugabyte-db/tree/master/python/ai/rag_agent)

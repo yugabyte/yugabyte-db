@@ -64,7 +64,7 @@ public class UpgradeYbcGFlags extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.UpdatingYbcGFlags);
       }
       List<NodeDetails> nodeDetailsList = new ArrayList<>(universe.getTServers());
-      createServerControlTasks(nodeDetailsList, ServerType.CONTROLLER, "stop")
+      createStopServerTasks(nodeDetailsList, ServerType.CONTROLLER, false /* isIgnoreError */)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
       createServerControlTasks(nodeDetailsList, ServerType.CONTROLLER, "start")

@@ -37,9 +37,9 @@ class VectorIndexReaderAdapter
     : public VectorIndexReaderIf<DestinationVector, DestinationDistanceResult> {
  public:
   using Base = VectorIndexReaderIf<DestinationVector, DestinationDistanceResult>;
-  using DestinationIteratorValue = std::pair<VectorId, DestinationVector>;
+  using DestinationIteratorValue = VectorIndexIteratorEntry<DestinationVector>;
   using DestinationIterator      = AbstractIterator<DestinationIteratorValue>;
-  using SourceIteratorValue      = std::pair<VectorId, SourceVector>;
+  using SourceIteratorValue      = VectorIndexIteratorEntry<SourceVector>;
   using SourceIterator           = PolymorphicIterator<SourceIteratorValue>;
 
   // Constructor takes the underlying vector index reader
@@ -102,9 +102,12 @@ class VectorIndexReaderAdapter
 
    protected:
     DestinationIteratorValue Dereference() const override {
-      auto [vertex_id, source_vector_ptr] = *source_iterator_;
-      DestinationVector temp_casted_vector = vector_cast<DestinationVector>(source_vector_ptr);
-      return std::make_pair(vertex_id, temp_casted_vector);
+      auto source_entry = *source_iterator_;
+      return DestinationIteratorValue {
+        .vector_id = source_entry.vector_id,
+        .vector = vector_cast<DestinationVector>(source_entry.vector),
+        .payload = source_entry.payload,
+      };
     }
 
     void Next() override { ++source_iterator_; }

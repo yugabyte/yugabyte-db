@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +9,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.YbcHandler;
@@ -46,6 +45,7 @@ import play.mvc.Result;
 public class YbcController extends AuthenticatedController {
 
   @Inject private YbcHandler ybcHandler;
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   /**
    * API that disables the yb-controller on a universe.
@@ -173,7 +173,7 @@ public class YbcController extends AuthenticatedController {
 
     YbcGflagsTaskParams requestParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, YbcGflagsTaskParams.class, universe);
+            request, YbcGflagsTaskParams.class, universe.getUniverseUUID(), runtimeConfGetter);
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
@@ -225,7 +225,7 @@ public class YbcController extends AuthenticatedController {
         parseJsonAndValidate(request, YbcThrottleParameters.class);
     YbcThrottleTaskParams requestParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, YbcThrottleTaskParams.class, universe);
+            request, YbcThrottleTaskParams.class, universe.getUniverseUUID(), runtimeConfGetter);
     requestParams.setUniverseUUID(universeUUID);
     requestParams.setCustomerUUID(customerUUID);
     requestParams.setYbcThrottleParameters(throttleParams);

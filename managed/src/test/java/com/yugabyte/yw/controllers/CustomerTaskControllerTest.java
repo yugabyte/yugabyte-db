@@ -836,6 +836,40 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(taskJson.get("userEmail").asText(), equalTo(CustomerTask.BACKGROUND_TASK_USER));
   }
 
+  @Test
+  public void testTaskDetailsIncludesOriginalTaskUUID() {
+    String authToken = user.createAuthToken();
+    UUID originalTaskUuid = UUID.randomUUID();
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatusAndResponse(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            Update,
+            TaskType.EditUniverse,
+            "Foo",
+            "Running",
+            10.0,
+            responseJson);
+    responseJson.put("originalTaskUUID", originalTaskUuid.toString());
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/tasks/" + task.getTaskUUID() + "/details",
+            authToken);
+
+    assertThat(result.status(), is(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
+    assertThat(universeTasks.isArray(), is(true));
+    assertValue(universeTasks.get(0), "originalTaskUUID", originalTaskUuid.toString());
+  }
+
   // PLAT-21392: retry/abort authz must locate the universe at "taskParams.universeUUID"
   // (where TaskInfo actually stores it), not "details.universeUUID" -- TaskInfo.details is a
   // TaskDetails (timing/version/error/runtimeInfo) with no universeUUID. With the wrong path,

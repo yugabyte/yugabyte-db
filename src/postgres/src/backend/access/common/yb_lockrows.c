@@ -72,7 +72,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 
 	YbcPgExecParameters exec_params = {0};
 
-	exec_params.limit_count = 1;
+	exec_params.plan_limit = 1;
 	exec_params.rowmark = lock_params.rowmark;
 	exec_params.pg_wait_policy = lock_params.pg_wait_policy;
 	exec_params.docdb_wait_policy = lock_params.docdb_wait_policy;

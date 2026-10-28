@@ -42,6 +42,11 @@ import {
   readFileAsText
 } from '../utils';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
+import {
+  buildFederationTargets,
+  CrossCloudFederatedIamFields,
+  FEDERATED_IAM_VALIDATION
+} from '../components/CrossCloudFederatedIamFields';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
@@ -71,9 +76,21 @@ interface OnPremProviderCreateFormFieldValues {
   nodeExporterPort?: number;
   nodeExporterUser?: string;
   ybHomeDir?: string;
+
+  // Cross-cloud federated IAM. Modelled as one opt-in per storage cloud rather than as a
+  // "direction", because that is the decision the operator actually makes: which bucket must my
+  // nodes reach. Which way any given node federates follows from the cloud it runs on, which YBA
+  // detects - the operator never states it.
+  enableFederatedIam?: boolean;
+  federationGcsEnabled?: boolean;
+  federationGcsAudience?: string;
+  federationS3Enabled?: boolean;
+  federationS3RoleArn?: string;
+  federationS3Audience?: string;
 }
 
 const VALIDATION_SCHEMA = object().shape({
+  ...FEDERATED_IAM_VALIDATION,
   providerName: string()
     .required('Provider Name is required.')
     .matches(
@@ -130,7 +147,13 @@ export const OnPremProviderCreateForm = ({
     skipProvisioning: false,
     sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
     sshPort: DEFAULT_SSH_PORT,
-    ybHomeDir: ''
+    ybHomeDir: '',
+    enableFederatedIam: false,
+    federationGcsEnabled: false,
+    federationGcsAudience: '',
+    federationS3Enabled: false,
+    federationS3RoleArn: '',
+    federationS3Audience: ''
   };
   const formMethods = useForm<OnPremProviderCreateFormFieldValues>({
     defaultValues: defaultValues,
@@ -332,6 +355,10 @@ export const OnPremProviderCreateForm = ({
                   disabled={isFormDisabled}
                 />
               </FormField>
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+              />
               <FormField>
                 <FieldLabel>Install Node Exporter</FieldLabel>
                 <YBToggleField
@@ -448,7 +475,11 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir }),
+          ...(formValues.enableFederatedIam && {
+            enableFederatedIam: true,
+            crossCloudFederationTargets: buildFederationTargets(formValues)
+          })
         }
       },
       installNodeExporter: formValues.installNodeExporter,

@@ -38,6 +38,8 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const enableAzOverridesK8s = getConfigValue(RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S) === 'true';
 
+  const enablePrimaryRf9 = getConfigValue(RuntimeConfigKey.ENABLE_PRIMARY_RF_9) === 'true';
+
   return {
     runtimeConfigs,
     providerRuntimeConfigs,
@@ -48,6 +50,7 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     maxVolumeCount,
     canUseSpotInstance,
     ebsVolumeEnabled,
-    enableAzOverridesK8s
+    enableAzOverridesK8s,
+    enablePrimaryRf9
   };
 };

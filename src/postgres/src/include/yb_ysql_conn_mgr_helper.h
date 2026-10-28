@@ -51,8 +51,8 @@ extern bool yb_is_parallel_worker;
 /*
  * YB: GUC storage variables for CM logical-client metadata (defined in guc.c).
  */
-extern char *yb_conn_mgr_client_addr;
-extern int	yb_conn_mgr_client_port;
+extern char *yb_ycm_internal_client_addr;
+extern int	yb_ycm_internal_client_port;
 extern char *yb_conn_mgr_client_hostname;
 
 /* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
@@ -135,8 +135,10 @@ extern void YbHandleSetSessionParam(int yb_client_id);
  *       logical connection via the YSQL Connection Manager.
  * The authentication can happen via the `AUTHENTICATION PASSTHROUGH REQUEST`
  * packet or the lightweight authentication backend.
+ *
+ * Sets *database_oid to the logical client's database when it returns 0.
  */
-extern int  YbCreateClientId();
+extern int  YbCreateClientId(Oid *database_oid);
 extern void YbCreateClientIdWithDatabaseOid(Oid database_oid);
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);

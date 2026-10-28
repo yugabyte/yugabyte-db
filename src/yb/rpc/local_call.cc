@@ -20,6 +20,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.messages.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
@@ -40,6 +41,9 @@ LocalOutboundCall::LocalOutboundCall(
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
                    callback_thread_pool, /* metadata_serializer_factory= */ nullptr) {
   TRACE_TO(trace_, "LocalOutboundCall");
+  if (otel_span_) {
+    otel_span_->SetAttribute("rpc.local_call", true);
+  }
 }
 
 Status LocalOutboundCall::SetRequestParam(

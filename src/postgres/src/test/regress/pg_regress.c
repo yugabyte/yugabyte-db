@@ -2177,6 +2177,8 @@ regression_main(int argc, char *argv[],
 		{"config-auth", required_argument, NULL, 24},
 		{"max-concurrent-tests", required_argument, NULL, 25},
 		{"expecteddir", required_argument, NULL, 26},
+		/* YB: high code to avoid colliding with future upstream options */
+		{"yb-host-port-list", optional_argument, NULL, 1001},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2306,6 +2308,9 @@ regression_main(int argc, char *argv[],
 				break;
 			case 26:
 				expecteddir = pg_strdup(optarg);
+				break;
+			case 1001:
+				setenv("YBHOSTPORTLIST", optarg, 1);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */

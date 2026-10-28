@@ -42,7 +42,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/once.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
@@ -78,18 +77,18 @@ string VersionInfo::GetGitHash() {
 string VersionInfo::GetShortVersionString() {
   auto data = GetVersionData();
 
-  return strings::Substitute("version $0 build $1 revision $2 build_type $3 built at $4",
-                             data->pb.version_number(),
-                             data->pb.build_number(),
-                             data->pb.git_hash(),
-                             data->pb.build_type(),
-                             data->pb.build_timestamp());
+  return Format("version $0 build $1 revision $2 build_type $3 built at $4",
+                data->pb.version_number(),
+                data->pb.build_number(),
+                data->pb.git_hash(),
+                data->pb.build_type(),
+                data->pb.build_timestamp());
 }
 
 string VersionInfo::GetAllVersionInfo() {
   auto data = GetVersionData();
 
-  string ret = strings::Substitute(
+  string ret = Format(
       "version $0\n"
       "build $1\n"
       "revision $2\n"
@@ -103,7 +102,7 @@ string VersionInfo::GetAllVersionInfo() {
       data->pb.build_timestamp(),
       data->pb.build_hostname());
   if (data->pb.build_id().size() > 0) {
-    strings::SubstituteAndAppend(&ret, "\nbuild id $0", data->pb.build_id());
+    ret += Format("\nbuild id $0", data->pb.build_id());
   }
 #ifdef ADDRESS_SANITIZER
   ret += "\nASAN enabled";
@@ -135,13 +134,13 @@ Status VersionInfo::ReadVersionDataFromFile() {
   std::ifstream json_file(config_file_path);
   SCHECK(
       !json_file.fail(), IllegalState,
-      strings::Substitute("Could not open JSON file $0: $1", config_file_path, strerror(errno)));
+      Format("Could not open JSON file $0: $1", config_file_path, strerror(errno)));
 
   rapidjson::IStreamWrapper isw(json_file);
   rapidjson::Document d;
   d.ParseStream(isw);
   SCHECK(!d.HasParseError(),
-         IllegalState, strings::Substitute("Failed to parse json. Error: $0 ",
+         IllegalState, Format("Failed to parse json. Error: $0 ",
             rapidjson::GetParseError_En(d.GetParseError())));
 
   auto version_data = std::make_shared<VersionData>();
@@ -167,21 +166,21 @@ Status VersionInfo::ReadVersionDataFromFile() {
     const auto& key = entry.first;
     auto* output = entry.second;
     if (!d.HasMember(key.c_str())) {
-      return STATUS(IllegalState, strings::Substitute("Key $0 does not exist", key));
+      return STATUS(IllegalState, Format("Key $0 does not exist", key));
     } else if(!d[key.c_str()].IsString()) {
-      return STATUS(IllegalState, strings::Substitute("Key $0 is of invalid type $1",
-                                                      key, d[key.c_str()].GetType()));
+      return STATUS(IllegalState, Format("Key $0 is of invalid type $1",
+                                         key, d[key.c_str()].GetType()));
     }
     *output = d[key.c_str()].GetString();
   }
 
   // Special case the only boolean flag...
   if (!d.HasMember("build_clean_repo")) {
-    return STATUS(IllegalState, strings::Substitute("Key $0 does not exist", "build_clean_repo"));
+    return STATUS(IllegalState, Format("Key $0 does not exist", "build_clean_repo"));
   } else if(!d["build_clean_repo"].IsString()) {
     return STATUS(IllegalState,
-                  strings::Substitute("Key $0 is of invalid type $1",
-                                      "build_clean_repo", d["build_clean_repo"].GetType()));
+                  Format("Key $0 is of invalid type $1",
+                         "build_clean_repo", d["build_clean_repo"].GetType()));
   } else {
     version_data->pb.set_build_clean_repo(d["build_clean_repo"] == "true");
   }

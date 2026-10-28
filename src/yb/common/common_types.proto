@@ -168,6 +168,10 @@ enum ReplicationErrorPb {
 
   // The replication stream has been paused by the user.
   REPLICATION_PAUSED = 9;
+
+  // xCluster DDL replication has paused itself after repeatedly failing to apply the same DDL on
+  // the target.
+  REPLICATION_DDL_QUEUE_PAUSED = 10;
 }
 
 // Stateful services.
@@ -228,4 +232,25 @@ message XClusterNamespaceInfoPB {
     AUTOMATIC_TARGET = 4;
   }
   optional XClusterRole role = 1 [default = NOT_AUTOMATIC_MODE];
+}
+
+// Identifies how recent a copy of xCluster-guarded information is.  Master copies that information
+// into heartbeat responses and into ApplyXClusterGuardedInfoIfNewer RPCs; a TServer keeps the copy
+// with the highest (term, count), ordered lexicographically.
+//
+// term is the Raft term of the master leader that made the copy; count is number of times a copy
+// has been made on that master.
+message XClusterGuardedInfoVersionPB {
+  required int64 term = 1;
+  required uint64 count = 2;
+}
+
+message XClusterGuardedInfoPB {
+  // Version of the xCluster-guarded information in this copy.
+  required XClusterGuardedInfoVersionPB xcluster_guarded_info_version = 1;
+
+  // Local NamespaceId -> xCluster info for that namespace.
+  map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 2;
+
+  optional uint32 oid_cache_invalidations_count = 3;
 }

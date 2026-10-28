@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.Comparators;
+import com.yugabyte.yw.common.ShutdownHookHandler.ShutdownPhase;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -40,8 +41,10 @@ public class ShutdownHookHandlerTest {
           },
           weight);
     }
-    // Invoke the hooks now.
-    handler.onApplicationShutdown();
+    // Trigger shutdown first.
+    handler.shutdownHooks(ShutdownPhase.BEFORE_SERVICE_UNBIND);
+    // Default hooks run in AFTER_SERVICE_UNBIND.
+    handler.shutdownHooks(ShutdownPhase.AFTER_SERVICE_UNBIND);
     assertEquals(weights.length, weightOrders.size());
     assertTrue(
         "Received weights" + weightOrders,

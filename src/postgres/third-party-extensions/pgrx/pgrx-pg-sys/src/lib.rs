@@ -7,17 +7,21 @@
 //LICENSE All rights reserved.
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+#![allow(clippy::missing_safety_doc)] // sorry, Jubilee
+
 #[cfg(
     // no features at all will cause problems
-    not(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17")),
+    not(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"))
 )]
-std::compile_error!("exactly one feature must be provided (pg13, pg14, pg15, pg16, pg17)");
+std::compile_error!("exactly one feature must be provided (pg13, pg14, pg15, pg16, pg17, pg18)");
 
 mod cshim;
 mod cstr;
 mod include;
 mod node;
 mod port;
+
+pub mod libpq;
 pub mod submodules;
 
 #[cfg(feature = "cshim")]
@@ -27,6 +31,9 @@ pub use cstr::AsPgCStr;
 pub use include::*;
 pub use node::PgNode;
 pub use port::*;
+
+// For postgres 18+, some functions will reexport when enabling `cshim` feature
+#[allow(ambiguous_glob_reexports)]
 pub use submodules::*;
 
 mod seal {
@@ -39,4 +46,4 @@ mod seal {
 // (https://github.com/pgcentralfoundation/pgrx/issues/730).
 #[cfg(target_os = "linux")]
 #[link(name = "resolv")]
-extern "C" {}
+unsafe extern "C" {}

@@ -90,7 +90,13 @@ export const ReplicationFactorInfoModal: FC<ReplicationFactorInfoProps> = ({ ope
             style={{ fontSize: '11.5px', fontWeight: 400, lineHeight: '16px' }}
             i18nKey="learn"
             components={{
-              a: <Link />
+              a: (
+                <Link
+                  href="https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#replication-factor"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              )
             }}
           />
         </Box>

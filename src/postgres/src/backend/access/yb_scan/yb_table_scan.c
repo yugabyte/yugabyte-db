@@ -118,6 +118,5 @@ yb_scan_desc_bind_ybctids(TableScanDesc scan, int nybctids, Datum *ybctids)
 {
 	YbOpaque	opaque = ((YbTableScanDesc) scan)->ybscan;
 
-	HandleYBStatus(YBCPgBindYbctids(opaque->handle, nybctids,
-									(uintptr_t *) ybctids));
+	HandleYBStatus(YBCPgBindYbctids(opaque->handle, nybctids, ybctids));
 }

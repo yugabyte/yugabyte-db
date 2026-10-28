@@ -7,6 +7,7 @@ package ear
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"text/template"
 
 	"github.com/sirupsen/logrus"
@@ -17,6 +18,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ciphertrust"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/hashicorp"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/oci"
 )
 
 const (
@@ -53,6 +55,7 @@ type fullEARContext struct {
 	GCPEAR       *gcp.EARContext
 	AzureEAR     *azu.EARContext
 	CipherTrust  *ciphertrust.EARContext
+	OCIEAR       *oci.EARContext
 }
 
 // Write populates the output table to be displayed in the command line
@@ -90,6 +93,12 @@ func (fear *FullEARContext) Write() error {
 	if fear.ear.CipherTrust != nil {
 		fearc.CipherTrust = &ciphertrust.EARContext{
 			CT: *fear.ear.CipherTrust,
+		}
+	}
+
+	if fear.ear.OCI != nil {
+		fearc.OCIEAR = &oci.EARContext{
+			Oci: *fear.ear.OCI,
 		}
 	}
 
@@ -310,6 +319,46 @@ func (fear *FullEARContext) Write() error {
 			return err
 		}
 		fear.PostFormat(tmpl, ciphertrust.NewEARContext())
+
+	case util.OCIEARType:
+		tmpl, err = fear.startSubsection(oci.EAR1)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.subSection("OCI KMS Details")
+		if err := fear.ContextFormat(tmpl, fearc.OCIEAR); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, oci.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		// The server treats a missing auth type as API_KEY.
+		if !strings.EqualFold(fearc.OCIEAR.Oci.AuthType, util.OCIKmsAuthTypeInstancePrincipal) {
+			tmpl, err = fear.startSubsection(oci.EAR2)
+			if err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			if err := fear.ContextFormat(tmpl, fearc.OCIEAR); err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			fear.PostFormat(tmpl, oci.NewEARContext())
+			fear.Output.Write([]byte("\n"))
+		}
+
+		tmpl, err = fear.startSubsection(oci.EAR3)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.OCIEAR); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, oci.NewEARContext())
 	}
 
 	return nil

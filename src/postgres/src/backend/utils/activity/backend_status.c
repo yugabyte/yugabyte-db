@@ -136,19 +136,20 @@ BackendStatusShmemRequest(void *arg)
 					   .ptr = (void **) &BackendGssStatusBuffer,
 		);
 #endif
-	/*
-	 * YB_TODO_PG19MERGE: PG refactored backend status shmem accounting from
-	 * a single returns-size function into per-callback ShmemRequestStruct
-	 * calls. YB's old additions (NAMEDATALEN-per-backend database name buffer
-	 * and a uint64_t yb_new_conn metric) need to be re-expressed as
-	 * ShmemRequestStruct entries here, with matching pointer hookups in
-	 * BackendStatusShmemInit / BackendStatusShmemAttach.
-	 */
-#if 0
-	size = add_size(size, mul_size(NAMEDATALEN, NumBackendStatSlots));
-	/* yb_new_conn metric */
-	size = add_size(size, sizeof(uint64_t));
-#endif
+
+	/* YB */
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		ShmemRequestStruct(.name = "Database Name Buffer",
+						   .size = mul_size(NAMEDATALEN, NumBackendStatSlots),
+						   .ptr = (void **) &DatabaseNameBuffer,
+			);
+
+		ShmemRequestStruct(.name = "YB New Connections",
+						   .size = sizeof(uint64_t),
+						   .ptr = (void **) &yb_new_conn,
+			);
+	}
 }
 
 /*
@@ -185,29 +186,6 @@ BackendStatusShmemInit(void *arg)
 		buffer += pgstat_track_activity_query_size;
 	}
 
-	if (YBIsEnabledInPostgresEnvVar())
-	{
-		Size		DatabaseNameBufferSize;
-		bool		found;
-
-		DatabaseNameBufferSize = mul_size(NAMEDATALEN, NumBackendStatSlots);
-		DatabaseNameBuffer = (char *)
-			ShmemInitStruct("Database Name Buffer", DatabaseNameBufferSize, &found);
-
-		if (!found)
-		{
-			MemSet(DatabaseNameBuffer, 0, DatabaseNameBufferSize);
-
-			/* Initialize st_databasename pointers. */
-			buffer = DatabaseNameBuffer;
-			for (i = 0; i < NumBackendStatSlots; i++)
-			{
-				BackendStatusArray[i].st_databasename = buffer;
-				buffer += NAMEDATALEN;
-			}
-		}
-	}
-
 #ifdef USE_SSL
 	{
 		PgBackendSSLStatus *ptr;
@@ -236,8 +214,21 @@ BackendStatusShmemInit(void *arg)
 	}
 #endif
 
-	yb_new_conn = (uint64_t *) ShmemAlloc(sizeof(uint64_t));
-	(*yb_new_conn) = 0;
+	/* YB */
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		MemSet(DatabaseNameBuffer, 0, mul_size(NAMEDATALEN, NumBackendStatSlots));
+
+		/* Initialize st_databasename pointers. */
+		buffer = DatabaseNameBuffer;
+		for (i = 0; i < NumBackendStatSlots; i++)
+		{
+			BackendStatusArray[i].st_databasename = buffer;
+			buffer += NAMEDATALEN;
+		}
+
+		(*yb_new_conn) = 0;
+	}
 }
 
 static void

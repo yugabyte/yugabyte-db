@@ -66,6 +66,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 /*
  * Minimum interval for cost-based vacuum delay reports from a parallel worker.
@@ -464,6 +465,10 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 
 		MemoryContextSwitchTo(old_context);
 	}
+
+	/* YB: Auto Analyze uses SQL rather than an autovacuum worker. */
+	if (yb_use_internal_auto_analyze_service_conn)
+		params.log_analyze_min_duration = Log_autoanalyze_min_duration;
 
 	/* Now go through the common routine */
 	vacuum(vacstmt->rels, &params, bstrategy, vac_context, isTopLevel);

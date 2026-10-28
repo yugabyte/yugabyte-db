@@ -21,6 +21,9 @@
 extern PGDLLIMPORT int Password_encryption; /* values from enum PasswordType */
 extern PGDLLIMPORT char *createrole_self_grant;
 
+/* YB: GUC "yb_password_validity", in minutes. Zero means no expiration policy. */
+extern int yb_password_validity;
+
 /* Hook to check passwords in CreateRole() and AlterRole() */
 typedef void (*check_password_hook_type) (const char *username, const char *shadow_pass, PasswordType password_type, Datum validuntil_time, bool validuntil_null);
 

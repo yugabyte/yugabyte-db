@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
+#include <unordered_set>
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/xcluster_util.h"
 
@@ -20,8 +22,10 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_format.h"
@@ -30,6 +34,9 @@
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");
+
+DEFINE_test_flag(bool, xcluster_fail_table_stream_checkpoint, false,
+    "Fail the checkpoint of a table stream created for a target that is reconnecting a table.");
 
 using namespace std::placeholders;
 
@@ -169,8 +176,9 @@ Status XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap(
   LOG_WITH_PREFIX(INFO) << "Creating xcluster streams for " << table_ids.size()
                         << " table(s) in namespace " << namespace_id;
 
-  auto create_context = VERIFY_RESULT(
-      helper_functions_.create_xcluster_streams_func(table_ids, epoch, AutomaticDDLMode()));
+  auto create_context = VERIFY_RESULT(helper_functions_.create_xcluster_streams_func(
+      table_ids, epoch, AutomaticDDLMode(), /*allow_hidden_table=*/false,
+      /*is_wal_anchor=*/false));
 
   SCHECK_EQ(
       create_context->streams_.size(), table_ids.size(), IllegalState,
@@ -530,10 +538,13 @@ Status XClusterOutboundReplicationGroup::DeleteNamespaceStreams(
 
   DeleteCDCStreamRequestPB req;
   for (const auto& [table_id, table_info] : namespace_info.table_infos()) {
-    if (!table_info.has_stream_id()) {
-      continue;
+    if (table_info.has_stream_id() && !table_info.stream_id().empty()) {
+      req.add_stream_id(table_info.stream_id());
     }
-    req.add_stream_id(table_info.stream_id());
+
+    if (table_info.has_wal_anchor_stream_id() && !table_info.wal_anchor_stream_id().empty()) {
+      req.add_stream_id(table_info.wal_anchor_stream_id());
+    }
   }
   if (!req.stream_id_size()) {
     return Status::OK();
@@ -740,6 +751,8 @@ Result<std::optional<NamespaceCheckpointInfo>>
 XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfoForTableIds(
     const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids) const {
   SCHECK(!source_table_ids.empty(), InvalidArgument, "Source table ids cannot be empty");
+  const auto alive_streams = helper_functions_.get_alive_streams_func(source_table_ids);
+
   SharedLock mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForRead());
   const auto* namespace_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
@@ -766,6 +779,12 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfoForTableIds(
     SCHECK(
         !stream_id.IsNil(), IllegalState,
         Format("Nil stream id found for table $0 in $1", table_id, ToString()));
+
+    if (!alive_streams.contains(stream_id)) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "xCluster stream " << stream_id << " of Table " << table_id
+                                   << " in Namespace " << namespace_id << " is being deleted.";
+      return std::nullopt;
+    }
 
     NamespaceCheckpointInfo::TableInfo ns_table_info{
         .table_id = table_id,
@@ -1022,7 +1041,8 @@ XClusterOutboundReplicationGroup::GetTableInfo(NamespaceInfoPB& ns_info, const T
 }
 
 Status XClusterOutboundReplicationGroup::CreateStreamForNewTable(
-    const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch) {
+    const NamespaceId& namespace_id, const TableId& table_id, bool needs_wal_anchor,
+    const LeaderEpoch& epoch) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(namespace_id, table_id);
 
   std::lock_guard mutex_lock(mutex_);
@@ -1032,8 +1052,8 @@ Status XClusterOutboundReplicationGroup::CreateStreamForNewTable(
     return Status::OK();
   }
 
-  if (ns_info->table_infos().count(table_id)) {
-    DCHECK(ns_info->table_infos().at(table_id).has_stream_id());
+  if (ns_info->table_infos().count(table_id) &&
+      !ns_info->table_infos().at(table_id).stream_id().empty()) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "Table " << table_id << " already has a stream "
                                  << ns_info->table_infos().at(table_id).stream_id();
     return Status::OK();
@@ -1046,19 +1066,43 @@ Status XClusterOutboundReplicationGroup::CreateStreamForNewTable(
     ns_info->mutable_table_infos()->insert({table_id, std::move(ns_table_info)});
   }
 
-  auto create_context = VERIFY_RESULT(
-      helper_functions_.create_xcluster_streams_func({table_id}, epoch, AutomaticDDLMode()));
+  auto create_context = VERIFY_RESULT(helper_functions_.create_xcluster_streams_func(
+      {table_id}, epoch, AutomaticDDLMode(), /*allow_hidden_table=*/false,
+      /*is_wal_anchor=*/false));
 
   SCHECK_EQ(create_context->streams_.size(), 1, IllegalState, "Unexpected number of streams");
 
   auto* table_info = VERIFY_RESULT(GetTableInfo(*ns_info, table_id));
   RSTATUS_DCHECK(
-      !table_info->has_stream_id(), IllegalState, "$0 Table $1 already has a stream $1",
+      !table_info->has_stream_id(), IllegalState, "$0 Table $1 already has a stream $2",
       LogPrefix(), table_id, table_info->stream_id());
   table_info->set_stream_id(create_context->streams_.front()->id());
 
-  RETURN_NOT_OK(Upsert(*lock_result, epoch, create_context->streams_));
+  // In automatic DDL mode also create the WAL anchor stream, which pins the source WAL at the
+  // table's creation point until the target commit the DDL/transaction.
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_upsert = create_context->streams_;
+  std::unique_ptr<XClusterCreateStreamsContext> wal_anchor_context;
+  if (needs_wal_anchor && automatic_ddl_mode_ && IsXClusterWalAnchorStreamEnabled()) {
+    RSTATUS_DCHECK(
+        !table_info->has_wal_anchor_stream_id(), IllegalState,
+        "$0 New table $1 unexpectedly already has WAL anchor stream $2", LogPrefix(), table_id,
+        table_info->wal_anchor_stream_id());
+    wal_anchor_context = VERIFY_RESULT(helper_functions_.create_xcluster_streams_func(
+        {table_id}, epoch, AutomaticDDLMode(), /*allow_hidden_table=*/false,
+        /*is_wal_anchor=*/true));
+    SCHECK_EQ(wal_anchor_context->streams_.size(), 1, IllegalState, "Unexpected number of streams");
+    table_info->set_wal_anchor_stream_id(wal_anchor_context->streams_.front()->id());
+    streams_to_upsert.push_back(wal_anchor_context->streams_.front());
+    LOG_WITH_PREFIX(INFO) << "Created xCluster WAL anchor stream "
+                          << wal_anchor_context->streams_.front()->id() << " for new table "
+                          << table_id;
+  }
+
+  RETURN_NOT_OK(Upsert(*lock_result, epoch, streams_to_upsert));
   create_context->Commit();
+  if (wal_anchor_context) {
+    wal_anchor_context->Commit();
+  }
 
   return Status::OK();
 }
@@ -1067,7 +1111,7 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
     const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch,
     StdStatusCallback completion_cb) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(namespace_id, table_id);
-  xrepl::StreamId stream_id = xrepl::StreamId::Nil();
+  std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
 
   {
     std::lock_guard mutex_lock(mutex_);
@@ -1078,11 +1122,11 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
       return Status::OK();
     }
 
-    DCHECK_GT(ns_info->table_infos().count(table_id), 0);
-    auto& ns_table_info = ns_info->table_infos().at(table_id);
-    if (!ns_table_info.is_checkpointing()) {
+    auto* ns_table_info = FindOrNull(*ns_info->mutable_table_infos(), table_id);
+    SCHECK(ns_table_info, NotFound, "$0 Table $1 not found", LogPrefix(), table_id);
+    if (!ns_table_info->is_checkpointing()) {
       SCHECK(
-          ns_table_info.has_stream_id(), IllegalState, "$0 Stream id not found for table $1",
+          ns_table_info->has_stream_id(), IllegalState, "$0 Stream id not found for table $1",
           LogPrefix(), table_id);
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "Table " << table_id << " is already a part of this replication group";
@@ -1090,15 +1134,24 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
       return Status::OK();
     }
 
-    stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info.stream_id()));
+    table_streams.emplace_back(
+        table_id, VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info->stream_id())));
+
+    if (ns_table_info->has_wal_anchor_stream_id() &&
+        !ns_table_info->wal_anchor_stream_id().empty()) {
+      table_streams.emplace_back(
+          table_id,
+          VERIFY_RESULT(xrepl::StreamId::FromString(ns_table_info->wal_anchor_stream_id())));
+    }
   }
 
   RETURN_NOT_OK(helper_functions_.checkpoint_xcluster_streams_func(
-      {{table_id, stream_id}}, StreamCheckpointLocation::kOpId0, epoch,
+      table_streams, StreamCheckpointLocation::kOpId0, epoch,
       /*check_if_bootstrap_required=*/false,
       [user_cb = std::move(completion_cb)](Result<bool> result) {
         if (!result.ok()) {
           user_cb(result.status());
+          return;
         }
         LOG_IF(DFATAL, result.get()) << "No bootstrap should be needed when checkpointing OpId0";
         user_cb(Status::OK());
@@ -1125,8 +1178,103 @@ Status XClusterOutboundReplicationGroup::MarkNewTablesAsCheckpointed(
   return Upsert(*lock_result, epoch);
 }
 
+Status XClusterOutboundReplicationGroup::CreateAndCheckpointStreamsForAnchoredTables(
+    const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids,
+    const LeaderEpoch& epoch) {
+  std::vector<TableId> tables_to_checkpoint;
+  const auto alive_streams = helper_functions_.get_alive_streams_func(source_table_ids);
+
+  {
+    std::lock_guard mutex_lock(mutex_);
+    auto lock_result = LockForWrite();
+    auto* ns_info = GetNamespaceInfoSafe(lock_result, namespace_id);
+    if (!ns_info || !VERIFY_RESULT(IsReady(*ns_info))) {
+      return Status::OK();
+    }
+
+    std::vector<scoped_refptr<CDCStreamInfo>> streams_to_upsert;
+    std::vector<std::unique_ptr<XClusterCreateStreamsContext>> create_contexts;
+
+    for (const auto& table_id : source_table_ids) {
+      auto* table_info = FindOrNull(*ns_info->mutable_table_infos(), table_id);
+      // Only tables that still hold a WAL anchor can get a stream here. Everything else is owned
+      // by the regular AddTableToXClusterSourceTask flow.
+      if (!table_info || table_info->wal_anchor_stream_id().empty()) {
+        continue;
+      }
+
+      if (!table_info->stream_id().empty()) {
+        auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(table_info->stream_id()));
+        if (alive_streams.contains(stream_id)) {
+          if (table_info->is_checkpointing()) {
+            tables_to_checkpoint.push_back(table_id);
+          }
+          continue;
+        }
+        // The target asked to delete this stream and the deletion is still in flight. Replace it
+        // instead of handing out a stream that is about to go away.
+        LOG_WITH_PREFIX(INFO) << "Replacing xCluster stream " << stream_id << " of table "
+                              << table_id << " as it is being deleted";
+      }
+
+      auto create_context = VERIFY_RESULT(helper_functions_.create_xcluster_streams_func(
+          {table_id}, epoch, AutomaticDDLMode(), /*allow_hidden_table=*/true,
+          /*is_wal_anchor=*/false));
+      SCHECK_EQ(create_context->streams_.size(), 1, IllegalState, "Unexpected number of streams");
+      const auto& new_stream = create_context->streams_.front();
+
+      LOG_WITH_PREFIX(INFO) << "Creating xCluster stream " << new_stream->id() << " for table "
+                            << table_id << " from WAL_ANCHOR stream "
+                            << table_info->wal_anchor_stream_id();
+
+      table_info->set_stream_id(new_stream->id());
+      table_info->set_is_checkpointing(true);
+      streams_to_upsert.push_back(new_stream);
+      create_contexts.push_back(std::move(create_context));
+      tables_to_checkpoint.push_back(table_id);
+    }
+
+    if (!streams_to_upsert.empty()) {
+      RETURN_NOT_OK(Upsert(*lock_result, epoch, streams_to_upsert));
+      for (auto& create_context : create_contexts) {
+        create_context->Commit();
+      }
+    }
+  }
+
+  for (const auto& table_id : tables_to_checkpoint) {
+    auto status = CheckpointTableStreamSync(namespace_id, table_id, epoch);
+    if (!status.ok()) {
+      // This makes target to retry the DDL, so the next call retries the checkpoint instead of
+      // creating another stream. Until it succeeds the target cannot use the stream.
+      LOG_WITH_PREFIX(WARNING) << "Failed to checkpoint xCluster stream of table " << table_id
+                               << ": " << status;
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status XClusterOutboundReplicationGroup::CheckpointTableStreamSync(
+    const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch) {
+  SCHECK(
+      !FLAGS_TEST_xcluster_fail_table_stream_checkpoint, TryAgain,
+      "Failing table stream checkpoint for testing");
+
+  Synchronizer sync;
+  RETURN_NOT_OK(CheckpointNewTable(namespace_id, table_id, epoch, sync.AsStdStatusCallback()));
+  RETURN_NOT_OK(sync.Wait());
+  return MarkNewTablesAsCheckpointed(namespace_id, table_id, epoch);
+}
+
 Status XClusterOutboundReplicationGroup::RemoveStreams(
     const std::vector<CDCStreamInfo*>& streams, const LeaderEpoch& epoch) {
+  std::unordered_set<std::string> streams_marked_for_deletion;
+  for (const auto& stream : streams) {
+    streams_marked_for_deletion.insert(stream->id());
+  }
+
   std::lock_guard mutex_lock(mutex_);
   auto lock_result = LockForWrite();
   if (IsDeleted(lock_result)) {
@@ -1141,9 +1289,36 @@ Status XClusterOutboundReplicationGroup::RemoveStreams(
 
     for (const auto& table_id : stream->table_id()) {
       for (auto& [ns_id, ns_info] : *pb.mutable_namespace_infos()) {
-        auto table_info = FindOrNull(ns_info.table_infos(), table_id);
-        if (table_info && table_info->has_stream_id() && table_info->stream_id() == stream->id()) {
-          ns_info.mutable_table_infos()->erase(table_id);
+        auto* table_info = FindOrNull(*ns_info.mutable_table_infos(), table_id);
+        if (!table_info) {
+          continue;
+        }
+
+        const bool has_wal_anchor = table_info->has_wal_anchor_stream_id() &&
+                                    !table_info->wal_anchor_stream_id().empty();
+
+        if (table_info->has_stream_id() && table_info->stream_id() == stream->id()) {
+          if (has_wal_anchor &&
+              !streams_marked_for_deletion.contains(table_info->wal_anchor_stream_id())) {
+            LOG_WITH_PREFIX(INFO) << "Removing xCluster stream " << stream->id() << " of table "
+                                  << table_id << ", retaining WAL_ANCHOR stream "
+                                  << table_info->wal_anchor_stream_id();
+            table_info->clear_stream_id();
+            table_info->clear_is_checkpointing();
+          } else {
+            ns_info.mutable_table_infos()->erase(table_id);
+          }
+          upsert_needed = true;
+          break;
+        }
+
+        if (has_wal_anchor && table_info->wal_anchor_stream_id() == stream->id()) {
+          LOG_WITH_PREFIX(INFO) << "Removing xCluster WAL anchor stream " << stream->id()
+                                << " for table " << table_id;
+          table_info->clear_wal_anchor_stream_id();
+          if (!table_info->has_stream_id() || table_info->stream_id().empty()) {
+            ns_info.mutable_table_infos()->erase(table_id);
+          }
           upsert_needed = true;
           break;
         }
@@ -1208,16 +1383,46 @@ Status XClusterOutboundReplicationGroup::RepairRemoveTable(
   auto& outbound_group_pb = l.mutable_data()->pb;
 
   bool table_removed = false;
+  std::vector<std::pair<TableId, std::string>> anchor_streams_to_delete;
   for (auto& [namespace_id, namespace_info] : *outbound_group_pb.mutable_namespace_infos()) {
-    if (namespace_info.mutable_table_infos()->erase(table_id)) {
-      table_removed = true;
-      break;
+    auto* table_info = FindOrNull(*namespace_info.mutable_table_infos(), table_id);
+    if (!table_info) {
+      continue;
     }
+    if (!table_info->wal_anchor_stream_id().empty()) {
+      anchor_streams_to_delete.emplace_back(table_id, table_info->wal_anchor_stream_id());
+    }
+    namespace_info.mutable_table_infos()->erase(table_id);
+    table_removed = true;
+    break;
   }
 
   SCHECK(table_removed, NotFound, "Table $0 not found in $1", table_id, ToString());
 
+  RETURN_NOT_OK(MarkAnchorStreamsForDeletion(anchor_streams_to_delete, epoch));
+
   return Upsert(l, epoch);
+}
+
+Status XClusterOutboundReplicationGroup::MarkAnchorStreamsForDeletion(
+    const std::vector<std::pair<TableId, std::string>>& anchor_streams, const LeaderEpoch& epoch) {
+  if (anchor_streams.empty()) {
+    return Status::OK();
+  }
+  DeleteCDCStreamRequestPB req;
+  req.set_force_delete(true);
+  req.set_ignore_errors(true);
+  for (const auto& [table_id, anchor_stream_id] : anchor_streams) {
+    LOG_WITH_PREFIX(INFO) << "Removing WAL anchor stream " << anchor_stream_id << " of table "
+                          << table_id;
+    req.add_stream_id(anchor_stream_id);
+  }
+
+  auto resp = VERIFY_RESULT(helper_functions_.delete_cdc_stream_func(req, epoch));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Status XClusterOutboundReplicationGroup::VerifyNoTasksInProgress() {
@@ -1248,6 +1453,19 @@ Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
   SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
 
   return table_info->stream_id();
+}
+
+Result<std::string> XClusterOutboundReplicationGroup::GetWalAnchorStreamId(
+    const NamespaceId& namespace_id, const TableId& table_id) const {
+  SharedLock mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForRead());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  auto* table_info = FindOrNull(ns_info->table_infos(), table_id);
+
+  SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
+
+  return table_info->wal_anchor_stream_id();
 }
 
 Status XClusterOutboundReplicationGroup::SetupDDLReplicationExtension(

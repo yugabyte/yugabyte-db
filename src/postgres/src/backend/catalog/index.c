@@ -3229,7 +3229,13 @@ index_build(Relation heapRelation,
 	Assert(indexRelation->rd_indam->ambuild);
 	Assert(indexRelation->rd_indam->ambuildempty);
 
-	if (yb_xcluster_automatic_mode_target_ddl)
+	/*
+	 * YB: on an xCluster automatic-mode target, index rows arrive through
+	 * replication, so the build is skipped.  Copartitioned (ybhnsw)
+	 * indexes are built locally by each cluster and still need the build.
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl &&
+		!indexRelation->rd_indam->yb_amiscopartitioned)
 	{
 		/* Still need to update pg_catalog. */
 		index_update_stats(heapRelation, true, -1);
@@ -3437,7 +3443,8 @@ yb_index_backfill(Relation heapRelation,
 				  IndexInfo *indexInfo,
 				  bool isprimary,
 				  YbBackfillInfo *bfinfo,
-				  YbPgExecOutParam *bfresult)
+				  YbPgExecOutParam *bfresult,
+				  double *num_rows_scanned)
 {
 	Oid			save_userid;
 	int			save_sec_context;
@@ -3486,6 +3493,7 @@ yb_index_backfill(Relation heapRelation,
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
+	*num_rows_scanned = result->heap_tuples;
 	return result->index_tuples;
 }
 

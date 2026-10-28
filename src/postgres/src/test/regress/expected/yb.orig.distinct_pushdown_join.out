@@ -506,14 +506,14 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Merge Join (actual rows=6.00 loops=1)
-   Merge Cond: (t1.r1 = t2.r1)
-   ->  Unique (actual rows=2.00 loops=1)
-         ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3.00 loops=1)
-               Distinct Keys: t1.r1
-   ->  Materialize (actual rows=6.00 loops=1)
-         ->  Unique (actual rows=6.00 loops=1)
-               ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7.00 loops=1)
-                     Distinct Keys: t2.r1, t2.r2
+   Merge Cond: (t2.r1 = t1.r1)
+   ->  Unique (actual rows=6.00 loops=1)
+         ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7.00 loops=1)
+               Distinct Keys: t2.r1, t2.r2
+   ->  Materialize (actual rows=4.00 loops=1)
+         ->  Unique (actual rows=2.00 loops=1)
+               ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3.00 loops=1)
+                     Distinct Keys: t1.r1
 (9 rows)
 
 SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
@@ -563,13 +563,13 @@ SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
- Unique (actual rows=1.00 loops=1)
-   ->  Nested Loop (actual rows=1000.00 loops=1)
-         ->  Seq Scan on t t1 (actual rows=1000.00 loops=1)
+ Limit (actual rows=1.00 loops=1)
+   ->  Nested Loop (actual rows=1.00 loops=1)
+         ->  Seq Scan on t t1 (actual rows=1.00 loops=1)
                Storage Filter: (r1 = 1)
-         ->  Materialize (actual rows=1.00 loops=1000)
+         ->  Materialize (actual rows=1.00 loops=1)
                ->  Unique (actual rows=1.00 loops=1)
-                     ->  Distinct Index Scan using t_pkey on t t2 (actual rows=2.00 loops=1)
+                     ->  Distinct Index Scan using t_pkey on t t2 (actual rows=1.00 loops=1)
                            Index Cond: (r1 = 1)
                            Distinct Keys: t2.r1
 (9 rows)
@@ -700,7 +700,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(th t)*/ SELECT
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Nested Loop (actual rows=6.00 loops=1)
-   Join Filter: ((th.h1 = t.r1) AND (th.h2 = t.r2))
+   Join Filter: ((t.r1 = th.h1) AND (t.r2 = th.h2))
    Rows Removed by Join Filter: 30
    ->  Unique (actual rows=6.00 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7.00 loops=1)
@@ -802,17 +802,18 @@ CREATE INDEX distinct_expr_a_idx ON distinct_expr (a ASC);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Subquery Scan on s (actual rows=5.00 loops=1)
-   ->  Unique (actual rows=5.00 loops=1)
-         ->  Sort (actual rows=5.00 loops=1)
-               Sort Key: distinct_expr.a, ((distinct_expr.a + 1))
-               Sort Method: quicksort
+ Sort (actual rows=5.00 loops=1)
+   Sort Key: s.a
+   Sort Method: quicksort
+   ->  Subquery Scan on s (actual rows=5.00 loops=1)
+         ->  HashAggregate (actual rows=5.00 loops=1)
+               Group Key: distinct_expr.a, (distinct_expr.a + 1)
                ->  Result distinct_expr (actual rows=5.00 loops=1)
                      ->  Unique (actual rows=5.00 loops=1)
                            ->  Distinct Index Only Scan using distinct_expr_a_idx on distinct_expr (actual rows=5.00 loops=1)
                                  Distinct Keys: distinct_expr.a
                                  Heap Fetches: 0
-(10 rows)
+(11 rows)
 
 SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
  a 
@@ -1017,20 +1018,20 @@ SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inne
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;
-                                                        QUERY PLAN                                                        
---------------------------------------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=6.00 loops=1)
    Sort Key: o.k, distinct_inner.a
    Sort Method: quicksort
    ->  Nested Loop (actual rows=6.00 loops=1)
-         ->  Unique (actual rows=2.00 loops=1)
-               ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2.00 loops=1)
-                     Distinct Keys: o.k
+         ->  Unique (actual rows=3.00 loops=1)
+               ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3.00 loops=1)
+                     Distinct Keys: distinct_inner.a
                      Heap Fetches: 0
-         ->  Materialize (actual rows=3.00 loops=2)
-               ->  Unique (actual rows=3.00 loops=1)
-                     ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3.00 loops=1)
-                           Distinct Keys: distinct_inner.a
+         ->  Materialize (actual rows=2.00 loops=3)
+               ->  Unique (actual rows=2.00 loops=1)
+                     ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2.00 loops=1)
+                           Distinct Keys: o.k
                            Heap Fetches: 0
 (13 rows)
 
@@ -1073,30 +1074,33 @@ SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct
 (2 rows)
 
 -- Handle propagated uniqkeys from the nullable side of a left join.
+-- YBTODO: Redundant grouping in this query due to GHI #34714
 \set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
-                                                         QUERY PLAN                                                         
-----------------------------------------------------------------------------------------------------------------------------
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=2.00 loops=1)
    Sort Key: o.k, distinct_inner.a
    Sort Method: quicksort
-   ->  Hash Right Join (actual rows=2.00 loops=1)
-         Hash Cond: (distinct_inner.a = o.k)
-         ->  Unique (actual rows=1.00 loops=1)
-               ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=1.00 loops=1)
-                     Index Cond: (a = 1)
-                     Distinct Keys: distinct_inner.a
-                     Heap Fetches: 0
-         ->  Hash (actual rows=2.00 loops=1)
-               Buckets: 1024 (originally 1024)  Original Batches: 1
-               ->  Unique (actual rows=2.00 loops=1)
-                     ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2.00 loops=1)
-                           Distinct Keys: o.k
+   ->  HashAggregate (actual rows=2.00 loops=1)
+         Group Key: o.k, distinct_inner.a
+         ->  Hash Right Join (actual rows=2.00 loops=1)
+               Hash Cond: (distinct_inner.a = o.k)
+               ->  Unique (actual rows=1.00 loops=1)
+                     ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=1.00 loops=1)
+                           Index Cond: (a = 1)
+                           Distinct Keys: distinct_inner.a
                            Heap Fetches: 0
-(16 rows)
+               ->  Hash (actual rows=2.00 loops=1)
+                     Buckets: 1024 (originally 1024)  Original Batches: 1
+                     ->  Unique (actual rows=2.00 loops=1)
+                           ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2.00 loops=1)
+                                 Distinct Keys: o.k
+                                 Heap Fetches: 0
+(18 rows)
 
 SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
  k | a 
@@ -1153,7 +1157,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Set(enable_mergejoin o
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=2.00 loops=1)
    ->  YB Batched Nested Loop Join (actual rows=2.00 loops=1)
-         Join Filter: (t1.col_int_key = t2.col_int)
+         Join Filter: (t2.col_int = t1.col_int_key)
          Sort Keys: t2.pk
          ->  Index Scan using t2_pkey on t2 (actual rows=4.00 loops=1)
                Index Cond: (pk < 5)

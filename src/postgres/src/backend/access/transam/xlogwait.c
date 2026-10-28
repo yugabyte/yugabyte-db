@@ -212,13 +212,11 @@ addLSNWaiter(XLogRecPtr lsn, WaitLSNType lsnType)
 	LWLockRelease(WaitLSNLock);
 }
 
-/*
- * Remove current process from appropriate waiters heap based on LSN type
- */
+/* YB: Parameterized by procno so the postmaster can clean up after a killed process. */
 static void
-deleteLSNWaiter(WaitLSNType lsnType)
+YbDeleteLSNWaiterForProc(ProcNumber procno, WaitLSNType lsnType)
 {
-	WaitLSNProcInfo *procInfo = &waitLSNState->procInfos[MyProcNumber];
+	WaitLSNProcInfo *procInfo = &waitLSNState->procInfos[procno]; /* YB */
 	int			i = (int) lsnType;
 
 	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
@@ -235,6 +233,15 @@ deleteLSNWaiter(WaitLSNType lsnType)
 	}
 
 	LWLockRelease(WaitLSNLock);
+}
+
+/*
+ * Remove current process from appropriate waiters heap based on LSN type
+ */
+static void
+deleteLSNWaiter(WaitLSNType lsnType)
+{
+	YbDeleteLSNWaiterForProc(MyProcNumber, lsnType);
 }
 
 /*
@@ -335,10 +342,11 @@ WaitLSNWakeup(WaitLSNType lsnType, XLogRecPtr currentLSN)
 }
 
 /*
- * Clean up LSN waiters for exiting process
+ * YB: Clean up LSN waiters for a given procno.
+ * Parameterized by procno so the postmaster can clean up after a killed process.
  */
 void
-WaitLSNCleanup(void)
+YbWaitLSNCleanupForProc(ProcNumber procno)
 {
 	if (waitLSNState)
 	{
@@ -346,11 +354,21 @@ WaitLSNCleanup(void)
 		 * We do a fast-path check of the inHeap flag without the lock.  This
 		 * flag is set to true only by the process itself.  So, it's only
 		 * possible to get a false positive.  But that will be eliminated by a
-		 * recheck inside deleteLSNWaiter().
+		 * recheck inside YbDeleteLSNWaiterForProc().
 		 */
-		if (waitLSNState->procInfos[MyProcNumber].inHeap)
-			deleteLSNWaiter(waitLSNState->procInfos[MyProcNumber].lsnType);
+		if (waitLSNState->procInfos[procno].inHeap)
+			YbDeleteLSNWaiterForProc(procno,
+									 waitLSNState->procInfos[procno].lsnType);
 	}
+}
+
+/*
+ * Clean up LSN waiters for exiting process
+ */
+void
+WaitLSNCleanup(void)
+{
+	YbWaitLSNCleanupForProc(MyProcNumber);
 }
 
 /*

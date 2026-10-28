@@ -30,6 +30,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -101,11 +102,11 @@ class PlacementInfoTest : public YBTest {
   }
 
   std::string PlacementRegion(int ts_index) {
-    return strings::Substitute("region$0", ts_index);
+    return Format("region$0", ts_index);
   }
 
   std::string PlacementZone(int ts_index) {
-    return strings::Substitute("zone$0", ts_index);
+    return Format("zone$0", ts_index);
   }
 
   void TearDown() override {

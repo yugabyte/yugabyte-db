@@ -34,8 +34,10 @@ std::string AddTableToXClusterSourceTask::description() const {
 }
 
 Status AddTableToXClusterSourceTask::FirstStep() {
+  // Internal DDL tables are connected at setup time, so they don't need WAL_ANCHOR stream.
+  const bool needs_wal_anchor = !table_info_->IsXClusterDDLReplicationTable();
   RETURN_NOT_OK(outbound_replication_group_->CreateStreamForNewTable(
-      table_info_->namespace_id(), table_info_->id(), epoch_));
+      table_info_->namespace_id(), table_info_->id(), needs_wal_anchor, epoch_));
 
   ScheduleNextStep(
       std::bind(&AddTableToXClusterSourceTask::CheckpointStream, this), "CheckpointStream");

@@ -8,8 +8,8 @@ enum:
   - Failed
   - Aborted
 x-enum-varnames:
-  - Created
-  - InProgress
-  - Completed
-  - Failed
-  - Aborted
+  - RestoreCreated
+  - RestoreInProgress
+  - RestoreCompleted
+  - RestoreFailed
+  - RestoreAborted

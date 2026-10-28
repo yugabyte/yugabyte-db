@@ -33,6 +33,7 @@ public class OnPremValidator extends ProviderFieldsValidator {
     JsonNode processedProvider = Util.addJsonPathToLeafNodes(Json.toJson(provider));
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
 
+    validateCrossCloudFederationTargets(provider);
     validatePrivateKeys(provider, processedProvider, validationErrorsMap);
     ArrayNode regionArrayJson = (ArrayNode) processedProvider.get("regions");
 

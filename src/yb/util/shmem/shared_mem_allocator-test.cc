@@ -384,6 +384,36 @@ TEST_F(SharedMemoryAllocatorTest, TestMakeUnique) {
   }
 }
 
+TEST_F(SharedMemoryAllocatorTest, TestMakeUniqueArray) {
+  std::unordered_map<size_t, std::function<void(void)>> actions = {
+    {0, [&] {
+      ASSERT_EQ(shared_->Data<int>()[0], 0);
+      ASSERT_EQ(shared_->Data<int>()[1], 1);
+    }},
+    {1, [&] {
+      ASSERT_EQ(shared_->Data<int>()[0], 5);
+      ASSERT_EQ(shared_->Data<int>()[1], 0);
+    }},
+  };
+  ASSERT_OK(ForkChild(actions));
+
+  int* old_ptr;
+  {
+    auto ptr = ASSERT_RESULT(backing_.MakeUnique<int[]>(2));
+    old_ptr = ptr.get();
+    shared_->SetData(ptr.get());
+    ptr[1] = 1;
+    ASSERT_OK(ChildRequest(0 /* action_id */));
+  }
+
+  {
+    auto ptr = ASSERT_RESULT(backing_.MakeUnique<int[]>(2));
+    ASSERT_EQ(old_ptr, ptr.get());
+    ptr[0] = 5;
+    ASSERT_OK(ChildRequest(1 /* action_id */));
+  }
+}
+
 TEST_F(SharedMemoryAllocatorTest, TestDelete) {
   ASSERT_OK(ForkChild({} /* actions */));
 

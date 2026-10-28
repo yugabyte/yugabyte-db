@@ -20,6 +20,7 @@
       "$BUILD_ROOT/bin/stackcollapse-perf.pl",
       "$BUILD_ROOT/bin/yb-admin",
       "$BUILD_ROOT/bin/yb-bulk_load",
+      "$BUILD_ROOT/bin/yb-fs_pin",
       "$BUILD_ROOT/bin/yb-generate_partitions_main",
       "$BUILD_ROOT/bin/yb-master",
       "$BUILD_ROOT/bin/yb-pbc-dump",

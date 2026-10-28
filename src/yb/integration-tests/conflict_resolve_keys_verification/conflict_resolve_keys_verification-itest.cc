@@ -68,6 +68,7 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
       "--ysql_enable_auto_analyze=false",
       "--ysql_yb_ddl_transaction_block_enabled=true",
       "--enable_object_locking_for_table_locks=true",
+      "--ysql_enable_concurrent_ddl=true",
       "--allowed_preview_flags_csv=skip_prefix_locks",
       "--yb_enable_read_committed_isolation"
     };

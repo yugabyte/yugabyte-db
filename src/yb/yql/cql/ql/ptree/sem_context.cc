@@ -323,8 +323,8 @@ Status SemContext::CheckHasTablePermission(const YBLocation &loc,
                                            const NamespaceName& keyspace_name,
                                            const TableName& table_name) {
   DFATAL_OR_RETURN_ERROR_IF(keyspace_name.empty(),
-                            STATUS_SUBSTITUTE(InvalidArgument, "Empty keyspace for table $0",
-                                              table_name));
+                            STATUS_FORMAT(InvalidArgument, "Empty keyspace for table $0",
+                                          table_name));
   DFATAL_OR_RETURN_ERROR_IF(table_name.empty(),
                             STATUS(InvalidArgument, "Table name cannot be empty"));
 

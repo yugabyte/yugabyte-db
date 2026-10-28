@@ -1,6 +1,6 @@
 comment = '{name}:  Created by pgrx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/{name}'
+module_pathname = '{name}'
 relocatable = false
 superuser = true
 trusted = false

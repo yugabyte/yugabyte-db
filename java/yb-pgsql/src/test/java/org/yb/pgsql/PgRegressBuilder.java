@@ -173,6 +173,11 @@ public class PgRegressBuilder {
     return this;
   }
 
+  public PgRegressBuilder setYbHostPortList(String yb_host_list) {
+    args.add("--yb-host-port-list=" + yb_host_list);
+    return this;
+  }
+
   public PgRegressBuilder setHost(String host) {
     args.add("--host=" + host);
     return this;

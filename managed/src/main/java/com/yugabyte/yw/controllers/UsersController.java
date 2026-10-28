@@ -656,9 +656,7 @@ public class UsersController extends AuthenticatedController {
   }
 
   private boolean userHasSuperAdminRole(Users user, UUID customerUUID) {
-    Role superAdminRole = Role.get(customerUUID, Users.Role.SuperAdmin.name());
-    return superAdminRole != null
-        && RoleBinding.checkUserHasRole(user.getUuid(), superAdminRole.getRoleUUID());
+    return roleBindingUtil.isSuperAdmin(user);
   }
 
   private void sendPasswordResetNotification(UUID customerUUID, Users user) {

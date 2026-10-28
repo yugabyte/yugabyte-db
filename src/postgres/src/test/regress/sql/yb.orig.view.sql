@@ -38,3 +38,23 @@ SELECT * FROM test_schema.test_view;
 ALTER VIEW test_schema.test_view SET SCHEMA public;
 SELECT * FROM test_view;
 ALTER VIEW IF EXISTS non_existent_view SET SCHEMA test_schema;
+-- security_invoker views must be checked as the invoking user even when the
+-- view is loaded by YB's relcache preload (forced here by a full catalog
+-- cache refresh before each statement).
+CREATE ROLE view_reader;
+CREATE TABLE view_secret (id int PRIMARY KEY, s text);
+INSERT INTO view_secret VALUES (1, 'secret');
+CREATE VIEW view_secret_invoker WITH (security_invoker = true)
+    AS SELECT * FROM view_secret;
+CREATE VIEW view_secret_definer AS SELECT * FROM view_secret;
+GRANT SELECT ON view_secret_invoker, view_secret_definer TO view_reader;
+SET ROLE view_reader;
+SELECT * FROM view_secret_invoker; -- fails
+SELECT * FROM view_secret_definer;
+RESET ROLE;
+SET yb_test_preload_catalog_tables = true;
+SET ROLE view_reader;
+SELECT * FROM view_secret_invoker; -- fails
+SELECT * FROM view_secret_definer;
+RESET ROLE;
+RESET yb_test_preload_catalog_tables;

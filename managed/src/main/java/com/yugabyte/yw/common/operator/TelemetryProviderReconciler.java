@@ -231,7 +231,10 @@ public class TelemetryProviderReconciler extends AbstractReconciler<TelemetryPro
 
       TelemetryProviderConfig config =
           crConverter.toConfig(
-              provider, resourceTracker, currentReconcileResource, currentLocalInstanceUuid);
+              provider,
+              resourceTracker,
+              KubernetesResourceDetails.fromResource(provider),
+              operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
 
       com.yugabyte.yw.models.TelemetryProvider ybaProvider =
           new com.yugabyte.yw.models.TelemetryProvider();

@@ -70,7 +70,7 @@ Use the following steps to run change data capture (CDC) with Debezium on a loca
 
 ### Create a database stream ID
 
-{{<tags/feature/ea idea="2762">}}Create the stream using PostgreSQL replication slot commands and the `yb_grpc` plugin (v2026.1.1.0 and later):
+{{<tags/feature/ea idea="2762">}}Create the stream using PostgreSQL replication slot commands and the `yb_grpc` plugin (v2026.1.2.0 and later):
 
 ```sql
 SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
@@ -85,7 +85,7 @@ Alternatively, use [yb-admin](../../../admin/yb-admin#change-data-capture-cdc-co
 
 {{< note title="Note" >}}
 
-For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended.
+For v2026.1.2.0 and later, PostgreSQL replication slot syntax is recommended.
 
 {{< /note >}}
 

@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -69,6 +70,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 import play.libs.Json;
@@ -251,7 +253,7 @@ public class OtelCollectorConfigGenerator {
       int otelColMetricsPort,
       NodeAgent nodeAgent) {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
-      Yaml yaml = new Yaml(new SkipNullRepresenter());
+      Yaml yaml = collectorConfigYaml();
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
       addCommonService(collectorConfigFormat, provider, userIntent, otelColMetricsPort);
       AuditLogConfig auditLogConfig =
@@ -1061,6 +1063,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.AUDIT_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL,
             transformName,
+            logLinePrefix,
             null,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1078,6 +1081,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.QUERY_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_QUERY_YSQL,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1105,6 +1109,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.MASTER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_MASTER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1122,6 +1127,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.TSERVER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1140,6 +1146,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.YSQL_CONN_MGR_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1158,6 +1165,7 @@ public class OtelCollectorConfigGenerator {
             ExportType.CONTROLLER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER,
             transformName,
+            logLinePrefix,
             ec,
             ec.getAdditionalTags(),
             secretEnv,
@@ -1171,10 +1179,17 @@ public class OtelCollectorConfigGenerator {
     // POJO directly tags every node with its Java class (e.g. !!...$FileLogReceiver), which
     // pollutes the rendered collector config. SkipNullRepresenter drops the nulls Jackson includes.
     Object plainConfig = Json.mapper().convertValue(cfg, Object.class);
-    Yaml yaml = new Yaml(new SkipNullRepresenter());
+    Yaml yaml = collectorConfigYaml();
     StringWriter writer = new StringWriter();
     yaml.dump(plainConfig, writer);
-    return new K8sOtelConfig(true, writer.toString(), secretEnv);
+    // The operator injects this config into the sidecar as the OTEL_CONFIG env var, and kubelet's
+    // $(VAR) expansion collapses the "$$" escape to "$" in every env value - one pass before the
+    // collector's own confmap unescaping. A "$${1}" written for a config file therefore reaches
+    // the collector as "${1}" and fails env-var resolution, crash-looping the sidecar (and, as a
+    // native sidecar, the whole pod). Double the escapes so both passes are survived. ${POD_NAME}
+    // must stay single-$: kubelet only rewrites "$$" and "$(...)", and the collector resolves it
+    // from the pod env at config load.
+    return new K8sOtelConfig(true, writer.toString().replace("$$", "$$$$"), secretEnv);
   }
 
   private void addK8sLogPipeline(
@@ -1186,6 +1201,7 @@ public class OtelCollectorConfigGenerator {
       ExportType exportType,
       String receiverName,
       String transformName,
+      String logLinePrefix,
       BatchedLogsExporterConfig batchConfig,
       Map<String, String> additionalTags,
       List<Object> secretEnv,
@@ -1195,6 +1211,14 @@ public class OtelCollectorConfigGenerator {
     String exporterName = appendExporterConfig(tp, cfg, attrs, exportType);
     addK8sCommonRequiredAttributes(
         attrs, universe, podPlacement, tp, logExportPurposeSuffix(exportType));
+    // Namespace the receiver-parsed attributes the same way the VM path does - the sidecar runs the
+    // same receivers, so without this K8s records reach the exporter with un-prefixed pgaudit and
+    // log-prefix attribute names (PLAT-22327).
+    addLogPayloadRenameActions(
+        attrs,
+        ExportType.AUDIT_LOGS.equals(exportType),
+        !ExportType.MASTER_LOGS.equals(exportType) && !ExportType.TSERVER_LOGS.equals(exportType),
+        logExportRegexResult(exportType, logLinePrefix));
     // Merge telemetry-provider tags + the exporter config's additionalTags (parity with VM).
     addCommonAdditionalAttributes(attrs, tp, additionalTags);
     attrs.add(new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));
@@ -1340,43 +1364,27 @@ public class OtelCollectorConfigGenerator {
       String purposeSuffix) {
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_name", "${POD_NAME}", "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
+
+    Map<ExportLabel, String> values = new LinkedHashMap<>();
+    values.put(ExportLabel.UNIVERSE_UUID, universe.getUniverseUUID().toString());
+    values.put(ExportLabel.NODE_NAME, "${POD_NAME}");
+    // No NODE_ADDRESS/NODE_IDENTIFIER: this config is per helm release, and POD_IP is not injected.
+    values.put(
+        ExportLabel.NODE_PREFIX,
+        StringUtils.defaultString(universe.getUniverseDetails().nodePrefix, ""));
     if (podPlacement != null) {
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.cloud",
-              StringUtils.defaultString(podPlacement.getCloud(), ""),
-              "upsert",
-              null));
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.region",
-              StringUtils.defaultString(podPlacement.getRegion(), ""),
-              "upsert",
-              null));
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              "yugabyte.zone",
-              StringUtils.defaultString(podPlacement.getZone(), ""),
-              "upsert",
-              null));
+      values.put(ExportLabel.NODE_REGION, StringUtils.defaultString(podPlacement.getRegion(), ""));
+      values.put(ExportLabel.NODE_AZ, StringUtils.defaultString(podPlacement.getZone(), ""));
       if (podPlacement.getClusterType() != null) {
-        attributeActions.add(
-            new OtelCollectorConfigFormat.AttributeAction(
-                "yugabyte.node_type", podPlacement.getClusterType().toString(), "upsert", null));
+        values.put(ExportLabel.NODE_CLUSTER_TYPE, podPlacement.getClusterType().toString());
       }
+      values.put(ExportLabel.NODE_CLOUD, StringUtils.defaultString(podPlacement.getCloud(), ""));
     }
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
-            "upsert",
-            null));
+    values.put(
+        ExportLabel.EXPORT_PURPOSE,
+        telemetryProvider.getConfig().getType().toString() + purposeSuffix);
+
+    addIdentityAttributes(attributeActions, values, universe);
   }
 
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
@@ -1385,7 +1393,10 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
     filterOperator.setType("filter");
-    filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
+    filterOperator.setExpr(
+        "body not matches \"^.*\\\\w+"
+            + AuditLogRegexGenerator.AUDIT_MARKER_REGEX
+            + "(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =
@@ -1418,7 +1429,10 @@ public class OtelCollectorConfigGenerator {
         new OtelCollectorConfigFormat.FilterOperator();
     // filtering out the audit logs
     filterOperator1.setType("filter");
-    filterOperator1.setExpr("body matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
+    filterOperator1.setExpr(
+        "body matches \"^.*\\\\w+"
+            + AuditLogRegexGenerator.AUDIT_MARKER_REGEX
+            + "(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     OtelCollectorConfigFormat.FilterOperator filterOperator2 =
         new OtelCollectorConfigFormat.FilterOperator();
@@ -2573,6 +2587,28 @@ public class OtelCollectorConfigGenerator {
         + ")";
   }
 
+  // POSIX-ERE counterpart of generateLineStartPattern, consumed by
+  // zip_purge_yb_logs.sh (awk) to group multi-line YSQL audit statements into
+  // whole records. Same record boundary as the collector's multiline config -
+  // a YB glog header or the log_line_prefix - so the archived audit slice keeps
+  // every physical line of a record, not just the first. Interval quantifiers
+  // are loosened to '+' so the pattern works under both mawk and gawk.
+  public String generateAuditLineStartEre(String logPrefix) {
+    String prefixEre =
+        re2ToPosixEre(
+            auditLogRegexGenerator
+                .generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true)
+                .getRegex());
+    return "^([A-Z][0-9]+)|^(" + prefixEre + ")";
+  }
+
+  static String re2ToPosixEre(String re2) {
+    String ere = re2.replaceAll("\\(\\?P<[A-Za-z0-9_]+>", "(");
+    ere = ere.replace("\\d", "[0-9]").replace("\\w", "[A-Za-z0-9_]");
+    ere = ere.replaceAll("\\{[0-9]+(?:,[0-9]*)?\\}", "+");
+    return ere;
+  }
+
   private String generateQueryLineStartPattern(String logPrefix) {
     return ".*([A-Z]\\d{4})|("
         + auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true).getRegex()
@@ -2705,45 +2741,60 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       TelemetryProvider telemetryProvider,
       String purposeSuffix) {
-    // Add some common collector labels.
+    // "host" is a vendor convention (Datadog, Splunk key off it), not a swamper label.
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_name", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.cloud",
-            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_type",
-            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.region",
-            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.zone",
-            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
-            "upsert",
-            null));
+
+    Map<ExportLabel, String> values = new LinkedHashMap<>();
+    values.put(ExportLabel.UNIVERSE_UUID, universe.getUniverseUUID().toString());
+    values.put(ExportLabel.NODE_NAME, nodeName);
+    values.put(
+        ExportLabel.NODE_ADDRESS, StringUtils.defaultString(nodeDetails.cloudInfo.private_ip, ""));
+    if (Common.CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
+      NodeInstance.maybeGet(nodeDetails.nodeUuid)
+          .map(nodeInstance -> nodeInstance.getDetails().instanceName)
+          .filter(StringUtils::isNotEmpty)
+          .ifPresent(name -> values.put(ExportLabel.NODE_IDENTIFIER, name));
+    }
+    values.put(
+        ExportLabel.NODE_PREFIX,
+        StringUtils.defaultString(universe.getUniverseDetails().nodePrefix, ""));
+    values.put(
+        ExportLabel.NODE_REGION, StringUtils.defaultString(nodeDetails.cloudInfo.region, ""));
+    values.put(ExportLabel.NODE_AZ, StringUtils.defaultString(nodeDetails.cloudInfo.az, ""));
+    values.put(
+        ExportLabel.NODE_CLUSTER_TYPE,
+        universe.getCluster(nodeDetails.placementUuid).clusterType.toString());
+    values.put(ExportLabel.NODE_CLOUD, StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""));
+    values.put(
+        ExportLabel.EXPORT_PURPOSE,
+        telemetryProvider.getConfig().getType().toString() + purposeSuffix);
+
+    addIdentityAttributes(attributeActions, values, universe);
+  }
+
+  // Canonical names first, then the legacy duplicates. Log payload attributes keep their
+  // "yugabyte." prefix unconditionally and do not come through here.
+  private void addIdentityAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      Map<ExportLabel, String> values,
+      Universe universe) {
+    values.forEach(
+        (label, value) ->
+            attributeActions.add(
+                new OtelCollectorConfigFormat.AttributeAction(
+                    label.getAttributeName(), value, "upsert", null)));
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.emitLegacyExportAttributes)) {
+      return;
+    }
+    values.forEach(
+        (label, value) -> {
+          if (label.getLegacyAttributeName() != null) {
+            attributeActions.add(
+                new OtelCollectorConfigFormat.AttributeAction(
+                    label.getLegacyAttributeName(), value, "upsert", null));
+          }
+        });
   }
 
   private void addCommonAdditionalAttributes(
@@ -2776,6 +2827,25 @@ public class OtelCollectorConfigGenerator {
     addCommonRequiredAttributes(
         attributeActions, nodeName, nodeDetails, universe, telemetryProvider, purposeSuffix);
 
+    addLogPayloadRenameActions(
+        attributeActions, includeAuditType, includePgAuditFields, regexResult);
+
+    // Override or add tags from the exporter config and additional tags from the log config
+    // payload.
+    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
+  }
+
+  /**
+   * Namespaces the attributes the filelog receiver parses out of the log line itself (pgaudit CSV
+   * fields, log_level, and the log_line_prefix tokens) under "yugabyte.". Shared by the VM and K8s
+   * config builders: the attribute names a record arrives with must not depend on which provider
+   * the universe runs on.
+   */
+  private void addLogPayloadRenameActions(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      boolean includeAuditType,
+      boolean includePgAuditFields,
+      AuditLogRegexGenerator.LogRegexResult regexResult) {
     // Rename the common attributes to organise under the key yugabyte.
     List<RenamePair> commonRenamePairs = new ArrayList<RenamePair>();
     commonRenamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
@@ -2806,10 +2876,6 @@ public class OtelCollectorConfigGenerator {
                   new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
               attributeActions.addAll(rp.getRenameAttributeActions());
             });
-
-    // Override or add tags from the exporter config and additional tags from the log config
-    // payload.
-    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
   }
 
   private String appendExporterConfig(
@@ -3179,7 +3245,7 @@ public class OtelCollectorConfigGenerator {
   private String getFirstMountPoint(
       Provider provider, UniverseDefinitionTaskParams.UserIntent userIntent) {
     if (provider.getCloudCode() == Common.CloudType.onprem) {
-      String mountPoints = userIntent.deviceInfo.mountPoints;
+      String mountPoints = userIntent.getBaseDeviceInfo(provider.getUuid()).mountPoints;
       return mountPoints.split(",")[0];
     }
     return "/mnt/d0";
@@ -3196,6 +3262,13 @@ public class OtelCollectorConfigGenerator {
       secretEnv.add(
           ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
     }
+  }
+
+  /** Long values stay on one line: a folded credential could not be redacted by value. */
+  private static Yaml collectorConfigYaml() {
+    DumperOptions options = new DumperOptions();
+    options.setSplitLines(false);
+    return new Yaml(new SkipNullRepresenter(options), options);
   }
 
   private void appendSecretEnv(

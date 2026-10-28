@@ -66,5 +66,5 @@ ERROR:  savepoint "test" does not exist
 
 ## See also
 
-- [`SAVEPOINT`](../savepoint_create)
-- [`ROLLBACK TO`](../savepoint_rollback)
+- [SAVEPOINT](../savepoint_create)
+- [ROLLBACK TO](../savepoint_rollback)

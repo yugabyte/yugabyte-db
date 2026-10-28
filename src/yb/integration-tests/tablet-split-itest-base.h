@@ -117,6 +117,12 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   void CreateSingleTablet() {
     this->SetNumTablets(1);
     this->CreateTable();
+    if constexpr (std::is_same_v<MiniClusterType, MiniCluster>) {
+      // Master flush tasks are not retried, so a still-bootstrapping replica would fail the flush.
+      ASSERT_OK(WaitAllReplicasReady(
+          this->cluster_.get(), this->table_->id(),
+          std::chrono::seconds(30) * kTimeMultiplier));
+    }
   }
 
   Status CheckRowsCount(size_t expected_num_rows) {
@@ -228,6 +234,9 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
  protected:
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+
+  virtual size_t DbBlockSizeBytes() const { return kDbBlockSizeBytes; }
+  virtual size_t DbIndexBlockSizeBytes() const { return 2_KB; }
 };
 
 

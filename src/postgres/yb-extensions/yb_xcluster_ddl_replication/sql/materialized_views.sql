@@ -19,6 +19,17 @@ ALTER MATERIALIZED VIEW product_summary RENAME TO product_inventory;
 
 REFRESH MATERIALIZED VIEW product_inventory;
 
+-- In-place refresh keeps the relfilenode and is replicated as DML, so the
+-- target has to run in the same mode. Verify the effective value is recorded.
+INSERT INTO products VALUES (1, 'a', 1.0);
+SET yb_refresh_matview_in_place = true;
+REFRESH MATERIALIZED VIEW product_inventory;
+
+-- An explicit off is recorded the same way as the default.
+SET yb_refresh_matview_in_place = false;
+REFRESH MATERIALIZED VIEW product_inventory;
+RESET yb_refresh_matview_in_place;
+
 DROP MATERIALIZED VIEW product_inventory;
 
 SELECT yb_data FROM public.TEST_filtered_ddl_queue() ORDER BY ddl_end_time;

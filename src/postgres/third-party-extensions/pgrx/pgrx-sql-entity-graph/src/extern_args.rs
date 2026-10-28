@@ -8,8 +8,8 @@
 //LICENSE
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use crate::PositioningRef;
-use proc_macro2::{TokenStream, TokenTree};
-use quote::{format_ident, quote, ToTokens, TokenStreamExt};
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+use quote::{ToTokens, TokenStreamExt, format_ident, quote};
 use std::collections::HashSet;
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord)]
@@ -28,6 +28,7 @@ pub enum ExternArgs {
     ParallelRestricted,
     ShouldPanic(String),
     Schema(String),
+    Support(PositioningRef),
     Name(String),
     Cost(String),
     Requires(Vec<PositioningRef>),
@@ -36,23 +37,146 @@ pub enum ExternArgs {
 impl core::fmt::Display for ExternArgs {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ExternArgs::CreateOrReplace => write!(f, "CREATE OR REPLACE"),
-            ExternArgs::Immutable => write!(f, "IMMUTABLE"),
-            ExternArgs::Strict => write!(f, "STRICT"),
-            ExternArgs::Stable => write!(f, "STABLE"),
-            ExternArgs::Volatile => write!(f, "VOLATILE"),
-            ExternArgs::Raw => Ok(()),
-            ExternArgs::ParallelSafe => write!(f, "PARALLEL SAFE"),
-            ExternArgs::ParallelUnsafe => write!(f, "PARALLEL UNSAFE"),
-            ExternArgs::SecurityDefiner => write!(f, "SECURITY DEFINER"),
-            ExternArgs::SecurityInvoker => write!(f, "SECURITY INVOKER"),
-            ExternArgs::ParallelRestricted => write!(f, "PARALLEL RESTRICTED"),
-            ExternArgs::ShouldPanic(_) => Ok(()),
-            ExternArgs::NoGuard => Ok(()),
-            ExternArgs::Schema(_) => Ok(()),
-            ExternArgs::Name(_) => Ok(()),
-            ExternArgs::Cost(cost) => write!(f, "COST {cost}"),
-            ExternArgs::Requires(_) => Ok(()),
+            Self::CreateOrReplace => write!(f, "CREATE OR REPLACE"),
+            Self::Immutable => write!(f, "IMMUTABLE"),
+            Self::Strict => write!(f, "STRICT"),
+            Self::Stable => write!(f, "STABLE"),
+            Self::Volatile => write!(f, "VOLATILE"),
+            Self::Raw => Ok(()),
+            Self::ParallelSafe => write!(f, "PARALLEL SAFE"),
+            Self::ParallelUnsafe => write!(f, "PARALLEL UNSAFE"),
+            Self::SecurityDefiner => write!(f, "SECURITY DEFINER"),
+            Self::SecurityInvoker => write!(f, "SECURITY INVOKER"),
+            Self::ParallelRestricted => write!(f, "PARALLEL RESTRICTED"),
+            Self::Support(item) => write!(f, "{item}"),
+            Self::ShouldPanic(_) => Ok(()),
+            Self::NoGuard => Ok(()),
+            Self::Schema(_) => Ok(()),
+            Self::Name(_) => Ok(()),
+            Self::Cost(cost) => write!(f, "COST {cost}"),
+            Self::Requires(_) => Ok(()),
+        }
+    }
+}
+
+impl ExternArgs {
+    pub fn section_len_tokens(&self) -> TokenStream {
+        match self {
+            Self::CreateOrReplace
+            | Self::Immutable
+            | Self::Strict
+            | Self::Stable
+            | Self::Volatile
+            | Self::Raw
+            | Self::NoGuard
+            | Self::SecurityDefiner
+            | Self::SecurityInvoker
+            | Self::ParallelSafe
+            | Self::ParallelUnsafe
+            | Self::ParallelRestricted => {
+                quote! { ::pgrx::pgrx_sql_entity_graph::section::u8_len() }
+            }
+            Self::ShouldPanic(value)
+            | Self::Schema(value)
+            | Self::Name(value)
+            | Self::Cost(value) => quote! {
+                ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                    + ::pgrx::pgrx_sql_entity_graph::section::str_len(#value)
+            },
+            Self::Support(item) => {
+                let item_len = item.section_len_tokens();
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len() + (#item_len)
+                }
+            }
+            Self::Requires(items) => {
+                let item_lens = items.iter().map(PositioningRef::section_len_tokens);
+                quote! {
+                    ::pgrx::pgrx_sql_entity_graph::section::u8_len()
+                        + ::pgrx::pgrx_sql_entity_graph::section::list_len(&[
+                            #( #item_lens ),*
+                        ])
+                }
+            }
+        }
+    }
+
+    pub fn section_writer_tokens(&self, writer: TokenStream) -> TokenStream {
+        match self {
+            Self::CreateOrReplace => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_CREATE_OR_REPLACE) }
+            }
+            Self::Immutable => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_IMMUTABLE) }
+            }
+            Self::Strict => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_STRICT) }
+            }
+            Self::Stable => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_STABLE) }
+            }
+            Self::Volatile => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_VOLATILE) }
+            }
+            Self::Raw => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_RAW) }
+            }
+            Self::NoGuard => {
+                quote! { #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_NO_GUARD) }
+            }
+            Self::SecurityDefiner => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_SECURITY_DEFINER)
+            },
+            Self::SecurityInvoker => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_SECURITY_INVOKER)
+            },
+            Self::ParallelSafe => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_PARALLEL_SAFE)
+            },
+            Self::ParallelUnsafe => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_PARALLEL_UNSAFE)
+            },
+            Self::ParallelRestricted => quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_PARALLEL_RESTRICTED)
+            },
+            Self::ShouldPanic(value) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_SHOULD_PANIC)
+                    .str(#value)
+            },
+            Self::Schema(value) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_SCHEMA)
+                    .str(#value)
+            },
+            Self::Support(item) => item.section_writer_tokens(quote! {
+                #writer.u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_SUPPORT)
+            }),
+            Self::Name(value) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_NAME)
+                    .str(#value)
+            },
+            Self::Cost(value) => quote! {
+                #writer
+                    .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_COST)
+                    .str(#value)
+            },
+            Self::Requires(items) => {
+                let writer_ident = Ident::new("__pgrx_schema_writer", Span::mixed_site());
+                let item_writers =
+                    items.iter().map(|item| item.section_writer_tokens(quote! { #writer_ident }));
+                let count = items.len();
+                quote! {
+                    {
+                        let #writer_ident = #writer
+                            .u8(::pgrx::pgrx_sql_entity_graph::section::EXTERN_ARG_REQUIRES)
+                            .u32(#count as u32);
+                        #( let #writer_ident = { #item_writers }; )*
+                        #writer_ident
+                    }
+                }
+            }
         }
     }
 }
@@ -60,58 +184,24 @@ impl core::fmt::Display for ExternArgs {
 impl ToTokens for ExternArgs {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            ExternArgs::CreateOrReplace => tokens.append(format_ident!("CreateOrReplace")),
-            ExternArgs::Immutable => tokens.append(format_ident!("Immutable")),
-            ExternArgs::Strict => tokens.append(format_ident!("Strict")),
-            ExternArgs::Stable => tokens.append(format_ident!("Stable")),
-            ExternArgs::Volatile => tokens.append(format_ident!("Volatile")),
-            ExternArgs::Raw => tokens.append(format_ident!("Raw")),
-            ExternArgs::NoGuard => tokens.append(format_ident!("NoGuard")),
-            ExternArgs::SecurityDefiner => tokens.append(format_ident!("SecurityDefiner")),
-            ExternArgs::SecurityInvoker => tokens.append(format_ident!("SecurityInvoker")),
-            ExternArgs::ParallelSafe => tokens.append(format_ident!("ParallelSafe")),
-            ExternArgs::ParallelUnsafe => tokens.append(format_ident!("ParallelUnsafe")),
-            ExternArgs::ParallelRestricted => tokens.append(format_ident!("ParallelRestricted")),
-            ExternArgs::ShouldPanic(_s) => {
-                tokens.append_all(
-                    quote! {
-                        Error(String::from("#_s"))
-                    }
-                    .to_token_stream(),
-                );
-            }
-            ExternArgs::Schema(_s) => {
-                tokens.append_all(
-                    quote! {
-                        Schema(String::from("#_s"))
-                    }
-                    .to_token_stream(),
-                );
-            }
-            ExternArgs::Name(_s) => {
-                tokens.append_all(
-                    quote! {
-                        Name(String::from("#_s"))
-                    }
-                    .to_token_stream(),
-                );
-            }
-            ExternArgs::Cost(_s) => {
-                tokens.append_all(
-                    quote! {
-                        Cost(String::from("#_s"))
-                    }
-                    .to_token_stream(),
-                );
-            }
-            ExternArgs::Requires(items) => {
-                tokens.append_all(
-                    quote! {
-                        Requires(vec![#(#items),*])
-                    }
-                    .to_token_stream(),
-                );
-            }
+            Self::CreateOrReplace => tokens.append(format_ident!("CreateOrReplace")),
+            Self::Immutable => tokens.append(format_ident!("Immutable")),
+            Self::Strict => tokens.append(format_ident!("Strict")),
+            Self::Stable => tokens.append(format_ident!("Stable")),
+            Self::Volatile => tokens.append(format_ident!("Volatile")),
+            Self::Raw => tokens.append(format_ident!("Raw")),
+            Self::NoGuard => tokens.append(format_ident!("NoGuard")),
+            Self::SecurityDefiner => tokens.append(format_ident!("SecurityDefiner")),
+            Self::SecurityInvoker => tokens.append(format_ident!("SecurityInvoker")),
+            Self::ParallelSafe => tokens.append(format_ident!("ParallelSafe")),
+            Self::ParallelUnsafe => tokens.append(format_ident!("ParallelUnsafe")),
+            Self::ParallelRestricted => tokens.append(format_ident!("ParallelRestricted")),
+            Self::ShouldPanic(_s) => tokens.append_all(quote! { Error(String::from("#_s")) }),
+            Self::Schema(_s) => tokens.append_all(quote! { Schema(String::from("#_s")) }),
+            Self::Support(item) => tokens.append_all(quote! { Support(#item) }),
+            Self::Name(_s) => tokens.append_all(quote! { Name(String::from("#_s")) }),
+            Self::Cost(_s) => tokens.append_all(quote! { Cost(String::from("#_s")) }),
+            Self::Requires(items) => tokens.append_all(quote! { Requires(vec![#(#items),*]) }),
         }
     }
 }
@@ -193,7 +283,7 @@ pub fn parse_extern_attributes(attr: TokenStream) -> HashSet<ExternArgs> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{parse_extern_attributes, ExternArgs};
+    use crate::{ExternArgs, parse_extern_attributes};
 
     #[test]
     fn parse_args() {

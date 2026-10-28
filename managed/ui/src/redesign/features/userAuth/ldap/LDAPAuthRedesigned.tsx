@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { find, isString } from 'lodash';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -58,6 +58,23 @@ import { transformData } from './LDAPUtils';
 import { getLDAPValidationSchema } from './LDAPValidationSchema';
 import User from '../../../../redesign/assets/user-outline.svg';
 import BulbIcon from '../../../../redesign/assets/bulb.svg';
+
+// Boolean runtime configs must be sent as unquoted true/false. Quoting them stores a string.
+const BOOLEAN_CONFIG_KEYS = new Set([
+  'use_ldap',
+  'use_search_and_bind',
+  'enable_ldaps',
+  'enable_ldap_start_tls',
+  'ldap_group_use_role_mapping',
+  'ldap_group_use_query'
+]);
+
+// Enum values are parsed with valueOf and are stored without surrounding quotes.
+const UNQUOTED_STRING_KEYS = new Set([
+  'ldap_default_role',
+  'ldap_group_search_scope',
+  'ldap_tls_protocol'
+]);
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -196,7 +213,7 @@ const initializeFormValues = (configEntries: RunTimeConfigEntry[]) => {
 
   let finalFormData = {
     ...formData,
-    use_search_and_bind: formData.use_search_and_bind ?? false,
+    use_search_and_bind: String(formData.use_search_and_bind ?? false),
     ldap_url: formData.ldap_url ? [formData.ldap_url, formData.ldap_port].join(':') : '',
     ldap_group_use_role_mapping: formData.ldap_group_use_role_mapping === 'true',
     use_service_account: !!formData.ldap_service_account_distinguished_name,
@@ -209,8 +226,8 @@ const initializeFormValues = (configEntries: RunTimeConfigEntry[]) => {
     enable_ldaps === 'true'
       ? SecurityOption.ENABLE_LDAPS
       : enable_ldap_start_tls === 'true'
-      ? SecurityOption.ENABLE_LDAP_START_TLS
-      : SecurityOption.UNSECURE;
+        ? SecurityOption.ENABLE_LDAP_START_TLS
+        : SecurityOption.UNSECURE;
   finalFormData = { ...finalFormData, ldap_security };
 
   return finalFormData;
@@ -230,6 +247,7 @@ export const LDAPAuthNew = () => {
     getValues,
     handleSubmit,
     clearErrors,
+    reset,
     formState: { isDirty }
   } = useForm<LDAPFormProps>({
     resolver: yupResolver(getLDAPValidationSchema(t))
@@ -267,48 +285,65 @@ export const LDAPAuthNew = () => {
   const [initialData, setInitialData] = useState<LDAPFormProps>();
   const [groupSettingsExpanded, setGroupSettingsExpanded] = useToggle(true);
   const queryClient = useQueryClient();
+  // Latest fetch wins. An older runtime-config response must not overwrite a newer form.
+  const fetchSeq = useRef(0);
+  // True while the user has edits that a background refetch must not discard.
+  const isDirtyRef = useRef(false);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  const applyFetchedConfig = (configEntries: RunTimeConfigEntry[]) => {
+    const formData = initializeFormValues(configEntries);
+    setInitialData(formData);
+    reset(formData);
+  };
 
   const { isLoading } = useQuery(
     [LDAP_RUNTIME_CONFIGS_QUERY_KEY],
-    () => api.fetchRunTimeConfigs(true),
+    async () => {
+      const seq = ++fetchSeq.current;
+      const data = await api.fetchRunTimeConfigs(true);
+      return { data, seq };
+    },
     {
-      onSuccess(data) {
-        const formData = initializeFormValues(data.configEntries);
-        setInitialData(formData);
-        Object.entries(formData).forEach(([key, value]) => {
-          setValue((key as unknown) as keyof LDAPFormProps, value as any, {
-            shouldValidate: false
-          });
-        });
+      onSuccess({ data, seq }) {
+        if (seq !== fetchSeq.current || isDirtyRef.current) {
+          return;
+        }
+        applyFetchedConfig(data.configEntries);
       }
     }
   );
 
-  // It compares the initial data with the current data and saves the changes.
-  // If the value is empty, it deletes the config entry.
-  // The function returns an array of promises that are resolved when the configs are saved.
+  // Compare the payload shape on both sides, so display-only fields (URL with port,
+  // boolean group mapping) are not treated as changes. Empty values delete the key.
   const saveLDAPConfigs = () => {
     const values: Record<string, string | boolean> = transformData(getValues());
+    const initialValues = initialData ? transformData(initialData) : {};
     const promiseArray = Object.keys(values).reduce((promiseArr, key) => {
-      if (values[key] !== (initialData as any)[key]) {
-        const keyName = `${LDAPPath}.${key}`;
-        const value =
-          isString(values[key]) &&
-          !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
-            ? `"${values[key]}"`
-            : values[key];
-
-        promiseArr.push(
-          values[key] !== ''
-            ? setRunTimeConfig({
-                key: keyName,
-                value
-              })
-            : deleteRunTimeConfig({
-                key: keyName
-              })
-        );
+      if (String(values[key] ?? '') === String((initialValues as any)[key] ?? '')) {
+        return promiseArr;
       }
+      const keyName = `${LDAPPath}.${key}`;
+      const rawValue = values[key];
+      const value = BOOLEAN_CONFIG_KEYS.has(key)
+        ? String(rawValue)
+        : isString(rawValue) && !UNQUOTED_STRING_KEYS.has(key)
+          ? `"${rawValue}"`
+          : rawValue;
+
+      promiseArr.push(
+        rawValue !== ''
+          ? setRunTimeConfig({
+              key: keyName,
+              value
+            })
+          : deleteRunTimeConfig({
+              key: keyName
+            })
+      );
 
       return promiseArr;
     }, [] as Promise<AxiosResponse>[]);
@@ -681,6 +716,7 @@ export const LDAPAuthNew = () => {
             size="large"
             onClick={() => {
               clearErrors();
+              isDirtyRef.current = false;
               queryClient.invalidateQueries(LDAP_RUNTIME_CONFIGS_QUERY_KEY);
             }}
             data-testid="ldap-cancel"
@@ -697,7 +733,14 @@ export const LDAPAuthNew = () => {
                 if (promises.length === 0) {
                   return;
                 }
+                const savedValues = getValues();
                 Promise.all(promises).then(() => {
+                  // Keep the submitted selection in place, and drop any config fetch
+                  // that started before these writes finished.
+                  isDirtyRef.current = false;
+                  reset(savedValues);
+                  setInitialData(savedValues);
+                  ++fetchSeq.current;
                   queryClient.invalidateQueries(LDAP_RUNTIME_CONFIGS_QUERY_KEY);
                   toast.success(t('messages.ldapSaveSuccess'), TOAST_OPTIONS);
                 });

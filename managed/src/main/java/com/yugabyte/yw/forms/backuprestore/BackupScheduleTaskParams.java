@@ -6,9 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -35,8 +35,7 @@ public class BackupScheduleTaskParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     if (this.scheduleParams.enablePointInTimeRestore
-        && universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-            == CloudType.kubernetes) {
+        && Util.isKubernetesBasedUniverse(universe.getUniverseDetails())) {
       String softwareVersion =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       if (!KubernetesUtil.isNonRestartGflagsUpgradeSupported(softwareVersion)) {

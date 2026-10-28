@@ -57,28 +57,18 @@ pub(crate) fn create_crate_template(
     create_dotcargo_config_toml(path.clone(), name)?;
     create_lib_rs(path.clone(), name, is_bgworker)?;
     create_git_ignore(path.clone(), name)?;
-    create_pgrx_embed_rs(path)?;
+    create_setup_sql(path.clone(), name)?;
+    create_setup_out(path.clone(), name)?;
 
     Ok(())
 }
 
-fn create_directory_structure(mut src_dir: PathBuf) -> Result<(), std::io::Error> {
-    src_dir.push("src");
-    std::fs::create_dir_all(&src_dir)?;
-
-    src_dir.push("bin");
-    std::fs::create_dir_all(&src_dir)?;
-    src_dir.pop();
-
-    src_dir.pop();
-
-    src_dir.push(".cargo");
-    std::fs::create_dir_all(&src_dir)?;
-    src_dir.pop();
-
-    src_dir.push("sql");
-    std::fs::create_dir_all(&src_dir)?;
-    src_dir.pop();
+fn create_directory_structure(root: PathBuf) -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(root.join(".cargo"))?;
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("tests").join("pg_regress").join("expected"))?;
+    std::fs::create_dir_all(root.join("tests").join("pg_regress").join("sql"))?;
+    std::fs::create_dir_all(root.join("sql"))?;
 
     Ok(())
 }
@@ -140,11 +130,22 @@ fn create_git_ignore(mut filename: PathBuf, _name: &str) -> Result<(), std::io::
     Ok(())
 }
 
-fn create_pgrx_embed_rs(mut filename: PathBuf) -> Result<(), std::io::Error> {
-    filename.push("src");
-    filename.push("bin");
-    filename.push("pgrx_embed.rs");
+fn create_setup_sql(mut filename: PathBuf, name: &str) -> Result<(), std::io::Error> {
+    filename.push("tests");
+    filename.push("pg_regress");
+    filename.push("sql");
+    filename.push("setup.sql");
     let mut file = std::fs::File::create(filename)?;
-    file.write_all(include_bytes!("../templates/pgrx_embed_rs"))?;
+    file.write_all(format!(include_str!("../templates/setup_sql"), name = name).as_bytes())?;
+    Ok(())
+}
+
+fn create_setup_out(mut filename: PathBuf, name: &str) -> Result<(), std::io::Error> {
+    filename.push("tests");
+    filename.push("pg_regress");
+    filename.push("expected");
+    filename.push("setup.out");
+    let mut file = std::fs::File::create(filename)?;
+    file.write_all(format!(include_str!("../templates/setup_out"), name = name).as_bytes())?;
     Ok(())
 }

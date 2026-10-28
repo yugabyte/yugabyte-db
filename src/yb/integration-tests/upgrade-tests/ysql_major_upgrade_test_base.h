@@ -23,7 +23,6 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
   virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;
-  void SetUpOptions(ExternalMiniClusterOptions& opts) override;
 
  protected:
   // UpgradeTestBase provides helper functions UpgradeClusterToCurrentVersion, FinalizeUpgrade,
@@ -38,6 +37,9 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
 
   // Run pg_upgrade --check
   virtual Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte");
+  // Same as above, with extra arguments appended to the pg_upgrade command line.
+  Status ValidateUpgradeCompatibilityWithArgs(
+      const std::vector<std::string>& extra_args, const std::string& user_name = "yugabyte");
   Status ValidateUpgradeCompatibilityFailure(
       const std::string& expected_error, const std::string& user_name = "yugabyte");
   Status ValidateUpgradeCompatibilityFailure(
@@ -83,10 +85,20 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
 
   Status WaitForState(master::YsqlMajorCatalogUpgradeInfoPB::State state);
 
+  Result<master::GetNamespaceInfoResponsePB> GetNamespaceInfo(const std::string& namespace_name);
+
+  Status WaitForNamespaceState(
+      const std::string& namespace_name, master::SysNamespaceEntryPB::State state);
+
+  Status WaitForNamespaceNextMajorVersionState(
+      const std::string& namespace_name,
+      master::SysNamespaceEntryPB::YsqlNextMajorVersionState next_major_version_state);
+
   Result<std::string> ReadUpgradeCompatibilityGuc();
 
   constexpr static auto kSimpleTableName = "simple_tbl";
   uint32 simple_tbl_row_count_ = 0;
+
 };
 
 }  // namespace yb

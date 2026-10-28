@@ -40,7 +40,6 @@ using std::max;
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 using namespace std::literals;
 
@@ -142,6 +141,8 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   ts0->Shutdown();
 
   // Wait for leaders to be re-elected onto the other tservers.
+  // Survivors detect the failure simultaneously, so a split vote plus another failure-detection
+  // period is common; that exceeds two failure-detection periods.
   std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -159,9 +160,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
       }
       // Wait for all leaders to be elected.
       return total_leaders == num_tablets();
-    }, static_cast<int>(ceil(FLAGS_heartbeat_interval_ms *
-                             FLAGS_leader_failure_max_missed_heartbeat_periods)) * 2ms,
-       "Waiting for leader re-election."));
+    }, kDefaultTimeout, "Waiting for leader re-election."));
   }
 
   LOG(INFO) << "Restarting ts-0";

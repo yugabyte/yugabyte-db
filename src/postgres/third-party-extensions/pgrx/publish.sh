@@ -21,12 +21,14 @@ set -x
 # │   [build-dependencies]
 # │   └── pgrx-pg-sys
 # │       └── pgrx
+# │           ├── pgrx-bench
 # │           └── pgrx-tests
 # └── pgrx-tests
 #
 # pgrx-sql-entity-graph
 # ├── cargo-pgrx
 # ├── pgrx
+# │   ├── pgrx-bench
 # │   └── pgrx-tests
 # ├── pgrx-macros
 # │   ├── pgrx
@@ -42,5 +44,6 @@ cd $DIR/pgrx-sql-entity-graph && cargo publish
 cd $DIR/pgrx-macros && cargo publish
 cd $DIR/pgrx-pg-sys && cargo publish --no-verify
 cd $DIR/pgrx && cargo publish --no-verify
+cd $DIR/pgrx-bench && cargo publish --no-verify
 cd $DIR/pgrx-tests && cargo publish --no-verify
 cd $DIR/cargo-pgrx && cargo publish # cargo-pgrx last so the templates are correct

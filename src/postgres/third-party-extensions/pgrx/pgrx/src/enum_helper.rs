@@ -10,7 +10,7 @@
 //! Helper functions for working with Postgres `enum` types
 
 use crate::pg_sys::GETSTRUCT;
-use crate::{ereport, pg_sys, PgLogLevel, PgSqlErrorCode};
+use crate::{PgLogLevel, PgSqlErrorCode, ereport, pg_sys};
 
 pub fn lookup_enum_by_oid(enumval: pg_sys::Oid) -> (String, pg_sys::Oid, f32) {
     let tup = unsafe {

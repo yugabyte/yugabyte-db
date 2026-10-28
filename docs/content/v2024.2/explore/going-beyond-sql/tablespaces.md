@@ -16,6 +16,8 @@ YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed datab
 
 YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of clouds, regions, and zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
 
+Placement options are defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/).
+
 The ability to control the placement of tables in a fine-grained manner provides the following advantages:
 
 - Tables with critical information can have higher replication factor and increased fault tolerance compared to the rest of the data.
@@ -289,7 +291,7 @@ In the following example, the tablespace is set up to have replicas in us-east-1
 
 ![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
 
-However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
+However, setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1b are unavailable, they fall back to the next preferred zone us-east-2a, which has a 12ms latency. The following example creates the tablespace with leader preferences specified:
 
 ```sql
 CREATE TABLESPACE us_east1_region_tablespace
@@ -325,7 +327,7 @@ yugabyte=# SELECT * FROM preferred_leader_table;
 Time: 1.052 ms
 ```
 
-You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders are evenly spread across them. Zones without any values are least preferred.
+`leader_preference` is defined in [CREATE TABLESPACE](../../../api/ysql/the-sql-language/statements/ddl_create_tablespace/#replica-placement).
 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 

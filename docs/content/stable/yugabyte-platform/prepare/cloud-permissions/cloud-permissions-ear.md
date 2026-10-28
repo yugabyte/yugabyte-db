@@ -36,6 +36,13 @@ YugabyteDB Anywhere (YBA) uses encryption at rest to secure data in YugabyteDB c
       Azure
     </a>
   </li>
+  <li>
+    <a href="#oci" class="nav-link" id="oci-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="oci" aria-selected="false">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      OCI
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -125,6 +132,27 @@ If you are planning to use an existing cryptographic key with the same name, it 
 - The key rotation policy should not be defined in order to avoid automatic rotation.
 
 Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure Key Vault.
+
+  </div>
+
+  <div id="oci" class="tab-pane fade" role="tabpanel" aria-labelledby="oci-tab">
+
+Encryption at rest in YugabyteDB Anywhere supports the use of [OCI Vault](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Concepts/keyoverview.htm).
+
+Create the vault in the OCI Console before you create the KMS configuration. The following policy statements are required for the group (or dynamic group) used by YugabyteDB Anywhere. Replace `yba-admins` and `<compartment>` with your group and compartment.
+
+```properties
+Allow group yba-admins to manage keys in compartment <compartment>
+Allow group yba-admins to use key-delegate in compartment <compartment>
+Allow group yba-admins to read vaults in compartment <compartment>
+```
+
+If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
+
+- The key should be in the Enabled state.
+- The purpose should be set to symmetric encryption (AES).
+
+Note that YugabyteDB Anywhere does not manage the vault. Deleting the KMS configuration does not delete the vault, master key, or key versions on OCI Vault.
 
   </div>
 

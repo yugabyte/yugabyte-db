@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -533,6 +534,36 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   }
 
   @Test
+  public void testV2KubernetesOverridesWithBatchSize() {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeKubernetesOverrides(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    String path =
+        String.format(
+            "/api/v2/customers/%s/universes/%s/kubernetes-overrides",
+            customer.getUuid(), universe.getUniverseUUID());
+    ObjectNode body = Json.newObject();
+    body.put("overrides", "my_overrides");
+    body.put("rolling_upgrade", true);
+    body.set(
+        "roll_max_batch_size",
+        Json.newObject().put("primary_batch_size", 2).put("read_replica_batch_size", 2));
+    Result result = doRequestWithAuthTokenAndBody("POST", path, authToken, body);
+    assertEquals(200, result.status());
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeKubernetesOverrides(captor.capture(), eq(customer), eq(universe));
+    KubernetesOverridesUpgradeParams params = captor.getValue();
+    assertEquals("my_overrides", params.universeOverrides);
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertNotNull(params.rollMaxBatchSize);
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getPrimaryBatchSize());
+    assertEquals(Integer.valueOf(2), params.rollMaxBatchSize.getReadReplicaBatchSize());
+  }
+
+  @Test
   public void testV2UniverseUpdateProxyConfig() throws ApiException {
     UUID taskUUID = UUID.randomUUID();
     String httpProxy = "httpProxy";
@@ -669,7 +700,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2UniverseUpdateProxyConfigProviderProxySpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseUpdateProxyConfig req =
         new UniverseUpdateProxyConfig()
             .addClustersItem(
@@ -754,7 +790,12 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   @Test
   public void testV2ResizeNodesProviderNodesSpecsRequiresMulticloud() {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .maybeGetSingleProviderUUID()
+            .get();
     UniverseResizeNodes req =
         new UniverseResizeNodes()
             .addClustersItem(

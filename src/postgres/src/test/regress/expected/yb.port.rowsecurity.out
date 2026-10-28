@@ -93,23 +93,23 @@ CREATE POLICY p2r ON document AS RESTRICTIVE TO regress_rls_dave
 CREATE POLICY p1r ON document AS RESTRICTIVE TO regress_rls_dave
     USING (cid <> 44);
 \dp
-                                                                  Access privileges
-       Schema       |   Name   | Type  |              Access privileges              | Column privileges |                  Policies                  
---------------------+----------+-------+---------------------------------------------+-------------------+--------------------------------------------
- regress_rls_schema | category | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   | 
-                    |          |       | =arwdDxt/regress_rls_alice                  |                   | 
- regress_rls_schema | document | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   | p1:                                       +
-                    |          |       | =arwdDxt/regress_rls_alice                  |                   |   (u): (dlevel <= ( SELECT uaccount.seclv +
-                    |          |       |                                             |                   |    FROM uaccount                          +
-                    |          |       |                                             |                   |   WHERE (uaccount.pguser = CURRENT_USER)))+
-                    |          |       |                                             |                   | p2r (RESTRICTIVE):                        +
-                    |          |       |                                             |                   |   (u): ((cid <> 44) AND (cid < 50))       +
-                    |          |       |                                             |                   |   to: regress_rls_dave                    +
-                    |          |       |                                             |                   | p1r (RESTRICTIVE):                        +
-                    |          |       |                                             |                   |   (u): (cid <> 44)                        +
-                    |          |       |                                             |                   |   to: regress_rls_dave
- regress_rls_schema | uaccount | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   | 
-                    |          |       | =r/regress_rls_alice                        |                   | 
+                                                                   Access privileges
+       Schema       |   Name   | Type  |              Access privileges               | Column privileges |                  Policies                  
+--------------------+----------+-------+----------------------------------------------+-------------------+--------------------------------------------
+ regress_rls_schema | category | table | regress_rls_alice=arwdDxtm/regress_rls_alice+|                   | 
+                    |          |       | =arwdDxtm/regress_rls_alice                  |                   | 
+ regress_rls_schema | document | table | regress_rls_alice=arwdDxtm/regress_rls_alice+|                   | p1:                                       +
+                    |          |       | =arwdDxtm/regress_rls_alice                  |                   |   (u): (dlevel <= ( SELECT uaccount.seclv +
+                    |          |       |                                              |                   |    FROM uaccount                          +
+                    |          |       |                                              |                   |   WHERE (uaccount.pguser = CURRENT_USER)))+
+                    |          |       |                                              |                   | p2r (RESTRICTIVE):                        +
+                    |          |       |                                              |                   |   (u): ((cid <> 44) AND (cid < 50))       +
+                    |          |       |                                              |                   |   to: regress_rls_dave                    +
+                    |          |       |                                              |                   | p1r (RESTRICTIVE):                        +
+                    |          |       |                                              |                   |   (u): (cid <> 44)                        +
+                    |          |       |                                              |                   |   to: regress_rls_dave
+ regress_rls_schema | uaccount | table | regress_rls_alice=arwdDxtm/regress_rls_alice+|                   | 
+                    |          |       | =r/regress_rls_alice                         |                   | 
 (3 rows)
 
 \d document
@@ -241,12 +241,12 @@ SELECT * FROM document TABLESAMPLE BERNOULLI(50) REPEATABLE(0)
   WHERE f_leak(dtitle) ORDER BY did;
 ERROR:  'TABLESAMPLE' clause is not yet supported by YugaByte
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
-                     QUERY PLAN                     
-----------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Seq Scan on document
-   Storage Filter: (dlevel <= $0)
+   Storage Filter: (dlevel <= (InitPlan expr_1).col1)
    Filter: f_leak(dtitle)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
 (6 rows)
@@ -255,12 +255,12 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
-   InitPlan 1 (returns $0)
+   Join Filter: (category.cid = document.cid)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on document
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
@@ -307,26 +307,26 @@ NOTICE:  f_leak => awesome technology book
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
  Seq Scan on document
-   Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
+   Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= (InitPlan expr_1).col1))
    Filter: f_leak(dtitle)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
 (6 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
-   InitPlan 1 (returns $0)
+   Join Filter: (category.cid = document.cid)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on document
-         Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
+         Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= (InitPlan expr_1).col1))
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
@@ -403,22 +403,24 @@ NOTICE:  f_leak => great manga
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
-                       QUERY PLAN                        
----------------------------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Seq Scan on document
-   Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-(2 rows)
+   Storage Filter: (dauthor = CURRENT_USER)
+   Filter: f_leak(dtitle)
+(3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
+   Join Filter: (category.cid = document.cid)
    ->  Seq Scan on document
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $1, $2, ..., $1023]))
-(6 rows)
+(7 rows)
 
 -- interaction of FK/PK constraints
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -942,9 +944,12 @@ Policies:
     POLICY "pp1r" AS RESTRICTIVE
       TO regress_rls_dave
       USING ((cid < 55))
-Partitions: part_document_fiction FOR VALUES FROM (11) TO (12),
-            part_document_nonfiction FOR VALUES FROM (99) TO (100),
-            part_document_satire FOR VALUES FROM (55) TO (56)
+Not-null constraints:
+    "part_document_dlevel_not_null" NOT NULL "dlevel"
+Partitions:
+    part_document_fiction FOR VALUES FROM (11) TO (12)
+    part_document_nonfiction FOR VALUES FROM (99) TO (100)
+    part_document_satire FOR VALUES FROM (55) TO (56)
 
 SELECT * FROM pg_policies WHERE schemaname = 'regress_rls_schema' AND tablename like '%part_document%' ORDER BY policyname;
      schemaname     |   tablename   | policyname | permissive  |       roles        | cmd |                    qual                    | with_check 
@@ -975,17 +980,17 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                          QUERY PLAN                         
 ------------------------------------------------------------
  Append
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on part_document_fiction part_document_1
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire part_document_2
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction part_document_3
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
 (13 rows)
 
@@ -1020,17 +1025,17 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                          QUERY PLAN                         
 ------------------------------------------------------------
  Append
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on part_document_fiction part_document_1
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire part_document_2
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction part_document_3
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
 (13 rows)
 
@@ -1050,12 +1055,12 @@ NOTICE:  f_leak => awesome science fiction
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on part_document_fiction part_document
-   Storage Filter: ((cid < 55) AND (dlevel <= $0))
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Seq Scan on part_document_fiction part_document_1
+   Storage Filter: ((cid < 55) AND (dlevel <= (InitPlan expr_1).col1))
    Filter: f_leak(dtitle)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
 (6 rows)
@@ -1129,12 +1134,12 @@ NOTICE:  f_leak => awesome science fiction
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on part_document_fiction part_document
-   Storage Filter: ((cid < 55) AND (dlevel <= $0))
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Seq Scan on part_document_fiction part_document_1
+   Storage Filter: ((cid < 55) AND (dlevel <= (InitPlan expr_1).col1))
    Filter: f_leak(dtitle)
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
 (6 rows)
@@ -1172,17 +1177,17 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                          QUERY PLAN                         
 ------------------------------------------------------------
  Append
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on part_document_fiction part_document_1
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire part_document_2
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction part_document_3
-         Storage Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= (InitPlan expr_1).col1)
          Filter: f_leak(dtitle)
 (13 rows)
 
@@ -1224,16 +1229,19 @@ NOTICE:  f_leak => great technology book
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                          QUERY PLAN                           
----------------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
    ->  Seq Scan on part_document_fiction part_document_1
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire part_document_2
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction part_document_3
-         Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-(7 rows)
+         Storage Filter: (dauthor = CURRENT_USER)
+         Filter: f_leak(dtitle)
+(10 rows)
 
 -- database superuser does bypass RLS policy when enabled
 RESET SESSION AUTHORIZATION;
@@ -1443,8 +1451,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM only s1 WHERE f_leak(b);
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Seq Scan on s1
-   Filter: ((hashed SubPlan 1) AND f_leak(b))
-   SubPlan 1
+   Filter: ((ANY (a = (hashed SubPlan any_1).col1)) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on s2
            Storage Filter: (((x % 2) = 0) AND (y ~~ '%2f%'::text))
 (5 rows)
@@ -1465,8 +1473,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM s1 WHERE f_leak(b);
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Seq Scan on s1
-   Filter: ((hashed SubPlan 1) AND f_leak(b))
-   SubPlan 1
+   Filter: ((ANY (a = (hashed SubPlan any_1).col1)) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on s2
            Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (5 rows)
@@ -1484,11 +1492,11 @@ EXPLAIN (COSTS OFF) SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like
 ---------------------------------------------------------------------------------
  Seq Scan on s2 s2_1
    Storage Filter: (((x % 2) = 0) AND (y ~~ '%28%'::text))
-   SubPlan 2
+   SubPlan expr_1
      ->  Limit
            ->  Seq Scan on s1
-                 Filter: (hashed SubPlan 1)
-                 SubPlan 1
+                 Filter: (ANY (a = (hashed SubPlan any_1).col1))
+                 SubPlan any_1
                    ->  Seq Scan on s2
                          Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (9 rows)
@@ -2109,6 +2117,8 @@ ON did = s.sdid
 WHEN MATCHED THEN
 	UPDATE SET dnotes = dnotes || ' notes added by merge1 ', dauthor = 'regress_rls_alice';
 ERROR:  This statement not supported yet
+LINE 1: MERGE INTO document d
+        ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- YB: port further queries when above works
 --
@@ -2490,12 +2500,12 @@ NOTICE:  f_leak => bbb
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
-                     QUERY PLAN                     
-----------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Seq Scan on z1
    Storage Filter: ((a % 2) = 0)
-   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
-   SubPlan 1
+   Filter: ((NOT (ANY (a = (hashed SubPlan any_1).col1))) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on z1_blacklist
 (5 rows)
 
@@ -2509,12 +2519,12 @@ NOTICE:  f_leak => bbb
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
-                     QUERY PLAN                     
-----------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Seq Scan on z1
    Storage Filter: ((a % 2) = 0)
-   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
-   SubPlan 1
+   Filter: ((NOT (ANY (a = (hashed SubPlan any_1).col1))) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on z1_blacklist
 (5 rows)
 
@@ -2686,12 +2696,12 @@ NOTICE:  f_leak => bbb
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
-                     QUERY PLAN                     
-----------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Seq Scan on z1
    Storage Filter: ((a % 2) = 0)
-   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
-   SubPlan 1
+   Filter: ((NOT (ANY (a = (hashed SubPlan any_1).col1))) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on z1_blacklist
 (5 rows)
 
@@ -2713,12 +2723,12 @@ NOTICE:  f_leak => aba
 (1 row)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
-                     QUERY PLAN                     
-----------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Seq Scan on z1
    Storage Filter: ((a % 2) = 1)
-   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
-   SubPlan 1
+   Filter: ((NOT (ANY (a = (hashed SubPlan any_1).col1))) AND f_leak(b))
+   SubPlan any_1
      ->  Seq Scan on z1_blacklist
 (5 rows)
 
@@ -3396,8 +3406,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1;
         QUERY PLAN        
 --------------------------
  Result t1
+   Replaces: Scan on t1
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM t1;
@@ -3409,8 +3420,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1;
         QUERY PLAN        
 --------------------------
  Result t1
+   Replaces: Scan on t1
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 --
 -- COPY TO/FROM
@@ -3668,7 +3680,6 @@ SELECT * FROM coll_t;
 (1 row)
 
 ROLLBACK;
-DROP TABLE coll_t; -- YB: workaround for lack of transaction DDL
 --
 -- Shared Object Dependencies
 --
@@ -3724,30 +3735,6 @@ SAVEPOINT q;
 DROP ROLE regress_rls_frank; -- succeeds
 ROLLBACK TO q;
 ROLLBACK; -- cleanup
-DROP TABLE tbl1; -- YB: workaround for lack of transactional DDL
---
--- Converting table to view
---
-BEGIN;
-CREATE TABLE t (c int);
-CREATE POLICY p ON t USING (c % 2 = 1);
-ALTER TABLE t ENABLE ROW LEVEL SECURITY;
-SAVEPOINT q;
-CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row-level security enabled
-ERROR:  could not convert table "t" to a view because it has row security enabled
-ROLLBACK TO q;
-ALTER TABLE t DISABLE ROW LEVEL SECURITY;
-SAVEPOINT q;
-CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- fails due to policy p on t
-ERROR:  could not convert table "t" to a view because it has row security policies
-ROLLBACK TO q;
-DROP POLICY p ON t;
-CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- succeeds
-ROLLBACK;
-DROP VIEW t; -- YB: manually ROLLBACK and DROP the VIEW conversion above to prevent conflict with CREATE TABLE below (see #1404)
 --
 -- Policy expression handling
 --
@@ -3756,7 +3743,6 @@ CREATE TABLE t (c) AS VALUES ('bar'::text);
 CREATE POLICY p ON t USING (max(c)); -- fails: aggregate functions are not allowed in policy expressions
 ERROR:  aggregate functions are not allowed in policy expressions
 ROLLBACK;
-DROP TABLE t; -- YB: workaround for lack of transactional DDL
 --
 -- Non-target relations are only subject to SELECT policies
 --
@@ -4149,7 +4135,7 @@ RESET SESSION AUTHORIZATION;
 DROP VIEW rls_view;
 DROP TABLE rls_tbl;
 DROP TABLE ref_tbl;
--- Leaky operator test
+-- Leaky operator tests
 CREATE TABLE rls_tbl (a int);
 INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
 ANALYZE rls_tbl;
@@ -4166,9 +4152,80 @@ SELECT * FROM rls_tbl WHERE a <<< 1000;
 ---
 (0 rows)
 
+RESET SESSION AUTHORIZATION;
+CREATE TABLE rls_child_tbl () INHERITS (rls_tbl);
+INSERT INTO rls_child_tbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_child_tbl;
+CREATE TABLE rls_ptbl (a int) PARTITION BY RANGE (a);
+CREATE TABLE rls_part PARTITION OF rls_ptbl FOR VALUES FROM (-100) TO (100);
+INSERT INTO rls_ptbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_ptbl, rls_part;
+ALTER TABLE rls_ptbl ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rls_part ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_ptbl TO regress_rls_alice;
+GRANT SELECT ON rls_part TO regress_rls_alice;
+CREATE POLICY p1 ON rls_tbl USING (a < 0);
+CREATE POLICY p2 ON rls_ptbl USING (a < 0);
+CREATE POLICY p3 ON rls_part USING (a < 0);
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM rls_child_tbl WHERE a <<< 1000;
+ERROR:  permission denied for table rls_child_tbl
+SELECT * FROM rls_ptbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM rls_part WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_tbl UNION ALL
+               SELECT * FROM rls_tbl) t WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_child_tbl UNION ALL
+               SELECT * FROM rls_child_tbl) t WHERE a <<< 1000;
+ERROR:  permission denied for table rls_child_tbl
+RESET SESSION AUTHORIZATION;
+REVOKE SELECT ON rls_tbl FROM regress_rls_alice;
+CREATE VIEW rls_tbl_view AS SELECT * FROM rls_tbl;
+ALTER TABLE rls_child_tbl ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_child_tbl TO regress_rls_alice;
+CREATE POLICY p4 ON rls_child_tbl USING (a < 0);
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM rls_tbl_view WHERE a <<< 1000;
+ERROR:  permission denied for view rls_tbl_view
+SELECT * FROM rls_child_tbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+SELECT * FROM (SELECT * FROM rls_tbl UNION ALL
+               SELECT * FROM rls_tbl) t WHERE a <<< 1000;
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM (SELECT * FROM rls_child_tbl UNION ALL
+               SELECT * FROM rls_child_tbl) t WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
 RESET SESSION AUTHORIZATION;
+DROP TABLE rls_part;
+DROP TABLE rls_ptbl;
+DROP TABLE rls_child_tbl;
+DROP VIEW rls_tbl_view;
 DROP TABLE rls_tbl;
 -- Bug #16006: whole-row Vars in a policy don't play nice with sub-selects
 SET SESSION AUTHORIZATION regress_rls_alice;

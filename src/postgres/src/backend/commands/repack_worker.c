@@ -221,7 +221,11 @@ repack_setup_logical_decoding(Oid relid)
 	 * RS_TEMPORARY so that the slot gets cleaned up on ERROR.
 	 */
 	snprintf(NameStr(slotname), NAMEDATALEN, "repack_%d", MyProcPid);
-	/* YB_TODO_PG19MERGE: review YB arguments */
+	/*
+	 * YB: ExecRepack() rejects REPACK CONCURRENTLY in YB mode, so this runs
+	 * only in non-YB mode, which ignores the YB arguments. Pass the same
+	 * defaults as other non-YB callers.
+	 */
 	ReplicationSlotCreate(NameStr(slotname), true, RS_TEMPORARY, false, true,
 						  false, false,
 						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,

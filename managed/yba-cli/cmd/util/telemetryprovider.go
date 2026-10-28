@@ -52,8 +52,6 @@ type TelemetryProviderConfig struct {
 	// GCPCloudMonitoring
 	// Project ID
 	Project *string `json:"project,omitempty"`
-	// Credentials
-	// Credentials map[string]interface{} `json:"credentials"`
 
 	// Datadog
 	// API Key
@@ -77,6 +75,53 @@ type TelemetryProviderConfig struct {
 	BasicAuth *ybaclient.BasicAuthCredentials `json:"basicAuth,omitempty"`
 	// Organization/Tenant ID
 	OrganizationID *string `json:"organizationID,omitempty"`
+
+	// GCPCloudMonitoring
+	// Replaces the deprecated "credentials" JsonNode, which generated clients cannot
+	// express.
+	CredentialsString *string `json:"credentialsString,omitempty"`
+
+	// Dynatrace
+	// API Token
+	ApiToken *string `json:"apiToken,omitempty"`
+
+	// OTLP
+	// Bearer Token
+	BearerToken *ybaclient.BearerToken `json:"bearerToken,omitempty"`
+	// Compression
+	Compression *string `json:"compression,omitempty"`
+	// Headers
+	Headers *map[string]string `json:"headers,omitempty"`
+	// Logs Endpoint, overrides Endpoint for logs. HTTP protocol only.
+	LogsEndpoint *string `json:"logsEndpoint,omitempty"`
+	// Metrics Endpoint, overrides Endpoint for metrics. HTTP protocol only.
+	MetricsEndpoint *string `json:"metricsEndpoint,omitempty"`
+	// Protocol
+	Protocol *string `json:"protocol,omitempty"`
+	// Retry on failure config
+	RetryOnFailure *ybaclient.ExporterRetryConfig `json:"retryOnFailure,omitempty"`
+	// Timeout in seconds
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+
+	// S3
+	// Bucket
+	Bucket *string `json:"bucket,omitempty"`
+	// Directory Prefix, the root directory inside the bucket
+	DirectoryPrefix *string `json:"directoryPrefix,omitempty"`
+	// Disable SSL
+	DisableSSL *bool `json:"disableSSL,omitempty"`
+	// File Prefix
+	FilePrefix *string `json:"filePrefix,omitempty"`
+	// Force Path Style addressing
+	ForcePathStyle *bool `json:"forcePathStyle,omitempty"`
+	// Append universe UUID and node name to the S3 prefix
+	IncludeUniverseAndNodeInPrefix *bool `json:"includeUniverseAndNodeInPrefix,omitempty"`
+	// Marshaler
+	Marshaler *string `json:"marshaler,omitempty"`
+	// Partition granularity
+	Partition *string `json:"partition,omitempty"`
+	// Role ARN. Distinct wire key from AWSCloudWatch's "roleARN", so not shareable.
+	RoleArn *string `json:"roleArn,omitempty"`
 }
 
 // NewTelemetryProvider instantiates a new TelemetryProvider object
@@ -619,29 +664,6 @@ func (o *TelemetryProviderConfig) SetProject(v string) {
 	o.Project = &v
 }
 
-// // GetCredentials returns the Credentials field value
-// func (o *TelemetryProviderConfig) GetCredentials() map[string]interface{} {
-// 	if o == nil {
-// 		var ret map[string]interface{}
-// 		return ret
-// 	}
-// 	return o.Credentials
-// }
-
-// // GetCredentialsOk returns a tuple with the Credentials field value
-// // and a boolean to check if the value has been set.
-// func (o *TelemetryProviderConfig) GetCredentialsOk() (*map[string]interface{}, bool) {
-// 	if o == nil {
-// 		return nil, false
-// 	}
-// 	return &o.Credentials, true
-// }
-
-// // SetCredentials sets field value
-// func (o *TelemetryProviderConfig) SetCredentials(v map[string]interface{}) {
-// 	o.Credentials = v
-// }
-
 // GetApiKey returns the ApiKey field value if set, zero value otherwise.
 func (o *TelemetryProviderConfig) GetApiKey() string {
 	if o == nil || o.ApiKey == nil {
@@ -922,6 +944,545 @@ func (o *TelemetryProviderConfig) SetOrganizationID(v string) {
 	o.OrganizationID = &v
 }
 
+// GetCredentialsString returns the CredentialsString field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetCredentialsString() string {
+	if o == nil || o.CredentialsString == nil {
+		var ret string
+		return ret
+	}
+	return *o.CredentialsString
+}
+
+// GetCredentialsStringOk returns a tuple with the CredentialsString field value if set, nil
+// otherwise and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetCredentialsStringOk() (*string, bool) {
+	if o == nil || o.CredentialsString == nil {
+		return nil, false
+	}
+	return o.CredentialsString, true
+}
+
+// HasCredentialsString returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasCredentialsString() bool {
+	return o != nil && o.CredentialsString != nil
+}
+
+// SetCredentialsString gets a reference to the given string and assigns it to the
+// CredentialsString field.
+func (o *TelemetryProviderConfig) SetCredentialsString(v string) {
+	o.CredentialsString = &v
+}
+
+// GetApiToken returns the ApiToken field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetApiToken() string {
+	if o == nil || o.ApiToken == nil {
+		var ret string
+		return ret
+	}
+	return *o.ApiToken
+}
+
+// GetApiTokenOk returns a tuple with the ApiToken field value if set, nil otherwise and a boolean
+// to check if the value has been set.
+func (o *TelemetryProviderConfig) GetApiTokenOk() (*string, bool) {
+	if o == nil || o.ApiToken == nil {
+		return nil, false
+	}
+	return o.ApiToken, true
+}
+
+// HasApiToken returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasApiToken() bool {
+	return o != nil && o.ApiToken != nil
+}
+
+// SetApiToken gets a reference to the given string and assigns it to the ApiToken field.
+func (o *TelemetryProviderConfig) SetApiToken(v string) {
+	o.ApiToken = &v
+}
+
+// GetBearerToken returns the BearerToken field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetBearerToken() ybaclient.BearerToken {
+	if o == nil || o.BearerToken == nil {
+		var ret ybaclient.BearerToken
+		return ret
+	}
+	return *o.BearerToken
+}
+
+// GetBearerTokenOk returns a tuple with the BearerToken field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetBearerTokenOk() (*ybaclient.BearerToken, bool) {
+	if o == nil || o.BearerToken == nil {
+		return nil, false
+	}
+	return o.BearerToken, true
+}
+
+// HasBearerToken returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasBearerToken() bool {
+	return o != nil && o.BearerToken != nil
+}
+
+// SetBearerToken gets a reference to the given ybaclient.BearerToken and assigns it to the
+// BearerToken field.
+func (o *TelemetryProviderConfig) SetBearerToken(v ybaclient.BearerToken) {
+	o.BearerToken = &v
+}
+
+// GetCompression returns the Compression field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetCompression() string {
+	if o == nil || o.Compression == nil {
+		var ret string
+		return ret
+	}
+	return *o.Compression
+}
+
+// GetCompressionOk returns a tuple with the Compression field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetCompressionOk() (*string, bool) {
+	if o == nil || o.Compression == nil {
+		return nil, false
+	}
+	return o.Compression, true
+}
+
+// HasCompression returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasCompression() bool {
+	return o != nil && o.Compression != nil
+}
+
+// SetCompression gets a reference to the given string and assigns it to the Compression field.
+func (o *TelemetryProviderConfig) SetCompression(v string) {
+	o.Compression = &v
+}
+
+// GetHeaders returns the Headers field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetHeaders() map[string]string {
+	if o == nil || o.Headers == nil {
+		var ret map[string]string
+		return ret
+	}
+	return *o.Headers
+}
+
+// GetHeadersOk returns a tuple with the Headers field value if set, nil otherwise and a boolean
+// to check if the value has been set.
+func (o *TelemetryProviderConfig) GetHeadersOk() (*map[string]string, bool) {
+	if o == nil || o.Headers == nil {
+		return nil, false
+	}
+	return o.Headers, true
+}
+
+// HasHeaders returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasHeaders() bool {
+	return o != nil && o.Headers != nil
+}
+
+// SetHeaders gets a reference to the given map[string]string and assigns it to the Headers field.
+func (o *TelemetryProviderConfig) SetHeaders(v map[string]string) {
+	o.Headers = &v
+}
+
+// GetLogsEndpoint returns the LogsEndpoint field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetLogsEndpoint() string {
+	if o == nil || o.LogsEndpoint == nil {
+		var ret string
+		return ret
+	}
+	return *o.LogsEndpoint
+}
+
+// GetLogsEndpointOk returns a tuple with the LogsEndpoint field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetLogsEndpointOk() (*string, bool) {
+	if o == nil || o.LogsEndpoint == nil {
+		return nil, false
+	}
+	return o.LogsEndpoint, true
+}
+
+// HasLogsEndpoint returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasLogsEndpoint() bool {
+	return o != nil && o.LogsEndpoint != nil
+}
+
+// SetLogsEndpoint gets a reference to the given string and assigns it to the LogsEndpoint field.
+func (o *TelemetryProviderConfig) SetLogsEndpoint(v string) {
+	o.LogsEndpoint = &v
+}
+
+// GetMetricsEndpoint returns the MetricsEndpoint field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetMetricsEndpoint() string {
+	if o == nil || o.MetricsEndpoint == nil {
+		var ret string
+		return ret
+	}
+	return *o.MetricsEndpoint
+}
+
+// GetMetricsEndpointOk returns a tuple with the MetricsEndpoint field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetMetricsEndpointOk() (*string, bool) {
+	if o == nil || o.MetricsEndpoint == nil {
+		return nil, false
+	}
+	return o.MetricsEndpoint, true
+}
+
+// HasMetricsEndpoint returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasMetricsEndpoint() bool {
+	return o != nil && o.MetricsEndpoint != nil
+}
+
+// SetMetricsEndpoint gets a reference to the given string and assigns it to the MetricsEndpoint
+// field.
+func (o *TelemetryProviderConfig) SetMetricsEndpoint(v string) {
+	o.MetricsEndpoint = &v
+}
+
+// GetProtocol returns the Protocol field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetProtocol() string {
+	if o == nil || o.Protocol == nil {
+		var ret string
+		return ret
+	}
+	return *o.Protocol
+}
+
+// GetProtocolOk returns a tuple with the Protocol field value if set, nil otherwise and a boolean
+// to check if the value has been set.
+func (o *TelemetryProviderConfig) GetProtocolOk() (*string, bool) {
+	if o == nil || o.Protocol == nil {
+		return nil, false
+	}
+	return o.Protocol, true
+}
+
+// HasProtocol returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasProtocol() bool {
+	return o != nil && o.Protocol != nil
+}
+
+// SetProtocol gets a reference to the given string and assigns it to the Protocol field.
+func (o *TelemetryProviderConfig) SetProtocol(v string) {
+	o.Protocol = &v
+}
+
+// GetRetryOnFailure returns the RetryOnFailure field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetRetryOnFailure() ybaclient.ExporterRetryConfig {
+	if o == nil || o.RetryOnFailure == nil {
+		var ret ybaclient.ExporterRetryConfig
+		return ret
+	}
+	return *o.RetryOnFailure
+}
+
+// GetRetryOnFailureOk returns a tuple with the RetryOnFailure field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetRetryOnFailureOk() (*ybaclient.ExporterRetryConfig, bool) {
+	if o == nil || o.RetryOnFailure == nil {
+		return nil, false
+	}
+	return o.RetryOnFailure, true
+}
+
+// HasRetryOnFailure returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasRetryOnFailure() bool {
+	return o != nil && o.RetryOnFailure != nil
+}
+
+// SetRetryOnFailure gets a reference to the given ybaclient.ExporterRetryConfig and assigns it to
+// the RetryOnFailure field.
+func (o *TelemetryProviderConfig) SetRetryOnFailure(v ybaclient.ExporterRetryConfig) {
+	o.RetryOnFailure = &v
+}
+
+// GetTimeoutSeconds returns the TimeoutSeconds field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetTimeoutSeconds() int32 {
+	if o == nil || o.TimeoutSeconds == nil {
+		var ret int32
+		return ret
+	}
+	return *o.TimeoutSeconds
+}
+
+// GetTimeoutSecondsOk returns a tuple with the TimeoutSeconds field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetTimeoutSecondsOk() (*int32, bool) {
+	if o == nil || o.TimeoutSeconds == nil {
+		return nil, false
+	}
+	return o.TimeoutSeconds, true
+}
+
+// HasTimeoutSeconds returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasTimeoutSeconds() bool {
+	return o != nil && o.TimeoutSeconds != nil
+}
+
+// SetTimeoutSeconds gets a reference to the given int32 and assigns it to the TimeoutSeconds field.
+func (o *TelemetryProviderConfig) SetTimeoutSeconds(v int32) {
+	o.TimeoutSeconds = &v
+}
+
+// GetBucket returns the Bucket field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetBucket() string {
+	if o == nil || o.Bucket == nil {
+		var ret string
+		return ret
+	}
+	return *o.Bucket
+}
+
+// GetBucketOk returns a tuple with the Bucket field value if set, nil otherwise and a boolean to
+// check if the value has been set.
+func (o *TelemetryProviderConfig) GetBucketOk() (*string, bool) {
+	if o == nil || o.Bucket == nil {
+		return nil, false
+	}
+	return o.Bucket, true
+}
+
+// HasBucket returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasBucket() bool {
+	return o != nil && o.Bucket != nil
+}
+
+// SetBucket gets a reference to the given string and assigns it to the Bucket field.
+func (o *TelemetryProviderConfig) SetBucket(v string) {
+	o.Bucket = &v
+}
+
+// GetDirectoryPrefix returns the DirectoryPrefix field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetDirectoryPrefix() string {
+	if o == nil || o.DirectoryPrefix == nil {
+		var ret string
+		return ret
+	}
+	return *o.DirectoryPrefix
+}
+
+// GetDirectoryPrefixOk returns a tuple with the DirectoryPrefix field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetDirectoryPrefixOk() (*string, bool) {
+	if o == nil || o.DirectoryPrefix == nil {
+		return nil, false
+	}
+	return o.DirectoryPrefix, true
+}
+
+// HasDirectoryPrefix returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasDirectoryPrefix() bool {
+	return o != nil && o.DirectoryPrefix != nil
+}
+
+// SetDirectoryPrefix gets a reference to the given string and assigns it to the DirectoryPrefix
+// field.
+func (o *TelemetryProviderConfig) SetDirectoryPrefix(v string) {
+	o.DirectoryPrefix = &v
+}
+
+// GetDisableSSL returns the DisableSSL field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetDisableSSL() bool {
+	if o == nil || o.DisableSSL == nil {
+		var ret bool
+		return ret
+	}
+	return *o.DisableSSL
+}
+
+// GetDisableSSLOk returns a tuple with the DisableSSL field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetDisableSSLOk() (*bool, bool) {
+	if o == nil || o.DisableSSL == nil {
+		return nil, false
+	}
+	return o.DisableSSL, true
+}
+
+// HasDisableSSL returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasDisableSSL() bool {
+	return o != nil && o.DisableSSL != nil
+}
+
+// SetDisableSSL gets a reference to the given bool and assigns it to the DisableSSL field.
+func (o *TelemetryProviderConfig) SetDisableSSL(v bool) {
+	o.DisableSSL = &v
+}
+
+// GetFilePrefix returns the FilePrefix field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetFilePrefix() string {
+	if o == nil || o.FilePrefix == nil {
+		var ret string
+		return ret
+	}
+	return *o.FilePrefix
+}
+
+// GetFilePrefixOk returns a tuple with the FilePrefix field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetFilePrefixOk() (*string, bool) {
+	if o == nil || o.FilePrefix == nil {
+		return nil, false
+	}
+	return o.FilePrefix, true
+}
+
+// HasFilePrefix returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasFilePrefix() bool {
+	return o != nil && o.FilePrefix != nil
+}
+
+// SetFilePrefix gets a reference to the given string and assigns it to the FilePrefix field.
+func (o *TelemetryProviderConfig) SetFilePrefix(v string) {
+	o.FilePrefix = &v
+}
+
+// GetForcePathStyle returns the ForcePathStyle field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetForcePathStyle() bool {
+	if o == nil || o.ForcePathStyle == nil {
+		var ret bool
+		return ret
+	}
+	return *o.ForcePathStyle
+}
+
+// GetForcePathStyleOk returns a tuple with the ForcePathStyle field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetForcePathStyleOk() (*bool, bool) {
+	if o == nil || o.ForcePathStyle == nil {
+		return nil, false
+	}
+	return o.ForcePathStyle, true
+}
+
+// HasForcePathStyle returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasForcePathStyle() bool {
+	return o != nil && o.ForcePathStyle != nil
+}
+
+// SetForcePathStyle gets a reference to the given bool and assigns it to the ForcePathStyle field.
+func (o *TelemetryProviderConfig) SetForcePathStyle(v bool) {
+	o.ForcePathStyle = &v
+}
+
+// GetIncludeUniverseAndNodeInPrefix returns the IncludeUniverseAndNodeInPrefix field value if
+// set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetIncludeUniverseAndNodeInPrefix() bool {
+	if o == nil || o.IncludeUniverseAndNodeInPrefix == nil {
+		var ret bool
+		return ret
+	}
+	return *o.IncludeUniverseAndNodeInPrefix
+}
+
+// GetIncludeUniverseAndNodeInPrefixOk returns a tuple with the IncludeUniverseAndNodeInPrefix
+// field value if set, nil otherwise and a boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetIncludeUniverseAndNodeInPrefixOk() (*bool, bool) {
+	if o == nil || o.IncludeUniverseAndNodeInPrefix == nil {
+		return nil, false
+	}
+	return o.IncludeUniverseAndNodeInPrefix, true
+}
+
+// HasIncludeUniverseAndNodeInPrefix returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasIncludeUniverseAndNodeInPrefix() bool {
+	return o != nil && o.IncludeUniverseAndNodeInPrefix != nil
+}
+
+// SetIncludeUniverseAndNodeInPrefix gets a reference to the given bool and assigns it to the
+// IncludeUniverseAndNodeInPrefix field.
+func (o *TelemetryProviderConfig) SetIncludeUniverseAndNodeInPrefix(v bool) {
+	o.IncludeUniverseAndNodeInPrefix = &v
+}
+
+// GetMarshaler returns the Marshaler field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetMarshaler() string {
+	if o == nil || o.Marshaler == nil {
+		var ret string
+		return ret
+	}
+	return *o.Marshaler
+}
+
+// GetMarshalerOk returns a tuple with the Marshaler field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetMarshalerOk() (*string, bool) {
+	if o == nil || o.Marshaler == nil {
+		return nil, false
+	}
+	return o.Marshaler, true
+}
+
+// HasMarshaler returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasMarshaler() bool {
+	return o != nil && o.Marshaler != nil
+}
+
+// SetMarshaler gets a reference to the given string and assigns it to the Marshaler field.
+func (o *TelemetryProviderConfig) SetMarshaler(v string) {
+	o.Marshaler = &v
+}
+
+// GetPartition returns the Partition field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetPartition() string {
+	if o == nil || o.Partition == nil {
+		var ret string
+		return ret
+	}
+	return *o.Partition
+}
+
+// GetPartitionOk returns a tuple with the Partition field value if set, nil otherwise and a
+// boolean to check if the value has been set.
+func (o *TelemetryProviderConfig) GetPartitionOk() (*string, bool) {
+	if o == nil || o.Partition == nil {
+		return nil, false
+	}
+	return o.Partition, true
+}
+
+// HasPartition returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasPartition() bool {
+	return o != nil && o.Partition != nil
+}
+
+// SetPartition gets a reference to the given string and assigns it to the Partition field.
+func (o *TelemetryProviderConfig) SetPartition(v string) {
+	o.Partition = &v
+}
+
+// GetRoleArn returns the RoleArn field value if set, zero value otherwise.
+func (o *TelemetryProviderConfig) GetRoleArn() string {
+	if o == nil || o.RoleArn == nil {
+		var ret string
+		return ret
+	}
+	return *o.RoleArn
+}
+
+// GetRoleArnOk returns a tuple with the RoleArn field value if set, nil otherwise and a boolean
+// to check if the value has been set.
+func (o *TelemetryProviderConfig) GetRoleArnOk() (*string, bool) {
+	if o == nil || o.RoleArn == nil {
+		return nil, false
+	}
+	return o.RoleArn, true
+}
+
+// HasRoleArn returns a boolean if a field has been set.
+func (o *TelemetryProviderConfig) HasRoleArn() bool {
+	return o != nil && o.RoleArn != nil
+}
+
+// SetRoleArn gets a reference to the given string and assigns it to the RoleArn field.
+func (o *TelemetryProviderConfig) SetRoleArn(v string) {
+	o.RoleArn = &v
+}
+
 // MarshalJSON serializes the struct using a buffer.
 func (o TelemetryProviderConfig) MarshalJSON() ([]byte, error) {
 	toSerialize := map[string]interface{}{}
@@ -952,9 +1513,6 @@ func (o TelemetryProviderConfig) MarshalJSON() ([]byte, error) {
 	if o.Project != nil {
 		toSerialize["project"] = o.Project
 	}
-	// if o.Credentials != nil {
-	// 	toSerialize["credentials"] = o.Credentials
-	// }
 	if o.ApiKey != nil {
 		toSerialize["apiKey"] = o.ApiKey
 	}
@@ -984,6 +1542,63 @@ func (o TelemetryProviderConfig) MarshalJSON() ([]byte, error) {
 	}
 	if o.OrganizationID != nil {
 		toSerialize["organizationID"] = o.OrganizationID
+	}
+	if o.CredentialsString != nil {
+		toSerialize["credentialsString"] = o.CredentialsString
+	}
+	if o.ApiToken != nil {
+		toSerialize["apiToken"] = o.ApiToken
+	}
+	if o.BearerToken != nil {
+		toSerialize["bearerToken"] = o.BearerToken
+	}
+	if o.Compression != nil {
+		toSerialize["compression"] = o.Compression
+	}
+	if o.Headers != nil {
+		toSerialize["headers"] = o.Headers
+	}
+	if o.LogsEndpoint != nil {
+		toSerialize["logsEndpoint"] = o.LogsEndpoint
+	}
+	if o.MetricsEndpoint != nil {
+		toSerialize["metricsEndpoint"] = o.MetricsEndpoint
+	}
+	if o.Protocol != nil {
+		toSerialize["protocol"] = o.Protocol
+	}
+	if o.RetryOnFailure != nil {
+		toSerialize["retryOnFailure"] = o.RetryOnFailure
+	}
+	if o.TimeoutSeconds != nil {
+		toSerialize["timeoutSeconds"] = o.TimeoutSeconds
+	}
+	if o.Bucket != nil {
+		toSerialize["bucket"] = o.Bucket
+	}
+	if o.DirectoryPrefix != nil {
+		toSerialize["directoryPrefix"] = o.DirectoryPrefix
+	}
+	if o.DisableSSL != nil {
+		toSerialize["disableSSL"] = o.DisableSSL
+	}
+	if o.FilePrefix != nil {
+		toSerialize["filePrefix"] = o.FilePrefix
+	}
+	if o.ForcePathStyle != nil {
+		toSerialize["forcePathStyle"] = o.ForcePathStyle
+	}
+	if o.IncludeUniverseAndNodeInPrefix != nil {
+		toSerialize["includeUniverseAndNodeInPrefix"] = o.IncludeUniverseAndNodeInPrefix
+	}
+	if o.Marshaler != nil {
+		toSerialize["marshaler"] = o.Marshaler
+	}
+	if o.Partition != nil {
+		toSerialize["partition"] = o.Partition
+	}
+	if o.RoleArn != nil {
+		toSerialize["roleArn"] = o.RoleArn
 	}
 
 	return json.Marshal(toSerialize)

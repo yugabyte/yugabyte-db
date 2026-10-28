@@ -22,6 +22,7 @@ SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
 SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
+CERTIFICATE_NAME=""
 CUSTOMER_ID=""
 NODE_NAME=""
 NODE_IP=""
@@ -487,6 +488,8 @@ Options:
     DEPRECATED: Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
+  --certificate_name (OPTIONAL for install command)
+    YBA certificate config name (label) to use for node-agent TLS.
   --airgap (OPTIONAL)
     Specify to skip installing semanage utility.
   --silent (OPTIONAL for install command)
@@ -583,6 +586,9 @@ main() {
       download_package
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      if [ -n "$CERTIFICATE_NAME" ]; then
+        NODE_AGENT_CONFIG_ARGS+=(--certificate_name "$CERTIFICATE_NAME")
+      fi
       if [ "$SILENT_INSTALL" = "true" ]; then
         NODE_AGENT_CONFIG_ARGS+=(--silent --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
         --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --region_name \
@@ -728,6 +734,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --cert_dir)
       CERT_DIR="$2"
+      shift
+    ;;
+    --certificate_name)
+      CERTIFICATE_NAME="$2"
       shift
     ;;
     --customer_id)

@@ -141,6 +141,10 @@ class SnapshotTestUtil {
   Result<master::SnapshotInfoPB> WaitScheduleSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time = HybridTime::kMin);
 
+  Result<TxnSnapshotRestorationId> StartScheduleRestoration(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  Status RestoreSnapshotSchedule(const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+
  private:
   template <class F>
   Result<TxnSnapshotId> DoStartSnapshot(const F& fill_tables);

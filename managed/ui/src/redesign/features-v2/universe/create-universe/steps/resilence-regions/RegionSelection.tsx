@@ -232,6 +232,7 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
               zoom: 2,
               center: [0, 0]
             }}
+            showBoundaries={false}
           >
             {
               regions?.map((region: Region) => {

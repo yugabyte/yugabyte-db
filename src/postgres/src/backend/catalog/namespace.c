@@ -4749,6 +4749,12 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	{
 		/* Need to ensure we have a usable transaction. */
 		AbortOutOfAnyTransaction();
+		/*
+		 * YB: Take a fresh origination time.  The one from the backend's
+		 * last message may predate a StartPersisting, which would reject
+		 * this cleanup and leave the temporary relations behind.
+		 */
+		YbRefreshOriginationTime();
 		StartTransactionCommand();
 		PushActiveSnapshot(GetTransactionSnapshot());
 

@@ -24,9 +24,11 @@
 #include "catalog/pg_amproc_d.h"
 #include "catalog/pg_attrdef_d.h"
 #include "catalog/pg_cast_d.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion_d.h"
+#include "catalog/pg_default_acl_d.h"
 #include "catalog/pg_extension_d.h"
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
@@ -65,6 +67,7 @@
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 #define DDL_END_CLASSID_COLUMN_ID	  1
 #define DDL_END_OBJID_COLUMN_ID		  2
@@ -257,6 +260,20 @@ IsPassThroughDdlSupported(const char *command_tag_name)
 	CommandTag	command_tag = GetCommandTagEnum(command_tag_name);
 
 	return IsPassThroughDdlCommandSupported(command_tag);
+}
+
+static Oid
+GetConstraintRelation(Oid constraint_oid)
+{
+	Oid			rel_oid = GetSysCacheOid1(CONSTROID,
+										  Anum_pg_constraint_conrelid,
+										  ObjectIdGetDatum(constraint_oid));
+
+	if (!OidIsValid(rel_oid))
+		elog(ERROR, "Could not find table for constraint with OID %u",
+			 constraint_oid);
+
+	return rel_oid;
 }
 
 static bool
@@ -821,6 +838,12 @@ void
 PushVariable(JsonbInState *state, char *guc_name)
 {
 	char *value = GetConfigOptionByName(guc_name, NULL, false);
+
+	/* A major version upgrade forces in-place materialized view refresh. */
+	if (strcmp(guc_name, "yb_refresh_matview_in_place") == 0 &&
+		YbRefreshMatviewInPlace())
+		value = "on";
+
 	if (!value)
 		return;
 
@@ -845,6 +868,26 @@ PushVariableMap(JsonbInState *state)
 #undef X
 
 	(void) pushJsonbValue(state, WJB_END_OBJECT, NULL);
+}
+
+char *
+PushAnalyzedRelation(JsonbInState *state, Oid relid)
+{
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
+
+	if (!relname || !nspname)
+		return NULL;
+
+	AddJsonKey(state, "analyze_rels");
+	(void) pushJsonbValue(state, WJB_BEGIN_ARRAY, NULL);
+	(void) pushJsonbValue(state, WJB_BEGIN_OBJECT, NULL);
+	AddStringJsonEntry(state, "rel_name", relname);
+	AddStringJsonEntry(state, "rel_namespace", nspname);
+	(void) pushJsonbValue(state, WJB_END_OBJECT, NULL);
+	(void) pushJsonbValue(state, WJB_END_ARRAY, NULL);
+
+	return psprintf("ANALYZE %s", quote_qualified_identifier(nspname, relname));
 }
 
 bool
@@ -901,6 +944,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbInState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
+			found_temp |= CreateTableAsUsesTempRelation(info->command);
 		}
 		else if (command_tag == CMDTAG_CREATE_TYPE ||
 				 command_tag == CMDTAG_ALTER_TYPE)
@@ -924,6 +968,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbInState *state)
 		{
 			AddSequenceInfo(obj_id, schema, &sequence_info_list);
 			should_replicate_ddl |= !is_temporary_object;
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE &&
+				 info->class_id == ConstraintRelationId)
+		{
+			/*
+			 * ALTER TABLE ... RENAME CONSTRAINT reports the pg_constraint OID, so we
+			 * need to fetch the table's OID from the constraint's OID.
+			 */
+			should_replicate_ddl |=
+				ShouldReplicateAlterReplication(GetConstraintRelation(obj_id));
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 IsSequence(obj_id))
@@ -1120,6 +1174,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case CollationRelationId:
 			case ConstraintRelationId:
 			case ConversionRelationId:
+			case DefaultAclRelationId:
 			case ExtensionRelationId:
 			case ForeignDataWrapperRelationId:
 			case ForeignServerRelationId:

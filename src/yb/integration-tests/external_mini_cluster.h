@@ -52,8 +52,6 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_daemon.h"
 #include "yb/integration-tests/external_yb_controller.h"
@@ -77,7 +75,6 @@
 
 namespace yb {
 
-using strings::Substitute;
 
 class ExternalDaemon;
 class ExternalMaster;

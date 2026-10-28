@@ -3381,30 +3381,14 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			iparam->name = pstrdup(key);
 			iparam->expr = NULL;
 			iparam->indexcolname = NULL;
+			/* YB: keep the per-column options given in yb_index_params */
 			iparam->collation = list_copy(index_elem->collation);
 			iparam->opclass = list_copy(index_elem->opclass);
 			iparam->opclassopts = NIL;
-			iparam->ordering = index_elem->ordering;
-			iparam->nulls_ordering = index_elem->nulls_ordering;
+			iparam->ordering = index_elem->ordering;	/* YB */
+			iparam->nulls_ordering = index_elem->nulls_ordering;	/* YB */
 			iparam->location = -1;
 			index->indexParams = lappend(index->indexParams, iparam);
-
-			/*
-			 * YB_TODO_PG19MERGE: PG commit 14e87ffa5c543b5f30ead7413084c25f7735039f
-			 * removed this AT_SetNotNull block (NOT NULL is now a catalog
-			 * constraint). Does yb_is_add_primary_key assignement need to be moved?
-			 */
-#if 0
-			if (constraint->contype == CONSTR_PRIMARY && !forced_not_null)
-			{
-				AlterTableCmd *notnullcmd = makeNode(AlterTableCmd);
-
-				notnullcmd->subtype = AT_SetNotNull;
-				notnullcmd->name = pstrdup(key);
-				notnullcmd->yb_is_add_primary_key = true;
-				notnullcmds = lappend(notnullcmds, notnullcmd);
-			}
-#endif
 		}
 
 		if (constraint->without_overlaps)

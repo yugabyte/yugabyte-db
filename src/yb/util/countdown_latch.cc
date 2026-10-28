@@ -29,20 +29,21 @@ CountDownLatch::~CountDownLatch() {
   MutexLock lock(lock_);
 }
 
-void CountDownLatch::CountDown(uint64_t amount) {
+bool CountDownLatch::CountDown(uint64_t amount) {
   MutexLock lock(lock_);
   auto existing_value = count_.load(std::memory_order_relaxed);
   if (existing_value == 0) {
-    return;
+    return false;
   }
 
   if (amount >= existing_value) {
     count_.store(0, std::memory_order_release);
     // Latch has triggered.
     YB_PROFILE(cond_.Broadcast());
-  } else {
-    count_.store(existing_value - amount, std::memory_order_release);
+    return true;
   }
+  count_.store(existing_value - amount, std::memory_order_release);
+  return false;
 }
 
 void CountDownLatch::Wait() const {

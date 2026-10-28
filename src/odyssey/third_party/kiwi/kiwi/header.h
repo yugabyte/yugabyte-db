@@ -32,6 +32,7 @@ typedef enum {
 	KIWI_FE_SET_GUC_DEFAULTS = 'G',
 	/* RESET ALL including resetting GUC defaults to original values */
 	KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS = 'g',
+	YB_KIWI_FE_YB_THROW_ERROR = 'x',
 } kiwi_fe_type_t;
 
 typedef enum {
@@ -81,10 +82,10 @@ typedef enum {
 	YB_OID_DETAILS = 'O',
 	/* special ParameterStatus, do not forward to client */
 	YB_CONN_MGR_PARAMETER_STATUS = 'r',
-	YB_BE_PARSE_PREPARE_ERROR_RESPONSE = '4',
 	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
 	YB_BE_YB_PARSE_COMPLETE = '6',
 	YB_BE_SYNC_ACK = 'Y',
+	YB_BE_YB_QUERY_ACK = '8',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -189,14 +190,14 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "OidDetails";
 	case YB_CONN_MGR_PARAMETER_STATUS:
 		return "ConnMgrParameterStatus";
-	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
-		return "YBParsePrepareErrorResponse";
 	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
 		return "YBCloseCompletePrepStmtName";
 	case YB_BE_YB_PARSE_COMPLETE:
 		return "YbParseComplete";
 	case YB_BE_SYNC_ACK:
 		return "YBSyncAck";
+	case YB_BE_YB_QUERY_ACK:
+		return "YbQueryAck";
 	}
 	return "Unknown";
 }

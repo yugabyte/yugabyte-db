@@ -24,6 +24,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -139,8 +140,9 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
         Universe.saveDetails(
             universe.getUniverseUUID(),
             u -> {
-              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
-                  ApiUtils.getDummyDeviceInfo(1, 1);
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
             });
     universe =
         Universe.saveDetails(
@@ -152,7 +154,8 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     primaryCluster.userIntent.enableYSQLAuth = !primaryCluster.userIntent.enableYSQLAuth;
-    primaryCluster.userIntent.instanceTags = Collections.singletonMap("qq", "vv");
+    TestUtils.existingProviderInitializer(primaryCluster.userIntent)
+        .setInstanceTags(Collections.singletonMap("qq", "vv"));
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(primaryCluster));
@@ -185,8 +188,9 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     deviceInfo.volumeSize = 10;
     deviceInfo.numVolumes = 2;
     deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
-    newCluster.userIntent.deviceInfo = deviceInfo;
-    newCluster.userIntent.instanceType = "c3.xlarge";
+
+    TestUtils.initUserIntent(newCluster.userIntent, p, "c3.xlarge", deviceInfo, "demo-access");
+
     newCluster.userIntent.regionList = Collections.singletonList(r.getUuid());
 
     if (primaryMutator != null) {

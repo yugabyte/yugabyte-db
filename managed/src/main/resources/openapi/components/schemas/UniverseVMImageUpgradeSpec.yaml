@@ -1,0 +1,21 @@
+title: VMImageUpgradeSpec
+description: |
+  VMImageUpgradeSpec
+
+  Request payload to edit vm images of a Universe nodes.
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    properties:
+      image_bundles:
+        type: array
+        items:
+          $ref: "./VMImageClusterSpec.yaml"
+      force_upgrade:
+        description: Whether to skip checking current OS for each node.
+        type: boolean
+      yb_software_version:
+        description: The YugabyteDB software version to install during os upgrade.
+        type: string
+        example: 2024.2.0.0-b600

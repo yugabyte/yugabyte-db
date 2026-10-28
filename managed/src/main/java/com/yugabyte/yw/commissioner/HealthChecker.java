@@ -51,6 +51,7 @@ import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricSourceKey;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -64,6 +65,8 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.nodeagent.HealthCheckInput;
+import com.yugabyte.yw.nodeagent.HealthCheckOutput;
 import jakarta.mail.MessagingException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -159,8 +162,11 @@ public class HealthChecker {
   private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
   private final Map<UUID, Instant> ddlAtomicitySuccessfulCheckTimestamp = new ConcurrentHashMap<>();
 
+  // Names of the node health script metrics seen so far - what the next run cleans up before saving
+  // fresh values. Seeded with the metrics of runtime-disableable checks, which stop republishing
+  // their names once disabled.
   private final Set<String> healthScriptMetrics =
-      Collections.newSetFromMap(new ConcurrentHashMap<>());
+      Sets.newConcurrentHashSet(RUNTIME_DISABLEABLE_CHECK_METRICS);
 
   final ApplicationLifecycle lifecycle;
 
@@ -175,6 +181,11 @@ public class HealthChecker {
   private final ConnectivityChecker connectivityChecker;
 
   private final ConfigHelper configHelper;
+
+  private final NodeAgentClient nodeAgentClient;
+
+  // Cached health check interval in milliseconds.
+  private volatile long healthCheckIntervalMs = 0L;
 
   @Inject
   public HealthChecker(
@@ -192,7 +203,8 @@ public class HealthChecker {
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
       YBClientService ybClientService,
-      ConfigHelper configHelper) {
+      ConfigHelper configHelper,
+      NodeAgentClient nodeAgentClient) {
     this(
         environment,
         config,
@@ -211,7 +223,8 @@ public class HealthChecker {
         fileHelperService,
         maintenanceService,
         ybClientService,
-        configHelper);
+        configHelper,
+        nodeAgentClient);
   }
 
   HealthChecker(
@@ -232,7 +245,8 @@ public class HealthChecker {
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
       YBClientService ybClientService,
-      ConfigHelper configHelper) {
+      ConfigHelper configHelper,
+      NodeAgentClient nodeAgentClient) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -253,6 +267,7 @@ public class HealthChecker {
         new ConnectivityChecker(
             connectivityCheckExecutor, confGetter, ybClientService, metricService);
     this.configHelper = configHelper;
+    this.nodeAgentClient = nodeAgentClient;
   }
 
   public void initialize() {
@@ -277,7 +292,11 @@ public class HealthChecker {
   // The interval at which the checker will run.
   // Can be overridden per customer.
   private long healthCheckIntervalMs() {
-    return config.getLong("yb.health.check_interval_ms");
+    if (healthCheckIntervalMs != 0L) {
+      return healthCheckIntervalMs;
+    }
+    healthCheckIntervalMs = config.getLong("yb.health.check_interval_ms");
+    return healthCheckIntervalMs;
   }
 
   // The interval at which check result will be stored to DB
@@ -495,20 +514,23 @@ public class HealthChecker {
             false /*shouldSendStatusUpdate*/,
             false /*reportOnlyErrors*/,
             false /*onlyMetrics*/,
-            null /*destinations*/);
+            null /*destinations*/,
+            true /*runImmediately*/);
 
     return runHealthCheck(params, true /* ignoreLastCheck */);
   }
 
   @AllArgsConstructor
   static class CheckSingleUniverseParams {
-
     final Universe universe;
     final Customer customer;
     final boolean shouldSendStatusUpdate;
     final boolean reportOnlyErrors;
     final boolean onlyMetrics;
     final String emailDestinations;
+
+    /** When true, bypass node-agent cached results and run a fresh check immediately. */
+    final boolean runImmediately;
   }
 
   @VisibleForTesting
@@ -548,7 +570,13 @@ public class HealthChecker {
             u -> {
               String destinations = getAlertDestinations(u, c);
               return new CheckSingleUniverseParams(
-                  u, c, shouldSendStatusUpdate, reportOnlyErrors, onlyMetrics, destinations);
+                  u,
+                  c,
+                  shouldSendStatusUpdate,
+                  reportOnlyErrors,
+                  onlyMetrics,
+                  destinations,
+                  false /*runImmediately*/);
             })
         .forEach(params -> runHealthCheck(params, false /*ignoreLastHealthCheck*/));
   }
@@ -637,7 +665,7 @@ public class HealthChecker {
   }
 
   public CompletableFuture<Void> runHealthCheck(
-      CheckSingleUniverseParams params, Boolean ignoreLastCheck) {
+      CheckSingleUniverseParams params, boolean ignoreLastCheck) {
     String universeName = params.universe.getName();
     CompletableFuture<Void> lastCheck =
         this.runningHealthChecks.get(params.universe.getUniverseUUID());
@@ -900,6 +928,10 @@ public class HealthChecker {
               || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
               || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
             nodeInfo.setOtelCollectorEnabled(true);
+            nodeInfo.setOtelCollectorInstalled(
+                nodeInfo.isK8s()
+                    ? nodeDetails.isTserver
+                    : nodeDetails.isMaster || nodeDetails.isTserver);
           }
         }
         nodeInfo.setClockboundEnabled(
@@ -1126,10 +1158,22 @@ public class HealthChecker {
         }
       }
     }
+    boolean disableNodeAgentHealthChecker =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentHealthCheckerDisabled);
+    int scheduleIntervalSecs = (int) (healthCheckIntervalMs() / 1000);
+    int idleScheduleTimeoutSecs = 2 * scheduleIntervalSecs;
+    // Shared floor for this cycle so every node returns a result from the same window
+    // (cycle start minus one schedule interval) or waits for its next tick.
+    long minResultEpochSecs = Math.max(1L, Instant.now().getEpochSecond() - scheduleIntervalSecs);
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
       NodeCheckContext context =
           new NodeCheckContext().setLogOutput(shouldLogOutput).setTimeoutSec(nodeCheckTimeoutSec);
+      context.setDisableNodeAgentHealthChecker(disableNodeAgentHealthChecker);
+      context.setNodeAgentCheckerScheduleIntervalSecs(scheduleIntervalSecs);
+      context.setNodeAgentCheckerIdleTimeoutSecs(idleScheduleTimeoutSecs);
+      context.setNodeAgentCheckerMinResultEpochSecs(minResultEpochSecs);
+      context.setRunImmediately(params.runImmediately);
       if (nodeInfo.getNodeName().equals(nodeToRunDdlAtomicityCheck)) {
         context.setDdlAtomicityCheck(true);
         context.setMasterLeaderUrl(masterLeaderUrl);
@@ -1198,9 +1242,7 @@ public class HealthChecker {
     // idempotent with the pre-check upload done in checkSingleUniverse (a cache hit here is a
     // no-op).
     maybeUploadNodeScripts(universe, nodeInfo, context);
-
     String scriptPath = getNodeHealthScriptPath(nodeInfo);
-
     List<String> commandToRun = new ArrayList<>();
     commandToRun.add(scriptPath);
     if (nodeCheckContext.ddlAtomicityCheck) {
@@ -1211,24 +1253,79 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    // Only run the YNP version skew check when the global runtime config is enabled. When it is
-    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
-    // the YNP_VERSION_SKEW alert does not fire.
+    // --yba_ynp_version doubles as the on switch for the node's YNP version check - the script
+    // skips the check without it. That has to be all-or-nothing rather than skew-only, because the
+    // check also publishes yb_node_ynp_version == 0 for a node with no version file, and the
+    // YNP_VERSION_SKEW alert fires on that independently of any skew.
+    String ybaYnpVersion = null;
     if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
       Object ynpVersion =
           configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
       if (ynpVersion != null) {
-        commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
+        ybaYnpVersion = ynpVersion.toString();
       } else {
-        log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
+        log.warn("YNP version not found in YugawareMetadata, skipping YNP version check");
       }
     }
-    ShellResponse response =
-        nodeUniverseManager
-            .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
-            .processErrors();
+    if (ybaYnpVersion != null) {
+      commandToRun.add("--yba_ynp_version=" + ybaYnpVersion);
+    }
+    if (nodeInfo.isK8s() || nodeCheckContext.isDisableNodeAgentHealthChecker()) {
+      ShellResponse response =
+          nodeUniverseManager
+              .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
+              .processErrors();
 
-    return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+      return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+    } else {
+      HealthCheckInput.Builder healthCheckInputBldr = HealthCheckInput.newBuilder();
+      healthCheckInputBldr.setYbHomeDir(nodeInfo.getYbHomeDir());
+      healthCheckInputBldr.setRunTimeoutSec(nodeCheckContext.getTimeoutSec());
+      healthCheckInputBldr.setScheduleIntervalSec(
+          nodeCheckContext.getNodeAgentCheckerScheduleIntervalSecs());
+      healthCheckInputBldr.setIdleTimeoutSec(nodeCheckContext.getNodeAgentCheckerIdleTimeoutSecs());
+      healthCheckInputBldr.setMinResultEpochSecs(
+          nodeCheckContext.getNodeAgentCheckerMinResultEpochSecs());
+      healthCheckInputBldr.setDdlAtomicityCheck(nodeCheckContext.ddlAtomicityCheck);
+      if (!StringUtils.isBlank(nodeCheckContext.getMasterLeaderUrl())) {
+        healthCheckInputBldr.setMasterLeaderUrl(nodeCheckContext.getMasterLeaderUrl());
+      }
+      if (ybaYnpVersion != null) {
+        healthCheckInputBldr.setYbaYnpVersion(ybaYnpVersion);
+      }
+      healthCheckInputBldr.setGenerationId(generateGenerationId(nodeInfo, nodeCheckContext));
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeInfo.getNodeHost());
+      HealthCheckOutput healthCheckOutput =
+          nodeAgentClient.runOrGetHealthCheck(
+              nodeAgent,
+              healthCheckInputBldr.build(),
+              Util.DEFAULT_YB_SSH_USER,
+              Duration.ofSeconds(nodeCheckContext.getTimeoutSec()));
+      if (healthCheckOutput.hasError()) {
+        throw new RuntimeException(
+            "Health check failed for node "
+                + nodeInfo.getNodeName()
+                + ": "
+                + healthCheckOutput.getError().getMessage());
+      }
+      return Json.fromJson(Json.parse(healthCheckOutput.getReportJson()), Details.class);
+    }
+  }
+
+  // Stable generation from schedule-relevant params. A change forces reschedule;
+  // identical params reuse the running schedule and its cache. On-demand trigger uses a
+  // fresh generation so the agent cannot return a previously cached report.
+  private String generateGenerationId(NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
+    if (nodeCheckContext.isRunImmediately()) {
+      return UUID.randomUUID().toString();
+    }
+    return Integer.toString(
+        Objects.hash(
+            nodeInfo.hashCode(),
+            nodeCheckContext.getTimeoutSec(),
+            nodeCheckContext.getNodeAgentCheckerScheduleIntervalSecs(),
+            nodeCheckContext.getNodeAgentCheckerIdleTimeoutSecs(),
+            nodeCheckContext.ddlAtomicityCheck));
   }
 
   private String getNodeHealthScriptPath(NodeInfo nodeInfo) {
@@ -1453,6 +1550,7 @@ public class HealthChecker {
     private int ybcPort = 18018;
     private UUID universeUuid;
     private boolean otelCollectorEnabled = false;
+    private boolean otelCollectorInstalled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 
@@ -1471,6 +1569,11 @@ public class HealthChecker {
     private int timeoutSec;
     private boolean ddlAtomicityCheck;
     private String masterLeaderUrl;
+    private boolean disableNodeAgentHealthChecker;
+    private int nodeAgentCheckerScheduleIntervalSecs;
+    private int nodeAgentCheckerIdleTimeoutSecs;
+    private long nodeAgentCheckerMinResultEpochSecs;
+    private boolean runImmediately;
   }
 
   private Details removeMetricOnlyChecks(Details details) {

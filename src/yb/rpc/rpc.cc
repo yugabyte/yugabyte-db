@@ -38,13 +38,12 @@
 
 #include "yb/ash/wait_state.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/source_location.h"
@@ -79,7 +78,6 @@ TAG_FLAG(max_backoff_ms_exponent, advanced);
 namespace yb {
 
 using std::string;
-using strings::SubstituteAndAppend;
 
 namespace rpc {
 
@@ -188,6 +186,8 @@ Status RpcRetrier::DoDelayedRetry(RpcCommand* rpc, const Status& why_status) {
 
 void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   auto retain_rpc = rpc->shared_from_this();
+  // Covers all exits: SendRpc as well as both Finished paths, whose callbacks may send more RPCs.
+  dist_trace::ScopedAdoptSpan parent_scope(trace_parent_);
 
   RpcRetrierState expected_state = RpcRetrierState::kWaiting;
   bool run = state_.compare_exchange_strong(expected_state, RpcRetrierState::kRunning);
@@ -219,7 +219,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
         string err_str = Format("$0 passed its deadline $1 (passed $2 of $3)",
                                 *rpc, deadline_, now - start_, deadline_ - start_);
         if (!last_error_.ok()) {
-          SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
+          err_str += Format(": $0", last_error_.ToString());
         }
         new_status = STATUS(TimedOut, err_str);
       }

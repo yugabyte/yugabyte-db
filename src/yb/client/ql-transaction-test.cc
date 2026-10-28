@@ -356,6 +356,33 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   VerifyData();
 }
 
+// A restarted transaction keeps the origination stamp its commit carries.
+TEST_F(QLTransactionTest, RestartKeepsOriginationInfo) {
+  const auto kClockDelta = 100ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250'000ULL;
+
+  auto write_txn = CreateTransaction();
+  ASSERT_OK(WriteRows(CreateSession(write_txn)));
+  ASSERT_OK(write_txn->CommitFuture().get());
+
+  server::SkewedClockDeltaChanger delta_changer(-kClockDelta, skewed_clock_);
+
+  auto txn1 = CreateTransaction2(SetReadTime::kTrue);
+  const OriginationInfo origination_info{
+      .database_oid = 16384, .origination_ht = HybridTime::FromMicros(1'700'000'000'000'000)};
+  txn1->SetOriginationInfo(origination_info);
+  auto session = CreateSession(txn1);
+  auto row = SelectRow(session, KeyForTransactionAndIndex(0, 0));
+  ASSERT_NOK(row);
+  ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status())) << row;
+
+  auto txn2 = ASSERT_RESULT(txn1->CreateRestartedTransaction());
+  const auto restarted_info = txn2->GetOriginationInfo();
+  ASSERT_EQ(restarted_info.database_oid, origination_info.database_oid);
+  ASSERT_EQ(restarted_info.origination_ht, origination_info.origination_ht);
+  txn2->Abort();
+}
+
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
   TransactionManager manager2(client_.get(), clock_, client::LocalTabletFilter());

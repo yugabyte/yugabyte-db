@@ -1,9 +1,13 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.google.inject.Inject;
+import com.oracle.bmc.core.model.Image;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.oci.OCICloudImpl;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
@@ -15,6 +19,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -28,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -36,6 +42,78 @@ public class ImageBundleUtil {
 
   @Inject private CloudQueryHelper cloudQueryHelper;
   @Inject private RuntimeConfGetter runtimeConfGetter;
+  @Inject private OCICloudImpl ociCloudImpl;
+
+  /**
+   * Sets isImageMarketplaceBased on every region of an OCI bundle from OCI's record of the image
+   * and its base images, so a value sent by the client is never kept. A region whose image matches
+   * storedDetails keeps the stored flag, which avoids lookups on every save. Bundles of other
+   * clouds never carry the flag. Callers that change a region's image in place must clear its flag
+   * first.
+   */
+  public void setImageMarketplaceBasedFlags(
+      Provider provider, ImageBundleDetails details, @Nullable ImageBundleDetails storedDetails) {
+    if (details == null || details.getRegions() == null) {
+      return;
+    }
+    Map<String, BundleInfo> storedRegions =
+        storedDetails == null ? null : storedDetails.getRegions();
+    details
+        .getRegions()
+        .forEach(
+            (regionCode, info) -> {
+              if (info == null) {
+                return;
+              }
+              if (provider.getCloudCode() != CloudType.oci
+                  || StringUtils.isBlank(info.getYbImage())) {
+                info.setIsImageMarketplaceBased(null);
+                return;
+              }
+              BundleInfo stored = storedRegions == null ? null : storedRegions.get(regionCode);
+              if (stored != null
+                  && info.getYbImage().equals(stored.getYbImage())
+                  && stored.getIsImageMarketplaceBased() != null) {
+                info.setIsImageMarketplaceBased(stored.getIsImageMarketplaceBased());
+                return;
+              }
+              Image image =
+                  ociCloudImpl.getImageOrBadRequest(provider, regionCode, info.getYbImage());
+              info.setIsImageMarketplaceBased(isMarketplaceBased(provider, regionCode, image));
+            });
+  }
+
+  @Nullable
+  private Boolean isMarketplaceBased(Provider provider, String regionCode, Image image) {
+    switch (OCICloudUtil.getImageType(image)) {
+      case MARKETPLACE:
+        return true;
+      case PLATFORM:
+        return false;
+      default:
+        try {
+          return ociCloudImpl.getMarketplaceBaseImageId(provider, regionCode, image) != null;
+        } catch (PlatformServiceException e) {
+          if (e.getHttpStatus() != NOT_FOUND) {
+            throw e;
+          }
+          log.warn(
+              "Cannot tell whether OCI image {} in region {} was built from a Marketplace image,"
+                  + " leaving isImageMarketplaceBased unset: {}",
+              image.getId(),
+              regionCode,
+              e.getMessage());
+          return null;
+        }
+    }
+  }
+
+  /** Same as above, comparing against what is currently stored for the bundle. */
+  public void setImageMarketplaceBasedFlags(Provider provider, ImageBundle bundle) {
+    ImageBundle stored = bundle.getUuid() == null ? null : ImageBundle.get(bundle.getUuid());
+    setImageMarketplaceBasedFlags(
+        provider, bundle.getDetails(), stored == null ? null : stored.getDetails());
+  }
 
   public ImageBundle.NodeProperties getNodePropertiesOrFail(
       UUID imageBundleUUID, String region, String cloudCode) {
@@ -133,12 +211,16 @@ public class ImageBundleUtil {
                 info = new ImageBundleDetails.BundleInfo();
                 bundleInfo.put(code, info);
               }
-              if (ybImage != null) {
+              if (ybImage != null && !ybImage.equals(info.getYbImage())) {
                 info.setYbImage(ybImage);
+                info.setIsImageMarketplaceBased(null);
               }
-              bundle.getDetails().setRegions(bundleInfo);
-              bundle.update();
             });
+        if (!regionsImageMap.isEmpty()) {
+          bundle.getDetails().setRegions(bundleInfo);
+          setImageMarketplaceBasedFlags(provider, bundle);
+          bundle.update();
+        }
       } else {
         String ybImage = null;
         if (provider.getCloudCode().equals(CloudType.gcp)) {
@@ -250,6 +332,7 @@ public class ImageBundleUtil {
     CloudImageBundleSetup.generateYBADefaultImageBundle(
         provider,
         cloudQueryHelper,
+        this,
         Architecture.x86_64,
         x86YBADefaultBundleMarkedDefault,
         true,
@@ -258,6 +341,7 @@ public class ImageBundleUtil {
     CloudImageBundleSetup.generateYBADefaultImageBundle(
         provider,
         cloudQueryHelper,
+        this,
         Architecture.aarch64,
         aarch64YBADefaultBundleMarkedDefault,
         true,
@@ -299,17 +383,14 @@ public class ImageBundleUtil {
       Set<Universe> universes = Universe.getAllWithoutResources(customer);
 
       for (Universe universe : universes) {
-        // Assumption both the primary & rr cluster uses the same provider.
-        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-        if (userIntent != null) {
-          CloudType cloudType = userIntent.providerType;
-          if (!cloudType.imageBundleSupported()) {
-            continue;
-          }
-          UUID imageBundleUUID = userIntent.imageBundleUUID;
-          if (imageBundleUUID != null && !imageBundleMap.containsKey(imageBundleUUID)) {
-            ImageBundle bundle = ImageBundle.get(imageBundleUUID);
-            imageBundleMap.put(imageBundleUUID, bundle);
+        for (Cluster cluster : universe.getUniverseDetails().clusters) {
+          UserIntent userIntent = cluster.userIntent;
+
+          for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
+            if (imageBundleUUID != null && !imageBundleMap.containsKey(imageBundleUUID)) {
+              ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+              imageBundleMap.put(imageBundleUUID, bundle);
+            }
           }
         }
       }
@@ -334,9 +415,7 @@ public class ImageBundleUtil {
     if (imageBundleUUID != null) {
       ImageBundle.NodeProperties toOverwriteNodeProperties =
           getNodePropertiesOrFail(
-              imageBundleUUID,
-              nodeDetails.cloudInfo.region,
-              cluster.userIntent.providerType.toString());
+              imageBundleUUID, nodeDetails.cloudInfo.region, provider.getCloudCode().toString());
       sshUser = toOverwriteNodeProperties.getSshUser();
     }
     return sshUser;

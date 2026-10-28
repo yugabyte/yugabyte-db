@@ -10,31 +10,25 @@
 
 [package]
 name = "pgrx-tests"
-version = "0.14.1"
-authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
-license = "MIT"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
 description = "Test framework for 'pgrx'-based Postgres extensions"
-homepage = "https://github.com/pgcentralfoundation/pgrx/"
-repository = "https://github.com/pgcentralfoundation/pgrx/"
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/pgrx-tests"
 readme = "README.md"
-edition = "2021"
-include = ["src/**/*", "README.md", "!**/tests/**/*"]
-
-[lib]
-crate-type = ["cdylib", "lib"]
-
-[[bin]]
-name = "pgrx_embed_pgrx-tests"
-path = "./src/bin/pgrx_embed.rs"
+edition.workspace = true
+include = ["src/**/*", "README.md"]
 
 [features]
-default = ["proptest"]
+default = []
 pg13 = ["pgrx/pg13"]
 pg14 = ["pgrx/pg14"]
 pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
+pg18 = ["pgrx/pg18"]
 pg_test = []
 proptest = ["dep:proptest"]
 cshim = ["pgrx/cshim"]
@@ -61,22 +55,19 @@ eyre.workspace = true
 libc.workspace = true
 owo-colors.workspace = true
 regex.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 shlex.workspace = true
 thiserror.workspace = true
 
-paste = "1"
-postgres = "0.19.10"
+postgres = "0.19.13"
 proptest = { version = "1", optional = true }
-tempfile = "3.19.1"
-sysinfo = "0.34.2"
-rand = "0.9.0"
+tempfile = "3.27.0"
+sysinfo = "0.39.3"
+rand = "0.10.1"
 
 [dependencies.pgrx] # Not unified in workspace due to default-features key
 path = "../pgrx"
 default-features = false
-version = "=0.14.1"
+version = "=0.18.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.9", features = [
@@ -88,10 +79,9 @@ winapi = { version = "0.3.9", features = [
     "winnt",
 ] }
 
-[dev-dependencies]
-eyre.workspace = true # testing functions that return `eyre::Result`
-trybuild = "1"
+[lints.rust]
+unused-lifetimes = "deny"
+unsafe-op-in-unsafe-fn = "allow"
 
-[lints]
-rust.unused-lifetimes = "deny"
-clippy.used-underscore-binding = "deny"
+[lints.clippy]
+used-underscore-binding = "deny"

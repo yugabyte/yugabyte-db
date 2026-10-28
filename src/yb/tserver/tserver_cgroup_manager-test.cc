@@ -467,7 +467,7 @@ TEST_F(TServerCgroupManagerTest, TestDatabaseNameRegisteredUnconditionally) {
 //
 // System databases like "postgres" (OID 5) have no user tablets, so
 // RegisterDbName is never called via the tablet manager path.
-// EnsureClientSessionCgroup in pg_client_session.cc now calls
+// MoveSessionToDatabaseCgroup in pg_client_session.cc now calls
 // IsDbNameKnown() before issuing a master RPC: if the name is already
 // registered the RPC is skipped; otherwise it calls GetNamespaceInfo
 // and then RegisterDbName.  This test verifies the key-value contract

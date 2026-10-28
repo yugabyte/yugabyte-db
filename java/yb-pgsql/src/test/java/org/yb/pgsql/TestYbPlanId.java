@@ -176,16 +176,10 @@ public class TestYbPlanId extends BasePgSQLTest {
                       "SELECT * FROM t1 z, t1 x, t1 y WHERE x.a1=y.a1 " +
                         "AND y.b1=z.b1 AND y.c1=1 AND z.c1=2", false));
 
-    /*
-     * Use three different tables here. If we used three aliases of t1,
-     * PostgreSQL 17 would treat x and y as the same row (self-join
-     * elimination), and the plan_id would change when the FROM order
-     * changes.
-     */
-    arr.add(Triple.of("SELECT t3.*, t1.*, t2.* FROM t1, t2, t3 " +
-                        "WHERE t1.a1=t2.a2 AND t2.b2=t3.b3 AND t2.c2=1 AND t3.c3=2",
-                      "SELECT t3.*, t1.*, t2.* FROM t3, t1, t2 " +
-                        "WHERE t1.a1=t2.a2 AND t2.b2=t3.b3 AND t2.c2=1 AND t3.c3=2", true));
+    arr.add(Triple.of("SELECT z.*, x.*, y.* FROM t1 x, t1 y, t1 z WHERE x.d1=y.a1 " +
+                        "AND y.b1=z.b1 AND y.c1=1 AND z.c1=2",
+                      "SELECT z.*, x.*, y.* FROM t1 z, t1 x, t1 y WHERE x.d1=y.a1 " +
+                        "AND y.b1=z.b1 AND y.c1=1 AND z.c1=2", true));
     return arr;
   }
 }

@@ -90,6 +90,12 @@ describe('minExpertRfForRegionCount', () => {
     expect(minExpertRfForRegionCount(7)).toBe(7);
     expect(minExpertRfForRegionCount(8)).toBeUndefined();
   });
+
+  it('includes RF 9 when enablePrimaryRf9 is true', () => {
+    expect(minExpertRfForRegionCount(8, true)).toBe(9);
+    expect(minExpertRfForRegionCount(9, true)).toBe(9);
+    expect(minExpertRfForRegionCount(10, true)).toBeUndefined();
+  });
 });
 
 describe('requiredAzCountForGuided', () => {
@@ -416,6 +422,37 @@ describe('normalizeEditPlacementNodesAvailability', () => {
       regions.map((r) => r.code).sort()
     );
     expect(result?.[REPLICATION_FACTOR]).toBe(7);
+  });
+
+  it('bumps RF to 9 when selecting 8 regions with enablePrimaryRf9', () => {
+    const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 3));
+    const existingZones = Object.fromEntries(
+      regions.slice(0, 5).map((region, index) => [
+        region.code,
+        [{ uuid: `${region.code}-z0`, name: 'Z0', nodeCount: 1, preffered: index + 1 }]
+      ])
+    );
+    const resilience = guidedBase({
+      resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+      faultToleranceType: FaultToleranceType.NONE,
+      resilienceFactor: 5,
+      regions
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: existingZones,
+      useDedicatedNodes: false,
+      replicationFactor: 5
+    };
+
+    const result = normalizeEditPlacementNodesAvailability(
+      { resilience, nodesAndAvailability },
+      true
+    );
+
+    expect(Object.keys(result?.availabilityZones ?? {}).sort()).toEqual(
+      regions.map((r) => r.code).sort()
+    );
+    expect(result?.[REPLICATION_FACTOR]).toBe(9);
   });
 
   it('preserves RF above the region-count floor (does not drop 7 to expert default 5)', () => {

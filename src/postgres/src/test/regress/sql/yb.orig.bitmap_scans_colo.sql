@@ -307,7 +307,10 @@ $$ AS query \gset
 \i :run_query
 
 -- PxQxR: explain/run x expression_pushdown x target
--- test where casting may cause us to require recheck
+-- test where casting may cause us to require recheck.  An out-of-range
+-- inequality leaves its key unbound, so the scan reads and rechecks.  An
+-- out-of-range equality makes the scan unsatisfiable instead, so it reads
+-- nothing.
 \set explain 'EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set Q2 '/*+ BitmapScan(t) Set(yb_enable_expression_pushdown false) */'
@@ -315,6 +318,8 @@ $$ AS query \gset
 \set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483647;'
 \i :run_query
 \set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col = 2147483648;'
+\i :run_query
+\set query ':P :Q SELECT :R FROM recheck_test t WHERE int4_col > 2147483648;'
 \i :run_query
 
 \set Q1 '/*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */'

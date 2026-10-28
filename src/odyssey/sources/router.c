@@ -1315,16 +1315,6 @@ attach:
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
 
-	/*
-	 * YB: Enable/disable parse queue tracking based on the runtime
-	 * gflag `ysql_conn_mgr_enable_parse_queue_tracking`.
-	 */
-	if (route->rule->pool->reserve_prepared_statement) {
-		yb_od_parse_queue_enable(
-			&server->parse_queue,
-			instance->config.yb_enable_parse_queue_tracking);
-	}
-
 	if (route->id.logical_rep) {
 		/*
 		 * Replication connections are never detached after txn is committed

@@ -153,6 +153,11 @@ message ServerEntryPB {
   // If an error has occurred earlier in the RPC call, the role
   // may be not be set.
   optional PeerRole role = 4;
+
+  // Milliseconds since the Raft leader last had a successful heartbeat exchange with
+  // this master. Small = healthy; large/growing = stalled or not caught up. Only set
+  // for followers tracked by the leader; absent for the leader and non-leaders.
+  optional int64 heartbeat_delay_ms = 5;
 }
 
 message PromotedFlagInfoPB {

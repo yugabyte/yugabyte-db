@@ -11,6 +11,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Plan your deployment" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../deploy/checklist/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/create-deployments/create-universes-overview/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
+{{< /page-finder/head >}}
+
 ## Summary of best practices
 
 The following best practices are recommended for production clusters.

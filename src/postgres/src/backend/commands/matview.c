@@ -199,11 +199,36 @@ RefreshMatViewByOid(Oid matviewOid, bool is_create, bool skipData,
 	int			save_sec_context;
 	int			save_nestlevel;
 	ObjectAddress address;
-	bool		yb_in_place_refresh = YbRefreshMatviewInPlace();
+	bool		yb_in_place_refresh = !is_create && YbRefreshMatviewInPlace();
 	bool		yb_fill_matview_directly;
 
 	matviewRel = table_open(matviewOid, NoLock);
 	relowner = matviewRel->rd_rel->relowner;
+
+
+	if (yb_xcluster_automatic_mode_target_ddl)
+	{
+		/*
+		 * YB: On an xCluster automatic-mode target, a concurrent or in-place
+		 * refresh was already replicated as DML on the materialized view, so
+		 * there is nothing to do.
+		 */
+		if (concurrent || yb_refresh_matview_in_place)
+		{
+			table_close(matviewRel, NoLock);
+			ObjectAddressSet(address, RelationRelationId, matviewOid);
+			return address;
+		}
+		/*
+		 * Otherwise proceed with the table rewrite version of REFRESH.
+		 * One exception is if we are upgrading, then rewrites are disallowed.
+		 */
+		if (yb_in_place_refresh)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot rewrite materialized view \"%s\" during a YSQL major version upgrade",
+							RelationGetRelationName(matviewRel))));
+	}
 
 	/*
 	 * Switch to the owner's userid, so that any functions are run as that

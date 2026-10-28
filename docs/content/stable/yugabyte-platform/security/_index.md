@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere Security
-headerTitle: Security
-linkTitle: Security
+headerTitle: Secure universes
+linkTitle: Secure universes
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes
 aliases:

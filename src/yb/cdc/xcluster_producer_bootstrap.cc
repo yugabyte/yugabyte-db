@@ -23,6 +23,8 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
@@ -37,7 +39,7 @@ namespace cdc {
 
 namespace {
 
-Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer) {
+Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer, CoarseTimePoint deadline) {
   // This is done by calling FetchNext on NewRowIterator to see if there is any row is visible
   // (not deleted). For colocated tablets, each table has to be checked.
   //
@@ -53,10 +55,16 @@ Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer) {
   auto table_ids = tablet->metadata()->GetAllColocatedTables();
   const dockv::ReaderProjection empty_projection;
 
+  // Read as of now. The default read time is the follower safe time, which only tracks the last
+  // replicated op, so rows removed by a transaction that has committed but whose APPLY has not been
+  // replicated yet would still be reported as present.
+  const auto read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(
+      tablet->SafeTime(tablet::RequireLease::kTrue, tablet->clock()->Now(), deadline)));
+
   // We will have multiple tables when this is a colocated table.
   for (const auto& table_id : table_ids) {
-    auto iter = VERIFY_RESULT(
-        tablet->NewRowIterator(empty_projection, /* read_hybrid_time */ {}, table_id));
+    auto iter =
+        VERIFY_RESULT(tablet->NewRowIterator(empty_projection, read_time, table_id, deadline));
     if (VERIFY_RESULT(iter->FetchNext(nullptr))) {
       LOG(INFO) << "Tablet " << tablet_peer->tablet_id() << " has rows in table " << table_id
                 << ". Bootstrap is required when setting up xCluster.";
@@ -72,7 +80,7 @@ Result<bool> IsBootstrapRequiredForTablet(
     tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline) {
   if (min_op_id.index < 0) {
     // Bootstrap is needed if there is any data in the tablet.
-    return IsDataPresent(tablet_peer);
+    return IsDataPresent(tablet_peer, deadline);
   }
 
   auto log = tablet_peer->log();
@@ -415,7 +423,10 @@ Result<bool> XClusterProducerBootstrap::IsBootstrapRequired() {
         tablet_peer && tablet_peer->IsLeaderAndReady(), LeaderNotReadyToServe,
         "Tablet leader is not ready $0", tablet_id);
 
-    if (VERIFY_RESULT(IsDataPresent(tablet_peer))) {
+    // Per tablet budget, same as the timeout used for the remote tablet RPCs below.
+    const auto deadline =
+        CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+    if (VERIFY_RESULT(IsDataPresent(tablet_peer, deadline))) {
       return true;
     }
   }

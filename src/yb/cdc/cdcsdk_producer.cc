@@ -121,6 +121,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -665,9 +666,13 @@ Result<size_t> DoPopulatePackedRows(
   for (size_t i = 0; i != packing.columns(); ++i) {
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
+    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
+    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        col.marked_for_deletion()) {
+      continue;
+    }
 
     auto pv = VERIFY_RESULT(UnpackPrimitiveValue(column_value, column_data.data_type));
-    const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
     modified_columns->insert(col.name());
 
     if (column_value.IsNull()) {
@@ -887,16 +892,6 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
   }
 }
 
-bool SchemaPackingStorageContainsVersion(
-    SchemaPackingStorage* schema_packing_storage, uint32_t schema_version) {
-  auto result = schema_packing_storage->GetPacking(schema_version);
-  if (!result.ok()) {
-    DCHECK(result.status().IsNotFound());
-    return false;
-  }
-  return true;
-}
-
 Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
@@ -909,13 +904,19 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     // Check if packed row schema version is present in the schema_packing_storage. If not
     // present, invalidate the cached_schema_details so that we fetch schema with required
     // version from sys catalog.
-    if (!SchemaPackingStorageContainsVersion(
-            schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version))) {
-      update_schema_packing_storage = true;
-      auto it = cached_schema_details->find(table_id);
-      if (it != cached_schema_details->end()) {
-        (*cached_schema_details).erase(it);
-      }
+    update_schema_packing_storage =
+        !schema_packing_storage->HasVersion(narrow_cast<SchemaVersion>(pr_schema_version));
+
+    // The cached entry holds a single schema version per table, but with transactional DDL, a
+    // transaction containing DDL writes rows under more than one version. A schema from a different
+    // version cannot resolve this row's column ids, so drop it and fetch the one this row was
+    // written with.
+    auto it = cached_schema_details->find(table_id);
+    if (it != cached_schema_details->end() &&
+        (update_schema_packing_storage ||
+         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          it->second.schema_version != pr_schema_version))) {
+      (*cached_schema_details).erase(it);
     }
   }
 
@@ -3176,8 +3177,7 @@ Status GetChangesForCDCSDK(
             }
 
             auto schema_packing_storage = &schema_packing_storages->at(table_id);
-            if (!SchemaPackingStorageContainsVersion(
-                    schema_packing_storage, changed_schema_version)) {
+            if (!schema_packing_storage->HasVersion(changed_schema_version)) {
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 

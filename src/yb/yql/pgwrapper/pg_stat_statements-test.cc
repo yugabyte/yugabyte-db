@@ -366,5 +366,328 @@ TEST_F(PgStatStatementsTest, InterleavedExtendedProtocolAfterReset) {
   }
 }
 
+// Verify that SET ROLE and SET SESSION AUTHORIZATION are recorded with their
+// original text under the role they switch to, as upstream records them.
+// Because they change the user, their stats must not be discarded as if their
+// entry had been reset.
+TEST_F(PgStatStatementsTest, SetRoleRecordedWithOriginalText) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("CREATE ROLE test_role"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Each SET switches the current user to test_role, so its stats are stored
+  // under test_role.
+  ASSERT_OK(conn2.Execute("SET ROLE test_role"));
+  ASSERT_OK(conn2.Execute("RESET ROLE"));
+  ASSERT_OK(conn2.Execute("SET SESSION AUTHORIZATION test_role"));
+  ASSERT_OK(conn2.Execute("RESET SESSION AUTHORIZATION"));
+
+  auto rows = ASSERT_RESULT((conn1.FetchRows<std::string, int64_t>(
+      "SELECT query, calls FROM pg_stat_statements "
+      "WHERE userid = 'test_role'::regrole ORDER BY query")));
+  ASSERT_EQ(rows, (decltype(rows){
+      {"SET ROLE test_role", 1},
+      {"SET SESSION AUTHORIZATION test_role", 1}}));
+
+  ASSERT_OK(conn1.Execute("DROP ROLE test_role"));
+}
+
+// Verify that a prepared statement with constants is not stored with its
+// literals when executed under a different user or nesting level than it was
+// prepared under.  Its stats are discarded instead, a known limitation.
+TEST_F(PgStatStatementsTest, PreparedStatementRunUnderAnotherKeyNotRecorded) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("CREATE ROLE test_role"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Prepare under the current user, at top level.
+  ASSERT_OK(conn2.Execute("PREPARE test_stmt AS SELECT 'secret'"));
+
+  // Execute under a different user.
+  ASSERT_OK(conn2.Execute("SET ROLE test_role"));
+  ASSERT_OK(conn2.Fetch("EXECUTE test_stmt"));
+  ASSERT_OK(conn2.Execute("RESET ROLE"));
+
+  // Execute under the same user, but nested under EXPLAIN.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'all'"));
+  ASSERT_OK(conn2.Fetch(
+      "EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE test_stmt"));
+  ASSERT_OK(conn2.Execute("RESET pg_stat_statements.track"));
+
+  // No unnormalized entry should be present.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%secret%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+
+  // Known limitation: the stats are discarded rather than stored with the
+  // normalized text.
+  rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE 'PREPARE test_stmt%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an entry for the prepared statement: "
+      << rows[0];
+
+  ASSERT_OK(conn2.Execute("DEALLOCATE test_stmt"));
+  ASSERT_OK(conn1.Execute("DROP ROLE test_role"));
+}
+
+// Verify that a statement with constants that switches the user through
+// set_config is not stored with its literals.  Its execution stats are
+// discarded instead, a known limitation.
+TEST_F(PgStatStatementsTest, SetConfigRoleSwitchNotRecorded) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("CREATE ROLE test_role"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  ASSERT_OK(conn2.Fetch("SELECT set_config('role', 'test_role', false), 'secret'"));
+  ASSERT_OK(conn2.Execute("RESET ROLE"));
+
+  // No unnormalized entry should be present.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%secret%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+
+  // Known limitation: the execution stats are discarded.  Planning ran before
+  // the switch, so the entry under the original user may still be shown, but
+  // with no calls.
+  auto num_executed = ASSERT_RESULT(conn1.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_stat_statements "
+      "WHERE query LIKE '%set_config%' AND calls > 0 "
+      "AND query NOT LIKE '%pg_stat_statements%'"));
+  ASSERT_EQ(num_executed, 0);
+
+  ASSERT_OK(conn1.Execute("DROP ROLE test_role"));
+}
+
+// Verify that a prepared statement whose only constants are parameters is still
+// recorded after a reset, since its text has no literals to leak.
+TEST_F(PgStatStatementsTest, ParamOnlyStatementRecordedAfterReset) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Use a raw libpq connection so the statement can be prepared once and run
+  // again with Bind + Execute only, as drivers do.
+  auto conn_str = Format("host=$0 port=$1 user=$2",
+                         pg_ts->bind_host(), pg_ts->ysql_port(),
+                         PGConnSettings::kDefaultUser);
+  PGConnPtr raw_conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(raw_conn.get()), CONNECTION_OK);
+
+  PGResultPtr prep_result(PQprepare(
+      raw_conn.get(), "test_stmt", "SELECT $1::int AS param_probe", 1, nullptr));
+  ASSERT_EQ(PQresultStatus(prep_result.get()), PGRES_COMMAND_OK);
+
+  // First Bind + Execute (no new Parse).
+  const char* values[] = {"1"};
+  PGResultPtr exec1(PQexecPrepared(
+      raw_conn.get(), "test_stmt", 1, values, nullptr, nullptr, 0));
+  ASSERT_EQ(PQresultStatus(exec1.get()), PGRES_TUPLES_OK);
+
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Second Bind + Execute (no new Parse), after the reset.
+  PGResultPtr exec2(PQexecPrepared(
+      raw_conn.get(), "test_stmt", 1, values, nullptr, nullptr, 0));
+  ASSERT_EQ(PQresultStatus(exec2.get()), PGRES_TUPLES_OK);
+
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%param_probe%' "
+      "AND query NOT LIKE '%pg_stat_statements%'"));
+  ASSERT_EQ(rows, std::vector<std::string>{"SELECT $1::int AS param_probe"});
+}
+
+// Verify that a prepared statement whose parameters form a squashed list is not
+// recorded with its raw text after a reset.  Normalization collapses the list,
+// so the raw text differs from the normalized text.
+TEST_F(PgStatStatementsTest, SquashedParamListNotRecordedAfterReset) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Use a raw libpq connection so the statement can be prepared once and run
+  // again with Bind + Execute only, as drivers do.
+  auto conn_str = Format("host=$0 port=$1 user=$2",
+                         pg_ts->bind_host(), pg_ts->ysql_port(),
+                         PGConnSettings::kDefaultUser);
+  PGConnPtr raw_conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(raw_conn.get()), CONNECTION_OK);
+
+  PGResultPtr prep_result(PQprepare(
+      raw_conn.get(), "test_stmt",
+      "SELECT $1::int AS squash_probe WHERE $1::int IN ($2::int, $3::int, $4::int)",
+      4, nullptr));
+  ASSERT_EQ(PQresultStatus(prep_result.get()), PGRES_COMMAND_OK);
+
+  // First Bind + Execute (no new Parse).
+  const char* values[] = {"1", "1", "2", "3"};
+  PGResultPtr exec1(PQexecPrepared(
+      raw_conn.get(), "test_stmt", 4, values, nullptr, nullptr, 0));
+  ASSERT_EQ(PQresultStatus(exec1.get()), PGRES_TUPLES_OK);
+
+  const std::string probe_query =
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%squash_probe%' "
+      "AND query NOT LIKE '%pg_stat_statements%'";
+
+  // Before the reset, the entry created at Parse holds the squashed text.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(probe_query));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_STR_CONTAINS(rows[0], "/*, ... */");
+
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Second Bind + Execute (no new Parse), after the reset: the stats must be
+  // discarded rather than stored with the raw text.
+  PGResultPtr exec2(PQexecPrepared(
+      raw_conn.get(), "test_stmt", 4, values, nullptr, nullptr, 0));
+  ASSERT_EQ(PQresultStatus(exec2.get()), PGRES_TUPLES_OK);
+
+  rows = ASSERT_RESULT(conn1.FetchRows<std::string>(probe_query));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+}
+
+// Verify that a statement prepared while it is not tracked is not stored with
+// its literals when it is executed later at top level, where it is tracked.
+TEST_F(PgStatStatementsTest, PreparedWhileUntrackedNotLeaked) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  // Track only top-level statements, so nested statements are not tracked.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'top'"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE vault (v text)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO vault VALUES ('secret_1')"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Prepared inside a DO block, which is nested and so not tracked.  The value
+  // comes from the table, so it is not in the DO statement's own text.
+  ASSERT_OK(conn2.Execute(
+      "DO $$ BEGIN EXECUTE format('PREPARE stmt1 AS SELECT %L', "
+      "(SELECT v FROM vault)); END $$"));
+  ASSERT_OK(conn2.Fetch("EXECUTE stmt1"));
+
+  // Prepared while tracking is off.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'none'"));
+  ASSERT_OK(conn2.Execute("PREPARE stmt2 AS SELECT 'secret_2'"));
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'top'"));
+  ASSERT_OK(conn2.Fetch("EXECUTE stmt2"));
+
+  // Prepared with Parse while tracking is off, then run with Bind + Execute,
+  // as drivers do.
+  auto conn_str = Format("host=$0 port=$1 user=$2",
+                         pg_ts->bind_host(), pg_ts->ysql_port(),
+                         PGConnSettings::kDefaultUser);
+  PGConnPtr raw_conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(raw_conn.get()), CONNECTION_OK);
+
+  PGResultPtr set_none(PQexec(raw_conn.get(), "SET pg_stat_statements.track = 'none'"));
+  ASSERT_EQ(PQresultStatus(set_none.get()), PGRES_COMMAND_OK);
+  PGResultPtr prep_result(PQprepare(
+      raw_conn.get(), "stmt3", "SELECT 'secret_3'", 0, nullptr));
+  ASSERT_EQ(PQresultStatus(prep_result.get()), PGRES_COMMAND_OK);
+  PGResultPtr set_top(PQexec(raw_conn.get(), "SET pg_stat_statements.track = 'top'"));
+  ASSERT_EQ(PQresultStatus(set_top.get()), PGRES_COMMAND_OK);
+  PGResultPtr exec_result(PQexecPrepared(
+      raw_conn.get(), "stmt3", 0, nullptr, nullptr, nullptr, 0));
+  ASSERT_EQ(PQresultStatus(exec_result.get()), PGRES_TUPLES_OK);
+
+  // No unnormalized entry should be present.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%secret%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+}
+
+// Verify that a statement inside a function is not stored with its literals
+// when its plan, cached while nested statements were not tracked, runs again
+// after they are.
+TEST_F(PgStatStatementsTest, FunctionPlanCachedWhileUntrackedNotLeaked) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  // Track only top-level statements, so nested statements are not tracked.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'top'"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_table (a text)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test_table VALUES ('x')"));
+  ASSERT_OK(conn1.Execute(
+      "CREATE FUNCTION test_func() RETURNS text LANGUAGE plpgsql AS $$ "
+      "DECLARE v text; "
+      "BEGIN SELECT a INTO v FROM test_table WHERE a <> 'secret' LIMIT 1; "
+      "RETURN v; END $$"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Only top-level statements are tracked, so the statement inside the
+  // function is parsed and cached without being tracked.
+  ASSERT_OK(conn2.Fetch("SELECT test_func()"));
+
+  // Track nested statements too.  The cached plan runs without a new parse.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'all'"));
+  ASSERT_OK(conn2.Fetch("SELECT test_func()"));
+  ASSERT_OK(conn2.Execute("RESET pg_stat_statements.track"));
+
+  // No unnormalized entry should be present.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%secret%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+
+  // The top-level calls are still recorded.
+  auto calls = ASSERT_RESULT(conn1.FetchRow<int64_t>(
+      "SELECT calls FROM pg_stat_statements WHERE query = 'SELECT test_func()'"));
+  ASSERT_EQ(calls, 2);
+}
+
+// Verify that a prepared statement is not stored with its literals when a
+// table change makes it be parsed again as a nested, untracked statement, and
+// it is then executed at top level.
+TEST_F(PgStatStatementsTest, ReparsedWhileUntrackedNotLeaked) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  // Track only top-level statements, so nested statements are not tracked.
+  ASSERT_OK(conn2.Execute("SET pg_stat_statements.track = 'top'"));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_table (a text)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test_table VALUES ('424242')"));
+  ASSERT_OK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+
+  ASSERT_OK(conn2.Execute(
+      "PREPARE test_stmt AS SELECT count(*) FROM test_table WHERE a = '424242'"));
+  ASSERT_OK(conn2.Fetch("EXECUTE test_stmt"));
+
+  // The new column type changes the statement's shape.  EXPLAIN parses it again
+  // as a nested statement, which is not tracked.
+  ASSERT_OK(conn2.Execute(
+      "ALTER TABLE test_table ALTER COLUMN a TYPE int USING a::int"));
+  ASSERT_OK(conn2.Fetch("EXPLAIN (COSTS OFF) EXECUTE test_stmt"));
+  ASSERT_OK(conn2.Fetch("EXECUTE test_stmt"));
+
+  // No unnormalized entry should be present.
+  auto rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query FROM pg_stat_statements "
+      "WHERE query LIKE '%424242%'"));
+  ASSERT_TRUE(rows.empty())
+      << "pg_stat_statements contains an unnormalized entry: " << rows[0];
+
+  // The execution before the table change is recorded with normalized text.
+  rows = ASSERT_RESULT(conn1.FetchRows<std::string>(
+      "SELECT query || ' calls=' || calls FROM pg_stat_statements "
+      "WHERE query LIKE 'PREPARE test_stmt%'"));
+  ASSERT_EQ(rows, std::vector<std::string>{
+      "PREPARE test_stmt AS SELECT count(*) FROM test_table WHERE a = $1 calls=1"});
+}
+
 }  // namespace pgwrapper
 }  // namespace yb

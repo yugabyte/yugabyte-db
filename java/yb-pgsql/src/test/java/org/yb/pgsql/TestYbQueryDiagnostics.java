@@ -16,6 +16,7 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -896,7 +897,30 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                         && !line.contains("Actual Total Time"))
                 .collect(Collectors.joining("\n"));
 
-        validateAgainstFile(expectedFilename, filteredExplainPlan);
+        File expectedFile = new File(TestUtils.getClassResourceDir(getClass()),
+                                     expectedFilename);
+        String expectedOutput = new String(Files.readAllBytes(expectedFile.toPath()),
+                                           StandardCharsets.UTF_8).trim();
+
+        if (expectedOutput.endsWith("}")) {
+            validateAgainstFile(expectedFilename, filteredExplainPlan);
+            return;
+        }
+
+        /*
+         * A plan exceeding YB_QD_MAX_EXPLAIN_PLAN_LEN is cut off mid line, and the digit
+         * width of the timing fields filtered out above shifts where the cut lands, so
+         * only the whole lines that both sides kept are reproducible.
+         */
+        List<String> expectedLines = Arrays.asList(expectedOutput.split("\n"));
+        List<String> actualLines = Arrays.asList(filteredExplainPlan.trim().split("\n"));
+        assertGreaterThanOrEqualTo("Truncated explain plan is shorter than expected",
+                                   actualLines.size(), expectedLines.size() - 5);
+
+        int wholeLines = Math.min(expectedLines.size(), actualLines.size()) - 1;
+        assertEquals("Output does not match expected output while validating against file",
+                     String.join("\n", expectedLines.subList(0, wholeLines)),
+                     String.join("\n", actualLines.subList(0, wholeLines)));
     }
 
     private String getLongQueryWith5000Constants(List<String> constants) throws Exception {

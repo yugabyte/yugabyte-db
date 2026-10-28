@@ -198,7 +198,8 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
+      boolean timedOut =
+          waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -224,6 +225,16 @@ public class ShellProcessHandler {
         String specificErrMsg = getPythonErrMsg(response.code, processOutput);
         if (specificErrMsg != null) {
           response.message = specificErrMsg;
+        }
+        if (timedOut) {
+          // The process was SIGKILLed, so its exit code carries no information about why it was
+          // stuck. Say so explicitly, otherwise the task fails with an opaque signal code.
+          response.code = ERROR_CODE_GENERIC_ERROR;
+          response.message =
+              String.format(
+                  "Command timed out after %d seconds and was aborted. Output: %s",
+                  context.getTimeoutSecs(),
+                  StringUtils.isBlank(processError) ? processOutput : processError);
         }
       }
     } catch (IOException | InterruptedException e) {
@@ -371,9 +382,12 @@ public class ShellProcessHandler {
     return false;
   }
 
-  private static void waitForProcessExit(
+  // Returns true if the process was aborted because it exceeded endTimeMs, false if it exited on
+  // its own.
+  private static boolean waitForProcessExit(
       Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
+    boolean timedOut = false;
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
         InputStreamReader outputReader = new InputStreamReader(outputInputStream);
         FileInputStream errInputStream = new FileInputStream(errFile);
@@ -387,6 +401,7 @@ public class ShellProcessHandler {
         tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
+          timedOut = true;
           destroyForcibly(process, description);
           break;
         }
@@ -395,6 +410,7 @@ public class ShellProcessHandler {
       tailStream(outputStream);
       tailStream(errorStream);
     }
+    return timedOut;
   }
 
   private static void tailStream(BufferedReader br) throws IOException {

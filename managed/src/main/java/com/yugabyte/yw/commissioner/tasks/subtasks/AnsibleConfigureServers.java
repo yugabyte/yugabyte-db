@@ -15,6 +15,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -209,9 +210,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         resetMasterState,
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
-    boolean isNodeAgentSupported =
-        NodeAgentClient.isCloudTypeSupported(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+    Common.CloudType providerType =
+        universe
+            .getUniverseDetails()
+            .getClusterByUuid(nodeDetails.placementUuid)
+            .getProviderCloudType(nodeDetails);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
     taskParams().resetMasterState = resetMasterState;
     taskParams().skipDownloadSoftware = isNodeAgentSupported;
     if (isNodeAgentSupported

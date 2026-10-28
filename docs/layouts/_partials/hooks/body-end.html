@@ -1,5 +1,5 @@
 <script src="/js/site.js"></script>
-<script src="/js/trackUtm.js"></script>
+<script src="/js/trackUtm.js" type="text/plain" class="optanon-category-C0003"></script>
 <!-- Add target/rel on external links -->
 <script type="module">
 import detectExternalLink from 'https://cdn.jsdelivr.net/npm/detect-external-link@2/+esm';
@@ -38,7 +38,8 @@ if (typeof detectExternalLink === 'function') {
   What does Voyager do?
 ` -}}
 {{- $questions := replaceRE " +" " " (trim (replaceRE "\n\t\r" " " $questions) " \n\t\r") -}}
-<script defer src="https://widget.kapa.ai/kapa-widget.bundle.js"
+<script src="https://widget.kapa.ai/kapa-widget.bundle.js"
+  type="text/plain" class="optanon-category-C0002" defer
   data-website-id="7669d105-58f8-41b7-b3f1-4799ac938657"
   data-bot-protection-mechanism="hcaptcha"
   data-project-name="Yugabyte"
@@ -89,38 +90,5 @@ if (typeof detectExternalLink === 'function') {
   data-mcp-enabled="true"
   data-mcp-server-url="https://yugabyte.mcp.kapa.ai"
 ></script>
-<script>
-  (function() {
-    window.addEventListener('load', function () {
-      const askAiTopSpan = document.querySelector('.ask-ai-top > span');
-      if (askAiTopSpan) {
-        askAiTopSpan.addEventListener('click', function () {
-          if (window.Kapa) {
-            window.Kapa.open({
-              mode: 'ai',
-            });
-          }
-        });
-      }
-
-      let clearbitAnonymousId = window.browserCookieUtils.getCookie('cb_anonymous_id');
-      if (clearbitAnonymousId && clearbitAnonymousId !== 'null') {
-        clearbitAnonymousId = clearbitAnonymousId.replace(/%22/g, '').replace(/"/g, '');
-        const kapaUser = {
-          uniqueClientId: clearbitAnonymousId,
-        };
-
-        let clearbitUserId = window.browserCookieUtils.getCookie('cb_user_id');
-        if (clearbitUserId && clearbitUserId !== 'null') {
-          clearbitUserId = clearbitUserId.replace(/%22/g, '').replace(/"/g, '');
-          kapaUser.email = clearbitUserId;
-        }
-
-        window.kapaSettings = {
-          user: kapaUser,
-        };
-      }
-    });
-  })();
-</script>
+<script src="/js/kapaAi.js"></script>
 {{- end -}}

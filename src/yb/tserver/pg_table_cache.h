@@ -51,6 +51,7 @@ class PgTablesQueryResult {
   using TablesResult = Result<std::span<const TableInfo>>;
   using TablesResultPtr = std::shared_ptr<TablesResult>;
 
+  PgTablesQueryResult() = default;
   explicit PgTablesQueryResult(TablesResultPtr&& tables) : tables_(std::move(tables)) {}
 
   Result<const client::YBTablePtr&> Get(TableIdView table_id) const;

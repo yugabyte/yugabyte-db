@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use pgrx::prelude::*;
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[pg_extern]
 fn generate_series(start: i64, finish: i64, step: default!(i64, 1)) -> SetOfIterator<'static, i64> {

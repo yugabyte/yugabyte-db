@@ -132,3 +132,7 @@ Global objects in PostgreSQL are database-level objects that are not tied to a s
 - `CREATE ACCESS METHOD` / `ALTER ACCESS METHOD`
 - `CREATE SERVER`
 - `CREATE DATABASE` with certain options (for example, `ICU_LOCALE`, `LOCALE_PROVIDER`)
+
+### PostgreSQL features after version 17
+
+Features from PostgreSQL versions later than 17 that are incompatible with YugabyteDB are not reported.

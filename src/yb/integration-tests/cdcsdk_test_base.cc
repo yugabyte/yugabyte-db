@@ -47,6 +47,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
@@ -578,7 +579,7 @@ Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_t
     return "Invalid time";
   }
   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
-  return Format("$0.$1+00", buf, StringPrintf("%06" PRIu64, microseconds));
+  return Format("$0.$1+00", buf, ZeroPadded(microseconds, 6));
 }
 
 Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(

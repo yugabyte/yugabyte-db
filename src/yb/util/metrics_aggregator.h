@@ -129,6 +129,12 @@ class MetricsAggregator {
       const std::string& metric_name, const std::string& aggregation_id) EXCLUDES(mutex_);
 
  private:
+  // Returns the info for metric_name if both it and the attributes it needs are already stored.
+  std::shared_ptr<PreAggregatedMetricInfo> FindPreAggregatedMetricInfo(
+      const std::string& metric_name,
+      AggregationLevels default_aggregation_levels,
+      const std::string& metric_entity_type,
+      const std::string& aggregation_id) const EXCLUDES(mutex_);
 
   Status ReplaceAttributesUnlocked(
       const std::string& metric_entity_type,

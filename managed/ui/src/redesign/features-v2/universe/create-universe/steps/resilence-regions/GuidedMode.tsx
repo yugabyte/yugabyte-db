@@ -62,7 +62,7 @@ const CautionBadge = styled(Box)(() => ({
 }));
 
 /** Segmented RF control width used for the None collapse/expand slide. */
-const RF_SEGMENT_MAX_WIDTH_PX = 128;
+const RF_SEGMENT_MAX_WIDTH_PX = 130;
 
 const RfSegmentCollapse = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'collapsed'
@@ -70,6 +70,7 @@ const RfSegmentCollapse = styled(Box, {
   maxWidth: collapsed ? 0 : RF_SEGMENT_MAX_WIDTH_PX,
   opacity: collapsed ? 0 : 1,
   marginRight: collapsed ? '-8px' : 0,
+  paddingInline: collapsed ? 0 : '1px',
   overflow: 'hidden',
   flexShrink: 0,
   pointerEvents: collapsed ? 'none' : 'auto',

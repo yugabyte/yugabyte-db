@@ -35,6 +35,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [ALTER SCHEMA](ddl_alter_schema/) | Change schema definition |
 | [ALTER TABLE](ddl_alter_table/) | Change table definition |
 | [ALTER TABLESPACE](ddl_alter_tablespace/) | Change tablespace placement options |
+| [ALTER TYPE](ddl_alter_type/) | Change the definition of a user-defined type |
 | [COMMENT](ddl_comment/) | Set, update, or remove a comment on a database object |
 | [CREATE AGGREGATE](ddl_create_aggregate/) | Create an aggregate |
 | [CREATE CAST](ddl_create_cast/) | Create a cast |

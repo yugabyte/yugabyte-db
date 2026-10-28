@@ -25,6 +25,7 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_dml.h"
@@ -149,7 +150,7 @@ PgExpr::PgExpr(Opcode opcode,
 Status PgExpr::CheckOperatorName(const char *name) {
   auto iter = kOperatorNames.find(name);
   if (iter == kOperatorNames.end()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Wrong operator name: $0", name);
+    return STATUS_FORMAT(InvalidArgument, "Wrong operator name: $0", name);
   }
   return Status::OK();
 }
@@ -213,7 +214,7 @@ Status PgExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
 
 Result<std::vector<std::reference_wrapper<PgColumn>>>
 PgExpr::GetColumns(PgTable *pg_table) const {
-  return STATUS_SUBSTITUTE(InvalidArgument, "Illegal call to GetColumns");
+  return STATUS_FORMAT(InvalidArgument, "Illegal call to GetColumns");
 }
 
 Status PgExpr::EvalTo(LWPgsqlExpressionPB *expr_pb) {

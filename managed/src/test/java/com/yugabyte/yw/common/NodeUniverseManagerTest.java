@@ -50,7 +50,7 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
-    AccessKey.create(defaultProvider.getUuid(), "akc", new AccessKey.KeyInfo());
+    AccessKey.create(defaultProvider.getUuid(), "demo-access", new AccessKey.KeyInfo());
     commandCaptor = ArgumentCaptor.forClass(List.class);
     shellProcessContextCaptor = ArgumentCaptor.forClass(ShellProcessContext.class);
     when(nodeAgentClient.maybeGetAndUpgrade(any())).thenReturn(Optional.empty());

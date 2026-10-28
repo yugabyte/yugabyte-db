@@ -547,6 +547,39 @@ public class ReleasesUtils {
             });
   }
 
+  // RestoreContinuousBackup downloads every release to <yb.releases.path>/<version>/, so uploaded
+  // releases land outside the upload/release_artifacts/<fileUUID>/ path their row tracks. Move the
+  // file back rather than re-pointing the row: importLocalReleases ignores upload rows when it
+  // checks for known files, so it would register the file again.
+  public void restoredUploadPathFixup() {
+    String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
+    for (Release release : Release.getAll()) {
+      for (ReleaseArtifact artifact :
+          ReleaseArtifact.getForReleaseLocalFile(release.getReleaseUUID())) {
+        try {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (rlf == null || !rlf.isUpload() || Files.exists(Paths.get(rlf.getLocalFilePath()))) {
+            continue;
+          }
+          String fileName = Paths.get(rlf.getLocalFilePath()).getFileName().toString();
+          Path restoredPath = Paths.get(releasesPath, release.getVersion(), fileName);
+          if (!Files.exists(restoredPath)) {
+            continue;
+          }
+          Path targetPath =
+              Paths.get(getUploadStoragePath(), rlf.getFileUUID().toString(), fileName);
+          Files.createDirectories(targetPath.getParent());
+          FileUtils.moveFile(restoredPath, targetPath);
+          rlf.setLocalFilePath(targetPath.toString());
+          log.info("Moved restored uploaded release {} to {}", restoredPath, targetPath);
+        } catch (Exception e) {
+          log.error(
+              "Failed to fix up restored upload for artifact {}", artifact.getArtifactUUID(), e);
+        }
+      }
+    }
+  }
+
   private String getAndValidateYbaMinimumVersion(JsonNode node) {
     if (node.has("minimum_yba_version")) {
       String minVersion = node.get("minimum_yba_version").asText();

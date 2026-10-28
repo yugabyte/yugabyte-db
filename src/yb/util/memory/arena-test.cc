@@ -117,7 +117,7 @@ void AllocateThread(ArenaType *arena, uint8_t thread_index) {
 
   for (void *p : ptrs) {
     if (memcmp(buf, p, FLAGS_alloc_size) != 0) {
-      FAIL() << StringPrintf("overwritten pointer at %p", p);
+      FAIL() << "overwritten pointer at " << static_cast<void*>(p);
     }
   }
 }

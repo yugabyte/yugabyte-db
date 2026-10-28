@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# new-pr: rebase the current branch on upstream/<base>, run the linter, push
-#         to the user's fork, and open a cross-repo PR with reviewers.
+# new-pr: run the linter, push the current branch to the user's fork, and
+#         open a cross-repo PR with reviewers.
+#
+# A "feature-stack/<feature>/<change>" branch is the exception: it lives in
+# the main repo (GitHub can only stack PRs whose head branches it owns), so
+# the push goes upstream and the PR is same-repo. Its base is the layer below
+# it in the local gh stack, and once opened the PR is linked into the native
+# GitHub stack with `gh stack link`.
 #
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
@@ -11,6 +17,9 @@
 # Required inputs:
 #   -i issue       GitHub issue number ("31151" or "#31151") or JIRA key
 #                  ("PLAT-20518"). Prepended to the title as "[<issue>] ...".
+#                  For several, pass a comma-separated list of one kind --
+#                  "33431,32640" -> "[#33431,#32640] ...". GH and JIRA cannot
+#                  be mixed; the pr-title check rejects that.
 #   -t title       Title body including the "Component: " prefix
 #                  (e.g. "DocDB: Fix flake in SamplingProfilerTest").
 #                  The "[<issue>] " prefix is added automatically.
@@ -32,6 +41,8 @@
 #                  arrive as "org/slug"; the org/ prefix is stripped before
 #                  routing the slug to team_reviewers[].
 #   -b base        Base branch on the upstream repo (default: master).
+#                  Not needed for a stacked PR, whose base comes from
+#                  `gh stack`; if given, it must match.
 #   -D             Open the PR as a GitHub draft. Useful when you want to
 #                  read the rendered PR before notifications fire and before
 #                  reviewers are auto-pinged. Convert with
@@ -46,8 +57,9 @@
 # Exit codes:
 #   0  success (PR URL printed last)
 #   1  pre-flight failure (bad args, dirty tree, missing remote, etc.)
-#   2  rebase conflict -- resolve, `git rebase --continue`, then re-run
 #   3  lint failed -- fix as a NEW commit (do not amend), then re-run
+#   5  stack branch: `gh stack push` failed -- read its message
+#   6  stack branch: the PR was opened as a draft but `gh stack link` failed
 
 set -euo pipefail
 
@@ -58,6 +70,7 @@ test_plan_file=""
 upgrade_file=""
 reviewers=""
 base_branch="master"
+base_given=0
 draft=0
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
@@ -67,7 +80,8 @@ usage: $(basename "$0") -i <issue> -t <title> -d <description-file> -T <test-pla
                         [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-D]
 
 Required:
-  -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN)
+  -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN).
+                 Several: comma-separated, all one kind ("33431,32640").
   -t title       Title with "Component: " prefix (e.g. "DocDB: Fix flake")
   -d file        Path to PR description (markdown). Becomes "## Summary".
   -T file        Path to test plan (markdown). Becomes "## Test plan".
@@ -78,7 +92,8 @@ Optional:
                  and Test plan. **Required when the branch changes any
                  .proto file** -- the script aborts otherwise.
   -r reviewers   Comma-separated handles and/or team slugs (org/slug)
-  -b base        Base branch (default: master)
+  -b base        Base branch (default: master). A stacked PR takes the
+                 layer below it from \`gh stack\`; -b, if given, must match.
   -D             Open the PR as a GitHub draft (\`gh pr create --draft\`).
                  Convert with \`gh pr ready <num>\` when ready for review.
 
@@ -98,7 +113,7 @@ while getopts ":i:t:d:T:U:r:b:Dh" opt; do
     T) test_plan_file="$OPTARG" ;;
     U) upgrade_file="$OPTARG" ;;
     r) reviewers="$OPTARG" ;;
-    b) base_branch="$OPTARG" ;;
+    b) base_branch="$OPTARG"; base_given=1 ;;
     D) draft=1 ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
@@ -138,10 +153,19 @@ fi
 command -v gh >/dev/null || { echo "error: 'gh' CLI not found in PATH" >&2; exit 1; }
 
 # Normalize -i: accept a single issue or a comma-separated list. Bare digits
-# get a "#" prefix; JIRA keys are left alone. Each token is validated; the
-# rebuilt list joins with ", " for the canonical "[#a, #b, PLAT-c] ..." prefix.
+# get a "#" prefix; JIRA keys are left alone. Each token is validated and the
+# list is rebuilt joined with "," (no space) as "[#a,#b] ...".
+#
+# The shape here is dictated by .github/workflows/pr-title.yml, which accepts
+# either an all-GitHub list or an all-JIRA list -- never a space after the comma,
+# never the two trackers mixed, and no digits in a JIRA project key. (That check
+# carries paths-ignore for README.md and docs/**, so a docs-only PR is not gated
+# by it; every PR touching code is.) Keep this validation in step with that
+# regex; a mismatch means the script builds titles that fail CI the moment the
+# PR is opened (#33472).
 normalized_issue=""
 sep=""
+issue_kind=""
 IFS=',' read -ra _issue_tokens <<< "$issue"
 for _tok in "${_issue_tokens[@]}"; do
   # Trim leading/trailing whitespace.
@@ -151,14 +175,26 @@ for _tok in "${_issue_tokens[@]}"; do
   if [[ "$_tok" =~ ^[0-9]+$ ]]; then
     _tok="#${_tok}"
   fi
-  if ! [[ "$_tok" =~ ^(#[0-9]+|[A-Z][A-Z0-9]*-[0-9]+)$ ]]; then
+  if [[ "$_tok" =~ ^#[0-9]+$ ]]; then
+    _kind="gh"
+  elif [[ "$_tok" =~ ^[A-Z]+-[0-9]+$ ]]; then
+    _kind="jira"
+  else
     echo "error: -i tokens must be GH issues (#NNNN, NNNN) or JIRA keys" >&2
-    echo "       (PROJECT-NNN); use a comma-separated list for multiple." >&2
+    echo "       (PROJECT-NNN, uppercase letters only); use a comma-separated" >&2
+    echo "       list for multiple." >&2
     echo "       got: $_tok" >&2
     exit 1
   fi
+  if [[ -n "$issue_kind" && "$_kind" != "$issue_kind" ]]; then
+    echo "error: -i cannot mix GH issues and JIRA keys -- the pr-title check" >&2
+    echo "       accepts an all-GH list or an all-JIRA list, not both." >&2
+    echo "       got: $issue" >&2
+    exit 1
+  fi
+  issue_kind="$_kind"
   normalized_issue="${normalized_issue}${sep}${_tok}"
-  sep=", "
+  sep=","
 done
 [[ -z "$normalized_issue" ]] && {
   echo "error: -i is empty after normalization" >&2; exit 1;
@@ -213,26 +249,6 @@ gh_user=$(gh api user --jq '.login' 2>/dev/null || true)
   exit 1
 }
 
-# Detect fork remote (a non-upstream remote whose URL contains
-# "<gh_user>/<repo_name>").
-FORK_REMOTE="${FORK_REMOTE:-}"
-if [[ -z "$FORK_REMOTE" ]]; then
-  repo_name="${GH_REPO#*/}"
-  while read -r remote; do
-    [[ "$remote" == "$UPSTREAM_REMOTE" ]] && continue
-    url=$(git remote get-url "$remote" 2>/dev/null || true)
-    if [[ "$url" == *"${gh_user}/${repo_name}"* ]]; then
-      FORK_REMOTE="$remote"
-      break
-    fi
-  done < <(git remote)
-fi
-[[ -z "$FORK_REMOTE" ]] && {
-  echo "error: no fork remote found; expected a remote pointing at" >&2
-  echo "       <your-gh-user>/${GH_REPO#*/}. Set FORK_REMOTE=<name> to override." >&2
-  exit 1
-}
-
 current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
   echo "error: HEAD is detached; check out a feature branch first" >&2
   exit 1
@@ -242,13 +258,125 @@ current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
   exit 1
 }
 
-echo ">>> upstream=${UPSTREAM_REMOTE}, fork=${FORK_REMOTE}," \
-     "base=${base_branch}, branch=${current_branch}"
+# A member of a PR stack lives in the main repo, not in a fork -- GitHub can
+# only chain PRs whose head branches it owns. git-push.sh checks the naming
+# convention; here we only need to know which repo the head branch is in,
+# because that decides the -H spec (same-repo vs cross-repo) below.
+is_stack_branch=false
+[[ "$current_branch" =~ ^feature-stack/ ]] && is_stack_branch=true
+
+# A stack layer's base is the unmerged layer below it, or the trunk for the
+# bottom one. Layers get their PRs bottom-up: `gh stack link` would open a PR
+# with a generated title for a lower layer that has none, and that title
+# fails the pr-title check.
+if $is_stack_branch; then
+  if ! gh stack --help >/dev/null 2>&1; then
+    echo "error: stacked PRs need the gh-stack extension, which is not" >&2
+    echo "       installed. See the gh-stack skill." >&2
+    exit 1
+  fi
+  if ! stack_json=$(gh stack view --json); then
+    echo "error: ${current_branch} is not in a local gh stack; see the" >&2
+    echo "       gh-stack skill to create or adopt one." >&2
+    exit 1
+  fi
+  mapfile -t _stack < <(python3 -c 'import json, sys
+s = json.load(sys.stdin)
+cur = sys.argv[1]
+live = [b for b in s["branches"] if not b.get("isMerged")]
+names = [b["name"] for b in live]
+if cur not in names:
+    sys.exit(1)
+i = names.index(cur)
+below, above = live[:i], live[i + 1:]
+def has_pr(b):
+    return (b.get("pr") or {}).get("state") in ("OPEN", "QUEUED")
+print(s["trunk"])
+print(below[-1]["name"] if below else s["trunk"])
+print(" ".join(b["name"] for b in below if not has_pr(b)))
+print(" ".join(str(b["pr"]["number"]) for b in below if has_pr(b)))
+print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
+      <<< "$stack_json")
+  if (( ${#_stack[@]} != 5 )); then
+    echo "error: ${current_branch} is not an unmerged layer of the local gh stack." >&2
+    exit 1
+  fi
+  stack_trunk="${_stack[0]}"
+  stack_parent="${_stack[1]}"
+  stack_below_without_pr="${_stack[2]}"
+  stack_below_prs="${_stack[3]}"
+  stack_above_with_pr="${_stack[4]}"
+  if (( base_given )) && [[ "$base_branch" != "$stack_parent" ]]; then
+    echo "error: -b ${base_branch} does not match the layer below" >&2
+    echo "       ${current_branch} in the stack (${stack_parent}). Drop -b." >&2
+    exit 1
+  fi
+  base_branch="$stack_parent"
+  if [[ -n "$stack_below_without_pr" ]]; then
+    echo "error: open PRs bottom-up. These lower layers have no PR yet:" >&2
+    echo "         ${stack_below_without_pr}" >&2
+    exit 1
+  fi
+  if [[ -n "$stack_above_with_pr" ]]; then
+    echo "error: layers above ${current_branch} already have PRs" >&2
+    echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
+    echo "       gh-stack skill to restructure the stack." >&2
+    exit 1
+  fi
+fi
+
+# Targeting a feature-stack branch from a fork produces a PR that looks like a
+# stack member but does not build. Catch it here rather than after CI fails.
+if [[ "$base_branch" == feature-stack/* ]]; then
+  if ! $is_stack_branch; then
+    echo "error: -b names the stack branch '$base_branch', but this branch" >&2
+    echo "       ('$current_branch') is not a feature-stack branch." >&2
+    echo "       A stack member must itself be feature-stack/<feature>/<change>" >&2
+    echo "       in the main repo; a fork branch pointed at a stack base is a" >&2
+    echo "       plain PR and its build will not work. Rename with:" >&2
+    echo "         git branch -m feature-stack/<feature-name>/<change-name>" >&2
+    exit 1
+  fi
+  if ! git ls-remote --exit-code --heads "$UPSTREAM_REMOTE" "$base_branch" \
+       >/dev/null 2>&1; then
+    echo "error: parent branch '$base_branch' does not exist on $GH_REPO." >&2
+    echo "       Push the parent change first, then stack this one on it." >&2
+    exit 1
+  fi
+fi
+
+FORK_REMOTE="${FORK_REMOTE:-}"
+if $is_stack_branch; then
+  echo ">>> upstream=${UPSTREAM_REMOTE}, head=${GH_REPO} (stack branch)," \
+       "base=${base_branch}, branch=${current_branch}"
+else
+  # Detect fork remote (a non-upstream remote whose URL contains
+  # "<gh_user>/<repo_name>").
+  if [[ -z "$FORK_REMOTE" ]]; then
+    repo_name="${GH_REPO#*/}"
+    while read -r remote; do
+      [[ "$remote" == "$UPSTREAM_REMOTE" ]] && continue
+      url=$(git remote get-url "$remote" 2>/dev/null || true)
+      if [[ "$url" == *"${gh_user}/${repo_name}"* ]]; then
+        FORK_REMOTE="$remote"
+        break
+      fi
+    done < <(git remote)
+  fi
+  [[ -z "$FORK_REMOTE" ]] && {
+    echo "error: no fork remote found; expected a remote pointing at" >&2
+    echo "       <your-gh-user>/${GH_REPO#*/}. Set FORK_REMOTE=<name> to override." >&2
+    exit 1
+  }
+  echo ">>> upstream=${UPSTREAM_REMOTE}, fork=${FORK_REMOTE}," \
+       "base=${base_branch}, branch=${current_branch}"
+fi
 
 # Lint, validate destination, and push via the shared helper. git-push.sh
 # does its own remote detection but we pass UPSTREAM_REMOTE/FORK_REMOTE
 # explicitly via env to keep the two scripts agreeing on which remotes to
-# use, and to skip the second auto-detect.
+# use, and to skip the second auto-detect. FORK_REMOTE is empty for a stack
+# branch, which pushes to upstream and never resolves a fork.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO" \
   "${script_dir}/git-push.sh" -b "$base_branch"
@@ -257,12 +385,17 @@ UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO"
 # can break upgrade-rollback safety on a mixed-version cluster, so require
 # -U with explicit forward/backward/rollback notes. Soft cases (gflag
 # default flips, catalog schema bumps) should also pass -U, but we can't
-# detect those mechanically -- the proto-file rule is the hard gate. Run
-# this *after* git-push.sh so the upstream tracking ref is current; the
-# diff above the rebase + push relied on a possibly-stale base.
+# detect those mechanically -- the proto-file rule is the hard gate. Diff
+# from the merge-base so a branch behind <base> isn't charged with protos
+# that only <base> changed. A stack layer is compared with the layer below
+# it, which git-push.sh has just pushed from the local branch of that name.
+proto_base="${UPSTREAM_REMOTE}/${base_branch}"
+if $is_stack_branch && [[ "$base_branch" != "$stack_trunk" ]]; then
+  proto_base="$base_branch"
+fi
 if [[ -z "$upgrade_file" ]]; then
   proto_changed=$(git diff --name-only \
-                    "${UPSTREAM_REMOTE}/${base_branch}" HEAD -- '*.proto' \
+                    "${proto_base}...HEAD" -- '*.proto' \
                     2>/dev/null || true)
   if [[ -n "$proto_changed" ]]; then
     echo "" >&2
@@ -281,7 +414,14 @@ fi
 # user -- the FORK_REMOTE detection above already required the URL to
 # match <gh_user>/<repo>, so URL parsing here would just rederive the
 # same value (and got fragile for SSH aliases / non-standard remote URLs).
-pr_head="${gh_user}:${current_branch}"
+# A stack branch already lives in $GH_REPO, so it takes the bare name: the
+# <owner>:<branch> form would send gh looking for a fork that has no such
+# branch.
+if $is_stack_branch; then
+  pr_head="${current_branch}"
+else
+  pr_head="${gh_user}:${current_branch}"
+fi
 
 if (( draft )); then
   echo ">>> creating PR (draft): ${full_title}"
@@ -314,7 +454,9 @@ trap 'rm -f "$combined_body"' EXIT
 } > "$combined_body"
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
-if (( draft )); then
+# A stack layer always opens as a draft and is marked ready only after it is
+# linked, so the CI that readiness triggers already sees a stack member.
+if (( draft )) || $is_stack_branch; then
   gh_pr_create_args+=(--draft)
 fi
 pr_url=$(gh pr create "${gh_pr_create_args[@]}")
@@ -343,6 +485,23 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
            "${api_args[@]}" >/dev/null; then
       echo "warn: failed to add reviewers to PR #${pr_num} (continuing): ${reviewers}" >&2
     fi
+  fi
+fi
+
+if $is_stack_branch; then
+  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+  if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+         $stack_below_prs "$pr_num"; then
+    echo "" >&2
+    echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
+    echo "       stack failed. Fix the cause above, then link it with" >&2
+    echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
+         "${stack_below_prs} ${pr_num}" >&2
+    (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
+    exit 6
+  fi
+  if (( ! draft )); then
+    gh pr ready "$pr_num" -R "$GH_REPO"
   fi
 fi
 

@@ -13,7 +13,10 @@ CREATE TABLE simple_table1(c1 INT, c2 INT, c3 text);
 CREATE INDEX simple_index1 ON simple_table1(c2);
 INSERT INTO simple_table1 VALUES(1, 1, 'abc');
 
-/*+ SeqScan(st) */ /* QPM NORMALIZE QUERY 1 */ SELECT c1+5,
+-- The marker follows the first keyword. pg_stat_statements stores query text from
+-- stmt_location, which starts at that token, so a leading comment is omitted
+-- and the LIKE lookups below would not match.
+/*+ SeqScan(st) */ SELECT /* QPM NORMALIZE QUERY 1 */ c1+5,
 						 99,
 						 'xyzw',
 						 c3 || 'xyz',
@@ -39,8 +42,7 @@ SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss
 WHERE query LIKE '%QPM NORMALIZE QUERY 1%';
 
 /*+ HashJoin(st1 st2) Leading((st1 st2)) IndexScan(st1) SeqScan(st2) */
-/* QPM NORMALIZE QUERY 2 */
-SELECT SUM(st1.c1+5)
+SELECT /* QPM NORMALIZE QUERY 2 */ SUM(st1.c1+5)
     FROM simple_table1 st1 LEFT JOIN (SELECT 1 c1, c2%9 c2, null c3 FROM simple_table1) st2
 								ON st1.c1=st2.c1+1
 	WHERE st1.c2<7 AND (st2.c2<>8 OR st2.c2 IS NULL);

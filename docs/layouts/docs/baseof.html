@@ -1,6 +1,38 @@
 <!doctype html>
 <html itemscope itemtype="http://schema.org/WebPage" lang="{{ .Site.Language.Lang }}" class="no-js">
   <head>
+    <link rel="preconnect" href="https://cdn.cookielaw.org">
+	  <link rel="preconnect" href="https://www.googletagmanager.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+    {{ $onetrust_api_key := os.Getenv "ONETRUST_API_KEY" }}
+    {{- if $onetrust_api_key -}}
+    <!-- OneTrust Cookies Consent Notice start -->
+    <script src="https://cdn.cookielaw.org/consent/{{- $onetrust_api_key -}}/OtAutoBlock.js"></script>
+    <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" data-language="en" charset="UTF-8" data-domain-script="{{- $onetrust_api_key -}}"></script>
+    <script>
+    function OptanonWrapper() {
+      var activeGroups = window.OnetrustActiveGroups || '';
+
+      // Load GTM once any one of Functional / Performance / Targeting is granted.
+      // On zero consent (Strictly Necessary only), GTM never loads at all.
+      var hasAnyOptionalConsent = activeGroups.indexOf('C0002') > -1
+        || activeGroups.indexOf('C0003') > -1
+        || activeGroups.indexOf('C0004') > -1;
+
+      if (hasAnyOptionalConsent && !window.__gtmLoaded) {
+        window.__gtmLoaded = true;
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-5GH7JQS');
+      }
+    }
+    </script>
+    <!-- OneTrust Cookies Consent Notice end -->
+    {{- end -}}
+
     {{- partial "head.html" . -}}
   </head>
   <body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">

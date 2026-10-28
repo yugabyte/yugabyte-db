@@ -11,7 +11,8 @@ SET yb_pg_stat_plans_track_catalog_queries = OFF;
 
 -- The number of plans reset vary between debug and release builds. Therefore discard the result.
 DO $$ BEGIN PERFORM yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL); END $$;
-SELECT pg_stat_statements_reset();
+-- pg_stat_statements_reset() returns a timestamp, which changes every run, so check IS NOT NULL.
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 
 SELECT val FROM qpm_timing_test WHERE id = 1;
 

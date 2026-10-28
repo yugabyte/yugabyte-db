@@ -1036,15 +1036,42 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		elog(log_level, "LockAcquire start: lock [%u,%u] mode: %s",
 			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
 
-		if (LockTimeout > 0)
-			enable_timeout_after(LOCK_TIMEOUT, LockTimeout);
+		/*
+		 * With lock_timeout disabled, pggate still bounds the acquisition, but nothing armed a
+		 * timer to report that bound: it expired as a transport deadline, so a statement blocked on
+		 * a conflicting lock failed with an RPC or shared-memory timeout naming neither the lock nor
+		 * the holder. Arm postgres' timer just inside pggate's deadline so the statement is
+		 * cancelled with "canceling statement due to lock timeout" instead. The wait is unchanged.
+		 *
+		 * Bootstrap mode is excluded: BootstrapModeMain never calls InitializeTimeouts, so touching
+		 * LOCK_TIMEOUT there is a FATAL.
+		 */
+		int			lock_timeout_ms = LockTimeout;
 
-		YbcStatus status = YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock);
+		if (lock_timeout_ms <= 0 && !IsBootstrapProcessingMode())
+		{
+			int			rpc_timeout_ms = YBCGetDefaultRpcTimeoutMs();
 
-		if (LockTimeout > 0)
+			/*
+			 * Reserve time ("slack") for pggate to report lock error messages before
+			 * the RPC deadline expires.
+			 *
+			 * We cap the slack at 2000 ms (matching pg_client_extra_timeout_ms), or half
+			 * the total RPC deadline if the deadline is under 4 seconds.
+			 */
+			int			slack_ms = Min(2000, rpc_timeout_ms / 2);
+
+			lock_timeout_ms = rpc_timeout_ms - slack_ms;
+		}
+
+		if (lock_timeout_ms > 0)
+			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
+
+		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
+
+		if (lock_timeout_ms > 0)
 			disable_timeout(LOCK_TIMEOUT, false);
 
-		HandleYBStatus(status);
 		CHECK_FOR_INTERRUPTS();
 
 		elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
@@ -5176,3 +5203,61 @@ YbGetNumTxnLocks()
 	return hash_get_num_entries(GetLockMethodLocalHash()) - YbNumSessionObjectLocks();
 }
 #endif
+
+/*
+ * YbProcHasLockManagerState - does the given process hold or wait on any PG
+ * heavyweight locks?
+ */
+bool
+YbProcHasLockManagerState(PGPROC *proc)
+{
+	LOCK	   *waitLock = proc->waitLock;
+	StringInfoData buf;
+
+	if (waitLock != NULL)
+	{
+		initStringInfo(&buf);
+		DescribeLockTag(&buf, &waitLock->tag);
+		elog(WARNING, "process %d was waiting for %s on %s",
+			 proc->pid,
+			 GetLockmodeName(LOCK_LOCKMETHOD(*waitLock), proc->waitLockMode),
+			 buf.data);
+		pfree(buf.data);
+		return true;
+	}
+
+	if (proc->fpVXIDLock)
+	{
+		elog(WARNING, "process %d holds a fast-path virtual transaction lock",
+			 proc->pid);
+		return true;
+	}
+
+	for (int i = 0; i < FastPathLockGroupsPerBackend; i++)
+	{
+		if (proc->fpLockBits[i] != 0)
+		{
+			elog(WARNING, "process %d holds fast-path relation locks", proc->pid);
+			return true;
+		}
+	}
+
+	for (int i = 0; i < NUM_LOCK_PARTITIONS; i++)
+	{
+		PROCLOCK   *proclock;
+		LOCK	   *lock;
+
+		if (dlist_is_empty(&proc->myProcLocks[i]))
+			continue;
+
+		proclock = dlist_head_element(PROCLOCK, procLink, &proc->myProcLocks[i]);
+		lock = proclock->tag.myLock;
+		initStringInfo(&buf);
+		DescribeLockTag(&buf, &lock->tag);
+		elog(WARNING, "process %d holds lock on %s", proc->pid, buf.data);
+		pfree(buf.data);
+		return true;
+	}
+
+	return false;
+}

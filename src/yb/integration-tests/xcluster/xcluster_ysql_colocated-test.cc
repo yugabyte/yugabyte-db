@@ -382,4 +382,38 @@ TEST_F(XClusterYsqlColocatedTest, IsBootstrapRequired) {
   ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
 }
 
+// #32724: producer DROP of a colocated table writes a table tombstone that applies on the
+// consumer via external intents. Warm the consumer's tombstone-time cache first, then DROP on
+// the producer and assert the consumer sees 0 rows - pins the post-WriteToRocksDB re-notify on
+// the external-intents path (SQL TRUNCATE is blocked under xCluster, so DROP is the hook).
+TEST_F(XClusterYsqlColocatedTest, ProducerDropInvalidatesConsumerTombstoneCache) {
+  constexpr int kNTablets = 1;
+  constexpr int kNumRows = 10;
+  std::vector<uint32_t> tables_vector = {kNTablets};
+  ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, /* replication_factor */ 3,
+                            /* num_masters */ 1));
+
+  auto producer_table = producer_tables_[0];
+  auto consumer_table = consumer_tables_[0];
+  const auto table_name = producer_table->name().table_name();
+
+  auto colocated_parent_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
+  ASSERT_OK(SetupUniverseReplication({colocated_parent_table_id}));
+  ASSERT_OK(CorrectlyPollingAllTablets(kNTablets));
+
+  ASSERT_OK(InsertRowsInProducer(0, kNumRows, producer_table));
+  ASSERT_OK(WaitForRowCount(consumer_table->name(), kNumRows, &consumer_cluster_));
+  ASSERT_OK(ValidateRows(consumer_table->name(), kNumRows, &consumer_cluster_));
+
+  // Warm the consumer's colocated tombstone-time cache ("no tombstone").
+  ASSERT_EQ(ASSERT_RESULT(GetRowCount(consumer_table->name(), &consumer_cluster_)), kNumRows);
+
+  ASSERT_OK(DropYsqlTable(&producer_cluster_, namespace_name, "", table_name));
+
+  // Consumer table still exists (semi-automatic mode); the replicated table tombstone must clear
+  // every row despite the warm cache.
+  ASSERT_OK(WaitForRowCount(consumer_table->name(), 0, &consumer_cluster_));
+  ASSERT_EQ(ASSERT_RESULT(GetRowCount(consumer_table->name(), &consumer_cluster_)), 0);
+}
+
 }  // namespace yb

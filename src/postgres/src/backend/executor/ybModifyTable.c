@@ -1165,15 +1165,8 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 
 	/*
 	 * For system tables, mark tuple pair for invalidation from system caches
-	 * at next command boundary.
-	 *
-	 * Some system updates are marked as in-place update (i.e. overwrite), for
-	 * them we will invalidate the new tuple at next command boundary instead.
-	 * See heap_inplace_update(). YB_TODO_PG19MERGE: heap_inplace_update() is
-	 * deprecated in PG19, does anything here need updates?
-	 *
-	 * Do these now so if there is an error with update we will re-query to get
-	 * the correct state from the master.
+	 * at next command boundary. Do this now so if there is an error with the
+	 * update we will re-query to get the correct state from the master.
 	 */
 	if (IsCatalogRelation(rel))
 	{
@@ -1396,7 +1389,7 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL);
 
 	/* Bind ybctid to identify the current row. */
@@ -1430,7 +1423,7 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 							  HeapTuple tuple)
 {
 	/* For a catalog table, we should never allow skip intents write */
-	Assert(!YbCanSkipIntentsWrite(rel));
+	Assert(!YbGetSkipIntentsOptimizationInfoWrite(rel).skip_intents);
 
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);

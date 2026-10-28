@@ -1062,7 +1062,7 @@ void HandleAuth(LocalCommandData data) {
     resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     auto error_message =
         (status.ok() ? "ERR: Bad Password."
-                     : strings::Substitute("ERR: Bad Password. $0", status.ToString()));
+                     : Format("ERR: Bad Password. $0", status.ToString()));
     resp->dup_error_message(error_message);
   } else {
     RedisConnectionContext& context = data.call()->connection_context();

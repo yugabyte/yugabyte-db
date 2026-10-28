@@ -920,7 +920,7 @@ BackgroundWorkerMain(const void *startup_data, size_t startup_data_len)
 	 * BackgroundWorkerInitializeConnection().
 	 */
 
-	MyProc->ybInitializationCompleted = true;
+	YbMyProcState->initialization_completed = true;
 
 	/*
 	 * Now invoke the user-defined worker code

@@ -13,25 +13,15 @@
 
 package org.yb.ysqlconnmgr;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
-import static org.yb.ysqlconnmgr.PgWireProtocol.*;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
@@ -51,8 +41,6 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 @RequiresLinux
 @RunWith(value = YBTestRunner.class)
 public class TestPrepStmtHashCollisionRegression extends BaseYsqlConnMgr {
-  private static final Logger LOG =
-      LoggerFactory.getLogger(TestPrepStmtHashCollisionRegression.class);
 
   private static final int SOCKET_TIMEOUT_MS = 30000;
 
@@ -82,201 +70,45 @@ public class TestPrepStmtHashCollisionRegression extends BaseYsqlConnMgr {
 
   @Test
   public void testHashCollisionRegression() throws Exception {
-    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
-
-    // Phase 1: Set up tables using unnamed statements.
-    try (Socket socket = new Socket()) {
-      socket.setTcpNoDelay(true);
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-      socket.connect(addr);
-
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-      DataInputStream in = new DataInputStream(socket.getInputStream());
-
-      out.write(buildStartupMessage("yugabyte", "yugabyte"));
-      out.flush();
-      readUntilReady(in);
-      LOG.info("Setup connection ready");
-
-      String[] ddlStatements = {
-          "DROP TABLE IF EXISTS NEW_ORDER",
-          "DROP TABLE IF EXISTS DISTRICT",
-          "CREATE TABLE DISTRICT (D_W_ID INT, D_ID INT, D_NEXT_O_ID INT, D_TAX NUMERIC)",
-          "CREATE TABLE NEW_ORDER (NO_O_ID INT, NO_D_ID INT, NO_W_ID INT)",
-          "INSERT INTO DISTRICT VALUES (1, 1, 100, 0.05)"
-      };
-
-      for (String ddl : ddlStatements) {
-        out.write(buildParse(ddl));
-        out.write(buildBind());
-        out.write(buildExecute());
-        out.write(buildSync());
-        out.flush();
-
-        for (int i = 0; i < 4; i++) {
-          PgMessage msg = readMessage(in);
-          LOG.info("DDL response: " + msg);
-          if (msg.type == BE_ERROR_RESPONSE) {
-            fail("Error during setup (" + ddl + "): " +
-                new String(msg.body, StandardCharsets.UTF_8));
-          }
-        }
-      }
-
-      out.write(buildTerminate());
-      out.flush();
-      LOG.info("Setup complete");
+    // Phase 1: Set up tables.
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS NEW_ORDER");
+      stmt.execute("DROP TABLE IF EXISTS DISTRICT");
+      stmt.execute("CREATE TABLE DISTRICT (D_W_ID INT, D_ID INT, D_NEXT_O_ID INT, D_TAX NUMERIC)");
+      stmt.execute("CREATE TABLE NEW_ORDER (NO_O_ID INT, NO_D_ID INT, NO_W_ID INT)");
+      stmt.execute("INSERT INTO DISTRICT VALUES (1, 1, 100, 0.05)");
     }
 
     // Phase 2: Execute the collision test using named statements.
-    try (Socket socket = new Socket()) {
-      socket.setTcpNoDelay(true);
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
-      socket.connect(addr);
-
-      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-      DataInputStream in = new DataInputStream(socket.getInputStream());
-
-      out.write(buildStartupMessage("yugabyte", "yugabyte"));
-      out.flush();
-      readUntilReady(in);
-      LOG.info("Collision-test connection ready");
-
+    try (WireConn c = rawConnBuilder().socketTimeoutMs(SOCKET_TIMEOUT_MS).connect()) {
       // Step A: Parse + Bind + Execute the UPDATE (S_165461), 2 INT4 params
-      int[] updateOids = {OID_INT4, OID_INT4};
-      out.write(buildParse(STMT_UPDATE, UPDATE_QUERY, updateOids));
-      out.write(buildBind(STMT_UPDATE, new String[]{"1", "1"}));
-      out.write(buildExecute());
-      out.write(buildSync());
-      out.flush();
-
-      // Expect: ParseComplete, BindComplete, DataRow, CommandComplete, ReadyForQuery
-      PgMessage parseComplete1 = readMessage(in);
-      LOG.info("Step A ParseComplete: " + parseComplete1);
-      assertEquals("Expected ParseComplete", BE_PARSE_COMPLETE, parseComplete1.type);
-
-      PgMessage bindComplete1 = readMessage(in);
-      LOG.info("Step A BindComplete: " + bindComplete1);
-      assertEquals("Expected BindComplete", BE_BIND_COMPLETE, bindComplete1.type);
-
-      PgMessage dataRow1 = readMessage(in);
-      LOG.info("Step A DataRow: " + dataRow1);
-      assertEquals("Expected DataRow", BE_DATA_ROW, dataRow1.type);
-      verifyUpdateResult(dataRow1, 101, "0.05");
-
-      PgMessage cmdComplete1 = readMessage(in);
-      LOG.info("Step A CommandComplete: " + cmdComplete1);
-      assertEquals("Expected CommandComplete", BE_COMMAND_COMPLETE, cmdComplete1.type);
-
-      PgMessage ready1 = readMessage(in);
-      LOG.info("Step A ReadyForQuery: " + ready1);
-      assertEquals("Expected ReadyForQuery", BE_READY_FOR_QUERY, ready1.type);
+      c.createPipeline()
+       .parse(STMT_UPDATE, UPDATE_QUERY, OID_INT4, OID_INT4)
+       .bind(STMT_UPDATE, "1", "1").execute().row("101", "0.05")
+       .sync()
+       .run();
 
       // Step B: Parse + Bind + Execute the INSERT (S_167793), 3 INT4 params.
       // On 32-bit hash, the two server_keys hash to the same value (0xd95f1311)
       // so the CM may either overwrite the UPDATE plan or fail outright.
-      int[] insertOids = {OID_INT4, OID_INT4, OID_INT4};
-      out.write(buildParse(STMT_INSERT, INSERT_QUERY, insertOids));
-      out.write(buildBind(STMT_INSERT, new String[]{"101", "1", "1"}));
-      out.write(buildExecute());
-      out.write(buildSync());
-      out.flush();
-
-      // On 64-bit hash: ParseComplete, BindComplete, CommandComplete, ReadyForQuery
-      // On 32-bit hash: ErrorResponse possible here due to collision
-      PgMessage stepBFirst = readMessage(in);
-      LOG.info("Step B first message: " + stepBFirst);
-
-      if (stepBFirst.type == BE_ERROR_RESPONSE) {
-        String errText = new String(stepBFirst.body, StandardCharsets.UTF_8);
-        fail("Hash collision caused ErrorResponse during INSERT Parse/Bind " +
-            "(32-bit hash collision between S_165461 and S_167793): " + errText);
-      }
-
-      assertEquals("Expected ParseComplete", BE_PARSE_COMPLETE, stepBFirst.type);
-
-      PgMessage bindComplete2 = readMessage(in);
-      LOG.info("Step B BindComplete: " + bindComplete2);
-      if (bindComplete2.type == BE_ERROR_RESPONSE) {
-        String errText = new String(bindComplete2.body, StandardCharsets.UTF_8);
-        fail("Hash collision caused ErrorResponse during INSERT Bind " +
-            "(32-bit hash collision between S_165461 and S_167793): " + errText);
-      }
-      assertEquals("Expected BindComplete", BE_BIND_COMPLETE, bindComplete2.type);
-
-      PgMessage cmdComplete2 = readMessage(in);
-      LOG.info("Step B CommandComplete: " + cmdComplete2);
-      if (cmdComplete2.type == BE_ERROR_RESPONSE) {
-        String errText = new String(cmdComplete2.body, StandardCharsets.UTF_8);
-        fail("Hash collision caused ErrorResponse during INSERT Execute " +
-            "(32-bit hash collision between S_165461 and S_167793): " + errText);
-      }
-      assertEquals("Expected CommandComplete", BE_COMMAND_COMPLETE, cmdComplete2.type);
-      String cmdTag = new String(cmdComplete2.body, StandardCharsets.UTF_8);
-      assertTrue("Expected INSERT command tag, got: " + cmdTag,
-          cmdTag.startsWith("INSERT"));
-
-      PgMessage ready2 = readMessage(in);
-      LOG.info("Step B ReadyForQuery: " + ready2);
-      assertEquals("Expected ReadyForQuery", BE_READY_FOR_QUERY, ready2.type);
+      c.createPipeline()
+       .parse(STMT_INSERT, INSERT_QUERY, OID_INT4, OID_INT4, OID_INT4)
+       .bind(STMT_INSERT, "101", "1", "1").execute().rowCount(0).tag("INSERT 0 1")
+       .sync()
+       .run();
 
       // Step C: Re-execute the UPDATE using Bind on S_165461 (no new Parse).
       // On 32-bit hash: the server has the INSERT plan under the hashed name,
       // so Bind with 2 params fails (parameter count mismatch).
       // On 64-bit hash: each statement has its own server-side name, UPDATE
       // plan is intact, returns d_next_o_id=102, d_tax=0.05.
-      out.write(buildBind(STMT_UPDATE, new String[]{"1", "1"}));
-      out.write(buildExecute());
-      out.write(buildSync());
-      out.flush();
-
-      PgMessage bindComplete3 = readMessage(in);
-      LOG.info("Step C first message: " + bindComplete3);
-
-      if (bindComplete3.type == BE_ERROR_RESPONSE) {
-        String errText = new String(bindComplete3.body, StandardCharsets.UTF_8);
-        fail("Hash collision caused ErrorResponse on re-execute of UPDATE " +
-            "(32-bit hash collision between S_165461 and S_167793): " + errText);
-      }
-
-      assertEquals("Expected BindComplete for re-executed UPDATE",
-          BE_BIND_COMPLETE, bindComplete3.type);
-
-      PgMessage dataRow3 = readMessage(in);
-      LOG.info("Step C DataRow: " + dataRow3);
-      assertEquals("Expected DataRow", BE_DATA_ROW, dataRow3.type);
-      verifyUpdateResult(dataRow3, 102, "0.05");
-
-      PgMessage cmdComplete3 = readMessage(in);
-      LOG.info("Step C CommandComplete: " + cmdComplete3);
-      assertEquals("Expected CommandComplete", BE_COMMAND_COMPLETE, cmdComplete3.type);
-
-      PgMessage ready3 = readMessage(in);
-      LOG.info("Step C ReadyForQuery: " + ready3);
-      assertEquals("Expected ReadyForQuery", BE_READY_FOR_QUERY, ready3.type);
-
-      LOG.info("All steps passed -- no hash collision detected");
-
-      out.write(buildTerminate());
-      out.flush();
+      c.createPipeline()
+       .bind(STMT_UPDATE, "1", "1").execute().row("102", "0.05")
+       .sync()
+       .run();
     }
-  }
-
-  private void verifyUpdateResult(PgMessage dataRow, int expectedNextOId, String expectedTax) {
-    ByteBuffer bb = ByteBuffer.wrap(dataRow.body);
-    short numCols = bb.getShort();
-    assertEquals("Expected 2 columns in RETURNING clause", 2, numCols);
-
-    int col1Len = bb.getInt();
-    byte[] col1Data = new byte[col1Len];
-    bb.get(col1Data);
-    String nextOId = new String(col1Data, StandardCharsets.UTF_8);
-    assertEquals("d_next_o_id mismatch", Integer.toString(expectedNextOId), nextOId);
-
-    int col2Len = bb.getInt();
-    byte[] col2Data = new byte[col2Len];
-    bb.get(col2Data);
-    String tax = new String(col2Data, StandardCharsets.UTF_8);
-    assertEquals("d_tax mismatch", expectedTax, tax);
   }
 }

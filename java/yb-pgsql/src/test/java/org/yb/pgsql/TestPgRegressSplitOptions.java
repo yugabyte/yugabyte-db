@@ -16,22 +16,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
-import java.util.Map;
 
 /**
  * Runs the pg_regress test suite for yb_split_into reloption and SPLIT INTO syntax tests.
  */
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressSplitOptions extends BasePgRegressTest {
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    // TODO(28543): Remove once transactional ddl is enabled by default.
-    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
-    return flagMap;
-  }
-
   @Override
   public int getTestMethodTimeoutSec() {
     return 600;

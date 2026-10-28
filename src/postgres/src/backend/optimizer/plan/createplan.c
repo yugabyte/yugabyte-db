@@ -63,6 +63,7 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+#include <math.h>
 
 
 /*
@@ -296,7 +297,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 												 List *joinclauses, List *otherclauses, List *nestParams,
 												 Plan *lefttree, Plan *righttree,
 												 JoinType jointype, bool inner_unique,
-												 double first_batch_factor, size_t num_hashClauseInfos,
+												 int first_batch_size, size_t num_hashClauseInfos,
 												 YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 							   List *joinclauses, List *otherclauses,
@@ -4093,12 +4094,15 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 											 NULL));
 	if (yb_is_single_row_update_or_delete)
 	{
-		/*
-		 * YB_TODO_PG19MERGE: PG removed make_result; the helper
-		 * make_one_row_result seems to be its closest equivalent. Revisit this.
-		 */
 		subplan = (Plan *) make_one_row_result(result_tlist, NULL,
 											   best_path->path.parent);
+		/*
+		 * The Result node replaces a single-row Scan node in the single-shard
+		 * path but the ModifyTable's parent is an upper rel, which would make
+		 * EXPLAIN print "Replaces: Aggregate". RESULT_TYPE_SCAN with the upper
+		 * rel's empty relids suppresses the Replaces line.
+		 */
+		((Result *) subplan)->result_type = RESULT_TYPE_SCAN;
 		copy_generic_path_info(subplan, best_path->subpath);
 	}
 	else
@@ -4664,11 +4668,21 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_saop_cols)
+	if (best_path->yb_index_path_info.merge_scan_stream_cols)
 	{
+		ListCell   *yb_lc;
+
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
-		yb_merge_scan_info->saop_cols =
-			best_path->yb_index_path_info.merge_scan_saop_cols;
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
 	}
 
 	/* Finally ready to build the plan node */
@@ -4727,25 +4741,25 @@ create_indexscan_plan(PlannerInfo *root,
 
 	if (yb_merge_scan_info)
 	{
-		Bitmapset  *yb_saop_col_idxs = NULL;
+		Bitmapset  *yb_stream_col_idxs = NULL;
 		ListCell   *yb_lc;
 		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
-		foreach(yb_lc, yb_merge_scan_info->saop_cols)
+		foreach(yb_lc, yb_merge_scan_info->stream_cols)
 		{
-			YbMergeScanSaopColInfo *yb_saop_col_info =
-				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
+			YbMergeScanStreamColInfo *yb_stream_col_info =
+				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
 
-			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
-											  yb_saop_col_info->indexcol);
+			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
+												yb_stream_col_info->indexcol);
 		}
 
 		yb_sort_info->type = T_YbSortInfo;
 		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
 									   best_path->path.pathkeys,
 									   best_path->path.parent->relids,
-									   yb_saop_col_idxs,
+									   yb_stream_col_idxs,
 									   &yb_sort_info->numCols,
 									   &yb_sort_info->sortColIdx,
 									   &yb_sort_info->sortOperators,
@@ -6198,7 +6212,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Assert(best_path->jpath.innerjoinpath != NULL);
 
 	bool		yb_is_batched;
-	double		yb_first_batch_factor = 1.0;
+	int			yb_first_batch_size = 0;
 	size_t		yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 	Relids		batched_outerrelids = NULL;
@@ -6536,10 +6550,23 @@ create_nestloop_plan(PlannerInfo *root,
 			   batched_outerrelids,
 			   inner_relids));
 
-		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
-		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		if (yb_enable_base_scans_cost_model)
 		{
+			if (best_path->yb_first_batch_size > 0 &&
+				best_path->yb_first_batch_size < yb_bnl_batch_size &&
+				root->limit_tuples > 0)
+				yb_first_batch_size = best_path->yb_first_batch_size;
+		}
+		else if (yb_bnl_optimize_first_batch && root->limit_tuples > 0)
+		{
+			/*
+			 * Legacy mode keeps its own sizing.  The path's yb_first_batch_size
+			 * is rounded and clamped to [1, yb_bnl_batch_size]; the legacy
+			 * ratio is not, and deriving it from the path would change
+			 * legacy-mode plans.
+			 */
 			SemiAntiJoinFactors semifactors;
+			double		output_tuple_per_outer_tuple;
 
 			compute_semi_anti_join_factors(root, best_path->jpath.path.parent,
 										   best_path->jpath.outerjoinpath->parent,
@@ -6548,10 +6575,16 @@ create_nestloop_plan(PlannerInfo *root,
 										   NULL,
 										   best_path->jpath.joinrestrictinfo,
 										   &semifactors);
-			double		output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
-														semifactors.match_count);
+			output_tuple_per_outer_tuple = (semifactors.outer_match_frac *
+											semifactors.match_count);
+			if (output_tuple_per_outer_tuple > 0)
+			{
+				double		fbs = ceil(root->limit_tuples /
+									   output_tuple_per_outer_tuple);
 
-			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
+				if (fbs >= 1.0 && fbs < yb_bnl_batch_size)
+					yb_first_batch_size = (int) fbs;
+			}
 		}
 	}
 
@@ -6657,7 +6690,7 @@ create_nestloop_plan(PlannerInfo *root,
 															 inner_plan,
 															 best_path->jpath.jointype,
 															 best_path->jpath.inner_unique,
-															 yb_first_batch_factor,
+															 yb_first_batch_size,
 															 yb_num_hashClauseInfos,
 															 yb_hashClauseInfos);
 
@@ -7281,6 +7314,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
 		List	   *batched_elems = NIL;
 
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Every batched Var below shares root->yb_cur_batch_no, so one
+		 * batched nested loop join has to fill all of them (see
+		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
+		 * enclosing such join.  yb_batched_clause_final_check keeps paths
+		 * that would span two of them out, and a violation here has no
+		 * symptom other than lost rows, so fail loudly instead.
+		 */
+		Relids		batched_vars =
+			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
+						  root->yb_cur_batched_relids);
+
+		if (!bms_is_empty(batched_vars))
+		{
+			bool		one_join = false;
+			ListCell   *lc;
+
+			foreach(lc, root->yb_availBatchedRelids)
+			{
+				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+				{
+					one_join = true;
+					break;
+				}
+			}
+
+			Assert(one_join);
+		}
+#endif
+
 		/*
 		 * Populate batched_elems with each batched instance of
 		 * bexpr->orig_expr's contents.
@@ -7539,21 +7604,22 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
-	 * well.
+	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
+	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
 	{
-		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
+		YbMergeScanStreamColInfo *info =
+			lfirst_node(YbMergeScanStreamColInfo, lc);
 
 		if (info->derived)
 		{
 			Node	   *clause;
 
-			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			stripped_indexquals = lappend(stripped_indexquals, info->clause);
 			/* For now, row-array-compare merge scan is not supported. */
 			clause = fix_indexqual_clause(root, index, info->indexcol,
-										  (Node *) info->saop,
+										  (Node *) info->clause,
 										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
@@ -8655,7 +8721,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
-					   double first_batch_factor,
+					   int first_batch_size,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -8670,7 +8736,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
-	node->first_batch_factor = first_batch_factor;
+	node->first_batch_size = first_batch_size;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 

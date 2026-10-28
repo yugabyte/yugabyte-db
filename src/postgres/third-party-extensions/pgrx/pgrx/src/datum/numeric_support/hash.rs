@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use std::hash::{Hash, Hasher};
 
-use crate::{direct_function_call, pg_sys, AnyNumeric, Numeric};
+use crate::{AnyNumeric, Numeric, direct_function_call, pg_sys};
 
 impl Hash for AnyNumeric {
     #[inline]

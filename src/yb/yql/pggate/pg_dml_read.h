@@ -121,8 +121,10 @@ class PgDmlRead : public PgDml {
 
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
-  void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
-  void SetRequestedYbctids(const YbctidGenerator& generator);
+  // keep_order requests that rows are returned in the order the ybctids are provided in.
+  void SetRequestedYbctids(
+      std::reference_wrapper<const std::vector<Slice>> ybctids, bool keep_order = false);
+  void SetRequestedYbctids(const YbctidGenerator& generator, bool keep_order = false);
 
   Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);

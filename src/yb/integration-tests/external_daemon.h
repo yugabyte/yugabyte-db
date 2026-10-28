@@ -24,10 +24,10 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
@@ -195,7 +195,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
       const HostPort& hostport, const char* entity_proto_name, const char* entity_id,
       const char* metric_proto_name, const char* value_field) {
     // Fetch metrics whose name matches the given prototype.
-    std::string url = strings::Substitute(
+    std::string url = Format(
         "http://$0/jsonmetricz?metrics=$1", hostport.ToString(), metric_proto_name);
     EasyCurl curl;
     faststring dst;
@@ -228,12 +228,12 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     }
     std::string msg;
     if (entity_id) {
-      msg = strings::Substitute(
+      msg = Format(
           "Could not find metric $0.$1 for entity $2", entity_proto_name, metric_proto_name,
           entity_id);
     } else {
       msg =
-          strings::Substitute("Could not find metric $0.$1", entity_proto_name, metric_proto_name);
+          Format("Could not find metric $0.$1", entity_proto_name, metric_proto_name);
     }
     return STATUS(NotFound, msg);
   }

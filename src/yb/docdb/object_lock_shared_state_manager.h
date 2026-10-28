@@ -16,7 +16,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
+#include <map>
 
 #include "yb/common/transaction.h"
 #include "yb/common/object_lock_tracker.h"
@@ -77,12 +77,13 @@ class ObjectLockOwnerRegistry {
     TransactionId txn_id;
     TabletId status_tablet;
   };
-
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
   RegistrationGuard Register(
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
+
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const;
 
@@ -116,7 +117,7 @@ class ObjectLockSharedStateManager {
       std::shared_ptr<ObjectLockTracker> object_lock_tracker,
       const MetricEntityPtr& metric_entity);
 
-  void SetupShared(SharedMemoryBackingAllocator& allocator);
+  Status SetupShared(SharedMemoryBackingAllocator& allocator);
 
   Result<ObjectLockSharedStateHolder> AllocateShared();
 
@@ -131,23 +132,30 @@ class ObjectLockSharedStateManager {
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
-  void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+  // If txn_id is set, consumes only lock requests for that transaction. Otherwise, consumes all
+  // lock requests for all transactions.
+  void ConsumePendingSharedLockRequests(
+      const LockRequestConsumer& consume, TransactionId txn_id = TransactionId::Nil());
 
-  void ConsumeAndAcquireExclusiveLockIntents(
+  Status ConsumeAndAcquireExclusiveLockIntents(
       const LockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries);
 
+  void DropPendingSharedLockRequests(TransactionId txn_id);
+
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state);
 
-  uint64_t CumulativeLockRequestCount() const;
-
-  TransactionId TEST_last_owner() const;
+  void MarkTServerLoaded(TransactionId txn_id);
 
   [[nodiscard]] bool TEST_has_exclusive_intents() const;
 
  private:
   friend class ObjectLockSharedStateHolder;
   void ReleaseShared(ObjectLockSharedState& state);
+
+  struct MetricInfo;
+  struct MetricInfos;
+  uint64_t CalculateMetric(const MetricInfo& metric) const;
 
   template<typename ConsumeMethod>
   void CallWithRequestConsumer(
@@ -162,14 +170,16 @@ class ObjectLockSharedStateManager {
   mutable std::mutex mutex_;
   bool stopped_ GUARDED_BY(mutex_) = true;
   std::condition_variable start_cond_;
-  std::unordered_map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
+  std::map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
+  ObjectLockExclusiveIntents exclusive_intents_ GUARDED_BY(mutex_);
 
   PointerUnorderedSet<SharedMemoryUniquePtr<ObjectLockSharedState>>
       shared_states_ GUARDED_BY(mutex_);
 
-  size_t num_lock_requests_ = 0;
-
-  TransactionId TEST_last_owner_ GUARDED_BY(mutex_);
+  uint64_t num_pg_acquires_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_tserver_acquires_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_pg_releases_ GUARDED_BY(mutex_) = 0;
+  uint64_t num_tserver_releases_ GUARDED_BY(mutex_) = 0;
 
   std::shared_ptr<void> metric_detacher_;
 };

@@ -48,7 +48,6 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -115,6 +114,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_uint32(client_request_id_shards);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
@@ -3061,6 +3061,10 @@ TEST_F_EX(XClusterTest, TestPrematureLogGC, XClusterTestNoParam) {
   // Disable the disk space GC policy.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) = 0;
 
+  // The test expects each write batch to let the WAL before it be GCed, which holds only when all
+  // batches share one client id.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_shards) = 1;
+
   constexpr int kNTabletsPerTable = 1;
   constexpr int kReplicationFactor = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
@@ -3232,6 +3236,9 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // The test expects each write to let the WAL before it be GCed, which holds only when all
+  // writes share one client id.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_request_id_shards) = 1;
 
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
   ASSERT_OK(SetUpWithParams(
@@ -4066,6 +4073,13 @@ TEST_F_EX(XClusterTest, TestYbAdmin, XClusterTestNoParam) {
   ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_NON_TRANSACTIONAL));
   ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
   ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
+
+  auto verify = CallAdmin(consumer_cluster(), "verify_xcluster_group", kReplicationGroupId);
+  ASSERT_NOK(verify);
+  ASSERT_STR_CONTAINS(
+      verify.status().ToString(),
+      "requires automatic-mode xCluster, because its certified safe time distinguishes replication "
+      "lag from divergence");
 
   ASSERT_OK(DeleteUniverseReplication());
 

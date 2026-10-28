@@ -1,0 +1,16 @@
+x-yba-api-visibility: preview
+x-yba-api-since: 2.31.0.0
+title: ManagedLoadBalancerSpec
+description: 'Load balancers that YBA creates, manages and deletes for the cluster. Each enabled kind gives one L4 load balancer in every region of the cluster, serving all zones of the region. When set, this object must enable at least one load balancer. ClusterInfo.load_balancers lists them with their scheme and address. The settings are fixed when the universe is created. Part of ClusterNetworkingSpec.'
+type: object
+properties:
+  enable_private:
+    description: 'Whether YBA creates a private load balancer in each region. Clients in the VPC of the universe, or in a network peered with it, can reach it.'
+    type: boolean
+    example: true
+    default: false
+  enable_public:
+    description: 'Whether YBA creates a public load balancer in each region, which clients on the internet can reach. Not supported yet. YBA rejects true.'
+    type: boolean
+    example: false
+    default: false

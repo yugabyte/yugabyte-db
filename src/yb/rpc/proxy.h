@@ -76,6 +76,13 @@ YB_DEFINE_ENUM(ResolveState, (kIdle)(kResolving)(kNotifying)(kFinished));
 // likely to multiplex many Proxy objects on the same connection. Or, split the
 // requests sent over a single proxy across different connections to the server.
 //
+// Connections per server:
+// A proxy sends successive calls over different sockets to its endpoint, up to
+// num_connections_to_server of them (--num_connections_to_server, 8 by default). Behind a load
+// balancer that picks a backend per socket, they can reach different servers. Setting it to 1 keeps
+// calls to an endpoint on one socket, but a reconnect or a re-resolved address may still reach
+// another server.
+//
 // When remote endpoint is blank (i.e. HostPort()), the proxy will attempt to
 // call the service locally in the messenger instead.
 //

@@ -62,6 +62,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgListenNotify.class);
 
   private static final int TSERVER_UNRESPONSIVE_TIMEOUT_MS = 10000;
+  // remove_tablet_server requires the TServer to have definitely lost its xCluster-guarded
+  // information lease; keep the lease well below the time the test waits before removing.
+  private static final int XCLUSTER_GUARDED_LEASE_DURATION_MS = 5000;
 
   private static final String CHANNEL = "test_channel";
   private static final String PAYLOAD = "test_payload";
@@ -75,8 +78,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
+    // The snapshot schedule created by testListenNotifyWithDbClone forces a multi-second
+    // sys_catalog flush on a loaded sanitizer build, which costs the master leader its lease and
+    // aborts concurrent DDL. Double the sanitizer failure-detection window.
+    flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
     flagMap.put("tserver_unresponsive_timeout_ms",
         String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    flagMap.put("xcluster_guarded_lease_duration_ms",
+        String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS));
     return flagMap;
   }
 
@@ -715,8 +724,22 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE DATABASE " + cloneDb + " TEMPLATE yugabyte");
+    // A master leader election aborts the clone DDL, and the query layer cannot retry CREATE
+    // DATABASE, so retry the whole statement here.
+    for (int attempt = 0; attempt < 3; ++attempt) {
+      try (Statement stmt = connection.createStatement()) {
+        if (attempt > 0) {
+          stmt.execute("DROP DATABASE IF EXISTS " + cloneDb);
+        }
+        stmt.execute("CREATE DATABASE " + cloneDb + " TEMPLATE yugabyte");
+        break;
+      } catch (SQLException e) {
+        if (attempt == 2 || !e.getMessage().contains("expired or aborted")) {
+          throw e;
+        }
+        LOG.info("Retrying the clone after a DDL abort: {}", e.getMessage());
+        Thread.sleep(1000);
+      }
     }
 
     // Set up listeners on both source and clone databases.
@@ -996,6 +1019,53 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
+  }
+
+  /**
+   * A listener not subscribed to a replayed transaction must still receive later notifications
+   * on its own channel exactly once.
+   */
+  @Test
+  public void testUnsubscribedListenerAfterPollerReplay() throws Exception {
+    final String myChannel = "chan_mine";
+    final String otherChannel = "chan_other";
+    final int otherNotifies = 20;
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + myChannel);
+      }
+
+      try {
+        setFatalAfterNotifsQueueWriteFlag(true);
+        Thread.sleep(2000);
+
+        // Poller writes this txn, crashes before acking it, restarts and writes it again.
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("BEGIN");
+          for (int i = 0; i < otherNotifies; i++) {
+            stmt.execute("NOTIFY " + otherChannel + ", 'other_" + i + "'");
+          }
+          stmt.execute("COMMIT");
+        }
+        waitAndAssertNoNotifications(listenerConn,
+            "Listener is not subscribed to " + otherChannel);
+      } finally {
+        setFatalAfterNotifsQueueWriteFlag(false);
+      }
+      Thread.sleep(2000);
+
+      // Everything on the listener's own channel after the replay must arrive.
+      for (int i = 0; i < 3; i++) {
+        final String payload = "mine_" + i;
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("NOTIFY " + myChannel + ", '" + payload + "'");
+        }
+        List<PGNotification> received = waitForNotification(listenerConn, myChannel, payload);
+        assertEquals("Expected exactly one delivery of " + payload, 1, received.size());
+      }
+    }
   }
 
   /**
@@ -1354,6 +1424,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testSlotCleanupOnTServerDecommission() throws Exception {
     final String channel = "decommission_test";
     YBClient client = miniCluster.getClient();
+
+    markClusterNeedsRecreation();
+    for (HostAndPort master : miniCluster.getMasters().keySet()) {
+      client.setFlag(master, "tserver_unresponsive_timeout_ms",
+          String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    }
 
     HostAndPort ts0RpcHostPort = getRpcHostPortForTServer(0);
 

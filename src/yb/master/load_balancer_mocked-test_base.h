@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 
 #include <gtest/gtest.h>
 
@@ -158,6 +159,12 @@ class LoadBalancerMockedBase : public YBTest {
   Result<bool> HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleRemoveReplicas(out_tablet_id, out_from_ts);
+  }
+
+  Result<bool> CanAddTabletToTabletServer(
+      const TabletId& tablet_id, const TabletServerId& to_ts,
+      const TabletServerId& from_ts = "") NO_THREAD_SAFETY_ANALYSIS {
+    return cb_.state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts);
   }
 
   Result<bool> HandleLeaderMoves(
@@ -306,6 +313,16 @@ class LoadBalancerMockedBase : public YBTest {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     ASSERT_TRUE(replicas->erase(ts_desc->permanent_uuid()));
     tablet->SetReplicaLocations(replicas);
+  }
+
+  // Removes every replica of the tablet except those on the given tservers, so a test can
+  // declare a tablet's layout by tserver uuid after PrepareTestState placed a replica everywhere.
+  void KeepOnlyReplicasOn(TabletInfo* tablet, const std::set<TabletServerId>& keep_ts_uuids) {
+    for (const auto& ts_desc : ts_descs_) {
+      if (!keep_ts_uuids.contains(ts_desc->permanent_uuid())) {
+        RemoveReplica(tablet, ts_desc);
+      }
+    }
   }
 
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {

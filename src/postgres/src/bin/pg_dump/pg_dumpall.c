@@ -1165,12 +1165,12 @@ dumpRoles(PGconn *conn)
 
 		if (include_yb_metadata)
 		{
-			/* YB: these meta commands must run outside restricted mode. */
 			PQExpBuffer pre = createPQExpBuffer();
 
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_roles (if not already set)\n");
 			ybAppendUnrestrict(pre, restrict_key);
 			appendPQExpBufferStr(pre,
-								 "-- Set variable ignore_existing_roles (if not already set)\n"
 								 "\\if :{?ignore_existing_roles}\n"
 								 "\\else\n"
 								 "\\set ignore_existing_roles false\n"
@@ -1266,7 +1266,6 @@ dumpRoles(PGconn *conn)
 			{
 				yb_need_endif = true;
 				yb_indent = "    ";
-				/* YB: these meta commands must run outside restricted mode. */
 				ybAppendUnrestrict(buf, restrict_key);
 				appendPQExpBuffer(buf,
 								  "\\set role_exists false\n"
@@ -1278,8 +1277,10 @@ dumpRoles(PGconn *conn)
 								  ") AS role_exists \\gset\n"
 								  "\\endif\n"
 								  "\\if :role_exists\n"
-								  "%s\\echo 'Role already exists:' %s\n"
-								  "\\else\n", yb_indent, yb_frolename);
+								  "%s\\echo 'Role already exists:' ", yb_indent);
+				ybAppendPsqlMetaLiteral(buf, rolename);
+				appendPQExpBufferStr(buf, "\n\\else\n");
+				ybAppendRestrict(buf, restrict_key);
 			}
 
 			appendPQExpBuffer(buf, "%sCREATE ROLE %s;\n", yb_indent, yb_frolename);
@@ -1353,8 +1354,8 @@ dumpRoles(PGconn *conn)
 
 		if (yb_need_endif)
 		{
+			ybAppendUnrestrict(buf, restrict_key);
 			appendPQExpBufferStr(buf, "\\endif\n");
-			/* YB: close the unrestricted region opened for this role. */
 			ybAppendRestrict(buf, restrict_key);
 		}
 
@@ -1676,20 +1677,15 @@ dumpRoleMembership(PGconn *conn)
 					/*
 					 * YB: with --dump-role-checks, wrap the GRANT in existence
 					 * checks for the member and grantor so a restore that is
-					 * missing those roles skips it instead of failing. The checks
-					 * are psql meta-commands, so bracket them out of the \restrict
-					 * region the plain-text dump otherwise runs in.
+					 * missing those roles skips it instead of failing.
 					 */
 					if (yb_dump_role_checks)
 					{
 						PQExpBuffer yb_wrapped = createPQExpBuffer();
 
-						/* These meta commands must run outside restricted mode. */
-						ybAppendUnrestrict(yb_wrapped, restrict_key);
 						YBWwrapInRoleChecks(conn, querybuf, "grant privilege",
 											member, dump_this_grantor ? grantor : NULL,
-											NULL, yb_wrapped);
-						ybAppendRestrict(yb_wrapped, restrict_key);
+											NULL, yb_wrapped, restrict_key);
 						fprintf(OPF, "%s", yb_wrapped->data);
 						destroyPQExpBuffer(yb_wrapped);
 					}
@@ -1766,7 +1762,8 @@ dumpRoleGUCPrivs(PGconn *conn)
 
 		if (!buildACLCommands(conn, fparname, NULL, NULL, "PARAMETER",
 							  paracl, acldefault,
-							  parowner, "", server_version, yb_dump_role_checks, buf))
+							  parowner, "", server_version, yb_dump_role_checks,
+							  restrict_key, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for parameter \"%s\"",
 						 paracl, parname);
@@ -1883,12 +1880,12 @@ dumpTablespaces(PGconn *conn)
 
 		if (include_yb_metadata)
 		{
-			/* YB: these meta commands must run outside restricted mode. */
 			PQExpBuffer pre = createPQExpBuffer();
 
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_tablespaces (if not already set)\n");
 			ybAppendUnrestrict(pre, restrict_key);
 			appendPQExpBufferStr(pre,
-								 "-- Set variable ignore_existing_tablespaces (if not already set)\n"
 								 "\\if :{?ignore_existing_tablespaces}\n"
 								 "\\else\n"
 								 "\\set ignore_existing_tablespaces false\n"
@@ -1926,17 +1923,22 @@ dumpTablespaces(PGconn *conn)
 
 		if (include_yb_metadata)
 		{
-			/* YB: these meta commands must run outside restricted mode. */
 			ybAppendUnrestrict(buf, restrict_key);
-			appendPQExpBuffer(buf,
-							  "\\set tablespace_exists false\n"
-							  "\\if :ignore_existing_tablespaces\n"
-							  "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
-							  " AS tablespace_exists \\gset\n"
-							  "\\endif\n"
-							  "\\if :tablespace_exists\n"
-							  "    \\echo 'Tablespace %s already exists.'\n"
-							  "\\else\n    ", fspcname, fspcname);
+			appendPQExpBufferStr(buf,
+								 "\\set tablespace_exists false\n"
+								 "\\if :ignore_existing_tablespaces\n"
+								 "    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = ");
+			appendStringLiteralConn(buf, spcname, conn);
+			appendPQExpBufferStr(buf,
+								 ") AS tablespace_exists \\gset\n"
+								 "\\endif\n"
+								 "\\if :tablespace_exists\n"
+								 "    \\echo 'Tablespace' ");
+			ybAppendPsqlMetaLiteral(buf, spcname);
+			appendPQExpBufferStr(buf, " 'already exists.'\n"
+								 "\\else\n");
+			ybAppendRestrict(buf, restrict_key);
+			appendPQExpBufferStr(buf, "    ");
 		}
 
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
@@ -1967,8 +1969,8 @@ dumpTablespaces(PGconn *conn)
 
 		if (include_yb_metadata)
 		{
+			ybAppendUnrestrict(buf, restrict_key);
 			appendPQExpBufferStr(buf, "\\endif\n");
-			/* YB: close the unrestricted region opened for this tablespace. */
 			ybAppendRestrict(buf, restrict_key);
 		}
 
@@ -1977,7 +1979,8 @@ dumpTablespaces(PGconn *conn)
 		if (!skip_acls &&
 			!buildACLCommands(conn, fspcname, NULL, NULL, "TABLESPACE",
 							  spcacl, acldefault,
-							  spcowner, "", server_version, yb_dump_role_checks, buf))
+							  spcowner, "", server_version, yb_dump_role_checks,
+							  restrict_key, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
 						 spcacl, spcname);
@@ -2169,7 +2172,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 		resetPQExpBuffer(buf);
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
-							   yb_dump_role_checks, buf);
+							   yb_dump_role_checks, restrict_key, buf);
 
 		if (archDumpFormat == archNull)
 			fprintf(OPF, "%s", buf->data);
@@ -2891,7 +2894,7 @@ dumpYbRoleProfiles(PGconn *conn)
 								role_name,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								stmt);
+								stmt, restrict_key);
 			destroyPQExpBuffer(yb_source_sql);
 		}
 

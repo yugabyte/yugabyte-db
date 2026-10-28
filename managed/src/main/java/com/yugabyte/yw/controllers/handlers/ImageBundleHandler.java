@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.models.Customer;
@@ -24,6 +25,7 @@ public class ImageBundleHandler {
 
   @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
   @Inject Commissioner commissioner;
+  @Inject ImageBundleUtil imageBundleUtil;
 
   public UUID create(Customer customer, Provider provider, ImageBundle bundle) {
     log.info("Creating image bundle {} for provider {}.", bundle.getName(), provider.getUuid());
@@ -98,6 +100,7 @@ public class ImageBundleHandler {
       CloudImageBundleSetup.verifyImageBundleDetails(details, provider);
     }
     ImageBundle oBundle = ImageBundle.getOrBadRequest(iBUUID);
+    imageBundleUtil.setImageMarketplaceBasedFlags(provider, details, oBundle.getDetails());
     Architecture arch = oBundle.getDetails().getArch();
     if (!oBundle.getUseAsDefault() && bundle.getUseAsDefault()) {
       // Change the default image bundle for the provider.

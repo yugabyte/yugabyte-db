@@ -327,6 +327,46 @@ yb_errstart(int elevel)
 }
 
 /*
+ * yb_errsave_start - YbGate equivalent of errsave_start
+ *
+ * As in errsave_start(), a NULL or non-ErrorSaveContext context punts to an
+ * ordinary error, and an ErrorSaveContext that wants no details only gets
+ * its error_occurred flag set.
+ *
+ * Unlike errsave_start(), an ErrorSaveContext that wants the details gets an
+ * ordinary error.  In a tserver thread errdetail(), errhint() and
+ * errcontext_msg() are not implemented, so the YbGate error frame holds only
+ * the message, its arguments, the SQLSTATE and the location, and an error is
+ * better than an ErrorData whose detail, hint and context are silently
+ * missing.  Saving the details can wait for #35437 as long as no caller that
+ * asks for the details is pushed down; #35437 lists those callers.
+ * TODO(#35437): save the details in the ErrorSaveContext.
+ */
+bool
+yb_errsave_start(struct Node *context)
+{
+	ErrorSaveContext *escontext;
+
+	/*
+	 * Do we have a context for soft error reporting?  If not, just punt to
+	 * yb_errstart().
+	 */
+	if (context == NULL || !IsA(context, ErrorSaveContext))
+		return yb_errstart(ERROR);
+
+	/* Report that a soft error was detected */
+	escontext = (ErrorSaveContext *) context;
+	escontext->error_occurred = true;
+
+	/* Nothing else to do if caller wants no further details */
+	if (!escontext->details_wanted)
+		return false;
+
+	/* The details cannot be saved (see above): raise instead */
+	return yb_errstart(ERROR);
+}
+
+/*
  * yb_copy_edata_fields_to_status - transfer data from the YbgError frame to
  * the YbgStatus
  *
@@ -432,6 +472,22 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 		siglongjmp(*buffer, 1);
 		pg_unreachable();
 	}
+}
+
+/*
+ * yb_errsave_finish - YbGate equivalent of errsave_finish
+ *
+ * yb_errsave_start() begins only ordinary errors, so finish as yb_errfinish().
+ */
+void
+yb_errsave_finish(struct Node *context, const char *filename, int lineno,
+				  const char *funcname)
+{
+	YbgStatus	status PG_USED_FOR_ASSERTS_ONLY = YBCPgGetThreadLocalErrStatus();
+
+	Assert(((YbgError) YbgStatusGetEdata(status))->elevel >= ERROR);
+	yb_errfinish(filename, lineno, funcname);
+	pg_unreachable();
 }
 
 /*
@@ -808,7 +864,8 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		  backtrace_functions &&
 		  matches_backtrace_functions(edata->funcname)) ||
 		 (IsYugaByteEnabled() && elevel >= yb_log_min_backtraces &&
-		  edata->sqlerrcode != ERRCODE_TOO_MANY_CONNECTIONS)))
+		  edata->sqlerrcode != ERRCODE_TOO_MANY_CONNECTIONS &&
+		  edata->sqlerrcode != ERRCODE_CONNECTION_FAILURE)))
 		set_backtrace(edata, 2);
 
 	/*
@@ -1951,6 +2008,9 @@ errhint(const char *fmt,...)
 int
 errhint_internal(const char *fmt,...)
 {
+	/* YB: a hint is dropped in a tserver thread, as in errhint() */
+	RETURN_IF_MULTITHREADED_MODE();
+
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -3036,24 +3096,16 @@ check_log_min_messages(char **newval, void **extra, GucSource source)
 	bool		assigned[BACKEND_NUM_TYPES] = {0};
 	int			defaultlevel = -1;	/* -1 means not assigned */
 
-	/* YB: sized to BACKEND_NUM_TYPES so YB_* values after B_LOGGER have slots. */
-	const char *const process_types[BACKEND_NUM_TYPES] = {
+	const char *const process_types[] = {
 #define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach) \
 		[bktype] = bkcategory,
 #include "postmaster/proctypelist.h"
 #undef PG_PROCTYPE
-		/* YB: types after B_LOGGER are not listed in proctypelist.h. */
-		[YB_YSQL_CONN_MGR] = "backend",
-		[YB_YSQL_CONN_MGR_WAL_SENDER] = "backend",
-		[YB_YSQL_CONN_MGR_CTRL] = "backend",
-		[YB_AUTO_ANALYZE_BACKEND] = "backend",
-		[YB_INDEX_BACKFILL_DDL] = "backend",
-		[YB_MATVIEW_REFRESH_DDL] = "backend",
-		[YB_RELCACHE_INIT_BACKEND] = "backend",
-		[YB_GLOBAL_VIEW_BACKEND] = "backend",
-		[YB_XCLUSTER_DDL_QUEUE_BACKEND] = "backend",
-		[YB_XCLUSTER_SETUP_BACKEND] = "backend",
 	};
+
+	/* YB: catch a BackendType added without a proctypelist.h entry. */
+	StaticAssertDecl(lengthof(process_types) == BACKEND_NUM_TYPES,
+					 "process_types[] must cover every BackendType");
 
 	/* Need a modifiable copy of string. */
 	rawstring = guc_strdup(LOG, *newval);

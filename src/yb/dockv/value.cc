@@ -19,7 +19,6 @@
 
 #include "yb/dockv/value_type.h"
 
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/fast_varint.h"
 #include "yb/util/kv_util.h"

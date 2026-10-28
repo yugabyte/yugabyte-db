@@ -114,8 +114,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
 
 	so->yb_scan_desc = ybScan;
-	if (scan->yb_exec_params->limit_count > 0)
-		so->limit = scan->yb_exec_params->limit_count;
+	if (scan->yb_exec_params->plan_limit > 0 && scan->yb_exec_params->plan_limit <= INT_MAX)
+		so->limit = scan->yb_exec_params->plan_limit;
 
 	if (scankeys && scan->numberOfKeys > 0)
 		memmove(&scan->keyData, scankeys, scan->numberOfKeys * sizeof(ScanKeyData));

@@ -37,13 +37,13 @@
 #include <vector>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -119,7 +119,6 @@ using std::string;
 namespace yb {
 namespace tablet {
 
-using strings::Substitute;
 
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
@@ -178,7 +177,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
     auto limit = blocking_mem_tracker->limit();
     auto blocked_by = AsString(blocking_mem_tracker);
     auto operation_type = driver->operation_type();
-    string msg = Substitute(
+    string msg = Format(
         "Operation of type $0 failed: tablet $1 hit the limit $3 of memory tracker $4 "
         "while trying to consume an additional $5 bytes; "
         "the memory tracker had already given out $2 bytes.",
@@ -295,9 +294,9 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const
   for (;;) {
     MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
-      return STATUS(TimedOut, Substitute("Timed out waiting for all operations to finish. "
-                                         "$0 operations pending. Waited for $1",
-                                         operations.size(), diff.ToString()));
+      return STATUS(TimedOut, Format("Timed out waiting for all operations to finish. "
+                                     "$0 operations pending. Waited for $1",
+                                     operations.size(), diff.ToString()));
     }
     if (diff > kComplainInterval * num_complaints) {
       LOG_WITH_PREFIX(WARNING)

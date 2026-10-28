@@ -9,9 +9,9 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use pgrx_sql_entity_graph::{PostgresHash, PostgresOrd};
 
-use crate::{parse_postgres_type_args, PostgresTypeAttribute};
+use crate::{PostgresTypeAttribute, parse_postgres_type_args};
 use proc_macro2::Ident;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::DeriveInput;
 
 #[track_caller]

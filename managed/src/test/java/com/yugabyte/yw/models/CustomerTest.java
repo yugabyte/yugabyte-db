@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import jakarta.persistence.PersistenceException;
 import java.util.ArrayList;
@@ -117,7 +118,7 @@ public class CustomerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     UUID randProviderUUID = UUID.randomUUID();
-    userIntent.provider = randProviderUUID.toString();
+    TestUtils.getProviderInitializerForTests(userIntent, randProviderUUID);
     userIntent.regionList = new ArrayList<UUID>();
     userIntent.regionList.add(r.getUuid());
     universe =

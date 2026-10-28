@@ -1887,7 +1887,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #endif
 			{
 #if	PG_VERSION_NUM >= 170000
-				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.yb_new_is_omitted);
 				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, false, relation);
 #else
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
@@ -1897,7 +1897,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			else
 			{
 #if	PG_VERSION_NUM >= 170000
-				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, false, relation, change->data.tp.newtuple->yb_is_omitted);
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, false, relation, change->data.tp.yb_new_is_omitted);
 #else
 				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, relation, change->data.tp.newtuple->yb_is_omitted);
 #endif
@@ -1908,9 +1908,9 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #if	PG_VERSION_NUM >= 170000
 			/* YB Note: Since no before image will come for CHANGE, skip adding the trailing comma */
 			if (IsYugaByteEnabled())
-				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE, relation, change->data.tp.newtuple->yb_is_omitted);
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE, relation, change->data.tp.yb_new_is_omitted);
 			else
-			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
+			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.yb_new_is_omitted);
 #else
 			/* YB Note: Since no before image will come for CHANGE, skip adding the trailing comma */
 			if (IsYugaByteEnabled())
@@ -1955,7 +1955,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				{
 					ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 #if	PG_VERSION_NUM >= 170000
-					identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
+					identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs, change->data.tp.yb_new_is_omitted, relation);
 #else
 					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
 #endif
@@ -1965,7 +1965,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			{
 				elog(DEBUG1, "old tuple is not null");
 #if	PG_VERSION_NUM >= 170000
-				identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, NULL, change->data.tp.oldtuple->yb_is_omitted, relation);
+				identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, NULL, NULL /* yb_is_omitted */ , relation);
 #else
 				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL, change->data.tp.oldtuple->yb_is_omitted, relation);
 #endif
@@ -1988,7 +1988,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 #if	PG_VERSION_NUM >= 170000
-			identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, ribs, change->data.tp.oldtuple->yb_is_omitted, relation);
+			identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, ribs, NULL /* yb_is_omitted */ , relation);
 #else
 			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs, change->data.tp.oldtuple->yb_is_omitted, relation);
 #endif
@@ -2455,7 +2455,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	{
 		appendStringInfoString(ctx->out, ",\"columns\":[");
 #if PG_VERSION_NUM >= 170000
-		pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_CHANGE, change->data.tp.newtuple->yb_is_omitted);
+		pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_CHANGE, change->data.tp.yb_new_is_omitted);
 #else
 		pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_CHANGE, change->data.tp.newtuple->yb_is_omitted);
 #endif
@@ -2479,7 +2479,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	{
 		appendStringInfoString(ctx->out, ",\"identity\":[");
 #if	PG_VERSION_NUM >= 170000
-		pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.oldtuple->yb_is_omitted);
+		pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_IDENTITY, NULL /* yb_is_omitted */ );
 #else
 		pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.oldtuple->yb_is_omitted);
 #endif
@@ -2516,7 +2516,7 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 					elog(DEBUG1, "REPLICA IDENTITY: obtain old tuple using new tuple");
 					appendStringInfoString(ctx->out, ",\"identity\":[");
 #if PG_VERSION_NUM >= 170000
-					pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
+					pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.yb_new_is_omitted);
 #else
 					pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
 #endif
@@ -2548,9 +2548,9 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 		{
 #if PG_VERSION_NUM >= 170000
 			if (change->data.tp.oldtuple != NULL)
-				pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_PK, change->data.tp.oldtuple->yb_is_omitted);
+				pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_PK, NULL /* yb_is_omitted */ );
 			else
-				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_PK, change->data.tp.newtuple->yb_is_omitted);
+				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_PK, change->data.tp.yb_new_is_omitted);
 #else
 			if (change->data.tp.oldtuple != NULL)
 				pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_PK, change->data.tp.oldtuple->yb_is_omitted);

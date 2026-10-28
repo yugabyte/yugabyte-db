@@ -18,16 +18,16 @@
 use crate::UsedTypeEntity;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PgExternReturnEntity {
+pub enum PgExternReturnEntity<'a> {
     None,
-    Type { ty: UsedTypeEntity },
-    SetOf { ty: UsedTypeEntity },
-    Iterated { tys: Vec<PgExternReturnEntityIteratedItem> },
+    Type { ty: UsedTypeEntity<'a> },
+    SetOf { ty: UsedTypeEntity<'a> },
+    Iterated { tys: Vec<PgExternReturnEntityIteratedItem<'a>> },
     Trigger,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PgExternReturnEntityIteratedItem {
-    pub ty: UsedTypeEntity,
-    pub name: Option<&'static str>,
+pub struct PgExternReturnEntityIteratedItem<'a> {
+    pub ty: UsedTypeEntity<'a>,
+    pub name: Option<&'a str>,
 }

@@ -1930,11 +1930,12 @@ explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from s
 ---------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (ss2.a = ss1.a)
+   Batch Matching: Tuplestore
    ->  Seq Scan on ss2
          Disabled: true
    ->  Index Scan using ss1_pkey on ss1
          Index Cond: (a = ANY (ARRAY[(ss2.a)::timestamp without time zone, ($1)::timestamp without time zone, ($2)::timestamp without time zone]))
-(6 rows)
+(7 rows)
 
 /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a;
             a             |     a      
@@ -2194,6 +2195,347 @@ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
  124 | 24 | 0124 | 201 | 1 | 0201
 (8 rows)
 
+-------------------------------------------------------------------------
+-- #34069: t1b.b + t1a.b must not become a batched Index Cond on t2b while
+-- two different joins batch t1a and t1b.  Expanding it with one batch index
+-- for both batches probes only their diagonal, so the count drops below the
+-- unbatched baseline.  Two relations in one batched expression stay legal
+-- when a single join batches both, which the Leading(((q1 q2) q3)) case
+-- above and the "legal BNL" case further down keep covered.
+-- Expected: the top join does not batch t1b, so t1b.b + t1a.b is applied as
+-- its join filter instead of a batched Index Cond on t2b, and the count
+-- matches the unbatched baseline.
+-- Both p1 aliases are capped at the range p5.a covers to keep the unbatched
+-- baseline from rescanning 300x300 outer pairs.
+-------------------------------------------------------------------------
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2a t2b)
+  YbBatchedNL(t1a t2a t2b)
+  YbBatchedNL(t2a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: ((t1b.b + t1a.b) = t2b.a)
+         ->  Seq Scan on p1 t1b
+               Storage Filter: (a < 60)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t2a.a = t1a.a)
+               ->  Seq Scan on p1 t1a
+                     Storage Filter: (a < 60)
+               ->  YB Batched Nested Loop Join
+                     Join Filter: (t2a.b = t2b.a)
+                     Sort Keys: t2a.b
+                     ->  Index Scan using p5_pkey on p5 t2b
+                     ->  Index Scan using p5_pkey on p5 t2a
+                           Index Cond: ((b = ANY (ARRAY[t2b.a, $1, $2])) AND (a = ANY (ARRAY[t1a.a, $4, $5])))
+(15 rows)
+
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2a t2b)
+  YbBatchedNL(t1a t2a t2b)
+  YbBatchedNL(t2a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+  1300
+(1 row)
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Seq Scan on p1 t1b
+               Storage Filter: (a < 60)
+         ->  Nested Loop
+               ->  Seq Scan on p1 t1a
+                     Storage Filter: (a < 60)
+               ->  Nested Loop
+                     ->  Index Scan using p5_pkey on p5 t2b
+                           Index Cond: (a = (t1b.b + t1a.b))
+                     ->  Index Scan using p5_pkey on p5 t2a
+                           Index Cond: ((a = t1a.a) AND (b = t2b.a))
+(12 rows)
+
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a (t2b t2a))))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2a p5_pkey)
+  IndexScan(t2b p5_pkey)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+  1300
+(1 row)
+
+-- The same split, where only the index condition shows the group: t2b.a's
+-- equivalence class also holds the plain Var t1a.a, which the scan's movable
+-- clauses pick over t1b.b + t1a.b, while the index path parameterized by t1a
+-- and t1b probes the expression.  A partitioned t2b puts an Append over the
+-- scans, which has to take the group over from its children.  t2b.b = t1b.b
+-- keeps that path from being pruned in favor of the one parameterized by t1a
+-- alone, and the cost model is on because legacy costing does not choose the
+-- split here.
+-- Expected: the top join does not batch t1b in either form, and both counts
+-- match the unbatched baseline.
+CREATE TABLE p5_part (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_part_1 PARTITION OF p5_part FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_part_2 PARTITION OF p5_part FOR VALUES FROM (30) TO (MAXVALUE);
+INSERT INTO p5_part SELECT * FROM p5;
+ANALYZE p5_part;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: ((t2b.b = t1b.b) AND ((t1b.b + t1a.b) = t2b.a))
+         ->  Seq Scan on p1 t1b
+               Storage Filter: (a < 60)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t1a.a = t2b.a)
+               ->  Seq Scan on p1 t1a
+                     Storage Filter: (a < 60)
+               ->  Index Scan using p5_pkey on p5 t2b
+                     Index Cond: (a = ANY (ARRAY[t1a.a, $1, $2]))
+(11 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+    26
+(1 row)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: ((t2b.b = t1b.b) AND ((t1b.b + t1a.b) = t2b.a))
+         ->  Seq Scan on p1 t1b
+               Storage Filter: (a < 60)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (t1a.a = t2b.a)
+               ->  Seq Scan on p1 t1a
+                     Storage Filter: (a < 60)
+               ->  Append
+                     ->  Index Scan using p5_part_1_pkey on p5_part_1 t2b_1
+                           Index Cond: (a = ANY (ARRAY[t1a.a, $1, $2]))
+                     ->  Index Scan using p5_part_2_pkey on p5_part_2 t2b_2
+                           Index Cond: (a = ANY (ARRAY[t1a.a, $1, $2]))
+(14 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b)
+  YbBatchedNL(t1a t1b t2b)
+  YbBatchedNL(t1a t2b)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+    26
+(1 row)
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(enable_memoize off)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((t1b (t1a t2b)))
+  SeqScan(t1a)
+  SeqScan(t1b)
+  IndexScan(t2b p5_pkey)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
+ WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+    26
+(1 row)
+
+DROP TABLE p5_part;
+-- GEQO ignores join hints, and without the check its own search picks the
+-- split for the four-relation query above.
+-- Expected: t1b.b + t1a.b is never probed with t1a and t1b batched by different
+-- joins, and the count matches that query's unbatched baseline.
+/*+
+  Set(geqo_threshold 2)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2a.b = t2b.a)
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t2a.a = t1a.a) AND (t2a.b = (t1b.b + t1a.b)))
+               ->  Nested Loop
+                     Disabled: true
+                     ->  Seq Scan on p1 t1b
+                           Storage Filter: (a < 60)
+                     ->  Seq Scan on p1 t1a
+                           Storage Filter: (a < 60)
+               ->  Index Scan using p5_pkey on p5 t2a
+                     Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(t1a.a, (t1b.b + t1a.b)), ROW($1, ($4 + $7)), ROW($2, ($5 + $8))]))
+         ->  Index Only Scan using p5_hash_asc on p5 t2b
+               Index Cond: (a = ANY (ARRAY[t2a.b, $10, $11]))
+(15 rows)
+
+/*+
+  Set(geqo_threshold 2)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 3)
+*/
+SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
+ WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
+   AND t1a.a < 60 AND t1b.a < 60;
+ count 
+-------
+  1300
+(1 row)
+
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
@@ -2355,9 +2697,6 @@ on s2.a = s1.a + 1 left outer join s3 on s3.a = s2.a order by 1, 2, 3;
 
 RESET yb_bnl_enable_hashing;
 RESET join_collapse_limit;
-RESET enable_material;
-RESET enable_mergejoin;
-RESET enable_hashjoin;
 RESET yb_bnl_batch_size;
 drop table s1;
 drop table s2;
@@ -2369,18 +2708,14 @@ insert into test2 values (1,0, 2,0,1), (2,0, 3,0,3), (2,0,3,0,5);
 create table test1 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
 insert into test1 values (1,0,2,0,1), (1,0,2,0,2), (2,0,3,0,3), (2,0,4,0,4), (2,0,4,0,5), (2,0,4,0,6);
 explain (costs off) select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Merge Join
-   Merge Cond: ((p1.a = p2.a) AND (p1.b = p2.b) AND (p1.c = p2.c))
-   ->  Incremental Sort
-         Sort Key: p1.a, p1.b, p1.c
-         Presorted Key: p1.a
-         ->  Index Scan using test1_pkey on test1 p1
-   ->  Sort
-         Sort Key: p2.a, p2.b, p2.c
-         ->  Index Scan using test2_pkey on test2 p2
-(9 rows)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p2.a = p1.a) AND (p2.b = p1.b) AND (p2.c = p1.c))
+   ->  Index Scan using test1_pkey on test1 p1
+   ->  Index Scan using test2_pkey on test2 p2
+         Index Cond: (ROW(a, b, c) = ANY (ARRAY[ROW(p1.a, p1.b, p1.c), ROW($1, $4, $7), ROW($2, $5, $8)]))
+(5 rows)
 
 select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
  a | pp | b | pp2 | c | a | pp | b | pp2 | c 
@@ -2403,11 +2738,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m
  YB Batched Nested Loop Join (actual rows=5.00 loops=1)
    Join Filter: (t2.a = t1.a)
    Rows Removed by Join Filter: 8
+   Batch Matching: Tuplestore
    ->  Index Scan using m1_pkey on m1 t1 (actual rows=25.00 loops=1)
          Index Cond: (a <= (50)::money)
    ->  Index Scan using m2_pkey on m2 t2 (actual rows=0.56 loops=9)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
-(7 rows)
+(8 rows)
 
 SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
    a    |   a    
@@ -2425,11 +2761,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT J
  YB Batched Nested Loop Left Join (actual rows=10.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 7
+   Batch Matching: Tuplestore
    ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
    ->  Index Scan using m1_pkey on m1 t2 (actual rows=1.25 loops=4)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
-(7 rows)
+(8 rows)
 
 SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
    a    |   a    
@@ -2452,11 +2789,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE 
  YB Batched Nested Loop Anti Join (actual rows=5.00 loops=1)
    Join Filter: (t1.a = t2.a)
    Rows Removed by Join Filter: 7
+   Batch Matching: Tuplestore
    ->  Index Scan using m2_pkey on m2 t1 (actual rows=10.00 loops=1)
          Index Cond: (a <= (50)::money)
    ->  Index Scan using m1_pkey on m1 t2 (actual rows=1.25 loops=4)
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
-(7 rows)
+(8 rows)
 
 SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
    a    
@@ -2564,15 +2902,17 @@ create index on q2(c1 asc);
 create table q3(c1 int, c2 int, c3 int, primary key(c3 desc));
 insert into q3 select i, i, i from generate_series(0,999) i;
 /*+Leading((q3 q2))*/explain (costs off) select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
-                         QUERY PLAN                          
--------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Limit
-   ->  Merge Join
-         Merge Cond: (q3.c3 = q2.c1)
-         ->  Index Scan using q3_pkey on q3
-         ->  Materialize
-               ->  Index Scan Backward using q2_c1_idx on q2
-(6 rows)
+   ->  Result
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q3.c3 = q2.c1)
+               Sort Keys: q3.c3 DESC
+               ->  Index Scan using q3_pkey on q3
+               ->  Index Scan using q2_c1_idx on q2
+                     Index Cond: (c1 = ANY (ARRAY[q3.c3, $1, $2]))
+(8 rows)
 
 /*+Leading((q3 q2))*/select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
  c3  | c2  
@@ -2853,7 +3193,6 @@ order by p1.c1, p1.c2;
 -- q2 is the outer relation.  Wrapped in a transaction so the row changes
 -- made by the actual UPDATE are rolled back.
 BEGIN;
--- YB_TODO_PG19MERGE: yb_enable_cbo is temporary off pending #34169
 /*+
   Set(enable_nestloop off)
   Set(enable_hashjoin off)
@@ -2861,7 +3200,7 @@ BEGIN;
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo off)
+  Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
 explain (costs off)
@@ -2869,15 +3208,15 @@ update q1
    set c2 = q1.c2 + 1000
   from q2
  where q1.c1 = q2.c1 and q1.c2 < q2.c2;
-                 QUERY PLAN                 
---------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Update on q1
-   ->  Nested Loop
-         Disabled: true
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((q1.c2 < q2.c2) AND (q2.c1 = q1.c1))
+         ->  Seq Scan on q2
+               Disabled: true
          ->  Index Scan using q1_pkey on q1
-         ->  Index Scan using q2_pkey on q2
-               Index Cond: (c1 = q1.c1)
-               Storage Filter: (q1.c2 < c2)
+               Index Cond: (c1 = ANY (ARRAY[q2.c1, $2, $3]))
 (7 rows)
 
 /*+
@@ -2887,7 +3226,7 @@ update q1
   Set(yb_bnl_batch_size 3)
   Set(enable_seqscan off)
   Set(enable_material off)
-  Set(yb_enable_cbo off)
+  Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
 update q1
@@ -2976,6 +3315,7 @@ WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
  YB Batched Nested Loop Join (actual rows=6.00 loops=1)
    Join Filter: (n.name_id = r.ref_names[pos.i])
    Rows Removed by Join Filter: 186
+   Batch Matching: Tuplestore
    ->  Function Scan on generate_series pos (actual rows=32.00 loops=1)
    ->  Nested Loop (actual rows=6.00 loops=1)
          ->  Seq Scan on name_refs r (actual rows=5.00 loops=1)
@@ -2983,7 +3323,7 @@ WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
          ->  Index Scan using names_name_id_idx on names n (actual rows=1.20 loops=5)
                Index Cond: (name_id = ANY (ARRAY[(r.ref_names)[pos.i], (r.ref_names)[$1], (r.ref_names)[$2], ..., (r.ref_names)[$1023]]))
                Storage Filter: (r.namespace_id = namespace_id)
-(10 rows)
+(11 rows)
 
 drop table names;
 drop table name_refs;
@@ -3029,18 +3369,17 @@ create index on q2(b, a);
 insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24), (4,2);
 insert into q2 values (2,1), (6,6), (2,4), (0,2), (1,2), (2,2), (4,2);
 /*+Leading((q1 q2))*/ explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
-                     QUERY PLAN                     
-----------------------------------------------------
- Merge Join
-   Merge Cond: ((q1.a = q2.a) AND (q1.b = q2.b))
-   ->  Sort
-         Sort Key: q1.a, q1.b
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: q1.a
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((q1.a = q2.a) AND (q1.b = q2.b))
          ->  Seq Scan on q1
                Disabled: true
-   ->  Sort
-         Sort Key: q2.a, q2.b
          ->  Index Only Scan using q2_b_a_idx on q2
-(9 rows)
+               Index Cond: (ROW(b, a) = ANY (ARRAY[ROW(q1.b, q1.a), ROW($1, $4), ROW($2, $5)]))
+(8 rows)
 
 /*+Leading((q1 q2))*/ select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
  a | b | a | b 
@@ -3136,26 +3475,20 @@ create table ss2(a int);
 create table ss3(a int, b int, primary key(a asc, b asc));
 -- Should not result in an illegal BNL on the inner side
 /*+Leading((ss1 (ss2 ss3)))*/ explain (costs off) select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Merge Join
-   Merge Cond: (ss1.a = ss3.b)
-   ->  Sort
-         Sort Key: ss1.a
-         ->  Seq Scan on ss1
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (ss1.a = ss3.b)
+   ->  Seq Scan on ss1
+         Disabled: true
+   ->  Nested Loop
+         Disabled: true
+         ->  Seq Scan on ss2
                Disabled: true
-   ->  Sort
-         Sort Key: ss3.b
-         ->  Merge Join
-               Merge Cond: (ss2.a = ss3.a)
-               Join Filter: (ss3.a <> ss2.a)
-               ->  Sort
-                     Sort Key: ss2.a
-                     ->  Seq Scan on ss2
-                           Disabled: true
-               ->  Materialize
-                     ->  Index Scan using ss3_pkey on ss3
-(17 rows)
+         ->  Index Scan using ss3_pkey on ss3
+               Index Cond: ((b = ANY (ARRAY[ss1.a, $1, $2])) AND (a = ss2.a))
+               Storage Filter: (a <> ss2.a)
+(11 rows)
 
 /*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
  a | a | a | b 
@@ -3360,19 +3693,16 @@ create table ss1(a varchar(1024), b char(10));
 create table ss2(a varchar(1024));
 create index on ss2 (a asc);
 explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2.a;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Merge Join
-   Merge Cond: (((t2.a)::text = (t1.a)::text) AND ((t2.a)::bpchar = t1.b))
-   ->  Incremental Sort
-         Sort Key: t2.a, t2.a USING <
-         Presorted Key: t2.a
-         ->  Index Only Scan using ss2_a_idx on ss2 t2
-   ->  Sort
-         Sort Key: t1.a, t1.b
-         ->  Seq Scan on ss1 t1
-               Disabled: true
-(10 rows)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   Disabled: true
+   ->  Seq Scan on ss1 t1
+         Disabled: true
+   ->  Index Only Scan using ss2_a_idx on ss2 t2
+         Index Cond: (a = (t1.a)::text)
+         Storage Filter: (t1.b = (a)::bpchar)
+(7 rows)
 
 drop table ss1;
 drop table ss2;
@@ -3804,12 +4134,13 @@ WHERE t3.c_vc_key  = t2.c_vc
                Disabled: true
          ->  YB Batched Nested Loop Join
                Join Filter: ((t2.c_int + t1.pk) = t3.c_int_key)
+               Batch Matching: Tuplestore
                ->  Seq Scan on repro31724 t1
                      Disabled: true
                ->  Index Scan using repro31724_c_int_key_idx on repro31724 t3
                      Index Cond: (c_int_key = ANY (ARRAY[(t2.c_int + t1.pk), (t2.c_int + $2), (t2.c_int + $3), ..., (t2.c_int + $10)]))
                      Storage Filter: ((t2.c_vc)::text = (c_vc_key)::text)
-(13 rows)
+(14 rows)
 
 /*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
 SELECT COUNT(*)
@@ -3856,6 +4187,7 @@ WHERE t3.c_vc_key  = t2.c_vc
                      Disabled: true
                ->  YB Batched Nested Loop Join
                      Join Filter: ((t2.c_int + t1.pk) = t3.c_int_key)
+                     Batch Matching: Tuplestore
                      ->  Seq Scan on repro31724 t1
                            Disabled: true
                      ->  Index Scan using repro31724_c_int_key_idx on repro31724 t3
@@ -3863,7 +4195,7 @@ WHERE t3.c_vc_key  = t2.c_vc
                            Storage Filter: ((t2.c_vc)::text = (c_vc_key)::text)
          ->  Seq Scan on repro31724 s
                Disabled: true
-(18 rows)
+(19 rows)
 
 /*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
 SELECT COUNT(*)
@@ -4151,12 +4483,750 @@ select f2, count(ag2.f1) from
 
 RESET join_collapse_limit;
 RESET yb_prefer_bnl;
-RESET enable_material;
-RESET enable_mergejoin;
-RESET enable_hashjoin;
 RESET yb_bnl_batch_size;
 DROP TABLE ja0;
 DROP TABLE ja1;
 DROP TABLE ja2;
 DROP TABLE ag1;
 DROP TABLE ag2;
+-- First batch sizing under a pushed-down LIMIT.  EXPLAIN DEBUG shows the
+-- outer rows the planner sized the first batch to (First Batch Size) and the
+-- size the executor used (Actual First Batch Size); they differ only when the
+-- LIMIT was not known at plan time.  The DEBUG fields print only with the
+-- non-deterministic-field guard off; the storage counters, estimates and
+-- sort memory are masked, so the plan shape and the batch sizes are the
+-- assertion.
+CREATE FUNCTION explain_first_batch(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    line text;
+BEGIN
+    FOR line IN EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, TIMING OFF) ' || query
+    LOOP
+        CONTINUE WHEN line ~ '^\s*Metric ';
+        RETURN NEXT regexp_replace(line, '^(\s*(Storage|Estimated|Sort Method)[^:]*: ).*$', '\1#');
+    END LOOP;
+END;
+$$;
+CREATE TABLE fb_outer (k int, v int, PRIMARY KEY (k ASC));
+CREATE TABLE fb_inner (k int, s int, PRIMARY KEY (k ASC, s ASC));
+-- four inner rows per outer row
+INSERT INTO fb_outer SELECT i, i FROM generate_series(1, 1000) i;
+INSERT INTO fb_inner SELECT i, j FROM generate_series(1, 1000) i, generate_series(1, 4) j;
+ANALYZE fb_outer, fb_inner;
+SET yb_enable_base_scans_cost_model = on;
+SET yb_explain_hide_non_deterministic_fields = off;
+SET yb_bnl_batch_size = 1024;
+-- no LIMIT: no first batch sizing
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v');
+                               explain_first_batch                                
+----------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=4000.00 loops=1)
+   Join Filter: (i.k = o.v)
+   ->  Seq Scan on fb_outer o (actual rows=1000.00 loops=1)
+         Disabled: true
+         Storage Table Read Requests: #
+         Storage Table Read Ops: #
+         Storage Table Rows Scanned: #
+         Estimated Seeks: #
+         Estimated Nexts And Prevs: #
+         Estimated Table Roundtrips: #
+         Estimated Index Roundtrips: #
+         Estimated Docdb Result Width: #
+   ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=4000.00 loops=1)
+         Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+         Storage Table Read Requests: #
+         Storage Table Read Ops: #
+         Storage Table Rows Scanned: #
+         Estimated Seeks: #
+         Estimated Nexts And Prevs: #
+         Estimated Table Roundtrips: #
+         Estimated Index Roundtrips: #
+         Estimated Docdb Result Width: #
+(22 rows)
+
+-- LIMIT 10 at four rows per outer row: 3 outer rows sized and used
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10.00 loops=1)
+         Join Filter: (i.k = o.v)
+         First Batch Size: 3
+         Actual First Batch Size: 3
+         ->  Seq Scan on fb_outer o (actual rows=3.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 10
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=10.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+-- OFFSET counts toward the rows the LIMIT needs: 30 rows, 8 outer rows
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET 20');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=30.00 loops=1)
+         Join Filter: (i.k = o.v)
+         First Batch Size: 8
+         Actual First Batch Size: 8
+         ->  Seq Scan on fb_outer o (actual rows=8.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 30
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=30.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+-- sorted BNL: the ordered outer lets the LIMIT stop after the first batch
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY o.k LIMIT 10');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Sort Keys: o.k
+         First Batch Size: 3
+         Actual First Batch Size: 3
+         ->  Index Scan using fb_outer_pkey on fb_outer o (actual rows=3.00 loops=1)
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 10
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=12.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+-- a Sort between the LIMIT and the join: the planner sizes the first batch,
+-- the executor cannot trim it
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v ORDER BY i.s, o.k LIMIT 10');
+                                     explain_first_batch                                      
+----------------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  Sort (actual rows=10.00 loops=1)
+         Sort Key: i.s, o.k
+         Sort Method: #
+         ->  YB Batched Nested Loop Join (actual rows=4000.00 loops=1)
+               Join Filter: (i.k = o.v)
+               First Batch Size: 3
+               ->  Seq Scan on fb_outer o (actual rows=1000.00 loops=1)
+                     Disabled: true
+                     Storage Table Read Requests: #
+                     Storage Table Read Ops: #
+                     Storage Table Rows Scanned: #
+                     Estimated Seeks: #
+                     Estimated Nexts And Prevs: #
+                     Estimated Table Roundtrips: #
+                     Estimated Index Roundtrips: #
+                     Estimated Docdb Result Width: #
+               ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=4000.00 loops=1)
+                     Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+                     Storage Table Read Requests: #
+                     Storage Table Read Ops: #
+                     Storage Table Rows Scanned: #
+                     Estimated Seeks: #
+                     Estimated Nexts And Prevs: #
+                     Estimated Table Roundtrips: #
+                     Estimated Index Roundtrips: #
+                     Estimated Docdb Result Width: #
+(27 rows)
+
+-- the estimate needs more than a full batch for the LIMIT: the planner does
+-- not size the first batch, the executor still trims it to the LIMIT count
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v AND i.s = 4 AND i.k % 500 = 0 LIMIT 10');
+                                 explain_first_batch                                 
+-------------------------------------------------------------------------------------
+ Limit (actual rows=2.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=2.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Actual First Batch Size: 10
+         ->  Seq Scan on fb_outer o (actual rows=1000.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 10
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=1.00 loops=2)
+               Index Cond: ((k = ANY (ARRAY[o.v, $1, $2, ..., $1023])) AND (s = 4))
+               Storage Filter: #
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+-- parameterized LIMIT and OFFSET: a custom plan sees the values and sizes the
+-- first batch; a generic plan cannot, so only the executor's trim shows
+PREPARE fb_limit(int) AS /*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT $1;
+PREPARE fb_offset(int) AS /*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10 OFFSET $1;
+SET plan_cache_mode = force_custom_plan;
+SELECT explain_first_batch('EXECUTE fb_limit(10)');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10.00 loops=1)
+         Join Filter: (i.k = o.v)
+         First Batch Size: 3
+         Actual First Batch Size: 3
+         ->  Seq Scan on fb_outer o (actual rows=3.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 10
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=10.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+SELECT explain_first_batch('EXECUTE fb_offset(20)');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=30.00 loops=1)
+         Join Filter: (i.k = o.v)
+         First Batch Size: 8
+         Actual First Batch Size: 8
+         ->  Seq Scan on fb_outer o (actual rows=8.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 30
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=30.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(26 rows)
+
+SET plan_cache_mode = force_generic_plan;
+SELECT explain_first_batch('EXECUTE fb_limit(10)');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Actual First Batch Size: 10
+         ->  Seq Scan on fb_outer o (actual rows=10.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=10.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(24 rows)
+
+SELECT explain_first_batch('EXECUTE fb_limit(40)');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=40.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=40.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Actual First Batch Size: 40
+         ->  Seq Scan on fb_outer o (actual rows=40.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=40.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(24 rows)
+
+SELECT explain_first_batch('EXECUTE fb_offset(20)');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=30.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Actual First Batch Size: 30
+         ->  Seq Scan on fb_outer o (actual rows=30.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=30.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(24 rows)
+
+RESET plan_cache_mode;
+DEALLOCATE fb_limit;
+DEALLOCATE fb_offset;
+-- without the first batch optimization the planner does not size the first
+-- batch; the executor still trims it to the LIMIT count
+SET yb_bnl_optimize_first_batch = off;
+SELECT explain_first_batch('/*+ YbBatchedNL(o i) */ SELECT o.k, i.s FROM fb_outer o JOIN fb_inner i ON i.k = o.v LIMIT 10');
+                                 explain_first_batch                                  
+--------------------------------------------------------------------------------------
+ Limit (actual rows=10.00 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=10.00 loops=1)
+         Join Filter: (i.k = o.v)
+         Actual First Batch Size: 10
+         ->  Seq Scan on fb_outer o (actual rows=10.00 loops=1)
+               Disabled: true
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+               First Fetch Limit: 10
+         ->  Index Scan using fb_inner_pkey on fb_inner i (actual rows=10.00 loops=1)
+               Index Cond: (k = ANY (ARRAY[o.v, $1, $2, ..., $1023]))
+               Storage Table Read Requests: #
+               Storage Table Read Ops: #
+               Storage Table Rows Scanned: #
+               Estimated Seeks: #
+               Estimated Nexts And Prevs: #
+               Estimated Table Roundtrips: #
+               Estimated Index Roundtrips: #
+               Estimated Docdb Result Width: #
+(25 rows)
+
+RESET yb_bnl_optimize_first_batch;
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_base_scans_cost_model;
+DROP FUNCTION explain_first_batch(text);
+DROP TABLE fb_outer;
+DROP TABLE fb_inner;
+-------------------------------------------------------------------------
+-- #33788: a join clause that references the batched outer relation, the
+-- inner relation and a third relation that only supplies a scalar parameter
+-- to the inner index scan: w3.v < w1.b + w2.c, with w1 batched into the w3
+-- index condition and w2 joined above the batched join.  The clause has no
+-- batched form, so it is withheld from the inner scan and must be applied by
+-- the batched nested loop join right above, where w1's values are available
+-- per tuple.  Without it, every row satisfying the other two conditions is
+-- returned (36 instead of 19).  Baselines with batching disabled and with a
+-- hash join produce the same rows.
+-------------------------------------------------------------------------
+CREATE TABLE w1 (a INT PRIMARY KEY, b INT);
+CREATE TABLE w2 (j INT PRIMARY KEY, c INT);
+CREATE TABLE w3 (k INT, j INT, v INT, PRIMARY KEY (k ASC, j ASC));
+CREATE TABLE w4 (j INT PRIMARY KEY, c INT);
+INSERT INTO w1 SELECT g, g % 3 FROM generate_series(1, 8) g;
+INSERT INTO w2 SELECT g, g % 2 FROM generate_series(1, 8) g;
+INSERT INTO w3 SELECT g, g, 1 FROM generate_series(1, 8) g;
+INSERT INTO w4 SELECT g, g % 2 FROM generate_series(1, 8) g;
+ANALYZE w1, w2, w3, w4;
+-- The scalar parameter (w2) comes from the join directly above the batched
+-- join.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Sort Key: w1.a, w2.j
+   ->  Nested Loop
+         ->  Seq Scan on w2
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((w1.a = w3.k) AND (w3.v < (w1.b + w2.c)))
+               ->  Seq Scan on w1
+               ->  Index Scan using w3_pkey on w3
+                     Index Cond: ((k = ANY (ARRAY[w1.a, $1, $2])) AND (j <= w2.j))
+(9 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+ a | j 
+---+---
+ 1 | 1
+ 1 | 3
+ 1 | 5
+ 1 | 7
+ 2 | 2
+ 2 | 3
+ 2 | 4
+ 2 | 5
+ 2 | 6
+ 2 | 7
+ 2 | 8
+ 4 | 5
+ 4 | 7
+ 5 | 5
+ 5 | 6
+ 5 | 7
+ 5 | 8
+ 7 | 7
+ 8 | 8
+(19 rows)
+
+-- Baseline: same join order with batching disabled.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort
+   Sort Key: w1.a, w2.j
+   ->  Nested Loop
+         Join Filter: ((w3.j <= w2.j) AND (w3.v < (w1.b + w2.c)))
+         ->  Seq Scan on w2
+         ->  Nested Loop
+               ->  Seq Scan on w1
+               ->  Index Scan using w3_pkey on w3
+                     Index Cond: (k = w1.a)
+(9 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 1)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w1 w3)))
+  IndexScan(w3)
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+ a | j 
+---+---
+ 1 | 1
+ 1 | 3
+ 1 | 5
+ 1 | 7
+ 2 | 2
+ 2 | 3
+ 2 | 4
+ 2 | 5
+ 2 | 6
+ 2 | 7
+ 2 | 8
+ 4 | 5
+ 4 | 7
+ 5 | 5
+ 5 | 6
+ 5 | 7
+ 5 | 8
+ 7 | 7
+ 8 | 8
+(19 rows)
+
+-- Baseline: hash join between w1 and w3 under a plain nested loop for w2,
+-- which has no equality condition to hash on.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+EXPLAIN (COSTS OFF)
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort
+   Sort Key: w1.a, w2.j
+   ->  Nested Loop
+         Disabled: true
+         Join Filter: ((w3.j <= w2.j) AND (w3.v < (w1.b + w2.c)))
+         ->  Seq Scan on w2
+         ->  Hash Join
+               Hash Cond: (w1.a = w3.k)
+               ->  Seq Scan on w1
+               ->  Hash
+                     ->  Index Scan using w3_pkey on w3
+(11 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin on)
+  Set(enable_mergejoin off)
+  Set(enable_nestloop off)
+  Set(enable_material off)
+  Set(enable_seqscan on)
+  Set(yb_bnl_batch_size 1)
+  Leading((w2 (w1 w3)))
+*/
+SELECT w1.a, w2.j FROM w1, w2, w3
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
+ ORDER BY 1, 2;
+ a | j 
+---+---
+ 1 | 1
+ 1 | 3
+ 1 | 5
+ 1 | 7
+ 2 | 2
+ 2 | 3
+ 2 | 4
+ 2 | 5
+ 2 | 6
+ 2 | 7
+ 2 | 8
+ 4 | 5
+ 4 | 7
+ 5 | 5
+ 5 | 6
+ 5 | 7
+ 5 | 8
+ 7 | 7
+ 8 | 8
+(19 rows)
+
+-- The scalar parameter (w2) comes from two joins above the batched join; the
+-- withheld clause passes through the intermediate batched join on w4.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Seq Scan on w2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (w3.k = w4.j)
+               ->  Seq Scan on w4
+               ->  YB Batched Nested Loop Join
+                     Join Filter: ((w1.a = w3.k) AND (w3.v < (w1.b + w2.c)))
+                     ->  Index Scan using w1_pkey on w1
+                           Index Cond: (a = ANY (ARRAY[w4.j, $1, $2]))
+                     ->  Index Scan using w3_pkey on w3
+                           Index Cond: ((k = ANY (ARRAY[w1.a, $4, $5])) AND (j <= w2.j))
+(12 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
+ count 
+-------
+    19
+(1 row)
+
+-- The scalar parameter comes from the intermediate relation (w4) itself.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (w4.j = w2.j)
+         ->  Seq Scan on w2
+         ->  Nested Loop
+               ->  Seq Scan on w4
+               ->  YB Batched Nested Loop Join
+                     Join Filter: ((w1.a = w3.k) AND (w3.v < (w1.b + w4.c)))
+                     ->  Seq Scan on w1
+                     ->  Index Scan using w3_pkey on w3
+                           Index Cond: ((k = ANY (ARRAY[w1.a, $1, $2])) AND (j <= w4.j))
+(11 rows)
+
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(enable_material off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_nestloop on)
+  Set(enable_seqscan on)
+  Leading((w2 (w4 (w1 w3))))
+  IndexScan(w3)
+  YbBatchedNL(w1 w3)
+*/
+SELECT COUNT(*) FROM w1, w2, w3, w4
+ WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
+ count 
+-------
+    19
+(1 row)
+
+DROP TABLE w1, w2, w3, w4;

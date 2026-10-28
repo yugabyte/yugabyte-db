@@ -1,0 +1,75 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "pgrx-unit-tests"
+version = "0.18.1"
+authors.workspace = true
+license.workspace = true
+description = "Internal pgrx test extension"
+homepage.workspace = true
+repository.workspace = true
+readme = "README.md"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["proptest"]
+pg13 = ["pgrx/pg13", "pgrx-tests/pg13"]
+pg14 = ["pgrx/pg14", "pgrx-tests/pg14"]
+pg15 = ["pgrx/pg15", "pgrx-tests/pg15"]
+pg16 = ["pgrx/pg16", "pgrx-tests/pg16"]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18"]
+pg_test = []
+proptest = ["dep:proptest", "pgrx-tests/proptest"]
+cshim = ["pgrx/cshim", "pgrx-tests/cshim"]
+no-schema-generation = [
+    "pgrx/no-schema-generation",
+    "pgrx-macros/no-schema-generation",
+    "pgrx-tests/no-schema-generation",
+]
+nightly = ["pgrx/nightly", "pgrx-tests/nightly"]
+
+[dependencies]
+pgrx-macros.workspace = true
+
+eyre.workspace = true
+libc.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+paste = "1"
+proptest = { version = "1", optional = true }
+rand = "0.10.1"
+
+[dependencies.pgrx]
+path = "../pgrx"
+default-features = false
+version = "=0.18.1"
+
+[dependencies.pgrx-tests]
+path = "../pgrx-tests"
+version = "=0.18.1"
+
+[dev-dependencies]
+trybuild = "1"
+
+[lints.rust]
+unused-lifetimes = "deny"
+unsafe-op-in-unsafe-fn = "allow"
+
+[lints.clippy]
+used-underscore-binding = "deny"

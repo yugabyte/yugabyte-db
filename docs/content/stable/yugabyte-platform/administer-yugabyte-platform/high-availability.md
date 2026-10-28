@@ -32,7 +32,7 @@ Each HA cluster includes a single active YBA instance and at least one standby Y
 
 When you [promote a standby instance](../high-availability-promote/) to active, YBA restores your selected backup, and then attempts to demote the previous active instance to standby mode. If the previous active instance is unavailable, it has to be manually decommissioned.
 
-If you use the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, {{<tags/feature/ea idea="2460">}}[Operator HA](../operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
+If you use the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, [Operator HA](../operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
 
 ## Prerequisites
 
@@ -263,6 +263,7 @@ If you are promoting a YBA standby that is running version 2024.1.0 or later, wh
 ## Limitations
 
 - No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](../high-availability-promote/#promote-a-standby-instance-to-active).
+- Automatic YBA backups are not compatible with high availability. Don't enable [automated platform backups](../back-up-restore-yba/) on any instance in an HA configuration.
 - When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - Promotion will fail when HA is configured with an active instance at YBA version earlier than 2024.1, and a standby instance at version 2024.1 or later. It is not recommended to run in this configuration for an extended period. Reach out to {{% support-platform %}} if this is required.
 - If you are making API calls to YBA through custom automation, note that the [API token](../../anywhere-automation/#authentication) is different on the YBA active and standby until the standby has been promoted at least once to be an active instance. If you are using YBA with an API token, either generate a new token before every request, or perform a switchover after generating the API token (this process will have to be repeated when the API token is regenerated).

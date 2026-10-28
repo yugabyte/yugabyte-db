@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
@@ -87,11 +90,15 @@ class ObjectLockManager {
   // Snapshot conflicting transactions for the given lock keys and register callbacks on each to
   // be notified when they release all locks. The callback fires once all conflicting transactions
   // have completed their unlock.
+  //
+  // Note: WaitForLockers is generally invoked at the start of a phase/txn when either no object
+  // locks are held or session object locks alone are held.
   void WaitForConflictingLockers(
       const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
       StdStatusCallback callback,
       CoarseTimePoint deadline,
-      const TransactionId& background_txn_id);
+      const TransactionId& background_txn_id,
+      const TabletId& background_txn_status_tablet);
 
   void Poll();
 
@@ -103,6 +110,12 @@ class ObjectLockManager {
   void DumpStatusHtml(std::ostream& out);
 
   void ConsumePendingSharedLockRequests();
+
+  // Collects, for each waiting object lock owner (transaction/subtransaction), the set of
+  // transactions currently blocking it. Used to populate pg_locks.ybdetails.blocked_by for
+  // object/table locks.
+  void PopulateObjectLockWaiterBlockers(
+      std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner);
 
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();

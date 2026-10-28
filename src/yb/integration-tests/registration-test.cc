@@ -58,6 +58,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -108,7 +109,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     EasyCurl c;
     faststring buf;
     std::string addr = yb::ToString(cluster_->mini_master()->bound_http_addr());
-    ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/tablet-servers", addr), &buf));
+    ASSERT_OK(c.FetchURL(Format("http://$0/tablet-servers", addr), &buf));
 
     // Should include the TS UUID
     string expected_uuid =

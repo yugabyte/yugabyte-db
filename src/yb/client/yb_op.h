@@ -36,9 +36,11 @@
 #include <string>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/request_id_allocator.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/origination_info.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.messages.h"
 
@@ -127,16 +129,16 @@ class YBOperation {
   // Resets tablet, so it will be re-resolved on applying this operation.
   void ResetTablet();
 
-  std::optional<RetryableRequestId> request_id() const {
-    return request_id_;
+  const internal::RequestIdAllocation& retryable_request() const {
+    return retryable_request_;
   }
 
-  void set_request_id(RetryableRequestId id) {
-    request_id_ = id;
+  void set_retryable_request(const internal::RequestIdAllocation& request) {
+    retryable_request_ = request;
   }
 
-  void reset_request_id() {
-    request_id_.reset();
+  void reset_retryable_request() {
+    retryable_request_ = {};
   }
 
   // Returns the partition key of the operation.
@@ -174,9 +176,10 @@ class YBOperation {
 
   std::optional<PartitionListVersion> partition_list_version_;
 
-  // Persist retryable request ID across internal retries within the same YBSession
-  // to prevent duplicate writes due to internal retries.
-  std::optional<RetryableRequestId> request_id_;
+  // The retryable request the op was sent with, kept across the internal retries of the session,
+  // so that a retry is sent with the same id and the server rejects the duplicate. The batcher
+  // that owns the op finishes it.
+  internal::RequestIdAllocation retryable_request_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -507,6 +510,9 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   uint32_t XreplOriginId() const { return xrepl_origin_id_; }
   void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
 
+  const OriginationInfo& origination_info() const { return origination_info_; }
+  void SetOriginationInfo(const OriginationInfo& value) { origination_info_ = value; }
+
   Status GetPartitionKey(std::string* partition_key) const override;
 
   static YBPgsqlWriteOpPtr NewInsert(
@@ -529,6 +535,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
   uint32_t xrepl_origin_id_ = 0;
+  OriginationInfo origination_info_;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {

@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -353,8 +354,9 @@ public class AttachDetachControllerTest extends FakeDBApplication {
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.provider = defaultProvider.getUuid().toString();
-          userIntent.providerType = Common.CloudType.aws;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setProviderUUID(defaultProvider.getUuid())
+              .setProviderType(Common.CloudType.aws);
           universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
           universe.updateConfig(config);

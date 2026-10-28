@@ -285,3 +285,4 @@ NOTICE:  checking pg_propgraph_label_property {plpellabelid} => pg_propgraph_ele
 NOTICE:  checking pg_propgraph_property {pgppgid} => pg_class {oid}
 NOTICE:  checking pg_propgraph_property {pgptypid} => pg_type {oid}
 NOTICE:  checking pg_propgraph_property {pgpcollation} => pg_collation {oid}
+NOTICE:  checking pg_yb_password_history {pwdhstrole} => pg_authid {oid}

@@ -425,8 +425,7 @@ public class TestUtils {
    */
   public static void waitForServer(String host, int port, long timeoutMs) throws Exception {
     TestUtils.waitFor(() -> {
-      try {
-        new Socket(host, port);
+      try (Socket socket = new Socket(host, port)) {
       } catch (IOException ie) {
         return false;
       }

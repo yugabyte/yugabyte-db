@@ -149,11 +149,6 @@ static inline void GenerationBlockFree(GenerationContext *set,
  * Public routines
  */
 
-/*
- * YB_TODO_PG19MERGE: upstream PG commit a0cd95448067273a5cf92ad578a1e2de3b62aa2f
- * did some refactoring in this file, verify YbPgMemSubConsumption,
- * YbPgMemAddConsumption calls.
- */
 
 /*
  * GenerationContextCreate

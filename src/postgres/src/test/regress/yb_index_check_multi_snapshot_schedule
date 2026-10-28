@@ -4,5 +4,5 @@
 # YB index consistency checker tests (multi-snapshot mode).
 ################################################################################
 
-test: yb.orig.yb_index_check
 test: yb.orig.yb_index_check_log_num_errors
+test: yb.orig.yb_index_check

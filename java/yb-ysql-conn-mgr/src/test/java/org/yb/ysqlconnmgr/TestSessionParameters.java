@@ -119,7 +119,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     APPLICATION_NAME,   // Overriden by JDBC driver
     EXTRA_FLOAT_DIGITS, // Overriden by JDBC driver
     YB_CACHE_MAPPING,   // YB stores (maps) certain parameters differently
-    INVALID_STARTUP     // Skip while testing startup parameters
+    INVALID_STARTUP,    // Skip while testing startup parameters
+    NO_RESET            // Parameters flagged GUC_NO_RESET, which RESET rejects outright
   }
 
   private final SessionParameter[] SessionParameters = {
@@ -137,7 +138,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("transaction_isolation", "read committed",
       "read committed", "serializable",
       new ExceptionType[] { ExceptionType.YB_CACHE_MAPPING, ExceptionType.TRANSACTION_SKIP,
-        ExceptionType.SET_UNIQUE, ExceptionType.INVALID_STARTUP }),
+        ExceptionType.SET_UNIQUE, ExceptionType.INVALID_STARTUP, ExceptionType.NO_RESET }),
     new SessionParameter("geqo", "on", "off",
       new ExceptionType[] {}),
     new SessionParameter("statement_timeout", "0", "999",
@@ -151,7 +152,9 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] { ExceptionType.EXTRA_FLOAT_DIGITS, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_statistics_target", "100", "200",
       new ExceptionType[] {}),
-    new SessionParameter("standard_conforming_strings", "on", "off",
+    // A plain GUC_REPORT variable, in place of standard_conforming_strings, which PG19 only
+    // allows to be on.
+    new SessionParameter("scram_iterations", "4096", "1024",
       new ExceptionType[] {}),
     new SessionParameter("check_function_bodies", "on", "off",
       new ExceptionType[] {}),
@@ -160,7 +163,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("default_transaction_deferrable", "off", "on",
       new ExceptionType[] {}),
     new SessionParameter("transaction_read_only", "off", "off", "on",
-      new ExceptionType[] { ExceptionType.TRANSACTION_ONLY }),
+      new ExceptionType[] { ExceptionType.TRANSACTION_ONLY, ExceptionType.NO_RESET }),
 
     // Sticky GUC variables make the primary connection sticky, test at the end.
 
@@ -401,6 +404,21 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   private void checkResetStatements(Statement stmt, SessionParameter sp) {
     final String expectedValue = sp.defaultValue;
     final String parameterName = sp.parameterName;
+
+    if (sp.exceptionSet.contains(ExceptionType.NO_RESET)) {
+      // RESET must be rejected and leave the value alone.
+      final String valueBefore = fetchParameterValue(stmt, sp);
+      try {
+        stmt.execute(String.format("RESET %s", parameterName));
+        fail(String.format("RESET of %s unexpectedly succeeded", parameterName));
+      } catch (Exception e) {
+        assertTrue(String.format("unexpected error for RESET of %s: %s", parameterName,
+            e.getMessage()), e.getMessage().contains("cannot be reset"));
+      }
+      assertEquals(String.format("RESET of %s changed its value", parameterName),
+          valueBefore, fetchParameterValue(stmt, sp));
+      return;
+    }
 
     modifyParameterValue(stmt, sp, QueryType.RESET);
     final String fetchedValue = fetchParameterValue(stmt, sp);
@@ -679,6 +697,15 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
           "After ROLLBACK, both SET and SET LOCAL should be unwound to the connect-time default",
           initialAppName,
           pgConn.getParameterStatus("application_name"));
+    }
+  }
+
+  @Test
+  public void testStartupParameterReportedOnce() throws Exception {
+    // A GUC_REPORT variable set in the StartupMessage is reported exactly once during startup.
+    final String appName = "startup_report_check";
+    try (WireConn conn = rawConnBuilder().startupParam("application_name", appName).connect()) {
+      assertEquals(Arrays.asList(appName), conn.startupParameterValues("application_name"));
     }
   }
 

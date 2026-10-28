@@ -130,3 +130,6 @@ managed/src/main/java/com/yugabyte/yw/common/operator/io/*
 # AI assistant configuration (local only)
 CLAUDE.local.md
 .claude/scheduled_tasks.lock
+
+# Written by remote_build.py into the remote directory it syncs to.
+.yb_remote_build_state

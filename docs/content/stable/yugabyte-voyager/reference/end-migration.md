@@ -24,7 +24,7 @@ Usage: yb-voyager end migration [ <arguments> ... ]
 The valid *arguments* for end migration are described in the following table:
 
 {{<table>}}
-| <div style="width:120px">CLI flag</div> | Config file parameter | Description |
+| <div style="width:130px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
 | --backup-schema-files |
@@ -79,6 +79,30 @@ export-dir:
 ```
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
+| --log-max-size-mb |
+
+```yaml {.nocopy}
+log-max-size-mb:
+```
+
+| Maximum size in MB of a yb-voyager log file before it is rotated. Also applies to the Debezium log file during live migration. <br>Default: 200 |
+
+| --log-max-backups |
+
+```yaml {.nocopy}
+log-max-backups:
+```
+
+| Maximum number of rotated log files to retain. Older files are deleted. Use -1 to retain all rotated log files. <br>Default: 10 |
 
 | -h, --help | — | Command line help for import data to source-replica. |
 | -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |

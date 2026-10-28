@@ -78,4 +78,4 @@ yugabyte=# SELECT * FROM sample_view;
 
 ## See also
 
-- [`SELECT`](../dml_select/)
+- [SELECT](../dml_select/)

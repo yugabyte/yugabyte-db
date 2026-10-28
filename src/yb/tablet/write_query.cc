@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include <algorithm>
+
 #include "yb/ash/wait_state.h"
 
 #include <boost/logic/tribool.hpp>
@@ -122,6 +124,20 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
     out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
   }
   out_request->set_batch_idx(client_request.batch_idx());
+  // Lift the ops' write fence into the replicated message, which is all RaftConsensus sees. The
+  // earliest fence wins; the ops share a hybrid time, so they cannot be fenced apart.
+  HybridTime ignore_after_hybrid_time;
+  for (const auto& op : client_request.pgsql_write_batch()) {
+    const auto fence = HybridTime::FromPB(op.ignore_after_hybrid_time());
+    if (!fence) {  // Not set for this op.
+      continue;
+    }
+    ignore_after_hybrid_time =
+        ignore_after_hybrid_time ? std::min(ignore_after_hybrid_time, fence) : fence;
+  }
+  if (ignore_after_hybrid_time) {
+    out_request->set_ignore_after_hybrid_time(ignore_after_hybrid_time.ToPB());
+  }
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.
   // But in CDCServiceTest we have ql write batch with external time.

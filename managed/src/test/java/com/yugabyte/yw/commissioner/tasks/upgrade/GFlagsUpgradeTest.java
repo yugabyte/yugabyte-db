@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -53,7 +54,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -139,14 +139,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
+    TestUtils.copyProviderFields(curIntent, userIntent, confGetter);
+
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = curIntent.ybSoftwareVersion;
-    userIntent.accessKeyCode = curIntent.accessKeyCode;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = curIntent.providerType;
-    userIntent.provider = curIntent.provider;
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.numVolumes = 2;
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
@@ -1259,6 +1256,52 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testValidateGFlagsSkippedOnRetry() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2024.2.0.0-b1");
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams firstTry = newGFlagsPrecheckParams();
+    TaskInfo firstInfo = submitTask(firstTry);
+    assertEquals(Success, firstInfo.getTaskState());
+    assertTrue(
+        firstInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        firstInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+
+    GFlagsUpgradeParams retry = newGFlagsPrecheckParams();
+    retry.setPreviousTaskUUID(firstInfo.getUuid());
+    TaskInfo retryInfo = submitTask(retry);
+    assertEquals(Success, retryInfo.getTaskState());
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.ValidateGFlags));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeDataDirDiskSpace));
+    assertTrue(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown));
+  }
+
+  private GFlagsUpgradeParams newGFlagsPrecheckParams() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    taskParams.runOnlyPrechecks = true;
+    return taskParams;
   }
 
   @Test

@@ -3,4 +3,4 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests on subscription statements.
 ####################################################################################################
-test: subscription
+test: yb.port.subscription

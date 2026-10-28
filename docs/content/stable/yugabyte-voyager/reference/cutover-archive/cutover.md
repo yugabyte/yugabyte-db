@@ -202,7 +202,6 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
-
 | -h, --help | — | Command line help for cutover. |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 

@@ -127,6 +127,15 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Configure cross-cloud federated IAM on the cluster's nodes (so the replacement is set up)
+      // only if the universe is already federated.
+      if (isUniverseFederationConfigured()) {
+        createConfigureCloudFederationTasks(
+            taskParamsCluster.userIntent,
+            taskParams().getNodesInCluster(taskParamsCluster.uuid),
+            true);
+      }
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

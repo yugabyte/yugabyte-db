@@ -1,6 +1,11 @@
 # Forging SQL from Rust
 <!-- Written 2021-09-20 -->
 
+> Historical note: this article describes the pre-`.pgrx_schema` schema-generation pipeline that
+> used `__pgrx_internals_*` functions, `pgrx_embed`, and runtime symbol execution. Current pgrx
+> emits NDJSON SQL entities into a linker section and `cargo-pgrx` reads that section directly
+> from the compiled extension library in a single pass.
+
 PostgreSQL offers an extension interface, and it's my belief that Rust is a fantastic language to write extensions for it. [Eric Ridge](https://twitter.com/zombodb) thought so too, and started [`pgrx`](https://github.com/pgcentralfoundation/pgrx/) awhile back. I've been working with him to improve the toolkit, and wanted to share about one of our latest hacks: improving the generation of extension SQL code to interface with Rust.
 
 This post is more on the advanced side, as it assumes knowledge of both Rust and PostgreSQL. We'll approach topics like foreign functions, dynamic linking, procedural macros, and linkers.
@@ -97,6 +102,7 @@ These `sql` files must be generated from data within the Rust code. The SQL gene
 - Create 'Shell types', in & out functions, and 'Base types' for each `#[derive(PostgresType)]` marked type.
   ```rust
   #[derive(PostgresType, Serialize, Deserialize, Debug, Eq, PartialEq)]
+  #[pg_binary_protocol]
   pub struct Animals {
       names: Vec<String>,
       age_lookup: HashMap<i32, String>,
@@ -140,6 +146,7 @@ These `sql` files must be generated from data within the Rust code. The SQL gene
       Eq, PartialEq, Ord, Hash, PartialOrd,
       PostgresType, Serialize, Deserialize
   )]
+  #[pg_binary_protocol]
   pub struct Thing(String);
   ```
   ```sql
@@ -235,7 +242,7 @@ During the proc macro expansion process, we can append the [`proc_macro2::TokenS
 struct Floof { boof: usize }
 
 // We should extend the TokenStream with something like
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn __pgrx_internals_type_Floof()
 -> pgrx::datum::inventory::SqlGraphEntity {
     todo!()
@@ -251,7 +258,7 @@ pub fn floof_from_boof(boof: usize) -> Floof {
 }
 
 // We should extend the TokenStream with something like
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn __pgrx_internals_fn_floof_from_boof()
 -> pgrx::datum::inventory::SqlGraphEntity {
     todo!()
@@ -471,7 +478,7 @@ struct Floof { boof: usize }
 The above gets parsed and new tokens are quasi-quoted atop this template like this:
 
 ```rust
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn  #inventory_fn_name() -> pgrx::datum::inventory::SqlGraphEntity {
     let mut mappings = Default::default();
     <#name #ty_generics as pgrx::datum::WithTypeIds>::register_with_refs(
@@ -496,7 +503,7 @@ pub extern "C" fn  #inventory_fn_name() -> pgrx::datum::inventory::SqlGraphEntit
 The proc macro passes will make it into:
 
 ```rust
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn  __pgrx_internals_type_Floof() -> pgrx::datum::inventory::SqlGraphEntity {
     let mut mappings = Default::default();
     <Floof as pgrx::datum::WithTypeIds>::register_with_refs(
@@ -542,7 +549,7 @@ Types such as `Vec<T>` require a type to be `Sized`, `pgrx::datum::Array<T>` req
 ```rust
 // This doesn't work
 syn::parse_quote! {
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn  #inventory_fn_name() -> pgrx::datum::inventory::SqlGraphEntity {
         let mut mappings = Default::default();
         #hypothetical_if_some_type_impls_sized_block {

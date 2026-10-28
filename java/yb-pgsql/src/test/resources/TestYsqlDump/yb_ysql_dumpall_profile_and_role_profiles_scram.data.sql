@@ -2,7 +2,7 @@
 -- YSQL database cluster dump
 --
 
-\restrict <key>
+\restrict test
 
 SET default_transaction_read_only = off;
 
@@ -13,130 +13,150 @@ SET standard_conforming_strings = on;
 -- Roles
 --
 
-\unrestrict <key>
 -- Set variable ignore_existing_roles (if not already set)
+\unrestrict test
 \if :{?ignore_existing_roles}
 \else
 \set ignore_existing_roles false
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' postgres
+    \echo 'Role already exists:' 'postgres'
 \else
+\restrict test
     CREATE ROLE postgres;
     ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user
+    \echo 'Role already exists:' 'test_user'
 \else
+\restrict test
     CREATE ROLE test_user;
     ALTER ROLE test_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:L31zI6UdQSK7leP2nCKiGA==$4B43kvJktwHnPRDqqROPEeKMTqFO0/lLNpIhiUwTpUM=:eb+xIhw8wtr+RZS540Op3WwbAmw7YSjFbqkR8x0QzK4=';
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user2') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user2
+    \echo 'Role already exists:' 'test_user2'
 \else
+\restrict test
     CREATE ROLE test_user2;
     ALTER ROLE test_user2 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:8ZkGcQZBK1XaH5/awp31tQ==$qL/fKeY9irjxA1ugY72SaT9/2MDp6smHTcpRaZFiOcA=:hnF/fprjqtDEBDqaSSqJxPLM4ExQ7fvAiJpBaWvECTU=';
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user3') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' test_user3
+    \echo 'Role already exists:' 'test_user3'
 \else
+\restrict test
     CREATE ROLE test_user3;
     ALTER ROLE test_user3 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:8x4hoGmQZA9Zyq38YqIErw==$7I00T4qJ/UYWQZ7wfPLy/vrw926mgovnyvUl1GPBD0w=:8842iXKyGQlZaZNskV9MgSBxcdJ9EzpD8N+KNYfRr5E=';
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_db_admin
+    \echo 'Role already exists:' 'yb_db_admin'
 \else
+\restrict test
     CREATE ROLE yb_db_admin;
     ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_extension
+    \echo 'Role already exists:' 'yb_extension'
 \else
+\restrict test
     CREATE ROLE yb_extension;
     ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_fdw
+    \echo 'Role already exists:' 'yb_fdw'
 \else
+\restrict test
     CREATE ROLE yb_fdw;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yb_global_views_user
+    \echo 'Role already exists:' 'yb_global_views_user'
 \else
+\restrict test
     CREATE ROLE yb_global_views_user;
     ALTER ROLE yb_global_views_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\unrestrict test
 \endif
+\restrict test
 
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:VLK4RMaQLCvNtQ==$6YtlR4t69SguDiwFvbVgVZtuz6gpJQQqUMZ7IQJK5yI=:ps75jrHeYU4lXCcXI4O8oIdJ3eO8o2jirjruw9phBTo=';
 
-\unrestrict <key>
+\unrestrict test
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \endif
 \if :role_exists
-    \echo 'Role already exists:' yugabyte_test
+    \echo 'Role already exists:' 'yugabyte_test'
 \else
+\restrict test
     CREATE ROLE yugabyte_test;
     ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
 
 --
@@ -148,7 +168,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- Role memberships
 --
 
-GRANT pg_read_all_stats TO yb_global_views_user GRANTED BY postgres;
+GRANT pg_read_all_stats TO yb_global_views_user WITH INHERIT TRUE GRANTED BY postgres;
 
 
 
@@ -187,7 +207,7 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'test_user3')
   AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_2_failed');
 
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Databases
@@ -203,7 +223,7 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'test_user3')
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -228,19 +248,22 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -249,39 +272,50 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
-\restrict <key>
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 -- YB: re-enable auto analyze after all catalog changes
@@ -296,7 +330,7 @@ END $$;
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "postgres" dump
@@ -308,7 +342,7 @@ END $$;
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -333,19 +367,22 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
+\restrict test
 
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
@@ -354,39 +391,50 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
-\restrict <key>
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 -- YB: re-enable auto analyze after all catalog changes
@@ -401,7 +449,7 @@ END $$;
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "system_platform" dump
@@ -411,7 +459,7 @@ END $$;
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -436,20 +484,22 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
-\restrict <key>
+\restrict test
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -458,15 +508,17 @@ SET row_security = off;
 CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER DATABASE system_platform OWNER TO postgres;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
-\unrestrict <key>
+\unrestrict test
 \connect system_platform
-\restrict <key>
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -505,43 +557,55 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "yugabyte" dump
@@ -551,7 +615,7 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -576,20 +640,22 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
-\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
+\unrestrict test
 \if :{?use_tablespaces}
 \else
 \set use_tablespaces true
 \endif
+\restrict test
 
 -- Set variable use_roles (if not already set)
+\unrestrict test
 \if :{?use_roles}
 \else
 \set use_roles true
 \endif
-\restrict <key>
+\restrict test
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -598,15 +664,17 @@ SET row_security = off;
 CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
     ALTER DATABASE yugabyte OWNER TO postgres;
+\unrestrict test
 \endif
+\restrict test
 
-\restrict <key>
-\unrestrict <key>
+\unrestrict test
 \connect yugabyte
-\restrict <key>
+\restrict test
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -648,52 +716,66 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
-\unrestrict <key>
+\unrestrict test
 \if :use_roles
+\restrict test
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
+\unrestrict test
 \endif
-\restrict <key>
+\restrict test
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint, minmax_only boolean) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\unrestrict test
 \if :use_roles
+\restrict test
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\unrestrict test
 \endif
+\restrict test
 
 
 --
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- YSQL database cluster dump complete

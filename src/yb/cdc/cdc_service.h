@@ -305,8 +305,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
-  // Returns a list of catalog tables which gets streamed. (Currently 'pg_publication_rel' &
-  // 'pg_class' are the only catalog tables which gets streamed).
+  // Returns a list of catalog tables which gets streamed. (Currently 'pg_class',
+  // 'pg_publication_rel', 'pg_replication_origin' and 'pg_publication' are streamed. When
+  // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute' is also streamed).
   // 'namespace_id' is the id of namespace on which stream was created.
   static Result<std::vector<TableId>> GetStreamableCatalogTables(const NamespaceId& namespace_id);
 
@@ -346,8 +347,13 @@ class CDCServiceImpl : public CDCServiceIf {
   // Retrieves the cdc_min_replicated_index for a given tablet.
   // Returns the min index that is still required for xCluster replication.
   // Returns max if the tablet is not replicated by xCluster.
+  // Returns 0 if the map is stale.
   int64_t GetXClusterMinRequiredIndex(const TabletId& tablet_id)
-        EXCLUDES(xcluster_replication_maps_mutex_);
+      EXCLUDES(xcluster_replication_maps_mutex_);
+
+  // Returns nullopt if the map is stale.
+  std::optional<int64_t> TryGetXClusterMinRequiredIndex(const TabletId& tablet_id)
+      EXCLUDES(xcluster_replication_maps_mutex_);
 
   auto GetXClusterMinRequiredIndexFunc() {
     return std::bind_front(&CDCServiceImpl::GetXClusterMinRequiredIndex, this);

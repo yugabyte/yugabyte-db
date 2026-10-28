@@ -2,7 +2,7 @@
 -- YSQL database cluster dump
 --
 
-\restrict <key>
+\restrict test
 
 SET default_transaction_read_only = off;
 
@@ -84,7 +84,7 @@ CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='
 CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
 
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Databases
@@ -100,7 +100,7 @@ CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_place
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -121,7 +121,7 @@ SET row_security = off;
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "postgres" dump
@@ -133,7 +133,7 @@ SET row_security = off;
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -154,7 +154,7 @@ SET row_security = off;
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "system_platform" dump
@@ -164,7 +164,7 @@ SET row_security = off;
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -190,9 +190,9 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 ALTER DATABASE system_platform OWNER TO postgres;
 
-\unrestrict <key>
+\unrestrict test
 \connect system_platform
-\restrict <key>
+\restrict test
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -217,7 +217,7 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- Database "yugabyte" dump
@@ -227,7 +227,7 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump
 --
 
-\restrict <key>
+\restrict test
 
 -- Dumped from database version 19devel-YB-2.31.0.1900-b0
 -- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
@@ -253,9 +253,9 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 ALTER DATABASE yugabyte OWNER TO postgres;
 
-\unrestrict <key>
+\unrestrict test
 \connect yugabyte
-\restrict <key>
+\restrict test
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -283,9 +283,9 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
 
 
-\unrestrict <key>
+\unrestrict test
 \connect yugabyte
-\restrict <key>
+\restrict test
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -470,7 +470,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 -- YSQL database dump complete
 --
 
-\unrestrict <key>
+\unrestrict test
 
 --
 -- YSQL database cluster dump complete

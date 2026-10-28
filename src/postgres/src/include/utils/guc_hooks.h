@@ -240,6 +240,8 @@ extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
 extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 extern bool yb_check_toast_catcache_threshold(int *newval, void **extra,
 											  GucSource source);
+extern bool yb_check_password_validity_source(int *newval, void **extra,
+											  GucSource source);
 extern bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra,
 											   GucSource source);
 extern void yb_set_neg_catcache_ids(const char *newval, void *extra);
@@ -253,6 +255,15 @@ extern bool check_max_backoff(int *max_backoff_msecs, void **extra,
 							  GucSource source);
 extern bool check_min_backoff(int *min_backoff_msecs, void **extra,
 							  GucSource source);
+extern void yb_assign_XactIsoLevel(int newval, void *extra);
+extern bool check_yb_default_xact_isolation(int *newval, void **extra, GucSource source);
+extern void assign_transaction_read_only(bool newval, void *extra);
+extern void assign_transaction_deferrable(bool newval, void *extra);
+extern bool check_follower_reads(bool *newval, void **extra, GucSource source);
+extern void assign_follower_reads(bool newval, void *extra);
+extern bool check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source);
+extern void assign_follower_read_staleness_ms(int32_t newval, void *extra);
+extern const char *yb_fetch_effective_transaction_isolation_level(void);
 
 /*
  * YB_TODO(#32343): defined in pggate (pg_txn_manager.cc) behind extern "C";

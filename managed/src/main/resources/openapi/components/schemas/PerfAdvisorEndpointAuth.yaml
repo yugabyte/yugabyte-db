@@ -1,0 +1,26 @@
+title: PerfAdvisorEndpointAuth
+description: |
+  PerfAdvisorEndpointAuth
+
+  Credentials for one endpoint of a Perf Advisor Endpoint.
+type: object
+required:
+  - type
+properties:
+  type:
+    description: Authentication type.
+    type: string
+    example: BASIC
+    enum:
+      - NONE
+      - BASIC
+  username:
+    description: Username. Required for BASIC.
+    type: string
+    example: byoc-metrics-writer
+  password:
+    description: |
+      Password. Required for BASIC. Read back masked, and a masked value sent on an edit keeps the
+      stored password rather than overwriting it.
+    type: string
+    format: password

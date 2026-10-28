@@ -9,7 +9,7 @@
 //LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 use std::cmp::Ordering;
 
-use crate::{direct_function_call, pg_sys, AnyNumeric, Numeric};
+use crate::{AnyNumeric, Numeric, direct_function_call, pg_sys};
 
 impl PartialEq<AnyNumeric> for AnyNumeric {
     /// Postgres implementation detail:  Unlike in Rust, Postgres considers `NaN` as equal
@@ -20,8 +20,11 @@ impl PartialEq<AnyNumeric> for AnyNumeric {
         }
     }
 
+    #[allow(clippy::partialeq_ne_impl)]
     #[inline]
     fn ne(&self, other: &AnyNumeric) -> bool {
+        // NB:  clippy says this is unnecessary but it seems prudent to have this type do what
+        // Postgres would do
         unsafe {
             direct_function_call(pg_sys::numeric_ne, &[self.as_datum(), other.as_datum()]).unwrap()
         }
@@ -84,8 +87,11 @@ impl<const P: u32, const S: u32> PartialEq for Numeric<P, S> {
         self.as_anynumeric().eq(other.as_anynumeric())
     }
 
+    #[allow(clippy::partialeq_ne_impl)]
     #[inline]
     fn ne(&self, other: &Self) -> bool {
+        // NB:  clippy says this is unnecessary but it seems prudent to have this type do what
+        // Postgres would do
         self.as_anynumeric().ne(other.as_anynumeric())
     }
 }

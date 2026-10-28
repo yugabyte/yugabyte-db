@@ -18,7 +18,6 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -418,12 +417,15 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = OLD_VERSION;
-    userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
-    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
 
     PlacementInfo pi = new PlacementInfo();
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");

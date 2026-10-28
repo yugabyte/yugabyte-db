@@ -342,7 +342,7 @@ public class ImportUniverseTest extends CommissionerBaseTest {
       assertEquals(nodeInstance.getDetails().region, node.cloudInfo.region);
       assertEquals(nodeInstance.getDetails().zone, node.cloudInfo.az);
       assertEquals(cluster.uuid, node.placementUuid);
-      DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      DeviceInfo deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
       if (masterIps.contains(ip)) {
         assertTrue(node.isMaster);
         assertEquals(masterMountPaths, deviceInfo.mountPoints);

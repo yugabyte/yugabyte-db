@@ -26,7 +26,6 @@ import { formatDuration } from '../../../../../utils/Formatters';
 const useStyles = makeStyles((theme) => ({
   root: {
     maxHeight: '500px',
-    overflowY: 'auto',
     '&>div': {
       marginBottom: '20px'
     }
@@ -360,7 +359,6 @@ const subTaskCardStyles = makeStyles((theme) => ({
     textTransform: 'none'
   },
   errMsg: {
-    width: '100%',
     marginLeft: '50px',
     borderRadius: '8px',
     background: theme.palette.error[100],

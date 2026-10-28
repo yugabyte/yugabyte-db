@@ -1,0 +1,55 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+package org.yb.pgsql;
+
+import java.util.Map;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+
+/**
+ * Runs the part of yb_pg_misc_serial_schedule whose expected output needs the DDL mode enabled, so
+ * that TestPgRegressPgMisc can keep running the rest of the schedule in both modes.
+ */
+@RunWith(value = YBTestRunner.class)
+public class TestPgRegressPgMiscObjectLocking extends BasePgRegressTestPorted {
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 1800;
+  }
+
+  // Disable auto analyze likely because of issue #27973.
+  // This may not be related to auto analyze at all.
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    // create_procedure drops overloaded procedures inside a transaction block and relies on the
+    // rollback restoring them, which only happens with transactional DDL.
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    toggleDDLMode(flagMap, /* useLegacy */ false);
+    return flagMap;
+  }
+
+  @Test
+  public void testPgRegressPgMiscObjectLocking() throws Exception {
+    runPgRegressTest("yb_pg_misc_object_locking_schedule");
+  }
+}

@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
@@ -104,7 +105,8 @@ func (h *YnpPreflightCheckHandler) Handle(
 	}
 	h.logOut.Write([]byte(cInfo.StdErr.String()))
 	exitCode := 1
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		exitCode = exitErr.ExitCode()
 	}
 	output, err := os.ReadFile(preflightCheckOutFile.Name())

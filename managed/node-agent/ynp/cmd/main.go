@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"node-agent/util"
 	"node-agent/ynp"
 	"node-agent/ynp/command"
@@ -452,12 +451,12 @@ func handleCommand(
 }
 
 func main() {
+	util.VerifyFipsMode()
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
-		if !util.IsConsoleLoggerSetup() {
-			// If logger was not set up, log to standard error as a fallback.
-			log.Printf("Error executing command: %v\n", err)
-		}
+		// The console logger writes to stdout, and YBA reports only stderr for a failed remote
+		// command, so the reason has to go to stderr as well.
+		fmt.Fprintf(os.Stderr, "Error executing command: %v\n", err)
 		exitCode := 1
 		var scriptErr *command.ScriptExitError
 		if errors.As(err, &scriptErr) {

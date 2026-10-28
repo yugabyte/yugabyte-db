@@ -856,7 +856,12 @@ retry:
 
 		YBCGetReplicationSlot(name, &yb_replication_slot, /* if_exists */ false);
 
-		s = palloc(sizeof(ReplicationSlot));
+		/*
+		 * Fields not set below must hold their unset value, which is 0 for
+		 * all of them (e.g. data.invalidated, which CreateDecodingContext
+		 * asserts on).
+		 */
+		s = palloc0(sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
 		namestrcpy(&s->data.plugin, yb_replication_slot->output_plugin);
 		s->data.database = yb_replication_slot->database_oid;
@@ -894,6 +899,11 @@ retry:
 
 		s->data.yb_detect_publication_changes_implicitly =
 			yb_replication_slot->detect_publication_changes_implicitly;
+
+		Assert(yb_replication_slot->yb_lsn_type != NULL);
+		s->yb_lsn_type =
+			strcmp(yb_replication_slot->yb_lsn_type, LSN_TYPE_HYBRID_TIME) == 0 ?
+			CRS_HYBRID_TIME : CRS_SEQUENCE;
 
 		MyReplicationSlot = s;
 
@@ -1251,6 +1261,8 @@ ReplicationSlotCleanup(bool synced_only)
 
 /*
  * Cleanup all temporary slots created in current session.
+ *
+ * YB: proc can be a dead backend; the postmaster cleans up after it.
  */
 void
 ReplicationSlotCleanupForProc(PGPROC *proc, bool synced_only)
@@ -1274,7 +1286,8 @@ restart:
 		found_valid_logicalslot |=
 			(SlotIsLogical(s) && s->data.invalidated == RS_INVAL_NONE);
 
-		if ((s->active_proc == proc->pid &&
+		/* YB: compare with the target proc, not MyProcNumber. */
+		if ((s->active_proc == GetNumberFromPGProc(proc) &&
 			 (!synced_only || s->data.synced)))
 		{
 			Assert(s->data.persistency == RS_TEMPORARY);

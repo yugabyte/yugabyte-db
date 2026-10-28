@@ -88,6 +88,11 @@ message TableInfoPB {
   // Whether we can skip table tombstone check for this table
   // (only applies to colocated tables).
   optional bool skip_table_tombstone_check = 15;
+
+  // For a vector index table: hybrid time of the operation that removed the index from its indexed
+  // table's index map. The index can stay on the tablet after that, e.g. while a snapshot schedule
+  // retains a dropped index, but rows written after this time are not added to it.
+  optional fixed64 vector_index_deactivated_ht = 18;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -118,7 +123,7 @@ message KvStoreInfoPB {
   // Whether KV-store regular DB parent files have been compacted since creation.
   // We don't split post-split tablets which have uncompacted parent data as of 2020-06-23, since
   // detecting effective middle key and tablet size for such tablets is not yet implemented.
-  optional bool parent_data_compacted = 8;
+  optional bool rocksdb_parent_data_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
 
@@ -137,6 +142,16 @@ message KvStoreInfoPB {
 
   // Tiered-storage directory pins for this KV-store.
   repeated TierPathPB tier_paths = 12;
+
+  // TServer-local split generation for this KV-store's metadata: 0 if unset or never split on this
+  // tserver. Child tablets get parent + 1 in CreateSplitChildMetadata. This value may be lower than
+  // master SysTabletsEntryPB.split_depth for tablets that existed before this field was introduced
+  // (the counter effectively restarts from 0). This is OK: only relative comparisons on this
+  // tserver matter (e.g. post-split compaction and orphaned parent-data checks), so it does not
+  // need to match the master catalog value.
+  optional uint64 split_generation = 13;
+  optional string target_storage_tier = 14;
+  optional uint32 target_tier_path_id = 15;
 }
 
 // Tiered-storage directory pin: maps a RocksDB path_id to an absolute directory on

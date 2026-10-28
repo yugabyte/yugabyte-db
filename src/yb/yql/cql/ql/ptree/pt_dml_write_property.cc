@@ -15,6 +15,7 @@
 #include <set>
 
 #include "yb/client/schema.h"
+#include "yb/util/format.h"
 #include "yb/util/string_case.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -27,7 +28,6 @@ using std::vector;
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 // These property names need to be lowercase, since identifiers are converted to lowercase by the
 // scanner phase and as a result if we're doing string matching everything should be lowercase.
@@ -57,14 +57,14 @@ Status PTDmlWriteProperty::Analyze(SemContext *sem_context) {
   const auto& update_property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(update_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return sem_context->Error(this, Substitute("Unknown property '$0'", lhs_->c_str()).c_str(),
+    return sem_context->Error(this, Format("Unknown property '$0'", lhs_->c_str()).c_str(),
                               ErrorCode::INVALID_UPDATE_PROPERTY);
   }
 
   if (iterator->second == KVProperty::kOptions) {
     return sem_context->Error(this,
-                            Substitute("Invalid value for property '$0'. Value must be a map",
-                                        update_property_name).c_str(),
+                            Format("Invalid value for property '$0'. Value must be a map",
+                                    update_property_name).c_str(),
                             ErrorCode::DATATYPE_MISMATCH);
   }
 
@@ -150,11 +150,11 @@ Status PTDmlWritePropertyMap::Analyze(SemContext *sem_context) {
   auto iterator = kPropertyDataTypes.find(property_name);
   if (iterator == kPropertyDataTypes.end()) {
     if (IsValidProperty(property_name)) {
-      return sem_context->Error(this, Substitute("Invalid map value for property '$0'",
-                                                 property_name).c_str(),
+      return sem_context->Error(this, Format("Invalid map value for property '$0'",
+                                             property_name).c_str(),
                                 ErrorCode::DATATYPE_MISMATCH);
     }
-    return sem_context->Error(this, Substitute("Unknown property '$0'", property_name).c_str(),
+    return sem_context->Error(this, Format("Unknown property '$0'", property_name).c_str(),
                               ErrorCode::INVALID_UPDATE_PROPERTY);
   }
 
@@ -178,8 +178,8 @@ Status PTDmlWritePropertyMap::AnalyzeOptions(SemContext *sem_context) {
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Options::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Options::kSubpropertyDataTypes.end()) {
-      return STATUS(InvalidArgument, Substitute("Unknown options property $0",
-                                                subproperty_name));
+      return STATUS(InvalidArgument, Format("Unknown options property $0",
+                                            subproperty_name));
     }
 
     bool bool_val;

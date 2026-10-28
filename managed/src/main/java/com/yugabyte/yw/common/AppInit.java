@@ -45,7 +45,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
-import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
+import com.yugabyte.yw.common.pa.PACollectorSync;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -145,7 +145,7 @@ public class AppInit {
       UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
       SlowQueriesAggregator slowQueriesAggregator,
-      EmbeddedCollectorInitializer embeddedCollectorInitializer)
+      PACollectorSync paCollectorSync)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -215,6 +215,10 @@ public class AppInit {
         }
         // yb.fixPaths has a specific, limited use case. This should run always.
         releasesUtils.releaseUploadPathFixup();
+        // Must run before importLocalReleases picks up restored uploads in the releases dir.
+        if (Util.restoreTaskInfoExists()) {
+          releasesUtils.restoredUploadPathFixup();
+        }
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
@@ -366,7 +370,7 @@ public class AppInit {
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
 
-        embeddedCollectorInitializer.start();
+        paCollectorSync.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

@@ -51,3 +51,18 @@ PG_PROCTYPE(B_WAL_RECEIVER, "walreceiver", gettext_noop("walreceiver"), WalRecei
 PG_PROCTYPE(B_WAL_SENDER, "walsender", gettext_noop("walsender"), NULL, true)
 PG_PROCTYPE(B_WAL_SUMMARIZER, "walsummarizer", gettext_noop("walsummarizer"), WalSummarizerMain, true)
 PG_PROCTYPE(B_WAL_WRITER, "walwriter", gettext_noop("walwriter"), WalWriterMain, true)
+
+/*
+ * YB process types. These cannot be launched directly: each starts as a
+ * regular backend and switches MyBackendType later.
+ */
+PG_PROCTYPE(YB_YSQL_CONN_MGR, "backend", gettext_noop("yb-conn-mgr worker connection"), NULL, true)
+PG_PROCTYPE(YB_YSQL_CONN_MGR_WAL_SENDER, "backend", gettext_noop("yb-conn-mgr walsender"), NULL, true)
+PG_PROCTYPE(YB_YSQL_CONN_MGR_CTRL, "backend", gettext_noop("yb-conn-mgr control connection"), NULL, true)
+PG_PROCTYPE(YB_AUTO_ANALYZE_BACKEND, "backend", gettext_noop("yb auto analyze backend"), NULL, true)
+PG_PROCTYPE(YB_INDEX_BACKFILL_DDL, "backend", gettext_noop("yb index backfill"), NULL, true)
+PG_PROCTYPE(YB_MATVIEW_REFRESH_DDL, "backend", gettext_noop("yb matview refresh"), NULL, true)
+PG_PROCTYPE(YB_RELCACHE_INIT_BACKEND, "backend", gettext_noop("yb relcache init backend"), NULL, true)
+PG_PROCTYPE(YB_GLOBAL_VIEW_BACKEND, "backend", gettext_noop("yb global view backend"), NULL, true)
+PG_PROCTYPE(YB_XCLUSTER_DDL_QUEUE_BACKEND, "backend", gettext_noop("yb xcluster ddl queue backend"), NULL, true)
+PG_PROCTYPE(YB_XCLUSTER_SETUP_BACKEND, "backend", gettext_noop("yb xcluster setup backend"), NULL, true)

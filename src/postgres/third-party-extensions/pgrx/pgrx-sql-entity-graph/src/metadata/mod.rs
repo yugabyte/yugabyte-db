@@ -22,7 +22,15 @@ mod function_metadata;
 mod return_variant;
 mod sql_translatable;
 
-pub use entity::{FunctionMetadataEntity, FunctionMetadataTypeEntity};
+pub use crate::impl_sql_translatable;
+pub use entity::{
+    FunctionMetadataEntity, FunctionMetadataTypeEntity, FunctionMetadataTypeResolutionEntity,
+    TypeOrigin,
+};
 pub use function_metadata::FunctionMetadata;
 pub use return_variant::{Returns, ReturnsError};
-pub use sql_translatable::{ArgumentError, SqlMapping, SqlTranslatable};
+pub(crate) use sql_translatable::numeric_sql_string;
+pub use sql_translatable::{
+    ArgumentError, ReturnsRef, SqlArrayMapping, SqlArrayMappingRef, SqlMapping, SqlMappingRef,
+    SqlTranslatable, array_argument_sql, array_return_sql, setof_return_sql, table_item_sql,
+};

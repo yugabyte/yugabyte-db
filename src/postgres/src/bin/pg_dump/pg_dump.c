@@ -514,6 +514,8 @@ main(int argc, char **argv)
 	bool		no_schema = false;
 	bool		no_statistics = false;
 
+	bool		yb_with_statistics = false;
+
 	static DumpOptions dopt;
 	static int	no_serializable_deferrable = 0;
 
@@ -609,6 +611,7 @@ main(int argc, char **argv)
 		{"read-time", required_argument, NULL, 26},
 		{"rename-database", required_argument, NULL, 27},
 		{"rename-owner", required_argument, NULL, 28},
+		{"with-statistics", no_argument, NULL, 29},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -895,6 +898,14 @@ main(int argc, char **argv)
 				dopt.yb_rename_owner = pg_strdup(optarg);
 				break;
 
+			case 29:
+				/*
+				 * YB_TODO_PG19MERGE: remove once yb-controller switches to
+				 * --statistics.
+				 */
+				yb_with_statistics = true;
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -1010,7 +1021,8 @@ main(int argc, char **argv)
 	dopt.dumpSchema = ((dopt.dumpSchema && !data_only && !statistics_only) ||
 					   schema_only) && !no_schema;
 	dopt.dumpStatistics = ((dopt.dumpStatistics && !schema_only && !data_only) ||
-						   (statistics_only || with_statistics)) && !no_statistics;
+						   (statistics_only || with_statistics ||
+							yb_with_statistics)) && !no_statistics;
 
 
 	/*
@@ -1043,6 +1055,20 @@ main(int argc, char **argv)
 	else if (dopt.restrict_key)
 		pg_fatal("option %s can only be used with %s",
 				 "--restrict-key", "--format=plain");
+
+	/*
+	 * YB: --include-yb-metadata guards its statements with psql meta-commands
+	 * (\if, \else, \endif, \set, \gset, \echo).  Several are stored in a TOC
+	 * entry rather than written to the script, so a non-plain archive carries
+	 * them as text that pg_restore replays inside the restricted-mode region it
+	 * brackets the script with, where psql rejects them.  The brackets below
+	 * cannot help there, because pg_restore mints its own restrict key.
+	 *
+	 * This also covers --dump-role-checks, which the check above already
+	 * requires --include-yb-metadata for.
+	 */
+	if (dopt.include_yb_metadata && !plainText)
+		pg_fatal("option --include-yb-metadata can only be used with --format=plain");
 
 	/*
 	 * Custom and directory formats are compressed by default with gzip when
@@ -1505,11 +1531,13 @@ help(const char *progname)
 	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
-			 "                               like SPLIT details).\n"));
+			 "                               like SPLIT details).\n"
+			 "                               Requires --format=plain.\n"));
 	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
 			 "                               exists. The ROLE usage statements are skipped if\n"
 			 "                               the ROLE does not exist.\n"
 			 "                               Requires --include-yb-metadata.\n"));
+	printf(_("  --with-statistics            dump the statistics, even with -s/--schema-only\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comment commands\n"));
 	printf(_("  --no-data                    do not dump data\n"));
@@ -4046,7 +4074,8 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "DATABASE", dbname, NULL, NULL,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	PQclear(res);
 
@@ -4060,19 +4089,21 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
 	{
-		/* YB: these meta commands must run outside restricted mode. */
 		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
 	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
 							   "ROLE", PQgetvalue(res, i, 0),
 							   "DATABASE", dbname,
-							   yb_dopt->yb_dump_role_checks, outbuf);
+							   yb_dopt->yb_dump_role_checks,
+							   yb_dopt->restrict_key, outbuf);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
 	{
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\endif\n");
 		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
 	}
@@ -4748,9 +4779,9 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		PQExpBuffer yb_source_sql = query;
 
 		query = createPQExpBuffer();
-		/* YB: these meta commands must run outside restricted mode. */
 		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 
 		if (dopt->yb_dump_role_checks)
 		{
@@ -4758,11 +4789,12 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 								polinfo->polroles,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
-								query);
+								query, dopt->restrict_key);
 		}
 		else
 			appendPQExpBufferStr(query, yb_source_sql->data);
 
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\endif\n");
 		ybAppendRestrict(query, dopt->restrict_key);
 		destroyPQExpBuffer(yb_source_sql);
@@ -8715,9 +8747,10 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			indxinfo[j].indkeys = pg_malloc_array(Oid, indxinfo[j].indnattrs);
 			parseOidArray(PQgetvalue(res, j, i_indkey),
 						  indxinfo[j].indkeys, indxinfo[j].indnattrs);
-			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnattrs * sizeof(Oid));
+			/* YB */
+			indxinfo[j].indoptions = (Oid *) pg_malloc(indxinfo[j].indnkeyattrs * sizeof(Oid));
 			parseOidArray(PQgetvalue(res, j, i_indoption),
-						  indxinfo[j].indoptions, indxinfo[j].indnattrs);
+						  indxinfo[j].indoptions, indxinfo[j].indnkeyattrs);
 			indxinfo[j].indisclustered = (PQgetvalue(res, j, i_indisclustered)[0] == 't');
 			indxinfo[j].indisreplident = (PQgetvalue(res, j, i_indisreplident)[0] == 't');
 			indxinfo[j].indnullsnotdistinct = (PQgetvalue(res, j, i_indnullsnotdistinct)[0] == 't');
@@ -17079,6 +17112,7 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
 								 dopt->yb_dump_role_checks,
+								 dopt->restrict_key,
 								 q))
 		pg_fatal("could not parse default ACL list (%s)",
 				 daclinfo->dacl.acl);
@@ -17181,7 +17215,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initprivs, acldefault, owner,
-							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+							  dopt->restrict_key, sql))
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
@@ -17206,7 +17241,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 
 	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, baseacls, owner,
-						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks,
+						  dopt->restrict_key, sql))
 		pg_fatal("could not parse ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				 acls, baseacls, name, type);
 
@@ -17227,9 +17263,13 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (dopt->include_yb_metadata)
 		{
 			yb_use_roles_sql = createPQExpBuffer();
-			/* YB: these meta commands must run outside restricted mode. */
 			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
-			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\if :use_roles\n");
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
+			ybAppendBracketedBlock(yb_use_roles_sql, sql->data,
+								   dopt->restrict_key);
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
+			appendPQExpBufferStr(yb_use_roles_sql, "\\endif\n");
 			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
 		}
 
@@ -22735,8 +22775,12 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 {
 	ExtensionInfo *extinfo;
 	PQExpBuffer update_query = createPQExpBuffer();
+	PQExpBuffer conditions = createPQExpBuffer();
 	char	  **extconfigarray = NULL;
+	char	  **extconditionarray = NULL;
 	int			nconfigitems;
+	int			nconditionitems;
+	int			nfound;
 	Oid			tbloid;
 	TableInfo  *tblinfo;
 
@@ -22754,21 +22798,44 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
 			pg_fatal("error parsing OIDs of configuration relations "
 					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
+		if (!parsePGArray(extinfo->extcondition, &extconditionarray,
+						  &nconditionitems))
+			pg_fatal("error parsing conditions of configuration relations "
+					 "of extension with OID %u\n", extinfo->dobj.catId.oid);
+		if (nconfigitems != nconditionitems)
+			pg_fatal("mismatched number of configuration relations and "
+					 "conditions of extension with OID %u\n",
+					 extinfo->dobj.catId.oid);
 
+		/*
+		 * extconfig keeps the OID of a configuration relation that an
+		 * extension script dropped without ALTER EXTENSION ... DROP (e.g.
+		 * pg_hint_plan--1.6.3--1.7.0.sql recreates hint_plan.hints). Skip such
+		 * OIDs, as processExtensionTables() does, and keep extcondition
+		 * parallel to extconfig.
+		 */
+		nfound = 0;
+		resetPQExpBuffer(conditions);
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
 			tblinfo = findTableByOid(tbloid);
 			if (!tblinfo)
-				pg_fatal("configuration relation with OID %u of extension with OID %u not found\n",
-						 tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
-			if (j)
+				continue;
+			if (nfound++)
+			{
 				appendPQExpBuffer(update_query, ",");
+				appendPQExpBuffer(conditions, ",");
+			}
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
 			appendPQExpBuffer(update_query, "::regclass::oid");
+			appendStringLiteralAH(conditions, extconditionarray[j], fout);
 		}
-		appendPQExpBuffer(update_query,
-						  "]::oid[] WHERE extname = ");
+		appendPQExpBuffer(update_query, "]::oid[]");
+		if (nfound < nconfigitems)
+			appendPQExpBuffer(update_query, ", extcondition = ARRAY[%s]::text[]",
+							  conditions->data);
+		appendPQExpBuffer(update_query, " WHERE extname = ");
 		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);
 		appendPQExpBuffer(update_query, ";\n");
 
@@ -22793,7 +22860,10 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		resetPQExpBuffer(update_query);
 		if (extconfigarray)
 			free(extconfigarray);
+		if (extconditionarray)
+			free(extconditionarray);
 	}
 
 	destroyPQExpBuffer(update_query);
+	destroyPQExpBuffer(conditions);
 }

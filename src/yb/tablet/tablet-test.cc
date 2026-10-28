@@ -39,6 +39,8 @@
 
 #include <time.h>
 
+#include <atomic>
+
 #include "yb/util/logging.h"
 
 #include "yb/client/table.h"
@@ -59,18 +61,24 @@
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/write_controller.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(TEST_skip_write_stop_check_in_should_apply_write);
 
 using std::string;
 using std::vector;
+using namespace std::literals;
 
 namespace yb {
 namespace tablet {
@@ -374,6 +382,79 @@ TYPED_TEST(TestTablet, AreWritesStoppedIgnoresDelay) {
   auto delay_token = write_controller.GetDelayToken(1024);
   ASSERT_TRUE(write_controller.NeedsDelay());
   ASSERT_FALSE(this->tablet()->AreWritesStopped());
+}
+
+class TabletIteratorShutdownTest : public TabletTestBase<StringKeyTestSetup> {};
+
+// An iterator from Tablet::NewRowIterator owns the ScopedRWOperation that blocks RocksDB shutdown,
+// and a tablet shutdown parked on that operation resumes the instant it is released. Releasing it
+// before the iterator's RocksDB iterators are torn down therefore lets the shutdown destroy the DBs
+// underneath CleanupIteratorState, which crashes in DBImpl::PurgeObsoleteFiles. See issue #33496.
+TEST_F(TabletIteratorShutdownTest, ShutdownWaitsForIteratorTeardown) {
+  LocalTabletWriter writer(tablet());
+  ASSERT_OK(InsertTestRow(&writer, 0, 0));
+
+  dockv::ReaderProjection projection(schema_);
+  auto iter = ASSERT_RESULT(tablet()->NewRowIterator(projection));
+  ASSERT_OK(iter->FetchNext(nullptr));
+
+  std::atomic<bool> destroying_iter{false};
+  std::atomic<bool> checked{false};
+  std::atomic<bool> dbs_destroyed{false};
+  std::atomic<bool> destroyed_during_teardown{false};
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("Tablet::CompleteShutdownStorages:Start", [&dbs_destroyed](void*) {
+    dbs_destroyed.store(true, std::memory_order_release);
+  });
+  sync_point->SetCallBack("IntentAwareIterator::~IntentAwareIterator", [&](void*) {
+    if (!destroying_iter.load(std::memory_order_acquire)) {
+      return;
+    }
+    bool expected = false;
+    if (!checked.compare_exchange_strong(expected, true)) {
+      return;
+    }
+    // Give a shutdown that has already been let go a chance to reach the DB teardown. While the
+    // pending operation is still held -- the ordering this test asserts -- this always times out.
+    const auto deadline = CoarseMonoClock::now() + 2s * kTimeMultiplier;
+    while (CoarseMonoClock::now() < deadline && !dbs_destroyed.load(std::memory_order_acquire)) {
+      SleepFor(10ms);
+    }
+    if (dbs_destroyed.load(std::memory_order_acquire)) {
+      destroyed_during_teardown.store(true, std::memory_order_release);
+    }
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  std::atomic<bool> shutdown_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &shutdown_done] {
+    tablet()->StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+    tablet()->CompleteShutdown();
+    shutdown_done.store(true, std::memory_order_release);
+  });
+
+  // The live iterator holds the operation StartShutdownStorages waits on, so shutdown parks.
+  SleepFor(500ms * kTimeMultiplier);
+  ASSERT_FALSE(shutdown_done.load(std::memory_order_acquire));
+  ASSERT_FALSE(dbs_destroyed.load(std::memory_order_acquire));
+
+  destroying_iter.store(true, std::memory_order_release);
+  iter.reset();
+
+  thread_holder.JoinAll();
+  ASSERT_TRUE(shutdown_done.load(std::memory_order_acquire));
+  // Without this the test passes vacuously if the sync point never fires, e.g. if it is switched
+  // to DEBUG_ONLY_TEST_SYNC_POINT or sync point processing is disabled.
+  ASSERT_TRUE(checked.load(std::memory_order_acquire))
+      << "the ~IntentAwareIterator sync point never fired, so the ordering was never checked";
+  ASSERT_FALSE(destroyed_during_teardown.load(std::memory_order_acquire))
+      << "RocksDB was destroyed while the iterator's RocksDB iterators were still being torn down";
 }
 
 } // namespace tablet

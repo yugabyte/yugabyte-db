@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -35,8 +36,10 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -184,6 +187,84 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  @Parameters({"true", "false"})
+  public void testKeepOriginalTaskOfOwningChain(boolean ownerIsUpdatingTask) {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+
+    TaskInfo originalTask = new TaskInfo(TaskType.ResizeNode, null);
+    originalTask.setOwner("test");
+    originalTask.setTaskState(TaskInfo.State.Failure);
+    originalTask.setTaskParams(mapper.createObjectNode());
+    originalTask.save();
+    CustomerTask originalCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            originalTask.getUuid(),
+            TargetType.Universe,
+            CustomerTask.TaskType.ResizeNode,
+            universe.getName());
+    originalCustomerTask.setCompletionTime(new Date());
+    originalCustomerTask.save();
+
+    TaskInfo intermediateRetry = new TaskInfo(TaskType.ResizeNode, null);
+    intermediateRetry.setOwner("test");
+    intermediateRetry.setTaskState(TaskInfo.State.Failure);
+    intermediateRetry.setTaskParams(
+        mapper.createObjectNode().put("originalTaskUUID", originalTask.getUuid().toString()));
+    intermediateRetry.save();
+    CustomerTask intermediateCustomerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            intermediateRetry.getUuid(),
+            TargetType.Universe,
+            CustomerTask.TaskType.ResizeNode,
+            universe.getName());
+    intermediateCustomerTask.setCompletionTime(new Date());
+    intermediateCustomerTask.save();
+
+    TaskInfo owningTask = new TaskInfo(TaskType.ResizeNode, null);
+    owningTask.setOwner("test");
+    owningTask.setTaskState(TaskInfo.State.Failure);
+    owningTask.setTaskParams(
+        mapper.createObjectNode().put("originalTaskUUID", originalTask.getUuid().toString()));
+    owningTask.save();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          if (ownerIsUpdatingTask) {
+            details.updatingTaskUUID = owningTask.getUuid();
+          } else {
+            details.placementModificationTaskUuid = owningTask.getUuid();
+          }
+          u.setUniverseDetails(details);
+        });
+
+    taskGarbageCollector.purgeStaleTasks(
+        defaultCustomer, List.of(originalCustomerTask, intermediateCustomerTask));
+    assertNotNull(CustomerTask.get(originalCustomerTask.getId()));
+    assertTrue(TaskInfo.maybeGet(originalTask.getUuid()).isPresent());
+    assertNull(CustomerTask.get(intermediateCustomerTask.getId()));
+    assertFalse(TaskInfo.maybeGet(intermediateRetry.getUuid()).isPresent());
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.updatingTaskUUID = null;
+          details.placementModificationTaskUuid = null;
+          u.setUniverseDetails(details);
+        });
+    taskGarbageCollector.purgeStaleTasks(
+        defaultCustomer, Collections.singletonList(originalCustomerTask));
+    checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 2.0, 2.0);
+    assertNull(CustomerTask.get(originalCustomerTask.getId()));
+    assertFalse(TaskInfo.maybeGet(originalTask.getUuid()).isPresent());
+  }
+
+  @Test
   @Parameters({"SoftwareUpgrade", "RollbackUpgrade", "FinalizeUpgrade"})
   public void testDeleteUpgradeTask(CustomerTask.TaskType taskType) {
     TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse, null);
@@ -212,5 +293,91 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 1.0, 1.0);
     assertFalse(TaskInfo.maybeGet(parentTask.getUuid()).isPresent());
     assertNull(CustomerTask.get(customerTask.getId()));
+  }
+
+  private CustomerTask createCompletedUniverseTask(
+      Universe universe, CustomerTask.TaskType taskType, Date createTime) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
+    taskInfo.setOwner("test");
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.setTaskParams(mapper.createObjectNode());
+    taskInfo.save();
+    CustomerTask customerTask =
+        CustomerTask.create(
+            defaultCustomer,
+            universe.getUniverseUUID(),
+            taskInfo.getUuid(),
+            TargetType.Universe,
+            taskType,
+            universe.getName());
+    customerTask.setCreateTime(createTime);
+    customerTask.setCompletionTime(createTime);
+    customerTask.save();
+    return customerTask;
+  }
+
+  @Test
+  @Parameters({"SoftwareUpgrade", "RollbackUpgrade", "FinalizeUpgrade"})
+  public void testDeleteOlderUpgradeTaskOfSameType(CustomerTask.TaskType taskType) {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Instant now = Instant.now();
+    CustomerTask olderTask =
+        createCompletedUniverseTask(universe, taskType, Date.from(now.minus(Duration.ofDays(2))));
+    CustomerTask newerTask =
+        createCompletedUniverseTask(universe, taskType, Date.from(now.minus(Duration.ofDays(1))));
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, List.of(olderTask, newerTask));
+    checkCounters(defaultCustomer.getUuid(), 1.0, 0.0, 1.0, 1.0);
+    assertNull(CustomerTask.get(olderTask.getId()));
+    assertFalse(TaskInfo.maybeGet(olderTask.getTaskUUID()).isPresent());
+    assertNotNull(CustomerTask.get(newerTask.getId()));
+    assertTrue(TaskInfo.maybeGet(newerTask.getTaskUUID()).isPresent());
+  }
+
+  @Test
+  public void testKeepLatestUpgradeTaskOfEachType() {
+    // An older SoftwareUpgrade and a newer FinalizeUpgrade are each the latest of their type.
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Instant now = Instant.now();
+    CustomerTask upgradeTask =
+        createCompletedUniverseTask(
+            universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            Date.from(now.minus(Duration.ofDays(2))));
+    CustomerTask finalizeTask =
+        createCompletedUniverseTask(
+            universe,
+            CustomerTask.TaskType.FinalizeUpgrade,
+            Date.from(now.minus(Duration.ofDays(1))));
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, List.of(upgradeTask, finalizeTask));
+    checkCounters(defaultCustomer.getUuid(), 1.0, 0.0, null, null);
+    assertNotNull(CustomerTask.get(upgradeTask.getId()));
+    assertNotNull(CustomerTask.get(finalizeTask.getId()));
+  }
+
+  @Test
+  public void testKeepOlderUpgradeTaskOwningUniverse() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Instant now = Instant.now();
+    CustomerTask owningTask =
+        createCompletedUniverseTask(
+            universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            Date.from(now.minus(Duration.ofDays(2))));
+    CustomerTask newerTask =
+        createCompletedUniverseTask(
+            universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            Date.from(now.minus(Duration.ofDays(1))));
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.placementModificationTaskUuid = owningTask.getTaskUUID();
+          u.setUniverseDetails(details);
+        });
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, List.of(owningTask, newerTask));
+    checkCounters(defaultCustomer.getUuid(), 1.0, 0.0, null, null);
+    assertNotNull(CustomerTask.get(owningTask.getId()));
+    assertNotNull(CustomerTask.get(newerTask.getId()));
   }
 }

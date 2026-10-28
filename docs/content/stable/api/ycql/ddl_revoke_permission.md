@@ -66,9 +66,9 @@ ycqlsh:example> REVOKE CREATE ON KEYSPACE qa FROM fred;
 
 ## See also
 
-- [`ALTER ROLE`](../ddl_alter_role)
-- [`DROP ROLE`](../ddl_drop_role)
-- [`CREATE ROLE`](../ddl_create_role)
-- [`GRANT ROLE`](../ddl_grant_role)
-- [`REVOKE ROLE`](../ddl_revoke_role)
-- [`GRANT PERMISSION`](../ddl_grant_permission)
+- [ALTER ROLE](../ddl_alter_role)
+- [DROP ROLE](../ddl_drop_role)
+- [CREATE ROLE](../ddl_create_role)
+- [GRANT ROLE](../ddl_grant_role)
+- [REVOKE ROLE](../ddl_revoke_role)
+- [GRANT PERMISSION](../ddl_grant_permission)

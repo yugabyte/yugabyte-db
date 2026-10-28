@@ -374,3 +374,10 @@ VALUES
     ('[80, 85]'),  -- Length 5
     ('[90, 100]'); -- Length 10
 ANALYZE range_test;
+
+-- #33665: a newline in a quoted identifier must survive --dump-role-checks.
+-- Role names cannot contain newlines, so use a table name.
+CREATE TABLE "tbl
+x" (k INT PRIMARY KEY);
+GRANT SELECT ON "tbl
+x" TO rls_user;

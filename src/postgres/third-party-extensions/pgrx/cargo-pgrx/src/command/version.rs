@@ -12,7 +12,7 @@ use pgrx_pg_config::{PgConfig, Pgrx, SUPPORTED_VERSIONS};
 pub(crate) fn pgrx_default() -> eyre::Result<Pgrx> {
     let mut pgrx = Pgrx::default();
 
-    rss::PostgreSQLVersionRss::new(&SUPPORTED_VERSIONS())?
+    rss::PostgreSQLVersionRss::try_new(&SUPPORTED_VERSIONS())?
         .into_iter()
         .for_each(|version| pgrx.push(PgConfig::from(version)));
 
@@ -32,18 +32,22 @@ mod rss {
 
     #[cfg(not(target_os = "windows"))]
     fn download_url(major: u16, minor: u16) -> String {
-        format!("https://ftp.postgresql.org/pub/source/v{major}.{minor}/postgresql-{major}.{minor}.tar.bz2")
+        format!(
+            "https://ftp.postgresql.org/pub/source/v{major}.{minor}/postgresql-{major}.{minor}.tar.bz2"
+        )
     }
 
     #[cfg(target_os = "windows")]
     fn download_url(major: u16, minor: u16) -> String {
-        format!("https://get.enterprisedb.com/postgresql/postgresql-{major}.{minor}-1-windows-x64-binaries.zip")
+        format!(
+            "https://get.enterprisedb.com/postgresql/postgresql-{major}.{minor}-1-windows-x64-binaries.zip"
+        )
     }
 
     pub(super) struct PostgreSQLVersionRss;
 
     impl PostgreSQLVersionRss {
-        pub(super) fn new(supported_versions: &[PgVersion]) -> eyre::Result<Vec<PgVersion>> {
+        pub(super) fn try_new(supported_versions: &[PgVersion]) -> eyre::Result<Vec<PgVersion>> {
             static VERSIONS_RSS_URL: &str = "https://www.postgresql.org/versions.rss";
 
             let http_client = build_agent_for_url(VERSIONS_RSS_URL)?;
@@ -55,10 +59,7 @@ mod rss {
             let mut buf = Vec::new();
             let _count = response.body_mut().as_reader().read_to_end(&mut buf)?;
             let body = String::from_utf8(buf)?;
-            let rss: Rss = match serde_xml_rs::from_str(&body) {
-                Ok(rss) => rss,
-                Err(e) => return Err(e.into()),
-            };
+            let rss: Rss = serde_xml_rs::from_str(&body)?;
 
             let mut versions: BTreeMap<u16, PgVersion> = BTreeMap::from_iter(
                 supported_versions.iter().map(|pgver| (pgver.major, pgver.clone())),
@@ -75,12 +76,12 @@ mod rss {
                 let major = major.unwrap().parse::<u16>().unwrap_or_default();
                 let minor = minor.unwrap().parse::<u16>().unwrap_or_default();
 
-                if let Some(known_pgver) = versions.get_mut(&major) {
-                    if matches!(known_pgver.minor, PgMinorVersion::Latest) {
-                        // fill in the latest minor version number and its url
-                        known_pgver.minor = PgMinorVersion::Release(minor);
-                        known_pgver.url = Some(Url::parse(&download_url(major, minor))?);
-                    }
+                if let Some(known_pgver) = versions.get_mut(&major)
+                    && matches!(known_pgver.minor, PgMinorVersion::Latest)
+                {
+                    // fill in the latest minor version number and its url
+                    known_pgver.minor = PgMinorVersion::Release(minor);
+                    known_pgver.url = Some(Url::parse(&download_url(major, minor))?);
                 }
             }
 

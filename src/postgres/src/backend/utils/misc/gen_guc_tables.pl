@@ -47,6 +47,7 @@ sub validate_guc_entry
 
 	my %required_by_type = (
 		int => [qw(min max)],
+		oid => [qw(min max)], # YB: PGC_OID requires min and max.
 		real => [qw(min max)],
 		enum => [qw(options)],
 		bool => [],      # no extra required fields
@@ -158,6 +159,9 @@ sub print_table
 		  if $entry->{type} eq 'int' || $entry->{type} eq 'real';
 		printf $ofh "\t\t\t.max = %s,\n", $entry->{max}
 		  if $entry->{type} eq 'int' || $entry->{type} eq 'real';
+		# YB: oid has min and max, like int and real.
+		printf $ofh "\t\t\t.min = %s,\n", $entry->{min} if $entry->{type} eq 'oid';
+		printf $ofh "\t\t\t.max = %s,\n", $entry->{max} if $entry->{type} eq 'oid';
 		printf $ofh "\t\t\t.options = %s,\n", $entry->{options}
 		  if $entry->{type} eq 'enum';
 		printf $ofh "\t\t\t.check_hook = %s,\n", $entry->{check_hook}

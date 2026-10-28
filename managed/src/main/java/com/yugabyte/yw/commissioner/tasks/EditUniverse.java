@@ -122,6 +122,11 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      // Before VM creation, so that a cloud permission error fails the edit first. This creates the
+      // load balancers of new regions and reconciles the existing ones.
+      for (Cluster cluster : clusters) {
+        createEnsureManagedLoadBalancerTasks(cluster);
+      }
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -163,6 +168,11 @@ public class EditUniverse extends EditUniverseTaskBase {
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
         createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
+        // The load balancers were reconciled above with the old ports.
+        for (Cluster cluster : clusters) {
+          createEnsureManagedLoadBalancerTasks(cluster);
+        }
+        createManageLoadBalancerTasks(createLoadBalancerMap(taskParams(), null, null, null));
       }
       if (primaryRFChanged.get()) {
         createMasterLeaderStepdownTask();
@@ -173,6 +183,16 @@ public class EditUniverse extends EditUniverseTaskBase {
       // is down externally for >15 minutes and the master leader then marks the node down for
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Re-configure cross-cloud federated IAM if the universe is already federated, so nodes added
+      // or changed by this edit match. Keyed off the persisted flag (not the provider) to avoid a
+      // mixed state.
+      if (isUniverseFederationConfigured()) {
+        for (Cluster cluster : taskParams().clusters) {
+          createConfigureCloudFederationTasks(
+              cluster.userIntent, taskParams().getNodesInCluster(cluster.uuid), true);
+        }
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

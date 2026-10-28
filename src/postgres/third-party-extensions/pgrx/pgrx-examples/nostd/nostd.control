@@ -1,5 +1,5 @@
 comment = 'nostd:  Created by pgrx'
 default_version = '1.0'
-module_pathname = '$libdir/nostd'
+module_pathname = 'nostd'
 relocatable = false
 superuser = false

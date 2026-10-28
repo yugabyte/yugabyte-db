@@ -68,13 +68,15 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 			excludePADatabase = false
 			excludePAFiles = false
 		}
+		script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+			common.GetActiveSymlink(), state.Version)
+		fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
 		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
-			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
-				common.GetActiveSymlink(), state.Version),
+			script,
 			common.GetBaseInstall()+"/data/yb-platform",
 			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
 			common.GetActiveSymlink()+"/pgsql/bin/pg_restore",
-			excludePADatabase, excludePAFiles)
+			excludePADatabase, excludePAFiles, fips)
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
@@ -169,10 +171,7 @@ func upgradeCmd() *cobra.Command {
 			// that were actually running before the upgrade.
 			var preUpgradeServices []components.Service
 			for s := range serviceManager.Services() {
-				if s.Name() == "node-exporter" && !state.Services.NodeExporter {
-					continue
-				}
-				if s.Name() == "yb-perf-advisor" && !state.Services.PerfAdvisor {
+				if opt := optionalServiceByName(s.Name()); opt != nil && !opt.installed(state) {
 					continue
 				}
 				preUpgradeServices = append(preUpgradeServices, s)
@@ -216,12 +215,14 @@ func upgradeCmd() *cobra.Command {
 					excludePADatabase = false
 					excludePAFiles = false
 				}
-				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
-					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
+				script := fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+					common.GetActiveSymlink(), state.Version)
+				fips := viper.GetBool("fips.enabled") && common.BackupScriptSupportsFips(script)
+				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(), script,
 					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
 					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
 					true, true, false, true, false, usePromProtocol,
-					excludePADatabase, excludePAFiles); errB != nil {
+					excludePADatabase, excludePAFiles, fips); errB != nil {
 					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}
@@ -298,44 +299,11 @@ func upgradeCmd() *cobra.Command {
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
-			// If node-exporter is enabled now but was not installed in the prior
-			// install, run a full Install (which extracts the package, generates
-			// the systemd unit, etc.) instead of Upgrade, which assumes a previous
-			// install. After install we also flip state.Services so future upgrades
-			// see node-exporter as installed.
-			neFreshInstall := !state.Services.NodeExporter && viper.GetBool("nodeExporter.enabled")
+			// Upgrade doubles as the first install of an optional service that was enabled since the
+			// previous upgrade (see components.Service).
 			serviceActionFnc("upgrade", func(service components.Service) error {
-				if neFreshInstall && service.Name() == "node-exporter" {
-					log.Info("node-exporter was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.NodeExporter = true
-					return nil
-				}
-				return service.Upgrade()
-			})
-
-			// If Perf Advisor is enabled now but was not installed in the prior
-			// install, run a full Install (which provisions the TLS keystore,
-			// extracts the package, etc.) instead of Upgrade, which assumes a
-			// previous install. After install we also need to flip state.Services
-			// so future upgrades see PA as installed.
-			paFreshInstall := !state.Services.PerfAdvisor && viper.GetBool("perfAdvisor.enabled")
-			serviceActionFnc("upgrade", func(service components.Service) error {
-				if paFreshInstall && service.Name() == "yb-perf-advisor" {
-					log.Info("Perf Advisor was not installed previously; running first-time install.")
-					if err := service.Install(); err != nil {
-						return err
-					}
-					if err := service.Initialize(); err != nil {
-						return err
-					}
-					state.Services.PerfAdvisor = true
-					return nil
+				if opt := optionalServiceByName(service.Name()); opt != nil && !opt.installed(state) {
+					log.Info(service.Name() + " was not installed previously; installing it now.")
 				}
 				return service.Upgrade()
 			})
@@ -394,6 +362,9 @@ func upgradeCmd() *cobra.Command {
 			state.CurrentStatus = ybactlstate.InstalledStatus
 			state.Version = ybactl.Version
 			state.RestoreDBOnRollback = false
+			for _, opt := range optionalServices {
+				opt.setInstalled(state, opt.enabled())
+			}
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}

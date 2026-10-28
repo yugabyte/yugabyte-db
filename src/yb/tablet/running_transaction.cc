@@ -496,9 +496,12 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
   result.reserve(status_waiters_.size());
   auto w = status_waiters_.begin();
   for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
+    // For a waiter newer than this request, GetStatusAt returning none means the txn was PENDING
+    // at time_of_status < global_limit_ht. Even if read_ht <= time_of_status, the txn may still
+    // commit before global_limit_ht and before the waiter's read began, so keep the waiter for
+    // the next request.
     if (it->serial_no <= serial_no ||
-        GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
-        it->read_ht <= time_of_status) {
+        GetStatusAt(it->global_limit_ht, time_of_status, transaction_status)) {
       result.push_back(std::move(*it));
     } else {
       if (w != it) {

@@ -32,6 +32,7 @@
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/libbacktrace_util.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/monotime.h"
@@ -61,7 +62,10 @@ DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
 // cause trouble in TSAN builds (deadlock during collection). But the alternative (llvm libunwind)
 // currently has issues with BOLT-ed binaries that we use for releases, and backtrace() is what
 // we have been using in the past. So disabling in non-sanitizer builds until #32197 is resolved.
-DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsSanitizer(),
+// It is also disabled in ASAN builds, where it segfaults inside DwarfInstructions while unwinding a
+// thread that the signal interrupted in the middle of the ASAN runtime's own stack collection,
+// which happens on every allocation and deallocation.
+DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsTsan(),
     "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
 TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
 TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);
@@ -78,10 +82,16 @@ namespace {
 
 YB_DEFINE_ENUM(ThreadStackState, (kNone)(kSendFailed)(kReady));
 
+// Why the signal handler could not collect a stack.
+enum class EmptyStackReason : uint8_t { kNone, kInAllocDealloc, kCollectingStack };
+
 struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
   ThreadIdForStack tid;
   StackTrace stack;
+  EmptyStackReason empty_reason;
 };
+
+thread_local bool is_collecting_stack = false;
 
 class CompletionFlag {
  public:
@@ -193,25 +203,27 @@ struct ThreadStackHelper {
         if (entry->stack) {
           entry_out = entry->stack;
         } else {
-          // If the thread is in the middle of collecting stack trace for any other reason then it
-          // will return an empty output.
-          static const Status status = STATUS(
-              TryAgain,
-              "Thread did not respond: maybe it was in the middle of a stack trace collection");
-          entry_out = status;
+          static const Status in_alloc_status = STATUS(TryAgain, kThreadStackInAllocDeallocMsg);
+          static const Status collecting_status = STATUS(TryAgain, kThreadStackCollectingMsg);
+          static const Status unknown_status = STATUS(TryAgain, kThreadStackUnknownReasonMsg);
+          entry_out = entry->empty_reason == EmptyStackReason::kInAllocDealloc ? in_alloc_status
+              : entry->empty_reason == EmptyStackReason::kCollectingStack ? collecting_status
+              : unknown_status;
         }
       }
       allocated.Push(entry);
     }
   }
 
-  void RecordStackTrace(const StackTrace& stack_trace) {
+  void RecordStackTrace(
+      const StackTrace& stack_trace, EmptyStackReason empty_reason = EmptyStackReason::kNone) {
     auto* entry = allocated.Pop();
     // If entry is nullptr, that means there are not enough allocated entries. In that case, don't
     // write a log message since we are in a signal handler.
     if (entry) {
       entry->tid = Thread::CurrentThreadIdForStack();
       entry->stack = stack_trace;
+      entry->empty_reason = empty_reason;
       collected.Push(entry);
     }
 
@@ -232,11 +244,16 @@ void HandleStackTraceSignal(int signum) {
 #if YB_GOOGLE_TCMALLOC
   // TODO(#17889): retry in this case. For now, just produce an empty stack trace.
   if (tcmalloc::MallocExtension::IsCurThreadInAllocDealloc()) {
-    thread_stack_helper.RecordStackTrace(stack_trace);
+    thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kInAllocDealloc);
     errno = old_errno;
     return;
   }
 #endif
+  if (is_collecting_stack) {
+    thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kCollectingStack);
+    errno = old_errno;
+    return;
+  }
   stack_trace.Collect(2);
 
   thread_stack_helper.RecordStackTrace(stack_trace);
@@ -283,6 +300,11 @@ bool InitSignalHandlerUnlocked(int signum) {
                    << " is already in use: "
                    << "YB will not produce thread stack traces.";
     } else {
+      // The first backtrace() call dlopen()s the unwinder, which allocates and is not safe to do
+      // from the signal handler, so force that initialization to happen here.
+      void* dummy_frames[1];
+      backtrace(dummy_frames, arraysize(dummy_frames));
+
       // No one appears to be using the signal. This is racy, but there is no
       // atomic swap capability.
       sighandler_t old_handler = signal(g_stack_trace_signum, HandleStackTraceSignal);
@@ -303,8 +325,6 @@ bool InitSignalHandlerUnlocked(int signum) {
 // ------------------------------------------------------------------------------------------------
 
 void StackTrace::Collect(int skip_frames) {
-  static thread_local bool is_collecting_stack = false;
-
   if (is_collecting_stack) {
     // It is unsafe to call backtrace recursively. Return an empty stack trace.
     // A thread can get here if while it was collecting its own stack, it got interrupted by a
@@ -402,7 +422,7 @@ string StackTrace::ToLogFormatHexString() const {
   string buf;
   for (int i = 0; i < num_frames_; i++) {
     void* pc = frames_[i];
-    StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+    buf += Format("    @ $0\n", FormatStackTraceAddress(pc));
   }
   return buf;
 }
@@ -431,8 +451,7 @@ Result<StackTrace> ThreadStack(ThreadIdForStack tid) {
 }
 
 std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>& tids) {
-  static const Status default_status = STATUS(
-      RuntimeError, "Thread did not respond: maybe it is blocking signals");
+  static const Status default_status = STATUS(RuntimeError, kThreadStackTimedOutMsg);
 
   std::vector<Result<StackTrace>> result(tids.size(), default_status);
   std::lock_guard execution_lock(thread_stack_helper.mutex);

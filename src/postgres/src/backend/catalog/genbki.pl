@@ -812,8 +812,128 @@ foreach my $catname (sort keys %syscache_catalogs)
 print $syscache_info_fh "\n";
 print $syscache_info_fh "static const struct cachedesc cacheinfo[] = {\n";
 
+# YB: Syscache IDs are sent between nodes in catcache invalidation messages,
+# so during a YSQL upgrade, nodes on the old and new versions must agree on
+# them.  Upstream assigns IDs in alphabetical order, which renumbers existing
+# caches whenever one is added.  Instead, use this fixed order: the first 86
+# entries match the PG15-based release, and caches added later go at the end.
+# Never remove or reorder entries; append new syscaches to the end of the list.
+# Any syscache missing from the list is appended after it in alphabetical
+# order, and the static_assert in YbCheckCatalogCacheIds() (syscache.c)
+# catches that until the list is updated.
+my @yb_ordered_syscaches = qw(
+	AGGFNOID
+	AMNAME
+	AMOID
+	AMOPOPID
+	AMOPSTRATEGY
+	AMPROCNUM
+	ATTNAME
+	ATTNUM
+	AUTHMEMMEMROLE
+	AUTHMEMROLEMEM
+	AUTHNAME
+	AUTHOID
+	CASTSOURCETARGET
+	CLAAMNAMENSP
+	CLAOID
+	COLLNAMEENCNSP
+	COLLOID
+	CONDEFAULT
+	CONNAMENSP
+	CONSTROID
+	CONVOID
+	DATABASEOID
+	DEFACLROLENSPOBJ
+	ENUMOID
+	ENUMTYPOIDNAME
+	EVENTTRIGGERNAME
+	EVENTTRIGGEROID
+	FOREIGNDATAWRAPPERNAME
+	FOREIGNDATAWRAPPEROID
+	FOREIGNSERVERNAME
+	FOREIGNSERVEROID
+	FOREIGNTABLEREL
+	INDEXRELID
+	LANGNAME
+	LANGOID
+	NAMESPACENAME
+	NAMESPACEOID
+	OPERNAMENSP
+	OPEROID
+	OPFAMILYAMNAMENSP
+	OPFAMILYOID
+	PARAMETERACLNAME
+	PARAMETERACLOID
+	PARTRELID
+	PROCNAMEARGSNSP
+	PROCOID
+	PUBLICATIONNAME
+	PUBLICATIONNAMESPACE
+	PUBLICATIONNAMESPACEMAP
+	PUBLICATIONOID
+	PUBLICATIONREL
+	PUBLICATIONRELMAP
+	RANGEMULTIRANGE
+	RANGETYPE
+	RELNAMENSP
+	RELOID
+	REPLORIGIDENT
+	REPLORIGNAME
+	RULERELNAME
+	SEQRELID
+	STATEXTDATASTXOID
+	STATEXTNAMENSP
+	STATEXTOID
+	STATRELATTINH
+	SUBSCRIPTIONNAME
+	SUBSCRIPTIONOID
+	SUBSCRIPTIONRELMAP
+	TABLESPACEOID
+	TRFOID
+	TRFTYPELANG
+	TSCONFIGMAP
+	TSCONFIGNAMENSP
+	TSCONFIGOID
+	TSDICTNAMENSP
+	TSDICTOID
+	TSPARSERNAMENSP
+	TSPARSEROID
+	TSTEMPLATENAMENSP
+	TSTEMPLATEOID
+	TYPENAMENSP
+	TYPEOID
+	USERMAPPINGOID
+	USERMAPPINGUSERSERVER
+	YBTABLEGROUPOID
+	YBCONSTRAINTRELIDTYPIDNAME
+	EXTENSIONOID
+	EXTENSIONNAME
+	PROPGRAPHELALIAS
+	PROPGRAPHELEMENTLABELELEMENTLABEL
+	PROPGRAPHELOID
+	PROPGRAPHLABELNAME
+	PROPGRAPHLABELOID
+	PROPGRAPHLABELPROP
+	PROPGRAPHPROPNAME
+	PROPGRAPHPROPOID
+);
+
+# Skipping a removed syscache would silently shift every later ID, so fail
+# instead.
+foreach my $syscache (@yb_ordered_syscaches)
+{
+	die "syscache $syscache in \@yb_ordered_syscaches no longer exists; "
+	  . "keep its ID reserved instead of removing it\n"
+	  unless exists $syscaches{$syscache};
+}
+
+# Find any new syscaches not in the hardcoded YB list
+my %known_syscaches = map { $_ => 1 } @yb_ordered_syscaches;
+my @new_syscaches = sort grep { !$known_syscaches{$_} } keys %syscaches;
+
 my $last_syscache;
-foreach my $syscache (sort keys %syscaches)
+foreach my $syscache (@yb_ordered_syscaches, @new_syscaches)
 {
 	if (not defined $last_syscache)
 	{

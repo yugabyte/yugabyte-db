@@ -137,7 +137,8 @@ secure_open_server(Port *port)
 
 	INJECTION_POINT("backend-ssl-startup", NULL);
 
-	r = be_tls_open_server(port);
+	/* YB: Not a Connection Manager backend; run the TLS handshake here */
+	r = be_tls_open_server(port, NULL);
 
 	if (port->raw_buf_remaining > 0)
 	{

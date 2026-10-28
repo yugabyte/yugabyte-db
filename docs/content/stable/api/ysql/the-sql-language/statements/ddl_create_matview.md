@@ -72,5 +72,5 @@ yugabyte=# SELECT * FROM m1;
 
 ## See also
 
-- [`REFRESH MATERIALIZED VIEW`](../ddl_refresh_matview)
-- [`DROP MATERIALIZED VIEW`](../ddl_drop_matview)
+- [REFRESH MATERIALIZED VIEW](../ddl_refresh_matview)
+- [DROP MATERIALIZED VIEW](../ddl_drop_matview)

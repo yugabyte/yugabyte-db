@@ -10,11 +10,11 @@
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
 
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
 use pgrx::prelude::*;
 use pgrx_pg_config::{
-    cargo::PgrxManifestExt, createdb, get_c_locale_flags, get_target_dir, PgConfig, Pgrx,
+    PgConfig, Pgrx, cargo::PgrxManifestExt, createdb, get_c_locale_flags, get_target_dir,
 };
 use postgres::error::DbError;
 use std::collections::HashMap;
@@ -38,6 +38,32 @@ struct SetupState {
 }
 
 static TEST_MUTEX: OnceLock<Mutex<SetupState>> = OnceLock::new();
+
+/// The dynamically chosen port for this test binary's Postgres instance.
+/// Set once during test framework initialization, read by every connection.
+static TEST_PORT: OnceLock<u16> = OnceLock::new();
+
+/// A reserved TCP port held open by a bound listener. Dropping the
+/// reservation releases the port so Postgres (or anything else) can
+/// bind it.
+struct PortReservation {
+    _listener: std::net::TcpListener,
+    port: u16,
+}
+
+impl PortReservation {
+    /// Bind an ephemeral port and hold it open until this value is dropped.
+    fn new() -> eyre::Result<Self> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .wrap_err("failed to bind to an ephemeral port for test Postgres")?;
+        let port = listener.local_addr()?.port();
+        Ok(Self { _listener: listener, port })
+    }
+
+    fn port(&self) -> u16 {
+        self.port
+    }
+}
 
 // The goal of this closure is to allow "wrapping" of anything that might issue
 // an SQL simple_query or query using either a postgres::Client or
@@ -150,8 +176,11 @@ pub fn run_test(
                     return Ok(());
                 }
 
-                let pg_location = dberror.file().unwrap_or("<unknown>").to_string();
+                let mut pg_location = dberror.file().unwrap_or("<unknown>").to_string();
                 let rust_location = dberror.where_().unwrap_or("<unknown>").to_string();
+                if let Some(lineno) = dberror.line() {
+                    pg_location += &format!(":{lineno}");
+                }
 
                 (pg_location, rust_location, received_error_message.to_string())
             } else {
@@ -165,11 +194,11 @@ pub fn run_test(
         let session_loglines = format_loglines(&session_id, &loglines);
         panic!(
             "\n\nPostgres Messages:\n{system_loglines}\n\nTest Function Messages:\n{session_loglines}\n\nClient Error:\n{message}\npostgres location: {pg_location}\nrust location: {rust_location}\n\n",
-                system_loglines = system_loglines.dimmed().white(),
-                session_loglines = session_loglines.cyan(),
-                message = message.bold().red(),
-                pg_location = pg_location.dimmed().white(),
-                rust_location = rust_location.yellow()
+            system_loglines = system_loglines.dimmed().white(),
+            session_loglines = session_loglines.cyan(),
+            message = message.bold().red(),
+            pg_location = pg_location.dimmed().white(),
+            rust_location = rust_location.yellow()
         );
     } else if let Some(message) = expected_error {
         // we expected an ERROR, but didn't get one
@@ -222,10 +251,17 @@ fn initialize_test_framework(
     postgresql_conf: Vec<&'static str>,
 ) -> eyre::Result<()> {
     shutdown::register_shutdown_hook();
+
+    // reserve a free port for this test binary's postgres instance.
+    // the reservation holds the port open through install + initdb so
+    // nothing else can claim it before postgres starts.
+    let port_reservation = PortReservation::new()?;
+    TEST_PORT.set(port_reservation.port()).expect("TEST_PORT already initialized");
+
     install_extension()?;
     initdb(postgresql_conf)?;
 
-    let system_session_id = start_pg(state.loglines.clone())?;
+    let system_session_id = start_pg(state.loglines.clone(), port_reservation)?;
     let pg_config = get_pg_config()?;
     dropdb()?;
     createdb(&pg_config, get_pg_dbname(), true, false, get_runas())?;
@@ -240,13 +276,18 @@ fn get_pg_config() -> eyre::Result<PgConfig> {
 
     let pg_version = pg_sys::get_pg_major_version_num();
 
-    let pg_config = pgrx
+    let mut pg_config = pgrx
         .get(&format!("pg{pg_version}"))
         .wrap_err_with(|| {
             format!("Error getting pg_config: {pg_version} is not a valid postgres version")
         })
         .unwrap()
         .clone();
+
+    // if a dynamic test port was chosen, override the default
+    if let Some(&port) = TEST_PORT.get() {
+        pg_config = pg_config.with_test_port(port);
+    }
 
     Ok(pg_config)
 }
@@ -312,7 +353,7 @@ fn install_extension() -> eyre::Result<()> {
 
     features.extend(cargo_test_args.features.iter().cloned());
 
-    let mut command = cargo_pgrx();
+    let mut command = cargo_pgrx()?;
     command
         .arg("install")
         .arg("--test")
@@ -407,7 +448,7 @@ fn maybe_make_pgdata<P: AsRef<Path>>(pgdata: P) -> eyre::Result<bool> {
 
         let mut mkdir = sudo_command(&runas);
         mkdir.arg("mkdir").arg("-p").arg(pgdata).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let command_str = format!("{:?}", mkdir);
+        let command_str = format!("{mkdir:?}");
         println!("{} {}", "     Running".bold().green(), command_str);
         let child = mkdir.spawn()?;
         let output = child.wait_with_output()?;
@@ -525,7 +566,7 @@ fn modify_postgresql_conf(pgdata: PathBuf, postgresql_conf: Vec<&'static str>) -
     Ok(())
 }
 
-fn start_pg(loglines: LogLines) -> eyre::Result<String> {
+fn start_pg(loglines: LogLines, port_reservation: PortReservation) -> eyre::Result<String> {
     wait_for_pidfile()?;
 
     #[cfg(target_family = "unix")]
@@ -549,7 +590,8 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
         }
         let mut file = builder.tempfile()?;
         file.write_all(b"#!/usr/bin/sh\n")?;
-        let mut command = Command::new("valgrind");
+        let mut command = Command::new("exec");
+        command.arg("valgrind");
         command.arg("--leak-check=no");
         command.arg("--gen-suppressions=all");
         command.arg("--time-stamp=yes");
@@ -568,10 +610,17 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
         None
     };
 
+    let test_port = pg_config.test_port().expect("unable to determine test port");
+    println!(
+        "{} test Postgres on port {}",
+        "    Starting".bold().green(),
+        test_port.to_string().bold().cyan()
+    );
+
     let postmaster_args = vec![
         "-i".into(),
         "-p".into(),
-        pg_config.test_port().expect("unable to determine test port").to_string(),
+        test_port.to_string(),
         "-h".into(),
         pg_config.host().into(),
         "-c".into(),
@@ -584,9 +633,11 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
         #[inline]
         fn accept_envar(var: &str) -> bool {
             // taken from https://doc.rust-lang.org/cargo/reference/environment-variables.html
+            // and https://releases.llvm.org/12.0.1/tools/clang/docs/SourceBasedCodeCoverage.html
             var.starts_with("CARGO")
                 || var.starts_with("RUST")
                 || var.starts_with("DEP_")
+                || var.starts_with("LLVM_")
                 || ["OUT_DIR", "TARGET", "HOST", "NUM_JOBS", "OPT_LEVEL", "DEBUG", "PROFILE"]
                     .contains(&var)
         }
@@ -618,10 +669,7 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
         .arg("-l")
         .arg(pipe.path());
     if let Some(postmaster_path) = postmaster_path.as_ref() {
-        command
-            .arg("-W") // pg_ctl cannot detect if postmaster starts
-            .arg("-p")
-            .arg(postmaster_path);
+        command.arg("-p").arg(postmaster_path);
     }
     #[cfg(target_os = "windows")]
     {
@@ -630,6 +678,9 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
     }
 
     let command_str = format!("{command:?}");
+
+    // release the port so postgres can bind it
+    drop(port_reservation);
 
     #[cfg(target_family = "unix")]
     let (output, mut pipe) = {
@@ -671,6 +722,8 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
     }
 
     add_shutdown_hook(|| {
+        let pgdata = get_pgdata_path().unwrap();
+
         let pg_config = get_pg_config().unwrap();
         let pg_ctl = pg_config.pg_ctl_path().unwrap();
 
@@ -686,7 +739,7 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
             .stderr(Stdio::piped())
             .arg("stop")
             .arg("-D")
-            .arg(get_pgdata_path().unwrap().to_str().unwrap())
+            .arg(pgdata.to_str().unwrap())
             .arg("-m")
             .arg("fast");
         let command_str = format!("{command:?}");
@@ -698,6 +751,9 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
                 String::from_utf8(output.stderr).unwrap()
             );
         }
+
+        // clean up the per-invocation PGDATA directory
+        let _ = std::fs::remove_dir_all(&pgdata);
     });
 
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -715,7 +771,10 @@ fn start_pg(loglines: LogLines) -> eyre::Result<String> {
                 if sender.send(session_id.clone()).is_err() {
                     // The channel is closed.  This is really early in the startup process
                     // and likely indicates that a test crashed Postgres
-                    panic!("{}: `monitor_pg()`:  failed to send back session_id `{session_id}`.  Did Postgres crash?", "ERROR".red().bold());
+                    panic!(
+                        "{}: `monitor_pg()`:  failed to send back session_id `{session_id}`.  Did Postgres crash?",
+                        "ERROR".red().bold()
+                    );
                 }
                 is_started_yet = true;
             }
@@ -765,7 +824,10 @@ fn wait_for_pidfile() -> Result<(), eyre::Report> {
     while pidfile.exists() {
         if retries > MAX_PIDFILE_RETRIES {
             // break out and try to start postgres anyways, maybe it'll report a decent error about what's going on
-            eprintln!("`{}` has existed for ~10s.  There might be some problem with the pgrx testing Postgres instance", pidfile.display());
+            eprintln!(
+                "`{}` has existed for ~10s.  There might be some problem with the pgrx testing Postgres instance",
+                pidfile.display()
+            );
             break;
         }
         eprintln!("`{}` still exists.  Waiting...", pidfile.display());
@@ -845,7 +907,7 @@ fn get_extension_name() -> eyre::Result<String> {
     // https://github.com/rust-lang/cargo/issues/45
     let path = PathBuf::from(dir).join("Cargo.toml");
     let name = pgrx_pg_config::cargo::read_manifest(path)?.lib_name()?;
-    Ok(name.replace('-', "_"))
+    Ok(name)
 }
 
 fn get_pgdata_path() -> eyre::Result<PathBuf> {
@@ -860,8 +922,8 @@ fn get_pgdata_path() -> eyre::Result<PathBuf> {
             target_dir
         });
 
-    // append the postgres version number
-    pgdata_base.push(format!("{}", pg_sys::get_pg_major_version_num()));
+    // each invocation gets its own PGDATA so parallel test runs don't collide
+    pgdata_base.push(format!("{}-{}", pg_sys::get_pg_major_version_num(), std::process::id()));
     Ok(pgdata_base)
 }
 
@@ -872,11 +934,11 @@ fn get_pid_file() -> eyre::Result<PathBuf> {
 }
 
 #[inline]
-pub(crate) fn get_pg_dbname() -> &'static str {
+pub fn get_pg_dbname() -> &'static str {
     "pgrx_tests"
 }
 
-pub(crate) fn get_pg_user() -> String {
+pub fn get_pg_user() -> String {
     #[cfg(target_family = "unix")]
     let varname = "USER";
     #[cfg(target_os = "windows")]
@@ -980,21 +1042,42 @@ fn get_cargo_args() -> Vec<String> {
     Vec::new()
 }
 
-// TODO: this would be a good place to insert a check invoking to see if
-// `cargo-pgrx` is a crate in the local workspace, and use it instead.
-fn cargo_pgrx() -> Command {
+fn cargo_pgrx() -> eyre::Result<Command> {
     fn var_path(s: &str) -> Option<PathBuf> {
         std::env::var_os(s).map(PathBuf::from)
     }
-    // Use `CARGO_PGRX` (set by `cargo-pgrx` on first run), then fall back to
-    // `cargo-pgrx` if it is on the path, then `$CARGO pgrx`
-    let cargo_pgrx = var_path("CARGO_PGRX")
-        .or_else(|| find_on_path("cargo-pgrx"))
-        .or_else(|| var_path("CARGO"))
-        .unwrap_or_else(|| "cargo".into());
-    let mut cmd = Command::new(cargo_pgrx);
-    cmd.arg("pgrx");
-    cmd
+
+    if let Some(cargo_pgrx) = var_path("CARGO_PGRX") {
+        let mut command = Command::new(cargo_pgrx);
+        command.arg("pgrx");
+        return Ok(command);
+    }
+
+    if let Some(command) = workspace_cargo_pgrx(var_path("CARGO"))? {
+        return Ok(command);
+    }
+
+    let cargo_pgrx =
+        find_on_path("cargo-pgrx").or_else(|| var_path("CARGO")).unwrap_or_else(|| "cargo".into());
+    let mut command = Command::new(cargo_pgrx);
+    command.arg("pgrx");
+    Ok(command)
+}
+
+fn workspace_cargo_pgrx(cargo: Option<PathBuf>) -> eyre::Result<Option<Command>> {
+    let workspace_root = match Path::new(env!("CARGO_MANIFEST_DIR")).parent() {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+    let manifest_path = workspace_root.join("cargo-pgrx/Cargo.toml");
+
+    if !manifest_path.is_file() {
+        return Ok(None);
+    }
+
+    let mut command = Command::new(cargo.unwrap_or_else(|| "cargo".into()));
+    command.arg("run").arg("--manifest-path").arg(manifest_path).arg("--").arg("pgrx");
+    Ok(Some(command))
 }
 
 fn find_on_path(program: &str) -> Option<PathBuf> {
@@ -1017,9 +1100,94 @@ fn sudo_command<U: AsRef<OsStr>>(user: U) -> Command {
     sudo
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env::consts::EXE_SUFFIX;
+    use std::ffi::OsString;
+    use tempfile::tempdir;
+
+    struct EnvGuard {
+        saved: Vec<(String, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn apply(updates: &[(&str, Option<&OsStr>)]) -> Self {
+            let mut saved = Vec::with_capacity(updates.len());
+
+            for (key, value) in updates {
+                let key_string = (*key).to_string();
+                saved.push((key_string.clone(), std::env::var_os(key)));
+                match value {
+                    Some(value) => unsafe { std::env::set_var(&key_string, value) },
+                    None => unsafe { std::env::remove_var(&key_string) },
+                }
+            }
+
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.iter().rev() {
+                match value {
+                    Some(value) => unsafe { std::env::set_var(key, value) },
+                    None => unsafe { std::env::remove_var(key) },
+                }
+            }
+        }
+    }
+
+    fn command_args(command: &Command) -> Vec<OsString> {
+        command.get_args().map(|arg| arg.to_os_string()).collect()
+    }
+
+    #[test]
+    fn cargo_pgrx_prefers_explicit_override() {
+        let _env = EnvGuard::apply(&[
+            ("CARGO_PGRX", Some(OsStr::new("/tmp/cargo-pgrx-explicit"))),
+            ("CARGO", Some(OsStr::new("/tmp/cargo-bin"))),
+        ]);
+
+        let command = cargo_pgrx().expect("command selection should succeed");
+        assert_eq!(command.get_program(), OsStr::new("/tmp/cargo-pgrx-explicit"));
+        assert_eq!(command_args(&command), vec![OsString::from("pgrx")]);
+    }
+
+    #[test]
+    fn workspace_cargo_pgrx_runs_from_source_even_with_a_target_binary() {
+        let tempdir = tempdir().expect("tempdir");
+        let fake_binary = tempdir.path().join("debug").join(format!("cargo-pgrx{EXE_SUFFIX}"));
+        std::fs::create_dir_all(fake_binary.parent().expect("binary parent")).expect("create dir");
+        std::fs::write(&fake_binary, b"not a real binary").expect("write fake binary");
+
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("workspace");
+        let _env = EnvGuard::apply(&[
+            ("CARGO_PGRX", None),
+            ("CARGO_TARGET_DIR", Some(tempdir.path().as_os_str())),
+            ("CARGO", Some(OsStr::new("/tmp/cargo-bin"))),
+        ]);
+
+        let command = cargo_pgrx().expect("command selection should succeed");
+        assert_eq!(command.get_program(), OsStr::new("/tmp/cargo-bin"));
+        assert_eq!(command.get_current_dir(), None);
+        assert_eq!(
+            command_args(&command),
+            vec![
+                OsString::from("run"),
+                OsString::from("--manifest-path"),
+                workspace_root.join("cargo-pgrx/Cargo.toml").into_os_string(),
+                OsString::from("--"),
+                OsString::from("pgrx"),
+            ]
+        );
+    }
+}
+
 pub mod pipe {
+    use rand::RngExt;
     use rand::distr::Alphanumeric;
-    use rand::Rng;
     use std::fs::File;
     use std::io::Error;
     use std::path::{Path, PathBuf};
@@ -1092,7 +1260,7 @@ pub mod pipe {
     impl WindowsNamedPipe {
         pub fn create() -> std::io::Result<Self> {
             let filename: String =
-                rand::thread_rng().sample_iter(Alphanumeric).map(char::from).take(6).collect();
+                rand::rng().sample_iter(Alphanumeric).map(char::from).take(6).collect();
             let path = format!(r"\\.\pipe\{filename}");
             let server = unsafe {
                 use std::os::windows::ffi::OsStrExt;
