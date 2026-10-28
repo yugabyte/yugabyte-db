@@ -104,10 +104,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -308,13 +311,12 @@ public class NodeAgentClient {
         try {
           String certPath = config.getCertPath().toString();
           log.trace("Using cert path {} for node agent {}", certPath, config.nodeAgent);
-          SslContext sslcontext =
-              GrpcSslContexts.forClient()
-                  .trustManager(CertificateHelper.getCertsFromFile(certPath))
-                  .build();
-          channelBuilder = channelBuilder.sslContext(sslcontext);
+          Collection<X509Certificate> caCerts = CertificateHelper.getCertsFromFile(certPath);
+          SslContext sslContext =
+              GrpcSslContexts.forClient().trustManager(new NodeAgentTrustManager(caCerts)).build();
+          channelBuilder = channelBuilder.sslContext(sslContext);
           channelBuilder.intercept(interceptor);
-        } catch (SSLException e) {
+        } catch (GeneralSecurityException | SSLException e) {
           String errMsg =
               String.format(
                   "SSL context creation for gRPC client failed for node agent %s", nodeAgent);

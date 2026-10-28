@@ -2716,7 +2716,9 @@ SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
   return pg_session_->ClearState();
 }
 
-bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
+bool PgApiImpl::HasCronLease() const { return tserver_shared_object_.HasCronLease(); }
+
+bool PgApiImpl::CanCronStartJobs() const { return tserver_shared_object_.CanCronStartJobs(); }
 
 Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
   return pg_client_.SetCronLastMinute(last_minute);

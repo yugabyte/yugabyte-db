@@ -31,20 +31,17 @@ export const getCreateEITPayload = (
   const { enableNodeToNodeEncryption, enableClientToNodeEncryption, rootCertificate, certType } =
     securitySettings;
   if (cloudType === CloudType.kubernetes) {
+    // enableBothEncryption is the K8s EIT master toggle; turning it off leaves the
+    // N2N/C2N checkboxes at their previous (default true) values.
+    const nToN = !!securitySettings.enableBothEncryption && !!enableNodeToNodeEncryption;
+    const cToN = !!securitySettings.enableBothEncryption && !!enableClientToNodeEncryption;
+    const caCert = certType === CertType.CUSTOM ? rootCertificate : '';
     return {
       root_and_client_root_ca_same: true,
-      enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
-      enable_client_to_node_encrypt: securitySettings?.enableClientToNodeEncryption ? true : false,
-      root_ca: securitySettings?.enableNodeToNodeEncryption
-        ? certType === CertType.CUSTOM
-          ? securitySettings?.rootCertificate
-          : ''
-        : '',
-      client_root_ca: securitySettings?.enableClientToNodeEncryption
-        ? certType === CertType.CUSTOM
-          ? securitySettings?.rootCertificate
-          : ''
-        : ''
+      enable_node_to_node_encrypt: nToN,
+      enable_client_to_node_encrypt: cToN,
+      root_ca: nToN ? caCert : '',
+      client_root_ca: cToN ? caCert : ''
     };
   } else {
     const {
@@ -322,13 +319,14 @@ export const mapCreateUniversePayload = (
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode,
             aws_instance_profile: otherAdvancedSettings.awsArnString,
-            ...(providerType === CloudType.kubernetes &&
-              !isEmpty(otherAdvancedSettings.universeOverrides) && {
-                helm_overrides: otherAdvancedSettings.universeOverrides,
-                ...(!isEmpty(otherAdvancedSettings.azOverrides) && {
-                  az_helm_overrides: otherAdvancedSettings.azOverrides
-                })
+            ...(providerType === CloudType.kubernetes && {
+              ...(!isEmpty(otherAdvancedSettings.universeOverrides) && {
+                helm_overrides: otherAdvancedSettings.universeOverrides
+              }),
+              ...(!isEmpty(otherAdvancedSettings.azOverrides) && {
+                az_helm_overrides: otherAdvancedSettings.azOverrides
               })
+            })
           }
         }
       ]
