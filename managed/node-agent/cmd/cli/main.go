@@ -3,6 +3,8 @@
 package main
 
 import (
+	"os"
+
 	"node-agent/app/executor"
 	"node-agent/app/scheduler"
 	"node-agent/app/server"
@@ -84,6 +86,13 @@ func setDefaultConfigs() {
 	}
 }
 
+// isFederationCommand reports whether args run a federation subcommand. They run as the DB user,
+// which on a node where root installed node-agent has no registry or node-agent home, so the server
+// init in main would exit on a missing version file. They read none of that state.
+func isFederationCommand(args []string) bool {
+	return len(args) > 1 && args[1] == "federation"
+}
+
 // Entry for all commands.
 func main() {
 	defer func() {
@@ -93,6 +102,10 @@ func main() {
 					"installed and the right user is running the command.", r)
 		}
 	}()
+	if isFederationCommand(os.Args) {
+		cli.Execute()
+		return
+	}
 	executor.Init(server.Context())
 	defer executor.GetInstance().WaitOnShutdown()
 	scheduler.Init(server.Context())

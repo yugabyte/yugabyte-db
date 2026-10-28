@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.regex.Pattern;
 import lombok.Data;
@@ -38,6 +39,14 @@ public class CrossCloudFederationTarget {
   public static final String MULTICLOUD_UNSUPPORTED_ERROR =
       "Cross-cloud federated IAM is not supported on a cluster that spans multiple providers."
           + " Disable federated IAM on the provider, or use a single provider for this cluster.";
+
+  /** Why an OCI provider's nodes cannot be federated while the OCI source gate is off. */
+  public static String ociSourceDisabledError() {
+    return String.format(
+        "Federated IAM from OCI is not enabled on this YBA. Set the runtime config %s to true once"
+            + " node-agent has been upgraded on every OCI node.",
+        GlobalConfKeys.enableOciFederationSource.getKey());
+  }
 
   @ApiModelProperty(
       value =
@@ -82,6 +91,26 @@ public class CrossCloudFederationTarget {
       Pattern.compile("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9._/+=,@-]{1,256}$");
 
   private static final Pattern AUDIENCE_PATTERN = Pattern.compile("^[A-Za-z0-9._:/-]{1,512}$");
+
+  /**
+   * An OCI identity domain URL: https and a bare host, optionally with the {@code :443} the OCI
+   * console shows. node-agent sends a request signed with the node's own OCI credentials to this
+   * URL, so a path, query or userinfo is refused rather than interpreted. The host is not limited
+   * to Oracle's domains: OCI spans several realms, and the value is set by a provider admin.
+   *
+   * <p>Kept in step with ocitoken.go (node-agent); change both together or one will accept what the
+   * other rejects.
+   */
+  private static final Pattern OCI_IDENTITY_DOMAIN_URL_PATTERN =
+      Pattern.compile(
+          "^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+              + "(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+(:443)?$");
+
+  public static boolean isValidOciIdentityDomainUrl(String url) {
+    return StringUtils.isNotBlank(url)
+        && url.length() <= 300
+        && OCI_IDENTITY_DOMAIN_URL_PATTERN.matcher(url).matches();
+  }
 
   public static boolean isValidRoleArn(String roleArn) {
     return StringUtils.isNotBlank(roleArn) && ROLE_ARN_PATTERN.matcher(roleArn).matches();

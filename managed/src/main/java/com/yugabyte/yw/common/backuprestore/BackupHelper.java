@@ -649,7 +649,11 @@ public class BackupHelper {
   /**
    * Provider-level federation settings for reaching {@code targetCloud} from this universe, or null
    * when federation is off, there is no universe context, or the provider has nothing configured
-   * for that cloud.
+   * for that cloud. These are what YBA itself uses to reach the bucket, so they are also null for
+   * the {@code gcp} target of an OCI provider: its audience names an OIDC workload identity
+   * provider, which the AWS-based credential YBA builds from it cannot use. YBA then skips its own
+   * bucket checks and leaves them to the node, as it does for a config with no resolvable audience,
+   * and deletes a backup with its own default GCP credentials.
    */
   @Nullable
   CrossCloudFederationTarget resolveCrossCloudFederationTarget(
@@ -671,6 +675,9 @@ public class BackupHelper {
       // userIntent.provider is the cluster's only provider, not an arbitrary one.
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      if (targetCloud == CloudType.gcp && provider.getCloudCode() == CloudType.oci) {
+        return null;
+      }
       return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
     } catch (Exception e) {
       log.warn("Could not resolve cross-cloud federation settings: {}", e.getMessage());

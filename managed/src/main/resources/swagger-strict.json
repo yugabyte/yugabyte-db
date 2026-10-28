@@ -14842,6 +14842,17 @@
     },
     "OCICloudInfo" : {
       "properties" : {
+        "crossCloudFederationTargets" : {
+          "description" : "WARNING: This is a preview API that could change. Storage clouds this provider's DB nodes can reach with federated IAM, at most one entry per cloud. Only gcp is supported for nodes running on OCI.",
+          "items" : {
+            "$ref" : "#/definitions/CrossCloudFederationTarget"
+          },
+          "type" : "array"
+        },
+        "enableFederatedIam" : {
+          "description" : "WARNING: This is a preview API that could change. Enable cross-cloud federated IAM on this provider's DB nodes. Each node is given access to the storage clouds in crossCloudFederationTargets, using its own OCI identity instead of stored keys.",
+          "type" : "boolean"
+        },
         "ociAuthType" : {
           "description" : "OCI authentication type (API_KEY or INSTANCE_PRINCIPAL)",
           "type" : "string"
@@ -14856,6 +14867,10 @@
         },
         "ociHostedZoneId" : {
           "description" : "OCI DNS Zone OCID for hosted zone",
+          "type" : "string"
+        },
+        "ociIdentityDomainUrl" : {
+          "description" : "WARNING: This is a preview API that could change. Base URL of the OCI identity domain the DB nodes exchange their instance principal at, for example https://idcs-<id>.identity.oraclecloud.com. Required when federated IAM is enabled.",
           "type" : "string"
         },
         "ociPrivateKeyContent" : {

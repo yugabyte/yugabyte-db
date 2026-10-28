@@ -349,6 +349,17 @@ func PexEnvDir() string {
 	return MustGetHomeDirectory() + pexEnvDir
 }
 
+// nodeAgentBinary lives under pkg, a symlink the installer repoints at the current release on every
+// upgrade and through which the agent's own systemd unit executes.
+const nodeAgentBinary = "/pkg/bin/node-agent"
+
+// NodeAgentBinaryPath returns the path of the installed node-agent binary through the stable pkg
+// symlink. Anything that outlives the running process, such as a systemd unit, must use this and not
+// os.Executable, which resolves to a versioned release directory that an upgrade removes.
+func NodeAgentBinaryPath() string {
+	return MustGetHomeDirectory() + nodeAgentBinary
+}
+
 // ReleaseDir returns the release dir path.
 func ReleaseDir() string {
 	return MustGetHomeDirectory() + releaseDir

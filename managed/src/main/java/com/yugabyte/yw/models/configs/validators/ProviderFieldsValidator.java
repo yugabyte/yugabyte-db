@@ -13,12 +13,14 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CrossCloudFederationDirections;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
@@ -52,9 +54,23 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     throwMultipleBeanValidatorError(errorsMap, VALIDATION_ERROR_SOURCE, requestJson);
   }
 
-  /** Storage clouds federation can currently reach. */
+  /**
+   * Storage clouds an AWS, GCP or on-prem provider may name as a federation target. An OCI provider
+   * is narrower, see {@link #allowedTargetClouds}.
+   */
   private static final Set<CloudType> SUPPORTED_TARGET_CLOUDS =
       ImmutableSet.of(CloudType.aws, CloudType.gcp);
+
+  /**
+   * Storage clouds this provider may name as a federation target. An OCI provider's nodes all run
+   * on OCI, so it is limited to the clouds OCI can federate to; refusing the rest here tells the
+   * admin up front, instead of leaving a node with no credentials for that bucket.
+   */
+  private static Set<CloudType> allowedTargetClouds(Provider provider) {
+    return provider.getCloudCode() == CloudType.oci
+        ? CrossCloudFederationDirections.supportedTargets(CloudType.oci)
+        : SUPPORTED_TARGET_CLOUDS;
+  }
 
   /**
    * Validates every configured cross-cloud federation target on its own: a provider may carry
@@ -72,6 +88,13 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     if (info == null || !info.isFederatedIamEnabled()) {
       return;
     }
+    // OCI nodes are only federated once the operator has confirmed node-agent is new enough to
+    // understand them; saving the setting before then would leave it silently doing nothing.
+    if (provider.getCloudCode() == CloudType.oci
+        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableOciFederationSource)) {
+      throwBeanProviderValidatorError(
+          "FEDERATED_IAM", CrossCloudFederationTarget.ociSourceDisabledError(), null);
+    }
     List<CrossCloudFederationTarget> targets = info.getEffectiveFederationTargets();
     if (targets.isEmpty()) {
       throwBeanProviderValidatorError(
@@ -80,14 +103,15 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
               + " entry per storage cloud this provider's nodes must reach.",
           null);
     }
+    Set<CloudType> allowedTargets = allowedTargetClouds(provider);
     Set<CloudType> seen = new HashSet<>();
     for (CrossCloudFederationTarget target : targets) {
-      if (target.targetCloud == null || !SUPPORTED_TARGET_CLOUDS.contains(target.targetCloud)) {
+      if (target.targetCloud == null || !allowedTargets.contains(target.targetCloud)) {
         throwBeanProviderValidatorError(
             "FEDERATED_IAM_TARGET_CLOUD",
             String.format(
-                "Unsupported federated IAM target cloud %s. Supported: %s.",
-                target.targetCloud, SUPPORTED_TARGET_CLOUDS),
+                "Unsupported federated IAM target cloud %s for a provider on %s. Supported: %s.",
+                target.targetCloud, provider.getCloudCode(), allowedTargets),
             null);
       }
       // One entry per cloud: two would make "the settings for reaching S3" ambiguous, and the
@@ -117,6 +141,32 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
                 + " arn:aws:iam::<12-digit-account>:role/<role-name>.",
             null);
       }
+    }
+    validateOciIdentityDomainUrl(provider);
+  }
+
+  /**
+   * A node running on OCI proves its identity through an OCI identity domain, so an OCI provider
+   * cannot federate without one, and the value must be well formed.
+   */
+  private void validateOciIdentityDomainUrl(Provider provider) {
+    if (provider.getCloudCode() != CloudType.oci) {
+      return;
+    }
+    String url = CloudInfoInterface.getOciIdentityDomainUrl(provider);
+    if (url == null) {
+      throwBeanProviderValidatorError(
+          "OCI_IDENTITY_DOMAIN_URL",
+          "Federated IAM is enabled but no OCI identity domain URL is set. Nodes on OCI exchange"
+              + " their identity at that domain to reach other clouds.",
+          null);
+    }
+    if (!CrossCloudFederationTarget.isValidOciIdentityDomainUrl(url)) {
+      throwBeanProviderValidatorError(
+          "OCI_IDENTITY_DOMAIN_URL",
+          "The OCI identity domain URL must be an https URL with only a host, for example"
+              + " https://idcs-<id>.identity.oraclecloud.com, with no path or trailing slash.",
+          null);
     }
   }
 
