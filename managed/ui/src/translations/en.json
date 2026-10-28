@@ -4526,7 +4526,10 @@
           "tagNamePlaceholder": "Ex : Department",
           "tagValue": "Tag value",
           "tagValuePlaceholder": "Ex : Dev",
-          "addTag": "Add User Tag"
+          "addTag": "Add User Tag",
+          "tagNameRequired": "Tag name is required.",
+          "tagValueRequired": "Tag value is required.",
+          "tagNameDuplicate": "Tag name must be unique."
         },
         "accessKeyLabel": "SSH Access Key",
         "accessKeyRequired": "Access Key is required",

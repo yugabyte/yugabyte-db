@@ -31,6 +31,7 @@ import {
   DEFAULT_CONNECTION_POOLING_PORTS,
   shouldKeepCustomInternalYsqlPort
 } from '../helpers/syncConnectionPoolingPorts';
+import { instanceTagsToObject } from './instanceTags';
 import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 import {
   getPrimaryProvider,
@@ -216,13 +217,7 @@ function mapInstanceTags(
 ): Record<string, string> | undefined {
   // Tags are only editable for cloud vendors; drop any left over from a provider switch.
   if (!isCloudVendorCloudType(providerCode)) return undefined;
-  return otherAdvancedSettings.instanceTags.reduce(
-    (acc, tag) => {
-      if (tag.name && tag.value) acc[tag.name] = tag.value;
-      return acc;
-    },
-    {} as Record<string, string>
-  );
+  return instanceTagsToObject(otherAdvancedSettings.instanceTags);
 }
 
 function mapClusterNetworkingSpec(
