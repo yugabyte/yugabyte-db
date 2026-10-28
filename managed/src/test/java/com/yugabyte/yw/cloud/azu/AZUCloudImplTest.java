@@ -1,6 +1,7 @@
 package com.yugabyte.yw.cloud.azu;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,6 +15,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.azure.core.management.SubResource;
+import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
+import com.azure.resourcemanager.compute.models.HardwareProfile;
+import com.azure.resourcemanager.compute.models.StorageProfile;
+import com.azure.resourcemanager.compute.models.VirtualMachineSizeTypes;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.FrontendIpConfigurationInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
@@ -24,6 +29,7 @@ import com.azure.resourcemanager.network.models.LoadBalancerBackendAddress;
 import com.azure.resourcemanager.network.models.LoadBalancerSkuName;
 import com.azure.resourcemanager.network.models.ProbeProtocol;
 import com.azure.resourcemanager.network.models.TransportProtocol;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -35,7 +41,9 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
@@ -244,5 +252,25 @@ public class AZUCloudImplTest extends FakeDBApplication {
     when(mockApiClient.getLoadBalancerIfExists(LB_NAME)).thenReturn(lb(LB_REGION, Map.of()));
     azuCloudImpl.deleteManagedLoadBalancer(azuProvider, LB_REGION, LB_NAME);
     verify(mockApiClient).deleteLoadBalancer(LB_NAME);
+  }
+
+  @Test
+  public void describeNodeDataDiskSpecIsInstanceOnlyWithoutDataDisks() {
+    doReturn(mockApiClient).when(azuCloudImpl).getApiClient(any(), any());
+    VirtualMachineInner vm =
+        new VirtualMachineInner()
+            .withStorageProfile(new StorageProfile())
+            .withHardwareProfile(
+                new HardwareProfile().withVmSize(VirtualMachineSizeTypes.STANDARD_D4S_V3));
+    when(mockApiClient.getVirtulMachineDetailsByName("n1")).thenReturn(vm);
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "n1";
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.region = "us-west1";
+
+    CloudAPI.NodeDiskSpec spec = azuCloudImpl.describeNodeDataDiskSpec(defaultProvider, node).get();
+    assertFalse(spec.hasDataDisks());
+    assertEquals(VirtualMachineSizeTypes.STANDARD_D4S_V3.toString(), spec.getInstanceType());
+    verify(mockApiClient, never()).getDiskByName(any());
   }
 }

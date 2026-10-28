@@ -8,8 +8,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -611,6 +615,79 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
   }
 
   @Test
+  public void computeRefusesOciUniverse() {
+    // PLAT-23226: OCI has no cloud snapshot, so rollback could miss a shape change YBA hasn't
+    // saved.
+    enableRollback();
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                    Common.CloudType.oci);
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("not supported on oci"));
+  }
+
+  @Test
+  public void computeRefusesOciInMultiCloudProviderSpecifications() {
+    enableRollback();
+    Provider ociProvider = ModelFactory.ociProvider(customer);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              UUID providerUUID = intent.maybeGetSingleProviderUUID().get();
+              // Read before the first spec exists; afterwards lookups resolve from the spec.
+              Common.CloudType providerType = intent.getProviderType(providerUUID);
+              TestUtils.specificationProviderInitializer(intent, providerUUID)
+                  .setProviderType(providerType)
+                  .setAccessCode(intent.accessKeyCode)
+                  .setInstanceTags(intent.instanceTags)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setInstanceType(intent.instanceType);
+              TestUtils.specificationProviderInitializer(intent, ociProvider.getUuid())
+                  .setProviderType(Common.CloudType.oci)
+                  .setInstanceType(intent.instanceType)
+                  .setDeviceInfo(intent.deviceInfo.clone());
+            });
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    RollbackContext context = buildContext(failedParams, DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("not supported on oci"));
+  }
+
+  @Test
+  public void canRollbackFromParamsRefusesOnlyCloudsWithoutSnapshot() {
+    ResizeNodeParams aws = failedResizeParams(NEW_VOLUME_SIZE);
+    ResizeNodeParams oci = failedResizeParams(NEW_VOLUME_SIZE);
+    oci.getPrimaryCluster().userIntent.providerType = Common.CloudType.oci;
+    // A request that left the provider type out is decided at submit, against the universe.
+    ResizeNodeParams unknown = failedResizeParams(NEW_VOLUME_SIZE);
+    unknown.getPrimaryCluster().userIntent.providerType = Common.CloudType.unknown;
+
+    assertTrue(computer.canRollbackFromParams(failedResizeTask(aws)));
+    assertFalse(computer.canRollbackFromParams(failedResizeTask(oci)));
+    assertTrue(computer.canRollbackFromParams(failedResizeTask(unknown)));
+  }
+
+  private static TaskInfo failedResizeTask(ResizeNodeParams params) {
+    TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
+    taskInfo.setTaskParams(Json.toJson(params));
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    return taskInfo;
+  }
+
+  @Test
   public void computeRejectsWhenRollbackCheckpointCrossed() {
     enableRollback();
     seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
@@ -933,5 +1010,120 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
   public void primaryClusterLookupSanity() {
     Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
     assertEquals(primary, universe.getUniverseDetails().getClusterByUuid(primary.uuid));
+  }
+
+  @Test
+  public void computeDescribesOnlyClustersBeingRolledBack() {
+    // PLAT-23245: a read replica the resize didn't touch, for example on instance store, must not
+    // be looked up.
+    enableRollback();
+    UUID readReplicaUuid = addReadReplicaNode("rr1");
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    failedParams.clusters.removeIf(c -> c.uuid.equals(readReplicaUuid));
+
+    computer.compute(buildContext(failedParams, DateUtils.addHours(new Date(), -48)));
+    verify(cloudAPI, never())
+        .describeNodeDataDiskSpec(any(), argThat(n -> "rr1".equals(n.nodeName)));
+  }
+
+  @Test
+  public void computeAcceptsInstanceStoreNodeWithoutDataDisks() {
+    // PLAT-23245: an instance-store node has no data disks to report, and rollback never modifies
+    // them.
+    enableRollback();
+    useInstanceStore("c5d.large");
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    lenient()
+        .when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenReturn(Optional.of(CloudAPI.NodeDiskSpec.instanceOnly("c5d.large")));
+
+    RollbackSubmission submission =
+        computer.compute(
+            buildContext(failedResizeParams(NEW_VOLUME_SIZE), DateUtils.addHours(new Date(), -1)));
+    assertNotNull(submission.getParams());
+  }
+
+  @Test
+  public void computeRefusesEbsNodeReportingNoDataDisks() {
+    // PLAT-23245: YBA records EBS (GP3) storage for the node, so a cloud report without data
+    // volumes can't be trusted, even for an instance type that has local storage.
+    enableRollback();
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getNodes().forEach(n -> n.cloudInfo.instance_type = "c5d.large"));
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    lenient()
+        .when(cloudAPI.describeNodeDataDiskSpec(any(), any()))
+        .thenReturn(Optional.of(CloudAPI.NodeDiskSpec.instanceOnly("c5d.large")));
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                computer.compute(
+                    buildContext(
+                        failedResizeParams(NEW_VOLUME_SIZE), DateUtils.addHours(new Date(), -48))));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("cloud reports no data disks"));
+  }
+
+  @Test
+  public void computeIgnoresOciClusterNotBeingRolledBack() {
+    // PLAT-23226/PLAT-23245: only the clusters being rolled back decide the OCI refusal.
+    enableRollback();
+    UUID readReplicaUuid = addReadReplicaNode("rr1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getClusterByUuid(readReplicaUuid).userIntent.providerType =
+                    Common.CloudType.oci);
+    seedStateTransitionDetailsForResize(NEW_VOLUME_SIZE);
+    moveUniverseIntentToTarget(NEW_VOLUME_SIZE);
+    ResizeNodeParams failedParams = failedResizeParams(NEW_VOLUME_SIZE);
+    failedParams.clusters.removeIf(c -> c.uuid.equals(readReplicaUuid));
+
+    assertNotNull(
+        computer.compute(buildContext(failedParams, DateUtils.addHours(new Date(), -48))));
+  }
+
+  /** Records the primary's nodes as AWS instance store: an ephemeral type and no storage type. */
+  private void useInstanceStore(String instanceType) {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.storageType = null;
+              u.getNodes().forEach(n -> n.cloudInfo.instance_type = instanceType);
+            });
+  }
+
+  /** Adds a read-replica cluster with one node, a copy of the primary's node. */
+  private UUID addReadReplicaNode(String nodeName) {
+    Cluster readReplica =
+        new Cluster(
+            ClusterType.ASYNC,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.clone());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().clusters.add(readReplica);
+              NodeDetails node =
+                  Json.fromJson(
+                      Json.toJson(u.getUniverseDetails().nodeDetailsSet.iterator().next()),
+                      NodeDetails.class);
+              node.nodeName = nodeName;
+              node.nodeIdx = 2;
+              node.nodeUuid = UUID.randomUUID();
+              node.placementUuid = readReplica.uuid;
+              node.cloudInfo.private_ip = "127.0.0.2";
+              u.getUniverseDetails().nodeDetailsSet.add(node);
+            });
+    return readReplica.uuid;
   }
 }

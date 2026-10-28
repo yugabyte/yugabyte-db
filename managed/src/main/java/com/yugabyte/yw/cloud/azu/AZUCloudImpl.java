@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -770,12 +771,16 @@ public class AZUCloudImpl implements CloudAPI {
     }
     AZUResourceGroupApiClient apiClient = getApiClient(provider, node.cloudInfo.region);
     VirtualMachineInner vm = apiClient.getVirtulMachineDetailsByName(node.nodeName);
-    if (vm.storageProfile() == null || vm.storageProfile().dataDisks() == null) {
+    if (vm.storageProfile() == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Azure VM " + node.nodeName + " has no data disks");
+          BAD_REQUEST, "Azure VM " + node.nodeName + " has no storage profile");
     }
+    List<DataDisk> dataDisks =
+        vm.storageProfile().dataDisks() == null
+            ? Collections.emptyList()
+            : vm.storageProfile().dataDisks();
     List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
-    for (DataDisk dataDisk : vm.storageProfile().dataDisks()) {
+    for (DataDisk dataDisk : dataDisks) {
       String diskId = dataDisk.managedDisk() == null ? null : dataDisk.managedDisk().id();
       String diskName = diskNameFromId(diskId);
       if (StringUtils.isBlank(diskName)) {

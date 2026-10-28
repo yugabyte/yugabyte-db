@@ -1737,10 +1737,14 @@ public class AWSCloudImpl implements CloudAPI {
     Ec2Client ec2Client = getEC2Client(provider, node.cloudInfo.region);
     String instanceId = resolveInstanceId(ec2Client, node);
     Instance instance = describeInstance(ec2Client, instanceId);
+    String instanceType =
+        instance.instanceTypeAsString() != null
+            ? instance.instanceTypeAsString()
+            : (instance.instanceType() == null ? null : instance.instanceType().toString());
     List<String> volumeIds = dataVolumeIds(instance);
     if (volumeIds.isEmpty()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "node " + node.nodeName + " has no data EBS volumes");
+      // Instance-store node: no EBS data volumes to describe.
+      return Optional.of(CloudAPI.NodeDiskSpec.instanceOnly(instanceType));
     }
     DescribeVolumesResponse volumes =
         ec2Client.describeVolumes(DescribeVolumesRequest.builder().volumeIds(volumeIds).build());
@@ -1768,10 +1772,6 @@ public class AWSCloudImpl implements CloudAPI {
               volume.size(),
               latestModificationStart(ec2Client, volume.volumeId())));
     }
-    String instanceType =
-        instance.instanceTypeAsString() != null
-            ? instance.instanceTypeAsString()
-            : (instance.instanceType() == null ? null : instance.instanceType().toString());
     return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perVolume));
   }
 
