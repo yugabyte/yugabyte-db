@@ -1389,6 +1389,60 @@ TEST_F(PgObjectLocksTest, ConcurrentIndexCreationTakesSessionLock) {
   ASSERT_OK(conn2.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0"));
 }
 
+// All session object locks of a backend belong to one session txn. Releasing them schedules a
+// lost-message retry of the release at the acquire deadline, which must not release session locks
+// that a later DDL of the same backend acquired in the meantime.
+TEST_F(PgObjectLocksTest, SessionLockReleaseRetryKeepsLaterSessionLocks) {
+  const auto kFirstDdlTimeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_a(k INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_b(k INT)"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
+
+  // The statement timeout bounds the deadline of the first DDL's session lock acquire, and so
+  // when the lost-message retry of its release fires.
+  const auto first_ddl_start = MonoTime::Now();
+  ASSERT_OK(conn1.ExecuteFormat(
+      "SET statement_timeout = '$0ms'", kFirstDdlTimeout.ToMilliseconds()));
+  ASSERT_OK(conn1.Execute("CREATE INDEX test_a_k ON test_a(k)"));
+  ASSERT_OK(conn1.Execute("RESET statement_timeout"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
+  LogWaiter log_waiter(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() {
+    ASSERT_OK(conn1.Execute("CREATE INDEX test_b_k ON test_b(k)"));
+  });
+  // Unpause on early failure so that the thread above finishes before thread_holder joins it.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  // Let the lost-message retry of the first DDL's release fire. It is scheduled at the acquire
+  // deadline, i.e. statement_timeout + pg_client_extra_timeout_ms after the acquire, and the extra
+  // margin covers its round trip through the master.
+  SleepFor(first_ddl_start + kFirstDdlTimeout +
+           MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) +
+           MonoDelta::FromSeconds(3 * kTimeMultiplier) - MonoTime::Now());
+
+  // The second CREATE INDEX still holds its ShareUpdateExclusive session lock on test_b.
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '5s'"));
+  ASSERT_NOK(conn2.Execute("ALTER TABLE test_b ADD COLUMN v INT DEFAULT 0"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
+  thread_holder.JoinAll();
+  ASSERT_OK(conn2.Execute("ALTER TABLE test_b ADD COLUMN v INT DEFAULT 0"));
+}
+
 TEST_F(PgObjectLocksTest, YB_DISABLE_TEST_IN_TSAN(SessionLocksAreReleasedOnBackendErrorsOrKill)) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
