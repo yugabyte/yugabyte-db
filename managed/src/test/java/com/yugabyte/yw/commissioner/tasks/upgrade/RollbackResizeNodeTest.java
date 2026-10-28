@@ -402,6 +402,64 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     }
   }
 
+  /**
+   * A cgroup-only resize from 1024 to 2048 MB failed partway. Its nodes record no cgroup and the
+   * universe intent is saved only after the last node, so the intent still says 1024.
+   */
+  private void seedFailedCgroupOnlyResize() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.setCgroupSize(1024));
+    UniverseDefinitionTaskParams before =
+        Json.fromJson(
+            Json.toJson(
+                Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails()),
+            UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams target =
+        Json.fromJson(Json.toJson(before), UniverseDefinitionTaskParams.class);
+    target.getPrimaryCluster().userIntent.setCgroupSize(2048);
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    failedResizeTaskUuid = persistFailedResizeTask();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+              u.getUniverseDetails().placementModificationTaskUuid = failedResizeTaskUuid;
+              u.getUniverseDetails().updateSucceeded = false;
+              u.getUniverseDetails().updateInProgress = false;
+            });
+    // The instance type never changed, in YBA or in the cloud.
+    stubCloudState(
+        DEFAULT_INSTANCE_TYPE,
+        DEFAULT_DISK_IOPS,
+        DEFAULT_DISK_THROUGHPUT,
+        DEFAULT_VOLUME_SIZE,
+        Instant.now().minus(Duration.ofHours(48)));
+  }
+
+  @Test
+  public void testRollbackReappliesBeforeCgroupAfterPartialCgroupOnlyResize() {
+    seedFailedCgroupOnlyResize();
+    TaskInfo taskInfo = submitRollback(createRollbackParams());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // Every node gets the before cgroup again, including those the failed resize already changed.
+    List<TaskInfo> changeInstance =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ChangeInstanceType)
+            .collect(Collectors.toList());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(universe.getNodes().size(), changeInstance.size());
+    for (TaskInfo subTask : changeInstance) {
+      assertEquals(1024, subTask.getTaskParams().get("cgroupSize").asInt());
+      assertEquals(DEFAULT_INSTANCE_TYPE, subTask.getTaskParams().get("instanceType").asText());
+    }
+    assertEquals(
+        1024, universe.getUniverseDetails().getPrimaryCluster().userIntent.getCgroupSize().intValue());
+  }
+
   @Test
   public void testRollbackRejectedWhenDeltaMissing() {
     ResizeNodeParams rollbackParams = createRollbackParams();

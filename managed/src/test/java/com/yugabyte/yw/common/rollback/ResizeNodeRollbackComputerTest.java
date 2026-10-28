@@ -278,6 +278,48 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     assertTrue(ex.getMessage().contains("state_transition_details"));
   }
 
+  // Rebuilds the seeded delta so the failed resize changed the cgroup from beforeCgroup to 2048.
+  private void seedCgroupResize(Integer beforeCgroup) {
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.setCgroupSize(beforeCgroup));
+    seedStateTransitionDetailsForResize(DEFAULT_VOLUME_SIZE);
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams before = details.getBeforeUniverseDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    target.getPrimaryCluster().userIntent.setCgroupSize(2048);
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> u.setStateTransitionDetails(new StateTransitionDetails(true, delta)));
+  }
+
+  @Test
+  public void computeRejectsRollbackThatWouldRemoveCgroup() {
+    enableRollback();
+    seedCgroupResize(null);
+    RollbackContext context =
+        buildContext(failedResizeParams(DEFAULT_VOLUME_SIZE), DateUtils.addHours(new Date(), -48));
+
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> computer.compute(context));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("removing a cgroup limit"));
+  }
+
+  @Test
+  public void computeAllowsRollbackToSmallerCgroup() {
+    enableRollback();
+    seedCgroupResize(1024);
+    RollbackContext context =
+        buildContext(failedResizeParams(DEFAULT_VOLUME_SIZE), DateUtils.addHours(new Date(), -48));
+
+    UserIntent restored =
+        ((ResizeNodeParams) computer.compute(context).getParams()).getPrimaryCluster().userIntent;
+    assertEquals(1024, restored.getCgroupSize().intValue());
+  }
+
   @Test
   public void computeReversesInstanceAndKeepsVolumeSize() {
     enableRollback();

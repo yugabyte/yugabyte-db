@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -120,6 +121,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     details.requireRollbackable();
 
     UniverseDefinitionTaskParams beforeDetails = details.getBeforeUniverseDetails();
+    rejectCgroupRemoval(universe, beforeDetails, details.getTargetUniverseDetails());
     Map<String, CloudAPI.NodeDiskSpec> cloudByNode = describeCloudNodes(universe);
     ResizeNodeParams rollbackParams =
         buildRollbackParams(failedParams, beforeDetails, universe, cloudByNode);
@@ -200,6 +202,51 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       rollbackCluster.userIntent = restored;
     }
     return rollbackParams;
+  }
+
+  /**
+   * Rolling back a resize that targeted a cgroup limit for a node that had none would have to
+   * remove that limit wherever it was applied, and no code path can remove one: {@code
+   * ChangeInstanceType} only sets a cgroup when its size is positive. Nodes record no cgroup, so
+   * the rollback can't tell whether a node got the limit; it would report success while any node
+   * that did keeps it, so refuse the rollback instead.
+   */
+  private void rejectCgroupRemoval(
+      Universe universe,
+      UniverseDefinitionTaskParams before,
+      UniverseDefinitionTaskParams target) {
+    // "before" is the whole pre-resize universe, but "target" is the resize's own params, and a
+    // read-replica-only resize carries no primary there. Like the forward task's cgroup lookup,
+    // fall back to the primary it did not change.
+    Cluster beforePrimary = before.getPrimaryCluster();
+    Cluster targetPrimary = target.getPrimaryCluster();
+    if (targetPrimary == null) {
+      targetPrimary = beforePrimary;
+    }
+    for (NodeDetails node : universe.getNodes()) {
+      Cluster beforeCluster = before.getClusterByUuid(node.placementUuid);
+      Cluster targetCluster = target.getClusterByUuid(node.placementUuid);
+      if (beforeCluster == null || targetCluster == null) {
+        // The resize did not carry this node's cluster, so it did not change its cgroup.
+        continue;
+      }
+      int beforeSize =
+          UniverseDefinitionTaskBase.getCGroupSize(
+              confGetter, universe, beforePrimary, beforeCluster, node);
+      int targetSize =
+          UniverseDefinitionTaskBase.getCGroupSize(
+              confGetter, universe, targetPrimary, targetCluster, node);
+      if (beforeSize <= 0 && targetSize > 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Cannot roll back resize node: the failed resize targeted a %d MB cgroup limit for"
+                    + " node %s, which had none before. The limit may already be applied, and"
+                    + " removing a cgroup limit is not supported",
+                targetSize,
+                node.nodeName));
+      }
+    }
   }
 
   private static Map<String, String> cloneMap(Map<String, String> src) {

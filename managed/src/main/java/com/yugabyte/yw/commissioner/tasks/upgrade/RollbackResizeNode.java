@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.inject.Inject;
@@ -37,7 +38,9 @@ import org.apache.commons.lang3.StringUtils;
  * toward before; IOPS/throughput-only nodes take the non-restart {@code Disk_Update} path;
  * already-before nodes are skipped so rollback retry can make progress. Classification and the
  * ChangeInstanceType skip also consult the cloud so a modify that aborted before YBA persist is
- * still reverted.
+ * still reverted. The exception is a resize that changed the cgroup: nodes record no cgroup, so an
+ * already-before node can't be told apart, and every node in the cluster is re-applied (a rolling
+ * restart of each node) on every rollback attempt. See {@link #isCgroupChanging}.
  *
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link
@@ -117,6 +120,32 @@ public class RollbackResizeNode extends ResizeNode {
       return false;
     }
     return !cloud.getInstanceType().equals(newIntent.getInstanceTypeForNode(node));
+  }
+
+  /**
+   * The forward resize applies the cgroup node by node, but saves it to the universe only after
+   * every node is done (nodes have no cgroup of their own). After a partial cgroup resize, the
+   * universe intent still matches {@code before}, so compare with the failed target instead: if the
+   * target changed this node's cgroup, re-apply the {@code before} cgroup. Nodes record no cgroup,
+   * so this can't tell which nodes the forward run (or an earlier rollback attempt) reached: every
+   * node in the cluster is re-applied, which stops and restarts each node in turn, on every attempt.
+   * That is the same rolling restart a forward cgroup-only resize does.
+   */
+  @Override
+  protected boolean isCgroupChanging(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    if (super.isCgroupChanging(node, newIntent, currentIntent)) {
+      return true;
+    }
+    Cluster targetCluster =
+        requireStateTransitionDetails(getUniverse())
+            .getTargetUniverseDetails()
+            .getClusterByUuid(node.placementUuid);
+    return targetCluster != null
+        && !Objects.equals(
+            targetCluster.userIntent.getCGroupSize(node), newIntent.getCGroupSize(node));
   }
 
   @Override
