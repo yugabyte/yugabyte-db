@@ -190,6 +190,8 @@ static bool
 _equalYbBatchedExpr(const YbBatchedExpr *a, const YbBatchedExpr *b)
 {
 	COMPARE_NODE_FIELD(orig_expr);
+	COMPARE_SCALAR_FIELD(share);
+	COMPARE_SCALAR_FIELD(rows_scale);
 	return true;
 }
 
