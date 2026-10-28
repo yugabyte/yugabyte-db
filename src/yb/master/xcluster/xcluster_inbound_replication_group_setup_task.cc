@@ -56,7 +56,7 @@ DEFINE_RUNTIME_bool(xcluster_skip_schema_validation_on_setup, false,
     "not match its target table's. Use only to unblock setup when the schemas are known to hold "
     "the same data; replicating between tables whose schemas really differ writes wrong data to "
     "the target.");
-TAG_FLAG(xcluster_skip_schema_validation_on_setup, advanced);
+TAG_FLAG(xcluster_skip_schema_validation_on_setup, unsafe);
 
 DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
@@ -962,19 +962,18 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     Schema target_schema;
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
-    // We now have a table match. Validate the schema.
+    // We now have a table match.  Validate the schema.
     //
-    // YSQL index column names are fixed at CREATE INDEX, and ALTER TABLE ... RENAME COLUMN on the
-    // indexed table does not change them, in PG or in DocDB. A restore recreates the index from
-    // its definition, which uses the table's current column names. So a source index created
-    // before a rename and its restored target copy hold the same data under different column
-    // names, and index column names are not compared. Snapshot import does the same.
+    // Do not compare YSQL index column names.  ALTER TABLE ... RENAME COLUMN does not rename the
+    // columns of indexes on the renamed column, in PG or in DocDB.  A restore recreates each index
+    // with the table's current column names.  So an index created before a rename and its
+    // restored copy hold the same data under different column names.  Snapshot import does not
+    // compare index column names either.
     const bool is_ysql_index_pair = is_ysql_table && source_table_info.index_info.has_value() &&
                                     table_schema_resp.has_index_info();
-    const bool schemas_match =
-        is_ysql_index_pair
-            ? target_schema.EquivalentForDataCopy(source_schema, ColumnSchema::CompareType)
-            : target_schema.EquivalentForDataCopy(source_schema);
+    const bool schemas_match = target_schema.EquivalentForDataCopy(
+        source_schema,
+        is_ysql_index_pair ? ColumnSchema::CompareType : ColumnSchema::CompareByDefault);
     if (!schemas_match) {
       const auto mismatch = Format(
           "Source and target schemas don't match$0: "
