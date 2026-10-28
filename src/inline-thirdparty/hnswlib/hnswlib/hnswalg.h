@@ -10,6 +10,11 @@
 #include <list>
 #include <tuple>
 #include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace hnswlib {
@@ -96,6 +101,15 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     mutable std::mutex label_lookup_lock;  // lock for label_lookup_
     std::unordered_map<label_t, tableint> label_lookup_;
+
+    // Approximate memory cost of an entry in tenant_entries_.
+    static const size_t PER_TENANT_ENTRY_BYTES = sizeof(std::string_view) + sizeof(tableint) + 2 * sizeof(void*);
+
+    // Entry point of the graph cluster of every tenant, see addTenantPoint. Tenants are views of
+    // the tenants passed to addTenantPoint.
+    mutable std::shared_mutex tenant_entries_mutex_;
+    std::unordered_map<std::string_view, tableint> tenant_entries_;
+    std::atomic<size_t> tenant_entries_bytes_{0};
 
     std::default_random_engine level_generator_;
     std::default_random_engine update_probability_generator_;
@@ -269,6 +283,35 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     size_t getDeletedCount() {
         return num_deleted_;
+    }
+
+    // Returns the entry point of the tenant, or nullopt when the tenant had no points, so node became
+    // its entry point.
+    std::optional<tableint> findOrAddTenantEntry(std::string_view tenant, tableint node) {
+        {
+            std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
+            auto it = tenant_entries_.find(tenant);
+            if (it != tenant_entries_.end()) {
+                return it->second;
+            }
+        }
+        // Concurrent first points of a tenant must not both become its entry point, the other one
+        // would be unreachable.
+        std::lock_guard<std::shared_mutex> lock(tenant_entries_mutex_);
+        auto [it, inserted] = tenant_entries_.try_emplace(tenant, node);
+        if (!inserted) {
+            return it->second;
+        }
+        tenant_entries_bytes_ += PER_TENANT_ENTRY_BYTES;
+        return std::nullopt;
+    }
+
+    void updateTenantEntry(std::string_view tenant, tableint node) {
+        std::lock_guard<std::shared_mutex> lock(tenant_entries_mutex_);
+        auto& entry = tenant_entries_.find(tenant)->second;
+        if (element_levels_[node] > element_levels_[entry]) {
+            entry = node;
+        }
     }
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
@@ -1200,6 +1243,18 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
 
     tableint addPoint(const void *data_point, label_t label, int level) {
+        return addPointImpl(data_point, label, level, nullptr);
+    }
+
+    // Adds a point of the tenant. The point is linked only to points of the same tenant, starting
+    // from the tenant entry point instead of the global one, so every tenant forms a separate graph
+    // cluster. The first point of a tenant becomes its entry point, as does a point with a higher
+    // level than the current one. The index keeps a view of tenant, so it must outlive the index.
+    tableint addTenantPoint(const void *data_point, label_t label, std::string_view tenant) {
+        return addPointImpl(data_point, label, -1, &tenant);
+    }
+
+    tableint addPointImpl(const void *data_point, label_t label, int level, const std::string_view* tenant) {
         tableint cur_c = 0;
         {
             // Checking if the element with the same label already exists
@@ -1218,7 +1273,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 if (isMarkedDeleted(existingInternalId)) {
                     unmarkDeletedInternal(existingInternalId);
                 }
-                updatePoint(data_point, existingInternalId, 1.0);
+                // updatePoint relinks from the global entry point, which could link tenants.
+                // A label of a tenant point always comes with the same data.
+                if (!tenant) {
+                    updatePoint(data_point, existingInternalId, 1.0);
+                }
 
                 return existingInternalId;
             }
@@ -1259,10 +1318,21 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
             memset(linkLists_[cur_c], 0, list_mem_size);
         }
 
+        // Level of currObj, the point to start linking from.
+        int entry_level = maxlevelcopy;
+        std::optional<tableint> tenant_entry;
+        if (tenant) {
+            tenant_entry = findOrAddTenantEntry(*tenant, cur_c);
+            // Nothing to link the first point of a tenant to.
+            currObj = tenant_entry ? *tenant_entry : -1;
+            enterpoint_copy = currObj;
+            entry_level = tenant_entry ? element_levels_[*tenant_entry] : -1;
+        }
+
         if ((signed)currObj != -1) {
-            if (curlevel < maxlevelcopy) {
+            if (curlevel < entry_level) {
                 dist_t curdist = fstdistfunc_(data_point, getDataByInternalId(currObj), dist_func_param_);
-                for (int level = maxlevelcopy; level > curlevel; level--) {
+                for (int level = entry_level; level > curlevel; level--) {
                     bool changed = true;
                     while (changed) {
                         changed = false;
@@ -1288,8 +1358,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
             }
 
             bool epDeleted = isMarkedDeleted(enterpoint_copy);
-            for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
-                if (level > maxlevelcopy || level < 0)  // possible?
+            for (int level = std::min(curlevel, entry_level); level >= 0; level--) {
+                if (level > entry_level || level < 0)  // possible?
                     throw std::runtime_error("Level error");
 
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates = searchBaseLayer(
@@ -1301,12 +1371,18 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                 }
                 currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false);
             }
-        } else {
+        } else if (!tenant) {
             // Do nothing for the first element
             enterpoint_node_ = 0;
             maxlevel_ = curlevel;
         }
 
+        if (tenant_entry && curlevel > entry_level) {
+            updateTenantEntry(*tenant, cur_c);
+        }
+
+        // The global entry point is kept for tenant points too, since maxlevel_ is the level of the
+        // whole graph.
         // Releasing lock for the maximum level
         if (curlevel > maxlevelcopy) {
             enterpoint_node_ = cur_c;
@@ -1318,16 +1394,55 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     std::priority_queue<std::tuple<dist_t, label_t, tableint>>
     searchKnn(const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const override {
+        if (cur_element_count == 0) return {};
+        return searchKnnFrom(query_data, k, isIdAllowed, ef, enterpoint_node_);
+    }
+
+    // Searches points of the tenant, see addTenantPoint. Returns nothing when there are no points of
+    // the tenant.
+    std::priority_queue<std::tuple<dist_t, label_t, tableint>>
+    searchTenantKnn(
+            const void *query_data, size_t k, std::string_view tenant,
+            BaseFilterFunctor<label_t>* isIdAllowed = nullptr, size_t ef = 0) const {
+        tableint entry;
+        {
+            std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
+            auto it = tenant_entries_.find(tenant);
+            if (it == tenant_entries_.end()) {
+                return {};
+            }
+            entry = it->second;
+        }
+        return searchKnnFrom(query_data, k, isIdAllowed, ef, entry);
+    }
+
+    // Returns the entry points of all tenants, see addTenantPoint.
+    std::vector<tableint> getTenantEntries() const {
+        std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
+        std::vector<tableint> result;
+        result.reserve(tenant_entries_.size());
+        for (const auto& [tenant, entry] : tenant_entries_) {
+            result.push_back(entry);
+        }
+        return result;
+    }
+
+    // Searches starting from entry_node at its level. Results are (distance, label, internal id)
+    // tuples, further first.
+    std::priority_queue<std::tuple<dist_t, label_t, tableint>>
+    searchKnnFrom(
+            const void *query_data, size_t k, BaseFilterFunctor<label_t>* isIdAllowed, size_t ef,
+            tableint entry_node) const {
+        const int entry_level = element_levels_[entry_node];
         if (!ef) {
           ef = ef_;
         }
         std::priority_queue<std::tuple<dist_t, label_t, tableint>> result;
-        if (cur_element_count == 0) return result;
 
-        tableint currObj = enterpoint_node_;
-        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
+        tableint currObj = entry_node;
+        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(entry_node), dist_func_param_);
 
-        for (int level = maxlevel_; level > 0; level--) {
+        for (int level = entry_level; level > 0; level--) {
             bool changed = true;
             while (changed) {
                 changed = false;
@@ -1492,6 +1607,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         double expected_extra_levels = M_ > 1 ? 1.0 / std::log(static_cast<double>(M_)) : 0.0;
         bytes += static_cast<size_t>(static_cast<double>(cur_count) * expected_extra_levels) * size_links_per_element_;
         bytes += cur_count * PER_INSERTED_LABEL_LOOKUP_BYTES;
+        bytes += tenant_entries_bytes_.load();
         return bytes;
     }
 

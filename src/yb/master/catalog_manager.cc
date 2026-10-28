@@ -675,6 +675,7 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
     "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
     "release is finalized.");
+TAG_FLAG(vector_index_tenant_hash_group_and_range_components, experimental);
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
