@@ -726,12 +726,10 @@ TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
   ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
   ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
 
-  // Counts the rows with `column` >= 10 by reading only `index`, so the count reflects that index's
-  // replicated rows.  The predicate on the indexed column lets the planner use the index.
   auto count_on_target_through_index = [this](
       const std::string& index, const std::string& column) -> Result<int64_t> {
     const auto query = Format(
-        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 10", index, column);
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 0", index, column);
     const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
     SCHECK_FORMAT(
         plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
@@ -741,19 +739,19 @@ TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
 
   ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 41);
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 50);
 
   ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
   ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 51);
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 60);
 
   // Renaming an index bumps its schema version, so the target has to map a new source index
   // schema whose column names still differ from its own.
   ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
   ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 61);
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 70);
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTable) {

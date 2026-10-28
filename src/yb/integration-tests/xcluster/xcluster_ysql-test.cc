@@ -112,6 +112,7 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_bool(xcluster_skip_index_column_name_check_on_setup);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -2875,7 +2876,8 @@ TEST_F(XClusterYsqlTest, TestAlterColumnTypeIndexRewrite) {
 }
 
 // Manual-mode setup of an index whose column was renamed on the source before setup, so its
-// column name differs from the target's.  Rows must replicate through the index.
+// column name differs from the target's.  Setup fails until
+// xcluster_skip_index_column_name_check_on_setup is set, then rows replicate through the index.
 TEST_F(XClusterYsqlTest, RenameIndexedColumnBeforeSetup) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 1));
   const auto table_name = producer_table_->name().table_name();
@@ -2892,17 +2894,20 @@ TEST_F(XClusterYsqlTest, RenameIndexedColumnBeforeSetup) {
   const auto index_table_name =
       ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", "a_idx"));
   ASSERT_OK(producer_client()->OpenTable(index_table_name, &tables.emplace_back()));
+  auto s = SetupUniverseReplication(tables);
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.ToString(), "Source and target schemas don't match");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_index_column_name_check_on_setup) = true;
   ASSERT_OK(SetupUniverseReplication(tables));
 
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i, i FROM generate_series(1, 50) AS i", table_name));
-  // Reads only a_idx, so the count reflects that index's replicated rows.  The predicate on the
-  // indexed column lets the planner use the index.
   const auto query = Format(
-      "/*+ IndexOnlyScan($0 a_idx) */ SELECT count(*) FROM $0 WHERE a2 >= 10", table_name);
+      "/*+ IndexOnlyScan($0 a_idx) */ SELECT count(*) FROM $0 WHERE a2 >= 0", table_name);
   ASSERT_STR_CONTAINS(ASSERT_RESULT(consumer_conn.FetchAllAsString("EXPLAIN " + query)), "a_idx");
   ASSERT_OK(LoggedWaitFor(
-      [&]() -> Result<bool> { return VERIFY_RESULT(consumer_conn.FetchRow<int64_t>(query)) == 41; },
+      [&]() -> Result<bool> { return VERIFY_RESULT(consumer_conn.FetchRow<int64_t>(query)) == 50; },
       MonoDelta::FromSeconds(30 * kTimeMultiplier), "Wait for rows to replicate through a_idx"));
 }
 
