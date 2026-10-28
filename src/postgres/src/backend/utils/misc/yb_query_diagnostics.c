@@ -966,16 +966,9 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
-		/*
-		 * Make sure stats accumulation is done.  (Note: it's okay if several
-		 * levels of hook all do this.)
-		 */
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists */
-#if 0
-		InstrEndLoop(queryDesc->totaltime);
-		double		totaltime_ms = queryDesc->totaltime->total * 1000.0;
-#endif
-		double		totaltime_ms = 0;
+		double		totaltime_ms = (queryDesc->query_instr ?
+									INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total) :
+									0);
 
 		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
 			(queryDesc->params || query_constants.count > 0))
