@@ -866,10 +866,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       setSystemRelsModificationGuc(stmt, true);
       stmt.execute("CREATE VIEW pg_catalog.test_oid_ahead_view"
           + " WITH (use_initdb_acl = true) AS SELECT 1 AS x");
+      // Make V111, which comes after V109, assign an OID in the database: its ALTER EXTENSION
+      // pg_partman UPDATE recreates a procedure that the database lacks. pg_partman needs a
+      // function that V111 adds, so add it first.
+      stmt.execute("CREATE FUNCTION pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()"
+          + " RETURNS boolean LANGUAGE internal"
+          + " AS 'yb_pg_partman_check_native_txn_ddl_and_locks'");
+      stmt.execute("CREATE EXTENSION pg_partman");
+      String proc = "run_analyze(boolean, boolean, text)";
+      stmt.execute("ALTER EXTENSION pg_partman DROP PROCEDURE " + proc);
+      stmt.execute("DROP PROCEDURE " + proc);
+      setAllowNonDdlTxnsGuc(stmt, true);
+      stmt.execute("UPDATE pg_extension SET extversion = '4.7.4' WHERE extname = 'pg_partman'");
     }
 
     // The migrations include V109, which creates a shared relation with an array type and a
-    // primary key constraint.
+    // primary key constraint, and V111.
     runMigrations(false /* useSingleConnection */);
 
     for (String db : Arrays.asList("template1", dbName)) {

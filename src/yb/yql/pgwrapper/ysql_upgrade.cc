@@ -288,6 +288,9 @@ class YsqlUpgradeHelper::DatabaseEntry {
   // not in single-connection mode.
   virtual Result<std::shared_ptr<pgwrapper::PGConn>> GetConnection() = 0;
 
+  // Close the connection kept for reuse, if any, so that the next one starts a new backend.
+  virtual void CloseConnection() {}
+
  protected:
   Result<std::shared_ptr<pgwrapper::PGConn>> MakeConnection() {
     auto pgconn = std::make_shared<pgwrapper::PGConn>(VERIFY_RESULT(conn_builder_.Connect()));
@@ -325,6 +328,10 @@ class YsqlUpgradeHelper::ReusableConnectionDatabaseEntry
 
     pgconn_ = VERIFY_RESULT(MakeConnection());
     return pgconn_;
+  }
+
+  void CloseConnection() override {
+    pgconn_.reset();
   }
 
  private:
@@ -635,6 +642,15 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
       Format("Failed to apply migration '$0' to a database $1", next_migration_filename, db_name));
   if (min_next_oid) {
     RETURN_NOT_OK(pgconn->Execute("RESET yb_ysql_upgrade_min_next_oid"));
+    // The backend of another database reads its next OID from its catalogs once, at its first
+    // OID assignment, and then counts up from there. If that happened before this migration, it
+    // would go on to assign the OIDs that template1 has just inserted into its database. Close
+    // those connections, so that their next backends read the catalogs again.
+    for (auto& entry : databases_) {
+      if (entry.get() != db_entry) {
+        entry->CloseConnection();
+      }
+    }
   }
 
   bool has_breaking_ddl = false;
