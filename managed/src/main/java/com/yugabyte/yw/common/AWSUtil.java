@@ -311,8 +311,9 @@ public class AWSUtil implements CloudUtil {
    * refusal or an S3-compatible store may only say "Access Denied". A 403 whose message names no
    * s3: action is therefore described without guessing its cause, with the permission listing
    * needs. So is a 301 without a message, a bucket in another region than the client's. Anything
-   * else (an S3-side 5xx or throttling) is passed on as it is. A missing bucket is reported by
-   * tryListObjects as a 412 itself.
+   * else (an S3-side 5xx or throttling) is passed on as it is. A missing bucket is a 412 either
+   * way: the listing checks' HeadBucket 404 is reported by tryListObjects itself, and the file
+   * check's ListObjectsV2 404 (NoSuchBucket) comes here as a refusal.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
     if (!isS3Refusal(e.statusCode()) && e.statusCode() != MOVED_PERMANENTLY) {
