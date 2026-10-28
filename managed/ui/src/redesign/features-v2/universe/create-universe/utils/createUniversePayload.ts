@@ -2,7 +2,7 @@ import { omit, isEmpty } from 'lodash';
 import { TFunction } from 'i18next';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { ResilienceFormMode, ResilienceType } from '../steps/resilence-regions/dtos';
-import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
+import { OtherAdvancedProps, ProxyAdvancedProps } from '../steps/advanced-settings/dtos';
 import {
   CommunicationPortsSpec,
   PlacementRegion,
@@ -12,6 +12,7 @@ import {
   ClusterPlacementSpec,
   ClusterPerProviderSpec,
   ClusterNetworkingSpec,
+  NodeProxyConfig,
   PlacementCloud
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
@@ -225,6 +226,30 @@ function mapInstanceTags(
   );
 }
 
+/**
+ * Shared by create and edit. When `clearNoProxyList` is set, an unchecked bypass toggle sends an
+ * empty list (so an edit clears a stored list); otherwise the key is omitted.
+ */
+export function mapProxySettingsToProxyConfig(
+  proxySettings: ProxyAdvancedProps,
+  { clearNoProxyList = false } = {}
+): NodeProxyConfig {
+  const noProxyList = proxySettings.byPassProxyList
+    ? (proxySettings.byPassProxyListValues ?? [])
+    : clearNoProxyList
+      ? []
+      : undefined;
+  return {
+    http_proxy: proxySettings.webProxy
+      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+      : '',
+    https_proxy: proxySettings.secureWebProxy
+      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+      : '',
+    ...(noProxyList ? { no_proxy_list: noProxyList } : {})
+  };
+}
+
 function mapClusterNetworkingSpec(
   securitySettings: SecuritySettingsProps,
   proxySettings: NonNullable<createUniverseFormProps['proxySettings']>
@@ -235,20 +260,7 @@ function mapClusterNetworkingSpec(
       ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
       : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
     ...(proxySettings.enableProxyServer
-      ? {
-          proxy_config: {
-            http_proxy:
-              proxySettings.enableProxyServer && proxySettings.webProxy
-                ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                : '',
-            https_proxy: proxySettings.secureWebProxy
-              ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-              : '',
-            ...(proxySettings.byPassProxyList
-              ? { no_proxy_list: proxySettings.byPassProxyListValues ?? [] }
-              : {})
-          }
-        }
+      ? { proxy_config: mapProxySettingsToProxyConfig(proxySettings) }
       : {})
   };
 }

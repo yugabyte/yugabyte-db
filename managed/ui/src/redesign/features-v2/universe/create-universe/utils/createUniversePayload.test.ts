@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getCreateEITPayload, mapCreateUniversePayload } from './createUniversePayload';
+import {
+  getCreateEITPayload,
+  mapCreateUniversePayload,
+  mapProxySettingsToProxyConfig
+} from './createUniversePayload';
+import { ProxyAdvancedProps } from '../steps/advanced-settings/dtos';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { CertType, SecuritySettingsProps } from '../steps/security-settings/dtos';
@@ -167,5 +172,34 @@ describe('mapCreateUniversePayload proxy config', () => {
     expect(getProxyConfig({ ...base, enableProxyServer: false, byPassProxyList: true })).toBe(
       undefined
     );
+  });
+});
+
+describe('mapProxySettingsToProxyConfig', () => {
+  const settings = {
+    enableProxyServer: true,
+    webProxy: true,
+    webProxyServer: 'proxy.example.com',
+    webProxyPort: 3128,
+    secureWebProxy: false,
+    byPassProxyList: false,
+    byPassProxyListValues: ['a.com']
+  } as ProxyAdvancedProps;
+
+  it('sends an empty no_proxy_list for edit when bypass is unchecked', () => {
+    expect(mapProxySettingsToProxyConfig(settings, { clearNoProxyList: true })).toEqual({
+      http_proxy: 'proxy.example.com:3128',
+      https_proxy: '',
+      no_proxy_list: []
+    });
+  });
+
+  it('sends the list for edit when bypass is checked', () => {
+    expect(
+      mapProxySettingsToProxyConfig(
+        { ...settings, byPassProxyList: true },
+        { clearNoProxyList: true }
+      ).no_proxy_list
+    ).toEqual(['a.com']);
   });
 });

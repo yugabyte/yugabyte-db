@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { yba } from '@yugabyte-ui-library/core';
+import { mapProxySettingsToProxyConfig } from '../../create-universe/utils/createUniversePayload';
 import { EnableProxyServer } from '../../create-universe/fields';
 import { ProxyAdvancedProps } from '../../create-universe/steps/advanced-settings/dtos';
 import {
@@ -62,18 +63,9 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
               networking_spec: {
                 ...(values?.enableProxyServer
                   ? {
-                      proxy_config: {
-                        http_proxy: !!values?.webProxy
-                          ? `${values?.webProxyServer}:${values?.webProxyPort}`
-                          : '',
-                        https_proxy: !!values?.secureWebProxy
-                          ? `${values?.secureWebProxyServer}:${values?.secureWebProxyPort}`
-                          : '',
-                        // Always sent so that turning the toggle off clears a stored list.
-                        no_proxy_list: values?.byPassProxyList
-                          ? (values?.byPassProxyListValues ?? [])
-                          : []
-                      }
+                      proxy_config: mapProxySettingsToProxyConfig(values, {
+                        clearNoProxyList: true
+                      })
                     }
                   : {})
               }
