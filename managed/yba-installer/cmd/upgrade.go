@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
@@ -166,31 +167,10 @@ func upgradeCmd() *cobra.Command {
 				}
 			}
 
-			/* This is the postgres major version upgrade workflow!
-			// First, stop platform and prometheus. Postgres will need to be running
-			// to take the backup for postgres upgrade.
-			services[YbPlatformServiceName].Stop()
-			services[PrometheusServiceName].Stop()
-
-			common.Upgrade(ybactl.Version)
-
-			for _, name := range serviceOrder {
-				services[name].Upgrade()
-			}
-
-			for _, name := range serviceOrder {
-				status := services[name].Status()
-				if !common.IsHappyStatus(status) {
-					log.Fatal(status.Service + " is not running! upgrade failed")
-				}
-			}
-			*/
-
 			if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
 				log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
 			}
 
-			// Here is the postgres minor version/no upgrade workflow
 			if err := common.PreUpgrade(ybactl.Version); err != nil {
 				if rollback {
 					rollbackUpgrade(backupDir, state)
@@ -258,6 +238,12 @@ func upgradeCmd() *cobra.Command {
 				log.Info("Completed restart of component " + service.Name())
 			}
 
+			if viper.GetBool("postgres.install.enabled") {
+				if err := serviceManager.ServiceByName(PostgresServiceName).(Postgres).MaybeVacuumStats(); err != nil {
+					log.Warn("unable to vacuum postgres stats after upgrade: " + err.Error())
+				}
+			}
+
 			if err := common.WaitForYBAReady(ybactl.Version); err != nil {
 				if rollback {
 					rollbackUpgrade(backupDir, state)
@@ -281,7 +267,6 @@ func upgradeCmd() *cobra.Command {
 				}
 			}
 			common.PrintStatus(state.CurrentStatus.String(), statuses...)
-			// Here ends the postgres minor version/no upgrade workflow
 
 			// Upgrade yba-ctl. Maybe make separate function for this?
 			if err := ybaCtl.Install(); err != nil {

@@ -42,8 +42,8 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 # Prometheus Version
 PROMETHEUS_VERSION ?= 3.13.1
 
-# https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
-POSTGRES_VERSION ?= 14.23
+# https://github.com/yugabyte/yba-pg-build/
+POSTGRES_VERSION ?= 18.6
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
