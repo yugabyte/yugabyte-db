@@ -583,7 +583,9 @@ public class BackupHelper {
    * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
    * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
    * deletion of the universe and its provider; falls back to the live universe for backups taken
-   * before the snapshot existed. No-op for a config that is not federated.
+   * before the snapshot existed. With YBA on the bucket's cloud the snapshot is ignored and nothing
+   * is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that
+   * means switching it to YBA's IAM role. No-op for a config that is not federated.
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
