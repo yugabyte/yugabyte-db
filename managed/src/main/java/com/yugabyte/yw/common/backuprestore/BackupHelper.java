@@ -547,8 +547,8 @@ public class BackupHelper {
    * the GCP audience on a useGcpIam GCS config (GCS-on-AWS), or the AWS role ARN + audience on a
    * cross-cloud federation S3 config (S3-on-GCP). With YBA on the bucket's cloud nothing is
    * stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that means
-   * switching it to YBA's IAM role. No-op otherwise, or when no universe context / value is
-   * available.
+   * switching it to YBA's IAM role, with or without a universe. Otherwise, or when no universe
+   * context / value is available, nothing is stamped.
    */
   public void applyCrossCloudFederationAudience(
       CustomerConfigData configData, @Nullable Universe universe) {
