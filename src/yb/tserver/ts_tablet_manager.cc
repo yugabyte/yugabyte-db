@@ -709,7 +709,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
+      [this] { return GetTabletPeers(); }, scoped_refptr<server::Clock>(server_->clock()));
 
   tier_migration_reconciler_ = std::make_unique<TierMigrationReconciler>(this);
 

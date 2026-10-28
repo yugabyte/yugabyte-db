@@ -15,12 +15,16 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -101,7 +105,11 @@ class KeyStatsSlidingWindow {
 
 class FullCompactionManager {
  public:
-  explicit FullCompactionManager(TSTabletManager* ts_tablet_manager);
+  using TabletPeersProvider = std::function<std::vector<tablet::TabletPeerPtr>()>;
+
+  // peers_fn returns the tablet peers to consider for full compactions. clock provides the
+  // current time used to compute the next compaction times.
+  FullCompactionManager(TabletPeersProvider peers_fn, server::ClockPtr clock);
 
   // Checks if the gflag values for the compaction frequency and jitter factor have changed
   // since the last runs, and resets to those values if so. Then, runs DoScheduleFullCompactions().
@@ -216,8 +224,10 @@ class FullCompactionManager {
   void ResetFrequencyAndJitterIfNeeded(
       MonoDelta compaction_frequency, int jitter_factor);
 
-  // Tablet manager that owns this full compaction manager.
-  TSTabletManager* ts_tablet_manager_;
+  // Returns the tablet peers to consider for full compactions.
+  const TabletPeersProvider peers_fn_;
+
+  const server::ClockPtr clock_;
 
   // Amount of time expected between full compactions.
   MonoDelta compaction_frequency_;

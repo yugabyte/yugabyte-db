@@ -45,6 +45,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/qlexpr/ql_expr.h"
 
@@ -111,6 +112,7 @@ DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -982,6 +984,7 @@ class ScheduledFullCompactionsTest : public CompactionTest {
 
     // History retention set to 0 for quicker compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_percent_obsolete) = kPercentObsoleteThreshold;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_min_obsolete_keys_found) = 10000;
   }
@@ -1008,17 +1011,66 @@ class ScheduledFullCompactionsTest : public CompactionTest {
     return true;
   }
 
+  master::SysCatalogTable& SysCatalog() {
+    return *cluster_->mini_master()->catalog_manager().sys_catalog();
+  }
+
+  tserver::FullCompactionManager* MasterFullCompactionManager() {
+    return SysCatalog().full_compaction_manager();
+  }
+
+  Result<tablet::TabletPtr> SysCatalogTablet() {
+    return SysCatalog().tablet_peer()->shared_tablet();
+  }
+
+  // Flushes the sys catalog tablet so that it has SST files to compact.
+  Status FlushSysCatalog();
+
+  // Waits until the sys catalog tablet records a full compaction at or after lower_bound and
+  // has a single SST file.
+  Status WaitForSysCatalogFullCompaction(HybridTime lower_bound);
+
   const int kPercentObsoleteThreshold = 50;
 };
+
+Status ScheduledFullCompactionsTest::FlushSysCatalog() {
+  auto tablet = VERIFY_RESULT(SysCatalogTablet());
+  RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  SCHECK_GT(
+      tablet->GetCurrentVersionNumSSTFiles(), 0, IllegalState,
+      "Sys catalog tablet has no SST files after flush");
+  return Status::OK();
+}
+
+Status ScheduledFullCompactionsTest::WaitForSysCatalogFullCompaction(HybridTime lower_bound) {
+  auto tablet = VERIFY_RESULT(SysCatalogTablet());
+  return LoggedWaitFor(
+      [&tablet, lower_bound] {
+        const auto last_compact_time =
+            HybridTime(tablet->metadata()->last_full_compaction_time());
+        return !last_compact_time.is_special() && last_compact_time >= lower_bound &&
+               tablet->GetCurrentVersionNumSSTFiles() == 1;
+      },
+      60s, "Waiting for full compaction of the sys catalog tablet",
+      kWaitDelay * kTimeMultiplier);
+}
 
 bool ScheduledFullCompactionsTest::CheckNextFullCompactionTimes(
     MonoDelta compaction_frequency,
     HybridTime expected_last_compact_lower_bound) {
   HybridTime now = clock_->Now();
+  std::vector<std::pair<tserver::FullCompactionManager*, std::vector<tablet::TabletPeerPtr>>>
+      managers;
   for (int i = 0 ; i < NumTabletServers(); i++) {
     auto ts_tablet_manager = cluster_->GetTabletManager(i);
-    auto compact_manager = ts_tablet_manager->full_compaction_manager();
-    for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+    managers.emplace_back(
+        ts_tablet_manager->full_compaction_manager(), ts_tablet_manager->GetTabletPeers());
+  }
+  managers.emplace_back(
+      MasterFullCompactionManager(),
+      std::vector<tablet::TabletPeerPtr>{SysCatalog().tablet_peer()});
+  for (const auto& [compact_manager, peers] : managers) {
+    for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet_maybe_null();
       if (!tablet || !tablet->IsEligibleForFullCompaction()) {
         continue;
@@ -1078,13 +1130,17 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
   const MonoDelta kCompactionFrequency = MonoDelta::FromHours(kCompactionFrequencyHours);
   auto ts_tablet_manager = cluster_->GetTabletManager(0);
   auto compact_manager = ts_tablet_manager->full_compaction_manager();
+  auto master_compact_manager = MasterFullCompactionManager();
 
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(FlushSysCatalog());
   ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_GE(db->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
   }
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 0));
+  ASSERT_OK(FlushSysCatalog());
   // Change compaction frequency to enable the FullCompactionManager.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) =
       kCompactionFrequencyHours;
@@ -1092,16 +1148,25 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
   HybridTime before_first_check = clock_->Now();
   ASSERT_TRUE(CheckNextFullCompactionTimes(kCompactionFrequency));
   compact_manager->ScheduleFullCompactions();
+  master_compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(master_compact_manager->num_scheduled_last_execution(), 1);
 
   // Wait until all compactions have finished, then verify they completed.
   ASSERT_OK(WaitForNumCompactionsPerDb(1));
   for (auto* db : dbs) {
     ASSERT_EQ(db->GetCurrentVersionNumSSTFiles(), 1);
   }
+  ASSERT_OK(WaitForSysCatalogFullCompaction(before_first_check));
 
   ASSERT_TRUE(CheckNextFullCompactionTimes(
       kCompactionFrequency, before_first_check));
   compact_manager->ScheduleFullCompactions();
+  // The sys catalog tablet was just compacted, so its next compaction is not due yet.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 0));
+  ASSERT_OK(FlushSysCatalog());
+  master_compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(master_compact_manager->num_scheduled_last_execution(), 0);
+  ASSERT_GE(ASSERT_RESULT(SysCatalogTablet())->GetCurrentVersionNumSSTFiles(), 2);
 
   // Manually set the last compaction time for one tablet, and verify that only it gets scheduled.
   // Pick an arbitrary DB to assign an earlier compaction time.
@@ -1230,6 +1295,9 @@ TEST_F(ScheduledFullCompactionsTest, OlderTabletsWillStillScheduleAndCreateMetad
   ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
   ASSERT_OK(ExecuteManualCompaction());
   ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  // The sys catalog tablet has never been fully compacted, like a sys catalog tablet created
+  // before scheduled full compactions were supported on master.
+  ASSERT_OK(FlushSysCatalog());
 
   // Re-activate metadata writing so it will be written on the next compaction.
   ANNOTATE_UNPROTECTED_WRITE(
@@ -1245,7 +1313,10 @@ TEST_F(ScheduledFullCompactionsTest, OlderTabletsWillStillScheduleAndCreateMetad
   auto ts_tablet_manager = cluster_->GetTabletManager(0);
   auto compact_manager = ts_tablet_manager->full_compaction_manager();
   compact_manager->ScheduleFullCompactions();
+  MasterFullCompactionManager()->ScheduleFullCompactions();
+  ASSERT_EQ(MasterFullCompactionManager()->num_scheduled_last_execution(), 1);
   ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  ASSERT_OK(WaitForSysCatalogFullCompaction(before_first_check));
 
   // Check that we now have useable metadata (even though the original tablets had none),
   // and that we schedule a compaction for the future.

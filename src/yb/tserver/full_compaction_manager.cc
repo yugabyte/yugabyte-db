@@ -24,8 +24,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
+#include "yb/server/clock.h"
 
 #include "yb/util/background_task.h"
 #include "yb/util/flags.h"
@@ -90,8 +89,10 @@ namespace tserver {
 
 using tablet::TabletPeerPtr;
 
-FullCompactionManager::FullCompactionManager(TSTabletManager* ts_tablet_manager)
-    : ts_tablet_manager_(ts_tablet_manager),
+FullCompactionManager::FullCompactionManager(
+    TabletPeersProvider peers_fn, server::ClockPtr clock)
+    : peers_fn_(std::move(peers_fn)),
+      clock_(std::move(clock)),
       check_interval_sec_(ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_check_interval_sec)) {
   last_cleanup_time_ = CoarseMonoClock::Now();
   SetFrequencyAndJitterFromFlags();
@@ -103,7 +104,7 @@ FullCompactionManager::FullCompactionManager(TSTabletManager* ts_tablet_manager)
 }
 
 void FullCompactionManager::ScheduleFullCompactions() {
-  const auto peers = ts_tablet_manager_->GetTabletPeers();
+  const auto peers = peers_fn_();
   SetFrequencyAndJitterFromFlags();
   CollectDocDBStats(peers);
   DoScheduleFullCompactions(peers);
@@ -257,7 +258,7 @@ void FullCompactionManager::DoScheduleFullCompactions(
 
 PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction(
     const std::vector<tablet::TabletPeerPtr>& peers) {
-  const auto now = ts_tablet_manager_->server()->Clock()->Now();
+  const auto now = clock_->Now();
   PeerNextCompactList compact_list;
   for (const auto& peer : peers) {
     const auto tablet_id = peer->tablet_id();
@@ -353,7 +354,7 @@ HybridTime FullCompactionManager::CalculateNextCompactTime(
 
 void FullCompactionManager::TEST_DoScheduleFullCompactionsWithManualValues(
     MonoDelta compaction_frequency, int jitter_factor) {
-  const auto peers = ts_tablet_manager_->GetTabletPeers();
+  const auto peers = peers_fn_();
   ResetFrequencyAndJitterIfNeeded(compaction_frequency, jitter_factor);
   DoScheduleFullCompactions(peers);
 }

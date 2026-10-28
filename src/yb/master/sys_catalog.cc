@@ -219,6 +219,9 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
   RETURN_NOT_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-sync").set_min_threads(1).Build(&log_sync_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("full-compaction")
+                    .set_max_threads(1)
+                    .Build(&full_compaction_pool_));
 
   setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
@@ -237,6 +240,9 @@ void SysCatalogTable::StartShutdown() {
 
   if (mem_manager_) {
     mem_manager_->Shutdown();
+  }
+  if (full_compaction_manager_) {
+    full_compaction_manager_->Shutdown();
   }
   auto peer = tablet_peer();
   if (peer) {
@@ -261,6 +267,7 @@ void SysCatalogTable::CompleteShutdown() {
   }
   inform_removed_master_pool_->Shutdown();
   snapshot_cleanup_pool_->Shutdown();
+  full_compaction_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
   if (multi_raft_manager_) {
@@ -643,10 +650,18 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
 
-  // Returns a vector that includes the tablet peer associated with master.
+  // Returns a vector that includes the tablet peer associated with master, or an empty vector if
+  // there is no tablet peer.
   const auto get_peers_lambda = [this]() -> std::vector<tablet::TabletPeerPtr> {
-    return { tablet_peer() };
+    auto peer = tablet_peer();
+    if (!peer) {
+      return {};
+    }
+    return { std::move(peer) };
   };
+
+  full_compaction_manager_ = std::make_unique<tserver::FullCompactionManager>(
+      get_peers_lambda, scoped_refptr<server::Clock>(master_->clock()));
 
   mem_manager_ = std::make_shared<tserver::TabletMemoryManager>(
       &tablet_options,
@@ -687,8 +702,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           std::placeholders::_1),
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
-      // We won't be doing full compactions on the catalog tablet.
-      .full_compaction_pool = nullptr,
+      .full_compaction_pool = full_compaction_pool_.get(),
       .admin_triggered_compaction_pool = nullptr,
       .intent_cleanup_pool = raft_pool(),
       // We don't support splitting the catalog tablet, this field is unneeded.
@@ -740,7 +754,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   if (!tablet->schema()->Equals(doc_read_context_->schema())) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
-  return mem_manager_->Init();
+  RETURN_NOT_OK(mem_manager_->Init());
+  return full_compaction_manager_->Init();
 }
 
 std::string SysCatalogTable::LogPrefix() const {
