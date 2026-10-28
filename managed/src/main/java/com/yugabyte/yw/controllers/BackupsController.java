@@ -365,7 +365,7 @@ public class BackupsController extends AuthenticatedController {
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
             request, BackupScheduleTaskParams.class, universe.getUniverseUUID(), runtimeConfGetter);
     taskParams.setCustomerUUID(customer.getUuid());
-    // The customer comes from the URL; the schedule is created with the one in its params.
+    // Later steps of the task read the customer from the schedule params; take it from the URL.
     requestParams.customerUUID = customer.getUuid();
     taskParams.setScheduleParams(requestParams);
     UUID taskUUID =

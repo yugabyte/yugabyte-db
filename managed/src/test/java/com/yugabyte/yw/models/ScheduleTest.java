@@ -337,6 +337,10 @@ public class ScheduleTest extends FakeDBApplication {
     params.customerUUID = null;
     Schedule schedule = Schedule.getOrCreateSchedule(defaultCustomer.getUuid(), params);
     assertEquals(defaultCustomer.getUuid(), schedule.getCustomerUUID());
+    // Each scheduled backup runs with the saved params, so they must carry the customer too.
+    assertEquals(
+        defaultCustomer.getUuid().toString(),
+        schedule.getTaskParams().get("customerUUID").asText());
     assertEquals(
         schedule.getScheduleUUID(),
         Schedule.getOrCreateSchedule(defaultCustomer.getUuid(), params).getScheduleUUID());
