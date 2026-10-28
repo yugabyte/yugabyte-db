@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/container/small_vector.hpp>
 #include "yb/util/logging.h"
 
 #include "yb/client/client.h"
@@ -85,17 +86,13 @@ TEST_F(LogRollingTest, Rolling) {
   version = util::TrimStr(version);
   ASSERT_TRUE(std::regex_match(
       version, std::regex(R"(version \S+ build \S+ revision \S+ build_type \S+ built at .+)")));
-  const auto log_path = JoinPathSegments(master->GetDataDirs()[0], "logs", BaseName(exe) + ".INFO");
+  const auto logs_dir = JoinPathSegments(master->GetDataDirs()[0], "logs");
+  const auto log_path = JoinPathSegments(logs_dir, BaseName(exe) + ".INFO");
   const auto fingerprint = "Application fingerprint: " + version;
-  const LogHeader header(log_path);
-  ASSERT_NE(header.GetByPrefix(fingerprint), "");
-  const auto& initial_duration = header.GetByPrefix(kDurationPrefix);
-  ASSERT_NE(initial_duration, "");
-  // In case of log rolling log_path link will be pointed to newly created file
-  const auto initial_target = ASSERT_RESULT(env_->ReadLink(log_path));
-  auto prev_size = ASSERT_RESULT(env_->GetFileSize(log_path));
+  // Collect several files during log rolling for further checks.
+  boost::container::small_vector<string, 5> log_files;
   auto master_proxy = cluster_->GetMasterProxy<master::MasterDdlProxy>();
-  while(initial_target == ASSERT_RESULT(env_->ReadLink(log_path))) {
+  while (log_files.size() < 5) {
     // Call rpc functions to generate logs in master
     for(int i = 0; i < 20; ++i) {
       master::TruncateTableRequestPB req;
@@ -103,18 +100,24 @@ TEST_F(LogRollingTest, Rolling) {
       rpc::RpcController rpc;
       ASSERT_OK(master_proxy.TruncateTable(req, &resp, &rpc));
     }
-    const auto current_size = ASSERT_RESULT(env_->GetFileSize(log_path));
-    // Make sure log size is changed and it is not much than 2Mb
-    // Something goes wrong in other case
-    ASSERT_NE(current_size, prev_size);
-    ASSERT_LT(current_size, 2_MB);
-    prev_size = current_size;
+    auto target = ASSERT_RESULT(env_->ReadLink(log_path));
+    if (log_files.empty() || target != log_files.back()) {
+      log_files.push_back(std::move(target));
+    }
   }
-  const LogHeader fresh_header(log_path);
-  ASSERT_NE(fresh_header.GetByPrefix(fingerprint), "");
-  const auto& duration = fresh_header.GetByPrefix(kDurationPrefix);
-  ASSERT_NE(duration, "");
-  ASSERT_NE(duration, initial_duration);
+  // Rolled files are immutable, so checking them by name is race-free.
+  string prev_duration_str;
+  for (const auto& file : log_files) {
+    const auto log_file_full_path = JoinPathSegments(logs_dir, file);
+    const LogHeader header(log_file_full_path);
+    ASSERT_NE(header.GetByPrefix(fingerprint), "");
+    const auto& duration_line = header.GetByPrefix(kDurationPrefix);
+    ASSERT_NE(duration_line, "");
+    ASSERT_LT(ASSERT_RESULT(env_->GetFileSize(log_file_full_path)), 2_MB);
+    const auto duration_str = duration_line.substr(kDurationPrefix.size());
+    ASSERT_GE(duration_str, prev_duration_str) << "Log file durations out of order: " << file;
+    prev_duration_str = duration_str;
+  }
 }
 
 } // namespace test
