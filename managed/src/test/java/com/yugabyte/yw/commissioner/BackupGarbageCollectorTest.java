@@ -222,6 +222,20 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRequeueForDeletionKeepsCountWhenAlreadyQueued() {
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    bp.setUniverseUUID(UUID.randomUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    // Queued again by someone else while the collector held it: the count must still be saved.
+    backup.requeueForDeletion(1);
+    backup.refresh();
+    assertEquals(BackupState.QueuedForDeletion, backup.getState());
+    assertEquals(1, backup.getRetryCount());
+  }
+
+  @Test
   public void testDeleteBackupFailureWithInvalidCredentials() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();

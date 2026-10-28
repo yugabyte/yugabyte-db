@@ -844,6 +844,11 @@ public class Backup extends Model {
     this.refresh();
     if (this.getState().equals(newState)) {
       LOG.debug("Skipping state transition as backup is already in the {} state", this.getState());
+      if (beforeSave != null) {
+        // The other change still applies, e.g. a retry count for a backup queued again meanwhile.
+        beforeSave.accept(this);
+        save();
+      }
     } else if (ALLOWED_TRANSITIONS.containsEntry(this.getState(), newState)) {
       LOG.debug("Backup state transitioned from {} to {}", this.getState(), newState);
       if (this.getState() == BackupState.FailedToDelete) {
