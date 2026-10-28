@@ -341,6 +341,8 @@ class HnswlibIndex :
   }
 
   // Tenants are separate graph clusters, so a search without a tenant searches every cluster.
+  // TODO(#36087): DocDB passes no tenant yet, so a search of an index with tenants searches every
+  // tenant cluster, one at a time.
   // Returns results closer first.
   std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> SearchTenants(
       const Vector& query_vector, const SearchOptions& options,
