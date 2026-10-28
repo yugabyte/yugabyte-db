@@ -139,6 +139,8 @@ struct TabletLeaderLeaseInfo {
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
 
+  bool operator==(const TabletLeaderLeaseInfo&) const = default;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         initialized, (leader_lease_status, consensus::LeaderLeaseStatus_Name(leader_lease_status)),
@@ -157,6 +159,8 @@ struct TabletReplicaDriveInfo {
   uint64 vector_index_size = 0;
   bool has_active_vector_index_backfill = false;
 
+  bool operator==(const TabletReplicaDriveInfo&) const = default;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
@@ -170,6 +174,8 @@ struct FullCompactionStatus {
 
   // Not valid if full_compaction_state == UNKNOWN.
   HybridTime last_full_compaction_time;
+
+  bool operator==(const FullCompactionStatus&) const = default;
 };
 
 // Information on a current replica of a tablet.
@@ -329,15 +335,17 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
-  Result<TabletLeaderLeaseInfo> GetLeaderLeaseInfoIfLeader(const std::string& ts_uuid) const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica);
 
   // Updates a replica in replica_locations_ map if it exists.
-  void UpdateReplicaInfo(const std::string& ts_uuid,
-                         const TabletReplicaDriveInfo& drive_info,
-                         const TabletLeaderLeaseInfo& leader_lease_info);
+  void UpdateReplicaInfo(const std::string& ts_uuid, const TabletReplicaDriveInfo& drive_info);
+
+  // Applies a heartbeat leader_info entry under one lock: lease decision, valid-leader time, write.
+  void ProcessLeaderInfo(
+      const std::string& ts_uuid, consensus::LeaderLeaseStatus leader_lease_status,
+      MicrosTime ht_lease_exp, bool ht_lease_expired_too_long);
 
   // Returns the per-stream replication status bitmasks.
   std::unordered_map<xrepl::StreamId, uint64_t> GetReplicationStatus();
@@ -346,8 +354,6 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
 
-  // Update last_time_with_valid_leader_ to the Now().
-  void UpdateLastTimeWithValidLeader();
   MonoTime last_time_with_valid_leader() const;
   void TEST_set_last_time_with_valid_leader(const MonoTime& time);
 
