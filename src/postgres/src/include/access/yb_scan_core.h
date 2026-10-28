@@ -10,7 +10,7 @@
  *	  it, plus guc.c for the GUC variables declared here.  Code
  *	  above the AM layer, such as executor nodes, the optimizer,
  *	  commands such as ANALYZE, and catalog and cache code, uses a
- *	  header that exposes no AM internals instead:
+ *	  header that exposes no AM internals instead: yb_scan_plan.h,
  *	  yb_table_scan_options.h, yb_target.h, yb_cost.h, and so on.  A
  *	  function declared in such a header is defined in that header's
  *	  matching .c file, not in yb_scan_core.c.
