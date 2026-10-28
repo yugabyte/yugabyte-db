@@ -745,7 +745,7 @@ public class CustomerTask extends Model {
         case ReprovisionNode:
           return "Re-provision";
         case ManageCrossCloudFederation:
-          return "Update Cross Cloud Federated Access";
+          return "Update Cross-Cloud Federated Access";
         default:
           return toFriendlyTypeName();
       }

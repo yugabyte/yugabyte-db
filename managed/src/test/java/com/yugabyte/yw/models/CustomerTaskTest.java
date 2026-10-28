@@ -117,7 +117,7 @@ public class CustomerTaskTest extends FakeDBApplication {
   @Test
   public void testCrossCloudFederationTaskName() {
     assertEquals(
-        "Update Cross Cloud Federated Access",
+        "Update Cross-Cloud Federated Access",
         CustomerTask.TaskType.ManageCrossCloudFederation.getFriendlyName());
   }
 
