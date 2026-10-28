@@ -299,12 +299,13 @@ public class AWSUtil implements CloudUtil {
   }
 
   /**
-   * The error to raise for an S3 error answer to a bucket listing check. A refusal (4xx) is the
+   * The error to raise for an S3 error answer to a bucket listing check. The check's calls are the
+   * client's bucket region warm-up (GetBucketLocation, not made for a federated config), then
+   * HeadBucket and ListObjectsV2 (ListObjectsV2 alone for the file check). A refusal (4xx) is the
    * user's to fix, so it is a clear 412 with the reason: S3's own message where it sends one, which
-   * names the action and the resource. A HEAD request (HeadBucket, the first call of the check)
-   * gets no message, so a 403 there is described without guessing its cause. So is a 301, a bucket
-   * in another region than the client's. Anything else (an S3-side 5xx or throttling) is passed on
-   * as it is.
+   * names the action and the resource. Only a HEAD request (HeadBucket) gets no message, so a 403
+   * without one is described without guessing its cause. So is a 301, a bucket in another region
+   * than the client's. Anything else (an S3-side 5xx or throttling) is passed on as it is.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
     // Throttling (429) is not the user's to fix, like an S3-side 5xx.
@@ -1095,7 +1096,13 @@ public class AWSUtil implements CloudUtil {
       if (client == null) {
         throw new RuntimeException("S3 client is null. This is unexpected!");
       }
-      warmUpBucketRegion(client, s3Data, region);
+      try {
+        warmUpBucketRegion(client, s3Data, region);
+      } catch (RuntimeException e) {
+        // The caller gets no client to close.
+        client.close();
+        throw e;
+      }
       return client;
     } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
