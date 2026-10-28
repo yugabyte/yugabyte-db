@@ -647,8 +647,12 @@ ANALYZE r5n;
 -- DISTINCT
 -- With larger response pages, merge scan is the cheaper plan for this query.
 SET yb_fetch_row_limit = 1024;
+-- Index only scan is off, since only a plain index scan on a colocated index
+-- needs its merge sort keys to stop before an expression column (issue #36017).
+SET enable_indexonlyscan = off;
 \set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
 \i :run_query
+RESET enable_indexonlyscan;
 SET yb_fetch_row_limit = 16;
 
 -- (Drop this index)
