@@ -635,11 +635,12 @@ public class BackupHelper {
   }
 
   /**
-   * Whether YBA itself runs on {@code cloud}. A federated config is then still the DB nodes' way to
-   * the bucket when they run elsewhere, but where YBA builds its own client for the bucket (backup
-   * deletion) it uses its native identity: it has no identity from another cloud to federate with.
-   * YBA-side validation of a federated config stays deferred to the nodes either way. False when
-   * the host cloud is not detected, which keeps the previous behaviour.
+   * Whether YBA itself runs on {@code cloud}. Where YBA builds its own client for the bucket
+   * (backup deletion) it then uses its native identity: it has no identity from another cloud to
+   * federate with. For S3 the federated config is still the DB nodes' way to the bucket when they
+   * run elsewhere; the GCS flag is YBA's own access only. YBA-side validation of a federated config
+   * stays deferred to the nodes either way. False when the host cloud is not detected, which keeps
+   * the previous behaviour.
    */
   private boolean ybaRunsOn(CloudType cloud) {
     if (!hostCloudDetector.isHostCloud(cloud)) {
