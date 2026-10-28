@@ -1248,31 +1248,29 @@ string AsyncHideTableOnTablet::description() const {
 }
 
 void AsyncHideTableOnTablet::HandleResponse(int attempt) {
-  if (!rpc_.status().ok()) {
-    AbortTask(rpc_.status());
-    LOG_WITH_PREFIX(WARNING) << Format(
-        "Got error when hiding table $0 on tablet $1, attempt $2 and error $3",
-        table_->ToString(), tablet_->ToString(), attempt, rpc_.status().ToString());
+  if (!resp_.has_error()) {
+    TransitionToCompleteState();
     return;
   }
-  if (resp_.has_error()) {
-    LOG_WITH_PREFIX(WARNING)
-        << "HideTableOnTablet responded with error: " << AsString(resp_.error());
-    switch (resp_.error().code()) {
-      case TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
-      case TabletServerErrorPB::NOT_THE_LEADER:
-        TransitionToWaitingState(MonitoredTaskState::kRunning);
-        break;
-      default:
-        TransitionToCompleteState();
-        break;
-    }
-  } else {
+  LOG_WITH_PREFIX(WARNING)
+      << "HideTableOnTablet responded with error (attempt " << attempt << "): "
+      << AsString(resp_.error());
+  // Unlike RemoveTableFromTablet, nothing sends the hide again later, so retry anything that can
+  // succeed, e.g. a tablet that is still bootstrapping, until the task's deadline.
+  if (resp_.error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
     TransitionToCompleteState();
+  } else {
+    TransitionToWaitingState(MonitoredTaskState::kRunning);
   }
 }
 
 bool AsyncHideTableOnTablet::SendRequest(int attempt) {
+  // A restore to before the drop brings the table back, and hiding it then would deactivate the
+  // vector indexes of a live table.
+  if (!table_->started_hiding()) {
+    AbortTask(STATUS(Aborted, "Table is no longer hidden"));
+    return false;
+  }
   req_.set_dest_uuid(permanent_uuid());
   // Orders the operation after the YSQL commit of the drop, which the master has observed: the
   // vector indexes keep the rows of every transaction committed before it.

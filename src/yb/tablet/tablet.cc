@@ -3394,7 +3394,11 @@ Status Tablet::HideTable(const TableId& table_id, const OpId& op_id, HybridTime 
       (**table_info).schema(), qlexpr::IndexMap(), /* deleted_cols= */ {},
       (**table_info).schema_version, op_id, table_id, hybrid_time);
   vector_indexes_->RefreshDeactivation();
-  return metadata_->Flush();
+  RETURN_NOT_OK(metadata_->Flush());
+
+  // SetSchema built new DocReadContexts, which start unarmed.
+  ArmColocatedTombstoneCaches();
+  return Status::OK();
 }
 
 Status Tablet::MarkBackfillDone(

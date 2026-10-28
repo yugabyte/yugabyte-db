@@ -286,7 +286,8 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     case MetadataChange::HIDE_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->HideTable(request()->hide_table_id().ToBuffer(), id, hybrid_time()));
+      RETURN_NOT_OK(tablet->HideTable(
+          request()->hide_table_id().ToBuffer(), id, hybrid_time_even_if_unset()));
       break;
   }
 

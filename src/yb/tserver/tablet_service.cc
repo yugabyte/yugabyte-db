@@ -761,7 +761,13 @@ void TabletServiceAdminImpl::HideTableOnTablet(
         resp->mutable_error(), STATUS(InvalidArgument, "Missing hide_table_id"),
         TabletServerErrorPB::UNKNOWN_ERROR, &context);
   }
-  SubmitChangeMetadataAtLeader(req, resp, std::move(context));
+  // Apply rejects a request that carries more than one operation, after it was replicated.
+  tablet::ChangeMetadataRequestPB hide_req;
+  hide_req.set_dest_uuid(req->dest_uuid());
+  hide_req.set_tablet_id(req->tablet_id());
+  hide_req.set_propagated_hybrid_time(req->propagated_hybrid_time());
+  hide_req.set_hide_table_id(req->hide_table_id());
+  SubmitChangeMetadataAtLeader(&hide_req, resp, std::move(context));
 }
 
 void TabletServiceAdminImpl::SubmitChangeMetadataAtLeader(
