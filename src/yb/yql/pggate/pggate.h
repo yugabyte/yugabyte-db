@@ -566,6 +566,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
+  SetupPerformOptionsAccessorTag ClearSessionState();
   Status FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx);
   Status AdjustOperationsBuffering(int multiple = 1);
 
@@ -860,6 +861,10 @@ class PgApiImpl {
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
                                   YbcOrderingMode ordering_mode,
+                                  const char *yb_publication_name,
+                                  const PgOid *yb_publication_relfilenodes,
+                                  size_t yb_num_publication_tables,
+                                  bool yb_publication_all_tables,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -974,8 +979,6 @@ class PgApiImpl {
       const YbcPgInitPostgresInfo& init_postgres_info, YbcPgAshConfig& ash_config,
       YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
   Status Init(std::optional<uint64_t> session_id);
-
-  SetupPerformOptionsAccessorTag ClearSessionState();
 
   template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
   Status AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle);

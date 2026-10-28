@@ -398,6 +398,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, fa
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(docdb_enable_sst_stats_collector);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -602,6 +603,21 @@ class ActiveCompactionToken {
   std::atomic<size_t>& counter_;
 };
 
+// Returns how many live SST files are numbered below file_number, and how many of those are being
+// compacted. Files numbered below post_split_compaction_file_number_upper_bound are inherited from
+// the parent tablet.
+std::pair<size_t, size_t> CountLiveFilesBelow(rocksdb::DB& db, uint64_t file_number) {
+  size_t num_files = 0;
+  size_t num_being_compacted = 0;
+  for (const auto& file : db.GetLiveFilesMetaData()) {
+    if (file.name_id < file_number) {
+      ++num_files;
+      num_being_compacted += file.being_compacted;
+    }
+  }
+  return {num_files, num_being_compacted};
+}
+
 } // namespace
 
 class Tablet::RocksDbListener : public rocksdb::EventListener {
@@ -642,19 +658,32 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
 
     auto& metadata = *CHECK_NOTNULL(tablet_.metadata());
+    const auto file_number_upper_bound =
+        metadata.post_split_compaction_file_number_upper_bound().value_or(0);
     if (ci.is_full_compaction) {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
         metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
       }
       metadata.OnPostSplitCompactionDone();
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
-    } else if (ci.is_no_op_compaction &&
-               ci.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
-      // Trivial post split compaction completion generally means that there are no more files
-      // inherited from a parent tablet available for compaction (literally all the files have
-      // been already compacted due to some reason), or there are no files at all (not expected).
-      if (metadata.OnPostSplitCompactionDone()) {
-        ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+    } else if (!metadata.rocksdb_parent_data_compacted() && file_number_upper_bound > 0) {
+      // Without a bound (unset or 0), files inherited from the parent tablet can't be told apart,
+      // so only a full compaction marks the parent data as compacted.
+      const auto [num_inherited, num_being_compacted] =
+          CountLiveFilesBelow(*db, file_number_upper_bound);
+      if (num_inherited == 0) {
+        // Any compaction can remove the last file inherited from the parent tablet, including a
+        // background one that picked those files before the post-split compaction. A no-op
+        // post-split compaction is not enough: another compaction may still hold those files.
+        if (metadata.OnPostSplitCompactionDone()) {
+          ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+        }
+      } else if (ci.is_no_op_compaction &&
+                 ci.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+        LOG_WITH_PREFIX(INFO) << "Post-split compaction found no more files to pick while "
+                              << num_inherited << " files inherited from the parent tablet remain ("
+                              << num_being_compacted << " being compacted); parent data will be "
+                              << "marked as compacted once they are removed";
       }
     }
 
@@ -678,10 +707,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
-
   void OldSchemaGC() {
-    MinSchemaVersionMap table_id_to_min_schema_version;
+    docdb::CotableSchemaVersionMap table_id_to_min_schema_version;
     {
       auto scoped_read_operation = tablet_.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
       if (!scoped_read_operation.ok()) {
@@ -692,6 +719,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
       FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
+      tablet_.vector_indexes().FillMinSchemaVersion(&table_id_to_min_schema_version);
     }
 
     FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
@@ -710,7 +738,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
   // Checks XCluster config to determine the min schema version at which to expect rows.
-  void FillMinXClusterSchemaVersion(MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinXClusterSchemaVersion(
+      docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (nullptr == tablet_.get_min_xcluster_schema_version_) {
       return;
     }
@@ -745,7 +774,8 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     }
   }
 
-  void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
+  void FillMinSchemaVersion(
+      rocksdb::DB* db, docdb::CotableSchemaVersionMap* table_id_to_min_schema_version) {
     if (!db) {
       return;
     }
@@ -800,6 +830,7 @@ Tablet::Tablet(const TabletInitData& data)
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
           clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
+      tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
@@ -856,6 +887,10 @@ Tablet::Tablet(const TabletInitData& data)
           data.waiting_txn_registry, client_future_, clock(),
           DCHECK_NOTNULL(tablet_metrics_entity_), std::move(wq_token), data.messenger));
     }
+    // Created here rather than when the tablet peer is initialized, so the intents DB flush filter
+    // can post regular DB flushes during bootstrap as well.
+    cleanup_intent_files_token_ =
+        DCHECK_NOTNULL(data.intent_cleanup_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
   LOG_IF(FATAL, has_index && !metadata_cache_)
@@ -988,27 +1023,32 @@ auto MakeExcludeFromCompactionFunction(const F& f) {
   return std::make_shared<rocksdb::CompactionFileExcluder>(f);
 }
 
+namespace {
+
+// Largest op index whose rows are all flushed. The flushed frontier alone could overstate it: a
+// single apply op id may span both a flushed and an unflushed batch of a large transaction. So it
+// is clamped to one below the smallest op id that is still only in memory.
+int64_t LargestFlushedOpIndex(const storage::FrontierInfo& frontiers) {
+  int64_t result = std::numeric_limits<int64_t>::min();
+  if (frontiers.flushed) {
+    result = down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id().index;
+  }
+  if (frontiers.in_memory.smallest) {
+    result = std::min(result, down_cast<const docdb::ConsensusFrontier&>(
+        *frontiers.in_memory.smallest).op_id().index - 1);
+  }
+  return result;
+}
+
+} // namespace
+
 struct Tablet::IntentsDbFlushFilterState {
   VectorIndexList vector_indexes;
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(
-      const storage::UserFrontierPtr& flushed_frontier,
-      const storage::UserFrontierPtr& smallest_mem_frontier) {
-    int64_t flushed_index = std::numeric_limits<int64_t>::min();
-    if (flushed_frontier) {
-      flushed_index = static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier).op_id().index;
-    }
-    // The flushed frontier alone could overstate what is durable: a single apply op id may span
-    // both a flushed and an unflushed batch of a large transaction. So clamp the largest flushed
-    // index to one below the smallest op id that is still only in memory.
-    if (smallest_mem_frontier) {
-      auto mem_index =
-          static_cast<const docdb::ConsensusFrontier&>(*smallest_mem_frontier).op_id().index;
-      flushed_index = std::min(flushed_index, mem_index - 1);
-    }
-    largest_flushed_index.push_back(flushed_index);
+  void AddLargestFlushedIndex(const storage::FrontierInfo& frontiers) {
+    largest_flushed_index.push_back(LargestFlushedOpIndex(frontiers));
   }
 
   bool HasNewData(int64_t memtable_op_index) const {
@@ -1057,14 +1097,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       // flushed.
       const storage::FrontierKinds frontier_kinds{
           storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
-      auto regular_frontiers = regular_db_->GetFrontiers(frontier_kinds);
-      state->AddLargestFlushedIndex(
-          regular_frontiers.flushed, regular_frontiers.in_memory.smallest);
+      state->AddLargestFlushedIndex(regular_db_->GetFrontiers(frontier_kinds));
       if (state->vector_indexes) {
         for (const auto& vector_index : *state->vector_indexes) {
-          auto vector_frontiers = vector_index->GetFrontiers(frontier_kinds);
-          state->AddLargestFlushedIndex(
-              vector_frontiers.flushed, vector_frontiers.in_memory.smallest);
+          state->AddLargestFlushedIndex(vector_index->GetFrontiers(frontier_kinds));
         }
       }
       VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -1117,9 +1153,8 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       if (state->NeedFlush(idx, memtable_index)) {
         VLOG_WITH_PREFIX_AND_FUNC(2) << "Force flush";
         if (idx == 0) {
-          rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
-          options.wait = false;
-          RETURN_NOT_OK(regular_db_->Flush(options));
+          DEBUG_ONLY_TEST_SYNC_POINT("Tablet::IntentsDbFlushFilter:BeforeRegularDbFlush");
+          RETURN_NOT_OK(RequestRegularDbFlushForIntentsFlush());
         } else {
           RETURN_NOT_OK((*state->vector_indexes)[idx - 1]->Flush());
         }
@@ -1217,7 +1252,8 @@ Status Tablet::OpenKeyValueTablet() {
   const docdb::ConsensusFrontier* consensus_frontier = nullptr;
   if (regular_flushed_frontier) {
     consensus_frontier = down_cast<const docdb::ConsensusFrontier*>(regular_flushed_frontier.get());
-    retention_policy_->UpdateCommittedHistoryCutoff(consensus_frontier->history_cutoff());
+    retention_policy_->SeedHistoryCutoffFromFlushedFrontier(
+        consensus_frontier->history_cutoff());
   }
 
   RETURN_NOT_OK(vector_indexes_->Open(consensus_frontier));
@@ -1384,6 +1420,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
                             << " tiered db_paths (target_path_id="
                             << regular_rocksdb_options.target_path_id << "): " << desc;
+      LOG_IF_WITH_PREFIX(WARNING, !FLAGS_enable_tiered_storage && tier_paths.size() > 1)
+          << "Tiered storage is disabled but this tablet spans " << tier_paths.size()
+          << " disks; keeping all of them so existing SST files stay reachable";
     }
   }
 
@@ -1492,16 +1531,9 @@ void Tablet::RegularDbFilesChanged() {
   }
 }
 
-void Tablet::SetCleanupPool(
-    ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool) {
+void Tablet::SetCleanupPool(ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler) {
   snapshots_->SetCleanupPool(snapshot_cleanup_pool, scheduler);
   vector_indexes_->SetScheduler(scheduler);
-
-  if (!transaction_participant_) {
-    return;
-  }
-
-  cleanup_intent_files_token_ = intent_cleanup_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   CleanupIntentFiles();
 }
@@ -1576,6 +1608,50 @@ HybridTime Tablet::GetMinStartHTRunningTxnsForCDCLogCallback() const {
 
   VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
   return min_start_ht_running_txns;
+}
+
+Status Tablet::RequestRegularDbFlushForIntentsFlush() {
+  // Called from the intents DB flush job under the intents DB mutex. A regular DB flush from here
+  // would wait for the regular write thread, whose leader may be parked in a write stall that ends
+  // only after the regular flush listeners take the intents DB mutex. So the flush is posted, and
+  // this job keeps deferring the intents memtable until the regular data is flushed.
+  //
+  // No scoped operation: the filter does not run once the intents DB's StartShutdown has been
+  // called, which precedes the pause of operations and the reset of the token.
+  // One posted flush at a time: the intents flush job retries this filter every
+  // rocksdb_nothing_in_memtable_to_flush_sleep_ms while its memtable is deferred.
+  if (regular_db_flush_for_intents_posted_.exchange(true)) {
+    return Status::OK();
+  }
+  // The closure owns the reset of the flag, so it happens whether the task ran, the submit failed
+  // or the closing pool dropped the task.
+  auto status = cleanup_intent_files_token_->SubmitFunc(
+      [this, clear_posted = std::shared_ptr<void>(
+                 nullptr, [this](void*) { regular_db_flush_for_intents_posted_ = false; })] {
+        FlushRegularDbForIntentsFlush();
+      });
+  // A failed filter makes the flush job flush the intents memtable ahead of the regular data it
+  // depends on, so the failure to post, which only happens while the pool shuts down, is not
+  // returned.
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+      << "Failed to post the regular DB flush: " << status;
+  return Status::OK();
+}
+
+void Tablet::FlushRegularDbForIntentsFlush() {
+  // The not-blocking counter: this flush can wait behind a writer parked in a write stall, which
+  // StartShutdownStorages wakes only after the blocking counter has drained.
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  if (!scoped_operation.ok()) {
+    return;
+  }
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::FlushRegularDbForIntentsFlush:BeforeFlush");
+  // Tablet::Flush skips a regular DB that a failed truncate or restore left closed.
+  auto status = Flush(
+      FlushMode::kAsync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
+      rocksdb::FlushReason::kIntentsApply);
+  LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+      << "Failed to flush the regular DB: " << status;
 }
 
 void Tablet::DoCleanupIntentFiles() {
@@ -4496,21 +4572,21 @@ Result<bool> Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const {
+Result<DocDbPersistentState> Tablet::GetPersistentState(bool invalid_if_no_new_data) const {
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  DocDbOpIds result;
+  DocDbPersistentState result;
   result.regular = docdb::MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data);
   result.intents = docdb::MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data);
-  vector_indexes_->FillMaxPersistentOpIds(result.vector_indexes, invalid_if_no_new_data);
+  vector_indexes_->FillPersistentStates(result.vector_indexes, invalid_if_no_new_data);
   return result;
 }
 
 Result<int64_t> Tablet::EarliestNeededLogIndex(
     const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
   FlushIntentsDbIfNecessary(latest_log_entry_op_id);
-  auto max_persistent_op_id = VERIFY_RESULT(MaxPersistentOpId(true /* invalid_if_no_new_data */));
+  auto persistent_state = VERIFY_RESULT(GetPersistentState(true /* invalid_if_no_new_data */));
   int64_t min_index = std::numeric_limits<int64_t>::max();
   auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
     if (!op_id.valid()) {
@@ -4519,8 +4595,8 @@ Result<int64_t> Tablet::EarliestNeededLogIndex(
     min_index = std::min(min_index, op_id.index);
     add_factor(name, op_id.index, std::string());
   };
-  add_storage("max persistent regular op ID idx", max_persistent_op_id.regular);
-  add_storage("max persistent intents op ID idx", max_persistent_op_id.intents);
+  add_storage("max persistent regular op ID idx", persistent_state.regular);
+  add_storage("max persistent intents op ID idx", persistent_state.intents);
   return std::min(
       min_index,
       VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
@@ -4669,12 +4745,52 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
   // We take regular frontier and intents frontier first, and intents_flush_ability last. If
   // intents_flush_ability is kNoNewData, it means intents flushed op id can be at least advanced
   // to match regular db.
-  if (intents_flush_ability == rocksdb::FlushAbility::kNoNewData &&
-      FLAGS_advance_intents_flushed_op_id_to_match_regular) {
+  if (intents_flush_ability != rocksdb::FlushAbility::kNoNewData ||
+      !FLAGS_advance_intents_flushed_op_id_to_match_regular) {
+    return Status::OK();
+  }
+
+  // Like IntentsDbFlushFilter, keep the intents DB flushed OpId behind the rows a vector index
+  // holds only in memory. Bootstrap gates the replay of an xCluster external WRITE_OP on the
+  // intents DB flushed OpId, so advancing past such rows loses them from the vector index on an
+  // ungraceful restart, while the regular DB keeps them (GH#34699).
+  //
+  // Read after 'regular_op_id': rows of an operation covered by it were registered in the index
+  // while its regular DB write was applied, so the flush ability and the in-memory frontier report
+  // them even while their insert tasks run. Such rows belong to chunks after the flushed one, so
+  // the flushed OpId bounds them.
+  auto new_intents_op_id = regular_op_id;
+  if (auto vector_indexes = vector_indexes_->List()) {
+    const storage::FrontierKinds frontier_kinds{
+        storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
+    for (const auto& vector_index : *vector_indexes) {
+      auto frontiers = vector_index->GetFrontiers(frontier_kinds);
+      if (vector_index->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData) {
+        continue;
+      }
+      // A clamped index has no term, so only the flushed OpId itself can bound the advance.
+      if (!frontiers.flushed) {
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " was never flushed";
+        return Status::OK();
+      }
+      auto flushed_op_id = down_cast<const docdb::ConsensusFrontier&>(*frontiers.flushed).op_id();
+      if (LargestFlushedOpIndex(frontiers) < flushed_op_id.index) {
+        VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: "
+                            << vector_index->ToString() << " flushed " << flushed_op_id
+                            << " with rows of that op still in memory";
+        return Status::OK();
+      }
+      new_intents_op_id = std::min(new_intents_op_id, flushed_op_id);
+    }
+  }
+
+  if (new_intents_op_id > intents_op_id) {
     LOG_WITH_PREFIX(INFO)
-          << "Update intents DB flushed op id from " << intents_op_id << " to " << regular_op_id;
+          << "Update intents DB flushed op id from " << intents_op_id << " to "
+          << new_intents_op_id << " (regular: " << regular_op_id << ")";
     docdb::ConsensusFrontier frontier;
-    frontier.set_op_id(regular_op_id);
+    frontier.set_op_id(new_intents_op_id);
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(
         frontier.Clone(), rocksdb::FrontierModificationMode::kUpdateIgnoreBackwards));
   }
@@ -4928,15 +5044,16 @@ Status Tablet::ForceRocksDBCompact(
     //    bug, but we still want to compact to have rocksdb_parent_data_compacted.
     // (1) and (3) are possible due to async nature of triggering ForceRocksDBCompact()
     // via TriggerPostSplitCompactionIfNeeded().
-    const auto rocksdb_parent_data_compacted = metadata()->rocksdb_parent_data_compacted();
+    // Read both under one lock: any compaction that removes the last inherited file can call
+    // OnPostSplitCompactionDone() concurrently, which sets the flag and resets the bound to 0.
+    const auto [rocksdb_parent_data_compacted, file_number_upper_bound] =
+        metadata()->post_split_compaction_state();
     if (rocksdb_parent_data_compacted) {
       LOG_WITH_PREFIX(WARNING) << "Ignoring post split compaction as "
                                << "parent data have already been compacted.";
       return Status::OK();
     }
 
-    const auto file_number_upper_bound =
-        metadata()->post_split_compaction_file_number_upper_bound();
     LOG_IF(DFATAL, file_number_upper_bound == 0) <<
           "It is unexpected to have file_number_upper_bound == 0 when parent data has not been "
           "compacted yet, it is an inconsistent state. Please check the logic. Ignoring "
@@ -4980,6 +5097,7 @@ struct TierMigrationPass {
   ScopedRWOperation op;
   std::string target_dir;
   uint32_t target_path_id = 0;
+  ReconcilerPass reconciler_pass = ReconcilerPass::kFalse;
 
   std::atomic<size_t> pending{0};
   std::atomic<uint32_t> moved{0};
@@ -5014,22 +5132,6 @@ std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& 
   return candidates;
 }
 
-Status Tablet::ClaimTierMigrationPass() {
-  std::lock_guard lock(tier_migration_mutex_);
-  auto& status = tier_migration_status_;
-  if (status.pass_in_flight) {
-    return STATUS(ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
-  }
-  status.pass_in_flight = true;
-  status.state = TierMigrationStatus::State::kInProgress;
-  status.files_total = 0;
-  status.files_moved = 0;
-  status.files_deferred = 0;
-  status.files_failed = 0;
-  status.obsoleted = 0;
-  return Status::OK();
-}
-
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
@@ -5057,7 +5159,10 @@ Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t t
   return Status::OK();
 }
 
-Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+Result<TierReconcileResult> Tablet::RunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+  using State = TierMigrationStatus::State;
+
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
@@ -5069,30 +5174,128 @@ Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
   const auto target_path_id = metadata()->target_tier_path_id();
   const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
-  RETURN_NOT_OK(ClaimTierMigrationPass());
+  TierReconcileResult result;
+  // Check if post-split compaction is needed
+  if (NeedPostSplitCompaction()) {
+    result.awaiting_post_split_compaction = true;
+    result.status = tier_migration_status();
+    VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
+    return result;
+  }
 
-  auto candidates = CollectTierMigrationCandidates(target_dir);
+  auto state_before = State::kNone;
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    if (status.pass_in_flight) {
+      return STATUS(
+          ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
+    }
+    if (reconciler_pass && status.state == State::kFailed) {
+      // Retries stopped; only a new AlterTabletTier restarts them.
+      result.status = status;
+      return result;
+    }
+    status.pass_in_flight = true;
+    state_before = status.state;
+  }
+
+  auto candidates = CollectTierMigrationCandidates(target_dir);
+  result.candidates = candidates.size();
+  // Lets a test change the target between the scan and the verdict on it.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RunTierMigrationPass:AfterScan");
+
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    auto& status = tier_migration_status_;
+    // The target may have changed since the scan started, so the candidates are no longer valid.
+    if (metadata()->target_tier_path_id() != target_path_id) {
+      status.pass_in_flight = false;
+      result.candidates = 0;
+      result.target_changed = true;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      return result;
+    }
     if (candidates.empty()) {
       status.pass_in_flight = false;
+      status.files_total = 0;
+      status.files_moved = 0;
+      status.files_deferred = 0;
+      status.files_failed = 0;
+      status.obsoleted = 0;
       status.consecutive_failed_passes = 0;
       status.last_error = Status::OK();
-      return status;
+      // Every live SST is under the target directory, which is the definition of converged. Only
+      // the reconciler declares it: its scans keep running, so a file that a flush or compaction
+      // already in flight lands on the old disk after this scan is caught by a later one.
+      status.state = reconciler_pass ? State::kDone : State::kInProgress;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      if (result.state_changed && status.state == State::kDone) {
+        LOG_WITH_PREFIX(INFO) << "Tier migration converged: every live SST is under " << target_dir
+                              << " (path_id=" << target_path_id << ")";
+      }
+      return result;
     }
+    if (reconciler_pass && options.failed_pass_threshold > 0 &&
+        status.consecutive_failed_passes >= options.failed_pass_threshold) {
+      // The counters of the last failed pass stay as they were, for GetTierInfo.
+      status.pass_in_flight = false;
+      status.state = State::kFailed;
+      result.state_changed = status.state != state_before;
+      result.status = status;
+      LOG_WITH_PREFIX(WARNING) << "Tier migration to path_id=" << target_path_id
+                               << " stopped after " << status.consecutive_failed_passes
+                               << " consecutive failed passes, " << candidates.size()
+                               << " SST(s) still outside " << target_dir
+                               << "; last error: " << status.last_error
+                               << ". A new AlterTabletTier restarts it.";
+      return result;
+    }
+    status.state = State::kInProgress;
+    status.files_total = narrow_cast<uint32_t>(candidates.size());
+    status.files_moved = 0;
+    status.files_deferred = 0;
+    status.files_failed = 0;
+    status.obsoleted = 0;
+    result.state_changed = status.state != state_before;
   }
 
   LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << target_path_id << "): scheduling "
                         << candidates.size() << " SST move(s) to " << target_dir;
 
+  result.scheduled = candidates.size();
   auto pass = std::make_shared<TierMigrationPass>();
   pass->op = std::move(scoped_operation);
   pass->target_dir = target_dir;
   pass->target_path_id = target_path_id;
+  pass->reconciler_pass = reconciler_pass;
   ScheduleTierMigrationFiles(std::move(pass), std::move(candidates));
 
+  std::lock_guard lock(tier_migration_mutex_);
+  result.status = tier_migration_status_;
+  return result;
+}
+
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+  auto result = VERIFY_RESULT(
+      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse));
+  // Nothing to move, or a scan the target change made moot: the verdict, or the new target, is
+  // the reconciler's to act on now. A pass that scheduled moves wakes it from
+  // FinishTierMigrationPass instead, and one waiting on the post-split compaction has nothing
+  // for it yet.
+  if (result.scheduled == 0 && !result.awaiting_post_split_compaction) {
+    WakeTierMigrationReconciler();
+  }
+  return result.status;
+}
+
+Result<TierReconcileResult> Tablet::RunTierReconcilePass(const TierReconcileOptions& options) {
+  return RunTierMigrationPass(options, ReconcilerPass::kTrue);
+}
+
+TierMigrationStatus Tablet::tier_migration_status() const {
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
@@ -5198,10 +5401,30 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
     }
   }
 
+  if (tier_migration_hooks_) {
+    if (tier_migration_hooks_->files_moved) {
+      tier_migration_hooks_->files_moved->IncrementBy(moved);
+    }
+    if (tier_migration_hooks_->files_failed) {
+      tier_migration_hooks_->files_failed->IncrementBy(hard_failed);
+    }
+  }
+
+  // Wake reconciler if this was a normal pass that didn't defer any files and didn't hard-fail any.
+  if (!pass->reconciler_pass && deferred == 0 && hard_failed == 0) {
+    WakeTierMigrationReconciler();
+  }
+
   LOG_WITH_PREFIX(INFO) << "Tier migration pass (path_id=" << pass->target_path_id
                         << ") done: moved=" << moved << " deferred=" << deferred
                         << " obsoleted=" << obsoleted << " hard_failed=" << hard_failed
                         << (hard_error.ok() ? "" : Format(", first error: $0", hard_error));
+}
+
+void Tablet::WakeTierMigrationReconciler() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->wake_reconciler) {
+    tier_migration_hooks_->wake_reconciler();
+  }
 }
 
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
@@ -5613,15 +5836,10 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSplitChildTablet(
 
   // SplitOperation rejects new WRITE_OPs once the split is pending, but ApplyIntents of
   // already-replicated commits is not fenced and can still vector-Insert on this parent.
-  // The first flush puts finished applies in the RocksDB snapshot. WaitForFlush then drains
-  // vector tasks those applies already allocated; leftover vectors sit in a new mutable chunk.
+  // CreateCheckpoint flushes the vector indexes after the regular DB checkpoint, so the children
+  // get the vectors of every row in it. Applies that have not finished yet are still in intents;
+  // children will apply them.
   RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSplitChildTabletCreation));
-  // Seal that leftover chunk so CreateCheckpoint can hard-link it. Applies that have not
-  // finished yet are still in intents; children will apply them. Vector-only: RocksDB was
-  // already flushed.
-  RETURN_NOT_OK(Flush(
-      FlushMode::kSync, FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
-      rocksdb::FlushReason::kSplitChildTabletCreation));
 
   auto metadata = VERIFY_RESULT(metadata_->CreateSplitChildMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));

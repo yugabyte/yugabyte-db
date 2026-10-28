@@ -137,7 +137,7 @@ YRPC_GENERATE(
   TSERVER_ADMIN_YRPC_SRCS TSERVER_ADMIN_YRPC_HDRS TSERVER_ADMIN_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  MESSAGES_PROTO_FILES tserver_admin.proto)
+  PROTO_FILES tserver_admin.proto)
 set(TSERVER_ADMIN_YRPC_LIBS
   yrpc
   protobuf
@@ -275,6 +275,7 @@ set(TSERVER_SRCS
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   pg_txn_snapshot_manager.cc
+  tier_migration_reconciler.cc
   tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc

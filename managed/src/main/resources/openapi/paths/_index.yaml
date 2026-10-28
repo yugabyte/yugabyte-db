@@ -240,6 +240,52 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/certificates':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createCertificate
+    summary: Add a certificate
+    description: 'Adds a certificate to the customer, such as the root CA for node-to-node and client-to-node encryption in transit. A SelfSigned certificate is a CA certificate with its private key; YBA uses it to sign node and client certificates. The caller either uploads the CA and its key, or omits both and YBA generates them, so that the key never leaves YBA.'
+    tags:
+      - Certificate
+    requestBody:
+      $ref: "../components/requestBodies/CertificateCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CertificateResp.yaml"
+      '400':
+        description: 'Invalid input, such as content that isn''t PEM, only one of cert_content and key_content, lifetime_years with an uploaded CA or outside 1-100, or (unless yb.tls.enable_config_validation is off) a certificate that isn''t a valid CA or a key that doesn''t match it'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on the customer'
+      '409':
+        description: The customer already has a certificate with this label
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Certificate
+      auditTargetId: obj.getUuid().toString()
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
     - name: cUUID
@@ -503,6 +549,44 @@
       auditActionType: GenerateApiToken
     x-yba-api-authz:
       noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/host-cloud-info':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getHostCloudInfo
+    summary: Get the YBA host's cloud info
+    description: 'Returns the public cloud and region that YBA runs on, and the instance metadata used to create a provider in the host''s VPC. Replaces the v1 host_info.'
+    tags:
+      - Customer
+    responses:
+      '200':
+        $ref: "../components/responses/HostCloudInfoResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/customer-configs/page':
@@ -1603,6 +1687,31 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+/login:
+  post:
+    operationId: login
+    summary: Log in
+    description: 'Logs a user in with email and password and returns a session token, to be sent in the X-AUTH-TOKEN header. LDAP users log in the same way when LDAP is enabled. With SSO enabled and yb.security.allow_local_login_with_sso off, only local SuperAdmins can log in; other local users and LDAP users are refused. Does not set cookies.'
+    tags:
+      - Session
+    requestBody:
+      $ref: "../components/requestBodies/LoginReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SessionResp.yaml"
+      '400':
+        description: 'Invalid input, or an error from the LDAP server'
+      '401':
+        description: 'Invalid credentials, or local login is not permitted while SSO is enabled'
+      '500':
+        description: Server error
+    security: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/support-bundle/components':
   parameters:
     - name: cUUID
@@ -2391,6 +2500,8 @@
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
         description: Invalid input
+      '403':
+        description: 'The task cannot be rolled back, or the operator owns the resource'
       '500':
         description: Server error
     security:

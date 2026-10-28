@@ -16,6 +16,11 @@ import {
   ExpertNodesAvailabilityDefaultLayout,
   ExpertNodesAvailabilityGeoLayout
 } from './NodesAvailabilityExpertLayouts';
+import { AVAILABILITY_ZONES_BY_PROVIDER } from '../../fields/FieldNames';
+import {
+  flattenAvailabilityZonesByProvider,
+  type AvailabilityZonesByProvider
+} from '../../helpers/nodesByProvider';
 
 type Props = Pick<
   UseNodesAvailabilityStepResult,
@@ -28,6 +33,7 @@ type Props = Pick<
   | 'inferredResilience'
   | 'effectiveReplicationFactor'
   | 'resilienceAndRegionsSettings'
+  | 'providers'
 > & {
   isGeoPartition?: boolean;
   hideDedicatedNodes?: boolean;
@@ -45,6 +51,7 @@ export function NodesAvailabilityExpertBody({
   inferredResilience,
   effectiveReplicationFactor,
   resilienceAndRegionsSettings,
+  providers,
   isGeoPartition = false,
   hideDedicatedNodes = false,
   baselineRegionCodes,
@@ -52,12 +59,20 @@ export function NodesAvailabilityExpertBody({
 }: Props) {
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const availabilityZonesForm = watch('availabilityZones');
+  const byProvider = watch(AVAILABILITY_ZONES_BY_PROVIDER) as
+    | AvailabilityZonesByProvider
+    | undefined;
+  const zonesForInfer =
+    (providers?.length ?? 0) >= 2
+      ? flattenAvailabilityZonesByProvider(byProvider)
+      : availabilityZonesForm ?? {};
   const { azCount, faultToleranceNeeded, regionCards } = useAvailabilityZonesRegionCards({
     mode: ResilienceFormMode.EXPERT_MODE,
     showErrorsAfterSubmit,
     resilienceAndRegionsSettings,
     baselineRegionCodes,
-    baselineZoneUuidsByRegion
+    baselineZoneUuidsByRegion,
+    providers
   });
   const hasLesserNodesError = showErrorsAfterSubmit && Boolean((errors as any)?.lesserNodes?.message);
 
@@ -91,7 +106,7 @@ export function NodesAvailabilityExpertBody({
           <InferredResilienceCard
             inferredResilience={inferredResilience ?? null}
             replicationFactor={effectiveReplicationFactor}
-            availabilityZones={availabilityZonesForm ?? {}}
+            availabilityZones={zonesForInfer}
           />
         </>
       }

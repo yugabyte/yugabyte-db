@@ -17,6 +17,7 @@
 
 #include <boost/logic/tribool.hpp>
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -270,6 +271,15 @@ class DocWriteBatch {
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
+  // Sets the origin and source commit time of the replication apply this batch belongs to, taken
+  // from the enclosing write request. Called once per batch, only for a replication apply, so both
+  // values are valid; a local write does not call it.
+  void SetCdrMetadata(const CdrMetadata& cdr_metadata);
+
+  const dockv::ValueControlFields& RowControlFields() const { return row_control_fields_; }
+
+  bool IsCdrEnabled() const { return cdr_enabled_; }
+
   void Clear();
   bool IsEmpty() const { return put_batch_.empty() && lock_batch_.empty(); }
 
@@ -410,6 +420,9 @@ class DocWriteBatch {
   ValueBuffer delete_vector_ids_;
   bool has_vector_deletion_ = false;
   boost::tribool pk_is_known_ = boost::indeterminate;
+
+  bool cdr_enabled_;
+  dockv::ValueControlFields row_control_fields_;
 };
 
 // A helper handler for converting a RocksDB write batch to a string.

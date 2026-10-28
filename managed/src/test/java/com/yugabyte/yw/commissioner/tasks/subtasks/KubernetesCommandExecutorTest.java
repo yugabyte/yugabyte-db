@@ -26,6 +26,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -458,6 +460,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
+    // The key defaults to on, and the version gate, like KubernetesUtil's others, treats an
+    // unparsable version such as "1.0.0" as supported.
+    expectedOverrides.put("nodeExporter", ImmutableMap.of("enabled", true, "port", 9300));
     return expectedOverrides;
   }
 
@@ -497,6 +502,65 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  // The key defaults to on.
+  @Test
+  public void testNodeExporterRenderedAtSupportedVersion() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterOffWithKeyOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    assertEquals(
+        ImmutableMap.of("enabled", false),
+        runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", true)));
+
+    assertEquals(false, ((Map<String, Object>) overrides.get("nodeExporter")).get("enabled"));
+  }
+
+  @Test
+  public void testNodeExporterUserOverridesCannotTurnItOff() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    Map<String, Object> overrides =
+        runHelmInstallAndReadOverrides(
+            ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", false, "port", 9400)));
+
+    assertEquals(ImmutableMap.of("enabled", true, "port", 9300), overrides.get("nodeExporter"));
+  }
+
+  /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */
+  private Map<String, Object> runHelmInstallAndReadOverrides(Map<String, Object> universeOverrides)
+      throws IOException {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.run();
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), expectedOverrideFile.capture());
+    try (InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()))) {
+      return new Yaml().loadAs(is, Map.class);
+    }
   }
 
   @Test

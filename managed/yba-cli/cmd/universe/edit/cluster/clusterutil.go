@@ -45,7 +45,6 @@ func editClusterUtil(
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
 
-	var cluster ybaclient.Cluster
 	if strings.Compare(clusterType, util.ReadReplicaCluster) == 0 {
 		if len(clusters) < 2 {
 			err := fmt.Errorf(
@@ -56,16 +55,8 @@ func editClusterUtil(
 		}
 	}
 
-	clusterIndex := 0
-	for i, c := range clusters {
-		if strings.EqualFold(c.GetClusterType(), clusterType) {
-			cluster = c
-			clusterIndex = i
-			break
-		}
-	}
-
-	if universeutil.IsClusterEmpty(cluster) {
+	cluster, clusterIndex := util.FindClusterByType(clusters, clusterType)
+	if clusterIndex < 0 {
 		err := fmt.Errorf(
 			"No cluster found with type " + clusterType + " in universe " +
 				universeName + " (" + universeUUID + ")")

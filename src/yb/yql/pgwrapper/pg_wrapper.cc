@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
@@ -1652,7 +1653,10 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup),
+      conf_(std::move(conf)),
+      server_(server),
+      starts_paused_(IsYsqlLeaseEnabled() || (server && IsPersistenceGateEnforced())) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
@@ -1675,6 +1679,12 @@ PgSupervisor::~PgSupervisor() {
 }
 
 void PgSupervisor::Stop() {
+  if (server_) {
+    // The server may outlive this supervisor (e.g., a test harness recreating it), and its
+    // heartbeater and YSQL lease threads call these asynchronously.
+    server_->RegisterPgProcessRestarter(nullptr);
+    server_->RegisterPgProcessKiller(nullptr);
+  }
   ProcessSupervisor::Stop();
   if (server_) {
     CHECK_OK(server_->StopSharedMemoryNegotiation());
@@ -1683,11 +1693,16 @@ void PgSupervisor::Stop() {
 }
 
 Status PgSupervisor::StartAndMaybePause() {
-  if (IsYsqlLeaseEnabled()) {
-    return InitPaused();
-  } else {
+  if (!starts_paused_) {
     return Start();
   }
+  RETURN_NOT_OK(InitPaused());
+  if (IsYsqlLeaseEnabled()) {
+    // The first YSQL lease epoch starts PG.
+    return Status::OK();
+  }
+  // The server's RestartPG starts PG only once the xCluster-guarded information lease is held.
+  return server_->RestartPG();
 }
 
 Status PgSupervisor::ReloadConfig() {

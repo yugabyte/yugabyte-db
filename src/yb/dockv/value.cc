@@ -22,9 +22,14 @@
 
 
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_cdr_metadata, false,
+  "Whether to persist the replication origin and source write hybrid time of the last writer "
+  "alongside each row version, for conflict detection and resolution in logical replication.");
 
 namespace yb::dockv {
 
@@ -82,10 +87,10 @@ template <class IntentDocHt>
 Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_doc_ht) {
   Slice original = *slice;
   ValueControlFields result;
-  if (slice->empty()) {
+  auto entry_type = DecodeKeyEntryType(*slice);
+  if (!IsControlFieldMarker(entry_type)) {
     return result;
   }
-  auto entry_type = static_cast<KeyEntryType>((*slice)[0]);
   if (entry_type == KeyEntryType::kMergeFlags) {
     slice->consume_byte();
     result.merge_flags = VERIFY_RESULT_PREPEND(
@@ -133,6 +138,7 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
 
 template <class Out>
 void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
+  const auto initial_size = out->size();
   if (fields.merge_flags) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
     FastAppendUnsignedVarInt(fields.merge_flags, out);
@@ -150,6 +156,12 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
     FastAppendUnsignedVarInt(fields.cdr_source_origin, out);
     util::AppendBigEndianUInt64(fields.cdr_source_write_ht.ToUint64(), out);
   }
+
+  DCHECK(
+      out->size() == initial_size ||
+      IsControlFieldMarker(DecodeKeyEntryType(
+          Slice(out->data() + initial_size, out->size() - initial_size))))
+      << "Control field encoded with a marker IsControlFieldMarker does not recognise";
 }
 
 } // namespace

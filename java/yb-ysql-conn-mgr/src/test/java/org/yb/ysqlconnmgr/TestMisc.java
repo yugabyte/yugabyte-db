@@ -594,4 +594,26 @@ public class TestMisc extends BaseYsqlConnMgr {
       fail();
     }
   }
+
+  @Test
+  public void testSessionParameterWithBackslash() throws Exception {
+    // A session setting containing a backslash must be replayed correctly
+    // when the logical connection is attached to the backend again.
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String value = "C:\\dir\\file";
+
+    ConnectionBuilder connBuilder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection conn1 = connBuilder.connect();
+         Statement stmt1 = conn1.createStatement();
+         Connection conn2 = connBuilder.connect();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute(String.format("SET myapp.path = '%s'", value));
+      // conn2 uses the only backend, so conn1's setting is replayed on its next query.
+      stmt2.execute("SELECT 1");
+      ResultSet rs = stmt1.executeQuery("SHOW myapp.path");
+      assertTrue("No result from SHOW myapp.path", rs.next());
+      assertEquals(value, rs.getString(1));
+    }
+  }
 }

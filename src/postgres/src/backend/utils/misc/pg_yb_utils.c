@@ -146,6 +146,7 @@
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -1047,6 +1048,58 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+/*
+ * Whether pg_partman uses transactional DDL and table level locks.  This
+ * requires all of:
+ * - ysql_yb_pg_partman_use_native_txn_ddl_and_locks.
+ * - YBIsDdlTransactionBlockEnabled(), which is true only when transactional
+ *   DDL is on and table level locks are enabled.
+ * - DDL savepoint support (ysql_yb_enable_ddl_savepoint_support and its infra
+ *   auto flag), because several pg_partman functions run DDL inside plpgsql
+ *   EXCEPTION blocks, which are savepoints.
+ * Advisory locks are not checked: ysql_yb_enable_advisory_locks is a tserver
+ * runtime flag whose current value postgres can't see, and with it off, the
+ * pg_partman functions that take advisory locks fail instead of falling back.
+ * A missing prerequisite returns false rather than raising, so pg_partman
+ * keeps working, without these features, where one of them is off.
+ */
+Datum
+yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
+{
+	const YbcPgGFlagsAccessor *gflags = YBCGetGFlags();
+
+	PG_RETURN_BOOL(*gflags->ysql_yb_pg_partman_use_native_txn_ddl_and_locks &&
+				   YBIsDdlTransactionBlockEnabled() &&
+				   *gflags->ysql_yb_enable_ddl_savepoint_support &&
+				   yb_enable_ddl_savepoint_infra);
+}
+
+/*
+ * Returns the commit timestamp on the source of the transaction currently being
+ * applied, set by the apply worker or directly by an application through
+ * pg_replication_origin_xact_setup().
+ *
+ * Returned in microseconds since the Unix epoch, the domain HybridTime uses,
+ * rather than as a TimestampTz. Zero means there is nothing usable to send,
+ * which the caller treats the same as a local write. Whether the value fits in
+ * a HybridTime is checked by pggate.
+ */
+static int64_t
+YbGetSessionReplicationOriginTimestamp(void)
+{
+	TimestampTz ts = replorigin_session_origin_timestamp;
+
+	const int64_t unix_epoch_offset = ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+									   USECS_PER_DAY);
+
+	Assert(ts == 0 || IsTransactionOrTransactionBlock());
+
+	if (ts == 0 || TIMESTAMP_NOT_FINITE(ts) || ts > PG_INT64_MAX - unix_epoch_offset)
+		return 0;
+
+	return (int64_t) yb_timestamptz_to_micros_time_t(ts);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1075,6 +1128,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
 		};
@@ -2250,6 +2304,9 @@ bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
+bool		yb_allow_prehashed_passwords = true;
+int			yb_password_reuse_history = 0;
+int			yb_password_reuse_interval = 0;
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 bool		yb_disable_parallel_query_in_ddl = true;
@@ -2912,10 +2969,14 @@ YbAuthPrefetchKind()
 {
 	/*
 	 * Nothing in a connection proceeds until the pre-auth read lands, so the master admits it
-	 * ahead of prefetches that are merely waiting to begin. That is only worth asking for when
-	 * the large prefetch behind it will be served from this node instead of queueing at the
-	 * leader in turn; otherwise the connection waits either way, and the slot is better left to
-	 * someone who can finish.
+	 * ahead of prefetches that are merely waiting to begin. The grant pays for itself only when
+	 * the large prefetch behind it is served from this node rather than queueing at the leader
+	 * in turn, and this cannot tell: the kind is chosen before MyDatabaseId is known, so neither
+	 * the per-database cached version nor preload_rel_cache can be consulted. The GUC is the
+	 * whole of the test, which means a cluster that never opens the stale path -- the default
+	 * one, where preload_rel_cache is false -- still asks for the priority and gets no benefit
+	 * from it. The cost is bounded: the read carries a handful of small tables, and it is one
+	 * slot per connection start.
 	 */
 	return (yb_enable_stale_catalog_prefetch ?
 			YB_YQL_PREFETCH_KIND_HIGH_PRIORITY :
@@ -7199,7 +7260,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
@@ -7451,6 +7518,18 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 	return true;
 }
 
+/*
+ * Whether the local catalog version can be reset right now.  Inside a
+ * transaction block it does not get refreshed (see check_yb_read_time).
+ */
+static bool
+YbCanResetCatalogVersion(void)
+{
+	return (yb_disable_catalog_version_check ||
+			am_walsender ||
+			!IsTransactionBlock());
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7487,9 +7566,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
 	 *    reads do not send a catalog version anyway.
 	 */
-	if (!yb_disable_catalog_version_check &&
-		!am_walsender &&
-		IsTransactionBlock())
+	if (!YbCanResetCatalogVersion())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
@@ -7641,6 +7718,34 @@ assign_yb_read_time(const char *newval, void *extra)
 						"Write-DML or DDL queries are not allowed when yb_read_time is "
 						"set.")));
 	}
+}
+
+bool
+check_yb_read_time_skip_catalog(bool *newval, void **extra, GucSource source)
+{
+	/*
+	 * Changing this while yb_read_time is set resets the local catalog
+	 * version, which check_yb_read_time does not allow inside a transaction
+	 * block either.
+	 */
+	if (yb_read_time != 0 &&
+		*newval != yb_read_time_skip_catalog &&
+		!YbCanResetCatalogVersion())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time_skip_catalog cannot be changed inside a "
+						 "transaction block while yb_read_time is set");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time_skip_catalog(bool newval, void *extra)
+{
+	/* Whatever catalog we have cached was read as of some other time. */
+	if (yb_read_time != 0 && newval != yb_read_time_skip_catalog)
+		YbResetCatalogCacheVersion();
 }
 
 void
@@ -9490,6 +9595,24 @@ YbCanApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 				return false;
 	}
 	return true;
+}
+
+/*
+ * Hand the result of applying invalidation messages to pggate. The messages set
+ * NeedInvalidateAllTableCache when one of them could not be narrowed to a relation, so a caller
+ * must clear that flag with YbResetNeedInvalidateAllTableCache() before it applies them and call
+ * this after -- the pairing spans the apply, and both callers are in other files.
+ */
+void
+YbUpdatePggateTableCacheAfterApply(void)
+{
+	if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
+	{
+		elog(LOG, "calling YBCPgInvalidateCache");
+		HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+	}
+	else
+		HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
 }
 
 bool

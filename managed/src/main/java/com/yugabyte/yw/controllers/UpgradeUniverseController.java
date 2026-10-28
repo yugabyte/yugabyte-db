@@ -318,6 +318,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result rollbackUpgrade(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,

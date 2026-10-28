@@ -58,6 +58,7 @@ METRIC_DECLARE_counter(pg_response_cache_queries);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 METRIC_DECLARE_counter(ysql_catalog_prefetch_rejections);
+METRIC_DECLARE_counter(ysql_catalog_prefetch_new_admissions);
 METRIC_DECLARE_gauge_int64(ysql_catalog_prefetches_in_progress);
 
 DECLARE_bool(ysql_enable_read_request_caching);
@@ -1364,6 +1365,14 @@ class PgCatalogPrefetchAdmissionTest : public PgMiniTestBase {
     return counter ? counter->value() : 0;
   }
 
+  // Reads admitted as newly starting rather than continuing a prefetch already under way.
+  [[nodiscard]] int64_t NewAdmissions() const {
+    auto counter = MasterMetrics().FindOrNull<Counter>(
+        METRIC_ysql_catalog_prefetch_new_admissions);
+    CHECK(counter) << "ysql_catalog_prefetch_new_admissions counter not found";
+    return counter->value();
+  }
+
   [[nodiscard]] int64_t InProgress() const {
     auto gauge = MasterMetrics().FindOrNull<AtomicGauge<int64_t>>(
         METRIC_ysql_catalog_prefetches_in_progress);
@@ -1415,6 +1424,28 @@ TEST_F(PgCatalogPrefetchAdmissionTest, ConcurrentPrefetchesAreAdmittedAndRelease
 
   ASSERT_OK(LoggedWaitFor(
       [this] { return InProgress() == 0; }, 30s, "prefetch admissions released"));
+}
+
+// A connection start is several separately keyed requests, and only the first of them is work
+// the master has not already committed to. The later ones open without paging state, so without
+// the continuation flag the master would count each as a new prefetch and could shed a connection
+// that had already paid for the large catalog read. Counted rather than raced: reaching the
+// difference through the concurrency limit would need a cluster large enough to saturate the
+// master, while the count is categorical -- one per connection, not one per request.
+TEST_F(PgCatalogPrefetchAdmissionTest, OnlyTheFirstReadOfAConnectionCountsAsNew) {
+  // Out of the way, so nothing here is rejected and every read reaches the count below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1000;
+
+  const auto before = NewAdmissions();
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT 1"));
+  }
+  const auto admitted_as_new = NewAdmissions() - before;
+
+  ASSERT_EQ(admitted_as_new, 1)
+      << "a connection start should open one prefetch, not " << admitted_as_new
+      << "; every read after the first continues work the master has already admitted";
 }
 
 // A prefetch that is under way keeps the whole limit available to it, while one that is starting
@@ -1586,6 +1617,18 @@ class PgStaleCatalogPrefetchTest : public PgCatalogPerfTestBase {
     return SetSharedPrefetchLoad(*cluster_, load);
   }
 
+  // Whether the tserver has learned this database's catalog version and so has a slot to
+  // record a prefetch into. Keyed by oid rather than by connection, because what this answers
+  // is whether it is yet worth connecting at all.
+  Result<bool> HasSharedMemorySlot(uint32_t db_oid) {
+    auto* ts = cluster_->mini_tablet_server(0)->server();
+    tserver::GetTserverCatalogVersionInfoRequestPB req;
+    tserver::GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(ts->get_ysql_db_oid_to_cat_version_info_map(req, &resp));
+    return resp.entries_size() == 1;
+  }
+
   // The catalog version this node has a cached prefetch for, as the tserver recorded it when the
   // fill completed. This is what a starting backend reads to decide which older version to ask
   // for.
@@ -1665,8 +1708,15 @@ TEST_F(PgStaleCatalogPrefetchTest, BusyLeaderIsNotAskedForAFreshCatalog) {
   // A busy one is served out of what this node already held.
   ASSERT_GT(busy.cache.lookup_only_hits, 0)
       << "a connection starting against a busy leader still fetched the catalog from it";
-  ASSERT_LT(busy.master_read_rpc, low.master_read_rpc)
-      << "reading the cached version cost the leader as much as fetching a fresh one";
+  // Pinned rather than bounded, so a seventh shows up here rather than as a slower connection on
+  // a loaded cluster. The six are: the read before authentication, which carries pg_authid,
+  // pg_database, pg_yb_catalog_version and pg_yb_logical_client_version in one request and never
+  // takes the stale path itself; the pg_yb_catalog_version row read to pick a version to prefetch
+  // at; and the four ApplySetting scans of pg_db_role_setting in process_settings, which reach the
+  // leader because applying the messages had to stop the prefetcher first.
+  constexpr size_t kStalePathMasterReads = 6;
+  ASSERT_EQ(busy.master_read_rpc, kStalePathMasterReads)
+      << "a connection on the stale path changed how much it reads from the leader";
 }
 
 // Catching up from the cached version needs every invalidation message between it and the current
@@ -1833,8 +1883,23 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
 TEST_F(PgStaleCatalogPrefetchTest, ConnectionChecksSeeARevocationInsideTheGap) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE d_revoked"));
-  // Leaves this node holding a prefetch cached at d_revoked's current version.
-  { auto warm = ASSERT_RESULT(ConnectToDB("d_revoked")); }
+  // Leaves this node holding a prefetch cached at d_revoked's current version. The fill can
+  // land before the tserver has heard of this database and so before there is a slot to record
+  // into; the version is held until the slot arrives, so wait for the slot and the record
+  // together rather than ordering the connection behind the slot.
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = 'd_revoked'"));
+  {
+    auto warm = ASSERT_RESULT(ConnectToDB("d_revoked"));
+    ASSERT_OK(LoggedWaitFor([this, &warm, db_oid]() -> Result<bool> {
+      // RecordedCatalogVersion fails outright when there is no slot, which would end the wait
+      // instead of polling through the window this is here to cover.
+      if (!VERIFY_RESULT(HasSharedMemorySlot(db_oid))) {
+        return false;
+      }
+      return VERIFY_RESULT(RecordedCatalogVersion(&warm)) != 0;
+    }, 60s, "d_revoked's prefetch to be recorded"));
+  }
 
   ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_BUSY));
   // Shared catalog, so this moves d_revoked's version too and opens the gap.

@@ -14,7 +14,7 @@ package com.yugabyte.yw.common.kms.util;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
@@ -751,8 +751,10 @@ public class GcpEARServiceUtil {
     }
     credential = credential.createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
 
+    // Not GoogleNetHttpTransport.newTrustedTransport(): its bundled google.p12 can't be read in
+    // FIPS mode.
     return new CloudResourceManager.Builder(
-            GoogleNetHttpTransport.newTrustedTransport(),
+            new NetHttpTransport(),
             GsonFactory.getDefaultInstance(),
             new HttpCredentialsAdapter(credential))
         .setApplicationName("service-accounts")

@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -98,6 +99,7 @@ class RaftConfigPB;
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class TierMigrationReconciler;
 
 using rocksdb::MemoryMonitor;
 
@@ -437,7 +439,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // If any check fails, re-resolves via SelectPathIdForTier and persists the repair so this
   // does not need to happen again on the next load. If the tier has no disks on this node at
   // all, returns 0 (home) without touching the persisted value, so the intent survives until a
-  // disk for that tier reappears.
+  // disk for that tier reappears. With tiered storage disabled, returns 0 and clears a persisted
+  // path_id, again leaving target_storage_tier alone.
   Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
       EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
@@ -463,6 +466,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
+
+  TierMigrationReconciler* tier_migration_reconciler() { return tier_migration_reconciler_.get(); }
 
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
 
@@ -702,6 +707,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
+  // Steps down every leader on this TServer while its tablets must not lead (see
+  // PersistenceGate::ShouldRelinquishLeadership).  Runs on the scheduler; the step-downs run on
+  // the Raft pool, in StepDownLocalLeaders.
+  void RelinquishLeadershipIfNeeded();
+  void StepDownLocalLeaders();
+
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
@@ -791,6 +802,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   FsManager* const fs_manager_;
 
   TabletServer* server_;
+
+  // Created in Init, before any tablet peer.  Every tablet peer points at it, so it must outlive
+  // their use of it: all peers are shut down (see CompleteShutdown) before this manager is
+  // destroyed.
+  std::unique_ptr<tablet::PersistenceGate> persistence_gate_;
 
   consensus::RaftPeerPB local_peer_pb_;
 
@@ -904,6 +920,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
+  std::unique_ptr<rpc::Poller> relinquish_leadership_poller_;
+
+  // Whether StepDownLocalLeaders is queued or running; at most one is.
+  std::atomic<bool> relinquish_leadership_running_{false};
+
+  // When StepDownLocalLeaders last asked this TServer's leader of each tablet to step down.  Never
+  // pruned: an entry is a few dozen bytes per tablet this TServer has led.  Used only by
+  // StepDownLocalLeaders, which runs one at a time.
+  std::unordered_map<TabletId, CoarseTimePoint> relinquish_step_down_requests_;
+
   // Updates the metrics for the amount of active (non-retention / snapshot-related) and total data
   // on the server, accounting for hardlinks.
   std::unique_ptr<TsDataSizeMetrics> ts_data_size_metrics_;
@@ -973,6 +999,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
+
+  std::unique_ptr<TierMigrationReconciler> tier_migration_reconciler_;
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;
