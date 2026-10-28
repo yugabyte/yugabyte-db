@@ -3488,12 +3488,17 @@ OpId RaftConsensus::GetPendingConfigOpId() const {
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
+  return TryGetLeaderLeaseStatus(ht_lease_exp)
+      .value_or(LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE);
+}
+
+std::optional<LeaderLeaseStatus> RaftConsensus::TryGetLeaderLeaseStatus(
+    MicrosTime* ht_lease_exp) const {
   auto lock = state_->LockForRead();
-  LeaderLeaseStatus leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
-  if (GetRoleUnlocked() == PeerRole::LEADER) {
-    leader_lease_status = GetLeaderLeaseStatusUnlocked(ht_lease_exp);
+  if (GetRoleUnlocked() != PeerRole::LEADER) {
+    return std::nullopt;
   }
-  return leader_lease_status;
+  return GetLeaderLeaseStatusUnlocked(ht_lease_exp);
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const {

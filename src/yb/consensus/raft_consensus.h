@@ -201,6 +201,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   OpId GetPendingConfigOpId() const override;
 
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
+  // nullopt when this peer is not the leader.
+  std::optional<LeaderLeaseStatus> TryGetLeaderLeaseStatus(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
 
   ConsensusStatePB ConsensusState(
