@@ -829,11 +829,30 @@ public class Backup extends Model {
       LOG.debug("Skipping state transition as backup is already in the {} state", this.getState());
     } else if (ALLOWED_TRANSITIONS.containsEntry(this.getState(), newState)) {
       LOG.debug("Backup state transitioned from {} to {}", this.getState(), newState);
+      if (this.getState() == BackupState.FailedToDelete) {
+        // A delete asked for again after the last one gave up starts with every attempt.
+        this.setRetryCount(0);
+      }
       this.setState(newState);
       save();
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", getState(), newState);
     }
+  }
+
+  /**
+   * Queues a backup whose deletion failed for another attempt, recording how many it has had. Both
+   * are saved together, after the reload that a state change needs.
+   */
+  public synchronized void requeueForDeletion(int retryCount) {
+    this.refresh();
+    if (!ALLOWED_TRANSITIONS.containsEntry(this.getState(), BackupState.QueuedForDeletion)) {
+      LOG.error("Ignored INVALID STATE TRANSITION  {} -> QueuedForDeletion", getState());
+      return;
+    }
+    this.setState(BackupState.QueuedForDeletion);
+    this.setRetryCount(retryCount);
+    save();
   }
 
   public void setBackupSizeInBackupList(int idx, long backupSize) {
