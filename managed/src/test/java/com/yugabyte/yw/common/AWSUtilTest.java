@@ -719,18 +719,41 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({"403", "404", "client"})
-  public void testBucketRegionWarmUpIgnoresErrors(String error) {
+  public void testBucketRegionWarmUpIgnoresClientErrors() {
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.backupLocation = "s3://test-bucket/backup";
     when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
-        .thenThrow(
-            error.equals("client")
-                ? SdkClientException.create("unreachable")
-                : S3Exception.builder().statusCode(Integer.parseInt(error)).message(error).build());
-    // The call that needs the bucket reports the problem; the warm-up never does.
+        .thenThrow(SdkClientException.create("unreachable"));
     mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
     verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testBucketRegionWarmUpReportsRefusalForNonFederatedConfig() {
+    // YB-Controller backups of this config need s3:GetBucketLocation, so saving it must fail.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenThrow(S3Exception.builder().statusCode(403).message("403").build());
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.warmUpBucketRegion(
+                mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+  }
+
+  @Test
+  public void testCanCredentialListObjectsPassesOnThrottling() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(429).build());
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.canCredentialListObjects(
+                s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
   }
 
   @Test

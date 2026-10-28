@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.MOVED_PERMANENTLY;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.TOO_MANY_REQUESTS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -92,7 +93,6 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
-import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
@@ -307,7 +307,11 @@ public class AWSUtil implements CloudUtil {
    * as it is.
    */
   private static RuntimeException awsServiceError(String msg, AwsServiceException e) {
-    boolean refused = e.statusCode() >= BAD_REQUEST && e.statusCode() < INTERNAL_SERVER_ERROR;
+    // Throttling (429) is not the user's to fix, like an S3-side 5xx.
+    boolean refused =
+        e.statusCode() >= BAD_REQUEST
+            && e.statusCode() < INTERNAL_SERVER_ERROR
+            && e.statusCode() != TOO_MANY_REQUESTS;
     if (!refused && e.statusCode() != MOVED_PERMANENTLY) {
       return e;
     }
@@ -1101,10 +1105,11 @@ public class AWSUtil implements CloudUtil {
 
   /**
    * Fetches the bucket region once and ignores the result: the first bucket region fetch may fail,
-   * so it is made here rather than by the call that needs the bucket. Any failure is skipped,
-   * including an access error: that call reports it. Skipped for a cross-cloud federation config,
-   * whose role need not allow s3:GetBucketLocation (its region is derived instead, as in
-   * createCredsMapYbc).
+   * so it is made here rather than by the call that needs the bucket. A client error is skipped; an
+   * S3 refusal is not, so a config whose role may not call s3:GetBucketLocation, which
+   * YB-Controller backups of a non-federated config need, is still rejected when it is saved.
+   * Skipped for a cross-cloud federation config, whose role need not allow it (its region is
+   * derived instead, as in createCredsMapYbc).
    */
   @VisibleForTesting
   void warmUpBucketRegion(S3Client client, CustomerConfigStorageS3Data s3Data, String region) {
@@ -1116,11 +1121,8 @@ public class AWSUtil implements CloudUtil {
       if (StringUtils.isNotBlank(bucket)) {
         getBucketRegion(bucket, client);
       }
-    } catch (SdkException e) {
-      log.debug(
-          "Skipping first bucket region fetch error ({}): {}",
-          e.getClass().getSimpleName(),
-          e.getMessage());
+    } catch (SdkClientException e) {
+      log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
     }
   }
 
