@@ -283,7 +283,8 @@ INSERT INTO hint_plan.hints (query_id, application_name, hints) VALUES (-7371982
 
 select * from hint_plan.hints;
 
--- YB_TODO_PG19MERGE: the hint table row is keyed by PG15's query id and is never matched here
+-- TODO(#36091): the hint table row is keyed by PG15's query id, so it never
+-- matches and the query plans without hints.
 explain (hints on, costs off, verbose on) select * from information_schema.columns;
 
 delete from hint_plan.hints;
@@ -421,6 +422,8 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ Leading(((t0 t1) t2)) */ explain (hints on, costs off, uids on) select count(*) from t0 left join (t1 join t2 on a1=a2) on a0=a1;
 
 -- Syntax error. Should see warnings/error.
+-- TODO(#36092): the internal hint test then fails the query with "Multiple
+-- hints are not supported"; expected: the plan without hints.
 /*+ nestLoop(t4 t5 */ explain (hints on, costs off) select count(*) from t4 full join t5 on a4=a5;
 
 -- Fix the syntax error and try again. No joy since NLJ cannot be used for FULL join. Will give warnings.
@@ -447,12 +450,16 @@ set pg_hint_plan.yb_bad_hint_mode to replan;
 set pg_hint_plan.yb_bad_hint_mode to warn;
 
 -- Hint a cross join with bad ROWS hint syntax error. Should get warnings/errors.
+-- TODO(#36093): "errors found in hints" is missing; the parse error is
+-- reported only after planning.
 /*+ Leading(((((t5 t4) t1) t3) t2)) Rows(t4 t5 !10000) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 
 -- Hint a cross join with bad table name ROWS hint. Should get warnings/errors.
 /*+ Leading(((((t5 t4) t1) t3) t2)) Rows(t4 t0 #10000) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5 where a2=a3 and a2=a4 and a2=a5;
 
 -- Syntax error in parallel hint. Should get warnings/errors.
+-- TODO(#36093): "errors found in hints" is missing; the parse error is
+-- reported only after planning.
 /*+ Parallel(t1 3 hrd) */ explain (hints on, costs off) select count(*) from t1;
 
 -- Bad table name in parallel hint. Should get warnings/errors.
